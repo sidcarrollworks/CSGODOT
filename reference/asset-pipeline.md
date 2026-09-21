@@ -1,10 +1,10 @@
 # Getting CS2 assets in
 
 `scripts/extract_assets.sh` does the extraction and `src/map/map_importer.gd`
-does the import. Neither has been run against real CS2 content yet, because
-that needs a machine with the game installed. The importer is tested against a
-glTF that Godot generates and re-reads, so the mechanism is proven even though
-dust2 itself is not.
+does the import. Both have been run against real CS2 content (Source 2 Viewer
+20.0, September 2026), and what is written here is what was observed then.
+The importer is also tested against glTFs that Godot generates and re-reads,
+so the mechanism is checked on machines without the game.
 
 ## Tool
 
@@ -24,9 +24,10 @@ updates and a hardcoded one fails silently a year from now. `list-map` and
 | Asset | Exports? | Notes |
 |---|---|---|
 | Weapon and player models | Yes, glTF 2.0 / GLB | Geometry, materials, textures and the skeleton. Animations export automatically. |
-| dust2 world geometry | Yes, glTF | Brushes, meshes, props, textures as PNG. |
-| dust2 collision | Partially | Merged into a single mesh on export, not preserved as editable shapes. |
-| dust2 lighting | No | Relight it ourselves. |
+| dust2 world geometry | Yes, glTF | 3613 meshes, 4.5M triangles, 648 PNGs. In metres, Y-up. |
+| dust2 collision | Yes, glTF | A separate export of `world_physics.vmdl_c`: 39 meshes, 435k triangles, grouped by surface type and by what they interact with. Player clips included. |
+| dust2 entities | Yes, text | `default_ents.vents_c` decompiles to key/value text: 15 T and 15 CT spawns, bomb sites, buy zones, the sun. |
+| dust2 lighting | The sun only | One directional light, at a physical intensity Godot cannot use as is. The importer keeps its direction and colour. No baked lighting. |
 | dust2 nav mesh | No | Bake our own for bots. |
 | Sounds | Yes | |
 | Weapon tuning numbers | **No** | See below. |
@@ -34,13 +35,34 @@ updates and a hardcoded one fails silently a year from now. `list-map` and
 Docs: [models](https://s2v.app/ValveResourceFormat/guides/exporting-models.html),
 [maps](https://s2v.app/ValveResourceFormat/guides/exporting-maps.html).
 
-Two things to expect when dust2 arrives:
+What dust2 turned out to be:
 
-- The merged collision mesh works as a trimesh static body, but CS maps use
-  player-clip brushes to smooth awkward corners and those do not survive the
-  export. A hand-authored clip layer will be needed, and it will matter for how
-  movement feels around corners.
-- Geometry comes back mostly triangulated and merged by material.
+- **Metres.** The exporter bakes in 0.0254 and the Z-up to Y-up turn: Source
+  (x, y, z) inches lands at glTF (y, z, x) x 0.0254. The importer scales by
+  exactly 1/0.0254, after which entity coordinates can be used as
+  `Vector3(y, z, x)` with no further conversion. Checked by dropping a player
+  at all 30 spawn points: each lands on floor.
+- **The hull is a separate file.** Exporting the world also writes a
+  `world_physics.gltf`, but that one is only the brush entities (buy zones,
+  bomb targets, place names). The real hull comes from exporting
+  `world_physics.vmdl_c` by itself, and arrives as `world_physics_physics.gltf`.
+  Its node names carry the surface type (`physics_group_concrete`, `_wood`,
+  `_sand`...) and the interaction layer (`physics_npcclip_playerclip`,
+  `physics_csgo_grenadeclip`, `physics_passbullets_*`), which is what
+  footsteps, penetration and grenades will want. Player clips do survive, so
+  no hand-authored clip layer is needed.
+- **Tool and effect geometry comes along** in the visible world: light
+  blockers spanning the whole map, light shafts, steam cards. Every material
+  carries its vmat path and shader flags as glTF extras, and the importer hides
+  anything under `materials/tools/` or `materials/effects/`.
+- **Textures need telling.** Godot imports them lossless with no mipmaps
+  unless it sees them drawn in the editor, which never happens for a map built
+  at runtime. `scripts/write_import_settings.gd` writes the import settings
+  ahead of the import: VRAM compression, mipmaps, and normal maps flagged from
+  the glTF's materials rather than from filenames. 1 GB of video memory
+  instead of 4.
+- Importing takes Godot about a minute the first time and seconds after.
+  Loading the map at runtime takes a few seconds.
 
 ## The weapon numbers are not extractable
 

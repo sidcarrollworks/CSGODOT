@@ -7,7 +7,7 @@
 #   scripts/inspect_assets.sh
 #
 # The Godot half is skipped if no Godot binary is found. Point at one with
-# GODOT=/path/to/godot if it is not on PATH.
+# GODOT=/path/to/godot if it is not on PATH or the desktop.
 
 set -uo pipefail
 
@@ -28,7 +28,7 @@ echo "size:  $(du -sh "$ASSETS_DIR" 2>/dev/null | cut -f1)"
 echo
 
 echo "top-level layout:"
-find "$ASSETS_DIR" -maxdepth 3 -type d | sed "s|$PROJECT_DIR/||" | head -30
+find "$ASSETS_DIR" -maxdepth 5 -type d | sed "s|$PROJECT_DIR/||" | head -30
 echo
 
 echo "glTF files found:"
@@ -43,29 +43,17 @@ echo
 
 # --- The import inventory --------------------------------------------------
 
-find_godot() {
-	if [[ -n "${GODOT:-}" ]]; then
-		echo "$GODOT"
-		return
-	fi
-	for candidate in godot godot4 Godot; do
-		if command -v "$candidate" >/dev/null 2>&1; then
-			command -v "$candidate"
-			return
-		fi
-	done
-	echo ""
-}
+source "$PROJECT_DIR/scripts/common.sh"
 
+echo "=== import inventory ==="
 GODOT_BIN="$(find_godot)"
 if [[ -z "$GODOT_BIN" ]]; then
-	echo "=== import inventory ==="
 	echo "Skipped: no Godot binary found."
 	echo "Either run it with GODOT=/path/to/godot, or just open"
 	echo "maps/de_dust2/de_dust2.tscn in the editor and copy the Output panel."
 	exit 0
 fi
 
-echo "=== import inventory ==="
-"$GODOT_BIN" --headless --path "$PROJECT_DIR" --import >/dev/null 2>&1
+import_assets "$GODOT_BIN" "$PROJECT_DIR" || exit 1
+echo
 "$GODOT_BIN" --headless --path "$PROJECT_DIR" --script scripts/inspect_map.gd
