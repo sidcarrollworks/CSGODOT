@@ -55,6 +55,9 @@ Everything on it is a measurement, not decoration:
   a 24-unit lip you should not (step height is 18).
 - **Ramps** at 20°, 35°, 44° and 50°. The 44° one is walkable and the 50° one
   is not, which is the threshold that makes surfing possible.
+- **Stairs**, which are also the ground-adhesion test: running down them should
+  never leave the ground and should hold full run speed. See
+  `reference/movement_constants.md` on `StayOnGround`.
 - **Surf lane**, two opposing 55° ramps with a drop-in platform. If
   collide-and-slide is right you ride these and gain speed. If it is wrong you
   stick or stutter. This is the clearest single test of the port.
@@ -85,11 +88,13 @@ screenshot and exported without converting anything by hand. See
 
 ## Shooting
 
-Hitscan, traced from the camera, with three things done deliberately:
+Hitscan, traced from the sub-tick position of the eye, with three things done
+deliberately:
 
 **Sub-tick.** A click carries the time it happened and the look angles at that
-instant. The shot is traced from those angles, not from wherever the view had
-drifted to by the next simulation tick. At 128 Hz that is up to 7.8 ms of aim
+instant. The shot is traced from those angles and from where the player was at
+that instant, not from wherever the view and the body had got to by the next
+simulation tick. At 128 Hz that is up to 7.8 ms of aim
 error removed, and it is the difference between hit registration feeling fair
 and feeling like it lags you. This is why `PlayerInput` timestamps events
 rather than polling, and it is in from day one because retrofitting it later
@@ -171,7 +176,8 @@ Note that GDScript's analyser warnings (shadowed variables, unused locals) only
 appear when the editor loads a script. They do not show up in a headless run,
 so if the Godot console shows any, paste them over and they will get fixed.
 
-Ninety-one checks, in three files: movement, map import and weapons.
+A hundred and twenty-one checks, in three files: movement, map import and
+weapons.
 
 Half of the movement ones are the acceleration model against hand-computed
 values, which is the part that decides feel and the part most likely to be
@@ -184,6 +190,11 @@ The weapon checks pin fire rate, ammo and reloading, spread determinism, recoil
 matching the pattern shot for shot, the ordering of the inaccuracy states,
 damage falloff and hitbox multipliers, and that a wall between the muzzle and
 the target stops the bullet registering.
+
+Several checks are written as A/B pairs against a config flag: the stairs are
+run with `stay_on_ground` on and off, the hop is taken with `subtick_jump` on
+and off. Those assert that the fix still does something, which a one-sided
+assertion does not.
 
 The run prints the measured heights and speeds even when it passes, because
 watching those numbers move is how you notice a change the assertions were not
@@ -217,3 +228,7 @@ gun at a dummy that does not move.
 Movement and shooting are tuned in flat grey rooms first, because tuning them
 on a real map is much harder and everything built on top of bad movement is
 wasted work.
+
+The surf lane also cannot yet reproduce the one open movement complaint:
+launching off the end of a ramp. Its channel runs into the floor, so there is
+no ramp end to leave. That geometry is the next thing the course needs.

@@ -63,6 +63,25 @@ extends Resource
 ## CS2's. Measure a real CS2 jump before deciding which way this goes.
 @export var tick_rate_independent_jump: bool = false
 
+## Source's NON_JUMP_VELOCITY (gamemovement.cpp:3830). Rising faster than this
+## means we definitively left the ground, so the ground trace is skipped for
+## the tick. It is NOT half the jump impulse, which is what this used to use.
+@export var non_jump_velocity: float = 140.0
+
+## sv_maxvelocity (movevars_shared.cpp:93). Source clamps each velocity axis to
+## this twice per tick. It only bites at surf and boost speeds, which is
+## exactly where ramp exit angles are decided, so an unclamped axis there
+## changes where you get launched.
+@export var max_velocity: float = 3500.0
+
+## Split the tick at the instant the jump key was pressed, rather than applying
+## the impulse at the tick boundary. CS2 sends every button transition with a
+## fractional timestamp (CSubtickMoveStep), and this is the local equivalent.
+##
+## It is the difference between a chained hop landing when you pressed it and
+## landing up to 7.8 ms later, which is what makes bunny hopping feel reliable.
+@export var subtick_jump: bool = true
+
 ## sv_autobunnyhopping. CS2 default is off: you have to time the jump yourself.
 @export var auto_bunnyhop: bool = false
 
@@ -101,16 +120,58 @@ extends Resource
 ## surfable. Source uses a 0.7 normal.y threshold, which is ~45.57 degrees.
 @export var max_ground_angle_deg: float = 45.57
 
-# --- CS2 quirks -----------------------------------------------------------
+# --- Divergences from Source ----------------------------------------------
 
-## CS2 drops surface friction to 0.25 while vertical velocity is between 0 and
+## Source's WalkMove flattens the move direction to the horizontal plane and
+## never consults the ground normal (gamemovement.cpp:1893). Projecting the
+## wish direction onto the slope instead stops a little speed bleeding into
+## the ground plane when walking uphill, which is arguably better and is
+## definitely not what CS2 does.
+##
+## False is faithful. True is the nicer-feeling divergence. It is a flag rather
+## than a silent choice because it changes every slope on dust2.
+@export var project_wish_dir_on_ground: bool = false
+
+## Source glues the player to the ground for a full step height after every
+## walk move (StayOnGround, gamemovement.cpp:1857). Without it, running down
+## stairs or any shallow decline goes airborne for a few ticks at a time,
+## which drops ground friction and ground acceleration and reads as floaty.
+##
+## True is faithful. False is here only so the difference can be measured.
+@export var stay_on_ground: bool = true
+
+## How far the body is pushed back out along a collision normal after each
+## collide-and-slide iteration.
+##
+## Source does not do this at all: it relies on the trace stopping short by
+## DIST_EPSILON and never adds position. s&box considered it and left the line
+## commented out. At 128 Hz with four bumps a tick, a non-zero value here
+## injects outward drift while sliding along a surface, which bleeds speed off
+## a surf ramp. Godot's own safe_margin already keeps us out of the geometry,
+## so the default is zero.
+##
+## Kept as a tunable rather than deleted so the surf complaint can be falsified
+## from both sides without editing code.
+@export var trace_epsilon: float = 0.0
+
+# --- Surface friction -----------------------------------------------------
+
+## Surface friction drops to 0.25 while vertical velocity is between 0 and
 ## deadstrafe_max_vertical_speed, and air acceleration multiplies by that
 ## friction even though the player is airborne. The effect is that air strafing
 ## is roughly a third as effective for about the first quarter of a jump.
 ## GoldSrc keeps friction at 1.0 in the air and has no such dead zone.
 ##
-## Leave this true to clone CS2. Set it false for the cleaner GoldSrc feel.
-## Anyone who plays a lot of CS2 will notice the difference either way.
-@export var cs2_deadstrafe: bool = true
+## This is NOT a CS2 quirk, whatever it gets called in the community. It is
+## Source 1 behaviour and it is in the public SDK: CategorizePosition resets
+## m_surfaceFriction to 1.0, and assigns 0.25 when the ground trace finds
+## nothing walkable while moving up (gamemovement.cpp:3871-3877). The upper
+## bound is real too, because above NON_JUMP_VELOCITY (gamemovement.cpp:3830)
+## Source skips the ground trace entirely, so the 0.25 never gets assigned.
+##
+## It was called cs2_deadstrafe, which invited someone to "fix" correct Source
+## behaviour later. Leave it true unless you specifically want the GoldSrc
+## feel; anyone who plays a lot of CS will notice either way.
+@export var source_deadstrafe: bool = true
 @export var deadstrafe_friction: float = 0.25
 @export var deadstrafe_max_vertical_speed: float = 140.0

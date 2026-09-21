@@ -26,6 +26,8 @@ As each one gets measured, record the measurement and the method below.
 | duck height 54 | | CS:GO | No |
 | step height 18 | | Source | No |
 | max ground angle 45.57° | | Source uses a 0.7 normal threshold; acos(0.7) = 45.573° | Derived, exact |
+| `NON_JUMP_VELOCITY` | 140 | `gamemovement.cpp:3830` | Read from the SDK, exact |
+| `sv_maxvelocity` | 3500 | `movevars_shared.cpp:93` | Read from the SDK, exact |
 
 ## How to measure each kind
 
@@ -63,31 +65,58 @@ highest ledge a crouch jump actually clears in CS2 before trusting this number.
 
 Reported 2026-09-21: sliding down a surf ramp builds speed correctly, but
 arcing up and launching off the end loses speed far faster than CS does.
-Not yet investigated. Likely candidates, in order of suspicion:
 
-1. The CS2 dead-strafe friction above, which cuts air acceleration to a
-   quarter while vertical velocity is between 0 and +140. Leaving a ramp
-   upward puts you squarely in that window.
+**Partly investigated, not solved.** The leading suspect was the 0.03 unit
+push-out along every collision normal, which Source does not do and s&box
+explicitly left commented out. It was measured and it is real but small:
+sliding the full ramp peaks at 392.03 u/s with it removed against 389.09 u/s
+with it in, which is 0.75%. It is now removed (`MovementConfig.trace_epsilon`,
+default 0), so that suspect is closed without accounting for the complaint.
+
+**The test course cannot reproduce the reported case.** The surf lane's channel
+runs down into the floor, so the scripted test slides to a stop at the bottom
+rather than launching off a ramp end. Reproducing "arcing up and launching off
+the end" needs a ramp that terminates in open air, and that geometry does not
+exist yet. Building it is the first step, not more reading of the solver.
+
+Remaining candidates, in order of suspicion:
+
+1. The dead-strafe friction below, which cuts air acceleration to a quarter
+   while vertical velocity is between 0 and +140. Leaving a ramp upward puts
+   you squarely in that window. It is faithful to Source, so if this is the
+   cause then CS2 does something else on top rather than us having a bug.
 2. `clip_velocity` running against the ramp plane for a tick after you have
    actually left it.
-3. `_categorize_position` snapping to ground on the lip.
+3. `_categorize_position` snapping to ground on the lip. Note the quadrant
+   retry added on 2026-09-21 makes grounding *more* likely near an edge, which
+   could make this worse rather than better.
 
 ## Two decisions that are not settled
 
-### The CS2 dead-strafe quirk
+### The dead-strafe zone
 
-`MovementConfig.cs2_deadstrafe`, default **on**.
+`MovementConfig.source_deadstrafe`, default **on**. Renamed from
+`cs2_deadstrafe` on 2026-09-21, because the old name was wrong in a way that
+invited someone to "fix" it.
 
-CS2 drops surface friction to 0.25 when vertical velocity is between 0 and
-+140, and the air acceleration function multiplies by that friction even though
-the player is airborne. The effect is that air strafing is roughly a third as
+Surface friction drops to 0.25 when vertical velocity is between 0 and +140,
+and the air acceleration function multiplies by that friction even though the
+player is airborne. The effect is that air strafing is roughly a third as
 effective for about the first quarter of a jump. GoldSrc keeps friction at 1.0
 in the air and has no such dead zone.
 
-Source: <https://gist.github.com/zer0k-z/808bc8bfc494e0bbb5a423c2b1ca6685>
+**This is not a CS2 quirk.** It is Source 1 behaviour and it is in the public
+SDK: `CategorizePosition` resets `m_surfaceFriction` to 1.0 and assigns 0.25
+when the ground trace finds nothing walkable while moving up
+(`gamemovement.cpp:3871-3877`). The upper bound is real too, because above
+`NON_JUMP_VELOCITY` (140, `gamemovement.cpp:3830`) Source skips the ground
+trace entirely, so the 0.25 never gets assigned.
 
-We clone it by default because the goal is CS2, not a better CS2. Anyone who
-plays a lot of CS2 will feel the difference either way, so this should be an
+Community writeup, which is where the wrong name came from:
+<https://gist.github.com/zer0k-z/808bc8bfc494e0bbb5a423c2b1ca6685>
+
+We keep it on by default because the goal is CS2, not a better CS2. Anyone who
+plays a lot of CS will feel the difference either way, so this should be an
 explicit choice rather than an accident.
 
 ### Jump height is tick-rate dependent in Source
@@ -117,3 +146,70 @@ someone measures a real CS2 jump:
 
 Option 2 is probably right, but it needs the measurement first. The test suite
 pins both behaviours so the choice cannot drift by accident.
+
+## What the Source 2 audit changed (2026-09-21)
+
+A separate thread read our port line by line against Source SDK 2013,
+`s&box` (MIT, and a shipping Source 2 game), and the CS2 protobufs, and found
+eight specific gaps. The write-up is `source2-to-godot.md` in the project
+files. All eight are now closed. What each one actually did, measured:
+
+**`StayOnGround` was missing.** After every walk move Source traces up 2 and
+down a full step height (18) and glues the player to whatever walkable surface
+it finds. We only snapped 2 units, which is nine times too short to catch a
+stair. Running the eight-step flight in the test course:
+
+| | Ticks airborne | Peak speed |
+|---|---|---|
+| Glued (Source) | 0 of 90 | 215.0 u/s |
+| Not glued (old) | 42 of 90 | 194.5 u/s |
+
+Airborne means no ground friction and no ground acceleration, which is why the
+old behaviour never reached run speed. This is the biggest single feel change
+in the port and it will show everywhere on dust2. `MovementConfig.stay_on_ground`
+turns it off, which exists only so the difference stays measurable.
+
+**The 0.03 trace push-out is gone.** See the surf section above for the
+measurement: real, 0.75%, and not the explanation for the parked complaint.
+
+**Jump now happens at the instant it was pressed.** CS2 carries every button
+transition with a fractional timestamp (`CSubtickMoveStep`). Ours quantised
+jump to the tick, which is the input being used to test bunny hopping. A tick
+with a mid-tick press is now split in two and both halves are simulated.
+Hopping from 230 u/s:
+
+| Press fraction | Speed kept |
+|---|---|
+| Rounded to the tick boundary | 230.00 u/s |
+| 0.25 | 227.66 u/s |
+| 0.50 | 225.33 u/s |
+| 0.75 | 222.99 u/s |
+
+The boundary case is not better, it is wrong: taking the jump before friction
+is applied hands you a tick of speed you did not earn. `subtick_jump` off
+reproduces it exactly.
+
+**The shot origin is now a sub-tick sample.** It was the end-of-tick position
+with sub-tick angles attached. At 250 u/s that put the muzzle up to 1.6 units
+from where the click happened, which is the strafe-and-tap case hit
+registration arguments are made of.
+
+**The small ones.** Ground detection threshold is `NON_JUMP_VELOCITY` (140)
+rather than half the jump impulse (151). `CheckVelocity` clamps each axis to
+`sv_maxvelocity` (3500) twice a tick, per axis rather than by magnitude, which
+changes the direction of an over-speed vector and so the angle you leave a ramp
+at. `StepMove` keeps the flat move's vertical velocity when the stepped path
+wins, as Source does. The ducked eye offset runs through `SimpleSpline` rather
+than a straight lerp. The quadrant ground retry
+(`TryTouchGroundInQuadrants`) keeps you standing when the hull centre is past
+an edge but a corner is still over something.
+
+**One deliberate divergence, now a flag.** `project_wish_dir_on_ground`,
+default **off**. Source flattens the move direction and never consults the
+ground normal; projecting onto the slope bleeds less speed uphill, which is
+arguably better and is definitely not CS2. It was silent before, which is worse
+than either choice.
+
+Still open from that audit, all on the map side and all blocked on the dust2
+extraction: per-surface-property collision, the nav mesh, the real friction
+table in `surfaceproperties.vsurf`, and entity spawn points.

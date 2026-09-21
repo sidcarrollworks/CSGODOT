@@ -102,20 +102,43 @@ static func clip_velocity(
 	return out
 
 
-## The CS2 dead-strafe quirk. Returns the surface friction multiplier to use
-## for this tick given the player's vertical velocity.
+## Source's m_surfaceFriction for this tick, given the player's vertical
+## velocity. This is the dead-strafe zone, and it is Source 1 behaviour rather
+## than a CS2 quirk: gamemovement.cpp:3871-3877.
 ##
-## See MovementConfig.cs2_deadstrafe for what this is and why it is optional.
+## See MovementConfig.source_deadstrafe.
 static func surface_friction_for(
 	vertical_velocity: float,
 	on_ground: bool,
 	cfg: MovementConfig
 ) -> float:
-	if on_ground or not cfg.cs2_deadstrafe:
+	if on_ground or not cfg.source_deadstrafe:
 		return 1.0
 	if vertical_velocity > 0.0 and vertical_velocity < cfg.deadstrafe_max_vertical_speed:
 		return cfg.deadstrafe_friction
 	return 1.0
+
+
+## Source's CheckVelocity (gamemovement.cpp:3048). Clamps each axis
+## independently to sv_maxvelocity, which Source does twice per tick.
+##
+## Per axis rather than on the magnitude, which is what Source does and is not
+## the same thing: it changes the direction of an over-speed vector, and at
+## surf speeds that is what decides the angle you leave a ramp at.
+static func check_velocity(velocity: Vector3, cfg: MovementConfig) -> Vector3:
+	var limit := cfg.max_velocity
+	return Vector3(
+		clampf(velocity.x, -limit, limit),
+		clampf(velocity.y, -limit, limit),
+		clampf(velocity.z, -limit, limit)
+	)
+
+
+## Source's SimpleSpline: smoothstep, used for the ducked eye offset so the
+## view eases in and out instead of sliding linearly.
+static func simple_spline(value: float) -> float:
+	var t := clampf(value, 0.0, 1.0)
+	return t * t * (3.0 - 2.0 * t)
 
 
 ## Is this surface walkable, or do you slide off it?

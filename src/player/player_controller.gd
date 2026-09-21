@@ -81,19 +81,33 @@ func _physics_process(delta: float) -> void:
 
 	# Button transitions that happened during the frames since the last tick.
 	# A tap shorter than one tick still has to register, so a press event in
-	# the buffer counts even if the key is already back up by now. Only jump
-	# and duck use this today; the timestamps are carried regardless so
-	# shooting can use them unchanged once weapons exist.
+	# the buffer counts even if the key is already back up by now. Each one
+	# carries the instant it happened, which is what lets the jump and the
+	# shot below land inside the tick rather than at its boundary.
 	var jump_tapped := false
+	var jump_press_usec := 0
 	var fire_events: Array[PlayerInput.ButtonEvent] = []
 	for event in input.take_events():
 		if event.action == &"jump" and event.pressed:
+			# The earliest press in the buffer is the one that jumps, so a
+			# double tap inside one tick does not push the jump later.
+			if not jump_tapped:
+				jump_press_usec = event.timestamp_usec
 			jump_tapped = true
 		elif event.action == &"attack" and event.pressed:
 			fire_events.append(event)
 
 	wants_jump = Input.is_action_pressed(&"jump") or jump_tapped
 	wants_duck = Input.is_action_pressed(&"duck")
+
+	# Where inside this tick the press happened, so the body can split the tick
+	# there instead of rounding the jump to the boundary. A jump from a held
+	# key has no transition to time, so it stays at the boundary.
+	jump_fraction = -1.0
+	if jump_tapped:
+		jump_fraction = PlayerInput.tick_fraction(
+			jump_press_usec, _tick_start_usec, _tick_length_usec
+		)
 
 	if noclip:
 		wish_dir = _noclip_direction()
@@ -151,7 +165,13 @@ func _try_shoot(
 	pitch: float,
 	state: Weapon.ShooterState
 ) -> void:
-	var origin := global_position + Vector3.UP * eye_height()
+	# The shot came from where the player was at the instant of the click, not
+	# from where the tick left them. CS2 sends this as an explicit
+	# shoot_position. At 250 u/s, skipping it puts the muzzle up to ~1.6 units
+	# from where it belongs, which is exactly the strafe-and-tap case that hit
+	# registration arguments are made of.
+	var at := previous_position.lerp(global_position, clampf(tick_fraction, 0.0, 1.0))
+	var origin := at + Vector3.UP * eye_height()
 	var shot := weapon.fire(
 		timestamp_usec, tick_fraction, origin, yaw, pitch, state
 	)

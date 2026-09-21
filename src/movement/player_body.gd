@@ -17,9 +17,19 @@ const MAX_CLIP_PLANES := 5
 ## How far below the feet we look for ground each tick.
 const GROUND_TRACE_DISTANCE := 2.0
 
-## Pushed a hair out of surfaces to avoid re-colliding with the plane we just
-## resolved against.
-const TRACE_EPSILON := 0.03
+## Source's StayOnGround traces up this far before looking down, so the
+## downward trace starts from somewhere that is definitely not already inside
+## the floor. gamemovement.cpp:1857.
+const STAY_ON_GROUND_UP := 2.0
+
+## StayOnGround ignores a correction smaller than this, the way Source ignores
+## one below half a coordinate unit. Without it the body jitters by a fraction
+## every tick on a perfectly flat floor.
+const STAY_ON_GROUND_MIN_DELTA := 0.03
+
+## The quadrant ground traces are inset this far from the hull corners, so they
+## sample the floor under the corner rather than the wall beside it.
+const QUADRANT_INSET := 1.0
 
 @export var config: MovementConfig
 
@@ -44,6 +54,11 @@ var wish_dir: Vector3 = Vector3.ZERO
 var wish_speed: float = 0.0
 var wants_jump: bool = false
 var wants_duck: bool = false
+
+## Where inside this tick the jump key was actually pressed, 0..1, or -1 when
+## there was no fresh press. CS2 sends this per button transition; see
+## MovementConfig.subtick_jump.
+var jump_fraction: float = -1.0
 
 ## Previous tick's position, so the camera can interpolate between physics
 ## ticks instead of stuttering at the 128 Hz tick boundary.
@@ -89,6 +104,11 @@ func _find_collision_shape() -> CollisionShape3D:
 ## it is the reason a jump peaks at the same height no matter what the tick
 ## rate is. Applying it all at once would make jump height drift with tick
 ## rate, which would quietly change how every ledge in the game plays.
+##
+## A jump pressed part-way through the tick splits the tick in two and runs
+## both halves, so the impulse lands at the instant it was pressed. CS2 does
+## the same thing with CSubtickMoveStep, and it is what makes chained hops land
+## when you pressed them rather than up to a tick later.
 func simulate(dt: float) -> void:
 	previous_position = global_position
 
@@ -96,14 +116,39 @@ func simulate(dt: float) -> void:
 		velocity = wish_dir * config.noclip_speed
 		global_position += velocity * dt
 		on_ground = false
+		jump_fraction = -1.0
 		return
 
+	if (
+		config.subtick_jump
+		and wants_jump
+		and jump_fraction > 0.0
+		and jump_fraction < 1.0
+	):
+		# Run up to the press with the key still up, then the rest with it
+		# down, so the impulse happens at the fraction it was pressed at.
+		var pressed := wants_jump
+		wants_jump = false
+		_simulate_step(dt * jump_fraction)
+		wants_jump = pressed
+		_simulate_step(dt * (1.0 - jump_fraction))
+	else:
+		_simulate_step(dt)
+
+	_jump_held_last_tick = wants_jump
+	jump_fraction = -1.0
+
+
+## One (possibly partial) simulation step. This is Source's FullWalkMove.
+func _simulate_step(dt: float) -> void:
 	_categorize_position()
 	_update_duck(dt)
 
 	var surface_friction := MovementSolver.surface_friction_for(
 		velocity.y, on_ground, config
 	)
+
+	velocity = MovementSolver.check_velocity(velocity, config)
 
 	# StartGravity.
 	velocity.y -= config.gravity * 0.5 * dt
@@ -128,7 +173,7 @@ func simulate(dt: float) -> void:
 	if on_ground:
 		velocity.y = 0.0
 
-	_jump_held_last_tick = wants_jump
+	velocity = MovementSolver.check_velocity(velocity, config)
 
 
 ## Ducking, as Source does it.
@@ -209,8 +254,16 @@ func _set_hull(height: float) -> void:
 
 
 ## The eye offset above the feet for the current duck state.
+##
+## Splined rather than linear, because Source runs duck_progress through
+## SimpleSpline before SetDuckedEyeOffset (gamemovement.cpp:4421). Ducking is
+## constant in CS, so an ease is a visible difference from a slide.
 func eye_height() -> float:
-	return lerpf(config.stand_eye_height, config.duck_eye_height, duck_progress)
+	return lerpf(
+		config.stand_eye_height,
+		config.duck_eye_height,
+		MovementSolver.simple_spline(duck_progress)
+	)
 
 
 ## Jumping requires a fresh press unless auto bunnyhop is on, which is the CS2
@@ -231,10 +284,11 @@ func _try_jump(dt: float) -> void:
 
 
 func _walk_move(surface_friction: float, dt: float) -> void:
-	# On a slope, project the wish direction onto the slope so that walking
-	# uphill does not bleed speed into the ground plane.
+	# Source keeps the move direction flat and never consults the ground
+	# normal. Projecting onto the slope bleeds less speed uphill, which is
+	# nicer and is a divergence, so it is a flag.
 	var dir := wish_dir
-	if ground_normal != Vector3.UP:
+	if config.project_wish_dir_on_ground and ground_normal != Vector3.UP:
 		dir = MovementSolver.clip_velocity(dir, ground_normal)
 		if dir.length_squared() > 0.0:
 			dir = dir.normalized()
@@ -244,6 +298,46 @@ func _walk_move(surface_friction: float, dt: float) -> void:
 	)
 	velocity.y = 0.0
 	_step_move(dt)
+	_stay_on_ground()
+
+
+## Source's StayOnGround (gamemovement.cpp:1857), run at the end of every walk
+## move. Trace up 2, then down a full step height, and glue the body to
+## whatever walkable surface that finds.
+##
+## Without it, running down stairs or off any shallow decline goes airborne for
+## a few ticks, which drops ground friction and ground acceleration and makes
+## the descent feel floaty and fast. Snapping only GROUND_TRACE_DISTANCE, which
+## is what _categorize_position does, is nine times too short to catch a step.
+func _stay_on_ground() -> void:
+	if not config.stay_on_ground:
+		return
+
+	var start := global_position
+
+	move_and_collide(Vector3.UP * STAY_ON_GROUND_UP)
+	var raised := global_position
+
+	# Down to a full step height below where the move ended, from wherever the
+	# upward trace actually got to.
+	var distance := raised.y - (start.y - config.step_height)
+	var collision := move_and_collide(Vector3.DOWN * distance, true)
+
+	global_position = start
+
+	if collision == null:
+		return
+	# Travelling nowhere means we started inside something. Source bails on
+	# that case too rather than teleporting up to the raised position.
+	if collision.get_travel().length_squared() == 0.0:
+		return
+	if not MovementSolver.is_walkable(collision.get_normal(), config):
+		return
+
+	var landing := raised + collision.get_travel()
+	if absf(landing.y - start.y) < STAY_ON_GROUND_MIN_DELTA:
+		return
+	global_position = landing
 
 
 func _air_move(surface_friction: float, dt: float) -> void:
@@ -268,13 +362,16 @@ func _step_move(dt: float) -> void:
 
 	var flat_distance := _horizontal_distance(start_position, flat_position)
 
-	# Reset and try again with a step up first.
+	# Reset and try again with a step up first. Source steps by
+	# stepsize + DIST_EPSILON so the down trace lands on the step rather than
+	# stopping a hair above its lip.
 	global_position = start_position
 	velocity = start_velocity
 
-	_trace_move(Vector3.UP * config.step_height)
+	var step := config.step_height + STAY_ON_GROUND_MIN_DELTA
+	_trace_move(Vector3.UP * step)
 	_try_player_move(dt)
-	_trace_move(Vector3.DOWN * config.step_height)
+	_trace_move(Vector3.DOWN * step)
 
 	var step_distance := _horizontal_distance(start_position, global_position)
 
@@ -283,6 +380,11 @@ func _step_move(dt: float) -> void:
 	var landed_walkable := _ground_below_is_walkable()
 
 	if step_distance > flat_distance and landed_walkable:
+		# Source takes the stepped path but keeps the FLAT move's vertical
+		# velocity (gamemovement.cpp:1515). Keeping the stepped one instead
+		# carries the step-down trace's Z into the next tick, which reads as a
+		# small downward kick every stair.
+		velocity.y = flat_velocity.y
 		return
 	global_position = flat_position
 	velocity = flat_velocity
@@ -345,9 +447,11 @@ func _try_player_move(dt: float) -> void:
 
 		var normal := collision.get_normal()
 		planes.append(normal)
-		# Nudge out of the surface so the next iteration does not immediately
-		# re-collide with the plane we just resolved.
-		global_position += normal * TRACE_EPSILON
+		# Source adds no position here, and neither do we by default: Godot's
+		# safe_margin already stops the trace short of the geometry. See
+		# MovementConfig.trace_epsilon.
+		if config.trace_epsilon != 0.0:
+			global_position += normal * config.trace_epsilon
 
 		if planes.size() == 1 and not on_ground:
 			# Airborne against a single plane. Walkable surfaces slide you
@@ -397,9 +501,10 @@ func _try_player_move(dt: float) -> void:
 
 ## Determines whether we are standing on something, and on what.
 func _categorize_position() -> void:
-	# Moving up fast enough means we definitively left the ground, which stops
-	# a jump from being cancelled on its first tick.
-	if velocity.y > config.jump_impulse * 0.5:
+	# Moving up faster than NON_JUMP_VELOCITY means we definitively left the
+	# ground, so Source skips the trace entirely for the tick. That is also
+	# what bounds the dead-strafe friction zone.
+	if velocity.y > config.non_jump_velocity:
 		on_ground = false
 		ground_normal = Vector3.UP
 		return
@@ -407,18 +512,56 @@ func _categorize_position() -> void:
 	var collision := move_and_collide(
 		Vector3.DOWN * GROUND_TRACE_DISTANCE, true
 	)
-	if collision == null:
-		on_ground = false
-		ground_normal = Vector3.UP
-		return
+	var normal := Vector3.ZERO
+	if collision != null:
+		normal = collision.get_normal()
 
-	var normal := collision.get_normal()
-	if not MovementSolver.is_walkable(normal, config):
-		on_ground = false
-		ground_normal = Vector3.UP
-		return
+	if normal == Vector3.ZERO or not MovementSolver.is_walkable(normal, config):
+		# The centre of the hull found nothing walkable. Source retries with
+		# four sub-boxes of the hull before giving up, so that standing with
+		# most of yourself off a crate edge keeps you on the crate.
+		normal = _ground_normal_in_quadrants()
+		if normal == Vector3.ZERO:
+			on_ground = false
+			ground_normal = Vector3.UP
+			return
 
 	on_ground = true
 	ground_normal = normal
 	# Snap down onto the surface so we do not hover a fraction above it.
 	move_and_collide(Vector3.DOWN * GROUND_TRACE_DISTANCE)
+
+
+## Source's TryTouchGroundInQuadrants (gamemovement.cpp:3731): when the centre
+## trace finds nothing walkable, check the four quadrants of the hull and stay
+## grounded if any of them is over something walkable.
+##
+## Source traces four sub-boxes; this casts a ray just inside each hull corner,
+## which is the outer extent those boxes reach and is what decides whether an
+## edge holds you up. Returns the normal found, or ZERO for none.
+func _ground_normal_in_quadrants() -> Vector3:
+	var space := get_world_3d().direct_space_state
+	if space == null:
+		return Vector3.ZERO
+
+	var inset := config.hull_width * 0.5 - QUADRANT_INSET
+	var corners := [
+		Vector3(inset, 0.0, inset),
+		Vector3(-inset, 0.0, inset),
+		Vector3(inset, 0.0, -inset),
+		Vector3(-inset, 0.0, -inset),
+	]
+
+	for corner in corners:
+		var from: Vector3 = global_position + corner + Vector3.UP * QUADRANT_INSET
+		var to: Vector3 = from + Vector3.DOWN * (GROUND_TRACE_DISTANCE + QUADRANT_INSET)
+		var query := PhysicsRayQueryParameters3D.create(from, to)
+		query.collision_mask = collision_mask
+		query.exclude = [get_rid()]
+		var hit := space.intersect_ray(query)
+		if hit.is_empty():
+			continue
+		var normal: Vector3 = hit["normal"]
+		if MovementSolver.is_walkable(normal, config):
+			return normal
+	return Vector3.ZERO
