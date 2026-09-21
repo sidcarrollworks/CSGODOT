@@ -11,3 +11,4 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 "$GODOT" --headless --path "$PROJECT_DIR" --import >/dev/null
 "$GODOT" --headless --path "$PROJECT_DIR" --script tests/run_tests.gd
 "$GODOT" --headless --path "$PROJECT_DIR" --script tests/run_map_tests.gd
+"$GODOT" --headless --path "$PROJECT_DIR" --script tests/run_weapon_tests.gd

@@ -18,6 +18,11 @@ const ACTIONS := {
 	&"duck": [KEY_CTRL],
 	&"walk": [KEY_SHIFT],
 	&"noclip": [KEY_V],
+	&"reload": [KEY_R],
+	&"slot1": [KEY_1],
+	&"slot2": [KEY_2],
+	&"export_spray": [KEY_P],
+	&"reset_range": [KEY_O],
 }
 
 const MOUSE_ACTIONS := {
