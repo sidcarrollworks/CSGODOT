@@ -13,6 +13,11 @@ extends PlayerBody
 
 var input := PlayerInput.new()
 
+## The weapon currently held. Swapped with the number keys.
+var weapon: Weapon
+
+signal shot_traced(shot: Weapon.Shot, result: Hitscan.Result)
+
 var _tick_start_usec: int = 0
 var _tick_length_usec: int = 0
 
@@ -30,6 +35,13 @@ func _ready() -> void:
 		camera.far = 16384.0
 		camera.fov = 90.0
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	equip(WeaponLibrary.ak47())
+
+
+## Swaps to a weapon, which also changes how fast you can run.
+func equip(data: WeaponData) -> void:
+	weapon = Weapon.new(data)
+	config.max_speed = data.max_player_speed
 
 
 func _find_camera() -> Camera3D:
@@ -46,6 +58,15 @@ func _unhandled_input(event: InputEvent) -> void:
 			if Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED
 			else Input.MOUSE_MODE_CAPTURED
 		)
+		return
+	if event.is_action_pressed(&"slot1"):
+		equip(WeaponLibrary.ak47())
+		return
+	if event.is_action_pressed(&"slot2"):
+		equip(WeaponLibrary.m4a1s())
+		return
+	if event.is_action_pressed(&"reload"):
+		weapon.start_reload(Time.get_ticks_usec())
 		return
 	if event.is_action_pressed(&"noclip"):
 		noclip = not noclip
@@ -64,9 +85,12 @@ func _physics_process(delta: float) -> void:
 	# and duck use this today; the timestamps are carried regardless so
 	# shooting can use them unchanged once weapons exist.
 	var jump_tapped := false
+	var fire_events: Array[PlayerInput.ButtonEvent] = []
 	for event in input.take_events():
 		if event.action == &"jump" and event.pressed:
 			jump_tapped = true
+		elif event.action == &"attack" and event.pressed:
+			fire_events.append(event)
 
 	wants_jump = Input.is_action_pressed(&"jump") or jump_tapped
 	wants_duck = Input.is_action_pressed(&"duck")
@@ -83,6 +107,60 @@ func _physics_process(delta: float) -> void:
 		wish_speed = 0.0
 
 	simulate(delta)
+	_update_weapon(delta, fire_events)
+
+
+## Fires any shots that happened during the frames since the last tick, at the
+## instant and the aim angles they actually happened at.
+##
+## A held trigger fires on the tick as well, since an automatic weapon keeps
+## going without further input events.
+func _update_weapon(
+	delta: float, fire_events: Array[PlayerInput.ButtonEvent]
+) -> void:
+	if weapon == null:
+		return
+
+	var now := Time.get_ticks_usec()
+	weapon.finish_reload_if_due(now)
+	weapon.update(delta, now)
+
+	var state := Weapon.ShooterState.new(
+		Vector2(velocity.x, velocity.z).length(), on_ground, is_ducked
+	)
+
+	for event in fire_events:
+		_try_shoot(
+			event.timestamp_usec,
+			PlayerInput.tick_fraction(
+				event.timestamp_usec, _tick_start_usec, _tick_length_usec
+			),
+			event.yaw_degrees,
+			event.pitch_degrees,
+			state
+		)
+
+	if Input.is_action_pressed(&"attack"):
+		_try_shoot(now, 1.0, input.yaw_degrees, input.pitch_degrees, state)
+
+
+func _try_shoot(
+	timestamp_usec: int,
+	tick_fraction: float,
+	yaw: float,
+	pitch: float,
+	state: Weapon.ShooterState
+) -> void:
+	var origin := global_position + Vector3.UP * eye_height()
+	var shot := weapon.fire(
+		timestamp_usec, tick_fraction, origin, yaw, pitch, state
+	)
+	if shot == null:
+		return
+
+	var space := get_world_3d().direct_space_state
+	var result := Hitscan.fire_at(space, shot, weapon.data, [get_rid()])
+	shot_traced.emit(shot, result)
 
 
 ## Noclip flies where you are looking, pitch included, with jump and duck for
@@ -131,8 +209,12 @@ func _process(_delta: float) -> void:
 	var interpolated := previous_position.lerp(global_position, alpha)
 
 	camera.global_position = interpolated + Vector3.UP * eye_height()
+	# The recoil punch is added here rather than to the player's own look
+	# angles, so the crosshair climbs with the spray while the angles the
+	# player is actually holding stay untouched.
+	var punch := weapon.accumulated_punch if weapon != null else Vector2.ZERO
 	camera.global_rotation = Vector3(
-		deg_to_rad(input.pitch_degrees),
-		deg_to_rad(input.yaw_degrees),
+		deg_to_rad(input.pitch_degrees + punch.y),
+		deg_to_rad(input.yaw_degrees - punch.x),
 		0.0
 	)

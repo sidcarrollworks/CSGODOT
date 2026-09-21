@@ -13,17 +13,34 @@ extends RefCounted
 ## movement, animation and netcode at once, so it goes in from the start even
 ## though single-player bots will not notice.
 
-## One button transition, with the moment it actually happened.
+## One button transition, with the moment it actually happened and where the
+## player was looking at that moment.
+##
+## The look angles matter as much as the timestamp. Knowing a shot happened
+## 3 ms into the tick is no use if the only aim direction on hand is the one
+## from the tick boundary: you would be firing where the player was pointing
+## up to 7.8 ms ago. Recording both is what makes a sub-tick shot actually
+## sub-tick.
 class ButtonEvent:
 	var action: StringName
 	var pressed: bool
 	## Microseconds, from Time.get_ticks_usec().
 	var timestamp_usec: int
+	var yaw_degrees: float
+	var pitch_degrees: float
 
-	func _init(p_action: StringName, p_pressed: bool, p_timestamp_usec: int) -> void:
+	func _init(
+		p_action: StringName,
+		p_pressed: bool,
+		p_timestamp_usec: int,
+		p_yaw: float,
+		p_pitch: float
+	) -> void:
 		action = p_action
 		pressed = p_pressed
 		timestamp_usec = p_timestamp_usec
+		yaw_degrees = p_yaw
+		pitch_degrees = p_pitch
 
 
 var _pending: Array[ButtonEvent] = []
@@ -51,9 +68,15 @@ func handle_event(event: InputEvent) -> void:
 
 	for action in [&"jump", &"duck", &"walk", &"attack"]:
 		if event.is_action_pressed(action, false):
-			_pending.append(ButtonEvent.new(action, true, Time.get_ticks_usec()))
+			_pending.append(_event(action, true))
 		elif event.is_action_released(action):
-			_pending.append(ButtonEvent.new(action, false, Time.get_ticks_usec()))
+			_pending.append(_event(action, false))
+
+
+func _event(action: StringName, pressed: bool) -> ButtonEvent:
+	return ButtonEvent.new(
+		action, pressed, Time.get_ticks_usec(), yaw_degrees, pitch_degrees
+	)
 
 
 ## Drains the events that happened since the last tick. The caller gets them in
@@ -74,6 +97,28 @@ static func tick_fraction(
 		return 0.0
 	var offset := timestamp_usec - tick_start_usec
 	return clampf(float(offset) / float(tick_length_usec), 0.0, 1.0)
+
+
+## The direction the player was aiming at a given moment, as a unit vector.
+static func aim_direction(yaw_deg: float, pitch_deg: float) -> Vector3:
+	var yaw := deg_to_rad(yaw_deg)
+	var pitch := deg_to_rad(pitch_deg)
+	return Vector3(
+		-sin(yaw) * cos(pitch),
+		sin(pitch),
+		-cos(yaw) * cos(pitch)
+	)
+
+
+## The inverse of aim_direction: the yaw and pitch, in degrees, that would
+## produce this direction. Used to turn a bullet hole back into the angular
+## offset that put it there.
+static func angles_from_direction(direction: Vector3) -> Vector2:
+	var normalized := direction.normalized()
+	return Vector2(
+		rad_to_deg(atan2(-normalized.x, -normalized.z)),
+		rad_to_deg(asin(clampf(normalized.y, -1.0, 1.0)))
+	)
 
 
 ## The movement direction the player is asking for, in world space, from the

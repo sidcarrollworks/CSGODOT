@@ -88,6 +88,11 @@ enum CollisionSource {
 ## Print the inventory on import. Worth leaving on until the map is settled.
 @export var report: bool = true
 
+## Also write the inventory here. A file rather than only the Output panel,
+## because the report is the thing you send to someone when an import is
+## misbehaving, and a file survives a console window closing.
+@export var report_path: String = "res://map-report.txt"
+
 ## Filled in by import(). Also delivered by the import_finished signal.
 var stats: Dictionary = {}
 
@@ -463,6 +468,27 @@ func _bounds(meshes: Array[MeshInstance3D]) -> AABB:
 
 
 func _print_report() -> void:
+	var text := _report_text()
+	print(text)
+	write_report(text)
+
+
+## Writes arbitrary text to report_path. Public so the map scene can record
+## the "not extracted yet" case the same way, which is the state someone is
+## most likely to be asking about.
+func write_report(text: String) -> void:
+	if report_path.is_empty():
+		return
+	var file := FileAccess.open(report_path, FileAccess.WRITE)
+	if file == null:
+		push_warning("Could not write %s" % report_path)
+		return
+	file.store_string(text)
+	file.close()
+	print("(also written to %s)" % report_path)
+
+
+func _report_text() -> String:
 	var bounds: AABB = stats["bounds"]
 	print("--- map import: %s" % source_path)
 	print("    loaded from %s" % stats["loaded_from"])

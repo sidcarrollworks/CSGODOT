@@ -30,7 +30,8 @@ that is why.
 ## Running it
 
 Open the project in Godot 4.7 and press play. The main scene is the movement
-test course.
+test course. The other one worth opening is `maps/test_range/test_range.tscn`,
+which is where shooting gets tuned.
 
 | Key | |
 |---|---|
@@ -41,6 +42,9 @@ test course.
 | `Scroll up` | jump, for bunny hopping |
 | `V` | noclip |
 | `Esc` | release the mouse |
+| `Mouse 1` | fire |
+| `R` | reload |
+| `1` / `2` | AK-47 / M4A1-S |
 
 The readout in the top left is the tuning instrument: current speed, vertical
 speed, peak speed, and speed gained over the last jump. Speed gained per jump
@@ -61,6 +65,58 @@ Everything on it is a measurement, not decoration:
   stick or stutter. This is the clearest single test of the port.
 - **Jump gauges** at 32, 48, 56, 64 and 72 units. The grey ones are reachable
   standing; the blue ones need a crouch jump.
+
+## The test range
+
+`maps/test_range/test_range.tscn`. A flat wall 512 units away to spray at, and
+a dummy at 1024 units with head, chest, stomach and leg hitboxes to check
+damage against.
+
+| Key | |
+|---|---|
+| `1` / `2` | AK-47 / M4A1-S |
+| `R` | reload |
+| `P` | export the spray you just fired |
+| `O` | clear the impact markers |
+
+Every bullet leaves a mark: dark on the wall, red on the dummy. The readout
+shows the current shot index in the pattern and the size of the inaccuracy cone
+right now, which is the number that moves when you walk, crouch or jump.
+
+`P` turns the marks you just made back into a spray pattern file in the same
+format the weapons read, so a pattern can be adjusted by eye against a CS2
+screenshot and exported without converting anything by hand. See
+`reference/spray_patterns/README.md`.
+
+## Shooting
+
+Hitscan, traced from the camera, with three things done deliberately:
+
+**Sub-tick.** A click carries the time it happened and the look angles at that
+instant. The shot is traced from those angles, not from wherever the view had
+drifted to by the next simulation tick. At 128 Hz that is up to 7.8 ms of aim
+error removed, and it is the difference between hit registration feeling fair
+and feeling like it lags you. This is why `PlayerInput` timestamps events
+rather than polling, and it is in from day one because retrofitting it later
+means rewriting every consumer.
+
+**Deterministic spread.** Each shot's random cone offset comes from a seed
+derived from the shot, not from a live RNG. The same shot fired twice under the
+same conditions goes to the same place, which is what makes a spray learnable
+and what makes the tests able to assert where a bullet went.
+
+**Recoil is view punch, not aim.** Firing moves the camera, and never the
+player's own look angles. Pulling down to counter the kick therefore changes
+your aim by exactly what you pulled, the same as CS. The player's angles and
+the punch are added at the last moment, in `PlayerController`, and stored
+separately everywhere else.
+
+The stats themselves are the weak part. CS2 keeps weapon tuning in
+`scripts/weapons.vdata_c`, which does not decode into usable values, so none of
+it could be extracted the way the map and models were. Everything in
+`src/weapons/weapon_library.gd` is a published community figure, and the spray
+patterns are outright placeholders. `reference/weapon_stats.md` lists every
+number, where it came from, and how to measure the real one.
 
 ## dust2
 
@@ -100,6 +156,9 @@ To see what came through without opening the editor:
 scripts/inspect_assets.sh
 ```
 
+On Windows, double-click `scripts/inspect_assets.bat`, which runs the same
+thing through Git Bash and waits for a keypress rather than closing.
+
 That prints the file layout and then the import inventory: mesh counts, the
 bounding box, where collision came from, the spawn points and every distinct
 material name. It is the output to send over when an import is misbehaving.
@@ -119,12 +178,19 @@ Note that GDScript's analyser warnings (shadowed variables, unused locals) only
 appear when the editor loads a script. They do not show up in a headless run,
 so if the Godot console shows any, paste them over and they will get fixed.
 
-Thirty-five movement checks. Half are the acceleration model against hand-computed
+Ninety-one movement checks, in three files: movement, map import and weapons.
+
+Half of the movement ones are the acceleration model against hand-computed
 values, which is the part that decides feel and the part most likely to be
 broken by a well-meaning edit. The rest drive the real body through the real
 course: a standing jump, a crouch jump, a slide down the surf ramp, and a walk
 up the access ramp. Those catch the things that are right in the maths and
 wrong in the world, which is where the bugs have actually been.
+
+The weapon checks pin fire rate, ammo and reloading, spread determinism, recoil
+matching the pattern shot for shot, the ordering of the inaccuracy states,
+damage falloff and hitbox multipliers, and that a wall between the muzzle and
+the target stops the bullet registering.
 
 The run prints the measured heights and speeds even when it passes, because
 watching those numbers move is how you notice a change the assertions were not
@@ -143,6 +209,8 @@ are four separate things, and that only passes when all four agree.
 src/movement/    the acceleration model and collide-and-slide
 src/player/      input (timestamped), camera, the local player
 src/map/         glTF map import, and the map's entity data (spawn points)
+src/weapons/     weapon data, recoil patterns, the firing model
+src/combat/      hitboxes, hit targets, hitscan
 src/ui/          the tuning readout
 maps/            generated test courses, and the dust2 scene
 tests/           headless test suite
@@ -158,7 +226,9 @@ original assets later is a content change rather than a git history problem.
 
 ## What is deliberately not here yet
 
-No weapons, no bots, no nav mesh. dust2 is in as geometry, collision and spawn
-points and nothing more. Movement is still tuned on the grey test course,
+No weapon models, no bots, no nav mesh. dust2 is in as geometry, collision and spawn
+points and nothing more.. Shooting works but fires from an invisible
+gun at a dummy that does not move. Movement is tuned in a flat grey room first,
 because tuning it on a real map is much harder and everything built on top of
 bad movement is wasted work.
+s

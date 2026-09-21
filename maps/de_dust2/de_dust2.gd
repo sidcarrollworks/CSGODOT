@@ -137,9 +137,13 @@ func _build_fallback(message: String = "") -> void:
 
 
 func _show_message(text: String) -> void:
-	# Console as well as on screen: the label is easy to miss if you spawn
-	# looking at the sky.
+	# Three places, because each one fails for someone: the label is easy to
+	# miss if you spawn looking at the sky, the console scrolls away, and a
+	# double-clicked terminal closes before it can be read.
 	print(text)
+	var writer := MapImporter.new()
+	writer.write_report(text)
+	writer.free()
 
 	var layer := CanvasLayer.new()
 	var label := Label.new()
