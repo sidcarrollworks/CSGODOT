@@ -2,48 +2,66 @@ extends SceneTree
 
 ## Headless test run.
 ##
+##   godot --headless --path . --import
 ##   godot --headless --path . --script tests/run_tests.gd
+##
+## (scripts/run_tests.sh does both.)
 ##
 ## Two halves. The first checks the acceleration model against hand-computed
 ## values, which is the part that decides feel and the part most likely to be
-## broken by a well-meaning edit. The second loads the real test map and steps
-## it, which catches the collide-and-slide falling through the floor.
+## broken by a well-meaning edit. The second loads the real test course and
+## drives the real body through it: jumps, crouch jumps, a surf ramp and a
+## walk up a ramp. Those catch the things that are correct in the maths and
+## wrong in the world, which is where the interesting bugs have been so far.
 
 const DT := 1.0 / 128.0
 const EPS := 0.001
 
+## Frames of ordinary controller-driven simulation before the scripted phases
+## start, so the player has fallen onto the floor and settled.
+const FALL_FRAMES := 120
+
+## Per-phase timing, in ticks.
+const SETTLE_TICKS := 24
+const JUMP_TICKS := 110
+const SURF_TICKS := 160
+const CLIMB_TICKS := 800
+
+## Ducking a few ticks after leaving the ground, which is what a crouch jump
+## is. Immediately at the apex would be optimal; this is a realistic input.
+const CROUCH_DELAY_TICKS := 10
+
 var _failures: int = 0
 var _checks: int = 0
 var _frames: int = 0
+
+var _course: Node3D
 var _player: PlayerBody
-var _ground_y: float = 0.0
+
+var _phase: int = 0
+var _phase_tick: int = 0
+
 var _jump_peak: float = 0.0
 var _jump_peak_independent: float = 0.0
+var _crouch_jump_peak: float = 0.0
+var _reference_y: float = 0.0
 
-## Long enough for a full jump at 128 Hz: apex is about 48 ticks in, and the
-## landing about 96.
-const JUMP_TICKS := 110
-const FALL_FRAMES := 120
+var _surf_drop: float = 0.0
+var _surf_speed: float = 0.0
+var _surf_stuck: bool = true
 
-
-func _initialize() -> void:
-	_test_friction()
-	_test_ground_acceleration()
-	_test_air_acceleration()
-	_test_clip_velocity()
-	_test_walkable()
-	_test_deadstrafe()
-	_test_bunnyhop_clamp()
+var _climb_height: float = 0.0
 
 
 func _process(_delta: float) -> bool:
 	# The scene is loaded on the first frame rather than in _initialize,
 	# because the tree root is not ready to parent into until then.
 	if _frames == 0:
+		_run_solver_tests()
 		var scene: PackedScene = load("res://maps/test_movement/test_movement.tscn")
-		var instance := scene.instantiate()
-		root.add_child(instance)
-		_player = instance.get_node("Player") as PlayerBody
+		_course = scene.instantiate() as Node3D
+		root.add_child(_course)
+		_player = _course.get_node("Player") as PlayerBody
 
 	_frames += 1
 
@@ -52,36 +70,139 @@ func _process(_delta: float) -> bool:
 		return false
 	if _frames == FALL_FRAMES:
 		_test_player_lands()
-		_begin_jump_measurement()
+		# From here the body is driven directly, so jumps and walks can be
+		# scripted without a keyboard. This still exercises the real
+		# simulate() path, collision and all.
+		_player.set_physics_process(false)
 		return false
 
-	# Phase 2: drive the body directly so a jump can be measured without an
-	# actual keyboard. This exercises the real simulate() path, collision and
-	# all, rather than a reimplementation of the integrator.
-	var since_landing := _frames - FALL_FRAMES
-	if since_landing <= JUMP_TICKS:
-		_step_jump(since_landing == 1)
-		_jump_peak = maxf(_jump_peak, _player.global_position.y - _ground_y)
-		return false
+	_phase_tick += 1
+	match _phase:
+		0: _phase_jump(false)
+		1: _phase_jump(true)
+		2: _phase_crouch_jump()
+		3: _phase_surf()
+		4: _phase_climb()
+		_:
+			_test_jump_height()
+			_test_crouch_jump()
+			_test_surf()
+			_test_climb()
+			_report()
+			return true
+	return false
 
-	# Phase 3: the same jump with the tick-rate-independent impulse, which
-	# should come out at the textbook height instead of Source's.
-	if since_landing == JUMP_TICKS + 1:
-		_player.config.tick_rate_independent_jump = true
-		_ground_y = _player.global_position.y
-		return false
 
-	var since_second := since_landing - JUMP_TICKS - 1
-	if since_second <= JUMP_TICKS:
-		_step_jump(since_second == 1)
-		_jump_peak_independent = maxf(
-			_jump_peak_independent, _player.global_position.y - _ground_y
+func _advance_phase() -> void:
+	_phase += 1
+	_phase_tick = 0
+
+
+## Puts the player somewhere with no velocity and standing up.
+func _place(position: Vector3) -> void:
+	_player.global_position = position
+	_player.velocity = Vector3.ZERO
+	_player.wish_dir = Vector3.ZERO
+	_player.wish_speed = 0.0
+	_player.wants_jump = false
+	_player.wants_duck = false
+
+
+## One tick with the given intent.
+func _step(
+	wish_dir: Vector3 = Vector3.ZERO,
+	jump: bool = false,
+	duck: bool = false
+) -> void:
+	_player.wish_dir = wish_dir
+	_player.wish_speed = 0.0 if wish_dir == Vector3.ZERO else _player.config.max_speed
+	_player.wants_jump = jump
+	_player.wants_duck = duck
+	_player.simulate(DT)
+
+
+# --- Scripted phases ------------------------------------------------------
+
+## A standing jump from flat ground, measured through the real body.
+func _phase_jump(tick_rate_independent: bool) -> void:
+	if _phase_tick == 1:
+		_player.config.tick_rate_independent_jump = tick_rate_independent
+		_place(Vector3(0.0, 8.0, 256.0))
+		return
+	if _phase_tick <= SETTLE_TICKS:
+		_step()
+		return
+	if _phase_tick == SETTLE_TICKS + 1:
+		_reference_y = _player.global_position.y
+		_step(Vector3.ZERO, true)
+		return
+	if _phase_tick <= SETTLE_TICKS + JUMP_TICKS:
+		_step()
+		var height := _player.global_position.y - _reference_y
+		if tick_rate_independent:
+			_jump_peak_independent = maxf(_jump_peak_independent, height)
+		else:
+			_jump_peak = maxf(_jump_peak, height)
+		return
+	_advance_phase()
+
+
+## The same jump with duck held from a few ticks in. Ducking in the air pulls
+## the feet up, so the height a crouch jump can land on is well above what a
+## standing jump clears. This is the difference between reaching a 64 unit
+## ledge and not.
+func _phase_crouch_jump() -> void:
+	if _phase_tick == 1:
+		_player.config.tick_rate_independent_jump = false
+		_place(Vector3(0.0, 8.0, 256.0))
+		return
+	if _phase_tick <= SETTLE_TICKS:
+		_step()
+		return
+	if _phase_tick == SETTLE_TICKS + 1:
+		_reference_y = _player.global_position.y
+		_step(Vector3.ZERO, true)
+		return
+	if _phase_tick <= SETTLE_TICKS + JUMP_TICKS:
+		var airborne_ticks := _phase_tick - SETTLE_TICKS - 1
+		_step(Vector3.ZERO, false, airborne_ticks >= CROUCH_DELAY_TICKS)
+		_crouch_jump_peak = maxf(
+			_crouch_jump_peak, _player.global_position.y - _reference_y
 		)
-		return false
+		return
+	_advance_phase()
 
-	_test_jump_height()
-	_report()
-	return true
+
+## Dropped onto the face of a 55 degree ramp, the player must slide down it and
+## pick up speed, not stand on it. Walking on this was the bug: the ramps were
+## built as tall boxes rotated 55 degrees, which presents a 35 degree surface.
+func _phase_surf() -> void:
+	if _phase_tick == 1:
+		_place(_course.surf_left_surface_point + Vector3(24.0, 24.0, 0.0))
+		_surf_stuck = true
+		return
+	if _phase_tick <= SURF_TICKS:
+		_step()
+		if not _player.on_ground:
+			_surf_stuck = false
+		_surf_drop = _course.surf_left_surface_point.y - _player.global_position.y
+		_surf_speed = Vector2(_player.velocity.x, _player.velocity.z).length()
+		return
+	_advance_phase()
+
+
+## Walking up the access ramp to the top of the surf lane, starting on the
+## floor short of it so the seam where ramp meets floor is tested too. "I could
+## not reach the top" is a movement bug, not a level design opinion.
+func _phase_climb() -> void:
+	if _phase_tick == 1:
+		_place(_course.access_ramp_bottom + Vector3(0.0, 8.0, 64.0))
+		return
+	if _phase_tick <= CLIMB_TICKS:
+		_step(Vector3(0.0, 0.0, -1.0))
+		_climb_height = maxf(_climb_height, _player.global_position.y)
+		return
+	_advance_phase()
 
 
 # --- Assertions -----------------------------------------------------------
@@ -103,6 +224,12 @@ func _check_near(actual: float, expected: float, description: String) -> void:
 
 
 func _report() -> void:
+	# Worth printing even on success: these are the numbers the whole project
+	# is tuned against, and seeing them move is how you notice a change that
+	# the assertions were not tight enough to catch.
+	print("measured: standing jump %.2f, crouch jump %.2f, surf drop %.1f at %.1f u/s, climb %.1f" % [
+		_jump_peak, _crouch_jump_peak, _surf_drop, _surf_speed, _climb_height
+	])
 	if _failures == 0:
 		print("%d checks passed." % _checks)
 		quit(0)
@@ -112,6 +239,16 @@ func _report() -> void:
 
 
 # --- Solver tests ---------------------------------------------------------
+
+func _run_solver_tests() -> void:
+	_test_friction()
+	_test_ground_acceleration()
+	_test_air_acceleration()
+	_test_clip_velocity()
+	_test_walkable()
+	_test_deadstrafe()
+	_test_bunnyhop_clamp()
+
 
 func _test_friction() -> void:
 	var cfg := MovementConfig.new()
@@ -250,7 +387,7 @@ func _test_bunnyhop_clamp() -> void:
 	)
 
 
-# --- Scene test -----------------------------------------------------------
+# --- Scene tests ----------------------------------------------------------
 
 ## The cheap but load-bearing check: does the player, dropped above the floor,
 ## land on it rather than falling through. Collide-and-slide bugs usually show
@@ -265,39 +402,11 @@ func _test_player_lands() -> void:
 		"player settled on the floor (y = %.3f)" % _player.global_position.y
 	)
 	_check(
-		_player.global_position.y > -32.0,
-		"player did not fall through the floor"
-	)
-	_check(
 		absf(_player.velocity.y) < 1.0,
 		"player is at rest vertically (vy = %.3f)" % _player.velocity.y
 	)
 
 
-func _begin_jump_measurement() -> void:
-	if _player == null:
-		return
-	_player.set_physics_process(false)
-	_ground_y = _player.global_position.y
-	_jump_peak = 0.0
-
-
-## One tick of standing still, optionally jumping on this tick.
-func _step_jump(jump_now: bool) -> void:
-	_player.wish_dir = Vector3.ZERO
-	_player.wish_speed = 0.0
-	_player.wants_jump = jump_now
-	_player.simulate(DT)
-
-
-## With sv_jump_impulse 301.993 and sv_gravity 800 a standing jump has to peak
-## at about 57 units. That number is why a 56-unit ledge is reachable in CS and
-## a 64-unit one is not, so it is worth pinning down.
-##
-## It also guards the gravity split in PlayerBody.simulate(). Applying gravity
-## in one lump instead of two halves loses over a unit of jump height at
-## 128 Hz, and more at lower tick rates, which would silently change how every
-## ledge in the game plays.
 func _test_jump_height() -> void:
 	var cfg := MovementConfig.new()
 
@@ -324,4 +433,44 @@ func _test_jump_height() -> void:
 	_check(
 		_jump_peak > _jump_peak_independent,
 		"Source ordering jumps higher than the textbook value"
+	)
+
+
+## The course has ledges at 32, 48, 56 and 64 units. A standing jump clears 56
+## and not 64; a crouch jump has to clear 64, because that is what a crouch
+## jump is for.
+func _test_crouch_jump() -> void:
+	_check(
+		_crouch_jump_peak > _jump_peak + 8.0,
+		"crouch jump gets the feet meaningfully higher than a standing jump (%.2f vs %.2f)" % [
+			_crouch_jump_peak, _jump_peak
+		]
+	)
+	_check(
+		_crouch_jump_peak > 64.0,
+		"crouch jump clears the 64 unit ledge (peaked at %.2f)" % _crouch_jump_peak
+	)
+
+
+func _test_surf() -> void:
+	_check(
+		not _surf_stuck,
+		"player does not stand on the 55 degree surf ramp"
+	)
+	_check(
+		_surf_drop > 64.0,
+		"player slides down the surf ramp (dropped %.1f units)" % _surf_drop
+	)
+	_check(
+		_surf_speed > 100.0,
+		"sliding down the surf ramp builds speed (%.1f u/s)" % _surf_speed
+	)
+
+
+func _test_climb() -> void:
+	_check(
+		_climb_height > _course.surf_channel_top_height - 32.0,
+		"player can walk up the access ramp to the top of the surf lane (reached %.1f of %.1f)" % [
+			_climb_height, _course.surf_channel_top_height
+		]
 	)

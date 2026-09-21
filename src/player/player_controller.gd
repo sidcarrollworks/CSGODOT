@@ -77,7 +77,7 @@ func _physics_process(delta: float) -> void:
 
 func _current_max_speed() -> float:
 	var speed := config.max_speed
-	if wants_duck:
+	if is_ducked:
 		speed *= config.duck_modifier
 	elif Input.is_action_pressed(&"walk"):
 		speed *= config.walk_modifier
@@ -94,12 +94,9 @@ func _process(_delta: float) -> void:
 		float(Time.get_ticks_usec() - _tick_start_usec) / float(_tick_length_usec),
 		0.0, 1.0
 	)
-	var eye_height: float = (
-		config.duck_eye_height if wants_duck else config.stand_eye_height
-	)
 	var interpolated := previous_position.lerp(global_position, alpha)
 
-	camera.global_position = interpolated + Vector3.UP * eye_height
+	camera.global_position = interpolated + Vector3.UP * eye_height()
 	camera.global_rotation = Vector3(
 		deg_to_rad(input.pitch_degrees),
 		deg_to_rad(input.yaw_degrees),

@@ -26,6 +26,14 @@ const TRACE_EPSILON := 0.03
 var on_ground: bool = false
 var ground_normal: Vector3 = Vector3.UP
 
+## True once the hull has actually shrunk, which is not the same as holding the
+## duck key: on the ground the hull only changes after duck_time has elapsed.
+var is_ducked: bool = false
+
+## 0 standing, 1 fully ducked. Drives the eye height. On the ground this eases
+## over duck_time; in the air it snaps, because the hull snaps.
+var duck_progress: float = 0.0
+
 ## Set by whatever drives this body (the player controller, or a bot).
 var wish_dir: Vector3 = Vector3.ZERO
 var wish_speed: float = 0.0
@@ -44,6 +52,11 @@ func _ready() -> void:
 	if config == null:
 		config = MovementConfig.new()
 	_collision_shape = _find_collision_shape()
+	if _collision_shape != null and _collision_shape.shape != null:
+		# Sub-resources are shared between instances of the same scene, so
+		# resizing the hull would resize every player's. Take our own copy.
+		_collision_shape.shape = _collision_shape.shape.duplicate()
+	_set_hull(config.stand_height)
 	previous_position = global_position
 	# We run our own gravity in Source units, and our own collide-and-slide.
 	motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
@@ -75,6 +88,7 @@ func simulate(dt: float) -> void:
 	previous_position = global_position
 
 	_categorize_position()
+	_update_duck(dt)
 
 	var surface_friction := MovementSolver.surface_friction_for(
 		velocity.y, on_ground, config
@@ -104,6 +118,88 @@ func simulate(dt: float) -> void:
 		velocity.y = 0.0
 
 	_jump_held_last_tick = wants_jump
+
+
+## Ducking, as Source does it.
+##
+## On the ground the hull shrinks from the top after duck_time, so your feet
+## stay put and your head comes down. In the air it happens instantly and the
+## other way round: the hull shrinks and the whole body moves UP by the
+## difference, so your head stays put and your feet come up. That second case
+## is the crouch jump, and it is the only way to reach a ledge higher than a
+## standing jump clears.
+func _update_duck(dt: float) -> void:
+	var rate := 1.0 / maxf(config.duck_time, 0.0001)
+
+	if wants_duck:
+		duck_progress = minf(duck_progress + rate * dt, 1.0)
+		if not is_ducked and (not on_ground or duck_progress >= 1.0):
+			_finish_duck()
+		return
+
+	if is_ducked:
+		if not _can_unduck():
+			# Still under something. Stay ducked rather than clipping into it.
+			duck_progress = 1.0
+			return
+		_finish_unduck()
+
+	duck_progress = maxf(duck_progress - rate * dt, 0.0)
+
+
+func _duck_height_delta() -> float:
+	return config.stand_height - config.duck_height
+
+
+func _finish_duck() -> void:
+	var delta := _duck_height_delta()
+	var airborne := not on_ground
+
+	# Shrink first. A smaller hull can never collide with something the larger
+	# one did not, so this is always safe, and it gives the move below the
+	# headroom it needs.
+	_set_hull(config.duck_height)
+
+	if airborne:
+		move_and_collide(Vector3.UP * delta)
+		# Head stays where it was and the eye offset drops by the same amount,
+		# so the view does not jump. That only holds if the view snaps too.
+		duck_progress = 1.0
+
+	is_ducked = true
+
+
+func _finish_unduck() -> void:
+	var delta := _duck_height_delta()
+	if not on_ground:
+		move_and_collide(Vector3.DOWN * delta)
+		duck_progress = 0.0
+	_set_hull(config.stand_height)
+	is_ducked = false
+
+
+## Is there room to stand up? Sweeping the ducked hull through the distance the
+## body is about to grow covers exactly the volume the standing hull will
+## occupy, so a clear sweep means it fits.
+func _can_unduck() -> bool:
+	var delta := _duck_height_delta()
+	var direction := Vector3.UP if on_ground else Vector3.DOWN
+	return move_and_collide(direction * delta, true) == null
+
+
+func _set_hull(height: float) -> void:
+	if _collision_shape == null:
+		return
+	var shape := _collision_shape.shape as BoxShape3D
+	if shape == null:
+		return
+	shape.size = Vector3(config.hull_width, height, config.hull_width)
+	_collision_shape.position.y = height * 0.5
+
+
+## The eye offset above the feet for the current duck state.
+func eye_height() -> float:
+	return lerpf(config.stand_eye_height, config.duck_eye_height, duck_progress)
 
 
 ## Jumping requires a fresh press unless auto bunnyhop is on, which is the CS2

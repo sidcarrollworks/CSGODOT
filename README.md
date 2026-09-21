@@ -33,6 +33,7 @@ test course.
 | `Space` | jump |
 | `Ctrl` | duck |
 | `Shift` | walk |
+| `Scroll up` | jump, for bunny hopping |
 | `Esc` | release the mouse |
 
 The readout in the top left is the tuning instrument: current speed, vertical
@@ -52,8 +53,8 @@ Everything on it is a measurement, not decoration:
 - **Surf lane**, two opposing 55° ramps with a drop-in platform. If
   collide-and-slide is right you ride these and gain speed. If it is wrong you
   stick or stutter. This is the clearest single test of the port.
-- **Jump gauges** at 32, 48, 56 and 64 units. A standing jump clears 56 and
-  not 64.
+- **Jump gauges** at 32, 48, 56, 64 and 72 units. The grey ones are reachable
+  standing; the blue ones need a crouch jump.
 
 ## Tests
 
@@ -61,10 +62,16 @@ Everything on it is a measurement, not decoration:
 GODOT=/path/to/godot scripts/run_tests.sh
 ```
 
-Thirty checks covering the acceleration model against hand-computed values,
-plus a real jump driven through the actual body to pin jump height. The
-acceleration model is the part that decides feel and the part most likely to be
-broken by a well-meaning edit, so it is worth having pinned down.
+Thirty-five checks. Half are the acceleration model against hand-computed
+values, which is the part that decides feel and the part most likely to be
+broken by a well-meaning edit. The rest drive the real body through the real
+course: a standing jump, a crouch jump, a slide down the surf ramp, and a walk
+up the access ramp. Those catch the things that are right in the maths and
+wrong in the world, which is where the bugs have actually been.
+
+The run prints the measured heights and speeds even when it passes, because
+watching those numbers move is how you notice a change the assertions were not
+tight enough to catch.
 
 ## Layout
 

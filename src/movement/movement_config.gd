@@ -84,6 +84,11 @@ extends Resource
 @export var stand_eye_height: float = 64.0
 @export var duck_eye_height: float = 46.0
 
+## How long a full duck takes on the ground. Ducking in the air is instant,
+## which is what makes a crouch jump work: the hull shrinks upward, your feet
+## come up with it, and you clear a ledge the standing jump could not.
+@export var duck_time: float = 0.4
+
 ## How high a step the player walks up without jumping.
 @export var step_height: float = 18.0
 

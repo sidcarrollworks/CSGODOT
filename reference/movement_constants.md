@@ -17,6 +17,7 @@ As each one gets measured, record the measurement and the method below.
 | `sv_stopspeed` | 80 | Source/CS:GO default | No |
 | `sv_air_max_wishspeed` | 30 | [deadstrafe writeup](https://gist.github.com/zer0k-z/808bc8bfc494e0bbb5a423c2b1ca6685) | No |
 | `sv_maxspeed` | 250 | Same; base speed with a knife | No |
+| `duck_time` | 0.4 s | Source's TIME_TO_DUCK. CS:GO ducks faster than this. | No, and it is probably wrong |
 | `sv_gravity` | 800 | Source/CS:GO default | No |
 | `sv_jump_impulse` | 301.993 | Source/CS:GO default | No |
 | walk modifier | 0.52 | CS:GO | No |
@@ -42,6 +43,21 @@ with `sv_accelerate 5.5` the first tick should add exactly 10.7421875 u/s
 the HUD. Do the same in CS2 on a flat surface and compare the gain per jump.
 This is the fiddliest one and the most important, because air acceleration is
 most of what makes CS movement feel like CS.
+
+### Crouch jump height
+
+Ducking in the air shrinks the hull and moves the body up by the difference, so
+your head stays put and your feet come up 18 units. That is what a crouch jump
+is, and it is the only way to reach a ledge a standing jump cannot.
+
+Measured in our build: a standing jump peaks at 58.19 units and a crouch jump
+at 76.19, the difference being exactly the 18 unit hull delta.
+
+**76 may well be too generous.** The feet-raise is faithful to Source's
+`FinishDuck`, but CS:GO and CS2 also gate how fast you can duck in the air, and
+`duck_time` here is Source's 0.4 s rather than a measured CS2 value. Both of
+those cap the real thing lower than the theoretical maximum. Measure the
+highest ledge a crouch jump actually clears in CS2 before trusting this number.
 
 ## Two decisions that are not settled
 
