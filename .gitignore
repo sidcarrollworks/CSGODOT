@@ -9,6 +9,10 @@ export_presets.cfg
 # See reference/asset-pipeline.md for how to regenerate this directory.
 assets/
 
+# Generated reports, for pasting rather than committing
+map-report.txt
+inspect-output.txt
+
 # OS / editor
 .DS_Store
 *.swp

@@ -82,8 +82,16 @@ To see what the extraction produced without opening the editor:
 GODOT=/path/to/godot scripts/inspect_assets.sh
 ```
 
+On Windows, double-click `scripts/inspect_assets.bat`, which runs the same
+thing through Git Bash and waits for a keypress rather than closing.
+
 That prints the file layout and then the import inventory, and is the output
-to send over when an import is misbehaving.
+to send over when an import is misbehaving. It is also written to
+`inspect-output.txt`, and the import inventory alone is written to
+`map-report.txt` whenever the dust2 scene runs. Both are gitignored. There are
+three copies because each route fails for someone: the on-screen label is easy
+to miss, the editor Output panel scrolls, and a double-clicked terminal closes
+before it can be read.
 
 Then open `maps/de_dust2/de_dust2.tscn`. It finds whatever landed in `assets/`
 and imports it, printing the same inventory: mesh counts, the bounding box

@@ -55,6 +55,11 @@ enum CollisionSource {
 ## Print the inventory on import. Worth leaving on until the map is settled.
 @export var report: bool = true
 
+## Also write the inventory here. A file rather than only the Output panel,
+## because the report is the thing you send to someone when an import is
+## misbehaving, and a file survives a console window closing.
+@export var report_path: String = "res://map-report.txt"
+
 ## Filled in by import(). Also delivered by the import_finished signal.
 var stats: Dictionary = {}
 
@@ -276,28 +281,53 @@ func _bounds(meshes: Array[MeshInstance3D], factor: float) -> AABB:
 
 
 func _print_report() -> void:
+	var text := _report_text()
+	print(text)
+	write_report(text)
+
+
+## Writes arbitrary text to report_path. Public so the map scene can record
+## the "not extracted yet" case the same way, which is the state someone is
+## most likely to be asking about.
+func write_report(text: String) -> void:
+	if report_path.is_empty():
+		return
+	var file := FileAccess.open(report_path, FileAccess.WRITE)
+	if file == null:
+		push_warning("Could not write %s" % report_path)
+		return
+	file.store_string(text)
+	file.close()
+	print("(also written to %s)" % report_path)
+
+
+func _report_text() -> String:
 	var bounds: AABB = stats["bounds"]
-	print("--- map import: %s" % source_path)
-	print("    meshes %d (collision-marked %d, visible %d, skipped %d)" % [
-		stats["meshes"], stats["collision_marked"],
-		stats["visible"], stats["skipped"],
-	])
-	print("    collision: %d bodies, %d triangles" % [
-		stats["collision_bodies"], stats["collision_triangles"],
-	])
-	print("    bounds: %.0f x %.0f x %.0f units, centred near (%.0f, %.0f, %.0f)" % [
-		bounds.size.x, bounds.size.y, bounds.size.z,
-		bounds.get_center().x, bounds.get_center().y, bounds.get_center().z,
-	])
-	print("    (dust2 should be a few thousand units across. If it is a few")
-	print("     dozen, or a few hundred thousand, set scale_factor.)")
+	var lines: Array[String] = [
+		"--- map import: %s" % source_path,
+		"    meshes %d (collision-marked %d, visible %d, skipped %d)" % [
+			stats["meshes"], stats["collision_marked"],
+			stats["visible"], stats["skipped"],
+		],
+		"    collision: %d bodies, %d triangles" % [
+			stats["collision_bodies"], stats["collision_triangles"],
+		],
+		"    bounds: %.0f x %.0f x %.0f units, centred near (%.0f, %.0f, %.0f)" % [
+			bounds.size.x, bounds.size.y, bounds.size.z,
+			bounds.get_center().x, bounds.get_center().y, bounds.get_center().z,
+		],
+		"    (dust2 should be a few thousand units across. If it is a few",
+		"     dozen, or a few hundred thousand, set scale_factor.)",
+	]
 
 	var materials: Dictionary = stats["materials"]
 	var names := materials.keys()
 	names.sort()
-	print("    %d distinct materials:" % names.size())
+	lines.append("    %d distinct materials:" % names.size())
 	for name in names:
-		print("      %s (%d surfaces)" % [name, materials[name]])
+		lines.append("      %s (%d surfaces)" % [name, materials[name]])
+
+	return "\n".join(lines)
 
 
 func _report_missing() -> void:
