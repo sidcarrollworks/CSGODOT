@@ -1,0 +1,319 @@
+class_name PlayerBody
+extends CharacterBody3D
+
+## Source-style collide-and-slide, step handling and ground detection.
+##
+## This deliberately does NOT use move_and_slide(). Godot's slide response is
+## close to Source's but not the same, and the difference shows up exactly
+## where it matters most: ramps, creases and surf. The port below is Source's
+## TryPlayerMove and StepMove, which is what makes a surf ramp behave like a
+## surf ramp rather than like a wall you skid down.
+##
+## Velocity is in Source units per second. See project.godot on scale.
+
+const MAX_BUMPS := 4
+const MAX_CLIP_PLANES := 5
+
+## How far below the feet we look for ground each tick.
+const GROUND_TRACE_DISTANCE := 2.0
+
+## Pushed a hair out of surfaces to avoid re-colliding with the plane we just
+## resolved against.
+const TRACE_EPSILON := 0.03
+
+@export var config: MovementConfig
+
+var on_ground: bool = false
+var ground_normal: Vector3 = Vector3.UP
+
+## Set by whatever drives this body (the player controller, or a bot).
+var wish_dir: Vector3 = Vector3.ZERO
+var wish_speed: float = 0.0
+var wants_jump: bool = false
+var wants_duck: bool = false
+
+## Previous tick's position, so the camera can interpolate between physics
+## ticks instead of stuttering at the 128 Hz tick boundary.
+var previous_position: Vector3 = Vector3.ZERO
+
+var _collision_shape: CollisionShape3D
+var _jump_held_last_tick: bool = false
+
+
+func _ready() -> void:
+	if config == null:
+		config = MovementConfig.new()
+	_collision_shape = _find_collision_shape()
+	previous_position = global_position
+	# We run our own gravity in Source units, and our own collide-and-slide.
+	motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
+
+
+func _find_collision_shape() -> CollisionShape3D:
+	for child in get_children():
+		if child is CollisionShape3D:
+			return child
+	return null
+
+
+## Advances one simulation tick.
+##
+## The order below is Source's FullWalkMove, and the order matters:
+##
+##   1. half gravity      (StartGravity)
+##   2. jump check        (CheckJumpButton)
+##   3. zero vertical speed and apply friction, if still on the ground
+##   4. walk move or air move
+##   5. re-categorise ground
+##   6. half gravity      (FinishGravity)
+##
+## Splitting gravity into two halves around the move is velocity Verlet, and
+## it is the reason a jump peaks at the same height no matter what the tick
+## rate is. Applying it all at once would make jump height drift with tick
+## rate, which would quietly change how every ledge in the game plays.
+func simulate(dt: float) -> void:
+	previous_position = global_position
+
+	_categorize_position()
+
+	var surface_friction := MovementSolver.surface_friction_for(
+		velocity.y, on_ground, config
+	)
+
+	# StartGravity.
+	velocity.y -= config.gravity * 0.5 * dt
+
+	_try_jump(dt)
+
+	if on_ground:
+		velocity.y = 0.0
+		velocity = MovementSolver.apply_friction(
+			velocity, true, surface_friction, config, dt
+		)
+
+	if on_ground:
+		_walk_move(surface_friction, dt)
+	else:
+		_air_move(surface_friction, dt)
+
+	_categorize_position()
+
+	# FinishGravity.
+	velocity.y -= config.gravity * 0.5 * dt
+	if on_ground:
+		velocity.y = 0.0
+
+	_jump_held_last_tick = wants_jump
+
+
+## Jumping requires a fresh press unless auto bunnyhop is on, which is the CS2
+## default and the reason chaining hops is a timing skill rather than a held
+## key. Source tracks this with m_nOldButtons; this is the same thing.
+func _try_jump(dt: float) -> void:
+	if not wants_jump or not on_ground:
+		return
+	if not config.auto_bunnyhop and _jump_held_last_tick:
+		return
+	velocity = MovementSolver.clamp_bunnyhop(velocity, config)
+	velocity.y = config.jump_impulse
+	if config.tick_rate_independent_jump:
+		# Put back the leading half-step of gravity that the impulse just
+		# overwrote. See MovementConfig.tick_rate_independent_jump.
+		velocity.y -= config.gravity * 0.5 * dt
+	on_ground = false
+
+
+func _walk_move(surface_friction: float, dt: float) -> void:
+	# On a slope, project the wish direction onto the slope so that walking
+	# uphill does not bleed speed into the ground plane.
+	var dir := wish_dir
+	if ground_normal != Vector3.UP:
+		dir = MovementSolver.clip_velocity(dir, ground_normal)
+		if dir.length_squared() > 0.0:
+			dir = dir.normalized()
+
+	velocity = MovementSolver.accelerate(
+		velocity, dir, wish_speed, config.accelerate, surface_friction, dt
+	)
+	velocity.y = 0.0
+	_step_move(dt)
+
+
+func _air_move(surface_friction: float, dt: float) -> void:
+	velocity = MovementSolver.air_accelerate(
+		velocity, wish_dir, wish_speed, config.air_accelerate,
+		surface_friction, config, dt
+	)
+	_try_player_move(dt)
+
+
+## Source's StepMove. Run the move flat, then run it again stepping up and back
+## down, and keep whichever covered more ground horizontally. This is what
+## walks you up stairs without a ramp under them, and it is why the result is
+## compared rather than the step always being preferred.
+func _step_move(dt: float) -> void:
+	var start_position := global_position
+	var start_velocity := velocity
+
+	_try_player_move(dt)
+	var flat_position := global_position
+	var flat_velocity := velocity
+
+	var flat_distance := _horizontal_distance(start_position, flat_position)
+
+	# Reset and try again with a step up first.
+	global_position = start_position
+	velocity = start_velocity
+
+	_trace_move(Vector3.UP * config.step_height)
+	_try_player_move(dt)
+	_trace_move(Vector3.DOWN * config.step_height)
+
+	var step_position := global_position
+	var step_velocity := velocity
+	var step_distance := _horizontal_distance(start_position, step_position)
+
+	# Only accept the stepped move if it landed on something walkable,
+	# otherwise we would happily "step" onto a surf ramp.
+	var landed_walkable := _ground_below_is_walkable()
+
+	if step_distance > flat_distance and landed_walkable:
+		return
+	global_position = flat_position
+	velocity = flat_velocity
+
+
+func _horizontal_distance(a: Vector3, b: Vector3) -> float:
+	return Vector2(b.x - a.x, b.z - a.z).length()
+
+
+func _ground_below_is_walkable() -> bool:
+	var collision := move_and_collide(
+		Vector3.DOWN * GROUND_TRACE_DISTANCE, true
+	)
+	if collision == null:
+		return false
+	return MovementSolver.is_walkable(collision.get_normal(), config)
+
+
+## Moves without any slide response, stopping at the first obstruction.
+func _trace_move(motion: Vector3) -> void:
+	move_and_collide(motion)
+
+
+## Source's TryPlayerMove: up to four collide-and-slide iterations, clipping
+## velocity against every plane accumulated so far, and sliding along the
+## crease when two planes both block.
+func _try_player_move(dt: float) -> void:
+	var primal_velocity := velocity
+	var original_velocity := velocity
+	var planes: Array[Vector3] = []
+	var time_left := dt
+	var all_fraction := 0.0
+
+	for bump in MAX_BUMPS:
+		if velocity.length_squared() == 0.0:
+			break
+
+		var motion := velocity * time_left
+		var collision := move_and_collide(motion)
+
+		if collision == null:
+			all_fraction += 1.0
+			break
+
+		var motion_length := motion.length()
+		var fraction := 0.0
+		if motion_length > 0.0:
+			fraction = collision.get_travel().length() / motion_length
+		all_fraction += fraction
+
+		if fraction > 0.0:
+			original_velocity = velocity
+			planes.clear()
+
+		time_left -= time_left * fraction
+
+		if planes.size() >= MAX_CLIP_PLANES:
+			velocity = Vector3.ZERO
+			break
+
+		var normal := collision.get_normal()
+		planes.append(normal)
+		# Nudge out of the surface so the next iteration does not immediately
+		# re-collide with the plane we just resolved.
+		global_position += normal * TRACE_EPSILON
+
+		if planes.size() == 1 and not on_ground:
+			# Airborne against a single plane. Walkable surfaces slide you
+			# along them; steep ones (ramps) clip without preserving the
+			# downward component, which is what makes surfing work.
+			velocity = MovementSolver.clip_velocity(original_velocity, planes[0])
+			original_velocity = velocity
+		else:
+			var resolved := false
+			for i in planes.size():
+				var candidate := MovementSolver.clip_velocity(
+					original_velocity, planes[i]
+				)
+				var blocked := false
+				for j in planes.size():
+					if j == i:
+						continue
+					if candidate.dot(planes[j]) < 0.0:
+						blocked = true
+						break
+				if not blocked:
+					velocity = candidate
+					resolved = true
+					break
+
+			if not resolved:
+				if planes.size() != 2:
+					velocity = Vector3.ZERO
+					break
+				# Two planes forming a crease: slide along their intersection.
+				var crease := planes[0].cross(planes[1])
+				if crease.length_squared() == 0.0:
+					velocity = Vector3.ZERO
+					break
+				crease = crease.normalized()
+				velocity = crease * crease.dot(velocity)
+
+			# If clipping reversed us relative to where we wanted to go, stop
+			# rather than getting shot backwards out of a corner.
+			if velocity.dot(primal_velocity) <= 0.0:
+				velocity = Vector3.ZERO
+				break
+
+	if all_fraction == 0.0:
+		velocity = Vector3.ZERO
+
+
+## Determines whether we are standing on something, and on what.
+func _categorize_position() -> void:
+	# Moving up fast enough means we definitively left the ground, which stops
+	# a jump from being cancelled on its first tick.
+	if velocity.y > config.jump_impulse * 0.5:
+		on_ground = false
+		ground_normal = Vector3.UP
+		return
+
+	var collision := move_and_collide(
+		Vector3.DOWN * GROUND_TRACE_DISTANCE, true
+	)
+	if collision == null:
+		on_ground = false
+		ground_normal = Vector3.UP
+		return
+
+	var normal := collision.get_normal()
+	if not MovementSolver.is_walkable(normal, config):
+		on_ground = false
+		ground_normal = Vector3.UP
+		return
+
+	on_ground = true
+	ground_normal = normal
+	# Snap down onto the surface so we do not hover a fraction above it.
+	move_and_collide(Vector3.DOWN * GROUND_TRACE_DISTANCE)

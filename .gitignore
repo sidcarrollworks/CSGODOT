@@ -1,0 +1,16 @@
+# Godot
+.godot/
+.import/
+export.cfg
+export_presets.cfg
+*.translation
+
+# Extracted CS2 content - never commit Valve assets.
+# See reference/asset-pipeline.md for how to regenerate this directory.
+assets/
+
+# OS / editor
+.DS_Store
+*.swp
+.vscode/
+.idea/
