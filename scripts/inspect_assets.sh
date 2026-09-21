@@ -17,59 +17,60 @@ set -uo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ASSETS_DIR="$PROJECT_DIR/assets"
+OUTPUT_FILE="$PROJECT_DIR/inspect-output.txt"
 
-echo "=== assets directory ==="
-if [[ ! -d "$ASSETS_DIR" ]]; then
-	echo "$ASSETS_DIR does not exist."
-	echo "The extraction has not run, or it wrote somewhere else."
-	echo "Run: scripts/extract_assets.sh map"
-	exit 1
-fi
+source "$PROJECT_DIR/scripts/common.sh"
 
-file_count="$(find "$ASSETS_DIR" -type f | wc -l | tr -d ' ')"
-echo "files: $file_count"
-echo "size:  $(du -sh "$ASSETS_DIR" 2>/dev/null | cut -f1)"
-echo
-
-echo "top-level layout:"
-find "$ASSETS_DIR" -maxdepth 3 -type d | sed "s|$PROJECT_DIR/||" | head -30
-echo
-
-echo "glTF files found:"
-find "$ASSETS_DIR" -type f \( -name '*.gltf' -o -name '*.glb' \) \
-	| sed "s|$PROJECT_DIR/||" | head -20
-echo
-
-echo "largest files:"
-find "$ASSETS_DIR" -type f -exec du -h {} + 2>/dev/null \
-	| sort -rh | head -10 | sed "s|$PROJECT_DIR/||"
-echo
-
-# --- The import inventory --------------------------------------------------
-
-find_godot() {
-	if [[ -n "${GODOT:-}" ]]; then
-		echo "$GODOT"
-		return
+report_assets() {
+	echo "=== assets directory ==="
+	if [[ ! -d "$ASSETS_DIR" ]]; then
+		echo "$ASSETS_DIR does not exist."
+		echo "The extraction has not run, or it wrote somewhere else."
+		echo "Run: scripts/extract_assets.sh map"
+		return 1
 	fi
-	for candidate in godot godot4 Godot; do
-		if command -v "$candidate" >/dev/null 2>&1; then
-			command -v "$candidate"
-			return
-		fi
-	done
-	echo ""
+
+	echo "files: $(find "$ASSETS_DIR" -type f | wc -l | tr -d ' ')"
+	echo "size:  $(du -sh "$ASSETS_DIR" 2>/dev/null | cut -f1)"
+	echo
+
+	echo "top-level layout:"
+	find "$ASSETS_DIR" -maxdepth 5 -type d | sed "s|$PROJECT_DIR/||" | head -30
+	echo
+
+	echo "glTF files found:"
+	find "$ASSETS_DIR" -type f \( -name '*.gltf' -o -name '*.glb' \) \
+		| sed "s|$PROJECT_DIR/||" | head -20
+	echo
+
+	echo "largest files:"
+	find "$ASSETS_DIR" -type f -exec du -h {} + 2>/dev/null \
+		| sort -rh | head -10 | sed "s|$PROJECT_DIR/||"
+	echo
 }
 
-GODOT_BIN="$(find_godot)"
-if [[ -z "$GODOT_BIN" ]]; then
+report_import() {
 	echo "=== import inventory ==="
-	echo "Skipped: no Godot binary found."
-	echo "Either run it with GODOT=/path/to/godot, or just open"
-	echo "maps/de_dust2/de_dust2.tscn in the editor and copy the Output panel."
-	exit 0
-fi
+	local godot
+	godot="$(find_godot)"
+	if [[ -z "$godot" ]]; then
+		echo "Skipped: no Godot binary found."
+		echo "Either run it with GODOT=/path/to/godot, or just open"
+		echo "maps/de_dust2/de_dust2.tscn in the editor and copy the Output panel."
+		return 0
+	fi
 
-echo "=== import inventory ==="
-"$GODOT_BIN" --headless --path "$PROJECT_DIR" --import >/dev/null 2>&1
-"$GODOT_BIN" --headless --path "$PROJECT_DIR" --script scripts/inspect_map.gd
+	import_assets "$godot" "$PROJECT_DIR" || return 1
+	echo
+	"$godot" --headless --path "$PROJECT_DIR" --script scripts/inspect_map.gd
+}
+
+main() {
+	report_assets || return 1
+	report_import
+}
+
+# A function piped through tee, rather than exec with a process substitution,
+# which can exit before tee has flushed and leave the terminal blank.
+main 2>&1 | tee "$OUTPUT_FILE"
+exit "${PIPESTATUS[0]}"

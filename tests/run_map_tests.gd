@@ -69,6 +69,7 @@ func _process(_delta: float) -> bool:
 		_test_export_shaped_import()
 		_test_file_picking()
 		_test_entities()
+		_test_export_offset_fix()
 		_spawn_player()
 		_spawned_at_tick = Engine.get_physics_frames()
 		return false
@@ -261,7 +262,10 @@ func _test_export_shaped_import() -> void:
 	importer.source_path = map_file
 	importer.collision_path = MapImporter.find_collision_file(EXPORT_HULL_PATH.get_base_dir())
 	importer.scale_factor = MapImporter.SOURCE2_VIEWER_SCALE
-	importer.report = false
+	# Reporting on, into a file of its own: the report is what gets sent over
+	# when an import misbehaves, so it has to say the things that were found.
+	importer.report = true
+	importer.report_path = "user://export_fixture/map-report.txt"
 	importer.position = EXPORT_OFFSET
 	root.add_child(importer)
 	_export_importer = importer
@@ -285,6 +289,10 @@ func _test_export_shaped_import() -> void:
 		"the hull's grenade clip is left out and the world adds nothing"
 	)
 	_check(stats.has("sun"), "the export's sun is reported")
+
+	var written := FileAccess.get_file_as_string(importer.report_path)
+	for expected: String in ["from the collision hull", "512 x 32 x 512 units", "sun:", VISUAL_MATERIAL]:
+		_check(written.contains(expected), "the report file says \"%s\"" % expected)
 	_check_equal(
 		importer.find_children("*", "Light3D", true, false).size(), 0,
 		"the export's lights are taken out of the scene"
@@ -393,6 +401,103 @@ func _test_entities() -> void:
 		SourceEntities.parse("user://export_fixture/not_there.vents").is_empty(),
 		"a missing entity file is no entities, not an error"
 	)
+
+
+## Source 2 Viewer pushes overlays and depth-biased geometry 0.3937 m out
+## along their normals. A glTF written by hand, because what matters is the
+## bytes: an overlay quad pushed out the way the exporter does it, and an
+## ordinary quad that has to come through untouched.
+func _test_export_offset_fix() -> void:
+	var dir := "user://export_fixture/offsets"
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir))
+	var gltf_path := dir.path_join("world.gltf")
+	var bin_path := dir.path_join("world.bin")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(bin_path + ExportOffsetFix.MARKER_SUFFIX))
+
+	# Two quads facing +Z, each with positions and normals of its own, and one
+	# index list between them.
+	var corners := [Vector3(0, 0, 0), Vector3(1, 0, 0), Vector3(1, 1, 0), Vector3(0, 1, 0)]
+	var pushed := Vector3(0.0, 0.0, ExportOffsetFix.EXPORTED_PUSH)
+	var bytes := PackedByteArray()
+	bytes.resize(4 * 12 * 3 + 6 * 2)
+	for i in 4:
+		_put_vector(bytes, i * 12, corners[i] + pushed)        # overlay positions
+		_put_vector(bytes, 48 + i * 12, corners[i])            # ordinary positions
+		_put_vector(bytes, 96 + i * 12, Vector3(0, 0, 1))      # normals, shared
+	var indices := [0, 1, 2, 0, 2, 3]
+	for i in 6:
+		bytes.encode_u16(144 + i * 2, indices[i])
+	var bin := FileAccess.open(bin_path, FileAccess.WRITE)
+	bin.store_buffer(bytes)
+	bin.close()
+
+	var overlay := {"name": "sign", "extras": {"vmat": {
+		"ShaderName": "csgo_lightmappedgeneric.vfx", "IntParams": {"F_OVERLAY": 1.0},
+	}}}
+	var wall := {"name": "wall", "extras": {"vmat": {
+		"ShaderName": "csgo_lightmappedgeneric.vfx", "IntParams": {"F_ALPHA_TEST": 1},
+	}}}
+	var text := FileAccess.open(gltf_path, FileAccess.WRITE)
+	text.store_string(JSON.stringify({
+		"asset": {"version": "2.0"},
+		"buffers": [{"uri": "world.bin", "byteLength": bytes.size()}],
+		"bufferViews": [
+			{"buffer": 0, "byteOffset": 0, "byteLength": 48},
+			{"buffer": 0, "byteOffset": 48, "byteLength": 48},
+			{"buffer": 0, "byteOffset": 96, "byteLength": 48},
+			{"buffer": 0, "byteOffset": 144, "byteLength": 12},
+		],
+		"accessors": [
+			{"bufferView": 0, "componentType": 5126, "count": 4, "type": "VEC3"},
+			{"bufferView": 1, "componentType": 5126, "count": 4, "type": "VEC3"},
+			{"bufferView": 2, "componentType": 5126, "count": 4, "type": "VEC3"},
+			{"bufferView": 3, "componentType": 5123, "count": 6, "type": "SCALAR"},
+		],
+		"materials": [overlay, wall],
+		"meshes": [{"primitives": [
+			{"attributes": {"POSITION": 0, "NORMAL": 2}, "indices": 3, "material": 0},
+			{"attributes": {"POSITION": 1, "NORMAL": 2}, "indices": 3, "material": 1},
+		]}],
+	}))
+	text.close()
+
+	_check(ExportOffsetFix.is_pushed(overlay), "an F_OVERLAY material is one the exporter pushes")
+	_check(not ExportOffsetFix.is_pushed(wall), "an ordinary material is not")
+	_check(
+		ExportOffsetFix.is_pushed({"extras": {"vmat": {"ShaderName": "csgo_static_overlay.vfx"}}})
+			and ExportOffsetFix.is_pushed({"extras": {"vmat": {"IntParams": {"F_DEPTH_BIAS": 1}}}})
+			and not ExportOffsetFix.is_pushed({"name": "no extras at all"}),
+		"so are the overlay shader and F_DEPTH_BIAS; a material with no extras is not"
+	)
+
+	_check_equal(ExportOffsetFix.fix_file(gltf_path), 4, "the overlay's four vertices are moved")
+	var after := FileAccess.get_file_as_bytes(bin_path)
+	_check(
+		_get_vector(after, 24).is_equal_approx(corners[2] + Vector3(0, 0, ExportOffsetFix.KEPT_PUSH)),
+		"back to a quarter of an inch off the wall (%s)" % _get_vector(after, 24)
+	)
+	_check(_get_vector(after, 48 + 24).is_equal_approx(corners[2]), "the ordinary quad is not touched")
+	_check(_get_vector(after, 96).is_equal_approx(Vector3(0, 0, 1)), "nor are the normals")
+
+	_check_equal(ExportOffsetFix.fix_file(gltf_path), 0, "a second run does nothing")
+	_check(
+		FileAccess.get_file_as_bytes(bin_path) == after,
+		"and leaves the file as the first run left it"
+	)
+	_check(
+		JSON.parse_string(FileAccess.get_file_as_string(gltf_path)) is Dictionary,
+		"the glTF is still JSON after being touched to force a reimport"
+	)
+
+
+func _put_vector(bytes: PackedByteArray, at: int, value: Vector3) -> void:
+	bytes.encode_float(at, value.x)
+	bytes.encode_float(at + 4, value.y)
+	bytes.encode_float(at + 8, value.z)
+
+
+func _get_vector(bytes: PackedByteArray, at: int) -> Vector3:
+	return Vector3(bytes.decode_float(at), bytes.decode_float(at + 4), bytes.decode_float(at + 8))
 
 
 func _spawn_player() -> void:

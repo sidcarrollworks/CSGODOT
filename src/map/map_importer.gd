@@ -490,32 +490,39 @@ func write_report(text: String) -> void:
 
 func _report_text() -> String:
 	var bounds: AABB = stats["bounds"]
-	print("--- map import: %s" % source_path)
-	print("    loaded from %s" % stats["loaded_from"])
-	print("    meshes %d (collision-marked %d, visible %d, skipped %d)" % [
-		stats["meshes"], stats["collision_marked"],
-		stats["visible"], stats["skipped"],
-	])
-	print("    collision: %d shapes, %d triangles, from %s" % [
-		stats["collision_bodies"], stats["collision_triangles"],
-		stats["collision_from"],
-	])
-	print("    bounds: %.0f x %.0f x %.0f units, centred near (%.0f, %.0f, %.0f)" % [
-		bounds.size.x, bounds.size.y, bounds.size.z,
-		bounds.get_center().x, bounds.get_center().y, bounds.get_center().z,
-	])
-	print("    (dust2 should be about 7000 units across. If it is 180, the export")
-	print("     is still in metres: set scale_factor to SOURCE2_VIEWER_SCALE.)")
+	var lines: Array[String] = [
+		"--- map import: %s" % source_path,
+		"    loaded from %s" % stats["loaded_from"],
+		"    meshes %d (collision-marked %d, visible %d, skipped %d)" % [
+			stats["meshes"], stats["collision_marked"],
+			stats["visible"], stats["skipped"],
+		],
+		"    collision: %d shapes, %d triangles, from %s" % [
+			stats["collision_bodies"], stats["collision_triangles"],
+			stats["collision_from"],
+		],
+		"    bounds: %.0f x %.0f x %.0f units, centred near (%.0f, %.0f, %.0f)" % [
+			bounds.size.x, bounds.size.y, bounds.size.z,
+			bounds.get_center().x, bounds.get_center().y, bounds.get_center().z,
+		],
+		"    (dust2 should be about 7000 units across. If it is 180, the export",
+		"     is still in metres: set scale_factor to SOURCE2_VIEWER_SCALE.)",
+	]
 	if stats.has("sun"):
 		var towards_sun: Vector3 = (stats["sun"]["basis"] as Basis).z
-		print("    sun: %.0f degrees above the horizon" % rad_to_deg(asin(clampf(towards_sun.y, -1.0, 1.0))))
+		lines.append(
+			"    sun: %.0f degrees above the horizon"
+			% rad_to_deg(asin(clampf(towards_sun.y, -1.0, 1.0)))
+		)
 
 	var materials: Dictionary = stats["materials"]
 	var names := materials.keys()
 	names.sort()
-	print("    %d distinct materials:" % names.size())
+	lines.append("    %d distinct materials:" % names.size())
 	for material_name in names:
-		print("      %s (%d surfaces)" % [material_name, materials[material_name]])
+		lines.append("      %s (%d surfaces)" % [material_name, materials[material_name]])
+
+	return "\n".join(lines)
 
 
 func _report_missing() -> void:

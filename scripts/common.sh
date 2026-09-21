@@ -47,8 +47,13 @@ import_assets() {
 	mkdir -p "$project/.godot"
 
 	echo "Importing into Godot. A fresh dust2 takes about a minute; after that, seconds."
-	"$godot" --headless --path "$project" --script res://scripts/write_import_settings.gd 2>&1 \
-		| grep -v '^Godot Engine' | grep -v '^[[:space:]]*$' || true
+	# Both of these put the extraction right before Godot sees it, and both
+	# leave alone what they have already done.
+	local prepare
+	for prepare in fix_export_offsets write_import_settings; do
+		"$godot" --headless --path "$project" --script "res://scripts/$prepare.gd" 2>&1 \
+			| grep -v '^Godot Engine' | grep -v '^[[:space:]]*$' || true
+	done
 
 	local started=$SECONDS
 	if ! "$godot" --headless --path "$project" --import >"$log" 2>&1; then
