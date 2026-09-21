@@ -59,6 +59,45 @@ enum CollisionSource {
 var stats: Dictionary = {}
 
 
+## Finds the first glTF under a directory, at any depth, and returns it as a
+## res:// path. Uses the real filesystem underneath because extracted content
+## is gitignored and may not have been imported by the editor yet.
+##
+## Nothing hardcodes the exported filename: Source 2 Viewer's output layout
+## changes between releases, so the first glTF found wins.
+static func find_map_file(res_dir: String) -> String:
+	var absolute := ProjectSettings.globalize_path(res_dir)
+	var found := _first_gltf(absolute)
+	if found.is_empty():
+		return ""
+	return res_dir.path_join(found.trim_prefix(absolute).trim_prefix("/"))
+
+
+static func _first_gltf(dir_path: String) -> String:
+	var dir := DirAccess.open(dir_path)
+	if dir == null:
+		return ""
+	dir.list_dir_begin()
+	var entry := dir.get_next()
+	var subdirectories: Array[String] = []
+	while entry != "":
+		if not entry.begins_with("."):
+			var full := dir_path.path_join(entry)
+			if dir.current_is_dir():
+				subdirectories.append(full)
+			elif entry.ends_with(".gltf") or entry.ends_with(".glb"):
+				dir.list_dir_end()
+				return full
+		entry = dir.get_next()
+	dir.list_dir_end()
+
+	for subdirectory in subdirectories:
+		var found := _first_gltf(subdirectory)
+		if not found.is_empty():
+			return found
+	return ""
+
+
 func _ready() -> void:
 	if source_path.is_empty():
 		return

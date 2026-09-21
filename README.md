@@ -76,8 +76,17 @@ The script finds the CS2 install and the resources inside the VPKs itself
 rather than hardcoding paths, which drift between game updates. Override with
 `CS2_PATH=` and `S2V=` if it guesses wrong.
 
+To see what the extraction produced without opening the editor:
+
+```sh
+GODOT=/path/to/godot scripts/inspect_assets.sh
+```
+
+That prints the file layout and then the import inventory, and is the output
+to send over when an import is misbehaving.
+
 Then open `maps/de_dust2/de_dust2.tscn`. It finds whatever landed in `assets/`
-and imports it, printing an inventory on the way: mesh counts, the bounding box
+and imports it, printing the same inventory: mesh counts, the bounding box
 and every distinct material name. Those three things answer the questions
 nobody can answer in advance — whether the export came out at Source scale,
 whether it is the right way up, and which materials mark collision geometry.

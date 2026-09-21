@@ -7,9 +7,9 @@ extends Node3D
 ## directory. This scene finds whatever landed there and imports it, or tells
 ## you how to produce it if nothing has.
 ##
-## The exported filename depends on Source 2 Viewer's output layout, which
-## changes between releases, so nothing here hardcodes it. The first glTF under
-## the map directory wins.
+## The exported filename depends on Source 2 Viewer's output layout, so
+## nothing here hardcodes it; MapImporter.find_map_file takes the first glTF
+## under the map directory.
 
 const MAP_DIR := "res://assets/maps/de_dust2"
 
@@ -28,7 +28,7 @@ var player: PlayerBody
 func _ready() -> void:
 	_build_lighting()
 
-	var map_file := _find_map_file()
+	var map_file := MapImporter.find_map_file(MAP_DIR)
 	if map_file.is_empty():
 		_build_fallback()
 		return
@@ -38,44 +38,6 @@ func _ready() -> void:
 	add_child(importer)
 
 	_place_player()
-
-
-## Finds the first glTF under MAP_DIR, at any depth. Uses the real filesystem
-## path because the extracted files are gitignored and may not have been
-## imported by the editor yet.
-func _find_map_file() -> String:
-	var absolute := ProjectSettings.globalize_path(MAP_DIR)
-	var found := _first_gltf(absolute)
-	if found.is_empty():
-		return ""
-	# Back to a res:// path so the editor's imported version is used when there
-	# is one.
-	return MAP_DIR.path_join(found.trim_prefix(absolute).trim_prefix("/"))
-
-
-func _first_gltf(dir_path: String) -> String:
-	var dir := DirAccess.open(dir_path)
-	if dir == null:
-		return ""
-	dir.list_dir_begin()
-	var entry := dir.get_next()
-	var subdirectories: Array[String] = []
-	while entry != "":
-		if not entry.begins_with("."):
-			var full := dir_path.path_join(entry)
-			if dir.current_is_dir():
-				subdirectories.append(full)
-			elif entry.ends_with(".gltf") or entry.ends_with(".glb"):
-				dir.list_dir_end()
-				return full
-		entry = dir.get_next()
-	dir.list_dir_end()
-
-	for subdirectory in subdirectories:
-		var found := _first_gltf(subdirectory)
-		if not found.is_empty():
-			return found
-	return ""
 
 
 func _place_player() -> void:
@@ -124,7 +86,9 @@ func _build_fallback() -> void:
 		+ "    scripts/extract_assets.sh map\n\n"
 		+ "It writes into assets/, which is gitignored on purpose:\n"
 		+ "Valve's geometry does not go in the repository.\n\n"
-		+ "Then reopen this scene."
+		+ "Then reopen this scene.\n\n"
+		+ "To check what the extraction produced, run:\n"
+		+ "    scripts/inspect_assets.sh"
 	)
 
 
