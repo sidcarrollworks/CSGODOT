@@ -261,7 +261,10 @@ func _test_export_shaped_import() -> void:
 	importer.source_path = map_file
 	importer.collision_path = MapImporter.find_collision_file(EXPORT_HULL_PATH.get_base_dir())
 	importer.scale_factor = MapImporter.SOURCE2_VIEWER_SCALE
-	importer.report = false
+	# Reporting on, into a file of its own: the report is what gets sent over
+	# when an import misbehaves, so it has to say the things that were found.
+	importer.report = true
+	importer.report_path = "user://export_fixture/map-report.txt"
 	importer.position = EXPORT_OFFSET
 	root.add_child(importer)
 	_export_importer = importer
@@ -285,6 +288,10 @@ func _test_export_shaped_import() -> void:
 		"the hull's grenade clip is left out and the world adds nothing"
 	)
 	_check(stats.has("sun"), "the export's sun is reported")
+
+	var written := FileAccess.get_file_as_string(importer.report_path)
+	for expected: String in ["from the collision hull", "512 x 32 x 512 units", "sun:", VISUAL_MATERIAL]:
+		_check(written.contains(expected), "the report file says \"%s\"" % expected)
 	_check_equal(
 		importer.find_children("*", "Light3D", true, false).size(), 0,
 		"the export's lights are taken out of the scene"
