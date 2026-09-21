@@ -168,7 +168,13 @@ That prints the file layout and then the import inventory: mesh counts, the
 bounding box, where collision came from, the spawn points and every distinct
 material name. It is the output to send over when an import is misbehaving.
 
-Extracted textures are imported VRAM-compressed with mipmaps, which Godot
+Two things are put right between extraction and import, both by scripts that
+the commands above run for you. Source 2 Viewer exports overlays and the
+kasbah window insets 15.5 units out along their normals, which leaves signs
+hanging off their walls and windows standing proud of their holes;
+`scripts/fix_export_offsets.gd` moves them back
+(`reference/asset-pipeline.md` has the measurements). And
+extracted textures are imported VRAM-compressed with mipmaps, which Godot
 does not do by itself for textures it only ever meets headless:
 `scripts/write_import_settings.gd` sets that up before each import. It is the
 difference between 1 GB of video memory and 4.

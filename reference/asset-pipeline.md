@@ -55,6 +55,22 @@ What dust2 turned out to be:
   blockers spanning the whole map, light shafts, steam cards. Every material
   carries its vmat path and shader flags as glTF extras, and the importer hides
   anything under `materials/tools/` or `materials/effects/`.
+- **Overlays come out a foot off their walls.** glTF has no depth bias, so the
+  exporter pushes anything that relies on one out along its vertex normals. It
+  pushes 0.3937 m, which is 15.5 units: 0.01 times the inches in a metre, where
+  a hundredth of an inch was evidently meant. Every overlay on dust2 (signs,
+  wall stains, road markings, the bombsite X) measured exactly 15.50 units off
+  the surface behind it. The one solid material affected, the kasbah window
+  insets (`F_DEPTH_BIAS`), fares worse, because pushing a shape along its own
+  normals inflates it: a window inset compared with its source model fitted
+  "position + 15.48 x normal" to a twentieth of a unit, and looked like a flared
+  box standing proud of the hole it belongs in. `src/map/export_offset_fix.gd`
+  does the arithmetic backwards on the exported `.bin` before Godot imports it,
+  leaving a quarter of a unit, which is what Valve's own non-overlay signage
+  stands off by. What qualifies is `F_OVERLAY`, `F_DEPTH_BIAS` and the
+  `csgo_static_overlay` shader; nothing else on the map was displaced. Worth
+  reporting upstream, and worth re-measuring after a Source 2 Viewer update:
+  if they fix it, this would over-correct.
 - **Textures need telling.** Godot imports them lossless with no mipmaps
   unless it sees them drawn in the editor, which never happens for a map built
   at runtime. `scripts/write_import_settings.gd` writes the import settings
