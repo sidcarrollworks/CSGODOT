@@ -21,12 +21,32 @@ const VISUAL_MATERIAL := "world_wall"
 
 const FLOOR_SIZE := Vector3(512.0, 32.0, 512.0)
 
+## A second fixture shaped like what Source 2 Viewer really writes: the world
+## in metres with a sun in it, and the collision hull as a separate file, in
+## inches under a node that scales it down to metres.
+const EXPORT_WORLD_PATH := "user://export_fixture/map/world.gltf"
+const EXPORT_DECOY_PATH := "user://export_fixture/map/aaa_physics.gltf"
+const EXPORT_HULL_PATH := "user://export_fixture/hull/world_physics_physics.gltf"
+const METRES := 0.0254
+
+## The hull's floor is lower than the visible one, so where the player comes to
+## rest says which of the two was solid.
+const HULL_FLOOR_SIZE := Vector3(512.0, 16.0, 512.0)
+
+## Well away from the first fixture, which is also at the origin.
+const EXPORT_OFFSET := Vector3(4096.0, 0.0, 0.0)
+
+const SETTLE_TICKS := 320
+
 var _failures: int = 0
 var _checks: int = 0
 var _frames: int = 0
+var _spawned_at_tick: int = 0
 
 var _importer: MapImporter
+var _export_importer: MapImporter
 var _player: CharacterBody3D
+var _export_player: CharacterBody3D
 var _auto_stats: Dictionary
 var _all_stats: Dictionary
 
@@ -35,7 +55,7 @@ func _process(_delta: float) -> bool:
 	_frames += 1
 
 	if _frames == 1:
-		if not _write_fixture():
+		if not (_write_fixture() and _write_export_fixture()):
 			_report()
 			return true
 		return false
@@ -46,16 +66,23 @@ func _process(_delta: float) -> bool:
 
 	if _frames == 3:
 		_test_all_meshes_import()
+		_test_export_shaped_import()
+		_test_file_picking()
+		_test_entities()
 		_spawn_player()
+		_spawned_at_tick = Engine.get_physics_frames()
 		return false
 
-	# Give the player time to fall onto the imported floor.
-	if _frames < 140:
+	# Give the players time to fall onto the imported floors.
+	if Engine.get_physics_frames() - _spawned_at_tick < SETTLE_TICKS:
 		return false
 
 	_test_player_stands_on_imported_map()
+	_test_player_stands_on_the_hull()
 	if _importer != null:
 		_importer.free()
+	if _export_importer != null:
+		_export_importer.free()
 	_report()
 	return true
 
@@ -77,17 +104,61 @@ func _write_fixture() -> bool:
 		Vector3(128.0, 64.0, 0.0), VISUAL_MATERIAL
 	)
 
+	return _write_gltf(fixture, FIXTURE_PATH)
+
+
+func _write_gltf(scene: Node3D, path: String) -> bool:
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(path.get_base_dir()))
+
 	var document := GLTFDocument.new()
 	var state := GLTFState.new()
-	var error := document.append_from_scene(fixture, state)
-	_check(error == OK, "fixture scene converts to glTF (error %d)" % error)
-	if error != OK:
-		return false
-
-	error = document.write_to_filesystem(state, FIXTURE_PATH)
-	_check(error == OK, "fixture glTF is written (error %d)" % error)
-	fixture.free()
+	var error := document.append_from_scene(scene, state)
+	_check(error == OK, "%s converts to glTF (error %d)" % [path.get_file(), error])
+	if error == OK:
+		error = document.write_to_filesystem(state, path)
+		_check(error == OK, "%s is written (error %d)" % [path.get_file(), error])
+	scene.free()
 	return error == OK
+
+
+func _write_export_fixture() -> bool:
+	# The world: the same floor as the first fixture, in metres, plus a sun at
+	# the kind of intensity the real export carries.
+	var world := Node3D.new()
+	world.name = "World"
+	_add_mesh(world, "Floor", FLOOR_SIZE * METRES, Vector3.ZERO, VISUAL_MATERIAL)
+	var sun := DirectionalLight3D.new()
+	sun.name = "light_environment"
+	sun.light_energy = 1707.5
+	sun.rotation_degrees = Vector3(-50.0, 30.0, 0.0)
+	world.add_child(sun)
+	sun.owner = world
+
+	# The hull: inches, under a node that scales to metres. A floor, and a
+	# grenade clip hanging over it that a player has to fall straight through.
+	var hull := Node3D.new()
+	hull.name = "Hull"
+	var to_metres := Node3D.new()
+	to_metres.name = "ToMetres"
+	to_metres.scale = Vector3.ONE * METRES
+	hull.add_child(to_metres)
+	to_metres.owner = hull
+	_add_mesh(to_metres, "physics_group_concrete", HULL_FLOOR_SIZE, Vector3.ZERO, "", hull)
+	_add_mesh(
+		to_metres, "physics_csgo_grenadeclip", Vector3(256.0, 16.0, 256.0),
+		Vector3(0.0, 72.0, 0.0), "", hull
+	)
+
+	# Something that sorts ahead of world.gltf and must not be mistaken for it.
+	var decoy := Node3D.new()
+	decoy.name = "Decoy"
+	_add_mesh(decoy, "Decoy", Vector3.ONE, Vector3.ZERO, VISUAL_MATERIAL)
+
+	return (
+		_write_gltf(world, EXPORT_WORLD_PATH)
+		and _write_gltf(hull, EXPORT_HULL_PATH)
+		and _write_gltf(decoy, EXPORT_DECOY_PATH)
+	)
 
 
 ## Owner has to be set after the node is in the tree, and glTF export needs
@@ -97,14 +168,16 @@ func _add_mesh(
 	node_name: String,
 	size: Vector3,
 	at: Vector3,
-	material_name: String
+	material_name: String,
+	scene_root: Node3D = null
 ) -> void:
 	var mesh := BoxMesh.new()
 	mesh.size = size
 
-	var material := StandardMaterial3D.new()
-	material.resource_name = material_name
-	mesh.surface_set_material(0, material)
+	if not material_name.is_empty():
+		var material := StandardMaterial3D.new()
+		material.resource_name = material_name
+		mesh.surface_set_material(0, material)
 
 	var instance := MeshInstance3D.new()
 	instance.name = node_name
@@ -112,7 +185,7 @@ func _add_mesh(
 	instance.position = at
 
 	parent.add_child(instance)
-	instance.owner = parent
+	instance.owner = scene_root if scene_root != null else parent
 
 
 func _make_importer(mode: MapImporter.CollisionSource) -> MapImporter:
@@ -177,12 +250,162 @@ func _test_all_meshes_import() -> void:
 	importer.queue_free()
 
 
+## An import shaped like the real thing: metres, a sun, a separate hull. This
+## is the path dust2 takes, and the one where a scale applied twice, or not at
+## all, shows up.
+func _test_export_shaped_import() -> void:
+	var map_file := MapImporter.find_map_file(EXPORT_WORLD_PATH.get_base_dir())
+	_check_equal(map_file, EXPORT_WORLD_PATH, "world.gltf is picked over a glTF that sorts before it")
+
+	var importer := MapImporter.new()
+	importer.source_path = map_file
+	importer.collision_path = MapImporter.find_collision_file(EXPORT_HULL_PATH.get_base_dir())
+	importer.scale_factor = MapImporter.SOURCE2_VIEWER_SCALE
+	importer.report = false
+	importer.position = EXPORT_OFFSET
+	root.add_child(importer)
+	_export_importer = importer
+	var stats := importer.stats
+
+	_check(not stats.has("error"), "export-shaped fixture loaded (%s)" % stats.get("error", ""))
+	var bounds: AABB = stats.get("bounds", AABB())
+	_check(
+		absf(bounds.size.x - FLOOR_SIZE.x) < 1.0 and absf(bounds.size.y - FLOOR_SIZE.y) < 1.0,
+		"a map in metres comes out in inches, once (%.1f x %.1f, expected %.1f x %.1f)"
+			% [bounds.size.x, bounds.size.y, FLOOR_SIZE.x, FLOOR_SIZE.y]
+	)
+	_check(
+		bounds.get_center().distance_to(EXPORT_OFFSET) < 1.0,
+		"bounds are in world space (centre %s, expected %s)" % [bounds.get_center(), EXPORT_OFFSET]
+	)
+
+	_check_equal(stats.get("collision_from", ""), "the collision hull", "collision comes from the hull")
+	_check_equal(
+		stats.get("collision_bodies", 0), 1,
+		"the hull's grenade clip is left out and the world adds nothing"
+	)
+	_check(stats.has("sun"), "the export's sun is reported")
+	_check_equal(
+		importer.find_children("*", "Light3D", true, false).size(), 0,
+		"the export's lights are taken out of the scene"
+	)
+	var hull := importer.get_node_or_null("CollisionHull") as Node3D
+	_check(hull != null and not hull.visible, "the hull is not drawn")
+
+	for shape in importer.find_children("*", "CollisionShape3D", true, false):
+		_check(
+			(shape as Node3D).global_transform.basis.get_scale().is_equal_approx(Vector3.ONE),
+			"collision shapes are not scaled (%s)" % shape.name
+		)
+
+
+func _test_file_picking() -> void:
+	_check_equal(
+		MapImporter.find_collision_file(EXPORT_HULL_PATH.get_base_dir()), EXPORT_HULL_PATH,
+		"the hull glTF is found"
+	)
+	_check_equal(
+		MapImporter.find_map_file(EXPORT_HULL_PATH.get_base_dir()), "",
+		"a directory of nothing but physics files has no world in it"
+	)
+	_check_equal(
+		MapImporter.find_map_file("user://export_fixture"), EXPORT_WORLD_PATH,
+		"the search goes into subdirectories"
+	)
+	_check_equal(
+		MapImporter.find_map_file("user://export_fixture/not_there"), "",
+		"a directory that does not exist has no map in it, and that is not an error"
+	)
+
+
+## Synthetic, but every awkward thing the real file does is in here: CRLF,
+## padded keys, both multi-line value forms, an I/O line, keys before and
+## after classname.
+func _test_entities() -> void:
+	var path := "user://export_fixture/entities.vents"
+	var lines := PackedStringArray([
+		"====0====",
+		'classname                      "worldspawn"',
+		"@OnMapSpawn SetBloomScale tonemap 0",
+		"",
+		"====1====",
+		"enabled                        true",
+		"priority                       1",
+		'classname                      "info_player_counterterrorist"',
+		"origin                         [ 10.0, 20.0, 30.0 ]",
+		"angles                         [ 0.0, 90.0, 0.0 ]",
+		"",
+		"====2====",
+		'classname                      "path_particle_rope_clientside"',
+		'pathnodes                      """',
+		"[",
+		"\t1.0 2.0 3.0",
+		"]",
+		'"""',
+		"precomputed_vis_clusters       [",
+		"\t4, 5, 6",
+		"]",
+		"origin                         [ 1.0, 2.0, 3.0 ]",
+		"",
+		"====3====",
+		"priority                       0",
+		'classname                      "info_player_counterterrorist"',
+		"origin                         [ -40.0, 50.0, -60.0 ]",
+		"angles                         [ 0.0, -135.0, 0.0 ]",
+		"",
+		"====4====",
+		"enabled                        false",
+		'classname                      "info_player_terrorist"',
+		"origin                         [ 0.0, 0.0, 0.0 ]",
+		"",
+		"====5====",
+		'classname                      "info_player_terrorist"',
+		"origin                         [ 7.0, 8.0, 9.0 ]",
+		"angles                         [ 0.0, 0.0, 0.0 ]",
+	])
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	file.store_string("\r\n".join(lines) + "\r\n")
+	file.close()
+
+	var entities := SourceEntities.parse(path)
+	_check_equal(entities.size(), 6, "every entity block is read")
+	_check_equal(
+		entities[2].keys().size() if entities.size() > 2 else -1, 2,
+		"multi-line values are skipped without leaking keys"
+	)
+
+	var spawns := SourceEntities.player_spawns(entities)
+	_check_equal(spawns["T"].size(), 1, "a disabled spawn is not offered")
+	_check_equal(spawns["CT"].size(), 2, "both CT spawns are found")
+	if spawns["CT"].size() == 2:
+		_check_equal(spawns["CT"][0]["priority"], 0, "the spawns the game fills first come first")
+		_check(
+			(spawns["CT"][0]["position"] as Vector3).is_equal_approx(Vector3(50.0, -60.0, -40.0)),
+			"Source (x, y, z) lands at game (y, z, x): %s" % spawns["CT"][0]["position"]
+		)
+		_check(
+			is_equal_approx(spawns["CT"][0]["yaw"], 45.0)
+				and is_equal_approx(spawns["CT"][1]["yaw"], -90.0),
+			"Source yaw is turned half way round (%s, %s)"
+				% [spawns["CT"][0]["yaw"], spawns["CT"][1]["yaw"]]
+		)
+	_check(
+		SourceEntities.parse("user://export_fixture/not_there.vents").is_empty(),
+		"a missing entity file is no entities, not an error"
+	)
+
+
 func _spawn_player() -> void:
 	var scene: PackedScene = load("res://src/player/player.tscn")
 	_player = scene.instantiate() as CharacterBody3D
 	_importer.add_child(_player)
 	# Above the imported floor, whose top sits at half its height.
 	_player.global_position = Vector3(0.0, FLOOR_SIZE.y * 0.5 + 24.0, 0.0)
+
+	# And one over the export-shaped map, above its grenade clip.
+	_export_player = scene.instantiate() as CharacterBody3D
+	_export_importer.add_child(_export_player)
+	_export_player.global_position = EXPORT_OFFSET + Vector3(0.0, 160.0, 0.0)
 
 
 ## The point of the whole exercise: can you stand on an imported map.
@@ -196,6 +419,22 @@ func _test_player_stands_on_imported_map() -> void:
 	_check(
 		absf(body.global_position.y - expected) < 2.0,
 		"player settled on the floor surface (y = %.2f, expected %.2f)"
+			% [body.global_position.y, expected]
+	)
+
+
+## The visible floor's top is at 16 and the hull's at 8, with a grenade clip
+## in the way at 64 to 80. Resting at 8 means the hull, only the hull, and not
+## all of the hull.
+func _test_player_stands_on_the_hull() -> void:
+	var body := _export_player as PlayerBody
+	_check(body != null and body.on_ground, "player is standing on the export-shaped map")
+	if body == null:
+		return
+	var expected := HULL_FLOOR_SIZE.y * 0.5
+	_check(
+		absf(body.global_position.y - expected) < 2.0,
+		"player fell through the grenade clip and the visible floor onto the hull (y = %.2f, expected %.2f)"
 			% [body.global_position.y, expected]
 	)
 

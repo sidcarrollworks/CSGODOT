@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+#
+# Shared by the other scripts here. Source it, do not run it.
+
+## Prints the path to a Godot binary, or nothing if there is none. Honours
+## GODOT, then PATH, then the places a downloaded Windows build tends to be left
+## lying: it ships as a bare Godot_v4.x-stable_win64.exe with no installer, so
+## it is rarely on PATH.
+find_godot() {
+	if [[ -n "${GODOT:-}" ]]; then
+		echo "$GODOT"
+		return
+	fi
+	local candidate
+	for candidate in godot godot4 Godot; do
+		if command -v "$candidate" >/dev/null 2>&1; then
+			command -v "$candidate"
+			return
+		fi
+	done
+	local found="" newest="" name
+	for candidate in \
+		"$HOME"/Desktop/Godot_v4*win64.exe \
+		"$HOME"/Downloads/Godot_v4*win64.exe \
+		"$HOME"/Downloads/Godot_v4*/Godot_v4*win64.exe; do
+		# An unmatched glob stays literal, hence the -f.
+		[[ -f "$candidate" ]] || continue
+		# The newest version wins, wherever it is: an old download lying
+		# around must not be what runs a 4.7 project.
+		name="${candidate##*/}"
+		if [[ -z "$newest" || "$(printf '%s\n%s\n' "$newest" "$name" | sort -V | tail -n 1)" == "$name" ]]; then
+			newest="$name"
+			found="$candidate"
+		fi
+	done
+	echo "$found"
+}
+
+## Imports whatever is in assets/: import_assets <godot> <project dir>
+##
+## The texture settings go down first, so a fresh extraction is imported once,
+## compressed, rather than once lossless and then again. Godot's own output is
+## a progress bar per file, so it goes to a log and only trouble is shown.
+import_assets() {
+	local godot="$1" project="$2"
+	local log="$project/.godot/import.log"
+	mkdir -p "$project/.godot"
+
+	echo "Importing into Godot. A fresh dust2 takes about a minute; after that, seconds."
+	"$godot" --headless --path "$project" --script res://scripts/write_import_settings.gd 2>&1 \
+		| grep -v '^Godot Engine' | grep -v '^[[:space:]]*$' || true
+
+	local started=$SECONDS
+	if ! "$godot" --headless --path "$project" --import >"$log" 2>&1; then
+		echo "Godot's import failed. The end of $log:" >&2
+		tail -n 20 "$log" >&2
+		return 1
+	fi
+	echo "Imported in $((SECONDS - started))s."
+	grep -aE '^(ERROR|WARNING):' "$log" | grep -v 'load-time scene is not defined' | sort | uniq -c | head -n 10 || true
+}

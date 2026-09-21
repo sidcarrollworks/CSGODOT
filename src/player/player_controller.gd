@@ -29,7 +29,7 @@ func _ready() -> void:
 		camera = _find_camera()
 	if camera != null:
 		camera.top_level = true
-		# Source-unit scale: the near plane has to be well inside an inch or
+		# Source-unit scale: the near plane has to be no more than an inch or
 		# geometry clips through the view model later on.
 		camera.near = 1.0
 		camera.far = 16384.0

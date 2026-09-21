@@ -10,30 +10,49 @@
 # Usage:
 #   scripts/extract_assets.sh list-map        # what is inside the dust2 VPK
 #   scripts/extract_assets.sh list-weapons    # find the AK and M4A1-S models
-#   scripts/extract_assets.sh map             # extract dust2 to glTF
+#   scripts/extract_assets.sh map             # dust2: world, collision hull, entities
+#   scripts/extract_assets.sh physics         # just the collision hull (seconds)
+#   scripts/extract_assets.sh entities        # just the entity lump (seconds)
 #   scripts/extract_assets.sh weapons         # extract the two weapons
 #   scripts/extract_assets.sh all             # map + weapons
 #
 # Requires Source2Viewer-CLI: https://github.com/ValveResourceFormat/ValveResourceFormat
 # Point at it with S2V=/path/to/Source2Viewer-CLI if it is not on PATH.
 # Point at the game with CS2_PATH=/path/to/Counter-Strike Global Offensive
-# if it is not in one of the usual places.
+# if Steam's library list does not lead to it.
+# With a Godot binary around (GODOT=/path/to/godot if it is not found), the
+# extraction finishes by importing what it produced.
 
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="$PROJECT_DIR/assets"
 
+source "$PROJECT_DIR/scripts/common.sh"
+
 # --- Locate Source2Viewer-CLI ---------------------------------------------
 
 find_s2v() {
 	if [[ -n "${S2V:-}" ]]; then
+		# Checked here because a wrong path otherwise surfaces much later, as a
+		# misleading complaint about the VPK's contents.
+		if ! command -v "$S2V" >/dev/null 2>&1 && [[ ! -x "$S2V" ]]; then
+			echo "S2V=$S2V is not an executable file." >&2
+			exit 1
+		fi
 		echo "$S2V"
 		return
 	fi
 	for candidate in Source2Viewer-CLI Source2Viewer-CLI.exe; do
 		if command -v "$candidate" >/dev/null 2>&1; then
 			command -v "$candidate"
+			return
+		fi
+	done
+	# Where the release zip lands if it is unpacked in place.
+	for candidate in "$HOME"/Downloads/cli-*/Source2Viewer-CLI "$HOME"/Downloads/cli-*/Source2Viewer-CLI.exe; do
+		if [[ -x "$candidate" ]]; then
+			echo "$candidate"
 			return
 		fi
 	done
@@ -51,20 +70,61 @@ find_s2v() {
 
 # --- Locate the CS2 install -----------------------------------------------
 
+STEAM_ROOTS=(
+	"$HOME/.steam/steam"
+	"$HOME/.local/share/Steam"
+	"$HOME/Library/Application Support/Steam"
+	"/c/Program Files (x86)/Steam"
+	"/mnt/c/Program Files (x86)/Steam"
+)
+
+## Turns a Windows path out of a Steam config (D:\\SteamLibrary) into one this
+## shell can open. Paths that are already POSIX pass through untouched.
+to_posix() {
+	local path="${1//\\\\//}"
+	path="${path//\\//}"
+	if [[ "$path" =~ ^([A-Za-z]):(.*)$ ]]; then
+		local drive="${BASH_REMATCH[1],,}" rest="${BASH_REMATCH[2]}"
+		if [[ -d "/mnt/$drive" ]]; then
+			path="/mnt/$drive$rest"
+		else
+			path="/$drive$rest"
+		fi
+	fi
+	echo "$path"
+}
+
+## Every Steam library on the machine. Steam records the extra ones (a second
+## drive, for instance) in libraryfolders.vdf, so the game can be found there
+## without being told.
+steam_libraries() {
+	local root vdf library
+	for root in "${STEAM_ROOTS[@]}"; do
+		vdf="$root/steamapps/libraryfolders.vdf"
+		[[ -f "$vdf" ]] || continue
+		echo "$root"
+		tr -d '\r' < "$vdf" \
+			| sed -nE 's/^[[:space:]]*"path"[[:space:]]+"(.*)"[[:space:]]*$/\1/p' \
+			| while IFS= read -r library; do to_posix "$library"; done
+	done
+}
+
 find_cs2() {
 	if [[ -n "${CS2_PATH:-}" ]]; then
-		echo "$CS2_PATH"
+		to_posix "$CS2_PATH"
 		return
 	fi
-	local candidates=(
-		"$HOME/.steam/steam/steamapps/common/Counter-Strike Global Offensive"
-		"$HOME/.local/share/Steam/steamapps/common/Counter-Strike Global Offensive"
-		"$HOME/Library/Application Support/Steam/steamapps/common/Counter-Strike Global Offensive"
-		"/c/Program Files (x86)/Steam/steamapps/common/Counter-Strike Global Offensive"
-		"/mnt/c/Program Files (x86)/Steam/steamapps/common/Counter-Strike Global Offensive"
-	)
+	local candidates=() library
+	while IFS= read -r library; do
+		candidates+=("$library/steamapps/common/Counter-Strike Global Offensive")
+	done < <(steam_libraries)
+	for library in "${STEAM_ROOTS[@]}"; do
+		candidates+=("$library/steamapps/common/Counter-Strike Global Offensive")
+	done
 	for candidate in "${candidates[@]}"; do
-		if [[ -d "$candidate/game/csgo" ]]; then
+		# Check for the archive, not just the directory: moving the game to
+		# another library leaves a cfg-only husk behind at the old location.
+		if [[ -f "$candidate/game/csgo/pak01_dir.vpk" ]]; then
 			echo "$candidate"
 			return
 		fi
@@ -83,9 +143,10 @@ find_cs2() {
 
 COMMAND="${1:-}"
 case "$COMMAND" in
-	list-map|list-weapons|map|weapons|all) ;;
+	list-map|list-weapons|map|physics|entities|weapons|all) ;;
 	*)
-		sed -n '3,25p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'
+		# The header comment, down to the first line that is not one.
+		awk 'NR > 2 && /^#/ { sub(/^# ?/, ""); print; next } NR > 2 { exit }' "${BASH_SOURCE[0]}"
 		exit 1
 		;;
 esac
@@ -96,9 +157,10 @@ CSGO_DIR="$CS2_DIR/game/csgo"
 MAP_VPK="$CSGO_DIR/maps/de_dust2.vpk"
 PAK_VPK="$CSGO_DIR/pak01_dir.vpk"
 
-echo "Source2Viewer-CLI: $S2V_BIN"
-echo "CS2:               $CS2_DIR"
-echo
+# On stderr, so that the list commands can be piped or redirected cleanly.
+echo "Source2Viewer-CLI: $S2V_BIN" >&2
+echo "CS2:               $CS2_DIR" >&2
+echo >&2
 
 require_file() {
 	if [[ ! -f "$1" ]]; then
@@ -114,55 +176,116 @@ require_file() {
 ## updates, we list the archive and pick out what we need. If an update moves
 ## something, the list commands show where it went.
 
+## -l prints one resource per line as "path CRC:xxxx size:nnnn", with CRLF line
+## endings on Windows. This reduces that to bare paths, which is what the greps
+## below match on and what -f wants back.
+list_paths() {
+	"$S2V_BIN" -i "$1" -l \
+		| tr -d '\r' \
+		| sed -E 's/ CRC:[0-9a-fA-F]+ size:[0-9]+$//'
+}
+
 list_map() {
 	require_file "$MAP_VPK"
-	"$S2V_BIN" -i "$MAP_VPK" -l
+	list_paths "$MAP_VPK"
 }
 
 list_weapons() {
 	require_file "$PAK_VPK"
-	"$S2V_BIN" -i "$PAK_VPK" -l \
+	# Anchored to weapons/models/ because the bare names also match keychain
+	# charms (kc_wpn_m4a1s_*), which are not what anyone means by "the M4".
+	list_paths "$PAK_VPK" \
 		| grep -iE '\.vmdl_c$' \
-		| grep -iE 'ak47|m4a1'
+		| grep -iE '^weapons/models/.*(ak47|m4a1)'
 }
 
-find_world_resource() {
+## Prints the one resource in the map VPK matching a pattern, or fails saying
+## what was being looked for.
+find_map_resource() {
+	local pattern="$1" description="$2"
 	require_file "$MAP_VPK"
-	local world
-	world="$("$S2V_BIN" -i "$MAP_VPK" -l | grep -iE '\.vwrld_c$' | head -n 1 || true)"
-	if [[ -z "$world" ]]; then
-		echo "No .vwrld_c inside $MAP_VPK." >&2
+	# Listed first and searched second, so that the tool failing is reported
+	# as that and not as the VPK missing something.
+	local listing found
+	if ! listing="$(list_paths "$MAP_VPK")"; then
+		echo "Source2Viewer-CLI failed while listing $MAP_VPK." >&2
+		exit 1
+	fi
+	found="$(grep -iE "$pattern" <<<"$listing" | head -n 1 || true)"
+	if [[ -z "$found" ]]; then
+		echo "No $description inside $MAP_VPK." >&2
 		echo "Run 'scripts/extract_assets.sh list-map' to see what is in there." >&2
 		exit 1
 	fi
-	echo "$world"
+	echo "$found"
 }
 
-extract_map() {
-	local world dest
-	world="$(find_world_resource)"
-	dest="$OUT_DIR/maps/de_dust2"
-	mkdir -p "$dest"
+MAP_DEST="$OUT_DIR/maps/de_dust2"
+# A sibling, not a subdirectory: the map directory is scanned for the world
+# glTF, and the hull export includes a file that would overwrite one of the
+# world export's.
+PHYSICS_DEST="$OUT_DIR/maps/de_dust2_physics"
+
+extract_world() {
+	local world
+	world="$(find_map_resource '\.vwrld_c$' ".vwrld_c")" || exit 1
+	mkdir -p "$MAP_DEST"
 
 	echo "Extracting $world"
-	echo "        -> $dest"
+	echo "        -> $MAP_DEST"
 	echo
-	echo "This takes a while and produces a lot of PNGs. Expect the better part"
-	echo "of a gigabyte."
+	echo "This takes a minute or two and produces about 650 PNGs, a little over"
+	echo "a gigabyte in all."
 	echo
 
 	"$S2V_BIN" \
 		-i "$MAP_VPK" \
 		-f "$world" \
-		-o "$dest" \
+		-o "$MAP_DEST" \
 		-d \
 		--gltf_export_format gltf \
 		--gltf_export_materials \
 		--gltf_textures_adapt
+}
 
+## The collision hull: what the game itself collides with, player-clip brushes
+## included. A tenth of the triangles of the visible world, and the corners
+## are the ones movement was tuned against.
+extract_physics() {
+	local physics
+	physics="$(find_map_resource '/world_physics\.vmdl_c$' "world_physics.vmdl_c")" || exit 1
+	mkdir -p "$PHYSICS_DEST"
+
+	echo "Extracting $physics"
+	echo "        -> $PHYSICS_DEST"
+	"$S2V_BIN" -i "$MAP_VPK" -f "$physics" -o "$PHYSICS_DEST" -d --gltf_export_format gltf
+
+	# The model has no render meshes, so its own glTF comes out as an empty
+	# scene; the hull is in the *_physics.gltf written next to it.
+	local stub
+	stub="$PHYSICS_DEST/${physics%.vmdl_c}.gltf"
+	if [[ -f "$stub" && -f "${stub%.gltf}_physics.gltf" ]]; then
+		rm -f "$stub" "$stub.import"
+	fi
+}
+
+## The entity lump, as text: spawn points, bomb sites, the sun.
+extract_entities() {
+	local entities
+	entities="$(find_map_resource '/entities/default_ents\.vents_c$' "default_ents.vents_c")" || exit 1
+	mkdir -p "$MAP_DEST"
+
+	echo "Extracting $entities"
+	echo "        -> $MAP_DEST"
+	"$S2V_BIN" -i "$MAP_VPK" -f "$entities" -o "$MAP_DEST" -d
+}
+
+extract_map() {
+	extract_world
 	echo
-	echo "Done. Now open the project and run the map import:"
-	echo "  the de_dust2 scene picks up whatever landed in $dest"
+	extract_physics
+	echo
+	extract_entities
 }
 
 extract_weapons() {
@@ -171,6 +294,10 @@ extract_weapons() {
 	mkdir -p "$dest"
 
 	local models
+	if ! list_paths "$PAK_VPK" >/dev/null; then
+		echo "Source2Viewer-CLI failed while listing $PAK_VPK." >&2
+		exit 1
+	fi
 	models="$(list_weapons || true)"
 	if [[ -z "$models" ]]; then
 		echo "Found no AK-47 or M4A1-S models in $PAK_VPK." >&2
@@ -197,10 +324,29 @@ extract_weapons() {
 		--gltf_textures_adapt
 }
 
+## Godot only picks up new files on an import pass, and the textures need
+## their import settings written first (see write_import_settings.gd).
+finish() {
+	echo
+	local godot
+	godot="$(find_godot)"
+	if [[ -z "$godot" ]]; then
+		echo "Extracted, but not imported: no Godot binary found."
+		echo "Run scripts/inspect_assets.sh with GODOT=/path/to/godot to finish the job."
+		return
+	fi
+	import_assets "$godot" "$PROJECT_DIR"
+	echo
+	echo "Done. Open maps/de_dust2/de_dust2.tscn and press play, or run"
+	echo "scripts/inspect_assets.sh for a report on what came through."
+}
+
 case "$COMMAND" in
 	list-map) list_map ;;
 	list-weapons) list_weapons ;;
-	map) extract_map ;;
-	weapons) extract_weapons ;;
-	all) extract_map; extract_weapons ;;
+	map) extract_map; finish ;;
+	physics) extract_physics; finish ;;
+	entities) extract_entities ;;
+	weapons) extract_weapons; finish ;;
+	all) extract_map; echo; extract_weapons; finish ;;
 esac
