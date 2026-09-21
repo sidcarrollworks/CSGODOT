@@ -10,3 +10,4 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # cannot see MovementSolver and friends, and fails to parse.
 "$GODOT" --headless --path "$PROJECT_DIR" --import >/dev/null
 "$GODOT" --headless --path "$PROJECT_DIR" --script tests/run_tests.gd
+"$GODOT" --headless --path "$PROJECT_DIR" --script tests/run_map_tests.gd

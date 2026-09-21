@@ -59,6 +59,19 @@ at 76.19, the difference being exactly the 18 unit hull delta.
 those cap the real thing lower than the theoretical maximum. Measure the
 highest ledge a crouch jump actually clears in CS2 before trusting this number.
 
+## Known issue: leaving a surf ramp
+
+Reported 2026-09-21: sliding down a surf ramp builds speed correctly, but
+arcing up and launching off the end loses speed far faster than CS does.
+Not yet investigated. Likely candidates, in order of suspicion:
+
+1. The CS2 dead-strafe friction above, which cuts air acceleration to a
+   quarter while vertical velocity is between 0 and +140. Leaving a ramp
+   upward puts you squarely in that window.
+2. `clip_velocity` running against the ramp plane for a tick after you have
+   actually left it.
+3. `_categorize_position` snapping to ground on the lip.
+
 ## Two decisions that are not settled
 
 ### The CS2 dead-strafe quirk

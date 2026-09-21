@@ -1,15 +1,23 @@
 # Getting CS2 assets in
 
-Not wired up yet. This is the plan, recorded so the eventual extraction script
-has something to implement.
+`scripts/extract_assets.sh` does the extraction and `src/map/map_importer.gd`
+does the import. Neither has been run against real CS2 content yet, because
+that needs a machine with the game installed. The importer is tested against a
+glTF that Godot generates and re-reads, so the mechanism is proven even though
+dust2 itself is not.
 
 ## Tool
 
 [Source 2 Viewer / ValveResourceFormat](https://github.com/ValveResourceFormat/ValveResourceFormat),
 which browses VPK archives and decompiles Source 2 assets. It has a
 [command line utility](https://s2v.app/ValveResourceFormat/guides/command-line.html)
-suitable for scripting, which is what `scripts/extract_assets.sh` should use so
+suitable for scripting, which is what `scripts/extract_assets.sh` uses so
 extraction is repeatable rather than a manual chore.
+
+The script deliberately does not hardcode paths inside the VPKs. It lists the
+archive and picks out what it needs, because those paths move between game
+updates and a hardcoded one fails silently a year from now. `list-map` and
+`list-weapons` show what is actually in there.
 
 ## What comes out
 

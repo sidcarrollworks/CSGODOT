@@ -34,6 +34,7 @@ test course.
 | `Ctrl` | duck |
 | `Shift` | walk |
 | `Scroll up` | jump, for bunny hopping |
+| `V` | noclip |
 | `Esc` | release the mouse |
 
 The readout in the top left is the tuning instrument: current speed, vertical
@@ -56,11 +57,46 @@ Everything on it is a measurement, not decoration:
 - **Jump gauges** at 32, 48, 56, 64 and 72 units. The grey ones are reachable
   standing; the blue ones need a crouch jump.
 
+## dust2
+
+The map is not in this repository and never will be. It is Valve's geometry,
+extracted from your own CS2 install into `assets/`, which is gitignored.
+
+On a machine with CS2 installed, and with
+[Source2Viewer-CLI](https://github.com/ValveResourceFormat/ValveResourceFormat/releases)
+somewhere it can be found:
+
+```sh
+scripts/extract_assets.sh list-map     # see what is inside the dust2 VPK
+scripts/extract_assets.sh map          # extract it to glTF
+scripts/extract_assets.sh weapons      # the AK-47 and M4A1-S models
+```
+
+The script finds the CS2 install and the resources inside the VPKs itself
+rather than hardcoding paths, which drift between game updates. Override with
+`CS2_PATH=` and `S2V=` if it guesses wrong.
+
+Then open `maps/de_dust2/de_dust2.tscn`. It finds whatever landed in `assets/`
+and imports it, printing an inventory on the way: mesh counts, the bounding box
+and every distinct material name. Those three things answer the questions
+nobody can answer in advance — whether the export came out at Source scale,
+whether it is the right way up, and which materials mark collision geometry.
+Read the inventory, then set `collision_material_hints` on the importer to
+match what is actually there.
+
+There are no spawn points: they live in the map's entity data, which the glTF
+export does not carry. You start above the bounding box and fall in. Noclip is
+bound to `V`, which is how you find a better spawn.
+
 ## Tests
 
 ```sh
 GODOT=/path/to/godot scripts/run_tests.sh
 ```
+
+Note that GDScript's analyser warnings (shadowed variables, unused locals) only
+appear when the editor loads a script. They do not show up in a headless run,
+so if the Godot console shows any, paste them over and they will get fixed.
 
 Thirty-five checks. Half are the acceleration model against hand-computed
 values, which is the part that decides feel and the part most likely to be

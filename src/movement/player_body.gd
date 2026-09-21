@@ -34,7 +34,12 @@ var is_ducked: bool = false
 ## over duck_time; in the air it snaps, because the hull snaps.
 var duck_progress: float = 0.0
 
-## Set by whatever drives this body (the player controller, or a bot).
+## Fly through geometry instead of colliding with it. A movement mode, as it
+## is in Source, rather than a flag bolted onto the controller.
+var noclip: bool = false
+
+## Set by whatever drives this body (the player controller, or a bot). Normally
+## horizontal; with noclip on it carries the full 3D fly direction.
 var wish_dir: Vector3 = Vector3.ZERO
 var wish_speed: float = 0.0
 var wants_jump: bool = false
@@ -86,6 +91,12 @@ func _find_collision_shape() -> CollisionShape3D:
 ## rate, which would quietly change how every ledge in the game plays.
 func simulate(dt: float) -> void:
 	previous_position = global_position
+
+	if noclip:
+		velocity = wish_dir * config.noclip_speed
+		global_position += velocity * dt
+		on_ground = false
+		return
 
 	_categorize_position()
 	_update_duck(dt)
@@ -265,9 +276,7 @@ func _step_move(dt: float) -> void:
 	_try_player_move(dt)
 	_trace_move(Vector3.DOWN * config.step_height)
 
-	var step_position := global_position
-	var step_velocity := velocity
-	var step_distance := _horizontal_distance(start_position, step_position)
+	var step_distance := _horizontal_distance(start_position, global_position)
 
 	# Only accept the stepped move if it landed on something walkable,
 	# otherwise we would happily "step" onto a surf ramp.

@@ -50,15 +50,15 @@ func _make_materials() -> void:
 	_surf.albedo_color = Color(0.55, 0.40, 0.30)
 
 
-## A static box. Size and position are in Source units, rotation in degrees.
+## A static box. Centre and size are in Source units, rotation in degrees.
 func _box(
 	size: Vector3,
-	position: Vector3,
+	centre: Vector3,
 	material: StandardMaterial3D,
 	rotation_degrees_value: Vector3 = Vector3.ZERO
 ) -> StaticBody3D:
 	var body := StaticBody3D.new()
-	body.position = position
+	body.position = centre
 	body.rotation_degrees = rotation_degrees_value
 
 	var mesh_instance := MeshInstance3D.new()

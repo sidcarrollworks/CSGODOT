@@ -47,6 +47,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			else Input.MOUSE_MODE_CAPTURED
 		)
 		return
+	if event.is_action_pressed(&"noclip"):
+		noclip = not noclip
+		velocity = Vector3.ZERO
+		return
 	if Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
 		input.handle_event(event)
 
@@ -67,12 +71,42 @@ func _physics_process(delta: float) -> void:
 	wants_jump = Input.is_action_pressed(&"jump") or jump_tapped
 	wants_duck = Input.is_action_pressed(&"duck")
 
+	if noclip:
+		wish_dir = _noclip_direction()
+		wish_speed = 0.0
+		simulate(delta)
+		return
+
 	wish_dir = input.wish_direction()
 	wish_speed = _current_max_speed()
 	if wish_dir.length_squared() == 0.0:
 		wish_speed = 0.0
 
 	simulate(delta)
+
+
+## Noclip flies where you are looking, pitch included, with jump and duck for
+## straight up and down.
+func _noclip_direction() -> Vector3:
+	var pitch := deg_to_rad(input.pitch_degrees)
+	var yaw := deg_to_rad(input.yaw_degrees)
+	var forward := Vector3(
+		-sin(yaw) * cos(pitch), sin(pitch), -cos(yaw) * cos(pitch)
+	)
+	var right := Vector3(cos(yaw), 0.0, -sin(yaw))
+
+	var direction := (
+		forward * Input.get_axis(&"move_back", &"move_forward")
+		+ right * Input.get_axis(&"move_left", &"move_right")
+	)
+	if Input.is_action_pressed(&"jump"):
+		direction += Vector3.UP
+	if Input.is_action_pressed(&"duck"):
+		direction += Vector3.DOWN
+
+	if direction.length_squared() == 0.0:
+		return Vector3.ZERO
+	return direction.normalized()
 
 
 func _current_max_speed() -> float:

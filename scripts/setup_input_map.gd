@@ -17,6 +17,7 @@ const ACTIONS := {
 	&"jump": [KEY_SPACE],
 	&"duck": [KEY_CTRL],
 	&"walk": [KEY_SHIFT],
+	&"noclip": [KEY_V],
 }
 
 const MOUSE_ACTIONS := {

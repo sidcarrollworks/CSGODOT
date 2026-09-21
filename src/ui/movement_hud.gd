@@ -52,6 +52,6 @@ func _process(_delta: float) -> void:
 		"vertical   %6.1f u/s" % _player.velocity.y,
 		"peak       %6.1f u/s" % _peak_speed,
 		"jump gain  %+6.1f u/s" % gained,
-		"ground     %s" % ("yes" if _player.on_ground else "no"),
+		"ground     %s" % ("noclip" if _player.noclip else ("yes" if _player.on_ground else "no")),
 		"fps        %6d" % Engine.get_frames_per_second(),
 	])

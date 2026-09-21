@@ -75,6 +75,10 @@ extends Resource
 ## enable_bunnyhopping is false.
 @export var bunnyhop_speed_cap: float = 1.1
 
+## Fly speed with noclip on. Not a gameplay value: noclip exists so you can
+## find your way around a freshly imported map that has no spawn points yet.
+@export var noclip_speed: float = 1200.0
+
 # --- Player hull ----------------------------------------------------------
 
 ## Standing hull: 32 x 32 wide, 72 tall. Ducked height is 54.
