@@ -186,7 +186,7 @@ figure doubled (AK 1.55, sheet 77.5%).
 the half-point-per-damage wear, and the range dummy switches it with K.
 
 **Remote:** bought through the buy menu, lost with the round when you die.
-Armour is on the HUD (PR #NN). Whether armour softens tagging is open
+Armour is on the HUD (PR #27). Whether armour softens tagging is open
 (**measure**, A1); here it does not, while it does soften the flinch.
 
 **Local**
