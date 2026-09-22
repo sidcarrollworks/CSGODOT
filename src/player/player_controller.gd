@@ -16,10 +16,6 @@ extends PlayerBody
 ## Optional and read-only from here: this rotates the node and touches nothing
 ## else, so whatever the model does for itself (bob, sway, animations) is left
 ## alone. Cosmetic in full; it changes nothing about aim or bullets.
-## Cross-fade into the firing clip, in seconds. Short enough to read as an
-## immediate kick at 600 rounds per minute, long enough not to snap.
-const SHOOT_BLEND := 0.03
-
 @export var viewmodel: Node3D
 
 ## The weapon model's rest orientation, captured on the first frame so the
@@ -181,6 +177,13 @@ func _update_weapon(
 
 	var now := Time.get_ticks_usec()
 	weapon.finish_reload_if_due(now)
+	# The weapon is told about the trigger rather than left to infer it from
+	# the gap since the last round, so the crosshair starts coming home on the
+	# frame the button comes up instead of a round and a quarter later. A press
+	# that happened and ended between ticks still counts as held for this one.
+	weapon.trigger_held = (
+		Input.is_action_pressed(&"attack") or not fire_events.is_empty()
+	)
 	weapon.update(delta, now)
 
 	var state := Weapon.ShooterState.new(
@@ -222,11 +225,7 @@ func _try_shoot(
 	if shot == null:
 		return
 	if view_model != null:
-		# Replayed from the top on every round, and blended rather than cut.
-		# Hard-cutting to frame zero is what a snapping weapon model looks
-		# like, and skipping the replay while the last clip finishes is what
-		# made a spray's later rounds move the gun less than its first.
-		view_model.play(&"shoot1", SHOOT_BLEND, 1.0, true)
+		view_model.shoot()
 
 	var space := get_world_3d().direct_space_state
 	var result := Hitscan.fire_at(space, shot, weapon.data, [get_rid()])

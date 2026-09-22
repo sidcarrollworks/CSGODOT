@@ -29,6 +29,16 @@ const AGENTS := {
 ## is none.
 @export var offset := Vector3.ZERO
 
+## Cross-fade into a firing clip, in seconds. Long enough not to snap, short
+## enough that the kick still reads as immediate at 600 rounds a minute.
+const SHOOT_BLEND := 0.03
+
+## The firing clips this weapon's set actually carries, found at setup rather
+## than assumed. CS2 ships several so a spray does not repeat one animation.
+var shoot_clips := PackedStringArray()
+
+var _next_shoot: int = 0
+
 
 ## Builds the arms and weapon. Returns false, with nothing built, when the
 ## models or clips have not been extracted; the game plays on without them.
@@ -38,6 +48,8 @@ func setup(team: String, weapon_model: String, clip_set: String) -> bool:
 	if not load_clips(list_clips(CLIPS_ROOT.path_join(clip_set)), suffix):
 		return false
 	idle = &"idle"
+	shoot_clips = clips_named("shoot")
+	_next_shoot = 0
 
 	var agent := instantiate(AGENTS.get(team, AGENTS["T"]))
 	if agent != null:
@@ -60,3 +72,16 @@ func setup(team: String, weapon_model: String, clip_set: String) -> bool:
 	position = offset
 	play(&"draw")
 	return true
+
+
+## Kicks the gun for one round, cycling through whatever firing clips the set
+## carries and replaying from the top every time.
+##
+## Every round, not every clip length. The clip is longer than the gap between
+## rounds, so leaving a running one alone meant the gun animated about once a
+## second on the AK while it was firing ten times a second.
+func shoot() -> void:
+	if shoot_clips.is_empty():
+		return
+	play(shoot_clips[_next_shoot], SHOOT_BLEND, 1.0, true)
+	_next_shoot = (_next_shoot + 1) % shoot_clips.size()

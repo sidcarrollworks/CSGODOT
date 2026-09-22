@@ -21,6 +21,60 @@ extends Resource
 ## the two need a shared threshold to be derived from. One place to change it.
 const SETTLE_FRACTION := 0.01
 
+## The tick the punch spring is integrated at, and the one the solver below
+## walks a spray with.
+const SIMULATION_HZ := 128.0
+
+
+var _solved_kick_up: float = -1.0
+var _solved_model_hold_time: float = -1.0
+
+## A punch angle with its own velocity, damped, with a spring pulling it back
+## to zero. Source's DecayPunchAngle.
+##
+## Two of these are in flight at once and they are deliberately different: the
+## camera's settles over about two seconds so the crosshair climbs with a
+## spray, the weapon model's over the few hundred milliseconds that were
+## measured off CS2.
+class Punch:
+	var value := Vector2.ZERO
+	var velocity := Vector2.ZERO
+
+	## A round's kick, as a push on the VELOCITY rather than a jump in the
+	## angle, which is what makes the punch rise into a kick over several
+	## ticks instead of teleporting to it.
+	func kick(impulse: Vector2) -> void:
+		velocity += impulse
+
+	## Runs the spring forward, substepped so the result does not depend on
+	## the caller's frame length.
+	##
+	## Leapfrog: half a step of spring and damping, a whole step of movement
+	## at that mid-step velocity, then the other half. Moving on the
+	## end-of-step velocity instead biases the punch upward by half a tick of
+	## it, which is small on a slow spring and not small on a fast one, so the
+	## same weapon would throw further just for settling sooner.
+	##
+	## exp() rather than (1 - damping * step) for the same reason: the linear
+	## form takes more out of the velocity than the damping it stands for
+	## would, which cut the punch short of the time it is derived from.
+	func advance(dt: float, damping: float, spring: float, max_step: float) -> void:
+		if value.length_squared() < 1e-10 and velocity.length_squared() < 1e-10:
+			value = Vector2.ZERO
+			velocity = Vector2.ZERO
+			return
+		var remaining := dt
+		while remaining > 0.0:
+			var step := minf(remaining, max_step)
+			var half := step * 0.5
+			velocity *= exp(-damping * half)
+			velocity -= value * spring * half
+			value += velocity * step
+			velocity -= value * spring * half
+			velocity *= exp(-damping * half)
+			remaining -= step
+
+
 @export var display_name: String = ""
 
 ## The weapon's model, as extracted by scripts/extract_assets.sh weapons, and
@@ -109,38 +163,137 @@ const SETTLE_FRACTION := 0.01
 # that snaps to each bullet and sags between shots. That is not what CS looks
 # like and it is not what CS plays like.
 
-## How far ONE shot throws the view, as a fraction of how far that same shot
-## throws the muzzle. The default of 1.0 means the view is kicked by a full
-## shot's worth of recoil.
+## Where the crosshair peaks during a held spray, as a fraction of how far
+## the bullets climb over that same spray.
 ##
-## A full shot's worth, and the crosshair still moves a small fraction of what
-## the spray does, because the spring pulls the view back between rounds while
-## the muzzle keeps every degree it has climbed. The bullets accumulate and
-## the view does not. That, rather than any scale factor, is why you cannot
-## read your own recoil off the screen.
+## This is the one knob for how hard the view kicks, and it is expressed as
+## the thing you can actually see rather than as a per-round amount: the
+## per-round kick is solved from it. Changing the spring, the fire rate or the
+## pattern therefore moves the kick and leaves this alone.
 ##
-## This is the one knob for the SIZE of the kick, and it is exact: the impulse
-## is normalised against the spring, so the punch peaks at this fraction of
-## the shot's own pattern step whatever the spring is doing. Changing how long
-## the kick lasts leaves how far it throws the view alone.
-##
-## Still by eye rather than measured, unlike the two timings.
-@export_range(0.0, 2.0) var recoil_view_fraction: float = 1.0
+## Sid read half the spray's height off CS2 on 2026-09-22 and that is what
+## this is. It was tried once at half with the camera on the weapon model's
+## own recovery time, which made it far too high in the hand: the crosshair
+## got there in two rounds and a single tap threw the view five degrees. The
+## reading was right; what was wrong was how quickly the view got there.
+@export_range(0.0, 1.0) var view_kick_spray_peak: float = 0.5
 
-## How long the visual recoil takes to settle after a shot, in seconds.
+## How far the view is kicked sideways each round, against how far up.
+##
+## Deliberately not read off the pattern's own sideways step, which reaches
+## three degrees a round in the second half of an AK spray. The pattern
+## decides the DIRECTION so the view leans the way the gun is going; this
+## decides how far, so it stays small however far the pattern wanders.
+@export_range(0.0, 1.0) var view_kick_side_ratio: float = 0.2
+
+## How long the WEAPON MODEL's recoil takes to settle after a round, in
+## seconds.
 ##
 ## MEASURED, from Sid's frame-by-frame capture of CS2: the weapon model is
 ## tracked away from its resting position and this is where that movement
-## levels off. AK-47 644 +- 5 ms, M4A1-S 353 +- 5 ms.
+## levels off. AK-47 644 +- 5 ms, M4A1-S 353 +- 5 ms. "Settled" means down to
+## SETTLE_FRACTION of the kick's own peak.
 ##
-## This is the only knob for how long the kick lasts. The spring and the
-## damping below are derived from it, so changing it moves the whole
-## animation rather than requiring two constants to be re-balanced by hand.
-## "Settled" means down to SETTLE_FRACTION of the kick's own peak.
+## The camera is a separate system with a separate, much longer recovery: see
+## view_punch_recovery_time. Driving both off this number was a mistake worth
+## not repeating. It made the crosshair reach its full height within two or
+## three rounds and sit there, when it should climb with the spray, and it
+## forced the per-round kick so high that a single tap threw the view five
+## degrees.
 ##
-## Note what it is NOT: the time the weapon takes to become accurate again.
-## Those are separate in CS2 and separate here. See accuracy_reset_time.
+## Nor is it the time the weapon takes to become accurate again: see
+## accuracy_reset_time.
 @export var recoil_animation_time: float = 0.644
+
+## How long the CAMERA's slow half takes to settle after a round, in seconds.
+##
+## Not measured, and much longer than the weapon model's. It has to be: the
+## crosshair should climb with the spray over a magazine rather than reach its
+## height in the first few rounds, and that only happens if a round's kick is
+## still there when the next few land.
+##
+## Sid, 2026-09-22: "the crosshair still needs to move up about halfway as the
+## shots go up. It maxes out about 3 shots up."
+@export var view_punch_recovery_time: float = 1.9
+
+## How long the CAMERA's fast half takes to settle after a round, in seconds.
+##
+## The camera's kick is two springs added together, and this is why. One
+## spring cannot rise fast and fall slowly: a damped spring's rise and its
+## decay are the same two constants read two ways, and making it rise in a
+## few ticks makes it fall in a few ticks too. Slow enough to accumulate over
+## a spray is therefore also smooth enough to have no per-round kick in it at
+## all, which is what a single spring gave: a clean ramp with no shots in it.
+##
+## Sid, 2026-09-22: "the motion as it moves up is too smooth. we still want it
+## to feel staccato, like each shot pushes it up."
+##
+## Short enough to land inside the gap between rounds at 600 RPM, so each
+## round reads as its own shove.
+@export var view_punch_snap_time: float = 0.18
+
+## How long the camera's slow half takes to settle once the trigger is OFF,
+## in seconds.
+##
+## Shorter than view_punch_recovery_time, and separate from it because the two
+## are wanted for opposite reasons. The long recovery exists so a round's kick
+## is still there when the next few land, which is what carries the crosshair
+## up a spray. Nothing is landing after the last round, so keeping it long
+## there only leaves the view hanging.
+##
+## CS has the same split: its recoil index recovers between rounds, not while
+## they are going out.
+##
+## Sid, 2026-09-22: "let's also make the decay when you stop shooting a little
+## short. It feels a bit too floating at the moment."
+@export var view_punch_release_time: float = 0.7
+
+## How long after the last round the trigger counts as still down, in rounds.
+##
+## The camera cannot see the trigger, so it infers it from the gap since the
+## last round. Anything above 1 keeps a spray from being mistaken for a release
+## in the gap between two of its own rounds; everything above 1 is also dead
+## time at the top of the spray, where the crosshair has stopped climbing and
+## has not started coming down. At 2 that dead time was 200 ms on the AK and
+## Sid felt exactly that: "it still feels like it hangs at the top for 200ms."
+##
+## A round is gated by the cycle time exactly, so the gap between two rounds of
+## a spray never exceeds one cycle plus the tick the check runs on. 1.25 clears
+## that with room and costs 125 ms rather than 200.
+@export var trigger_release_cycles: float = 1.25
+
+## How much of a round's kick goes to the fast half.
+##
+## The rest goes to the slow one. This is the balance between "you can see
+## each shot" and "the crosshair holds its height through the spray"; both
+## halves are wanted and neither should have all of it.
+@export_range(0.0, 1.0) var view_kick_snap_share: float = 0.4
+
+## How long the WEAPON MODEL's fast half takes to settle after a round, in
+## seconds.
+##
+## The gun needs the same two-spring treatment the camera got, for the same
+## reason and then one more. CS2 does not run a spring on the weapon model at
+## all: it replays the firing clip from the start on every round, so the gun
+## drops back towards rest between rounds however fast they come. A single
+## spring long enough to last the measured animation reaches its own peak
+## about 78 ms in, and the next round lands at 100 ms, so it never gets to
+## fall: the gun climbed to a height and jittered there for the rest of the
+## magazine.
+##
+## Sid, 2026-09-22: "the animation doesn't continually fall. It pushes up till
+## you stop holding the mouse button. The animation needs to fall a little
+## between shots."
+##
+## Short enough that a round's own shove is most of the way home before the
+## next one lands.
+@export var model_punch_snap_time: float = 0.1
+
+## How much of a round's kick goes to the weapon model's fast half.
+##
+## Higher than the camera's share: the gun is meant to drop back between
+## rounds, where the crosshair is meant to climb with the spray.
+@export_range(0.0, 1.0) var model_kick_snap_share: float = 0.75
 
 ## How the kick is shaped, against how long it lasts.
 ##
@@ -164,7 +317,7 @@ const SETTLE_FRACTION := 0.01
 ## How much of that the model gets sideways, against how much it gets
 ## vertically. Side to side should be visible and clearly less than the climb,
 ## which is also how the patterns themselves are shaped.
-@export_range(0.0, 1.0) var viewmodel_sway: float = 0.35
+@export_range(0.0, 1.0) var viewmodel_sway: float = 0.2
 
 # --- Inaccuracy -----------------------------------------------------------
 
@@ -199,7 +352,7 @@ const SETTLE_FRACTION := 0.01
 @export var inaccuracy_speed_threshold: float = 55.0
 
 
-## How high the punch peaks, against the velocity a shot gives it and the
+## How high a punch peaks, against the velocity a shot gives it and the
 ## spring's frequency: peak = impulse / frequency * this. Depends only on the
 ## damping ratio.
 func punch_peak_ratio() -> float:
@@ -208,46 +361,189 @@ func punch_peak_ratio() -> float:
 	return exp(-z * atan(ringing / z) / ringing)
 
 
-## The spring's undamped frequency, in radians per second.
+## A spring's undamped frequency, in radians per second, for a punch that
+## should be down to SETTLE_FRACTION of its own peak after `recovery`.
 ##
-## Derived so the punch is down to SETTLE_FRACTION of its own peak after
-## exactly recoil_animation_time. A damped spring's impulse response decays
-## inside an exp(-zeta*w*t) envelope, so zeta*w is what the measurement fixes;
-## the peak term is there because the peak is reached some way into the
-## response, well below where the envelope starts.
-func punch_frequency() -> float:
-	var z := _damping_ratio()
+## A damped spring's impulse response decays inside an exp(-zeta*w*t)
+## envelope, so zeta*w is what the recovery time fixes; the peak term is there
+## because the peak is reached some way into the response, well below where
+## the envelope starts.
+func punch_frequency_for(recovery: float, ratio: float = -1.0) -> float:
+	var z := _damping_ratio(ratio)
 	var ringing := sqrt(1.0 - z * z)
 	var peak := ringing * punch_peak_ratio()
-	return -log(SETTLE_FRACTION * peak) / maxf(
-		z * recoil_animation_time, 0.0001
-	)
+	return -log(SETTLE_FRACTION * peak) / maxf(z * recovery, 0.0001)
 
 
-## Viscous damping on the punch velocity, per second.
-func punch_damping() -> float:
-	return 2.0 * _damping_ratio() * punch_frequency()
+func punch_damping_for(recovery: float, ratio: float = -1.0) -> float:
+	return 2.0 * _damping_ratio(ratio) * punch_frequency_for(recovery, ratio)
 
 
-## Torsional spring pulling the view back to where the player is pointing.
-func punch_spring() -> float:
-	var w := punch_frequency()
+func punch_spring_for(recovery: float, ratio: float = -1.0) -> float:
+	var w := punch_frequency_for(recovery, ratio)
 	return w * w
 
 
-## What a shot adds to the punch VELOCITY, per degree of view kick asked for.
+## What a round adds to a punch's VELOCITY, per degree of kick asked for.
 ##
-## Normalised against the spring, so the punch peaks at exactly the kick it
-## was given and re-measuring recoil_animation_time changes how long the view
-## moves without changing how far. Source's ViewPunch pushes the punch
-## VELOCITY rather than the angle, which is what makes the view rise into a
-## kick instead of teleporting to it; this is that push.
-func punch_impulse_scale() -> float:
-	return punch_frequency() / punch_peak_ratio()
+## Normalised against the spring, so one round's punch peaks at exactly the
+## kick it was given and changing a recovery time moves how long that punch
+## lasts without moving how far it throws. Source's ViewPunch pushes the punch
+## VELOCITY rather than the angle, which is what makes it rise into a kick
+## instead of teleporting to it; this is that push.
+func punch_impulse_scale_for(recovery: float) -> float:
+	return punch_frequency_for(recovery) / punch_peak_ratio()
 
 
-func _damping_ratio() -> float:
-	return clampf(punch_damping_ratio, 0.05, 0.999)
+## The camera's slow half: what carries the crosshair up the spray while the
+## trigger is down, and lets go of it once the trigger is up.
+func hold_punch_damping(firing: bool = true) -> float:
+	if firing:
+		return punch_damping_for(view_punch_recovery_time)
+	return 2.0 * release_frequency()
+
+
+func hold_punch_spring(firing: bool = true) -> float:
+	if firing:
+		return punch_spring_for(view_punch_recovery_time)
+	var w := release_frequency()
+	return w * w
+
+
+## The frequency the slow half returns on once the trigger is up, in radians
+## per second.
+##
+## Critically damped, and Weapon gives it exactly minus this times its own
+## height as a velocity at the moment the trigger goes up. That combination is
+## not arbitrary: a critically damped spring released at height V with velocity
+## -wV is exactly V*exp(-w*t), the only shape the second-order system can make
+## that is a plain exponential decay.
+##
+## That is the shape Sid asked for. A spring let go from rest starts with no
+## speed at all, builds up and then eases out: an S, which reads as the
+## crosshair hanging at the top before it drops. An exponential is steepest at
+## the instant it is released and flattens into the bottom. Sid, 2026-09-22:
+## "if it were a curve it would be the bottom left quarter of a circle. A sharp
+## drop and smooth at the bottom."
+##
+## An exponential is down to SETTLE_FRACTION of where it started after
+## view_punch_release_time, which is what fixes the frequency. No peak term
+## here, unlike punch_frequency_for: there is no rise to peak past.
+func release_frequency() -> float:
+	return -log(SETTLE_FRACTION) / maxf(view_punch_release_time, 0.0001)
+
+
+func hold_punch_impulse_scale() -> float:
+	return punch_impulse_scale_for(view_punch_recovery_time) * (
+		1.0 - view_kick_snap_share
+	)
+
+
+## The camera's fast half: what makes each round its own shove.
+func snap_punch_damping() -> float:
+	return punch_damping_for(view_punch_snap_time)
+
+
+func snap_punch_spring() -> float:
+	return punch_spring_for(view_punch_snap_time)
+
+
+func snap_punch_impulse_scale() -> float:
+	return punch_impulse_scale_for(view_punch_snap_time) * view_kick_snap_share
+
+
+## The weapon model's fast half: what drops the gun back between rounds.
+func model_snap_punch_damping() -> float:
+	return punch_damping_for(model_punch_snap_time)
+
+
+func model_snap_punch_spring() -> float:
+	return punch_spring_for(model_punch_snap_time)
+
+
+func model_snap_punch_impulse_scale() -> float:
+	return punch_impulse_scale_for(model_punch_snap_time) * model_kick_snap_share
+
+
+## The weapon model's slow half: the tail that carries a single shot's
+## animation out to the length Sid measured.
+func model_hold_punch_damping() -> float:
+	return punch_damping_for(model_hold_time())
+
+
+func model_hold_punch_spring() -> float:
+	return punch_spring_for(model_hold_time())
+
+
+func model_hold_punch_impulse_scale() -> float:
+	return punch_impulse_scale_for(model_hold_time()) * (
+		1.0 - model_kick_snap_share
+	)
+
+
+## How long the weapon model's slow half takes to settle, SOLVED rather than
+## picked, so that the two springs added together still settle after exactly
+## recoil_animation_time.
+##
+## recoil_animation_time is the measurement and stays the specification: it is
+## what a single shot's animation looks like on screen, and splitting the
+## spring in two to get a fall between rounds must not quietly change it. The
+## slow half on its own has to run somewhat longer than the measured number,
+## because the fast half raises the peak the settle threshold is taken
+## against. There is no closed form for where a sum of two springs crosses a
+## fraction of its own peak, so this bisects for it once and remembers.
+func model_hold_time() -> float:
+	if _solved_model_hold_time >= 0.0:
+		return _solved_model_hold_time
+	var wanted := maxf(recoil_animation_time, 0.0001)
+	var low := model_punch_snap_time
+	var high := maxf(wanted * 4.0, low * 2.0)
+	# A longer slow half can only settle later, so the answer is bracketed as
+	# soon as the top of the range overshoots.
+	for _widen in 8:
+		if _model_settle_for(high) >= wanted:
+			break
+		high *= 2.0
+	for _step in 40:
+		var middle := (low + high) * 0.5
+		if _model_settle_for(middle) < wanted:
+			low = middle
+		else:
+			high = middle
+	_solved_model_hold_time = (low + high) * 0.5
+	return _solved_model_hold_time
+
+
+## When one shot's weapon model punch is last above SETTLE_FRACTION of its own
+## peak, with the slow half given the recovery time passed in.
+func _model_settle_for(hold_time: float) -> float:
+	var tick := 1.0 / SIMULATION_HZ
+	var snap := Punch.new()
+	var hold := Punch.new()
+	snap.kick(Vector2(0.0, punch_impulse_scale_for(model_punch_snap_time) * model_kick_snap_share))
+	hold.kick(Vector2(0.0, punch_impulse_scale_for(hold_time) * (1.0 - model_kick_snap_share)))
+	var snap_damping := punch_damping_for(model_punch_snap_time)
+	var snap_spring := punch_spring_for(model_punch_snap_time)
+	var hold_damping := punch_damping_for(hold_time)
+	var hold_spring := punch_spring_for(hold_time)
+	var peak := 0.0
+	var samples := PackedFloat32Array()
+	for _tick in int(SIMULATION_HZ * 8.0):
+		snap.advance(tick, snap_damping, snap_spring, tick)
+		hold.advance(tick, hold_damping, hold_spring, tick)
+		var size := absf(snap.value.y + hold.value.y)
+		peak = maxf(peak, size)
+		samples.append(size)
+	for i in range(samples.size() - 1, -1, -1):
+		if samples[i] >= peak * SETTLE_FRACTION:
+			return float(i + 1) * tick
+	return 0.0
+
+
+func _damping_ratio(ratio: float = -1.0) -> float:
+	return clampf(
+		punch_damping_ratio if ratio < 0.0 else ratio, 0.05, 0.999
+	)
 
 
 ## Time constant of the accuracy decay, in seconds.
@@ -265,6 +561,65 @@ func accuracy_time_constant() -> float:
 ## accurate again, matching the measurement's "back to baseline".
 func accuracy_reset_threshold() -> float:
 	return inaccuracy_per_shot * SETTLE_FRACTION
+
+
+## Degrees the view is kicked UP by each round, solved so that holding the
+## trigger for a magazine peaks the crosshair at view_kick_spray_peak of the
+## spray's own climb.
+##
+## The same on every round. It used to be a fraction of the round's step
+## through the pattern, and that was wrong: a pattern's vertical steps are
+## front-loaded and its sideways steps are not, so the view punched hard for
+## the first two rounds and then did nothing but sway. A gun does not stop
+## recoiling halfway through a magazine.
+func view_kick_up() -> float:
+	if _solved_kick_up >= 0.0:
+		return _solved_kick_up
+	var climb := 0.0
+	for i in recoil_pattern.size():
+		climb = maxf(climb, recoil_offset(i).y)
+	var unit_peak := spray_peak_per_degree()
+	if climb <= 0.0 or unit_peak <= 0.0:
+		_solved_kick_up = 0.0
+	else:
+		_solved_kick_up = view_kick_spray_peak * climb / unit_peak
+	return _solved_kick_up
+
+
+## Degrees sideways per round.
+func view_kick_side() -> float:
+	return view_kick_up() * view_kick_side_ratio
+
+
+## How high the punch would peak over a magazine held down, per degree of
+## per-round kick.
+##
+## The spring is linear, so one pass with a unit kick scales to any kick, and
+## view_kick_up is one division rather than a search. There is a test that
+## this agrees with what Weapon actually produces, since the two integrate the
+## same spring in two places.
+func spray_peak_per_degree() -> float:
+	var tick := 1.0 / SIMULATION_HZ
+	var snap := Punch.new()
+	var hold := Punch.new()
+	var snap_damping := snap_punch_damping()
+	var snap_spring := snap_punch_spring()
+	var snap_impulse := snap_punch_impulse_scale()
+	var hold_damping := hold_punch_damping()
+	var hold_spring := hold_punch_spring()
+	var hold_impulse := hold_punch_impulse_scale()
+	var peak := 0.0
+	var until_shot := 0.0
+	for tick_index in maxi(magazine_size, 1) * maxi(int(cycle_time * SIMULATION_HZ), 1):
+		if until_shot <= 0.0:
+			snap.kick(Vector2(0.0, snap_impulse))
+			hold.kick(Vector2(0.0, hold_impulse))
+			until_shot += cycle_time
+		until_shot -= tick
+		snap.advance(tick, snap_damping, snap_spring, tick)
+		hold.advance(tick, hold_damping, hold_spring, tick)
+		peak = maxf(peak, snap.value.y + hold.value.y)
+	return peak
 
 
 ## The pattern offset for a shot, scaled, holding the last entry once the

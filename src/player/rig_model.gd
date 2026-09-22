@@ -92,9 +92,9 @@ func load_clips(clips: PackedStringArray, suffix: String) -> bool:
 ## Plays a clip by its short name. Unknown names go to idle, and so does
 ## anything that plays once, when it ends.
 ##
-## restart replays a clip that is already running, from the top. Firing needs
-## it: a round fired while the last one's animation is still going has to kick
-## the gun again, and without it the second round of a spray moved nothing.
+## restart rewinds a clip that is already running back to its start. Firing
+## needs it: a round fired while the last one's animation is still going has
+## to kick the gun again.
 func play(
 	short: StringName,
 	blend: float = 0.0,
@@ -111,13 +111,33 @@ func play(
 		animation_player.current_animation == short
 		and animation_player.is_playing()
 	)
-	if already and not restart:
+	if already:
 		animation_player.speed_scale = speed
+		if restart:
+			# Rewound rather than played again. AnimationPlayer.play() on the
+			# clip it is already playing carries on from where it was, so
+			# asking it to fire again did nothing and the gun only animated
+			# once per clip length: about once a second on the AK, against a
+			# round every tenth of one.
+			animation_player.seek(0.0, true)
 		return
 	if blend <= 0.0:
 		animation_player.stop()
 	animation_player.speed_scale = speed
 	animation_player.play(short, blend)
+
+
+## Every clip loaded whose name starts with the given prefix, in order.
+func clips_named(prefix: String) -> PackedStringArray:
+	var found := PackedStringArray()
+	if animation_player == null:
+		return found
+	var names := animation_player.get_animation_list()
+	names.sort()
+	for name in names:
+		if String(name).begins_with(prefix):
+			found.append(name)
+	return found
 
 
 func _on_finished(finished: StringName) -> void:

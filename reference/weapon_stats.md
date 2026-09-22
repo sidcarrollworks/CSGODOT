@@ -79,13 +79,12 @@ Measured in our build, holding the trigger for a full magazine:
 
 | | Bullets climb | View peaks at | View as a share |
 |---|---|---|---|
-| AK-47 | 16.00° | 3.47° | 22% |
-| M4A1-S | 9.57° | 1.61° | 17% |
+| AK-47 | 16.00° | 7.87° | 49% |
+| M4A1-S | 9.57° | 4.71° | 49% |
 
-Each shot kicks the view by a full shot's worth of recoil, and the view still
-moves a fifth of what the spray does. That is not a scale factor: the spring
-pulls the view back between rounds while the muzzle keeps every degree it has
-climbed. The bullets accumulate and the view does not.
+The view gets there and no further because the spring pulls it back between rounds while the muzzle
+keeps every degree it has climbed: the bullets accumulate and the view does
+not.
 
 The view also stops climbing about a third of the way through and settles back
 toward centre while the spray carries on, because the later part of both
@@ -98,44 +97,205 @@ crosshair kicks up but only so much" means.
 pulling it back to zero. This is Source's `DecayPunchAngle`. A shot pushes the
 **velocity**, not the angle, which is why the view rises into a kick over
 several ticks instead of teleporting to it: the largest single-tick movement
-during an AK spray is 0.73°, against 3.44° for the steepest single bullet step.
+during an AK spray is 0.94°, against 3.44° for the steepest single bullet step.
 
 The knobs, all on `WeaponData`:
 
 | | Default | |
 |---|---|---|
-| `recoil_animation_time` | measured | How long the kick lasts, in seconds |
-| `recoil_view_fraction` | 1.0 | How far one shot throws the view, against how far it throws the muzzle |
+| `view_kick_spray_peak` | 0.5 | Where the crosshair peaks over a spray, against the spray's own climb |
+| `view_punch_recovery_time` | 1.9 | How long the camera's SLOW half takes to settle, in seconds |
+| `view_punch_release_time` | 0.7 | How long the slow half takes once the trigger is UP, in seconds |
+| `trigger_release_cycles` | 1.25 | Rounds' worth of silence that also counts as the trigger being up |
+| `view_punch_snap_time` | 0.18 | How long the camera's FAST half takes to settle, in seconds |
+| `view_kick_snap_share` | 0.4 | How much of a round's kick goes to the fast half |
+| `view_kick_side_ratio` | 0.2 | Sideways kick per round, against the climb |
+| `recoil_animation_time` | measured | How long the WEAPON MODEL takes to settle, in seconds |
+| `model_punch_snap_time` | 0.1 | How long the weapon model's FAST half takes to settle, in seconds |
+| `model_kick_snap_share` | 0.75 | How much of a round's kick goes to the model's fast half |
 | `punch_damping_ratio` | 0.558 | Shape of the kick: rise and settle, no visible bounce |
 | `viewmodel_recoil` | 0.35 | How much the weapon model climbs on top of the camera |
-| `viewmodel_sway` | 0.35 | How much of that it gets sideways, against the climb |
+| `viewmodel_sway` | 0.2 | How much of that it gets sideways, against the climb |
 
-The spring frequency, the damping and the impulse are all derived from those,
-which is why they are not on the list. Two properties fall out of the
-derivation and are worth keeping:
+The spring frequency, the damping, the impulse and the per-round kick are all
+derived from those.
 
-- Re-measuring `recoil_animation_time` changes how long the view moves and
-  **not how far**. The impulse is normalised against the spring, so the punch
-  peaks at `recoil_view_fraction` times the shot's own pattern step whatever
-  the spring is doing.
-- `recoil_view_fraction` is the only knob for the size of the kick, and it is
-  still by eye rather than measured. It is the first thing to change if the
-  kick feels wrong, and the only thing.
+### The per-round kick is solved, not picked
 
-The weapon model hangs off the camera, so it already carries the whole view
-kick; `viewmodel_recoil` is only the gun moving relative to the screen. That
-rotation happens about the eye, so a degree of it throws the gun a long way
-sideways, and anything but a small number reads as the weapon teleporting from
-shot to shot (Sid, 2026-09-22). The view kick should be most of what moves.
+`view_kick_spray_peak` is the one knob for how hard the view kicks, expressed
+as the thing you can actually see, and it is half: Sid read that off CS2 on
+2026-09-22. `view_kick_up()` is solved from it: the spring is linear, so one pass of a
+magazine with a unit kick gives the scale factor exactly, and the per-round
+kick is one division rather than a search.
 
-Firing replays the `shoot1` clip from the top on every round, cross-faded over
-30 ms. Both halves matter: hard-cutting to frame zero snaps the model, and not
-replaying while the last clip runs meant the second round of a spray moved the
-gun less than the first.
+Solving it rather than tuning it means the thing that was actually observed
+survives everything else. Change the spring, the fire rate, the magazine or
+the pattern and the crosshair still peaks at half the spray; the per-round
+kick moves to make it so. There is a test for the spec and another holding the
+solver to what `Weapon` actually produces, since the two walk the same spring
+in two places.
 
-Setting `recoil_view_fraction` to 0 removes the view kick entirely and **every
-bullet still lands in exactly the same place**. There is a test that asserts
-precisely that, because it is the property that makes a spray learnable.
+### Every round kicks the same
+
+`view_kick_up()` is per round and does not vary across the magazine. That is
+the correction to the obvious mistake, which this made on 2026-09-22 and which
+Sid caught twice: scaling the kick by the round's own step through the spray
+pattern.
+
+A pattern's vertical steps are front-loaded and its sideways steps are not.
+The AK climbs about two degrees a round for its first seven rounds and then
+goes nearly flat, while its sideways steps grow past three degrees a round in
+the second half. Scale the kick by those and the view punches hard twice and
+then does nothing but sway. Sid's words were "the aimpunch happens with 1 or 2
+shots. And the gun moves left and right too much".
+
+The pattern still decides which WAY the view leans each round, so the view
+goes with the gun. It does not decide how far.
+
+### What the numbers come out at
+
+| | Spray peaks | Shove per round | Single tap |
+|---|---|---|---|
+| AK-47 | 7.87° of a 16.00° spray | 1.40° | 1.67° |
+| M4A1-S | 4.71° of a 9.57° spray | 0.85° | 1.00° |
+
+### The camera's kick is two springs added together
+
+One spring cannot rise fast and fall slowly. A damped spring's rise time and
+its decay time are the same two constants read two ways, so one slow enough to
+carry the crosshair up a whole spray is also smooth enough to have no rounds
+in it: what came out was a clean ramp you could not see the shots in. Sid,
+2026-09-22: "the motion as it moves up is too smooth. we still want it to feel
+staccato, like each shot pushes it up."
+
+So a round kicks two springs. `view_punch_snap_time` settles inside the gap
+between rounds and gives each one its own shove; `view_punch_recovery_time`
+settles over about two seconds and carries the crosshair up the spray.
+`view_kick_snap_share` splits the round's kick between them, and both halves
+are wanted: all snap and the crosshair never climbs, all hold and it ramps.
+
+The crosshair shoves up about 1.4° and falls most of the way back on every AK
+round, on a climb that totals 7.87°. There is a test that it falls back
+between every round rather than ramping, and another that the shove is worth
+at least a tenth of the climb.
+
+### Letting go of the trigger
+
+The slow half is slow so that a round's kick is still there when the next few
+land. Nothing lands after the last round, so keeping it slow there only leaves
+the view hanging: Sid, 2026-09-22, "the decay when you stop shooting... feels
+a bit too floating." It switches to `view_punch_release_time` the moment the
+trigger comes up. CS splits these the same way — its recoil index recovers
+between rounds, not while they are going out.
+
+**The weapon is told about the trigger, it does not infer it.**
+`Weapon.trigger_held` is set once a tick by whoever drives the weapon. Working
+it out from the gap since the last round instead, which is what this used to
+do, costs `trigger_release_cycles` of dead time at the top of the spray where
+the crosshair has stopped climbing and has not started falling — 200 ms on the
+AK at the old value of 2, which Sid felt exactly: "it still feels like it hangs
+at the top for 200ms." The gap still matters as well as the button, because an
+empty magazine stops the rounds with the trigger still down.
+
+**The return is a plain exponential, and that is a specific choice.** A spring
+let go from rest starts with no speed at all, builds up and then eases out: an
+S, which reads as a hang however short you make it. So the release is
+critically damped and `Weapon` hands it exactly minus its own frequency times
+its height as a velocity at the instant the trigger goes up — the one
+combination a second-order system has that gives `V·exp(-ωt)`, steepest at the
+moment of release and flattening into the bottom. Sid, 2026-09-22: "if it were
+a curve it would be the bottom left quarter of a circle. A sharp drop and
+smooth at the bottom." Only the velocity is touched, so there is no jump: the
+crosshair is where it was, it has simply stopped climbing and started falling.
+`release_frequency()` is `-log(SETTLE_FRACTION) / view_punch_release_time`,
+with no peak term, because an exponential has no rise to peak past.
+
+`view_punch_release_time` is the whole travel, end of fire to recentred, and
+it is the one knob for how long the return takes: the shape above is scale
+free, so doubling it doubles every milestone and changes nothing else. It went
+from 0.35 to 0.7 on 2026-09-22 — Sid, "the total travel time of the crosshair
+from end of fire to recenter should be twice as long."
+
+After a full AK magazine the crosshair is halfway home in 109 ms and within a
+quarter degree in 484 ms, against 273 and 420 before any of this, and never
+dips below centre. The M4 is within a quarter degree in 406 ms. A single tap
+comes out at 1.46° rather than 1.67°, and no longer depends on how long the
+button is held past about 40 ms. The spray's height and the per-round shove are
+untouched.
+
+### The camera and the weapon model are separate springs
+
+This is the part that took three goes to get right, so it is worth stating
+plainly: **the camera settles in about two seconds and the weapon model in a
+few hundred milliseconds, and only the model's timing was ever measured.**
+
+Driving both off `recoil_animation_time` is the mistake. The crosshair then
+reaches its full height within two or three rounds and sits there, when it
+should climb with the spray, and the solver is forced to pick a per-round kick
+high enough that a single tap throws the view five degrees. Sid, 2026-09-22:
+"the crosshair still needs to move up about halfway as the shots go up. It
+maxes out about 3 shots up."
+
+With the camera on its own two-second recovery, the AK's crosshair passes
+halfway up the spray while the bullets do, and a single tap is under two
+degrees. The M4's is a degree, lighter than the AK's as it should be, which is
+not something that came out when the two springs were one.
+
+### The weapon model falls back between rounds
+
+The gun got the same two-spring treatment the camera did, for the same reason
+and then one more. CS2 does not run a spring on the weapon model at all: it
+replays the firing clip from its start on every round, so the gun drops back
+towards rest however fast the rounds come.
+
+A single spring long enough to last the measured animation reaches its own
+peak about 78 ms in, and the next AK round lands at 100 ms. It never got to
+fall. The gun climbed over the first few rounds to a height and jittered there
+for the rest of the magazine: 25 per cent of that height was all it gave back
+between rounds. Sid, 2026-09-22: "the animation doesn't continually fall. It
+pushes up till you stop holding the mouse button. After you stop and the
+animation finished rising then it starts returning back to place. The
+animation needs to fall a little between shots."
+
+`model_punch_snap_time` is short enough to be most of the way home before the
+next round lands, and `model_kick_snap_share` sends three quarters of the kick
+to it. The AK's gun now swings 66 per cent of its height on every round and the
+M4's 79, both falling back on every single one.
+
+**`model_hold_time()` is solved, not picked.** `recoil_animation_time` is the
+measurement and stays the specification, so splitting the spring must not
+quietly change it. The slow half raises nothing but the tail while the fast
+half raises the peak that the settle threshold is taken against, so the slow
+half has to run somewhat longer than the measured number for the two together
+to settle on it. There is no closed form for where a sum of two springs crosses
+a hundredth of its own peak, so `WeaponData` bisects for it once and remembers.
+The AK still settles in 648 ms against the measured 644, the M4 in 352 against
+353, whatever either of the two knobs above is set to.
+
+### How much the model moves
+
+It hangs off the camera, so it already carries the whole view kick;
+`viewmodel_recoil` is only the gun moving relative to the screen. That rotation
+happens about the eye, so a degree of it throws the gun a long way sideways,
+and anything but a small number reads as the weapon teleporting from shot to
+shot (Sid, 2026-09-22). The view kick should be most of what moves.
+
+Firing replays a firing clip on **every round**, cross-faded over 30 ms rather
+than stopping the player dead and cutting to frame zero. Leaving a running clip
+alone meant the gun animated about once per clip length: Sid, 2026-09-22, "with
+the AK, it triggers the animation about every second. The m4, maybe a half a
+second. Still not as fast as the gun shoots."
+
+The clips are found at setup from whatever the weapon's set actually carries,
+rather than one name being assumed, and cycled through, since CS2 ships several
+so a spray does not repeat one animation.
+
+### Bullets do not care about any of this
+
+Setting `view_kick_up` and `view_kick_side` to 0 removes the view kick
+entirely and **every bullet still lands in exactly the same place**. There is a
+test that asserts precisely that, because it is the property that makes a spray
+learnable.
 
 ## Recovery timings, measured
 
