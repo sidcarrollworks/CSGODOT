@@ -243,14 +243,17 @@ func _on_died() -> void:
 	var zone: StringName = hit_target.last_hitbox.zone if hit_target.last_hitbox != null else &"chest"
 	if model != null:
 		model.play(PlayerModel.death_for(zone, _deaths), 0.05)
-	if hitboxes != null:
-		hitboxes.set_active(false)
+	hit_target.set_active(false)
 	collision_layer = 0
 	_respawn_at_usec = Time.get_ticks_usec() + int(respawn_seconds * 1_000_000.0)
 	died.emit(zone)
 
 
-## Back at the start of the route, whole.
+func seconds_to_respawn() -> float:
+	return maxf(0.0, float(_respawn_at_usec - Time.get_ticks_usec()) / 1_000_000.0)
+
+
+## Back at the start of the route, whole; without a route, where it fell.
 func respawn() -> void:
 	alive = true
 	hit_target.reset()
@@ -260,8 +263,7 @@ func respawn() -> void:
 	_seen_for = 0.0
 	target = null
 	collision_layer = 2
-	if hitboxes != null:
-		hitboxes.set_active(true)
+	hit_target.set_active(true)
 	if not route.is_empty():
 		global_position = route[0]
 		_next = 1 % route.size()

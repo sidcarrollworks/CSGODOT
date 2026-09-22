@@ -78,20 +78,43 @@ Everything on it is a measurement, not decoration:
 
 ## The test range
 
-`maps/test_range/test_range.tscn`. A flat wall 512 units away to spray at, and
-a dummy at 1024 units with head, chest, stomach and leg hitboxes to check
-damage against.
+`maps/test_range/test_range.tscn`. A flat wall 512 units away to spray at,
+ruled in degrees, and beside it a lane with a dummy in it to check damage
+against.
 
 | Key | |
 |---|---|
 | `1` / `2` | AK-47 / M4A1-S |
 | `R` | reload |
 | `P` | export the spray you just fired |
-| `O` | clear the impact markers |
+| `O` | clear the impact markers, the log, and stand the dummy up |
+| `H` | draw or hide the dummy's hitboxes |
+| `K` | the dummy's armour: kevlar and helmet, kevlar, none |
+| `N` | the dummy's distance: 256, 512, 1024, 2048 units |
 
 Every bullet leaves a mark: dark on the wall, red on the dummy. The readout
 shows the current shot index in the pattern and the size of the inaccuracy cone
 right now, which is the number that moves when you walk, crouch or jump.
+
+**The wall** is ruled at every degree from the spawn's eye, bold every five and
+numbered: up and down from the aim line, left and right from the centre. A
+spray fired from the spawn reads off in degrees, and so does a CS2 spray fired
+at a wall from the same distance (496 units to the wall's face), so the two can
+be compared without knowing either's scale.
+
+**The dummy** is a bot that stands still and does not shoot back: the same
+body and hitboxes the bots on dust2 wear, CS2's nineteen capsules on its bones
+where the characters have been extracted, the four standard boxes where they
+have not. Fire at it from the yellow spot to the right of the spawn, where
+nothing stands between you at any distance. Its hitboxes are drawn over it,
+coloured by zone, and the one a round goes into lights up. Each round shows
+the damage it did beside where it landed (red for the head), and the readout
+at the top right keeps a log: what each round did, to which part, from how
+far, what it carried before the armour, and the health left; and for a kill,
+the damage in how many hits and the time from the first to the last. It starts
+in kevlar and a helmet, as an opponent in a rifle round would be. Killed, it
+goes down, and two and a half seconds later stands up again where it was,
+whole.
 
 `P` turns the marks you just made back into a spray pattern file in the same
 format the weapons read, so a pattern can be adjusted by eye against a CS2
