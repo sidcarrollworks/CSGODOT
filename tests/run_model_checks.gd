@@ -189,8 +189,64 @@ func _process(_delta: float) -> bool:
 	_view_model = null
 
 	_test_player_model()
+	_test_player_composes_kick_and_bob()
 	_report()
 	return true
+
+
+## The controller writes the weapon model's whole transform every frame:
+## the bob and sway in the camera's frame, the recoil kick in the model's.
+## Standing still and looking steadily, that must leave the kick exactly as
+## the weapon gives it, or the recoil work would be undone here.
+func _test_player_composes_kick_and_bob() -> void:
+	var player := (load("res://src/player/player.tscn") as PackedScene).instantiate() as PlayerController
+	root.add_child(player)
+	if player.view_model == null:
+		_check(false, "the player builds its view model")
+		player.free()
+		return
+	_check(player.body_model != null and player.body_model.character_rig != null, "the player builds its own body")
+	if player.body_model != null:
+		var rig: Skeleton3D = player.body_model.character_rig
+		_check(
+			rig.get_bone_pose_scale(rig.find_bone("head_0")).is_equal_approx(Vector3.ONE * RigModel.FOLDED)
+				and rig.get_bone_pose_scale(rig.find_bone("arm_upper_R")).is_equal_approx(Vector3.ONE * RigModel.FOLDED)
+				and rig.get_bone_pose_scale(rig.find_bone("pelvis")).is_equal_approx(Vector3.ONE),
+			"with its head and arms folded and the rest whole"
+		)
+
+	# Frame one captures the rest pose; then a kick from a real shot.
+	player.velocity = Vector3.ZERO
+	player.on_ground = true
+	player._update_viewmodel(1.0 / 60.0)
+	var rest := player.view_model.transform
+	var now := Time.get_ticks_usec()
+	player.weapon.fire(now, 0.5, Vector3.ZERO, 0.0, 0.0, Weapon.ShooterState.new())
+	player.weapon.update(1.0 / 128.0, now + 7813)
+	var kick := player.weapon.viewmodel_punch()
+	player._update_viewmodel(1.0 / 60.0)
+	var expected := rest.basis * Basis.from_euler(Vector3(deg_to_rad(kick.y), deg_to_rad(-kick.x), 0.0))
+	_check(
+		kick.length() > 0.01 and player.view_model.transform.basis.is_equal_approx(expected)
+			and player.view_model.transform.origin.is_equal_approx(rest.origin),
+		"standing still, a round's kick reaches the weapon model exactly as the weapon gives it (%.2f, %.2f degrees)" % [kick.x, kick.y]
+	)
+
+	# Running: the same kick, on top of the bob's offset.
+	player.velocity = Vector3(0.0, 0.0, -250.0)
+	for frame in 20:
+		player._update_viewmodel(1.0 / 60.0)
+	kick = player.weapon.viewmodel_punch()
+	var moved := player.view_model.transform
+	var motion_only := player.viewmodel_motion.update(0.0, Vector3(0.0, 0.0, -250.0), true, Vector2.ZERO)
+	_check(
+		not moved.origin.is_equal_approx(rest.origin)
+			and moved.basis.is_equal_approx(
+				motion_only.basis * rest.basis * Basis.from_euler(Vector3(deg_to_rad(kick.y), deg_to_rad(-kick.x), 0.0))
+			),
+		"running, the bob moves the model and the kick still sits inside it"
+	)
+	player.free()
 
 
 ## The bob and sway need no assets: a clock, a speed and a look.
