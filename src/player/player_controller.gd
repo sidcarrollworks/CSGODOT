@@ -320,11 +320,10 @@ func _update_weapon(
 	weapon.trigger_held = (
 		Input.is_action_pressed(&"attack") or not fire_events.is_empty()
 	)
-	weapon.update(delta, now)
-
 	var state := Weapon.ShooterState.new(
 		Vector2(velocity.x, velocity.z).length(), on_ground, is_ducked
 	)
+	weapon.update(delta, now, state)
 
 	for event in fire_events:
 		_try_shoot(

@@ -56,6 +56,8 @@ func _process(_delta: float) -> bool:
 		_test_damage_falloff()
 		_test_hitbox_multipliers()
 		_test_fatal_headshot_ranges()
+		_test_landing_costs_accuracy()
+		_test_every_value_comes_from_the_sheet()
 		_build_world()
 		_frames += 1
 		return false
@@ -328,9 +330,10 @@ func _test_patterns_are_the_measured_ones() -> void:
 		ak.magazine_size, ak.recoil_pattern.size(),
 		"the AK magazine and its pattern are the same length"
 	)
-	_check_equal(
-		m4.magazine_size, m4.recoil_pattern.size(),
-		"the M4A1-S magazine and its pattern are the same length"
+	_check_equal(m4.magazine_size, 20, "the M4A1-S magazine is the sheet's 20")
+	_check(
+		m4.recoil_pattern.size() >= m4.magazine_size,
+		"the M4A1-S pattern covers its whole magazine"
 	)
 
 	for data in [ak, m4]:
@@ -838,14 +841,71 @@ func _test_accuracy_resets_as_slowly_as_measured() -> void:
 	for data in [WeaponLibrary.ak47(), WeaponLibrary.m4a1s()]:
 		var reset := _accuracy_reset(data)
 		_check(
-			absf(reset - data.accuracy_reset_time) < 0.02,
-			"%s accuracy resets in the measured %.0f ms (%.0f ms)"
+			absf(reset - data.accuracy_reset_time()) < 0.02,
+			"%s accuracy resets in %.0f ms (%.0f ms)"
 				% [
 					data.display_name,
-					data.accuracy_reset_time * 1000.0,
+					data.accuracy_reset_time() * 1000.0,
 					reset * 1000.0
 				]
 		)
+		# The sheet's recovery time is when a round's penalty is down to a tenth.
+		var weapon := Weapon.new(data)
+		var now := int(SECOND)
+		weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, _standing())
+		var ticks := int(round(data.recovery_time_stand / DT))
+		for tick in ticks:
+			now += int(DT * SECOND)
+			weapon.update(DT, now)
+		var left: float = weapon.current_inaccuracy(_standing()) - data.inaccuracy_standing
+		_check(
+			absf(left / data.inaccuracy_per_shot - 0.1) < 0.01,
+			"%s is down to a tenth of a round's penalty after the sheet's %.3f s (%.3f)"
+				% [data.display_name, data.recovery_time_stand, left / data.inaccuracy_per_shot]
+		)
+
+		# Crouched it recovers on the sheet's crouched time, which is shorter.
+		var crouched := Weapon.new(data)
+		var ducked := Weapon.ShooterState.new(0.0, true, true)
+		now = int(SECOND)
+		crouched.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, ducked)
+		for tick in int(round(data.recovery_time_crouch / DT)):
+			now += int(DT * SECOND)
+			crouched.update(DT, now, ducked)
+		left = crouched.current_inaccuracy(ducked) - data.inaccuracy_crouching
+		_check(
+			absf(left / data.inaccuracy_per_shot - 0.1) < 0.01,
+			"%s crouched is down to a tenth after the sheet's %.3f s (%.3f)"
+				% [data.display_name, data.recovery_time_crouch, left / data.inaccuracy_per_shot]
+		)
+
+
+## Landing from a jump costs accuracy for a moment, as the sheet's "after
+## landing" figure says, and it recovers the way a round's penalty does.
+func _test_landing_costs_accuracy() -> void:
+	var data := WeaponLibrary.ak47()
+	var weapon := Weapon.new(data)
+	var now := int(SECOND)
+	weapon.update(DT, now, Weapon.ShooterState.new(0.0, false, false))
+	now += int(DT * SECOND)
+	weapon.update(DT, now, _standing())
+	# The tick it lands on has already begun to recover it.
+	var landed := weapon.current_inaccuracy(_standing())
+	var expected := data.inaccuracy_standing + (data.inaccuracy_landing - data.inaccuracy_standing) * exp(
+		-DT / data.accuracy_time_constant()
+	)
+	_check(
+		absf(landed - expected) < 0.001,
+		"just landed, the AK's cone is the sheet's 33.63, a tick recovered (%.3f against %.3f degrees)"
+			% [landed, expected]
+	)
+	for tick in int(round(data.recovery_time_stand * 2.0 / DT)):
+		now += int(DT * SECOND)
+		weapon.update(DT, now, _standing())
+	_check(
+		weapon.current_inaccuracy(_standing()) < data.inaccuracy_standing * 1.1,
+		"and it is back to standing accuracy shortly after"
+	)
 
 
 ## The point of the two numbers being separate. A player who taps again the
@@ -1246,6 +1306,45 @@ func _test_hitbox_multipliers() -> void:
 		m4.base_damage * m4.hitbox_multiplier(&"head"), 132.05,
 		"an M4A1-S headshot is 132 unarmoured at point blank"
 	)
+
+
+## Everything the firing model reads is the sheet's, read through
+## WeaponSheet rather than typed in, so a new weapon is one line.
+func _test_every_value_comes_from_the_sheet() -> void:
+	_check(WeaponSheet.rows().size() == 45, "the sheet has its 45 rows (%d)" % WeaponSheet.rows().size())
+	var ak := WeaponLibrary.ak47()
+	_check_near(ak.base_damage, 36.0, "AK damage 36")
+	_check_near(ak.armor_penetration, 0.775, "AK armour penetration 77.5%")
+	_check_near(ak.range_modifier, 0.98, "AK loses 2% every 500 units")
+	_check_near(ak.cycle_time, 0.1, "AK at 600 RPM")
+	_check_equal(ak.magazine_size, 30, "AK magazine 30")
+	_check_equal(ak.reserve_ammo, 90, "AK reserve 90")
+	_check_near(ak.max_player_speed, 215.0, "AK mobility 215")
+	_check_near(ak.max_range, 8192.0, "AK range 8192")
+	_check_near(ak.recovery_time_stand, 0.368, "AK recovers standing in 0.368 s")
+	_check(ak.automatic, "the AK is automatic")
+	var m4 := WeaponLibrary.m4a1s()
+	_check_equal(m4.reserve_ammo, 60, "M4A1-S reserve 60")
+	_check_near(m4.inaccuracy_per_shot, WeaponSheet.cone_degrees(7.0), "the M4A1-S reads its silencer row for firing inaccuracy")
+	_check_near(m4.base_damage, 38.0, "and its main row where the silencer row says the same")
+	# Units the sheet writes its own way.
+	_check_near(WeaponSheet.parse_number("$2,700"), 2700.0, "prices lose their dollar and comma")
+	_check_near(WeaponSheet.parse_number("77.50%"), 0.775, "percentages become fractions")
+	_check_near(WeaponSheet.parse_number("3.475x"), 3.475, "multipliers lose their x")
+	_check_near(WeaponSheet.parse_number("21.74m"), 21.74, "metres lose their m")
+	_check(is_nan(WeaponSheet.parse_number("-")), "a dash is no number")
+	_check(is_nan(WeaponSheet.parse_number("see note")), "nor is a note")
+	# The sheet's accurate range is where its standing cone is six inches wide,
+	# for every weapon that has both: the conversion to degrees holds for all.
+	var worst := 0.0
+	for weapon: String in WeaponSheet.rows():
+		var metres := WeaponSheet.number(weapon, "Accurate Range Stand")
+		var stand := WeaponSheet.number(weapon, "Standing Inaccuracy")
+		if is_nan(metres) or is_nan(stand):
+			continue
+		var inches := tan(deg_to_rad(WeaponSheet.cone_degrees(stand))) * metres / 0.0254
+		worst = maxf(worst, absf(inches - 6.0))
+	_check(worst < 0.02, "every weapon's accurate range is its six-inch cone (worst off by %.3f in)" % worst)
 
 
 ## The sheet's fatal headshot ranges, which are the damage, the multiplier,

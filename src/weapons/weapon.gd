@@ -105,6 +105,7 @@ var aim_punch_velocity: Vector2:
 var _last_shot_usec: int = -1_000_000_000
 var _shot_index: int = 0
 var _inaccuracy: float = 0.0
+var _was_on_ground: bool = true
 var _reloading_until_usec: int = -1
 
 
@@ -133,7 +134,12 @@ func can_fire(now_usec: int) -> bool:
 
 ## Advances recoil recovery and inaccuracy decay. Call once per simulation
 ## tick, whether or not anything was fired.
-func update(dt: float, now_usec: int) -> void:
+##
+## state is what the shooter is doing this tick, where the caller knows it:
+## crouched, the penalty recovers on the crouched time, and landing from a
+## jump puts the landing penalty on. Without it the shooter counts as
+## standing on the ground.
+func update(dt: float, now_usec: int, state: ShooterState = null) -> void:
 	var since_shot := float(now_usec - _last_shot_usec) / 1_000_000.0
 
 	# Held, and still shooting. The gap matters as well as the button, because
@@ -157,7 +163,12 @@ func update(dt: float, now_usec: int) -> void:
 	if since_shot > data.recoil_reset_time:
 		_shot_index = 0
 
-	_decay_inaccuracy(dt)
+	var ducked := state != null and state.ducked
+	if state != null:
+		if state.on_ground and not _was_on_ground:
+			_inaccuracy = maxf(_inaccuracy, data.inaccuracy_landing - data.inaccuracy_standing)
+		_was_on_ground = state.on_ground
+	_decay_inaccuracy(dt, ducked)
 
 
 ## Runs the three punch springs forward.
@@ -223,13 +234,13 @@ func _let_go_of_the_trigger() -> void:
 ##
 ## Exponential, not linear, for two reasons: it is what the measured accuracy
 ## box does (the steps shrink as it recovers, which is a straight line only on
-## a log scale), and it is what CS:GO's accuracy penalty did. The time
-## constant comes from data.accuracy_reset_time, so one standing shot recovers
-## in exactly the measured time and a spray takes proportionally longer.
-func _decay_inaccuracy(dt: float) -> void:
+## a log scale), and it is what CS's accuracy penalty does. The time constant
+## comes from the weapon sheet's recovery time, standing or crouched: the
+## penalty is down to a tenth after it.
+func _decay_inaccuracy(dt: float, ducked: bool = false) -> void:
 	if _inaccuracy <= 0.0:
 		return
-	_inaccuracy *= exp(-dt / data.accuracy_time_constant())
+	_inaccuracy *= exp(-dt / data.accuracy_time_constant(ducked))
 	if _inaccuracy < data.accuracy_reset_threshold():
 		_inaccuracy = 0.0
 
