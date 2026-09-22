@@ -120,7 +120,7 @@ func can_fire(now_usec: int) -> bool:
 func update(dt: float, now_usec: int) -> void:
 	var since_shot := float(now_usec - _last_shot_usec) / 1_000_000.0
 
-	_decay_punch(dt)
+	_decay_punch(dt, since_shot <= data.cycle_time * 2.0)
 
 	# Back to the top of the pattern once the trigger has been off long enough.
 	#
@@ -144,15 +144,23 @@ func update(dt: float, now_usec: int) -> void:
 ## The third is the weapon model's, on the few hundred milliseconds measured
 ## off CS2.
 ##
+## The slow half lets go faster once the trigger is up, because the reason it
+## is slow is to still be there when the next round lands, and after the last
+## round nothing is landing. CS splits these the same way: its recoil index
+## recovers between rounds rather than while they are going out.
+##
 ## Running them every tick, including while firing, is deliberate. The old
 ## code only decayed between rounds, which is what made the view snap up to
 ## each bullet and then sag.
-func _decay_punch(dt: float) -> void:
+func _decay_punch(dt: float, firing: bool) -> void:
 	_snap.advance(
 		dt, data.snap_punch_damping(), data.snap_punch_spring(), PUNCH_MAX_STEP
 	)
 	_hold.advance(
-		dt, data.hold_punch_damping(), data.hold_punch_spring(), PUNCH_MAX_STEP
+		dt,
+		data.hold_punch_damping(firing),
+		data.hold_punch_spring(firing),
+		PUNCH_MAX_STEP
 	)
 	_model.advance(
 		dt, data.model_punch_damping(), data.model_punch_spring(), PUNCH_MAX_STEP

@@ -105,6 +105,7 @@ The knobs, all on `WeaponData`:
 |---|---|---|
 | `view_kick_spray_peak` | 0.5 | Where the crosshair peaks over a spray, against the spray's own climb |
 | `view_punch_recovery_time` | 1.9 | How long the camera's SLOW half takes to settle, in seconds |
+| `view_punch_release_time` | 0.35 | How long the slow half takes once the trigger is UP, in seconds |
 | `view_punch_snap_time` | 0.18 | How long the camera's FAST half takes to settle, in seconds |
 | `view_kick_snap_share` | 0.4 | How much of a round's kick goes to the fast half |
 | `view_kick_side_ratio` | 0.2 | Sideways kick per round, against the climb |
@@ -174,6 +175,26 @@ The crosshair shoves up about 1.4° and falls most of the way back on every AK
 round, on a climb that totals 7.87°. There is a test that it falls back
 between every round rather than ramping, and another that the shove is worth
 at least a tenth of the climb.
+
+### Letting go of the trigger
+
+The slow half is slow so that a round's kick is still there when the next few
+land. Nothing lands after the last round, so keeping it slow there only leaves
+the view hanging: Sid, 2026-09-22, "the decay when you stop shooting... feels
+a bit too floating." It switches to `view_punch_release_time` once the trigger
+has been up for two rounds' worth of time. CS splits these the same way — its
+recoil index recovers between rounds, not while they are going out.
+
+The release is also nearly critically damped, where the rest of the kick is
+not. A return should not swing past the thing it is returning to, and
+under-damped it did: the crosshair passed 0.74° **below** where the player was
+pointing and came back up to it, which is most of what reads as floating
+rather than settling.
+
+After a full AK magazine the crosshair is halfway home in 273 ms against 320,
+within a quarter degree in 420 ms against 531, and never dips below centre.
+The spray's height, the per-round shove and the single tap are all untouched,
+because none of them happens after the trigger is up.
 
 ### The camera and the weapon model are separate springs
 

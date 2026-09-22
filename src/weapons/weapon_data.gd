@@ -25,6 +25,9 @@ const SETTLE_FRACTION := 0.01
 ## walks a spray with.
 const SIMULATION_HZ := 128.0
 
+## The damping ratio the camera's slow half returns on once the trigger is up.
+const RELEASE_DAMPING_RATIO := 0.95
+
 var _solved_kick_up: float = -1.0
 
 ## A punch angle with its own velocity, damped, with a spring pulling it back
@@ -230,6 +233,22 @@ class Punch:
 ## round reads as its own shove.
 @export var view_punch_snap_time: float = 0.18
 
+## How long the camera's slow half takes to settle once the trigger is OFF,
+## in seconds.
+##
+## Shorter than view_punch_recovery_time, and separate from it because the two
+## are wanted for opposite reasons. The long recovery exists so a round's kick
+## is still there when the next few land, which is what carries the crosshair
+## up a spray. Nothing is landing after the last round, so keeping it long
+## there only leaves the view hanging.
+##
+## CS has the same split: its recoil index recovers between rounds, not while
+## they are going out.
+##
+## Sid, 2026-09-22: "let's also make the decay when you stop shooting a little
+## short. It feels a bit too floating at the moment."
+@export var view_punch_release_time: float = 0.35
+
 ## How much of a round's kick goes to the fast half.
 ##
 ## The rest goes to the slow one. This is the balance between "you can see
@@ -310,19 +329,19 @@ func punch_peak_ratio() -> float:
 ## envelope, so zeta*w is what the recovery time fixes; the peak term is there
 ## because the peak is reached some way into the response, well below where
 ## the envelope starts.
-func punch_frequency_for(recovery: float) -> float:
-	var z := _damping_ratio()
+func punch_frequency_for(recovery: float, ratio: float = -1.0) -> float:
+	var z := _damping_ratio(ratio)
 	var ringing := sqrt(1.0 - z * z)
 	var peak := ringing * punch_peak_ratio()
 	return -log(SETTLE_FRACTION * peak) / maxf(z * recovery, 0.0001)
 
 
-func punch_damping_for(recovery: float) -> float:
-	return 2.0 * _damping_ratio() * punch_frequency_for(recovery)
+func punch_damping_for(recovery: float, ratio: float = -1.0) -> float:
+	return 2.0 * _damping_ratio(ratio) * punch_frequency_for(recovery, ratio)
 
 
-func punch_spring_for(recovery: float) -> float:
-	var w := punch_frequency_for(recovery)
+func punch_spring_for(recovery: float, ratio: float = -1.0) -> float:
+	var w := punch_frequency_for(recovery, ratio)
 	return w * w
 
 
@@ -337,13 +356,26 @@ func punch_impulse_scale_for(recovery: float) -> float:
 	return punch_frequency_for(recovery) / punch_peak_ratio()
 
 
-## The camera's slow half: what carries the crosshair up the spray.
-func hold_punch_damping() -> float:
-	return punch_damping_for(view_punch_recovery_time)
+## The camera's slow half: what carries the crosshair up the spray while the
+## trigger is down, and lets go of it faster once the trigger is up.
+func hold_punch_damping(firing: bool = true) -> float:
+	return punch_damping_for(_hold_time(firing), _hold_ratio(firing))
 
 
-func hold_punch_spring() -> float:
-	return punch_spring_for(view_punch_recovery_time)
+func hold_punch_spring(firing: bool = true) -> float:
+	return punch_spring_for(_hold_time(firing), _hold_ratio(firing))
+
+
+func _hold_time(firing: bool) -> float:
+	return view_punch_recovery_time if firing else view_punch_release_time
+
+
+## Nearly critical once the trigger is up. A return should not swing past the
+## thing it is returning to: under-damped, the crosshair passed most of a
+## degree BELOW where the player was pointing and came back up to it, which is
+## most of what reads as the view floating rather than settling.
+func _hold_ratio(firing: bool) -> float:
+	return -1.0 if firing else RELEASE_DAMPING_RATIO
 
 
 func hold_punch_impulse_scale() -> float:
@@ -378,8 +410,10 @@ func model_punch_impulse_scale() -> float:
 	return punch_impulse_scale_for(recoil_animation_time)
 
 
-func _damping_ratio() -> float:
-	return clampf(punch_damping_ratio, 0.05, 0.999)
+func _damping_ratio(ratio: float = -1.0) -> float:
+	return clampf(
+		punch_damping_ratio if ratio < 0.0 else ratio, 0.05, 0.999
+	)
 
 
 ## Time constant of the accuracy decay, in seconds.

@@ -40,7 +40,7 @@ func _process(_delta: float) -> bool:
 		_test_the_solver_agrees_with_the_weapon()
 		_test_view_rises_rather_than_teleporting()
 		_test_viewmodel_follows_the_view()
-		_test_the_camera_settles_long_after_the_model()
+		_test_the_camera_holds_while_firing_and_lets_go_after()
 		_test_the_model_moves_less_than_the_view()
 		_test_a_single_tap_kicks_the_view()
 		_test_animation_lasts_as_long_as_measured()
@@ -544,43 +544,53 @@ func _test_viewmodel_follows_the_view() -> void:
 
 
 ## The camera and the weapon model are separate springs on purpose, and the
-## camera's is the slow one. Driving both off the model's measured time made
-## the crosshair reach its full height within a couple of rounds and sit
-## there, when it should climb with the spray.
-func _test_the_camera_settles_long_after_the_model() -> void:
+## camera's slow half is what lets the crosshair climb across a spray rather
+## than max out in the first few rounds.
+##
+## That half also lets go faster once the trigger is up, because the reason it
+## is slow is to still be there when the next round lands. Sid, 2026-09-22:
+## "the decay when you stop shooting... feels a bit too floating."
+func _test_the_camera_holds_while_firing_and_lets_go_after() -> void:
 	for data in [WeaponLibrary.ak47(), WeaponLibrary.m4a1s()]:
-		var weapon := Weapon.new(data)
-		var now := int(SECOND)
-		weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, _standing())
+		_check(
+			data.hold_punch_spring(false) > data.hold_punch_spring(true) * 4.0,
+			"%s pulls the view back far harder off the trigger than on it"
+				% data.display_name
+		)
 
-		var view_peak := 0.0
-		var view_samples: Array[float] = []
+		# Empty a magazine, then let go and watch it come home.
+		var weapon := Weapon.new(data)
+		var state := _standing()
+		var now := 0
+		var fired := 0
+		while fired < data.magazine_size:
+			now += int(DT * SECOND)
+			weapon.update(DT, now)
+			if weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, state) != null:
+				fired += 1
+
+		var left := weapon.aim_punch.y
+		var halfway := -1.0
+		var lowest := 0.0
 		for tick in 1024:
 			now += int(DT * SECOND)
 			weapon.update(DT, now)
-			var size := weapon.aim_punch.length()
-			view_peak = maxf(view_peak, size)
-			view_samples.append(size)
-
-		var settled := 0.0
-		for i in range(view_samples.size() - 1, -1, -1):
-			if view_samples[i] >= view_peak * WeaponData.SETTLE_FRACTION:
-				settled = float(i + 1) * DT
-				break
+			if halfway < 0.0 and weapon.aim_punch.y < left * 0.5:
+				halfway = float(tick + 1) * DT
+			lowest = minf(lowest, weapon.aim_punch.y)
 
 		_check(
-			absf(settled - data.view_punch_recovery_time) < 0.03,
-			"%s camera settles in view_punch_recovery_time, %.0f ms (%.0f ms)"
-				% [
-					data.display_name,
-					data.view_punch_recovery_time * 1000.0,
-					settled * 1000.0
-				]
+			halfway > 0.0 and halfway < 0.35,
+			"%s crosshair is halfway home %.0f ms after the last round"
+				% [data.display_name, halfway * 1000.0]
 		)
+		# A return should not swing past the thing it is returning to. Under
+		# damped, this passed most of a degree BELOW where the player was
+		# pointing and came back up, which is most of what reads as floating.
 		_check(
-			settled > _settle(data)[0] * 2.0,
-			"%s camera is still moving long after the gun has stopped (%.0f ms against %.0f ms)"
-				% [data.display_name, settled * 1000.0, _settle(data)[0] * 1000.0]
+			lowest > -0.05,
+			"%s comes home without dipping below where the player is pointing (%.2f degrees)"
+				% [data.display_name, lowest]
 		)
 
 
@@ -762,14 +772,17 @@ func _test_punch_is_the_same_at_any_frame_length() -> void:
 	fine.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, _standing())
 	coarse.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, _standing())
 
-	for tick in 32:
+	# Inside the firing window: past it the two runs would cross the release
+	# switch at different moments and diverge for a reason that is not the
+	# integration.
+	for tick in 16:
 		now += int(DT * SECOND)
 		fine.update(DT, now)
-	coarse.update(32.0 * DT, now)
+	coarse.update(16.0 * DT, now)
 
 	_check(
 		(fine.aim_punch - coarse.aim_punch).length() < 0.001,
-		"a quarter-second frame lands where thirty-two ticks do (%.4f against %.4f degrees)"
+		"an eighth-second frame lands where sixteen ticks do (%.4f against %.4f degrees)"
 			% [fine.aim_punch.length(), coarse.aim_punch.length()]
 	)
 
