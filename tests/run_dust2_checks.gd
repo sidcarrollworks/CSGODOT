@@ -102,6 +102,20 @@ func _import() -> bool:
 		lightmaps.get("ambient") is Color,
 		"the lightmap's average is measured, for the ambient of the rest (scripts/extract_assets.sh lightmaps runs the prepare step)"
 	)
+	var probes: Dictionary = stats.get("probes", {})
+	_check(
+		int(probes.get("volumes", 0)) == 43 and int(probes.get("surfaces", 0)) >= 1000,
+		"the map's 43 light-probe volumes are read and light the props the lightmaps did not (%d volumes, %d surfaces; scripts/extract_assets.sh lightmaps)"
+			% [probes.get("volumes", 0), probes.get("surfaces", 0)]
+	)
+	var field := LightProbeField.find(self)
+	var under_awning := field.cube_at(Vector3(2380, -50, 300)) if field != null else PackedColorArray()
+	var open_ground := field.cube_at(Vector3(2600, 20, -1560)) if field != null else PackedColorArray()
+	_check(
+		field != null and under_awning.size() == 6 and open_ground[2].b > open_ground[2].r
+			and under_awning[3].r > under_awning[3].b,
+		"the field is in the scene: the sky is blue from above at B, the awning's floor warm from below at CT spawn"
+	)
 
 	var entities_path := ProjectSettings.globalize_path(
 		map_file.get_base_dir().path_join(ENTITIES_FILE)

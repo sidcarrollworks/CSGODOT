@@ -399,14 +399,27 @@ extract_sky() {
 ## live, so its shadow masks are not fetched. Source 2 Viewer writes the
 ## irradiance as an .exr of 300 MB, which Godot compresses back down on
 ## import.
+## Also the light probes: one 3D atlas of ambient cubes for the whole map,
+## which decompiles to one small HDR image per depth slice (720 on dust2).
+## They go in a probes/ directory with a .gdignore, so Godot does not import
+## seven hundred textures it will never draw; the game reads them itself.
 extract_lightmaps() {
 	local maps
-	maps="$(list_paths "$MAP_VPK" | grep -E '/lightmaps/(irradiance|directional_irradiance)\.vtex_c$' | paste -sd, - || true)"
+	maps="$(list_paths "$MAP_VPK" | grep -E '/lightmaps/(irradiance|directional_irradiance|env_light_probe_volume_atlas)\.vtex_c$' | paste -sd, - || true)"
 	require_filter "$maps" "the lightmaps"
 	mkdir -p "$MAP_DEST"
-	echo "Extracting the baked lighting (a few hundred megabytes, uncompressed)"
+	echo "Extracting the baked lighting (a few hundred megabytes, uncompressed) and the light probes"
 	echo "        -> $MAP_DEST"
-	"$S2V_BIN" -i "$MAP_VPK" -f "$maps" -o "$MAP_DEST" -d | grep -E '^--- Dump' || true
+	"$S2V_BIN" -i "$MAP_VPK" -f "$maps" -o "$MAP_DEST" -d | grep -E '^--- Dump' | grep -v '_atlas_z' || true
+	find "$MAP_DEST" -name 'env_light_probe_volume_atlas_z*.exr' | while IFS= read -r slice; do
+		local probes="$(dirname "$slice")/probes"
+		mkdir -p "$probes"
+		touch "$probes/.gdignore"
+		mv "$slice" "$probes/"
+	done
+	local count
+	count="$(find "$MAP_DEST" -path '*/probes/env_light_probe_volume_atlas_z*.exr' | wc -l | tr -d ' ')"
+	echo "        light probes: $count atlas slices under lightmaps/probes/"
 }
 
 extract_map() {

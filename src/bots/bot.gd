@@ -150,6 +150,7 @@ func _physics_process(delta: float) -> void:
 	simulate(delta)
 	if model != null:
 		model.update_motion(velocity, yaw_degrees, is_ducked, on_ground)
+		model.light_from(global_position + Vector3.UP * 40.0)
 
 
 ## The nearest living player in sight: within range, within the cone, and

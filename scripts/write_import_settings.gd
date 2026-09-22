@@ -65,6 +65,9 @@ func _walk(dir_path: String, textures: PackedStringArray, gltfs: PackedStringArr
 		elif extension == "gltf":
 			gltfs.append(dir_path.path_join(file))
 	for subdirectory in DirAccess.get_directories_at(dir_path):
+		# What Godot will not import needs no settings (the light probes).
+		if FileAccess.file_exists(dir_path.path_join(subdirectory).path_join(".gdignore")):
+			continue
 		_walk(dir_path.path_join(subdirectory), textures, gltfs)
 
 
