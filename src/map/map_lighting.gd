@@ -19,6 +19,9 @@ extends RefCounted
 ## the game shows, found by comparing renders against the game.
 const SUN_ENERGY_PER_BRIGHTNESS := 0.7
 
+## How far towards the sun a shadow split reaches, in units (see build).
+const SHADOW_PANCAKE := 4096.0
+
 ## Screen-space occlusion reaches this far, in inches. Godot's default is one
 ## metre, which at this scale is one unit: nothing.
 const OCCLUSION_RADIUS := 24.0
@@ -58,6 +61,16 @@ static func build(
 	# sharp over that range, and the soft filter at its highest, or the
 	# penumbra of the sun's quarter degree comes out as dither.
 	light.directional_shadow_max_distance = 8192.0
+	# How far towards the sun each split's shadow map reaches before what
+	# is beyond is squashed flat onto its edge ("pancaked"). The default is
+	# 20, metres to Godot and 20 inches to us: every building taller than a
+	# crate was squashed, and a squashed wall's huge triangles tilt in depth
+	# and stop covering the ground they shade. Standing in a tall building's
+	# shadow at T spawn, it came out as a lit street with ghost rings of the
+	# rooftop dishes in it, and whole from further off, where a larger split
+	# took it. dust2's roofs stand about 1,100 units over its streets, 1,400
+	# along its 50-degree sun; this covers any map's at any sun above 15.
+	light.directional_shadow_pancake_size = SHADOW_PANCAKE
 	parent.add_child(light)
 
 	var environment := Environment.new()
