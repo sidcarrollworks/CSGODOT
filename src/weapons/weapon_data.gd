@@ -641,4 +641,5 @@ func hitbox_multiplier(hitbox: StringName) -> float:
 		&"chest": return chest_multiplier
 		&"stomach": return stomach_multiplier
 		&"leg": return leg_multiplier
+		# Arms take a chest's, as in CS.
 		_: return chest_multiplier

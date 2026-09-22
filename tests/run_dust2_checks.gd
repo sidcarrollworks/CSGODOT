@@ -169,6 +169,13 @@ func _test_bots_walk() -> void:
 			bot.model != null and bot.model.animation_player.current_animation != &"",
 			"and is animated (%s)" % (bot.model.animation_player.current_animation if bot.model != null else "no model")
 		)
+		var head_height: float = bot.hitboxes.hitboxes[0].global_position.y - bot.global_position.y \
+			if bot.hitboxes != null and not bot.hitboxes.hitboxes.is_empty() else 0.0
+		_check(
+			bot.hitboxes != null and bot.hitboxes.hitboxes.size() == 19 and head_height > 50.0 and head_height < 72.0
+				and bot.hit_target != null and bot.alive,
+			"and wears the game's hitboxes on its bones as it walks, the head %.0f up" % head_height
+		)
 
 
 func _test_every_spawn_is_on_floor() -> void:

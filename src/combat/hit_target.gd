@@ -5,13 +5,18 @@ extends Node3D
 ##
 ## Builds its own hitboxes rather than loading a scene, so the proportions are
 ## visible as numbers you can check against a player hull rather than buried in
-## a scene file.
+## a scene file. Or not: a body with a skeleton wears the model's own hitboxes
+## (SkinnedHitboxes) and hands them over with adopt.
 
 signal damaged(amount: float, zone: StringName, remaining: float)
 signal died
 
 @export var max_health: float = 100.0
 @export var armor: float = 100.0
+
+## Off for a target whose hitboxes come from elsewhere; the crude body that
+## goes with them stays away too.
+@export var build_own_hitboxes: bool = true
 
 ## Standing player proportions, in Source units. The hull is 32 wide and 72
 ## tall; these split that vertically the way CS does.
@@ -25,13 +30,24 @@ const ZONES := {
 var health: float
 var alive: bool = true
 
+## The hitbox the last damage came through, or null: for whoever wants to
+## know which side was hit.
+var last_hitbox: Hitbox
+
 var _hitboxes: Array[Hitbox] = []
 
 
 func _ready() -> void:
 	health = max_health
-	_build_hitboxes()
-	_build_visual()
+	if build_own_hitboxes:
+		_build_hitboxes()
+		_build_visual()
+
+
+## Takes a hitbox built elsewhere as one of this target's.
+func adopt(hitbox: Hitbox) -> void:
+	hitbox.target = self
+	_hitboxes.append(hitbox)
 
 
 func _build_hitboxes() -> void:
@@ -80,9 +96,10 @@ func hitboxes() -> Array[Hitbox]:
 
 ## Applies damage already reduced for range and hitbox. Armour absorbs a share
 ## and degrades as it does.
-func apply_damage(amount: float, zone: StringName, armor_penetration: float) -> float:
+func apply_damage(amount: float, zone: StringName, armor_penetration: float, hitbox: Hitbox = null) -> float:
 	if not alive:
 		return 0.0
+	last_hitbox = hitbox
 
 	var dealt := amount
 	if armor > 0.0 and zone != &"leg":
