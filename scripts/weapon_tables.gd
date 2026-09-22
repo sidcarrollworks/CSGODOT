@@ -21,6 +21,9 @@ const FIRST_PERSON_ROOT := "res://assets/characters/animation/anims/viewmodel"
 const THIRD_PERSON_ROOT := "res://assets/characters/animation/anims/world"
 const SKELETONS_ROOT := "res://assets/characters/animation/skeletons/weapons"
 const SOUNDS_ROOT := "res://assets/sounds/sounds/weapons"
+## The equipment icons and the scope overlay, from the hud step.
+const ICONS_ROOT := "res://assets/hud/panorama/images/icons/equipment"
+const SCOPE_ROOT := "res://assets/hud/panorama/images/hud/scope"
 ## The first-person clips' own data (lengths and events), dumped by the
 ## weapon-animations step.
 const CLIP_DATA := "res://assets/characters/animation/anims/viewmodel/clip_data.txt"
@@ -131,9 +134,11 @@ func _models_page(source: String, date: String) -> String:
 		"- First person: `%s/<set>/`, one glTF per clip, each carrying the arms' and the gun's skeletons. The shared `_default_` sets are the M4A1-S's (`rifle/_default_rifle`) and the USP-S's (`pistol/_default_pistol`); SMGs, shotguns, snipers and machine guns are all `rifle/` sets." % FIRST_PERSON_ROOT,
 		"- Third person: `%s/<set>/`, the gun's own draw, idle, reload and fire, standing and crouched, over the shared locomotion of `rifle/_default_rifle` or `pistol/_default_pistol`." % THIRD_PERSON_ROOT,
 		"- Skeletons: `%s/<name>.vnmskel`." % SKELETONS_ROOT,
+		"- Icons: `%s/<class less weapon_>.svg`, from `scripts/extract_assets.sh hud`; the M4A1-S and USP-S have `_off` icons for the silencer off." % ICONS_ROOT,
+		"- The sniper scope's overlay: `%s/`, %s; the game composes it in code: the mask's opening over the lens's tint, with the cross drawn in the soft line." % [SCOPE_ROOT, ", ".join(Array(_files(SCOPE_ROOT, "png")).map(func(f: String) -> String: return "`%s`" % f)) if not _files(SCOPE_ROOT, "png").is_empty() else "not extracted"],
 		"",
-		"| Class | Sheet row | Folder | Model | Magazine | First person | Third person | Skeleton |",
-		"|---|---|---|---|---|---|---|---|",
+		"| Class | Sheet row | Folder | Model | Magazine | First person | Third person | Skeleton | Icon |",
+		"|---|---|---|---|---|---|---|---|---|",
 	])
 	var clip_lines := PackedStringArray()
 	for gun in GUNS:
@@ -159,10 +164,14 @@ func _models_page(source: String, date: String) -> String:
 		var skeleton: String = gun[5] if FileAccess.file_exists(SKELETONS_ROOT.path_join(gun[5] + ".vnmskel")) else ""
 		if skeleton.is_empty():
 			_gaps.append("%s skeleton %s" % [gun[0], gun[5]])
-		lines.append("| `%s` | %s | `%s` | %s | %s | %s (%d) | %s (%d) | %s |" % [
+		var icon: String = String(gun[0]).trim_prefix("weapon_") + ".svg"
+		if not FileAccess.file_exists(ICONS_ROOT.path_join(icon)):
+			_gaps.append("%s icon %s" % [gun[0], icon])
+			icon = ""
+		lines.append("| `%s` | %s | `%s` | %s | %s | %s (%d) | %s (%d) | %s | %s |" % [
 			gun[0], gun[1], gun[2], _code(model), _code(magazine),
 			_code(gun[3]) if not first.is_empty() else "-", first.size(),
-			_code(gun[4]) if not third.is_empty() else "-", third.size(), _code(skeleton),
+			_code(gun[4]) if not third.is_empty() else "-", third.size(), _code(skeleton), _code(icon),
 		])
 		clip_lines.append("| `%s` | %s | %s |" % [gun[0], ", ".join(first) if not first.is_empty() else "-", ", ".join(third) if not third.is_empty() else "-"])
 	lines.append_array(PackedStringArray([

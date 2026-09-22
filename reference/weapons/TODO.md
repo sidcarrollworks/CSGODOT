@@ -106,7 +106,7 @@ Roughly in order; L1 to L3 can start at once.
   parts, draw, and for the modes: silencer on and off, zoom in and out, burst.
   Widen `SOUND_FILTER`; list the files per weapon in
   `reference/weapons/sounds.md` so `WeaponSounds` can be filled in remotely.
-- [ ] **L4. Scope overlays.** The scope textures and the zoom sounds for the
+- [x] **L4. Scope overlays.** *(done 2026-09-22: `scripts/extract_assets.sh hud` fetches the overlay, three images the game composes in code, and every equipment icon; the zoom sounds came with L3; `models.md` lists both)* The scope textures and the zoom sounds for the
   AWP, SSG 08, G3SG1, SCAR-20, AUG and SG 553.
 - [x] **L5. Measure what the sheet does not have** *(done 2026-09-22 from the game's own data rather than by hand: `timings.md` and `timings.csv` have every gun's draw, reload to rounds in and to ready, shotgun shell loop, silencer switch and sound timing, from the clips; `vdata.md` has the zoom levels, FOVs and zoom times, the deploy times and how soon a reload lets the gun fire, from `scripts/weapons.vdata`, which Source 2 Viewer 20.0 decodes)*, in CS2, per weapon, into
   `reference/weapons/measured.csv`:
@@ -120,7 +120,7 @@ Roughly in order; L1 to L3 can start at once.
   M249, Negev, G3SG1, SCAR-20. Re-take the M4A1-S at 20 rounds while there;
   its plot has 25 (CS:GO's old magazine), and a 496-unit AK spray retires
   `recoil_scale` for both rifles.
-- [ ] **L7. Fit each model.** Viewmodel offset per weapon at CS2's
+- [ ] **L7. Fit each model.** *(partly answered 2026-09-22: in first person the clips place every gun themselves, with no offset of CS2's own to add, and all 34 render held and posed at `viewmodel_fov`; in third person all 34 sit in the hand on the `wpn` bone, but pistols are held rifle-style until the player model walks the pistols' own locomotion, now extracted (`world/pistol/_default_pistol`); the muzzle point is `m_vecMuzzlePos0` in `vdata.md`. Left for Sid: judging each on screen in play)* Viewmodel offset per weapon at CS2's
   `viewmodel_fov`, the weapon in the third-person hand, the muzzle point for
   effects. Needs the models on screen.
 - [ ] **L8. Playtest each weapon at the range** against the sheet: fatal

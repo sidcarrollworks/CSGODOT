@@ -20,6 +20,7 @@
 #   scripts/extract_assets.sh weapons         # every gun: models, first- and third-person animations
 #   scripts/extract_assets.sh weapon-animations  # just the guns' animations (a minute)
 #   scripts/extract_assets.sh weapon-data     # just the game's weapon tuning (seconds)
+#   scripts/extract_assets.sh hud             # the scope overlay and the equipment icons
 #   scripts/extract_assets.sh characters      # two player models and their locomotion
 #   scripts/extract_assets.sh sounds          # every gun's sounds, footsteps by surface, hits
 #   scripts/extract_assets.sh all             # map + weapons + characters + sounds
@@ -151,7 +152,7 @@ find_cs2() {
 
 COMMAND="${1:-}"
 case "$COMMAND" in
-	list-map|list-weapons|map|physics|entities|layers|sky|skybox|lightmaps|weapons|weapon-animations|weapon-data|characters|sounds|all) ;;
+	list-map|list-weapons|map|physics|entities|layers|sky|skybox|lightmaps|weapons|weapon-animations|weapon-data|hud|characters|sounds|all) ;;
 	*)
 		# The header comment, down to the first line that is not one.
 		awk 'NR > 2 && /^#/ { sub(/^# ?/, ""); print; next } NR > 2 { exit }' "${BASH_SOURCE[0]}"
@@ -511,6 +512,24 @@ extract_weapons() {
 	extract_weapon_animations
 }
 
+## What the HUD draws that comes from the game: the sniper scope's overlay,
+## which the game composes in code from three images (the black mask with its
+## soft round opening, the lens's tint and dirt, and the soft line the cross
+## is drawn with), and the equipment icons, one SVG per weapon by its class
+## less "weapon_" (with the silencers-off variants), armour, the kit, the
+## grenades, the knife and the bomb, for the ammo display, the kill feed and
+## the buy menu.
+extract_hud() {
+	require_file "$PAK_VPK"
+	local dest="$OUT_DIR/hud"
+	mkdir -p "$dest"
+	echo "Extracting the scope overlay and the equipment icons"
+	echo "        -> $dest"
+	"$S2V_BIN" -i "$PAK_VPK" -f "panorama/images/hud/scope/,panorama/images/icons/equipment/" -o "$dest" -d \
+		| grep -vE '^(Preloading|Added folder|--- )' || true
+	echo "        $(find "$dest" -name '*.svg' | wc -l | tr -d ' ') icons, $(find "$dest" -path '*scope*' -name '*.png' | wc -l | tr -d ' ') scope images"
+}
+
 ## The game's own weapon tuning, scripts/weapons.vdata_c, decoded to KV3 text
 ## (this Source 2 Viewer reads it; older ones did not). Every gun's damage,
 ## fire rate, spread and inaccuracy, recovery, recoil, zoom levels, deploy
@@ -723,6 +742,7 @@ case "$COMMAND" in
 	weapons) extract_weapons; finish ;;
 	weapon-animations) extract_weapon_animations; finish ;;
 	weapon-data) extract_weapon_data; write_weapon_tables ;;
+	hud) extract_hud; finish ;;
 	sounds) extract_sounds; finish ;;
 	all) extract_map; echo; extract_weapons; echo; extract_characters; echo; extract_sounds; finish ;;
 esac
