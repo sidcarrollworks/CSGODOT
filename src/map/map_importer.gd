@@ -45,6 +45,11 @@ const SOURCE2_VIEWER_SCALE := 1.0 / 0.0254
 ## ambient. See LightmapMaterials.
 @export var lightmaps_dir: String = ""
 
+## Draw everything of this map behind everything else, whatever the
+## distance: for a 3D skybox scaled up into the world, whose terrain would
+## otherwise show through the map's floors where they lie below it. See
+## FarMaterials.
+@export var behind_everything: bool = false
 ## Whether this map's surfaces cast shadows. The map itself does, and with
 ## both faces: its walls are one-sided and often have no face on their far
 ## side (a room's wall is the face that looks into the room), so a shadow
@@ -252,6 +257,8 @@ func import_map() -> Dictionary:
 			visible_meshes, source_path.get_base_dir().path_join(lightmaps_dir), scale_factor
 		)
 
+	var behind := FarMaterials.apply(visible_meshes) if behind_everything else 0
+
 	var collision_from := "the collision hull"
 	var targets: Array[MeshInstance3D] = []
 	if collision_source == CollisionSource.NONE:
@@ -276,6 +283,7 @@ func import_map() -> Dictionary:
 		"loaded_from": loaded_from,
 		"blend": blend,
 		"lightmaps": lightmaps,
+		"behind": behind,
 		"materials": materials,
 		"bounds": _bounds(meshes),
 	}

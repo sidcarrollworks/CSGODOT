@@ -14,6 +14,9 @@ const LAYER := 4
 
 @export var zone: StringName = &"chest"
 
+## Which side of the body, for a limb: &"left", &"right", or nothing.
+@export var side: StringName = &""
+
 ## The thing that takes the damage. Set by whoever builds the hitboxes.
 var target: HitTarget
 

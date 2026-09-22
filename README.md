@@ -154,6 +154,7 @@ somewhere it can be found:
 scripts/extract_assets.sh list-map     # see what is inside the dust2 VPK
 scripts/extract_assets.sh map          # extract it, then import it into Godot
 scripts/extract_assets.sh weapons      # the AK-47 and M4A1-S models
+scripts/extract_assets.sh sounds       # their sounds, footsteps by surface, hits
 ```
 
 `map` takes a few minutes and a little under two gigabytes. It pulls seven
@@ -161,8 +162,8 @@ things out of the game: the visible world as glTF with its textures, the
 collision hull as a second glTF, the entity lump as text, the second texture
 layer of every material that has one (which a glTF has no room for), the sky
 as an HDR panorama, the 3D skybox (the buildings and hills beyond the map, a
-small map of their own), and the lightmaps the game baked its bounce light
-into. `physics`, `entities`, `layers`, `sky`, `skybox` and `lightmaps` fetch
+small map of their own, drawn behind everything as the game draws it), and
+the lightmaps the game baked its bounce light into. `physics`, `entities`, `layers`, `sky`, `skybox` and `lightmaps` fetch
 the last six on their own; all but the lightmaps take seconds. The
 lightmaps are one 300 MB image, which Godot's first import spends a few
 minutes compressing to 90.
@@ -195,8 +196,22 @@ clip that fits how the body is moving relative to where it faces, cross-faded
 and scaled to its speed. dust2 puts two bots of the other side in
 (`bots` on the scene root), walking their spawn points on a loop. A bot
 (`src/bots/bot.gd`) is the player's own body and movement solver pushed by a
-route instead of keys, so it moves the way a player does; it does not aim,
+route instead of keys, so it moves the way a player does, and it can be
+shot: it wears the game's own hitboxes, the nineteen capsules CS2 defines
+for the model, riding its bones (`src/combat/skinned_hitboxes.gd`), so a
+bullet lands on the head, chest, stomach, an arm or a leg and is priced
+accordingly, ahead of the movement hull, which bullets pass. A kill plays
+one of the game's death clips for where the last round landed, and the bot
+is back at the start of its route a few seconds later. It does not aim,
 fire or think yet.
+
+The sounds are the game's own too (`src/audio/`): the weapon's shots,
+reload in its parts and draw, flat in your ears the way the game plays your
+own gun; your hits, kevlar, headshot or kill; and footsteps and landings
+from everyone's feet, in the world, on the surface they stand on, which the
+collision hull names part by part (sand, dirt, wood, metal, tile). Running
+sounds, walking does not, as in CS. Without `sounds` extracted the game is
+silent and everything else works.
 
 `assets/` can live on another drive: make it a junction (`mklink /J`) and
 every script and Godot itself read straight through it.

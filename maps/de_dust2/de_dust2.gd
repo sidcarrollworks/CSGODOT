@@ -136,6 +136,9 @@ func _build_skybox() -> void:
 	skybox.scale_factor = MapImporter.SOURCE2_VIEWER_SCALE * scale
 	skybox.collision_source = MapImporter.CollisionSource.NONE
 	skybox.layer_textures_dir = SKYBOX_DIR
+	# Its terrain sits at its own ground level, which is above some of the
+	# map's floors; the map must win wherever they overlap.
+	skybox.behind_everything = true
 	# Scenery, not a caster: the game's skybox never shadows the map.
 	skybox.cast_shadows = false
 	skybox.report = false

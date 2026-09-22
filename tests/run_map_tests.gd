@@ -73,6 +73,7 @@ func _process(_delta: float) -> bool:
 		_test_paint_channel()
 		_test_blend_materials()
 		_test_lightmap_materials()
+		_test_far_materials()
 		_test_lighting()
 		_spawn_player()
 		_spawned_at_tick = Engine.get_physics_frames()
@@ -817,6 +818,64 @@ func _add_quad(mesh: ArrayMesh, material: Material, side: float, uv2_extent: flo
 		arrays[Mesh.ARRAY_TEX_UV2] = PackedVector2Array([Vector2(0, 0), Vector2(e, 0), Vector2(e, e), Vector2(0, e)])
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	mesh.surface_set_material(mesh.get_surface_count() - 1, material)
+
+
+## Drawn behind everything: every material becomes one that squeezes its
+## depth to the far plane, carrying what it had, and the importer does it to
+## a whole map when asked.
+func _test_far_materials() -> void:
+	var wall := StandardMaterial3D.new()
+	wall.resource_name = "far wall"
+	wall.albedo_color = Color(0.25, 0.5, 1.0)
+	wall.cull_mode = BaseMaterial3D.CULL_DISABLED
+	wall.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	wall.alpha_scissor_threshold = 0.3
+	var far := FarMaterials.build(wall, 0.0) as ShaderMaterial
+	_check(
+		far != null and far.shader != FarMaterials.SHADER
+			and far.shader.code.contains("cull_disabled") and far.shader.code.contains("far_depth(")
+			and (far.get_shader_parameter("albedo_color") as Color).is_equal_approx(wall.albedo_color)
+			and is_equal_approx(far.get_shader_parameter("alpha_scissor"), 0.3)
+			and is_zero_approx(far.get_shader_parameter("far_plane_depth")),
+		"a standard material moves onto the far shader, two-sided when it was, with its colour and cut"
+	)
+
+	var blend := ShaderMaterial.new()
+	blend.shader = BlendMaterials.SHADER
+	blend.set_shader_parameter("blend_softness", 0.42)
+	var far_blend := FarMaterials.build(blend, 1.0) as ShaderMaterial
+	_check(
+		far_blend != null and far_blend.shader != BlendMaterials.SHADER
+			and far_blend.shader.code.contains(FarMaterials.INCLUDE)
+			and far_blend.shader.code.contains("void fragment() {\n\tDEPTH = far_depth(FRAGCOORD.z);")
+			and is_equal_approx(far_blend.get_shader_parameter("blend_softness"), 0.42)
+			and is_equal_approx(far_blend.get_shader_parameter("far_plane_depth"), 1.0)
+			and FarMaterials.variant_of(BlendMaterials.SHADER) == far_blend.shader,
+		"a shader material gets a variant of its own shader with the squeeze, keeping its parameters, made once"
+	)
+	var no_fragment := Shader.new()
+	no_fragment.code = "shader_type spatial;"
+	_check(FarMaterials.variant_of(no_fragment) == null, "a shader with no fragment function is left alone")
+
+	# The importer, asked to: every drawn surface of the fixture.
+	var importer := _make_importer(MapImporter.CollisionSource.NONE)
+	importer.behind_everything = true
+	root.add_child(importer)
+	var drawn := 0
+	var behind := 0
+	for node in importer.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := node as MeshInstance3D
+		if not mesh_instance.visible:
+			continue
+		for surface in mesh_instance.mesh.get_surface_count():
+			drawn += 1
+			var material := mesh_instance.get_active_material(surface)
+			behind += 1 if material is ShaderMaterial and (material as ShaderMaterial).shader.code.contains("far_depth(") else 0
+	_check(
+		drawn > 0 and behind == drawn and int(importer.stats.get("behind", 0)) == drawn,
+		"behind_everything puts every drawn surface of a map on the far shaders and reports it (%d of %d)" % [behind, drawn]
+	)
+	importer.free()
 
 
 ## The lighting is a translation of the map's own numbers, so the test is

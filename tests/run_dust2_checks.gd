@@ -120,6 +120,7 @@ func _import() -> bool:
 		skybox.source_path = skybox_file
 		skybox.scale_factor = MapImporter.SOURCE2_VIEWER_SCALE * 16.0
 		skybox.collision_source = MapImporter.CollisionSource.NONE
+		skybox.behind_everything = true
 		skybox.cast_shadows = false
 		skybox.report = false
 		root.add_child(skybox)
@@ -129,6 +130,10 @@ func _import() -> bool:
 			if (node as MeshInstance3D).visible and (node as MeshInstance3D).cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
 				sky_casting += 1
 		_check(sky_casting == 0, "the skybox casts no shadows onto the map")
+		_check(
+			int(skybox.stats.get("behind", 0)) >= 100,
+			"and its surfaces are drawn behind the map (%d of them)" % skybox.stats.get("behind", 0)
+		)
 		_check(
 			int(skybox.stats.get("meshes", 0)) > 100 and int(skybox.stats.get("skipped", 0)) < 40
 				and sky_bounds.size.x > bounds.size.x * 3.0,
@@ -174,6 +179,19 @@ func _test_bots_walk() -> void:
 		_check(
 			bot.model != null and bot.model.animation_player.current_animation != &"",
 			"and is animated (%s)" % (bot.model.animation_player.current_animation if bot.model != null else "no model")
+		)
+		var head_height: float = bot.hitboxes.hitboxes[0].global_position.y - bot.global_position.y \
+			if bot.hitboxes != null and not bot.hitboxes.hitboxes.is_empty() else 0.0
+		_check(
+			bot.hitboxes != null and bot.hitboxes.hitboxes.size() == 19 and head_height > 50.0 and head_height < 72.0
+				and bot.hit_target != null and bot.alive,
+			"and wears the game's hitboxes on its bones as it walks, the head %.0f up" % head_height
+		)
+		var footsteps := bot.get_node_or_null("Footsteps") as Footsteps
+		_check(
+			footsteps != null and (not SoundBank.available() or (footsteps.steps > 0 and footsteps.surface != "")),
+			"and its steps have sounded on the map's own surfaces (%d steps, last on %s)"
+				% [footsteps.steps if footsteps else 0, footsteps.surface if footsteps else "-"]
 		)
 
 

@@ -15,6 +15,10 @@ extends RigModel
 ## model is turned round and then given the body's yaw.
 
 const CLIPS_DIR := "res://assets/characters/animation/anims/world/rifle/_default_rifle"
+## The deaths every weapon shares. (Its flinches are additive layers, not
+## poses; played whole they fold the body to nothing. They wait for an
+## animation tree to add them over the locomotion.)
+const SHARED_DIR := "res://assets/characters/animation/anims/world/shared"
 const AGENTS := ViewModel.AGENTS
 
 ## The clips the game runs, walks and crouches at, in units per second: the
@@ -32,10 +36,12 @@ const BLEND := 0.15
 ## Builds the body and weapon. Returns false, with nothing built, when the
 ## models or clips have not been extracted.
 func setup(team: String, weapon_model: String) -> bool:
-	one_shots = PackedStringArray(["jump", "shoot", "draw", "reload"])
+	one_shots = PackedStringArray(["jump", "shoot", "draw", "reload", "death"])
+	held = PackedStringArray(["death"])
 	var clips := list_clips(CLIPS_DIR, PackedStringArray([
 		"idle_", "run_", "walk_", "crouch_", "inair_", "jump_stand", "shoot_",
 	]))
+	clips.append_array(list_clips(SHARED_DIR, PackedStringArray(["death_"])))
 	if not load_clips(clips, "rifle"):
 		return false
 	idle = &"idle"
@@ -74,7 +80,8 @@ func setup(team: String, weapon_model: String) -> bool:
 ## yaw is where the body faces, in the game's degrees (PlayerInput's).
 func update_motion(velocity: Vector3, yaw_degrees: float, ducked: bool, on_ground: bool) -> void:
 	rotation_degrees.y = 180.0 + yaw_degrees
-	if animation_player == null:
+	if animation_player == null or playing_one_shot():
+		# A jump, a shot, a death: left to finish (a death, to stay).
 		return
 	var forward := Vector3(-sin(deg_to_rad(yaw_degrees)), 0.0, -cos(deg_to_rad(yaw_degrees)))
 	var right := Vector3(cos(deg_to_rad(yaw_degrees)), 0.0, -sin(deg_to_rad(yaw_degrees)))
@@ -90,6 +97,18 @@ func update_motion(velocity: Vector3, yaw_degrees: float, ducked: bool, on_groun
 	elif choice.begins_with("crouch_"):
 		rate = speed / CROUCH_SPEED
 	play(choice, BLEND, clampf(rate, 0.5, 1.6))
+
+
+## The death for the shot that killed, by the zone the weapon data prices:
+## one of the game's own pair for that part of the body where it has one,
+## the chest's otherwise.
+static func death_for(zone: StringName, variant: int) -> StringName:
+	var pick := "a" if variant % 2 == 0 else "b"
+	match zone:
+		&"stomach": return StringName("death_gut_" + pick)
+		&"leg": return StringName("death_rknee_" + pick)
+		&"arm": return &"death_rshoulder"
+		_: return StringName("death_chest_" + pick)
 
 
 ## The clip's short name for a movement: ahead and aside are the body's
