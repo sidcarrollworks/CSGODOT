@@ -60,7 +60,18 @@ func _process(_delta: float) -> void:
 		"%s" % weapon.data.display_name,
 		"ammo       %d / %d" % [weapon.ammo, weapon.reserve],
 		"shot       %d" % weapon.shot_index(),
-		"cone       %.3f deg" % weapon.current_inaccuracy(state),
+		"cone       %.3f deg  %s" % [
+			weapon.current_inaccuracy(state),
+			"ready" if weapon.is_accuracy_reset() else "recovering",
+		],
+		# Side by side on purpose. The gun stops moving before the cone
+		# closes, so these two disagree for a couple of hundred milliseconds
+		# after every shot, which is what CS2 does and is why the animation
+		# cannot be used to time a tap.
+		"view       %.2f deg  %s" % [
+			weapon.aim_punch.length(),
+			"still" if weapon.aim_punch.length() < 0.01 else "moving",
+		],
 		"impacts    %d" % _impacts.size(),
 		"",
 		"1 / 2  weapon      R  reload",

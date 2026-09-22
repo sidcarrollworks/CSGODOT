@@ -54,6 +54,10 @@ class Shot:
 	var view_punch: Vector2
 
 
+## The punch spring is integrated at no coarser than this, whatever the
+## caller's frame length. 128 Hz, the simulation tick the constants suit.
+const PUNCH_MAX_STEP := 1.0 / 128.0
+
 var data: WeaponData
 
 var ammo: int = 0
@@ -121,9 +125,7 @@ func update(dt: float, now_usec: int) -> void:
 	if since_shot > data.recoil_reset_time:
 		_shot_index = 0
 
-	_inaccuracy = maxf(
-		_inaccuracy - data.inaccuracy_recovery_rate * dt, 0.0
-	)
+	_decay_inaccuracy(dt)
 
 
 ## Source's DecayPunchAngle: the punch angle carries its own velocity, which
@@ -133,18 +135,66 @@ func update(dt: float, now_usec: int) -> void:
 ## only decayed between shots, which is what made the view snap up to each
 ## bullet and then sag. A spring that is always acting gives the rise and the
 ## settle that CS actually has.
+##
+## Substepped rather than clamped. The spring is stiff enough on a fast
+## weapon that a single long frame would integrate it into a growing
+## oscillation; stepping at the simulation rate the constants were derived
+## for makes the result the same whatever the caller's frame length is.
 func _decay_punch(dt: float) -> void:
-	if aim_punch.length_squared() < 0.000001 \
-			and aim_punch_velocity.length_squared() < 0.000001:
+	if aim_punch.length_squared() < 1e-10 \
+			and aim_punch_velocity.length_squared() < 1e-10:
 		aim_punch = Vector2.ZERO
 		aim_punch_velocity = Vector2.ZERO
 		return
 
-	aim_punch += aim_punch_velocity * dt
-	aim_punch_velocity *= maxf(1.0 - data.punch_damping * dt, 0.0)
-	# Clamped because a long frame would otherwise overshoot the spring into
-	# an oscillation that grows instead of settling.
-	aim_punch_velocity -= aim_punch * clampf(data.punch_spring * dt, 0.0, 2.0)
+	var damping := data.punch_damping()
+	var spring := data.punch_spring()
+	var remaining := dt
+	while remaining > 0.0:
+		var step := minf(remaining, PUNCH_MAX_STEP)
+		var half := step * 0.5
+		# Leapfrog: half a step of spring and damping, a whole step of
+		# movement at that mid-step velocity, then the other half. Moving on
+		# the end-of-step velocity instead biases the kick upward by half a
+		# tick of it, which is small on a slow spring and not small on a fast
+		# one, so the same weapon would throw the view further just for
+		# settling sooner.
+		#
+		# exp() rather than (1 - damping * step) for the same reason: the
+		# linear form takes more out of the velocity than the damping it
+		# stands for would, which cut the kick short of the measurement it is
+		# derived from.
+		aim_punch_velocity *= exp(-damping * half)
+		aim_punch_velocity -= aim_punch * spring * half
+		aim_punch += aim_punch_velocity * step
+		aim_punch_velocity -= aim_punch * spring * half
+		aim_punch_velocity *= exp(-damping * half)
+		remaining -= step
+
+
+## The accuracy penalty decays exponentially toward zero and snaps to it once
+## it is below what the game could show you.
+##
+## Exponential, not linear, for two reasons: it is what the measured accuracy
+## box does (the steps shrink as it recovers, which is a straight line only on
+## a log scale), and it is what CS:GO's accuracy penalty did. The time
+## constant comes from data.accuracy_reset_time, so one standing shot recovers
+## in exactly the measured time and a spray takes proportionally longer.
+func _decay_inaccuracy(dt: float) -> void:
+	if _inaccuracy <= 0.0:
+		return
+	_inaccuracy *= exp(-dt / data.accuracy_time_constant())
+	if _inaccuracy < data.accuracy_reset_threshold():
+		_inaccuracy = 0.0
+
+
+## Whether the weapon has finished recovering its accuracy.
+##
+## Worth reading next to how far the view has settled, because the two do not
+## agree: on both of these weapons the gun stops moving a couple of hundred
+## milliseconds before this turns true.
+func is_accuracy_reset() -> bool:
+	return _inaccuracy <= 0.0
 
 
 ## Where the weapon model should be pushed to, in degrees. Cosmetic only.
@@ -172,6 +222,26 @@ func current_inaccuracy(state: ShooterState) -> float:
 	return base + _inaccuracy
 
 
+## The recoil of one shot, in degrees, read off the pattern.
+##
+## A pattern entry is where the muzzle has ALREADY been carried to by the
+## shots before it, so the recoil of shot i is the step from entry i to entry
+## i + 1: the climb this shot is about to cause. Reading it as the step into
+## the entry instead is off by one, and it leaves a single tap with no view
+## kick at all, because every pattern's first entry is (0, 0) and nothing has
+## happened yet when you fire shot one.
+##
+## Past the end of the pattern there is no next entry, so the last real step
+## is held rather than dropping the kick to nothing mid-magazine.
+func _view_kick_for(shot_index: int) -> Vector2:
+	var here := data.recoil_offset(shot_index)
+	var ahead := data.recoil_offset(shot_index + 1)
+	var kick := ahead - here
+	if kick.length_squared() > 0.0 or shot_index <= 0:
+		return kick
+	return here - data.recoil_offset(shot_index - 1)
+
+
 ## Fires one round. Returns null if the weapon could not fire.
 ##
 ## yaw and pitch are the angles at the instant the trigger was pulled, which
@@ -188,9 +258,6 @@ func fire(
 	if not can_fire(now_usec):
 		return null
 
-	var previous := Vector2.ZERO
-	if _shot_index > 0:
-		previous = data.recoil_offset(_shot_index - 1)
 	var current := data.recoil_offset(_shot_index)
 
 	# The bullet goes exactly to this shot's entry in the pattern, measured
@@ -210,10 +277,10 @@ func fire(
 		_shot_index
 	)
 
-	# The view gets kicked by this shot's step through the pattern, scaled
-	# down, and as a push on the punch velocity rather than a jump in the
-	# angle, so it rises into the kick over the next few ticks.
-	var punch := (current - previous) * data.recoil_view_fraction
+	# The view gets kicked by this shot's own recoil, scaled down, and as a
+	# push on the punch velocity rather than a jump in the angle, so it rises
+	# into the kick over the next few ticks.
+	var punch := _view_kick_for(_shot_index) * data.recoil_view_fraction
 
 	var shot := Shot.new()
 	shot.origin = origin
@@ -226,7 +293,7 @@ func fire(
 	shot.base_yaw = yaw_degrees
 	shot.base_pitch = pitch_degrees
 
-	aim_punch_velocity += punch * data.punch_impulse_scale
+	aim_punch_velocity += punch * data.punch_impulse_scale()
 	_inaccuracy += data.inaccuracy_per_shot
 	_shot_index += 1
 	_last_shot_usec = now_usec

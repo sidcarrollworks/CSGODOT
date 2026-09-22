@@ -57,6 +57,9 @@ library is a four-value approximation: a standing cone, a moving cone
 interpolated by speed, a jumping cone, and a per-shot addition that recovers
 over time.
 
+The one part of it that IS measured is how long that per-shot addition takes
+to recover: see "Recovery timings, measured" below.
+
 What the approximation does get right is the ordering, which is what the tests
 pin: crouched is tighter than standing, walking under about a third of run
 speed costs nothing, running is more than ten times the standing cone, and
@@ -76,8 +79,13 @@ Measured in our build, holding the trigger for a full magazine:
 
 | | Bullets climb | View peaks at | View as a share |
 |---|---|---|---|
-| AK-47 | 16.00° | 3.39° | 21% |
-| M4A1-S | 9.57° | 2.20° | 23% |
+| AK-47 | 16.00° | 3.47° | 22% |
+| M4A1-S | 9.57° | 1.61° | 17% |
+
+Each shot kicks the view by a full shot's worth of recoil, and the view still
+moves a fifth of what the spray does. That is not a scale factor: the spring
+pulls the view back between rounds while the muzzle keeps every degree it has
+climbed. The bullets accumulate and the view does not.
 
 The view also stops climbing about a third of the way through and settles back
 toward centre while the spray carries on, because the later part of both
@@ -90,26 +98,74 @@ crosshair kicks up but only so much" means.
 pulling it back to zero. This is Source's `DecayPunchAngle`. A shot pushes the
 **velocity**, not the angle, which is why the view rises into a kick over
 several ticks instead of teleporting to it: the largest single-tick movement
-during an AK spray is 0.30°, against 6.61° for the steepest single bullet step.
+during an AK spray is 0.73°, against 3.44° for the steepest single bullet step.
 
 The knobs, all on `WeaponData`:
 
 | | Default | |
 |---|---|---|
-| `recoil_view_fraction` | 0.45 | How much of the pattern the view is kicked by |
-| `punch_impulse_scale` | 20 | How hard a shot pushes the punch velocity |
-| `punch_damping` | 9 | Viscous damping on that velocity |
-| `punch_spring` | 65 | Spring pulling the view back to where you point |
-| `viewmodel_recoil` | 1.0 | Extra movement for the weapon model only |
+| `recoil_animation_time` | measured | How long the kick lasts, in seconds |
+| `recoil_view_fraction` | 1.0 | How far one shot throws the view, against how far it throws the muzzle |
+| `punch_damping_ratio` | 0.558 | Shape of the kick: rise and settle, no visible bounce |
+| `viewmodel_recoil` | 3.0 | How much harder the weapon model moves than the camera |
 
-The structure is Source's. The two spring constants are from memory of the SDK
-and could not be verified from this machine, so treat them as tunables rather
-than as facts. `recoil_view_fraction` is tuned by eye against CS2 and is the
-first thing to change if the kick feels wrong.
+The spring frequency, the damping and the impulse are all derived from those,
+which is why they are not on the list. Two properties fall out of the
+derivation and are worth keeping:
+
+- Re-measuring `recoil_animation_time` changes how long the view moves and
+  **not how far**. The impulse is normalised against the spring, so the punch
+  peaks at `recoil_view_fraction` times the shot's own pattern step whatever
+  the spring is doing.
+- `recoil_view_fraction` is the only knob for the size of the kick, and it is
+  still by eye rather than measured. It is the first thing to change if the
+  kick feels wrong, and the only thing.
+
+Anything meant to read the recoil back to the player belongs in
+`viewmodel_recoil`, where it moves the gun and cannot mislead anyone about
+where a bullet went, rather than in the camera, where it would.
 
 Setting `recoil_view_fraction` to 0 removes the view kick entirely and **every
 bullet still lands in exactly the same place**. There is a test that asserts
 precisely that, because it is the property that makes a spray learnable.
+
+## Recovery timings, measured
+
+**These are measured, not guessed.** Sid captured CS2 frame by frame on
+2026-09-22 and tracked two things independently: the weapon model's distance
+from its resting position, which gives the length of the recoil animation, and
+the size of the accuracy box from `weapon_debug_spread_show 1`, which gives
+when the weapon is accurate again. Three shots per weapon.
+
+| | Recoil animation | Accuracy reset | Desync |
+|---|---|---|---|
+| AK-47 | 644 ± 5 ms | 867 ± 0 ms | 223 ms |
+| M4A1-S | 353 ± 5 ms | 542 ± 0 ms | 189 ms |
+
+**The two numbers are different, and the accuracy one is longer.** The gun
+finishes moving a couple of hundred milliseconds before it finishes
+recovering, so a player who taps again the moment the animation settles is
+firing an inaccurate round. Across the wider set of weapons the desync runs
+both ways and the Deagle is about 1250 ms out. This is CS2 behaviour, not a
+bug, and reproducing it is deliberate: it is the reason the recoil animation
+cannot be trusted as a readout of anything.
+
+They live on `WeaponData` as `recoil_animation_time` and
+`accuracy_reset_time`, per weapon, and everything else about the view spring
+and the accuracy decay is derived from them. There are tests asserting each
+build still hits both numbers and that the gap between them survives.
+
+The accuracy penalty decays exponentially rather than linearly, which is both
+what the measured curve does (its steps shrink as it recovers, a straight line
+only on a log scale) and what CS:GO's accuracy penalty did. A single shot
+recovers in exactly the measured time; a spray takes proportionally longer.
+
+The test range prints both states side by side, so the desync is visible
+without a capture: `cone ... ready|recovering` next to `view ... still|moving`.
+
+Source: Sid's own capture and writeup, from
+https://www.reddit.com/r/GlobalOffensive/comments/1lodfqw/ (that URL is not
+reachable from the build machine; the numbers above came from Sid directly).
 
 ## Spray patterns
 

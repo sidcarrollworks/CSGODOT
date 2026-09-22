@@ -35,6 +35,12 @@ func _process(_delta: float) -> bool:
 		_test_view_kicks_less_than_the_spray()
 		_test_view_rises_rather_than_teleporting()
 		_test_viewmodel_follows_the_view()
+		_test_a_single_tap_kicks_the_view()
+		_test_animation_lasts_as_long_as_measured()
+		_test_accuracy_resets_as_slowly_as_measured()
+		_test_the_gun_looks_ready_before_it_is()
+		_test_kick_size_survives_a_faster_animation()
+		_test_punch_is_the_same_at_any_frame_length()
 		_test_inaccuracy_by_state()
 		_test_damage_falloff()
 		_test_hitbox_multipliers()
@@ -514,6 +520,152 @@ func _test_viewmodel_follows_the_view() -> void:
 	_check(
 		weapon.viewmodel_punch() == Vector2.ZERO,
 		"and holds still when viewmodel_recoil is zero"
+	)
+
+
+# --- Measured recovery timings --------------------------------------------
+#
+# Sid captured CS2 frame by frame on 2026-09-22: the weapon model tracked away
+# from its resting position gives the recoil animation's length, and the
+# accuracy box from weapon_debug_spread_show tracked back to its baseline size
+# gives the accuracy reset. AK-47 644 and 867 ms, M4A1-S 353 and 542 ms.
+#
+# The two are different numbers and the accuracy one is longer, so the gun
+# finishes moving before it finishes recovering. These tests exist so that
+# stays true of this build, because it is the whole reason the animation
+# cannot be trusted as a readout.
+
+
+## How long after a single shot the view punch is still visibly moving, and
+## how far it got, both in one pass.
+func _settle(data: WeaponData) -> Array:
+	var weapon := Weapon.new(data)
+	var now := int(SECOND)
+	weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, _standing())
+
+	var peak := 0.0
+	var samples: Array[float] = []
+	for tick in 1024:
+		now += int(DT * SECOND)
+		weapon.update(DT, now)
+		var size := weapon.aim_punch.length()
+		peak = maxf(peak, size)
+		samples.append(size)
+
+	# The last moment it was above a hundredth of its own peak, which is what
+	# recoil_animation_time is defined against.
+	var settled_at := 0.0
+	for i in range(samples.size() - 1, -1, -1):
+		if samples[i] >= peak * WeaponData.SETTLE_FRACTION:
+			settled_at = float(i + 1) * DT
+			break
+	return [settled_at, peak]
+
+
+## How long after a single standing shot the cone is back to its resting size.
+func _accuracy_reset(data: WeaponData) -> float:
+	var weapon := Weapon.new(data)
+	var state := _standing()
+	var now := int(SECOND)
+	weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, state)
+
+	for tick in 1024:
+		now += int(DT * SECOND)
+		weapon.update(DT, now)
+		if weapon.current_inaccuracy(state) <= data.inaccuracy_standing:
+			return float(tick + 1) * DT
+	return -1.0
+
+
+## Every pattern's first entry is (0, 0), so reading a shot's recoil as the
+## step INTO its entry left a single tap with no view kick whatsoever. A shot
+## is what causes the climb to the next entry, not what results from the last.
+func _test_a_single_tap_kicks_the_view() -> void:
+	for data in [WeaponLibrary.ak47(), WeaponLibrary.m4a1s()]:
+		var result := _settle(data)
+		_check(
+			(result[1] as float) > 0.1,
+			"%s kicks the view on the very first round (%.2f degrees)"
+				% [data.display_name, result[1]]
+		)
+
+
+func _test_animation_lasts_as_long_as_measured() -> void:
+	for data in [WeaponLibrary.ak47(), WeaponLibrary.m4a1s()]:
+		var settled: float = _settle(data)[0]
+		_check(
+			absf(settled - data.recoil_animation_time) < 0.02,
+			"%s recoil animation lasts the measured %.0f ms (%.0f ms)"
+				% [
+					data.display_name,
+					data.recoil_animation_time * 1000.0,
+					settled * 1000.0
+				]
+		)
+
+
+func _test_accuracy_resets_as_slowly_as_measured() -> void:
+	for data in [WeaponLibrary.ak47(), WeaponLibrary.m4a1s()]:
+		var reset := _accuracy_reset(data)
+		_check(
+			absf(reset - data.accuracy_reset_time) < 0.02,
+			"%s accuracy resets in the measured %.0f ms (%.0f ms)"
+				% [
+					data.display_name,
+					data.accuracy_reset_time * 1000.0,
+					reset * 1000.0
+				]
+		)
+
+
+## The point of the two numbers being separate. A player who taps again the
+## moment the gun stops moving is firing an inaccurate round.
+func _test_the_gun_looks_ready_before_it_is() -> void:
+	for data in [WeaponLibrary.ak47(), WeaponLibrary.m4a1s()]:
+		var settled: float = _settle(data)[0]
+		var reset := _accuracy_reset(data)
+		_check(
+			reset > settled + 0.1,
+			"%s is still inaccurate %.0f ms after it has stopped moving"
+				% [data.display_name, (reset - settled) * 1000.0]
+		)
+
+
+## Re-measuring how long the kick lasts must not quietly change how far it
+## throws the view, or one measurement would be undoing the other.
+func _test_kick_size_survives_a_faster_animation() -> void:
+	var slow := WeaponLibrary.ak47()
+	var fast := WeaponLibrary.ak47()
+	fast.recoil_animation_time = slow.recoil_animation_time * 0.5
+
+	var slow_peak: float = _settle(slow)[1]
+	var fast_peak: float = _settle(fast)[1]
+	_check(
+		absf(fast_peak - slow_peak) < slow_peak * 0.02,
+		"halving the animation leaves the size of the kick alone (%.3f against %.3f degrees)"
+			% [fast_peak, slow_peak]
+	)
+
+
+## The spring is stiff on a fast weapon, so a long frame integrated in one go
+## would ring instead of settling. update() substeps; this proves it.
+func _test_punch_is_the_same_at_any_frame_length() -> void:
+	var data := WeaponLibrary.m4a1s()
+	var fine := Weapon.new(data)
+	var coarse := Weapon.new(data)
+	var now := int(SECOND)
+	fine.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, _standing())
+	coarse.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, _standing())
+
+	for tick in 32:
+		now += int(DT * SECOND)
+		fine.update(DT, now)
+	coarse.update(32.0 * DT, now)
+
+	_check(
+		(fine.aim_punch - coarse.aim_punch).length() < 0.001,
+		"a quarter-second frame lands where thirty-two ticks do (%.4f against %.4f degrees)"
+			% [fine.aim_punch.length(), coarse.aim_punch.length()]
 	)
 
 
