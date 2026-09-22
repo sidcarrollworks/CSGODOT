@@ -69,6 +69,21 @@ var spray_seed: int = 1
 var _snap := WeaponData.Punch.new()
 var _hold := WeaponData.Punch.new()
 var _model_snap := WeaponData.Punch.new()
+var _was_firing: bool = true
+
+## Whether the player is holding the trigger down right now.
+##
+## Set by whoever drives the weapon, once a tick, before update(). The camera's
+## slow half stops carrying the crosshair up and starts bringing it home the
+## moment this goes false, which is the only way the drop can begin on the
+## frame the button comes up.
+##
+## Inferring it from the gap since the last round instead, as this used to,
+## costs a round and a quarter of dead time at the top of the spray: 125 ms on
+## the AK where the crosshair has stopped climbing and has not started falling.
+## Sid felt the 200 ms version of it. Left true by default so a caller that
+## never sets it still behaves, falling back on the gap alone.
+var trigger_held: bool = true
 var _model_hold := WeaponData.Punch.new()
 
 ## Where the recoil has pushed the VIEW, in degrees, as (right, up).
@@ -121,7 +136,17 @@ func can_fire(now_usec: int) -> bool:
 func update(dt: float, now_usec: int) -> void:
 	var since_shot := float(now_usec - _last_shot_usec) / 1_000_000.0
 
-	_decay_punch(dt, since_shot <= data.cycle_time * 2.0)
+	# Held, and still shooting. The gap matters as well as the button, because
+	# an empty magazine stops the rounds with the trigger still down.
+	var firing := (
+		trigger_held
+		and since_shot <= data.cycle_time * data.trigger_release_cycles
+	)
+	if _was_firing and not firing:
+		_let_go_of_the_trigger()
+	_was_firing = firing
+
+	_decay_punch(dt, firing)
 
 	# Back to the top of the pattern once the trigger has been off long enough.
 	#
@@ -175,6 +200,22 @@ func _decay_punch(dt: float, firing: bool) -> void:
 		data.model_hold_punch_spring(),
 		PUNCH_MAX_STEP
 	)
+
+
+## Hands the slow half the velocity that turns its return into a plain
+## exponential decay, at the instant the trigger goes up.
+##
+## A critically damped spring let go at height V with velocity -wV is exactly
+## V*exp(-w*t). Let go from rest instead and it starts with no speed at all,
+## builds up and eases out, which is the crosshair hanging at the top of the
+## spray for a moment before it drops. Sid, 2026-09-22: "it still feels like it
+## hangs at the top for 200ms. It should move down very quickly... a sharp drop
+## and smooth at the bottom."
+##
+## Only the velocity is touched, so there is no jump: the crosshair is exactly
+## where it was, it has simply stopped climbing and started falling.
+func _let_go_of_the_trigger() -> void:
+	_hold.velocity = -_hold.value * data.release_frequency()
 
 
 ## The accuracy penalty decays exponentially toward zero and snaps to it once

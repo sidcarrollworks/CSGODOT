@@ -25,8 +25,6 @@ const SETTLE_FRACTION := 0.01
 ## walks a spray with.
 const SIMULATION_HZ := 128.0
 
-## The damping ratio the camera's slow half returns on once the trigger is up.
-const RELEASE_DAMPING_RATIO := 0.95
 
 var _solved_kick_up: float = -1.0
 var _solved_model_hold_time: float = -1.0
@@ -250,6 +248,20 @@ class Punch:
 ## short. It feels a bit too floating at the moment."
 @export var view_punch_release_time: float = 0.35
 
+## How long after the last round the trigger counts as still down, in rounds.
+##
+## The camera cannot see the trigger, so it infers it from the gap since the
+## last round. Anything above 1 keeps a spray from being mistaken for a release
+## in the gap between two of its own rounds; everything above 1 is also dead
+## time at the top of the spray, where the crosshair has stopped climbing and
+## has not started coming down. At 2 that dead time was 200 ms on the AK and
+## Sid felt exactly that: "it still feels like it hangs at the top for 200ms."
+##
+## A round is gated by the cycle time exactly, so the gap between two rounds of
+## a spray never exceeds one cycle plus the tick the check runs on. 1.25 clears
+## that with room and costs 125 ms rather than 200.
+@export var trigger_release_cycles: float = 1.25
+
 ## How much of a round's kick goes to the fast half.
 ##
 ## The rest goes to the slow one. This is the balance between "you can see
@@ -384,25 +396,41 @@ func punch_impulse_scale_for(recovery: float) -> float:
 
 
 ## The camera's slow half: what carries the crosshair up the spray while the
-## trigger is down, and lets go of it faster once the trigger is up.
+## trigger is down, and lets go of it once the trigger is up.
 func hold_punch_damping(firing: bool = true) -> float:
-	return punch_damping_for(_hold_time(firing), _hold_ratio(firing))
+	if firing:
+		return punch_damping_for(view_punch_recovery_time)
+	return 2.0 * release_frequency()
 
 
 func hold_punch_spring(firing: bool = true) -> float:
-	return punch_spring_for(_hold_time(firing), _hold_ratio(firing))
+	if firing:
+		return punch_spring_for(view_punch_recovery_time)
+	var w := release_frequency()
+	return w * w
 
 
-func _hold_time(firing: bool) -> float:
-	return view_punch_recovery_time if firing else view_punch_release_time
-
-
-## Nearly critical once the trigger is up. A return should not swing past the
-## thing it is returning to: under-damped, the crosshair passed most of a
-## degree BELOW where the player was pointing and came back up to it, which is
-## most of what reads as the view floating rather than settling.
-func _hold_ratio(firing: bool) -> float:
-	return -1.0 if firing else RELEASE_DAMPING_RATIO
+## The frequency the slow half returns on once the trigger is up, in radians
+## per second.
+##
+## Critically damped, and Weapon gives it exactly minus this times its own
+## height as a velocity at the moment the trigger goes up. That combination is
+## not arbitrary: a critically damped spring released at height V with velocity
+## -wV is exactly V*exp(-w*t), the only shape the second-order system can make
+## that is a plain exponential decay.
+##
+## That is the shape Sid asked for. A spring let go from rest starts with no
+## speed at all, builds up and then eases out: an S, which reads as the
+## crosshair hanging at the top before it drops. An exponential is steepest at
+## the instant it is released and flattens into the bottom. Sid, 2026-09-22:
+## "if it were a curve it would be the bottom left quarter of a circle. A sharp
+## drop and smooth at the bottom."
+##
+## An exponential is down to SETTLE_FRACTION of where it started after
+## view_punch_release_time, which is what fixes the frequency. No peak term
+## here, unlike punch_frequency_for: there is no rise to peak past.
+func release_frequency() -> float:
+	return -log(SETTLE_FRACTION) / maxf(view_punch_release_time, 0.0001)
 
 
 func hold_punch_impulse_scale() -> float:

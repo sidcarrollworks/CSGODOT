@@ -106,6 +106,7 @@ The knobs, all on `WeaponData`:
 | `view_kick_spray_peak` | 0.5 | Where the crosshair peaks over a spray, against the spray's own climb |
 | `view_punch_recovery_time` | 1.9 | How long the camera's SLOW half takes to settle, in seconds |
 | `view_punch_release_time` | 0.35 | How long the slow half takes once the trigger is UP, in seconds |
+| `trigger_release_cycles` | 1.25 | Rounds' worth of silence that also counts as the trigger being up |
 | `view_punch_snap_time` | 0.18 | How long the camera's FAST half takes to settle, in seconds |
 | `view_kick_snap_share` | 0.4 | How much of a round's kick goes to the fast half |
 | `view_kick_side_ratio` | 0.2 | Sideways kick per round, against the climb |
@@ -183,20 +184,37 @@ at least a tenth of the climb.
 The slow half is slow so that a round's kick is still there when the next few
 land. Nothing lands after the last round, so keeping it slow there only leaves
 the view hanging: Sid, 2026-09-22, "the decay when you stop shooting... feels
-a bit too floating." It switches to `view_punch_release_time` once the trigger
-has been up for two rounds' worth of time. CS splits these the same way — its
-recoil index recovers between rounds, not while they are going out.
+a bit too floating." It switches to `view_punch_release_time` the moment the
+trigger comes up. CS splits these the same way — its recoil index recovers
+between rounds, not while they are going out.
 
-The release is also nearly critically damped, where the rest of the kick is
-not. A return should not swing past the thing it is returning to, and
-under-damped it did: the crosshair passed 0.74° **below** where the player was
-pointing and came back up to it, which is most of what reads as floating
-rather than settling.
+**The weapon is told about the trigger, it does not infer it.**
+`Weapon.trigger_held` is set once a tick by whoever drives the weapon. Working
+it out from the gap since the last round instead, which is what this used to
+do, costs `trigger_release_cycles` of dead time at the top of the spray where
+the crosshair has stopped climbing and has not started falling — 200 ms on the
+AK at the old value of 2, which Sid felt exactly: "it still feels like it hangs
+at the top for 200ms." The gap still matters as well as the button, because an
+empty magazine stops the rounds with the trigger still down.
 
-After a full AK magazine the crosshair is halfway home in 273 ms against 320,
-within a quarter degree in 420 ms against 531, and never dips below centre.
-The spray's height, the per-round shove and the single tap are all untouched,
-because none of them happens after the trigger is up.
+**The return is a plain exponential, and that is a specific choice.** A spring
+let go from rest starts with no speed at all, builds up and then eases out: an
+S, which reads as a hang however short you make it. So the release is
+critically damped and `Weapon` hands it exactly minus its own frequency times
+its height as a velocity at the instant the trigger goes up — the one
+combination a second-order system has that gives `V·exp(-ωt)`, steepest at the
+moment of release and flattening into the bottom. Sid, 2026-09-22: "if it were
+a curve it would be the bottom left quarter of a circle. A sharp drop and
+smooth at the bottom." Only the velocity is touched, so there is no jump: the
+crosshair is where it was, it has simply stopped climbing and started falling.
+`release_frequency()` is `-log(SETTLE_FRACTION) / view_punch_release_time`,
+with no peak term, because an exponential has no rise to peak past.
+
+After a full AK magazine the crosshair is halfway home in 62 ms against 273,
+within a quarter degree in 242 ms against 420, and never dips below centre. A
+single tap comes out at 1.46° rather than 1.67°, and no longer depends on how
+long the button is held past about 40 ms. The spray's height and the per-round
+shove are untouched.
 
 ### The camera and the weapon model are separate springs
 

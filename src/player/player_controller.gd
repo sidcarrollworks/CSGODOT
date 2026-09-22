@@ -177,6 +177,13 @@ func _update_weapon(
 
 	var now := Time.get_ticks_usec()
 	weapon.finish_reload_if_due(now)
+	# The weapon is told about the trigger rather than left to infer it from
+	# the gap since the last round, so the crosshair starts coming home on the
+	# frame the button comes up instead of a round and a quarter later. A press
+	# that happened and ended between ticks still counts as held for this one.
+	weapon.trigger_held = (
+		Input.is_action_pressed(&"attack") or not fire_events.is_empty()
+	)
 	weapon.update(delta, now)
 
 	var state := Weapon.ShooterState.new(

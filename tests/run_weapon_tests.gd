@@ -42,6 +42,8 @@ func _process(_delta: float) -> bool:
 		_test_view_rises_rather_than_teleporting()
 		_test_viewmodel_follows_the_view()
 		_test_the_camera_holds_while_firing_and_lets_go_after()
+		_test_the_crosshair_drops_sharply_and_eases_out()
+		_test_letting_go_beats_waiting_to_be_noticed()
 		_test_the_model_moves_less_than_the_view()
 		_test_a_single_tap_kicks_the_view()
 		_test_animation_lasts_as_long_as_measured()
@@ -574,6 +576,7 @@ func _test_the_camera_holds_while_firing_and_lets_go_after() -> void:
 		var left := weapon.aim_punch.y
 		var halfway := -1.0
 		var lowest := 0.0
+		weapon.trigger_held = false
 		for tick in 1024:
 			now += int(DT * SECOND)
 			weapon.update(DT, now)
@@ -582,8 +585,8 @@ func _test_the_camera_holds_while_firing_and_lets_go_after() -> void:
 			lowest = minf(lowest, weapon.aim_punch.y)
 
 		_check(
-			halfway > 0.0 and halfway < 0.35,
-			"%s crosshair is halfway home %.0f ms after the last round"
+			halfway > 0.0 and halfway < 0.1,
+			"%s crosshair is halfway home %.0f ms after the trigger comes up"
 				% [data.display_name, halfway * 1000.0]
 		)
 		# A return should not swing past the thing it is returning to. Under
@@ -593,6 +596,106 @@ func _test_the_camera_holds_while_firing_and_lets_go_after() -> void:
 			lowest > -0.05,
 			"%s comes home without dipping below where the player is pointing (%.2f degrees)"
 				% [data.display_name, lowest]
+		)
+
+
+## The shape of the return, not just its length.
+##
+## A spring let go from rest starts with no speed at all, builds up and then
+## eases out: an S, which reads as the crosshair hanging at the top of the
+## spray before it drops. Sid, 2026-09-22: "it still feels like it hangs at
+## the top for 200ms. It should move down very quickly. If it were a curve it
+## would be the bottom left quarter of a circle. A sharp drop and smooth at
+## the bottom."
+##
+## That curve is an exponential, which is what a critically damped spring makes
+## when it is handed minus its own frequency times its height as a velocity.
+## Its defining property is that it is steepest the instant it is released and
+## never steeper again.
+func _test_the_crosshair_drops_sharply_and_eases_out() -> void:
+	for data in [WeaponLibrary.ak47(), WeaponLibrary.m4a1s()]:
+		var weapon := Weapon.new(data)
+		var state := _standing()
+		var now := 0
+		var fired := 0
+		while fired < data.magazine_size:
+			now += int(DT * SECOND)
+			weapon.update(DT, now)
+			if weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, state) != null:
+				fired += 1
+
+		# Let go, and let the last round's own shove finish arriving: the fast
+		# half is still a few milliseconds off its peak when the button comes
+		# up, and that shove is the round's, not a hang. The curve Sid drew
+		# starts at the top, so the windows below do too.
+		weapon.trigger_held = false
+		var left := weapon.aim_punch.y
+		for tick in int(0.05 / DT):
+			now += int(DT * SECOND)
+			weapon.update(DT, now)
+			if weapon.aim_punch.y < left:
+				break
+			left = weapon.aim_punch.y
+
+		# How far it falls in each of eight windows of thirty milliseconds.
+		var window := int(0.03 / DT)
+		var falls: Array[float] = []
+		var was := left
+		for step in 8:
+			for tick in window:
+				now += int(DT * SECOND)
+				weapon.update(DT, now)
+			falls.append(was - weapon.aim_punch.y)
+			was = weapon.aim_punch.y
+
+		var steepest_first := true
+		var easing := true
+		for i in range(1, falls.size()):
+			if falls[i] > falls[0]:
+				steepest_first = false
+			if falls[i] > falls[i - 1]:
+				easing = false
+
+		_check(
+			steepest_first and easing,
+			"%s crosshair falls hardest the moment the trigger comes up and eases out from there (%.2f, %.2f, %.2f, %.2f degrees over the first four windows)"
+				% [data.display_name, falls[0], falls[1], falls[2], falls[3]]
+		)
+		_check(
+			falls[0] > left * 0.25,
+			"%s crosshair gives up %.0f per cent of its height in the thirty milliseconds after it tops out rather than hanging there"
+				% [data.display_name, 100.0 * falls[0] / maxf(left, 0.0001)]
+		)
+
+
+## The weapon is told about the trigger rather than left to infer it from the
+## gap since the last round, which cost a round and a quarter of dead time at
+## the top of the spray.
+func _test_letting_go_beats_waiting_to_be_noticed() -> void:
+	for data in [WeaponLibrary.ak47(), WeaponLibrary.m4a1s()]:
+		var told := Weapon.new(data)
+		var guessed := Weapon.new(data)
+		var state := _standing()
+		var now := 0
+		var fired := 0
+		while fired < data.magazine_size:
+			now += int(DT * SECOND)
+			told.update(DT, now)
+			guessed.update(DT, now)
+			told.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, state)
+			if guessed.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, state) != null:
+				fired += 1
+
+		told.trigger_held = false
+		for tick in int(0.06 / DT):
+			now += int(DT * SECOND)
+			told.update(DT, now)
+			guessed.update(DT, now)
+
+		_check(
+			told.aim_punch.y < guessed.aim_punch.y * 0.75,
+			"%s crosshair is %.2f degrees down sixty milliseconds after the button comes up, against %.2f if it had to be inferred from the gap"
+				% [data.display_name, told.aim_punch.y, guessed.aim_punch.y]
 		)
 
 
