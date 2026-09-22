@@ -19,7 +19,7 @@ extends RigModel
 ## +X), in metres. This node turns that round to look down Godot's -Z and
 ## scales it up to inches, so it goes under the camera and nowhere else.
 
-const CLIPS_ROOT := "res://assets/characters/animation/anims/viewmodel/rifle"
+const CLIPS_ROOT := "res://assets/characters/animation/anims/viewmodel"
 const AGENTS := {
 	"T": "res://assets/characters/agents/models/tm_phoenix/tm_phoenix_varianta.gltf",
 	"CT": "res://assets/characters/agents/models/ctm_sas/ctm_sas.gltf",
@@ -40,14 +40,25 @@ var shoot_clips := PackedStringArray()
 var _next_shoot: int = 0
 
 
+## Where a first-person set's clips are. A set is named by its folder under
+## viewmodel/ ("pistol/pistol_glock18"; reference/weapons/models.md lists
+## every gun's); a bare name ("rifle_ak") is a rifle set, as the first two
+## guns' were named.
+static func clips_dir(clip_set: String) -> String:
+	return CLIPS_ROOT.path_join(clip_set if clip_set.contains("/") else "rifle".path_join(clip_set))
+
+
 ## Builds the arms and weapon. Returns false, with nothing built, when the
 ## models or clips have not been extracted; the game plays on without them.
 func setup(team: String, weapon_model: String, clip_set: String) -> bool:
 	one_shots = PackedStringArray(["draw", "shoot", "reload", "lookat", "silencer"])
-	var suffix := clip_set.get_slice("_", clip_set.get_slice_count("_") - 1)
-	if not load_clips(list_clips(CLIPS_ROOT.path_join(clip_set)), suffix):
+	var clips := list_clips(clips_dir(clip_set))
+	if not load_clips(clips, common_suffix(clips)):
 		return false
-	idle = &"idle"
+	# The idle is "idle" on all but the M249 and G3SG1, whose sets name it
+	# "idle1".
+	var idles := clips_named("idle")
+	idle = &"idle" if idles.has("idle") or idles.is_empty() else StringName(idles[0])
 	shoot_clips = clips_named("shoot")
 	_next_shoot = 0
 
@@ -61,7 +72,10 @@ func setup(team: String, weapon_model: String, clip_set: String) -> bool:
 	if weapon != null and weapon_rig != null:
 		for mesh in weapon.find_children("*", "MeshInstance3D", true, false):
 			# The export carries two bodies; the other is for old hardware.
-			if not mesh.name.ends_with("body_legacy"):
+			# And the Dual Berettas carry their thigh holster, which is for the
+			# third-person body: no first-person clip poses it, and it floats
+			# in the middle of the view.
+			if not mesh.name.ends_with("body_legacy") and not mesh.name.ends_with("_eholster"):
 				adopt(mesh, weapon_rig)
 		weapon.free()
 	if weapon_rig != null and weapon_rig.get_bone_count() > 0:

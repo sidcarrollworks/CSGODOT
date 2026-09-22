@@ -183,8 +183,8 @@ somewhere it can be found:
 ```sh
 scripts/extract_assets.sh list-map     # see what is inside the dust2 VPK
 scripts/extract_assets.sh map          # extract it, then import it into Godot
-scripts/extract_assets.sh weapons      # the AK-47 and M4A1-S models
-scripts/extract_assets.sh sounds       # their sounds, footsteps by surface, hits
+scripts/extract_assets.sh weapons      # every gun: models and animations
+scripts/extract_assets.sh sounds       # every gun's sounds, footsteps by surface, hits
 ```
 
 `map` takes a few minutes and a little under two gigabytes. It pulls seven

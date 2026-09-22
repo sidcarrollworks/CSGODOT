@@ -310,7 +310,7 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 | Hands | Measure jump height, crouch-jump reach, dead-strafe feel | Movement check |
 | Hands | Playtest the range dummy and ragdoll on current assets | Confirms PR #20 |
 | Hands | Check that first shots at a run now miss (PR #24) | Item 9 |
-| Hands | Start the every-gun extraction (weapons TODO L1 to L3) | Every gun |
+| Done | The every-gun extraction (weapons TODO L1 to L3), and reload and draw times from the clips (L5) | Every gun: `reference/weapons/models.md`, `sounds.md`, `timings.md` |
 | Hands | The systems' Local list in `reference/cs2-systems.md`: buy zones and bomb sites (B1), radar (B3), bomb (C1 to C3), grenades (G1 to G6), knife and Zeus (K1, K2), sounds (S1, S2) | Phases 4 to 7 |
 
 ---

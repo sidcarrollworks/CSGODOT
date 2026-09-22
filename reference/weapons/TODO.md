@@ -91,24 +91,24 @@ land anywhere in the cone. It applies to every gun:
 
 Roughly in order; L1 to L3 can start at once.
 
-- [ ] **L1. Extract every weapon model.** Widen `list_weapons` and
+- [x] **L1. Extract every weapon model.** *(done 2026-09-22: 78 models, the 34 guns, their magazines and the shell casings; `reference/weapons/models.md`)* Widen `list_weapons` and
   `extract_weapons` in `scripts/extract_assets.sh` from `(ak47|m4a1)` to all
   34, still anchored to `^weapons/models/` so keychain charms stay out. Keep
   the glTF, materials and animations flags the rifles use. Print the list the
   filter found, and write the class-to-model-path table it discovers to
   `reference/weapons/models.md` so the remote side can use the names.
-- [ ] **L2. Extract the animation sets per weapon class.** First person:
+- [x] **L2. Extract the animation sets per weapon class.** *(done 2026-09-22: 630 clips and skeletons, every gun's first- and third-person set, the pistols' locomotion; every gun builds in first person, checked by `run_model_checks.gd`)* First person:
   `animation/anims/viewmodel/<class>/...` for pistol, SMG, shotgun, rifle,
   sniper and machine gun sets, with the skeletons, the way the rifle sets are
   fetched today. Third person: the matching `anims/world/<class>` locomotion,
   shoot, reload and draw clips. Record which clip set each weapon uses.
-- [ ] **L3. Extract every weapon's sounds.** Fire, distant fire, the reload's
+- [x] **L3. Extract every weapon's sounds.** *(done 2026-09-22: every gun's folder, 743 sounds with the rest; `reference/weapons/sounds.md`)* Fire, distant fire, the reload's
   parts, draw, and for the modes: silencer on and off, zoom in and out, burst.
   Widen `SOUND_FILTER`; list the files per weapon in
   `reference/weapons/sounds.md` so `WeaponSounds` can be filled in remotely.
 - [ ] **L4. Scope overlays.** The scope textures and the zoom sounds for the
   AWP, SSG 08, G3SG1, SCAR-20, AUG and SG 553.
-- [ ] **L5. Measure what the sheet does not have**, in CS2, per weapon, into
+- [ ] **L5. Measure what the sheet does not have** *(reload and draw done 2026-09-22 from the game's own clip data, not by hand: `reference/weapons/timings.md` and `timings.csv` have every gun's draw, reload to rounds in and to ready, shotgun shell loop, silencer switch and sound timing; the zoom levels are next, from `scripts/weapons.vdata`, which this Source 2 Viewer decodes)*, in CS2, per weapon, into
   `reference/weapons/measured.csv`:
   reload time (to rounds in, and to ready), draw time, and for the snipers the
   zoom levels (FOV per level) and time to scope in. Frame-by-frame, the way

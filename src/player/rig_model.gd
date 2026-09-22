@@ -330,6 +330,22 @@ static func list_clips(dir_path: String, prefixes: PackedStringArray = PackedStr
 	return out
 
 
+## The suffix most of a set's clips end in, after their last underscore:
+## the set's weapon, which is not always its folder's (pistol_glock18's clips
+## end in _glock, and the revolver's also carry _0 to _7).
+static func common_suffix(paths: PackedStringArray) -> String:
+	var counts := {}
+	for path in paths:
+		var stem := path.get_file().get_basename()
+		var last := stem.get_slice("_", stem.get_slice_count("_") - 1)
+		counts[last] = counts.get(last, 0) + 1
+	var best := ""
+	for last in counts:
+		if best.is_empty() or counts[last] > counts[best]:
+			best = last
+	return best
+
+
 ## "draw_ak.gltf" with suffix "ak" is "draw".
 static func short_name(path: String, suffix: String) -> StringName:
 	return StringName(path.get_file().get_basename().trim_suffix("_" + suffix))
