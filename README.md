@@ -110,11 +110,16 @@ derived from the shot, not from a live RNG. The same shot fired twice under the
 same conditions goes to the same place, which is what makes a spray learnable
 and what makes the tests able to assert where a bullet went.
 
-**Recoil is view punch, not aim.** Firing moves the camera, and never the
-player's own look angles. Pulling down to counter the kick therefore changes
-your aim by exactly what you pulled, the same as CS. The player's angles and
-the punch are added at the last moment, in `PlayerController`, and stored
-separately everywhere else.
+**Recoil is view punch, not aim, and the view is not the bullets.** Firing
+moves the camera and never the player's own look angles, so pulling down to
+counter the kick changes your aim by exactly what you pulled, the same as CS.
+
+The view kick is also deliberately much smaller than the spray: about a fifth
+of it, and it settles back while the spray carries on climbing. Bullets follow
+the pattern and nothing else. Turning the view kick off entirely leaves every
+bullet hole exactly where it was, which is the property that makes a spray
+learnable rather than something you read off the screen.
+`reference/weapon_stats.md` has the measurements and the knobs.
 
 The spray patterns are the real ones, read off CS2 spray plots: 30 shots for
 the AK-47 and 25 for the M4A1-S, with firing order recovered from the plots'
@@ -207,8 +212,8 @@ Note that GDScript's analyser warnings (shadowed variables, unused locals) only
 appear when the editor loads a script. They do not show up in a headless run,
 so if the Godot console shows any, paste them over and they will get fixed.
 
-A hundred and ninety checks, in four files: movement, map import, dust2
-and weapons. The dust2 file skips itself where the map has not been
+Two hundred and twenty-seven checks, in four files: movement, map import,
+dust2 and weapons. The dust2 file skips itself where the map has not been
 extracted.
 
 Half of the movement ones are the acceleration model against hand-computed

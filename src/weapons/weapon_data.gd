@@ -73,9 +73,6 @@ extends Resource
 ## thirty rows edited by hand. See reference/spray_patterns/README.md.
 @export var recoil_scale: float = 1.0
 
-## How fast accumulated view punch eases back once you stop firing, in degrees
-## per second. This returns the camera; it does not rewind the pattern.
-@export var recoil_recovery_rate: float = 10.0
 
 ## How long the trigger has to be off before the spray starts from the top
 ## again, in seconds.
@@ -87,10 +84,45 @@ extends Resource
 ## shot number one and flattened the pattern entirely.
 @export var recoil_reset_time: float = 0.4
 
-## How much of the recoil offset is applied to the view rather than only to
-## where the bullets go. At 1.0 the crosshair climbs with the spray, which is
-## what CS does.
-@export_range(0.0, 1.0) var recoil_view_fraction: float = 1.0
+# --- View punch -----------------------------------------------------------
+#
+# The view kick and the bullet trajectory are two different things, and this
+# is the single most misunderstood part of how CS shoots. The bullets follow
+# the spray pattern exactly. The view is given a smaller, springy nudge that
+# only suggests the pattern. You cannot read your own recoil off the screen;
+# you learn the pattern and pull against it.
+#
+# Gluing the two together, which is what this used to do, produces a view
+# that snaps to each bullet and sags between shots. That is not what CS looks
+# like and it is not what CS plays like.
+
+## How much of the pattern the view is kicked by, against the full amount the
+## bullets move. Well under 1.0: the crosshair moves noticeably less than the
+## spray.
+##
+## Tuned by eye against CS2 rather than measured, so it is a starting point.
+@export_range(0.0, 1.0) var recoil_view_fraction: float = 0.45
+
+## How hard a shot kicks the view, as a multiplier on the impulse given to the
+## punch velocity. Source's ViewPunch adds to the punch VELOCITY rather than
+## to the angle, scaled by 20, which is why the view rises into a kick instead
+## of teleporting to it.
+@export var punch_impulse_scale: float = 20.0
+
+## The spring that pulls the view back to where the player is actually
+## pointing, and the damping that stops it oscillating.
+##
+## This is Source's DecayPunchAngle: an angle with its own velocity, a
+## viscous damping term and a torsional spring toward zero. The structure is
+## Source's; these two constants are from memory of the SDK and were not
+## verifiable from here, so treat them as tunables rather than as facts.
+@export var punch_damping: float = 9.0
+@export var punch_spring: float = 65.0
+
+## How much of the view punch the weapon model is moved by, on top of the
+## camera. CS exposes this as viewmodel_recoil. Purely cosmetic: it moves the
+## gun in your hands and changes nothing about aim or bullets.
+@export_range(0.0, 4.0) var viewmodel_recoil: float = 1.0
 
 # --- Inaccuracy -----------------------------------------------------------
 

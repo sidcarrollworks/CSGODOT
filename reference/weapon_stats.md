@@ -62,6 +62,55 @@ pin: crouched is tighter than standing, walking under about a third of run
 speed costs nothing, running is more than ten times the standing cone, and
 jumping is worse than any of them.
 
+## View kick, and why it is not the spray
+
+**The bullets and the view are two different things, and this is the most
+misunderstood part of how CS shoots.** Bullets follow the spray pattern
+exactly. The view is given a smaller, springy nudge that only suggests the
+pattern. You cannot read your own recoil off the screen: you learn the pattern
+and pull against it. The community writeups are blunt about this, and CS2 even
+exposes `weapon_recoil_view_punch_extra` (default 0.055) as a separate knob for
+how hard the screen shakes.
+
+Measured in our build, holding the trigger for a full magazine:
+
+| | Bullets climb | View peaks at | View as a share |
+|---|---|---|---|
+| AK-47 | 16.00° | 3.39° | 21% |
+| M4A1-S | 9.57° | 2.20° | 23% |
+
+The view also stops climbing about a third of the way through and settles back
+toward centre while the spray carries on, because the later part of both
+patterns is mostly sideways and the spring keeps pulling. That is what "the
+crosshair kicks up but only so much" means.
+
+### How it is built
+
+`Weapon.aim_punch` is an angle with its own velocity, damped, with a spring
+pulling it back to zero. This is Source's `DecayPunchAngle`. A shot pushes the
+**velocity**, not the angle, which is why the view rises into a kick over
+several ticks instead of teleporting to it: the largest single-tick movement
+during an AK spray is 0.30°, against 6.61° for the steepest single bullet step.
+
+The knobs, all on `WeaponData`:
+
+| | Default | |
+|---|---|---|
+| `recoil_view_fraction` | 0.45 | How much of the pattern the view is kicked by |
+| `punch_impulse_scale` | 20 | How hard a shot pushes the punch velocity |
+| `punch_damping` | 9 | Viscous damping on that velocity |
+| `punch_spring` | 65 | Spring pulling the view back to where you point |
+| `viewmodel_recoil` | 1.0 | Extra movement for the weapon model only |
+
+The structure is Source's. The two spring constants are from memory of the SDK
+and could not be verified from this machine, so treat them as tunables rather
+than as facts. `recoil_view_fraction` is tuned by eye against CS2 and is the
+first thing to change if the kick feels wrong.
+
+Setting `recoil_view_fraction` to 0 removes the view kick entirely and **every
+bullet still lands in exactly the same place**. There is a test that asserts
+precisely that, because it is the property that makes a spray learnable.
+
 ## Spray patterns
 
 `reference/spray_patterns/*.csv`, one row per shot, in degrees from the point
