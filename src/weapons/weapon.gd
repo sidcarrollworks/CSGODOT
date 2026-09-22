@@ -197,9 +197,17 @@ func is_accuracy_reset() -> bool:
 	return _inaccuracy <= 0.0
 
 
-## Where the weapon model should be pushed to, in degrees. Cosmetic only.
+## Where the weapon model should be pushed to, in degrees, over and above the
+## camera it already hangs from. Cosmetic only: it moves the gun in the
+## player's hands and changes nothing about aim or bullets.
+##
+## Sideways is scaled down against the climb, so the gun sways without
+## wandering off the middle of the screen.
 func viewmodel_punch() -> Vector2:
-	return aim_punch * data.viewmodel_recoil
+	return Vector2(
+		aim_punch.x * data.viewmodel_recoil * data.viewmodel_sway,
+		aim_punch.y * data.viewmodel_recoil
+	)
 
 
 ## The current cone half-angle in degrees, given what the shooter is doing.
