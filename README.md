@@ -242,8 +242,8 @@ guesses wrong.
 
 Then open `maps/de_dust2/de_dust2.tscn` and press play. You start at one of
 the map's own T spawn points (`spawn_team` on the scene root switches sides),
-colliding with the hull the game itself collides with, player clips included.
-None of the visible world is solid.
+colliding with the hull the game itself collides with, player clips included
+(which stop you and not your rounds). None of the visible world is solid.
 
 The lighting is the map's own numbers, translated (`src/map/map_lighting.gd`):
 the sun's colour, brightness and size from `light_environment`, the sky

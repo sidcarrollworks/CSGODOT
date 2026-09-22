@@ -80,6 +80,8 @@ func _ready() -> void:
 	previous_position = global_position
 	# We run our own gravity in Source units, and our own collide-and-slide.
 	motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
+	# Player clips stop bodies, not rounds: they are on a layer of their own.
+	collision_mask |= MapImporter.PLAYER_CLIP_LAYER
 
 
 func _find_collision_shape() -> CollisionShape3D:

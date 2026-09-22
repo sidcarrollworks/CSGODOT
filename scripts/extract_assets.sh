@@ -482,10 +482,12 @@ extract_weapons() {
 ## distances are not fetched; the numbers are set by ear.
 SOUND_FILTER='^sounds/(weapons/ak47/ak47_(0[1-4]|distant|clipout_01|boltpull_0[14]|addammo_02|draw)|weapons/m4a1/m4a1_(silencer_01|us_distant|clipout|clipin|silencer_boltback|silencer_boltforward|draw)|player/footsteps/(concrete_ct|dirt|sand|wood|metal_solid|metal_vent|metal_chainlink|metal_grate|tile|gravel|grass|carpet|glass|rubber|plastic_barrel|mud)_[0-9]+|player/footsteps/land_(concrete|dirt|sand|metal_solid|metal_vent|metal_grate|tile|gravel|grass|carpet|glass|rubber|mud|auto)(_[0-9]+)?|player/(kevlar[0-9]|headshot_armor_01|headshot_noarmor_0[1-5]|bodyshot_kill_01)|physics/(concrete/concrete_impact_bullet[0-9]|surfaces/(sand|dirt|tile|default|carpet|grass)_impact_bullet[0-9_]*|metal/metal_solid_impact_bullet[0-9]|wood/wood_solid_impact_bullet[0-9]))\.vsnd_c$'
 
-## The bullet holes: the game's decal textures for concrete, plaster and
-## metal, which are what dust2 is made of. Decompiled to png beside the
-## sounds, under decals/.
-DECAL_FILTER='^materials/decals/(concrete/bullethole_concrete_[1-5]_color|plaster/plaster[12]_bullet_color|metal/bullethole_metal_[123]_color)_[a-z0-9_]*\.vtex_c$'
+## The bullet holes: the game's bullet-hole materials for concrete, plaster,
+## metal and wood, which are what dust2 is made of, and the colour, occlusion
+## and normal textures they name. The materials decompile to .vmat text, which
+## says which texture is which and how big the hole is; the textures to png.
+## Beside the sounds, under decals/.
+DECAL_FILTER='^materials/decals/((concrete/concrete[1-5]|plaster/plaster[1-4]|metal/metal[1-3]|wood/wood[1-4])\.vmat_c|(concrete/bullethole_concrete_[1-5]|plaster/(plaster[12]_bullet|plaster_2_bullet|plaster0[12])|metal/bullethole_metal_[1-3]|wood/wood_[1-4]_decal)_(color|ao|normal)_[a-z0-9_]*\.vtex_c)$'
 
 extract_sounds() {
 	require_file "$PAK_VPK"
@@ -507,7 +509,7 @@ extract_sounds() {
 	decals="$(grep -E "$DECAL_FILTER" <<<"$listing" | paste -sd, - || true)"
 	require_filter "$decals" "the bullet holes"
 	mkdir -p "$OUT_DIR/decals"
-	echo "Extracting $(tr ',' '\n' <<<"$decals" | wc -l | tr -d ' ') bullet-hole decals"
+	echo "Extracting $(tr ',' '\n' <<<"$decals" | wc -l | tr -d ' ') bullet-hole materials and textures"
 	echo "        -> $OUT_DIR/decals"
 	"$S2V_BIN" -i "$PAK_VPK" -f "$decals" -o "$OUT_DIR/decals" -d \
 		| grep -vE '^(Preloading|Added folder|--- )' || true

@@ -57,6 +57,7 @@ func setup(team: String, weapon_model: String) -> bool:
 	var weapon := instantiate(weapon_model) as Node3D
 	if weapon != null:
 		for mesh in weapon.find_children("*", "MeshInstance3D", true, false):
+			(mesh as MeshInstance3D).layers = LAYER
 			if mesh.name.ends_with("body_legacy"):
 				mesh.visible = false
 			elif probe_lit:

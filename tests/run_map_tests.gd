@@ -141,8 +141,9 @@ func _write_export_fixture() -> bool:
 	world.add_child(sun)
 	sun.owner = world
 
-	# The hull: inches, under a node that scales to metres. A floor, and a
-	# grenade clip hanging over it that a player has to fall straight through.
+	# The hull: inches, under a node that scales to metres. A floor, a
+	# grenade clip hanging over it that a player has to fall straight through,
+	# and off to one side a player clip, which stops players and not rounds.
 	var hull := Node3D.new()
 	hull.name = "Hull"
 	var to_metres := Node3D.new()
@@ -154,6 +155,10 @@ func _write_export_fixture() -> bool:
 	_add_mesh(
 		to_metres, "physics_csgo_grenadeclip", Vector3(256.0, 16.0, 256.0),
 		Vector3(0.0, 72.0, 0.0), "", hull
+	)
+	_add_mesh(
+		to_metres, "physics_npcclip_playerclip", Vector3(16.0, 128.0, 256.0),
+		Vector3(200.0, 64.0, 0.0), "", hull
 	)
 
 	# Something that sorts ahead of world.gltf and must not be mistaken for it.
@@ -305,8 +310,16 @@ func _test_export_shaped_import() -> void:
 
 	_check_equal(stats.get("collision_from", ""), "the collision hull", "collision comes from the hull")
 	_check_equal(
-		stats.get("collision_bodies", 0), 1,
+		stats.get("collision_bodies", 0), 2,
 		"the hull's grenade clip is left out and the world adds nothing"
+	)
+	var world_body := importer.get_node_or_null("Collision") as StaticBody3D
+	var clip_body := importer.get_node_or_null("PlayerClip") as StaticBody3D
+	_check(
+		world_body != null and clip_body != null
+			and world_body.collision_layer == Hitscan.WORLD_LAYER and clip_body.collision_layer == MapImporter.PLAYER_CLIP_LAYER
+			and clip_body.get_child_count() == 1 and str(clip_body.get_child(0).name) == "physics_npcclip_playerclip",
+		"the player clip is a body of its own, on a layer of its own"
 	)
 	_check(stats.has("sun"), "the export's sun is reported")
 
@@ -1159,6 +1172,18 @@ func _test_player_stands_on_the_hull() -> void:
 		absf(body.global_position.y - expected) < 2.0,
 		"player fell through the grenade clip and the visible floor onto the hull (y = %.2f, expected %.2f)"
 			% [body.global_position.y, expected]
+	)
+
+	# The player clip: a round and a line of sight go through it, a player
+	# walking into it stops.
+	var space := body.get_world_3d().direct_space_state
+	var from := EXPORT_OFFSET + Vector3(150.0, 40.0, 0.0)
+	var to := EXPORT_OFFSET + Vector3(300.0, 40.0, 0.0)
+	var shot := space.intersect_ray(PhysicsRayQueryParameters3D.create(from, to, Hitscan.WORLD_LAYER | Hitbox.LAYER))
+	var walker := space.intersect_ray(PhysicsRayQueryParameters3D.create(from, to, body.collision_mask))
+	_check(
+		shot.is_empty() and not walker.is_empty() and absf((walker["position"] as Vector3).x - (EXPORT_OFFSET.x + 192.0)) < 0.5,
+		"a round passes through the player clip that a player's movement meets (%s)" % [walker.get("position", "nothing")]
 	)
 
 

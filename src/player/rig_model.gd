@@ -20,6 +20,12 @@ extends Node3D
 ## degenerate matrix for the skin to chew on.
 const FOLDED := 0.001
 
+## The visual layer the players' models, the bots' and your own arms are
+## drawn on, apart from the world's: a bullet hole's projection is deep, and
+## would otherwise print itself on someone standing at the wall, or on your
+## own gun, whose true place is in the wall when you are pressed against it.
+const LAYER := 2
+
 ## Lit by the map's light probes rather than Godot's ambient: every mesh
 ## adopted goes on the probe shader, and light_from hands it a cube.
 var probe_lit: bool = true
@@ -222,6 +228,7 @@ func adopt(mesh: MeshInstance3D, rig: Skeleton3D) -> void:
 	rig.add_child(mesh)
 	mesh.skeleton = NodePath("..")
 	mesh.transform = Transform3D.IDENTITY
+	mesh.layers = LAYER
 	if probe_lit:
 		_probe_light(mesh)
 
