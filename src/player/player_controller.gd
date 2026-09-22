@@ -11,6 +11,18 @@ extends PlayerBody
 
 @export var camera: Camera3D
 
+## The weapon model, if there is one. Assign it and it rides the recoil.
+##
+## Optional and read-only from here: this rotates the node and touches nothing
+## else, so whatever the model does for itself (bob, sway, animations) is left
+## alone. Cosmetic in full; it changes nothing about aim or bullets.
+@export var viewmodel: Node3D
+
+## The weapon model's rest orientation, captured on the first frame so the
+## recoil can be applied relative to however it was posed in the scene.
+var _viewmodel_rest := Basis.IDENTITY
+var _viewmodel_rest_captured := false
+
 var input := PlayerInput.new()
 
 ## The weapon currently held. Swapped with the number keys.
@@ -230,11 +242,33 @@ func _process(_delta: float) -> void:
 
 	camera.global_position = interpolated + Vector3.UP * eye_height()
 	# The recoil punch is added here rather than to the player's own look
-	# angles, so the crosshair climbs with the spray while the angles the
-	# player is actually holding stay untouched.
-	var punch := weapon.accumulated_punch if weapon != null else Vector2.ZERO
+	# angles, so the view kicks while the angles the player is actually
+	# holding stay untouched. It is also deliberately smaller than the spray:
+	# the crosshair suggests the recoil, it does not report it.
+	var punch := weapon.aim_punch if weapon != null else Vector2.ZERO
 	camera.global_rotation = Vector3(
 		deg_to_rad(input.pitch_degrees + punch.y),
 		deg_to_rad(input.yaw_degrees - punch.x),
 		0.0
+	)
+
+	_update_viewmodel()
+
+
+## Rides the weapon model on the same punch, scaled by viewmodel_recoil.
+##
+## The model is a child of the camera, so it already follows the view kick.
+## This is the extra movement on top: the gun climbing in the hands relative
+## to the screen, which is most of what reads as recoil.
+func _update_viewmodel() -> void:
+	if viewmodel == null or weapon == null:
+		return
+	if not _viewmodel_rest_captured:
+		_viewmodel_rest = viewmodel.transform.basis
+		_viewmodel_rest_captured = true
+
+	var kick := weapon.viewmodel_punch()
+	viewmodel.transform.basis = (
+		_viewmodel_rest
+		* Basis.from_euler(Vector3(deg_to_rad(kick.y), deg_to_rad(-kick.x), 0.0))
 	)

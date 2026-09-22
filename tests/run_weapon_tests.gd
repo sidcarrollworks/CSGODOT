@@ -31,6 +31,10 @@ func _process(_delta: float) -> bool:
 		_test_spray_resets_on_time()
 		_test_patterns_are_the_measured_ones()
 		_test_recoil_scale()
+		_test_bullets_ignore_the_view_kick()
+		_test_view_kicks_less_than_the_spray()
+		_test_view_rises_rather_than_teleporting()
+		_test_viewmodel_follows_the_view()
 		_test_inaccuracy_by_state()
 		_test_damage_falloff()
 		_test_hitbox_multipliers()
@@ -170,30 +174,42 @@ func _test_recoil_follows_the_pattern() -> void:
 
 func _test_recoil_recovers() -> void:
 	var weapon := Weapon.new(WeaponLibrary.ak47())
-	var cycle := int(weapon.data.cycle_time * SECOND)
+	var state := _standing()
+	var now := 0
 
-	for shot in 6:
-		weapon.fire(shot * cycle, 0.0, Vector3.ZERO, 0.0, 0.0, _standing())
+	# Six shots on a held trigger, ticking the spring as the game does.
+	var fired := 0
+	while fired < 6:
+		now += int(DT * SECOND)
+		weapon.update(DT, now)
+		if weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, state) != null:
+			fired += 1
+	# A few more ticks for the spring to carry the last kick.
+	for tick in 12:
+		now += int(DT * SECOND)
+		weapon.update(DT, now)
+
 	_check(
-		weapon.accumulated_punch.length() > 1.0,
-		"the view has climbed after six shots (%.2f degrees)"
-			% weapon.accumulated_punch.length()
+		weapon.aim_punch.length() > 1.0,
+		"the view has kicked after six shots (%.2f degrees)"
+			% weapon.aim_punch.length()
 	)
 	_check(weapon.shot_index() == 6, "six shots into the pattern")
 
 	# Let go of the trigger and wait.
-	var now := 6 * cycle
 	for tick in 512:
 		now += int(DT * SECOND)
 		weapon.update(DT, now)
 
 	_check(
-		weapon.accumulated_punch == Vector2.ZERO,
-		"the view returns exactly to where the player was pointing"
+		weapon.aim_punch == Vector2.ZERO
+			and weapon.aim_punch_velocity == Vector2.ZERO,
+		"the view returns exactly to where the player was pointing (%s)"
+			% weapon.aim_punch
 	)
 	_check_equal(
 		weapon.shot_index(), 0,
-		"the pattern restarts once the view has settled"
+		"the pattern restarts once the trigger has been off long enough"
 	)
 
 
@@ -218,7 +234,7 @@ func _test_held_trigger_walks_the_whole_pattern() -> void:
 			var shot := weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, state)
 			if shot != null:
 				indices.append(shot.shot_index)
-				climb.append(weapon.accumulated_punch.y)
+				climb.append(data.recoil_offset(shot.shot_index).y)
 
 		_check_equal(
 			indices.size(), data.magazine_size,
@@ -237,7 +253,7 @@ func _test_held_trigger_walks_the_whole_pattern() -> void:
 		if climb.size() > 8:
 			_check(
 				climb[7] > 3.0,
-				"%s view has climbed by the eighth shot (%.2f degrees)"
+				"%s bullets have climbed by the eighth shot (%.2f degrees)"
 					% [data.display_name, climb[7]]
 			)
 
@@ -257,8 +273,8 @@ func _test_spray_resets_on_time() -> void:
 	var first := weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, state)
 	_check(first != null and first.shot_index == 0, "the first shot is shot zero")
 	_check_near(
-		weapon.accumulated_punch.length(), 0.0,
-		"the first shot applies no punch, because the pattern starts at zero"
+		weapon.aim_punch.length(), 0.0,
+		"the first shot kicks the view nowhere, because the pattern starts at zero"
 	)
 
 	var short_wait := int(data.recoil_reset_time * 0.5 * SECOND)
@@ -341,12 +357,163 @@ func _test_recoil_scale() -> void:
 
 	var weapon := Weapon.new(data)
 	var cycle := int(data.cycle_time * SECOND)
+	var last: Weapon.Shot = null
 	for shot in 5:
-		weapon.fire(shot * cycle, 0.0, Vector3.ZERO, 0.0, 0.0, _standing())
+		last = weapon.fire(shot * cycle, 0.0, Vector3.ZERO, 0.0, 0.0, _standing())
 
+	var angles := PlayerInput.angles_from_direction(last.direction)
 	_check_near(
-		weapon.accumulated_punch.y, data.recoil_pattern[4].y * 0.5,
-		"recoil_scale halves how far the view climbs"
+		angles.y, data.recoil_pattern[4].y * 0.5,
+		"recoil_scale halves how far the bullets climb"
+	)
+
+
+## Fires the same spray with the view kick off and with it at full strength,
+## and checks every bullet went to exactly the same place.
+##
+## This is the whole claim, as a test. The pattern is the truth; the view only
+## suggests it. Anything that makes the view kick also move the bullets has
+## broken the thing that makes a spray learnable.
+func _test_bullets_ignore_the_view_kick() -> void:
+	var runs: Array[Array] = []
+	for fraction in [0.0, 0.45, 1.0]:
+		var data := WeaponLibrary.ak47()
+		data.recoil_view_fraction = fraction
+		var weapon := Weapon.new(data)
+		var state := _standing()
+		var now := 0
+		var directions: Array[Vector3] = []
+		while directions.size() < data.magazine_size:
+			now += int(DT * SECOND)
+			weapon.update(DT, now)
+			var shot := weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, state)
+			if shot != null:
+				directions.append(shot.direction)
+		runs.append(directions)
+
+	for run in range(1, runs.size()):
+		var same := true
+		var worst := 0.0
+		for i in runs[0].size():
+			var a: Vector3 = runs[0][i]
+			var b: Vector3 = runs[run][i]
+			worst = maxf(worst, (a - b).length())
+			if not a.is_equal_approx(b):
+				same = false
+		_check(
+			same,
+			"every bullet lands identically whether the view kicks or not (worst difference %.8f)"
+				% worst
+		)
+
+
+## The view kick is a suggestion, not a readout. It has to move noticeably
+## less than the bullets, and it has to stop climbing while the spray carries
+## on, which is what "the crosshair kicks up but only so much" means.
+func _test_view_kicks_less_than_the_spray() -> void:
+	for data in [WeaponLibrary.ak47(), WeaponLibrary.m4a1s()]:
+		var weapon := Weapon.new(data)
+		var state := _standing()
+		var now := 0
+		var peak_view := 0.0
+		var view_at_end := 0.0
+		var fired := 0
+
+		while fired < data.magazine_size:
+			now += int(DT * SECOND)
+			weapon.update(DT, now)
+			if weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, state) != null:
+				fired += 1
+			peak_view = maxf(peak_view, weapon.aim_punch.y)
+			view_at_end = weapon.aim_punch.y
+
+		var spray_climb := 0.0
+		for entry in data.recoil_pattern:
+			spray_climb = maxf(spray_climb, entry.y)
+
+		_check(
+			peak_view > 0.5,
+			"%s kicks the view at all (%.2f degrees)"
+				% [data.display_name, peak_view]
+		)
+		_check(
+			peak_view < spray_climb * 0.5,
+			"%s kicks the view well under half as far as the spray climbs (%.2f against %.2f degrees)"
+				% [data.display_name, peak_view, spray_climb]
+		)
+		_check(
+			absf(view_at_end) < peak_view * 0.5,
+			"%s view has settled back by the end of the magazine while the spray is still high (%.2f, peaked at %.2f)"
+				% [data.display_name, view_at_end, peak_view]
+		)
+
+
+## The view rises into a kick over several ticks rather than jumping to it.
+##
+## The reported bug was that each shot teleported the crosshair and it then
+## drifted down, over and over. That happened because a shot set the punch
+## ANGLE directly. A shot now pushes the punch VELOCITY, so no single tick can
+## move the view anything like as far as one bullet does.
+func _test_view_rises_rather_than_teleporting() -> void:
+	var data := WeaponLibrary.ak47()
+	var weapon := Weapon.new(data)
+	var state := _standing()
+	var now := 0
+	var previous := Vector2.ZERO
+	var biggest_step := 0.0
+	var fired := 0
+
+	while fired < data.magazine_size:
+		now += int(DT * SECOND)
+		weapon.update(DT, now)
+		if weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, state) != null:
+			fired += 1
+		biggest_step = maxf(biggest_step, (weapon.aim_punch - previous).length())
+		previous = weapon.aim_punch
+
+	# The steepest single step in the pattern is what a teleport would look
+	# like, so the view has to move a lot less than that in any one tick.
+	var steepest := 0.0
+	for i in range(1, data.recoil_pattern.size()):
+		steepest = maxf(
+			steepest,
+			(data.recoil_pattern[i] - data.recoil_pattern[i - 1]).length()
+		)
+
+	_check(
+		biggest_step < steepest * 0.25,
+		"no single tick moves the view near what one bullet moves (%.3f against %.3f degrees)"
+			% [biggest_step, steepest]
+	)
+
+
+## The weapon model rides the same punch, scaled, and changes nothing else.
+func _test_viewmodel_follows_the_view() -> void:
+	var data := WeaponLibrary.ak47()
+	data.viewmodel_recoil = 2.0
+	var weapon := Weapon.new(data)
+	var state := _standing()
+	var now := 0
+
+	for tick in 40:
+		now += int(DT * SECOND)
+		weapon.update(DT, now)
+		weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, state)
+
+	_check(
+		weapon.aim_punch.length() > 0.1,
+		"the view has kicked, so there is something to follow (%.2f degrees)"
+			% weapon.aim_punch.length()
+	)
+	_check(
+		weapon.viewmodel_punch().is_equal_approx(weapon.aim_punch * 2.0),
+		"the weapon model moves by viewmodel_recoil times the view punch"
+	)
+
+	data.viewmodel_recoil = 0.0
+	_check(
+		weapon.viewmodel_punch() == Vector2.ZERO,
+		"and holds still when viewmodel_recoil is zero"
 	)
 
 

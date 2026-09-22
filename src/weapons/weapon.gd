@@ -9,10 +9,12 @@ extends RefCounted
 ##
 ## Two things here are load-bearing for how CS feels:
 ##
-## The recoil pattern punches your VIEW, not just the bullets. The crosshair
-## climbs and the bullets follow it, which is why a spray is learnable: you
-## pull down against a motion you can see. Applying the offset only to the
-## bullets would look still and feel wrong.
+## The view kick and the bullet trajectory are SEPARATE. Bullets follow the
+## spray pattern exactly. The view gets a smaller, spring-damped nudge that
+## only suggests the pattern, so you cannot read your own recoil off the
+## screen: you learn the pattern and pull against it. Gluing the two together
+## gives a view that snaps to each bullet and sags between them, which is
+## neither what CS looks like nor how it plays.
 ##
 ## Spread is deterministic, seeded per shot. Same shot index, same offset,
 ## every time. That is what makes the first bullet reliable and the pattern
@@ -47,7 +49,8 @@ class Shot:
 	## reference a recorded spray is measured against.
 	var base_yaw: float
 	var base_pitch: float
-	## The view punch this shot applied, in degrees.
+	## The view kick this shot applied, in degrees. Recorded for debugging;
+	## it has no bearing on where this bullet went.
 	var view_punch: Vector2
 
 
@@ -59,13 +62,19 @@ var reserve: int = 0
 ## Seeds the per-shot spread. Same seed and shot index give the same offset.
 var spray_seed: int = 1
 
-## Accumulated view punch not yet recovered, in degrees, as (right, up).
+## Where the recoil has pushed the VIEW, in degrees, as (right, up).
 ##
-## The player's own look angles stay untouched by recoil. The camera and the
-## bullets both add this on top. Keeping them separate is what stops the punch
-## being counted twice, and it means letting go of the trigger returns the view
+## The player's own look angles are never touched by recoil. The camera adds
+## this on top, which is what lets letting go of the trigger return the view
 ## to exactly where the player was pointing rather than somewhere near it.
-var accumulated_punch: Vector2 = Vector2.ZERO
+##
+## This does NOT decide where bullets go. See fire().
+var aim_punch: Vector2 = Vector2.ZERO
+
+## The punch angle's own velocity. A shot pushes this rather than pushing the
+## angle, so the view rises into a kick over a few ticks instead of teleporting
+## to it, and the spring below brings it back.
+var aim_punch_velocity: Vector2 = Vector2.ZERO
 
 var _last_shot_usec: int = -1_000_000_000
 var _shot_index: int = 0
@@ -101,15 +110,7 @@ func can_fire(now_usec: int) -> bool:
 func update(dt: float, now_usec: int) -> void:
 	var since_shot := float(now_usec - _last_shot_usec) / 1_000_000.0
 
-	# Recoil only starts coming back once the gun is no longer cycling,
-	# otherwise holding the trigger would fight its own recovery.
-	if since_shot > data.cycle_time:
-		var recovery := data.recoil_recovery_rate * dt
-		var length := accumulated_punch.length()
-		if length > 0.0:
-			accumulated_punch *= maxf(length - recovery, 0.0) / length
-		if accumulated_punch.length() < 0.01:
-			accumulated_punch = Vector2.ZERO
+	_decay_punch(dt)
 
 	# Back to the top of the pattern once the trigger has been off long enough.
 	#
@@ -123,6 +124,32 @@ func update(dt: float, now_usec: int) -> void:
 	_inaccuracy = maxf(
 		_inaccuracy - data.inaccuracy_recovery_rate * dt, 0.0
 	)
+
+
+## Source's DecayPunchAngle: the punch angle carries its own velocity, which
+## is damped, and a spring pulls the angle back toward zero.
+##
+## Running every tick, including while firing, is deliberate. The old code
+## only decayed between shots, which is what made the view snap up to each
+## bullet and then sag. A spring that is always acting gives the rise and the
+## settle that CS actually has.
+func _decay_punch(dt: float) -> void:
+	if aim_punch.length_squared() < 0.000001 \
+			and aim_punch_velocity.length_squared() < 0.000001:
+		aim_punch = Vector2.ZERO
+		aim_punch_velocity = Vector2.ZERO
+		return
+
+	aim_punch += aim_punch_velocity * dt
+	aim_punch_velocity *= maxf(1.0 - data.punch_damping * dt, 0.0)
+	# Clamped because a long frame would otherwise overshoot the spring into
+	# an oscillation that grows instead of settling.
+	aim_punch_velocity -= aim_punch * clampf(data.punch_spring * dt, 0.0, 2.0)
+
+
+## Where the weapon model should be pushed to, in degrees. Cosmetic only.
+func viewmodel_punch() -> Vector2:
+	return aim_punch * data.viewmodel_recoil
 
 
 ## The current cone half-angle in degrees, given what the shooter is doing.
@@ -165,19 +192,28 @@ func fire(
 	if _shot_index > 0:
 		previous = data.recoil_offset(_shot_index - 1)
 	var current := data.recoil_offset(_shot_index)
-	var punch := (current - previous) * data.recoil_view_fraction
 
-	# The bullet goes where the crosshair will be after this shot's kick, so
-	# the hole on the wall lands at the pattern's entry for this shot index.
-	var total := accumulated_punch + punch
+	# The bullet goes exactly to this shot's entry in the pattern, measured
+	# from where the player is actually pointing. Nothing about the view is
+	# involved: not the punch that has built up, not how much of it has sprung
+	# back, not how large the view kick is configured to be. Turning the view
+	# kick off entirely would leave every bullet hole where it is.
+	#
+	# This is the whole point. The pattern is the truth and it is the same
+	# every spray, which is what makes it learnable. The view only suggests it.
 	var spread := current_inaccuracy(state)
 	var direction := _spread_direction(
-		# Punch x is degrees to the RIGHT, and yaw decreases rightward.
-		yaw_degrees - total.x,
-		pitch_degrees + total.y,
+		# Pattern x is degrees to the RIGHT, and yaw decreases rightward.
+		yaw_degrees - current.x,
+		pitch_degrees + current.y,
 		spread,
 		_shot_index
 	)
+
+	# The view gets kicked by this shot's step through the pattern, scaled
+	# down, and as a push on the punch velocity rather than a jump in the
+	# angle, so it rises into the kick over the next few ticks.
+	var punch := (current - previous) * data.recoil_view_fraction
 
 	var shot := Shot.new()
 	shot.origin = origin
@@ -190,7 +226,7 @@ func fire(
 	shot.base_yaw = yaw_degrees
 	shot.base_pitch = pitch_degrees
 
-	accumulated_punch += punch
+	aim_punch_velocity += punch * data.punch_impulse_scale
 	_inaccuracy += data.inaccuracy_per_shot
 	_shot_index += 1
 	_last_shot_usec = now_usec
