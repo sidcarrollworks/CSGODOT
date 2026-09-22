@@ -47,6 +47,8 @@ func _init() -> void:
 		"walking, crouching, standing and being in the air each have their own"
 	)
 
+	_test_view_model_motion()
+
 	var weapons := _find(WEAPONS_DIR, "weapon_rif_")
 	var agents := _find(CHARACTERS_DIR.path_join("agents"), "")
 	var clips := _find(CHARACTERS_DIR.path_join("animation/anims"), "")
@@ -187,8 +189,108 @@ func _process(_delta: float) -> bool:
 	_view_model = null
 
 	_test_player_model()
+	_test_player_composes_kick_and_bob()
 	_report()
 	return true
+
+
+## The controller writes the weapon model's whole transform every frame:
+## the bob and sway in the camera's frame, the recoil kick in the model's.
+## Standing still and looking steadily, that must leave the kick exactly as
+## the weapon gives it, or the recoil work would be undone here.
+func _test_player_composes_kick_and_bob() -> void:
+	var player := (load("res://src/player/player.tscn") as PackedScene).instantiate() as PlayerController
+	root.add_child(player)
+	if player.view_model == null:
+		_check(false, "the player builds its view model")
+		player.free()
+		return
+	_check(player.body_model != null and player.body_model.character_rig != null, "the player builds its own body")
+	if player.body_model != null:
+		var rig: Skeleton3D = player.body_model.character_rig
+		_check(
+			rig.get_bone_pose_scale(rig.find_bone("head_0")).is_equal_approx(Vector3.ONE * RigModel.FOLDED)
+				and rig.get_bone_pose_scale(rig.find_bone("arm_upper_R")).is_equal_approx(Vector3.ONE * RigModel.FOLDED)
+				and rig.get_bone_pose_scale(rig.find_bone("pelvis")).is_equal_approx(Vector3.ONE),
+			"with its head and arms folded and the rest whole"
+		)
+
+	# Frame one captures the rest pose; then a kick from a real shot.
+	player.velocity = Vector3.ZERO
+	player.on_ground = true
+	player._update_viewmodel(1.0 / 60.0)
+	var rest := player.view_model.transform
+	var now := Time.get_ticks_usec()
+	player.weapon.fire(now, 0.5, Vector3.ZERO, 0.0, 0.0, Weapon.ShooterState.new())
+	player.weapon.update(1.0 / 128.0, now + 7813)
+	var kick := player.weapon.viewmodel_punch()
+	player._update_viewmodel(1.0 / 60.0)
+	var expected := rest.basis * Basis.from_euler(Vector3(deg_to_rad(kick.y), deg_to_rad(-kick.x), 0.0))
+	_check(
+		kick.length() > 0.01 and player.view_model.transform.basis.is_equal_approx(expected)
+			and player.view_model.transform.origin.is_equal_approx(rest.origin),
+		"standing still, a round's kick reaches the weapon model exactly as the weapon gives it (%.2f, %.2f degrees)" % [kick.x, kick.y]
+	)
+
+	# Running: the same kick, on top of the bob's offset.
+	player.velocity = Vector3(0.0, 0.0, -250.0)
+	for frame in 20:
+		player._update_viewmodel(1.0 / 60.0)
+	kick = player.weapon.viewmodel_punch()
+	var moved := player.view_model.transform
+	var motion_only := player.viewmodel_motion.update(0.0, Vector3(0.0, 0.0, -250.0), true, Vector2.ZERO)
+	_check(
+		not moved.origin.is_equal_approx(rest.origin)
+			and moved.basis.is_equal_approx(
+				motion_only.basis * rest.basis * Basis.from_euler(Vector3(deg_to_rad(kick.y), deg_to_rad(-kick.x), 0.0))
+			),
+		"running, the bob moves the model and the kick still sits inside it"
+	)
+	player.free()
+
+
+## The bob and sway need no assets: a clock, a speed and a look.
+func _test_view_model_motion() -> void:
+	_check(
+		ViewModelMotion.bob_at(0.37, 0.0) == Vector2.ZERO
+			and ViewModelMotion.bob_at(0.0, 320.0).is_equal_approx(Vector2(0.96 * 0.3, 1.6 * 0.3)),
+		"standing still there is no bob; at full speed it starts at three tenths of its amounts"
+	)
+	var peak := ViewModelMotion.bob_at(ViewModelMotion.BOB_CYCLE * ViewModelMotion.BOB_UP * 0.5, 320.0)
+	var trough := ViewModelMotion.bob_at(ViewModelMotion.BOB_CYCLE * (ViewModelMotion.BOB_UP + (1.0 - ViewModelMotion.BOB_UP) * 0.5), 320.0)
+	_check(
+		is_equal_approx(peak.x, 0.96) and is_equal_approx(trough.x, -0.96 * 0.4)
+			and is_equal_approx(peak.y, 1.6 * 0.3 + 1.6 * 0.7 * sin(PI * 0.25)),
+		"the vertical bob peaks a quarter cycle in and troughs at three quarters; the lateral runs at half the rate"
+	)
+
+	var motion := ViewModelMotion.new()
+	var still := motion.update(1.0 / 60.0, Vector3.ZERO, true, Vector2(90.0, 0.0))
+	_check(
+		still.origin.is_zero_approx() and still.basis.is_equal_approx(Basis.IDENTITY),
+		"standing still and looking steadily, the weapon is where the clip put it"
+	)
+	var running := Transform3D.IDENTITY
+	for frame in 30:
+		running = motion.update(1.0 / 60.0, Vector3(0.0, 0.0, -250.0), true, Vector2(90.0, 0.0))
+	_check(
+		running.origin.z > 1.0 and running.origin.y < 0.0 and absf(running.origin.x) <= 1.6 * 0.8 + 0.001,
+		"running settles the weapon back and down, and bobs it sideways within its amount (%s)" % running.origin
+	)
+	var airborne := motion.update(1.0 / 60.0, Vector3(0.0, 0.0, -250.0), false, Vector2(90.0, 0.0))
+	_check(
+		is_zero_approx(motion.vertical_bob) and airborne.origin.z < 0.001,
+		"in the air there is no bob and nothing to settle"
+	)
+	var turned := motion.update(1.0 / 60.0, Vector3.ZERO, true, Vector2(95.0, 0.0))
+	_check(
+		motion.sway.x < 0.0 and motion.sway.x >= -ViewModelMotion.SWAY_MAX
+			and turned.basis.get_euler().y < 0.0,
+		"turning left, the weapon lags to the right, within its limit (%.2f degrees)" % motion.sway.x
+	)
+	for frame in 120:
+		motion.update(1.0 / 60.0, Vector3.ZERO, true, Vector2(95.0, 0.0))
+	_check(absf(motion.sway.x) < 0.01, "and settles back once the turn stops")
 
 
 func _test_player_model() -> void:
@@ -233,6 +335,25 @@ func _test_player_model() -> void:
 	)
 	model.update_motion(Vector3(-100, 0, 0), 180.0, false, true)
 	_check(animations.current_animation == &"walk_e", "sidestepping to the right at walking pace plays walk_e (%s)" % animations.current_animation)
+
+	# The first-person body: the head and arms folded away, and staying so
+	# under the clips, which animate every bone's scale.
+	model.update_motion(Vector3.ZERO, 180.0, false, true)
+	model.fold_bones(PackedStringArray(["head_0", "arm_upper_L"]))
+	var folded_head := rig.get_bone_pose_scale(rig.find_bone("head_0"))
+	var idle: Animation = animations.get_animation(&"idle")
+	var head_scale_tracks := 0
+	var head_tracks := 0
+	for track in idle.get_track_count():
+		if String(idle.track_get_path(track).get_subname(0)) == "head_0":
+			head_tracks += 1
+			head_scale_tracks += 1 if idle.track_get_type(track) == Animation.TYPE_SCALE_3D else 0
+	_check(
+		folded_head.is_equal_approx(Vector3.ONE * RigModel.FOLDED)
+			and head_scale_tracks == 0 and head_tracks > 0
+			and animations.current_animation == &"idle" and animations.is_playing(),
+		"folding a bone shrinks it to nothing and takes its scale track, and only that, out of the clips, which keep playing"
+	)
 	model.free()
 	_player_model = null
 
