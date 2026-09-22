@@ -132,13 +132,18 @@ What dust2 turned out to be:
 - Importing takes Godot about a minute the first time and seconds after.
   Loading the map at runtime takes a few seconds.
 
-## The weapon numbers are not extractable
+## The weapon numbers (extractable since Source 2 Viewer 20.0)
 
 Damage, armour ratio, penetration, recoil seeds and the inaccuracy/spread model
-live in `scripts/weapons.vdata_c`, and no published artifact carries the
-values: the entity schema has the field names with zeroed templates, the item
-definitions hold only presentation metadata, and demo streams never carry
-static game data.
+live in `scripts/weapons.vdata_c`. When this was written no tool decoded it
+and no published artifact carried the values: the entity schema has the field
+names with zeroed templates, the item definitions hold only presentation
+metadata, and demo streams never carry static game data. Source 2 Viewer
+20.0 decodes it (`-b DATA`, checked 2026-09-22): `scripts/extract_assets.sh
+weapon-data` writes it to `assets/scripts/weapons.vdata.txt`, and
+`reference/weapons/vdata.md` has every gun's fields, checked against the
+weapon sheet. The rest of this section is how the first two rifles were
+tuned before that.
 
 Source: <https://github.com/CS2OpenDev/CS2OpenDev-SchemaTracker/issues/16>
 

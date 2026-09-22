@@ -19,6 +19,7 @@
 #   scripts/extract_assets.sh lightmaps       # just the baked bounce light
 #   scripts/extract_assets.sh weapons         # every gun: models, first- and third-person animations
 #   scripts/extract_assets.sh weapon-animations  # just the guns' animations (a minute)
+#   scripts/extract_assets.sh weapon-data     # just the game's weapon tuning (seconds)
 #   scripts/extract_assets.sh characters      # two player models and their locomotion
 #   scripts/extract_assets.sh sounds          # every gun's sounds, footsteps by surface, hits
 #   scripts/extract_assets.sh all             # map + weapons + characters + sounds
@@ -150,7 +151,7 @@ find_cs2() {
 
 COMMAND="${1:-}"
 case "$COMMAND" in
-	list-map|list-weapons|map|physics|entities|layers|sky|skybox|lightmaps|weapons|weapon-animations|characters|sounds|all) ;;
+	list-map|list-weapons|map|physics|entities|layers|sky|skybox|lightmaps|weapons|weapon-animations|weapon-data|characters|sounds|all) ;;
 	*)
 		# The header comment, down to the first line that is not one.
 		awk 'NR > 2 && /^#/ { sub(/^# ?/, ""); print; next } NR > 2 { exit }' "${BASH_SOURCE[0]}"
@@ -506,7 +507,23 @@ extract_weapons() {
 		--gltf_export_animations \
 		--gltf_textures_adapt
 
+	extract_weapon_data
 	extract_weapon_animations
+}
+
+## The game's own weapon tuning, scripts/weapons.vdata_c, decoded to KV3 text
+## (this Source 2 Viewer reads it; older ones did not). Every gun's damage,
+## fire rate, spread and inaccuracy, recovery, recoil, zoom levels, deploy
+## time and muzzle position, each gun's entry inheriting through _base from
+## its prefab and class. weapon_tables.gd writes reference/weapons/vdata.md
+## from it, with a check against the weapon sheet.
+extract_weapon_data() {
+	require_file "$PAK_VPK"
+	local dest="$OUT_DIR/scripts"
+	mkdir -p "$dest"
+	echo "Reading the game's weapon tuning"
+	echo "        -> $dest/weapons.vdata.txt"
+	"$S2V_BIN" -i "$PAK_VPK" -f "scripts/weapons.vdata_c" -b DATA > "$dest/weapons.vdata.txt" 2>/dev/null || true
 }
 
 ## The guns' animations, beside the characters' where the view model and the
@@ -705,6 +722,7 @@ case "$COMMAND" in
 	characters) extract_characters; finish ;;
 	weapons) extract_weapons; finish ;;
 	weapon-animations) extract_weapon_animations; finish ;;
+	weapon-data) extract_weapon_data; write_weapon_tables ;;
 	sounds) extract_sounds; finish ;;
 	all) extract_map; echo; extract_weapons; echo; extract_characters; echo; extract_sounds; finish ;;
 esac

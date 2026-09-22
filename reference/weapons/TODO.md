@@ -108,7 +108,7 @@ Roughly in order; L1 to L3 can start at once.
   `reference/weapons/sounds.md` so `WeaponSounds` can be filled in remotely.
 - [ ] **L4. Scope overlays.** The scope textures and the zoom sounds for the
   AWP, SSG 08, G3SG1, SCAR-20, AUG and SG 553.
-- [ ] **L5. Measure what the sheet does not have** *(reload and draw done 2026-09-22 from the game's own clip data, not by hand: `reference/weapons/timings.md` and `timings.csv` have every gun's draw, reload to rounds in and to ready, shotgun shell loop, silencer switch and sound timing; the zoom levels are next, from `scripts/weapons.vdata`, which this Source 2 Viewer decodes)*, in CS2, per weapon, into
+- [x] **L5. Measure what the sheet does not have** *(done 2026-09-22 from the game's own data rather than by hand: `timings.md` and `timings.csv` have every gun's draw, reload to rounds in and to ready, shotgun shell loop, silencer switch and sound timing, from the clips; `vdata.md` has the zoom levels, FOVs and zoom times, the deploy times and how soon a reload lets the gun fire, from `scripts/weapons.vdata`, which Source 2 Viewer 20.0 decodes)*, in CS2, per weapon, into
   `reference/weapons/measured.csv`:
   reload time (to rounds in, and to ready), draw time, and for the snipers the
   zoom levels (FOV per level) and time to scope in. Frame-by-frame, the way
@@ -163,7 +163,7 @@ Roughly in order; L1 to L3 can start at once.
   penetration and tagging power (roadmap items 2 and 7).
 - [ ] **R12. HUD per weapon.** Ammo and reserve, the mode, the weapon's icon
   once extracted.
-- [ ] **R13. Cross-check the sheet against CS2's own weapons.vdata**, which
+- [ ] **R13. Cross-check the sheet against CS2's own weapons.vdata** *(the check is done, locally, 2026-09-22: `vdata.md` has it, 914 values agree, and the one real difference, the Desert Eagle's jump inaccuracy, is flagged to Sid; what is left is bringing the fields in)*, which
   SteamDatabase's GameTracking-CS2 repository publishes decompiled. Bring in
   what the sheet lacks: the slower recovery after the first rounds of a
   spray (`_final` recovery times and the rounds they blend over) and spread

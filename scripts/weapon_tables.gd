@@ -1,9 +1,10 @@
 extends SceneTree
 
-## Writes reference/weapons/models.md, sounds.md and timings.md (with
-## timings.csv) from what scripts/extract_assets.sh extracted, so the code that
-## picks a gun's model, clips and sounds, and times its draw and reload, can be
-## written on a machine without the assets.
+## Writes reference/weapons/models.md, sounds.md, timings.md (with
+## timings.csv) and vdata.md (with vdata.csv) from what scripts/extract_assets.sh
+## extracted, so the code that picks a gun's model, clips and sounds, times its
+## draw and reload, and reads what the weapon sheet lacks, can be written on a
+## machine without the assets.
 ##
 ##   godot --headless --path . --script scripts/weapon_tables.gd
 ##
@@ -23,6 +24,16 @@ const SOUNDS_ROOT := "res://assets/sounds/sounds/weapons"
 ## The first-person clips' own data (lengths and events), dumped by the
 ## weapon-animations step.
 const CLIP_DATA := "res://assets/characters/animation/anims/viewmodel/clip_data.txt"
+## The game's weapon tuning, decoded by the weapon-data step.
+const VDATA := "res://assets/scripts/weapons.vdata.txt"
+
+## The sheet's mode rows that are the second value of the game's two-valued
+## fields (scoped, or silenced), by the main row.
+const SECOND_VALUE_ROWS := {
+	"USP-S (no silencer)": "USP-S (silencer)", "M4A1-S (no silencer)": "M4A1-S (silencer)",
+	"AUG": "AUG (scoped)", "SG 553": "SG 553 (scoped)", "AWP": "AWP (scoped)", "SSG 08": "SSG 08 (scoped)",
+	"G3SG1": "G3SG1 (scoped)", "SCAR-20": "SCAR-20 (scoped)",
+}
 const OUT_DIR := "res://reference/weapons"
 
 ## Per class: the sheet row, the model's folder, the first-person and
@@ -96,7 +107,14 @@ func _initialize() -> void:
 		_write(OUT_DIR.path_join("timings.csv"), _timings_csv(clips))
 		# Godot takes any CSV for a table of translations and writes one file
 		# per column beside it; this one is data, kept as it is, like the sheet.
-		_write(OUT_DIR.path_join("timings.csv.import"), "[remap]\n\nimporter=\"keep\"\n\n[deps]\n\nsource_file=\"%s\"\n" % OUT_DIR.path_join("timings.csv"))
+		_write(OUT_DIR.path_join("timings.csv.import"), _keep_import(OUT_DIR.path_join("timings.csv")))
+	var vdata := read_vdata(VDATA)
+	if vdata.is_empty():
+		_gaps.append("weapon tuning: %s" % VDATA)
+	else:
+		_write(OUT_DIR.path_join("vdata.md"), _vdata_page(source, date, vdata))
+		_write(OUT_DIR.path_join("vdata.csv"), _vdata_csv(vdata))
+		_write(OUT_DIR.path_join("vdata.csv.import"), _keep_import(OUT_DIR.path_join("vdata.csv")))
 	print("weapon tables: %d guns, %d gaps, written to %s" % [GUNS.size(), _gaps.size(), OUT_DIR])
 	for gap in _gaps:
 		print("  missing: ", gap)
@@ -190,6 +208,218 @@ func _sounds_page(source: String, date: String) -> String:
 			cells.append(", ".join(by_role.get(role, PackedStringArray())) if by_role.has(role) else "-")
 		lines.append("| `%s` | `%s` | %s |" % [gun[0], folder, " | ".join(cells)])
 	return "\n".join(lines) + "\n"
+
+
+## Godot takes any CSV for a table of translations and writes one file per
+## column beside it; these are data, kept as they are, like the sheet.
+static func _keep_import(path: String) -> String:
+	return "[remap]\n\nimporter=\"keep\"\n\n[deps]\n\nsource_file=\"%s\"\n" % path
+
+
+## The game's own tuning: what the sheet lacks (the zoom levels, deploy time,
+## the reload's lockout, spread, the second recovery, muzzle, tracers, burst),
+## and a check of every value the two share.
+func _vdata_page(source: String, date: String, vdata: Dictionary) -> String:
+	var lines := PackedStringArray([
+		"# The game's own weapon tuning",
+		"",
+		"Written by `scripts/weapon_tables.gd` on %s from `scripts/weapons.vdata_c` in %s, as `scripts/extract_assets.sh weapon-data` decodes it. Do not edit by hand. `vdata.csv` beside this has every field of every gun, resolved through the file's inheritance (each gun's entry has a `_base`, its prefab, which has its class's, and so on up to `weapon_base`), one row each." % [date, source],
+		"",
+		"This is what the weapon sheet (`cs2_weapon_sheet.csv`) is transcribed from, less what the sheet leaves out. Two-valued fields are `[normal, alternate]`: unscoped and scoped for the scoped guns, silencer off and on for the M4A1-S and USP-S. Inaccuracy is in radians of the tangent (the sheet's figures are these x 1000); spread is separate from inaccuracy, and the sheet's figures include it.",
+		"",
+		"## Scopes",
+		"",
+		"The zoom levels L5 of `TODO.md` asked for. A level's FOV is CS's horizontal degrees at 4:3, like `fov`; the zoom times are how long each step takes (0 into level 1, 1 into level 2, 2 back out).",
+		"",
+		"| Class | Levels | FOV 1 | FOV 2 | Zoom times | Unzooms after a shot | Hides the view model | Speed, scoped |",
+		"|---|---|---|---|---|---|---|---|",
+	])
+	for gun in GUNS:
+		var fields: Dictionary = vdata.get(gun[0], {})
+		if int(_vd(fields, "m_nZoomLevels")) <= 0:
+			continue
+		lines.append("| `%s` | %d | %d | %s | %s, %s, %s s | %s | %s | %s |" % [
+			gun[0], int(_vd(fields, "m_nZoomLevels")), int(_vd(fields, "m_nZoomFOV1")),
+			str(int(_vd(fields, "m_nZoomFOV2"))) if int(_vd(fields, "m_nZoomLevels")) > 1 else "-",
+			_vd(fields, "m_flZoomTime0"), _vd(fields, "m_flZoomTime1"), _vd(fields, "m_flZoomTime2"),
+			_yes(_vd(fields, "m_bUnzoomsAfterShot")), _yes(_vd(fields, "m_bHideViewModelWhenZoomed")),
+			_vd(fields, "m_flMaxSpeed", 1),
+		])
+	lines.append_array(PackedStringArray([
+		"",
+		"## What the sheet does not have",
+		"",
+		"- Deploy: seconds from drawing the gun to firing it (the draw clips in `timings.md` are the same lengths, or close).",
+		"- Reload lockout: seconds after starting a reload that the gun cannot fire, which is shorter than the clip: the tail of a reload can be cut short by firing.",
+		"- Spread: the gun's own cone, inside the inaccuracy; normal, alternate.",
+		"- Recovery, final: a second, slower recovery time the firing penalty falls by from the round the transition starts at to the one it ends at, blended; stand and crouch.",
+		"- Muzzle: where the muzzle flash and tracers start, in the model's units (x forward).",
+		"- Tracers: one round in so many draws one; 0 is none.",
+		"- Burst: the cycle time in burst mode and the time between a burst's rounds.",
+		"",
+		"| Class | Deploy | Reload lockout | Spread | Recovery, final (stand, crouch; rounds) | Muzzle | Tracers | Burst |",
+		"|---|---|---|---|---|---|---|---|",
+	]))
+	for gun in GUNS:
+		var fields: Dictionary = vdata.get(gun[0], {})
+		if fields.is_empty():
+			_gaps.append("%s in the weapon tuning" % gun[0])
+			continue
+		var spread := "%s, %s" % [_vd(fields, "m_flSpread", 0), _vd(fields, "m_flSpread", 1)]
+		var burst := "-"
+		if _vd(fields, "m_bHasBurstMode") == 1.0:
+			burst = "%s s cycle, %s s apart" % [_vd(fields, "m_flCycleTimeWhenInBurstMode"), _vd(fields, "m_flTimeBetweenBurstShots")]
+		lines.append("| `%s` | %s s | %s s | %s | %s, %s; %d to %d | %s | %s | %s |" % [
+			gun[0], _vd(fields, "m_flDeployDuration"), snappedf(float(_vd(fields, "m_flDisallowAttackAfterReloadStartDuration")), 0.001),
+			spread, _vd(fields, "m_flRecoveryTimeStandFinal"), _vd(fields, "m_flRecoveryTimeCrouchFinal"),
+			int(_vd(fields, "m_nRecoveryTransitionStartBullet")), int(_vd(fields, "m_nRecoveryTransitionEndBullet")),
+			String(fields.get("m_vecMuzzlePos0", "-")), int(_vd(fields, "m_nTracerFrequency")), burst,
+		])
+	lines.append_array(_cross_check(vdata))
+	return "\n".join(lines) + "\n"
+
+
+## Every value the sheet and the game share, compared: the sheet's main row
+## against the first of a two-valued field, its scoped or silenced row
+## against the second.
+func _cross_check(vdata: Dictionary) -> PackedStringArray:
+	# Sheet column, the game's value for it, and how close is the same.
+	var checks := [
+		["Price", func(f: Dictionary, i: int) -> float: return _vd(f, "m_nPrice", i), 0.5],
+		["Kill Award", func(f: Dictionary, i: int) -> float: return _vd(f, "m_nKillAward", i), 0.5],
+		["Damage", func(f: Dictionary, i: int) -> float: return _vd(f, "m_nDamage", i), 0.5],
+		["Bullets", func(f: Dictionary, i: int) -> float: return _vd(f, "m_nNumBullets", i), 0.5],
+		["Armor Penetration", func(f: Dictionary, i: int) -> float: return _vd(f, "m_flArmorRatio", i) * 0.5, 0.0006],
+		["Damage Falloff @ 500U", func(f: Dictionary, i: int) -> float: return 1.0 - _vd(f, "m_flRangeModifier", i), 0.0006],
+		["Headshot Multiplier", func(f: Dictionary, i: int) -> float: return _vd(f, "m_flHeadshotMultiplier", i), 0.01],
+		["Fire Rate (RPM)", func(f: Dictionary, i: int) -> float: return 60.0 / _vd(f, "m_flCycleTime", i), 0.6],
+		["Penetration Power", func(f: Dictionary, i: int) -> float: return _vd(f, "m_flPenetration", i), 0.006],
+		["Magazine Size", func(f: Dictionary, i: int) -> float: return _vd(f, "m_iMaxClip1", i), 0.5],
+		["Mobility", func(f: Dictionary, i: int) -> float: return _vd(f, "m_flMaxSpeed", i), 0.5],
+		["Bullet Range", func(f: Dictionary, i: int) -> float: return _vd(f, "m_flRange", i), 0.5],
+		["Standing Inaccuracy", func(f: Dictionary, i: int) -> float: return (_vd(f, "m_flInaccuracyStand", i) + _vd(f, "m_flSpread", i)) * 1000.0, 0.02],
+		["Crouching Inaccuracy", func(f: Dictionary, i: int) -> float: return (_vd(f, "m_flInaccuracyCrouch", i) + _vd(f, "m_flSpread", i)) * 1000.0, 0.02],
+		["Running Inaccuracy", func(f: Dictionary, i: int) -> float: return (_vd(f, "m_flInaccuracyMove", i) + _vd(f, "m_flInaccuracyStand", i) + _vd(f, "m_flSpread", i)) * 1000.0, 0.02],
+		["Inaccuracy at Jump Apex", func(f: Dictionary, i: int) -> float: return (_vd(f, "m_flInaccuracyJump", i) + _vd(f, "m_flInaccuracyStand", i) + _vd(f, "m_flSpread", i)) * 1000.0, 0.02],
+		["Inaccuracy From Firing", func(f: Dictionary, i: int) -> float: return _vd(f, "m_flInaccuracyFire", i) * 1000.0, 0.02],
+		["Recovery TimeCrouch", func(f: Dictionary, i: int) -> float: return _vd(f, "m_flRecoveryTimeCrouch", i), 0.0005],
+		["Recovery TimeStand", func(f: Dictionary, i: int) -> float: return _vd(f, "m_flRecoveryTimeStand", i), 0.0005],
+		["Recoil Amount", func(f: Dictionary, i: int) -> float: return _vd(f, "m_flRecoilMagnitude", i), 0.05],
+		["Recoil Angle Variance", func(f: Dictionary, i: int) -> float: return _vd(f, "m_flRecoilAngleVariance", i), 0.05],
+		["Recoil Amount Variance", func(f: Dictionary, i: int) -> float: return _vd(f, "m_flRecoilMagnitudeVariance", i), 0.05],
+	]
+	var agree := 0
+	var differ := PackedStringArray()
+	for gun in GUNS:
+		var fields: Dictionary = vdata.get(gun[0], {})
+		if fields.is_empty() or not WeaponSheet.has(gun[1]):
+			continue
+		var rows := [[gun[1], ""]]
+		if SECOND_VALUE_ROWS.has(gun[1]):
+			rows.append([gun[1], SECOND_VALUE_ROWS[gun[1]]])
+		for index in rows.size():
+			for check in checks:
+				var text := WeaponSheet.text_for_mode(rows[index][0], rows[index][1], check[0]) if not rows[index][1].is_empty() \
+					else WeaponSheet.raw(rows[index][0], check[0])
+				if text.strip_edges().is_empty() or text.strip_edges() == "-":
+					continue
+				var sheet := WeaponSheet.parse_number(text)
+				if is_nan(sheet):
+					continue
+				var game: float = (check[1] as Callable).call(fields, index)
+				if absf(game - sheet) <= float(check[2]) + 1e-9:
+					agree += 1
+				else:
+					# A mode row's "-" means "as the main row"; where the game
+					# gives the mode a value of its own, that is what differs.
+					var inherited: bool = not rows[index][1].is_empty() and WeaponSheet.raw(rows[index][1], check[0]).strip_edges() in ["", "-"]
+					differ.append("| %s | %s | %s%s | %s |" % [
+						rows[index][1] if not rows[index][1].is_empty() else rows[index][0], check[0], text,
+						" (the sheet's \"-\": as unscoped)" if inherited else "", snappedf(game, 0.0001),
+					])
+	var lines := PackedStringArray([
+		"",
+		"## Against the sheet",
+		"",
+		"%d values the two share agree; %d do not. The sheet's running and jump-apex figures are its own sums, standing inaccuracy + spread + the movement's own term, and are compared that way; its ladder and landing figures are composites of another kind (landing scales the game's term by the fall) and are left out. The sheet was last updated for 18 March 2026; where the two differ, the game is the newer." % [agree, differ.size()],
+		"",
+	])
+	if not differ.is_empty():
+		lines.append_array(PackedStringArray(["| Sheet row | Column | Sheet | Game |", "|---|---|---|---|"]))
+		lines.append_array(differ)
+	return lines
+
+
+func _vdata_csv(vdata: Dictionary) -> String:
+	var lines := PackedStringArray(["class,field,value"])
+	for gun in GUNS:
+		var fields: Dictionary = vdata.get(gun[0], {})
+		var keys := fields.keys()
+		keys.sort()
+		for key in keys:
+			var value := String(fields[key]).replace("\"", "").replace("resource_name:", "").replace("resource:", "")
+			value = value.trim_prefix("[").trim_suffix("]").strip_edges().replace(", ", "|").replace(",", "|")
+			lines.append("%s,%s,%s" % [gun[0], key, value])
+	return "\n".join(lines) + "\n"
+
+
+## A field's value: a number (true and false as 1 and 0), or its text if it is
+## not one. A two-valued field gives its index-th value, the last if short.
+static func _vd(fields: Dictionary, key: String, index: int = 0) -> Variant:
+	var text := String(fields.get(key, "")).strip_edges()
+	if text.begins_with("["):
+		var parts := text.trim_prefix("[").trim_suffix("]").split(",", false)
+		text = parts[mini(index, parts.size() - 1)].strip_edges() if not parts.is_empty() else ""
+	text = text.replace("resource_name:", "").replace("\"", "")
+	if text == "true":
+		return 1.0
+	if text == "false":
+		return 0.0
+	return float(text) if text.is_valid_float() else (text if not text.is_empty() else 0.0)
+
+
+static func _yes(value: Variant) -> String:
+	return "yes" if value == 1.0 else "no"
+
+
+## Reads the decoded weapons.vdata: per top-level entry (weapon_awp,
+## weapon_awp_prefab, sniper_rifle...), its fields as the text after " = ",
+## merged over its _base's, and theirs, so a gun's entry has everything.
+## Only one-line values are kept: numbers, strings, flags and [ a, b ] pairs.
+static func read_vdata(path: String) -> Dictionary:
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return {}
+	var own := {}
+	var current := ""
+	var entry := RegEx.create_from_string("^\t([A-Za-z_0-9]+) = ?$")
+	var field := RegEx.create_from_string("^\t\t([A-Za-z_0-9]+) = (.+)$")
+	while not file.eof_reached():
+		var line := file.get_line()
+		var found := entry.search(line)
+		if found != null:
+			current = found.get_string(1)
+			own[current] = {}
+			continue
+		if current.is_empty():
+			continue
+		found = field.search(line)
+		if found != null and not found.get_string(2).strip_edges().is_empty():
+			(own[current] as Dictionary)[found.get_string(1)] = found.get_string(2).strip_edges()
+	var resolved := {}
+	for name in own:
+		resolved[name] = _resolved(own, name, [])
+	return resolved
+
+
+static func _resolved(own: Dictionary, name: String, seen: Array) -> Dictionary:
+	var fields: Dictionary = own.get(name, {})
+	var base := String(fields.get("_base", "")).replace("\"", "")
+	var merged := {}
+	if not base.is_empty() and base not in seen:
+		merged = _resolved(own, base, seen + [name])
+	merged.merge(fields, true)
+	return merged
 
 
 ## The first-person timings: per gun, the draw, the reload to the rounds going
