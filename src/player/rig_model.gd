@@ -115,7 +115,8 @@ func fold_bones(bone_names: PackedStringArray) -> void:
 	for clip_name in library.get_animation_list():
 		var copy := library.get_animation(clip_name).duplicate() as Animation
 		for track in range(copy.get_track_count() - 1, -1, -1):
-			if copy.track_get_type(track) == Animation.TYPE_SCALE_3D 					and String(copy.track_get_path(track).get_subname(0)) in bone_names:
+			if copy.track_get_type(track) == Animation.TYPE_SCALE_3D \
+					and String(copy.track_get_path(track).get_subname(0)) in bone_names:
 				copy.remove_track(track)
 		library.remove_animation(clip_name)
 		library.add_animation(clip_name, copy)
@@ -188,7 +189,8 @@ func _on_finished(finished: StringName) -> void:
 
 ## Whether a one-shot clip is running now and should be left to finish.
 func playing_one_shot() -> bool:
-	return animation_player != null and animation_player.is_playing() 		and _is_one_shot(animation_player.current_animation)
+	return animation_player != null and animation_player.is_playing() \
+		and _is_one_shot(animation_player.current_animation)
 
 
 func _is_held(name: StringName) -> bool:
