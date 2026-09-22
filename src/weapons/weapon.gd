@@ -56,7 +56,7 @@ class Shot:
 
 ## The punch spring is integrated at no coarser than this, whatever the
 ## caller's frame length. 128 Hz, the simulation tick the constants suit.
-const PUNCH_MAX_STEP := 1.0 / 128.0
+const PUNCH_MAX_STEP := 1.0 / WeaponData.SIMULATION_HZ
 
 var data: WeaponData
 
@@ -247,7 +247,7 @@ func _view_kick_for(shot_index: int) -> Vector2:
 	if is_zero_approx(sideways) and shot_index > 0:
 		# Past the end of the pattern, lean the way the last round did.
 		sideways = here.x - data.recoil_offset(shot_index - 1).x
-	return Vector2(signf(sideways) * data.view_kick_side, data.view_kick_up)
+	return Vector2(signf(sideways) * data.view_kick_side(), data.view_kick_up())
 
 
 ## Fires one round. Returns null if the weapon could not fire.

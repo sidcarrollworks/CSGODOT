@@ -16,10 +16,6 @@ extends PlayerBody
 ## Optional and read-only from here: this rotates the node and touches nothing
 ## else, so whatever the model does for itself (bob, sway, animations) is left
 ## alone. Cosmetic in full; it changes nothing about aim or bullets.
-## Cross-fade into the firing clip, in seconds. Short enough to read as an
-## immediate kick, long enough not to snap.
-const SHOOT_BLEND := 0.03
-
 @export var viewmodel: Node3D
 
 ## The weapon model's rest orientation, captured on the first frame so the
@@ -222,9 +218,7 @@ func _try_shoot(
 	if shot == null:
 		return
 	if view_model != null:
-		# Cross-faded rather than cut. Stopping the player dead and jumping to
-		# frame zero is what a snapping weapon model looks like.
-		view_model.play(&"shoot1", SHOOT_BLEND)
+		view_model.shoot()
 
 	var space := get_world_3d().direct_space_state
 	var result := Hitscan.fire_at(space, shot, weapon.data, [get_rid()])

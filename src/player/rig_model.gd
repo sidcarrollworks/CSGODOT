@@ -92,23 +92,47 @@ func load_clips(clips: PackedStringArray, suffix: String) -> bool:
 ## Plays a clip by its short name. Unknown names go to idle, and so does
 ## anything that plays once, when it ends.
 ##
-## A clip already running is left alone rather than restarted. Replaying it
-## per round was tried and looked worse at 600 rounds per minute: the clip is
-## longer than the gap between shots, so every round cut across the last one.
-func play(short: StringName, blend: float = 0.0, speed: float = 1.0) -> void:
+## restart replays a clip that is already running, from the top, cross-faded
+## rather than cut. Firing needs it: a round fired while the last one's
+## animation is still going has to kick the gun again. Without it the gun
+## only animated once per clip length, which on the AK is about two thirds of
+## a second against a round every tenth of one.
+func play(
+	short: StringName,
+	blend: float = 0.0,
+	speed: float = 1.0,
+	restart: bool = false
+) -> void:
 	if animation_player == null:
 		return
 	if not animation_player.has_animation(short):
 		short = idle
 		if short == &"" or not animation_player.has_animation(short):
 			return
-	if animation_player.current_animation == short and animation_player.is_playing():
+	var already := (
+		animation_player.current_animation == short
+		and animation_player.is_playing()
+	)
+	if already and not restart:
 		animation_player.speed_scale = speed
 		return
 	if blend <= 0.0:
 		animation_player.stop()
 	animation_player.speed_scale = speed
 	animation_player.play(short, blend)
+
+
+## Every clip loaded whose name starts with the given prefix, in order.
+func clips_named(prefix: String) -> PackedStringArray:
+	var found := PackedStringArray()
+	if animation_player == null:
+		return found
+	var names := animation_player.get_animation_list()
+	names.sort()
+	for name in names:
+		if String(name).begins_with(prefix):
+			found.append(name)
+	return found
 
 
 func _on_finished(finished: StringName) -> void:

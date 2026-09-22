@@ -21,6 +21,12 @@ extends Resource
 ## the two need a shared threshold to be derived from. One place to change it.
 const SETTLE_FRACTION := 0.01
 
+## The tick the punch spring is integrated at, and the one the solver below
+## walks a spray with.
+const SIMULATION_HZ := 128.0
+
+var _solved_kick_up: float = -1.0
+
 @export var display_name: String = ""
 
 ## The weapon's model, as extracted by scripts/extract_assets.sh weapons, and
@@ -109,24 +115,23 @@ const SETTLE_FRACTION := 0.01
 # that snaps to each bullet and sags between shots. That is not what CS looks
 # like and it is not what CS plays like.
 
-## Degrees the view is kicked UP by each round.
+## Where the crosshair peaks during a held spray, as a fraction of how far
+## the bullets climb over that same spray.
 ##
-## The same for every round in the magazine, which is the whole point. This
-## used to be a fraction of the round's own step through the spray pattern,
-## and that was wrong: the AK's pattern climbs 2 degrees a shot for the first
-## seven rounds and then goes almost flat and almost entirely sideways, so the
-## view punched hard twice and then did nothing but sway. A gun does not stop
-## recoiling halfway through a magazine.
-@export var view_kick_up: float = 0.30
+## Sid, 2026-09-22: "during spraying the crosshair should peak at around half
+## of the height of the overall spray." This is that, as a number the build
+## has to hit rather than a knob to turn towards it. view_kick_up below is
+## solved from it, so changing the spring, the fire rate or the pattern moves
+## the per-round kick and leaves the thing that was actually observed alone.
+@export_range(0.0, 1.0) var view_kick_spray_peak: float = 0.5
 
-## Degrees the view is kicked SIDEWAYS by each round.
+## How far the view is kicked sideways each round, against how far up.
 ##
-## Small, and deliberately not read off the pattern's own sideways step, which
-## reaches three degrees a round in the second half of an AK spray. The
-## pattern decides the DIRECTION so the view leans the way the gun is actually
-## going; this decides how far, so it stays small however far the pattern
-## wanders.
-@export var view_kick_side: float = 0.06
+## Deliberately not read off the pattern's own sideways step, which reaches
+## three degrees a round in the second half of an AK spray. The pattern
+## decides the DIRECTION so the view leans the way the gun is going; this
+## decides how far, so it stays small however far the pattern wanders.
+@export_range(0.0, 1.0) var view_kick_side_ratio: float = 0.2
 
 ## How long the visual recoil takes to settle after a shot, in seconds.
 ##
@@ -266,6 +271,66 @@ func accuracy_time_constant() -> float:
 ## accurate again, matching the measurement's "back to baseline".
 func accuracy_reset_threshold() -> float:
 	return inaccuracy_per_shot * SETTLE_FRACTION
+
+
+## Degrees the view is kicked UP by each round, solved so that holding the
+## trigger for a magazine peaks the crosshair at view_kick_spray_peak of the
+## spray's own climb.
+##
+## The same on every round. It used to be a fraction of the round's step
+## through the pattern, and that was wrong: a pattern's vertical steps are
+## front-loaded and its sideways steps are not, so the view punched hard for
+## the first two rounds and then did nothing but sway. A gun does not stop
+## recoiling halfway through a magazine.
+func view_kick_up() -> float:
+	if _solved_kick_up >= 0.0:
+		return _solved_kick_up
+	var climb := 0.0
+	for i in recoil_pattern.size():
+		climb = maxf(climb, recoil_offset(i).y)
+	var unit_peak := spray_peak_per_degree()
+	if climb <= 0.0 or unit_peak <= 0.0:
+		_solved_kick_up = 0.0
+	else:
+		_solved_kick_up = view_kick_spray_peak * climb / unit_peak
+	return _solved_kick_up
+
+
+## Degrees sideways per round.
+func view_kick_side() -> float:
+	return view_kick_up() * view_kick_side_ratio
+
+
+## How high the punch would peak over a magazine held down, per degree of
+## per-round kick.
+##
+## The spring is linear, so one pass with a unit kick scales to any kick, and
+## view_kick_up is one division rather than a search. There is a test that
+## this agrees with what Weapon actually produces, since the two integrate the
+## same spring in two places.
+func spray_peak_per_degree() -> float:
+	var damping := punch_damping()
+	var spring := punch_spring()
+	var impulse := punch_impulse_scale()
+	var tick := 1.0 / SIMULATION_HZ
+	var punch := 0.0
+	var velocity := 0.0
+	var peak := 0.0
+	var until_shot := 0.0
+	for round_index in maxi(magazine_size, 1) * maxi(int(cycle_time * SIMULATION_HZ), 1):
+		if until_shot <= 0.0:
+			velocity += impulse
+			until_shot += cycle_time
+		until_shot -= tick
+		# The same leapfrog Weapon._decay_punch uses.
+		var half := tick * 0.5
+		velocity *= exp(-damping * half)
+		velocity -= punch * spring * half
+		punch += velocity * tick
+		velocity -= punch * spring * half
+		velocity *= exp(-damping * half)
+		peak = maxf(peak, punch)
+	return peak
 
 
 ## The pattern offset for a shot, scaled, holding the last entry once the

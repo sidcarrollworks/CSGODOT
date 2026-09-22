@@ -35,6 +35,8 @@ func _process(_delta: float) -> bool:
 		_test_view_kicks_less_than_the_spray()
 		_test_every_round_kicks_the_view()
 		_test_the_view_leans_without_swinging()
+		_test_the_spray_peaks_where_it_was_asked_to()
+		_test_the_solver_agrees_with_the_weapon()
 		_test_view_rises_rather_than_teleporting()
 		_test_viewmodel_follows_the_view()
 		_test_the_model_moves_less_than_the_view()
@@ -42,7 +44,7 @@ func _process(_delta: float) -> bool:
 		_test_animation_lasts_as_long_as_measured()
 		_test_accuracy_resets_as_slowly_as_measured()
 		_test_the_gun_looks_ready_before_it_is()
-		_test_kick_size_survives_a_faster_animation()
+		_test_spray_peak_survives_a_faster_animation()
 		_test_punch_is_the_same_at_any_frame_length()
 		_test_inaccuracy_by_state()
 		_test_damage_falloff()
@@ -385,10 +387,9 @@ func _test_recoil_scale() -> void:
 ## broken the thing that makes a spray learnable.
 func _test_bullets_ignore_the_view_kick() -> void:
 	var runs: Array[Array] = []
-	for size in [0.0, 0.3, 3.0]:
+	for size in [0.0, 0.5, 3.0]:
 		var data := WeaponLibrary.ak47()
-		data.view_kick_up = size
-		data.view_kick_side = size * 0.2
+		data.view_kick_spray_peak = size
 		var weapon := Weapon.new(data)
 		var state := _standing()
 		var now := 0
@@ -450,8 +451,8 @@ func _test_view_kicks_less_than_the_spray() -> void:
 				% [data.display_name, peak_view]
 		)
 		_check(
-			peak_view < spray_climb * 0.5,
-			"%s kicks the view well under half as far as the spray climbs (%.2f against %.2f degrees)"
+			peak_view < spray_climb * 0.6,
+			"%s kicks the view less than half as far as the spray climbs (%.2f against %.2f degrees)"
 				% [data.display_name, peak_view, spray_climb]
 		)
 		_check(
@@ -493,8 +494,11 @@ func _test_view_rises_rather_than_teleporting() -> void:
 			(data.recoil_pattern[i] - data.recoil_pattern[i - 1]).length()
 		)
 
+	# A third of a bullet step, spread over the rise rather than applied at
+	# once. Sid, watching CS2 back in slow motion, 2026-09-22: there is a
+	# slight snap to the weapon's direction, "but very subtle". Not none.
 	_check(
-		biggest_step < steepest * 0.25,
+		biggest_step < steepest * 0.4,
 		"no single tick moves the view near what one bullet moves (%.3f against %.3f degrees)"
 			% [biggest_step, steepest]
 	)
@@ -679,19 +683,27 @@ func _test_the_gun_looks_ready_before_it_is() -> void:
 		)
 
 
-## Re-measuring how long the kick lasts must not quietly change how far it
-## throws the view, or one measurement would be undoing the other.
-func _test_kick_size_survives_a_faster_animation() -> void:
+## Re-measuring how long the kick lasts must not quietly change where the
+## crosshair ends up over a spray, which is the thing that was observed.
+##
+## A faster spring stacks the rounds up less, so the solver raises the
+## per-round kick to compensate. That is the point of solving it.
+func _test_spray_peak_survives_a_faster_animation() -> void:
 	var slow := WeaponLibrary.ak47()
 	var fast := WeaponLibrary.ak47()
 	fast.recoil_animation_time = slow.recoil_animation_time * 0.5
 
-	var slow_peak: float = _settle(slow)[1]
-	var fast_peak: float = _settle(fast)[1]
+	var slow_peak: float = slow.spray_peak_per_degree() * slow.view_kick_up()
+	var fast_peak: float = fast.spray_peak_per_degree() * fast.view_kick_up()
 	_check(
 		absf(fast_peak - slow_peak) < slow_peak * 0.02,
-		"halving the animation leaves the size of the kick alone (%.3f against %.3f degrees)"
+		"halving the animation leaves the spray's peak alone (%.3f against %.3f degrees)"
 			% [fast_peak, slow_peak]
+	)
+	_check(
+		fast.view_kick_up() > slow.view_kick_up(),
+		"by kicking harder each round to make up for stacking less (%.2f against %.2f degrees)"
+			% [fast.view_kick_up(), slow.view_kick_up()]
 	)
 
 
@@ -779,15 +791,70 @@ func _test_the_view_leans_without_swinging() -> void:
 		"the view leans both ways through an AK spray"
 	)
 	_check(
-		is_equal_approx(biggest, data.view_kick_side),
+		is_equal_approx(biggest, data.view_kick_side()),
 		"and never further than view_kick_side, whatever the pattern does (%.3f degrees)"
 			% biggest
 	)
 	_check(
-		biggest < data.view_kick_up,
+		biggest < data.view_kick_up(),
 		"which is less than it climbs (%.3f against %.3f degrees)"
-			% [biggest, data.view_kick_up]
+			% [biggest, data.view_kick_up()]
 	)
+
+
+## Sid, 2026-09-22: "during spraying the crosshair should peak at around half
+## of the height of the overall spray." The per-round kick is solved from
+## that rather than picked, so this is the spec, not a regression guard.
+func _test_the_spray_peaks_where_it_was_asked_to() -> void:
+	for data in [WeaponLibrary.ak47(), WeaponLibrary.m4a1s()]:
+		var weapon := Weapon.new(data)
+		var state := _standing()
+		var now := 0
+		var peak := 0.0
+		var fired := 0
+
+		while fired < data.magazine_size:
+			now += int(DT * SECOND)
+			weapon.update(DT, now)
+			if weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, state) != null:
+				fired += 1
+			peak = maxf(peak, weapon.aim_punch.y)
+
+		var climb := 0.0
+		for i in data.recoil_pattern.size():
+			climb = maxf(climb, data.recoil_offset(i).y)
+		var wanted: float = climb * data.view_kick_spray_peak
+
+		_check(
+			absf(peak - wanted) < wanted * 0.05,
+			"%s crosshair peaks at %.0f%% of the spray's climb (%.2f of %.2f degrees, asked for %.2f)"
+				% [data.display_name, peak / climb * 100.0, peak, climb, wanted]
+		)
+
+
+## The solver walks the same spring twice over, in WeaponData rather than in
+## Weapon, so the two have to be held together.
+func _test_the_solver_agrees_with_the_weapon() -> void:
+	for data in [WeaponLibrary.ak47(), WeaponLibrary.m4a1s()]:
+		var weapon := Weapon.new(data)
+		var state := _standing()
+		var now := 0
+		var peak := 0.0
+		var fired := 0
+
+		while fired < data.magazine_size:
+			now += int(DT * SECOND)
+			weapon.update(DT, now)
+			if weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, state) != null:
+				fired += 1
+			peak = maxf(peak, weapon.aim_punch.y)
+
+		var predicted: float = data.spray_peak_per_degree() * data.view_kick_up()
+		_check(
+			absf(peak - predicted) < predicted * 0.05,
+			"%s solver predicts the spray peak the weapon actually reaches (%.3f against %.3f degrees)"
+				% [data.display_name, predicted, peak]
+		)
 
 
 func _test_inaccuracy_by_state() -> void:

@@ -44,12 +44,6 @@ static func ak47() -> WeaponData:
 	data.recoil_animation_time = 0.644
 	data.accuracy_reset_time = 0.867
 
-	# Every round, not a fraction of its step through the pattern. Sideways
-	# is a fifth of the climb: visible, and nothing like the three degrees a
-	# round the pattern itself wanders in the second half of a spray.
-	data.view_kick_up = 1.2
-	data.view_kick_side = 0.25
-
 	data.inaccuracy_standing = 0.02
 	data.inaccuracy_moving = 0.95
 	data.inaccuracy_jumping = 4.5
@@ -89,11 +83,6 @@ static func m4a1s() -> WeaponData:
 	# faster than the AK, and the gap between them is a similar 189 ms.
 	data.recoil_animation_time = 0.353
 	data.accuracy_reset_time = 0.542
-
-	# A shade less than the AK, and its faster spring means the kicks stack
-	# up less over a spray as well, which is most of why it is the easier gun.
-	data.view_kick_up = 1.0
-	data.view_kick_side = 0.2
 
 	data.inaccuracy_standing = 0.015
 	data.inaccuracy_moving = 0.8
