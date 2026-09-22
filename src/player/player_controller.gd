@@ -424,6 +424,11 @@ func _process(delta: float) -> void:
 	if view_model_overlay != null:
 		view_model_overlay.follow(camera)
 	_update_viewmodel(delta)
+	# The arms from where the eyes are, the body from its middle.
+	if view_model != null:
+		view_model.light_from(camera.global_position)
+	if body_model != null:
+		body_model.light_from(interpolated + Vector3.UP * 40.0)
 
 
 ## Rides the weapon model on the same punch, scaled by viewmodel_recoil.

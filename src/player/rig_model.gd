@@ -20,6 +20,10 @@ extends Node3D
 ## degenerate matrix for the skin to chew on.
 const FOLDED := 0.001
 
+## Lit by the map's light probes rather than Godot's ambient: every mesh
+## adopted goes on the probe shader, and light_from hands it a cube.
+var probe_lit: bool = true
+
 var animation_player: AnimationPlayer
 ## The rig the character meshes hang off, and the weapon's, if the clips
 ## carry one.
@@ -216,6 +220,29 @@ func adopt(mesh: MeshInstance3D, rig: Skeleton3D) -> void:
 	rig.add_child(mesh)
 	mesh.skeleton = NodePath("..")
 	mesh.transform = Transform3D.IDENTITY
+	if probe_lit:
+		_probe_light(mesh)
+
+
+## Puts a mesh's standard materials on the probe shader.
+func _probe_light(mesh: MeshInstance3D) -> void:
+	if mesh.mesh == null:
+		return
+	for surface in mesh.mesh.get_surface_count():
+		var material := mesh.get_active_material(surface)
+		if material is BaseMaterial3D:
+			mesh.set_surface_override_material(surface, ProbeMaterials.build(material as BaseMaterial3D))
+
+
+## Lights every mesh of the model from a point in the world, through the
+## scene's light probes, if it has any. Called by whoever moves the model.
+func light_from(position: Vector3) -> void:
+	var probes := LightProbeField.find(get_tree()) if is_inside_tree() else null
+	if probes == null:
+		return
+	var cube := probes.cube_at(position)
+	for mesh in find_children("*", "MeshInstance3D", true, false):
+		ProbeMaterials.light_instance(mesh as MeshInstance3D, cube)
 
 
 ## Keeps a node on a bone of the character rig, every time the rig updates.

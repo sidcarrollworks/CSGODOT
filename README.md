@@ -162,11 +162,13 @@ things out of the game: the visible world as glTF with its textures, the
 collision hull as a second glTF, the entity lump as text, the second texture
 layer of every material that has one (which a glTF has no room for), the sky
 as an HDR panorama, the 3D skybox (the buildings and hills beyond the map, a
-small map of their own, drawn behind everything as the game draws it), and
-the lightmaps the game baked its bounce light into. `physics`, `entities`, `layers`, `sky`, `skybox` and `lightmaps` fetch
-the last six on their own; all but the lightmaps take seconds. The
-lightmaps are one 300 MB image, which Godot's first import spends a few
-minutes compressing to 90.
+small map of their own, drawn behind everything as the game draws it),
+and the lightmaps the game baked its bounce light
+into, with the light probes beside them. `physics`, `entities`, `layers`,
+`sky`, `skybox` and `lightmaps` fetch the last six on their own; all but
+the lightmaps take seconds. The lightmaps are one 300 MB image, which
+Godot's first import spends a few minutes compressing to 90; the probes are
+720 small slices that the game packs into one file the first time it runs.
 
 `weapons` fetches the AK-47 and M4A1-S with their animations. `characters`
 fetches one player model per side (Phoenix and SAS) with their skeletons,
@@ -244,9 +246,12 @@ The bounce light is the game's own too: CS2 bakes it into lightmaps, and the
 walls, ground and most props read those (`src/map/lightmap_materials.gd`,
 the `lightmapped*.gdshader`s) in place of Godot's flat sky ambient, so the
 shade under an arch is the warm dim of the game rather than a blue-grey.
-What has no lightmap coordinates of its own (props the game lights by light
-probes, the far skybox, the players) gets the lightmap's average light as
-its ambient instead.
+What has no lightmap coordinates of its own is lit by the game's light
+probes instead (`src/map/light_probes.gd`): an ambient cube baked at every
+cell of a grid across the map, which the remaining props read once where
+they stand and the players, bots and your own arms read every frame from
+where they are, so the arms dim in a tunnel and warm under an awning. The
+far skybox keeps the lightmap's average light as its ambient.
 
 To see what came through without opening the editor:
 
