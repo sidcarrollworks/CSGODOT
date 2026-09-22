@@ -138,8 +138,8 @@ Roughly in order; L1 to L3 can start at once.
   number keys and the scroll wheel (scroll up is jump today; ask Sid); a
   weapon on the ground; bots carrying what they bought.
 - [ ] **R9. Buy menu and money.** Price and kill award are in the sheet.
-  Belongs with round flow (roadmap phase 4); needs Sid's call on whether the
-  economy is in scope.
+  In scope (Sid, 2026-09-22): CS2's economy and buy menu, detailed in
+  `reference/cs2-systems.md` (sections 2 and 3).
 - [ ] **R10. Tracers.** Every round, every third, or none, per the sheet.
 - [ ] **R11. Penetration and tagging** for every weapon, off the sheet's
   penetration and tagging power (roadmap items 2 and 7).
@@ -151,7 +151,7 @@ Roughly in order; L1 to L3 can start at once.
   spray (`_final` recovery times and the rounds they blend over) and spread
   apart from inaccuracy. Flag any figure where the two disagree to Sid.
 
-## Not in the sheet, and not on this list yet
+## Not in the sheet
 
-Knife, grenades, the Zeus, and the bomb. Each needs its own numbers and Sid's
-decision to include it.
+The knife, the Zeus, the six grenades and the bomb are all in scope. Their
+numbers and their Local and Remote work are in `reference/cs2-systems.md`.
