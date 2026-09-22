@@ -252,10 +252,21 @@ func import_map() -> Dictionary:
 
 	var blend := BlendMaterials.apply(visible_meshes, layer_textures_dir)
 	var lightmaps := {"surfaces": 0, "props": 0, "found": false, "ambient": null}
+	var probes := {"volumes": 0, "surfaces": 0}
 	if not lightmaps_dir.is_empty():
-		lightmaps = LightmapMaterials.apply(
-			visible_meshes, source_path.get_base_dir().path_join(lightmaps_dir), scale_factor
-		)
+		var map_dir := source_path.get_base_dir().path_join(lightmaps_dir)
+		lightmaps = LightmapMaterials.apply(visible_meshes, map_dir, scale_factor)
+		# What the lightmaps did not cover, the light probes light: the props
+		# placed to be lit by them, once, where they stand; and, through the
+		# field left in the scene, whatever moves.
+		var field_probes := LightProbes.load_for(map_dir)
+		if field_probes.is_loaded():
+			var field := LightProbeField.new()
+			field.name = "LightProbes"
+			field.probes = field_probes
+			add_child(field)
+			probes["volumes"] = field_probes.volumes.size()
+			probes["surfaces"] = ProbeMaterials.apply(visible_meshes, field_probes, LightmapMaterials.PROP_SHADERS)
 
 	var behind := FarMaterials.apply(visible_meshes) if behind_everything else 0
 
@@ -284,6 +295,7 @@ func import_map() -> Dictionary:
 		"blend": blend,
 		"lightmaps": lightmaps,
 		"behind": behind,
+		"probes": probes,
 		"materials": materials,
 		"bounds": _bounds(meshes),
 	}
@@ -567,6 +579,11 @@ func _report_text() -> String:
 	var lightmaps: Dictionary = stats["lightmaps"]
 	if lightmaps["found"]:
 		lines.append("    baked bounce light on %d surfaces, %d of them props" % [lightmaps["surfaces"], lightmaps["props"]])
+		var probes: Dictionary = stats["probes"]
+		if probes["volumes"] > 0:
+			lines.append("    light probes: %d volumes, lighting %d more prop surfaces" % [probes["volumes"], probes["surfaces"]])
+		else:
+			lines.append("    no light probes found; run 'scripts/extract_assets.sh lightmaps' for them")
 		if lightmaps["ambient"] == null:
 			lines.append("    the lightmap's average is not measured yet (scripts/prepare_export.gd); the rest get the sky's light")
 	elif not lightmaps_dir.is_empty():

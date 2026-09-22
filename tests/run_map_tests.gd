@@ -74,6 +74,7 @@ func _process(_delta: float) -> bool:
 		_test_blend_materials()
 		_test_lightmap_materials()
 		_test_far_materials()
+		_test_light_probes()
 		_test_lighting()
 		_spawn_player()
 		_spawned_at_tick = Engine.get_physics_frames()
@@ -876,6 +877,139 @@ func _test_far_materials() -> void:
 		"behind_everything puts every drawn surface of a map on the far shaders and reports it (%d of %d)" % [behind, drawn]
 	)
 	importer.free()
+## The light probes on a hand-made atlas: two volumes, one inside the
+## other, each face band a colour of its own, so a point's cube says which
+## volume and which face it read; then a material lit from one.
+func _test_light_probes() -> void:
+	var probes := LightProbes.new()
+	# 4 x 4 x (6 faces of 2) texels. The outer volume fills the atlas'
+	# first two columns; the inner one the last two. Each face band f holds
+	# f + 1 tenths in red, and the inner block holds twice that in green.
+	var width := 4
+	var height := 4
+	var band := 2
+	var texels := PackedByteArray()
+	texels.resize(width * height * band * LightProbes.FACES * 6)
+	for face in LightProbes.FACES:
+		for z in band:
+			for y in height:
+				for x in width:
+					var offset := (((face * band + z) * height + y) * width + x) * 6
+					texels.encode_half(offset, (face + 1) * 0.1)
+					texels.encode_half(offset + 2, (face + 1) * 0.2 if x >= 2 else 0.0)
+					texels.encode_half(offset + 4, float(z))
+	_check(probes.set_atlas(width, height, band, texels), "an atlas of the right size is taken")
+	_check(not probes.set_atlas(width, height, band, PackedByteArray()), "and one of the wrong size is not")
+	probes.volumes = [
+		# Source axes: a box 400 by 400 by 200 at the origin; 2 by 4 by 2 texels at atlas x 0.
+		{"origin": Vector3.ZERO, "mins": Vector3(-200, -200, -100), "maxs": Vector3(200, 200, 100), "atlas": Vector3(0, 0, 0), "size": Vector3(2, 4, 2), "level": 0, "voxel": 100.0},
+		# A smaller box inside it, at atlas x 2.
+		{"origin": Vector3(50, 50, 0), "mins": Vector3(-50, -50, -50), "maxs": Vector3(50, 50, 50), "atlas": Vector3(2, 0, 0), "size": Vector3(2, 4, 2), "level": 1, "voxel": 50.0},
+	]
+	_check(probes.is_loaded(), "with volumes and an atlas the probes are loaded")
+	# Game (x, y, z) is Source (y, z, x): game (150, 0, -150) is Source (-150, 150, 0), in the outer box only.
+	_check(
+		probes.volume_at(Vector3(150, 0, -150)) == 0 and probes.volume_at(Vector3(60, 0, 60)) == 1
+			and probes.volume_at(Vector3(900, 0, 0)) == -1,
+		"a point finds the smallest volume around it, or none"
+	)
+	var outer := probes.cube_at(Vector3(150, 0, -150))
+	var inner := probes.cube_at(Vector3(60, 0, 60))
+	# Game faces +X -X +Y -Y +Z -Z are Source +Y -Y +Z -Z +X -X: bands 1 4 2 5 0 3.
+	# Half floats: a thousandth is the precision to ask for.
+	_check(
+		_near(outer[0].r, 0.2) and _near(outer[1].r, 0.5) and _near(outer[2].r, 0.3)
+			and _near(outer[3].r, 0.6) and _near(outer[4].r, 0.1) and _near(outer[5].r, 0.4)
+			and is_zero_approx(outer[2].g),
+		"each face of the cube comes from its band, in the game's axes (up is Source's +Z): %s" % [outer]
+	)
+	_check(
+		_near(inner[2].r, 0.3) and _near(inner[2].g, 0.6),
+		"the inner volume reads its own block of the atlas (%s)" % inner[2]
+	)
+	# The blue channel counts the depth slice: a point halfway up the box
+	# interpolates between the two slices.
+	var low := probes.cube_at(Vector3(150, -100, -150))
+	var mid := probes.cube_at(Vector3(150, 0, -150))
+	var high := probes.cube_at(Vector3(150, 100, -150))
+	_check(
+		is_zero_approx(low[2].b) and is_equal_approx(mid[2].b, 0.5) and is_equal_approx(high[2].b, 1.0),
+		"between two cells the read is trilinear (%.2f, %.2f, %.2f up the box)" % [low[2].b, mid[2].b, high[2].b]
+	)
+	var up := LightProbes.shade(outer, Vector3.UP)
+	var slant := LightProbes.shade(outer, Vector3(1, 1, 0).normalized())
+	_check(
+		_near(up.r, 0.3) and _near(slant.r, 0.5 * 0.2 + 0.5 * 0.3),
+		"a surface takes each face by the square of its normal's part along it (%.3f, %.3f)" % [up.r, slant.r]
+	)
+	var dark := probes.cube_at(Vector3(900, 0, 0))[0]
+	_check(is_zero_approx(dark.r + dark.g + dark.b), "outside every volume the cube is dark")
+
+	# The entity lump, and a material lit from the probes.
+	var lump := "user://export_fixture/probes.vents"
+	_write_text(lump, """
+====1====
+classname                      "env_combined_light_probe_volume"
+origin                         [ 10.0, 20.0, 30.0 ]
+box_mins                       [ -1.0, -2.0, -3.0 ]
+box_maxs                       [ 4.0, 5.0, 6.0 ]
+light_probe_size_x             7
+light_probe_size_y             8
+light_probe_size_z             9
+light_probe_atlas_x            11
+light_probe_atlas_y            12
+light_probe_atlas_z            13
+indoor_outdoor_level           "2"
+voxel_size                     "24.0"
+
+====2====
+classname                      "env_combined_light_probe_volume"
+origin                         [ 0.0, 0.0, 0.0 ]
+====3====
+classname                      "light_environment"
+""")
+	var read := LightProbes.read_volumes(ProjectSettings.globalize_path(lump))
+	_check(
+		read.size() == 1 and read[0]["origin"] == Vector3(10, 20, 30) and read[0]["mins"] == Vector3(-1, -2, -3)
+			and read[0]["atlas"] == Vector3(11, 12, 13) and read[0]["size"] == Vector3(7, 8, 9) and read[0]["level"] == 2,
+		"a volume is read from the entity lump, and one without an atlas place is not (%s)" % [read]
+	)
+
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color(0.25, 0.5, 1.0)
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var lit := ProbeMaterials.build(material)
+	_check(
+		lit.shader != ProbeMaterials.SHADER and lit.shader.code.contains("cull_disabled")
+			and lit.shader.code.contains("probe_ambient(") and ProbeMaterials.build(material) == lit
+			and (lit.get_shader_parameter("albedo_color") as Color).is_equal_approx(material.albedo_color)
+			and is_equal_approx(lit.get_shader_parameter("probe_energy"), LightmapMaterials.ENERGY),
+		"a material moves onto the probe shader, two-sided when it was, made once, at the lightmaps' energy"
+	)
+	var blended := StandardMaterial3D.new()
+	blended.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	var lit_blended := ProbeMaterials.build(blended)
+	_check(
+		lit_blended.shader.code.contains("\tALPHA = albedo.a;\n") and not lit_blended.shader.code.contains("ALPHA_SCISSOR_THRESHOLD"),
+		"and a blended one onto a blended variant"
+	)
+	var instance := MeshInstance3D.new()
+	instance.mesh = BoxMesh.new()
+	instance.material_override = lit
+	root.add_child(instance)
+	ProbeMaterials.light_instance(instance, outer)
+	var py: Variant = instance.get_instance_shader_parameter(&"probe_py")
+	var nz: Variant = instance.get_instance_shader_parameter(&"probe_nz")
+	_check(
+		py is Vector3 and (py as Vector3).is_equal_approx(Vector3(outer[2].r, outer[2].g, outer[2].b))
+			and nz is Vector3 and (nz as Vector3).is_equal_approx(Vector3(outer[5].r, outer[5].g, outer[5].b)),
+		"an instance is handed its cube as instance uniforms (%s, %s)" % [py, nz]
+	)
+	instance.free()
+
+
+func _near(a: float, b: float) -> bool:
+	return absf(a - b) < 0.002
 
 
 ## The lighting is a translation of the map's own numbers, so the test is

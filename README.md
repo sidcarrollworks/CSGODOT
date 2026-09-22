@@ -162,11 +162,13 @@ things out of the game: the visible world as glTF with its textures, the
 collision hull as a second glTF, the entity lump as text, the second texture
 layer of every material that has one (which a glTF has no room for), the sky
 as an HDR panorama, the 3D skybox (the buildings and hills beyond the map, a
-small map of their own, drawn behind everything as the game draws it), and
-the lightmaps the game baked its bounce light into. `physics`, `entities`, `layers`, `sky`, `skybox` and `lightmaps` fetch
-the last six on their own; all but the lightmaps take seconds. The
-lightmaps are one 300 MB image, which Godot's first import spends a few
-minutes compressing to 90.
+small map of their own, drawn behind everything as the game draws it),
+and the lightmaps the game baked its bounce light
+into, with the light probes beside them. `physics`, `entities`, `layers`,
+`sky`, `skybox` and `lightmaps` fetch the last six on their own; all but
+the lightmaps take seconds. The lightmaps are one 300 MB image, which
+Godot's first import spends a few minutes compressing to 90; the probes are
+720 small slices that the game packs into one file the first time it runs.
 
 `weapons` fetches the AK-47 and M4A1-S with their animations. `characters`
 fetches one player model per side (Phoenix and SAS) with their skeletons,
@@ -202,16 +204,24 @@ for the model, riding its bones (`src/combat/skinned_hitboxes.gd`), so a
 bullet lands on the head, chest, stomach, an arm or a leg and is priced
 accordingly, ahead of the movement hull, which bullets pass. A kill plays
 one of the game's death clips for where the last round landed, and the bot
-is back at the start of its route a few seconds later. It does not aim,
-fire or think yet.
+is back at the start of its route a few seconds later. And it shoots back:
+a player in its sight (in the open, within its cone, for half a second)
+stops it in its tracks; it turns, and fires its weapon in bursts with the
+weapon's own spread and recoil, reloading when it runs dry. You have the
+same health and armour a bot has, zones a round can land on, a HUD with a
+crosshair, health and ammunition, and three seconds dead before you are
+back at your spawn with a full magazine. Bots do not take cover, flinch or
+think beyond that.
 
 The sounds are the game's own too (`src/audio/`): the weapon's shots,
 reload in its parts and draw, flat in your ears the way the game plays your
 own gun; your hits, kevlar, headshot or kill; and footsteps and landings
 from everyone's feet, in the world, on the surface they stand on, which the
 collision hull names part by part (sand, dirt, wood, metal, tile). Running
-sounds, walking does not, as in CS. Without `sounds` extracted the game is
-silent and everything else works.
+sounds, walking does not, as in CS. A round that meets the world leaves one
+of the game's bullet holes there and the sound of that surface taking it
+(`src/combat/bullet_impacts.gd`). Without `sounds` extracted the game is
+silent, the walls unmarked, and everything else works.
 
 `assets/` can live on another drive: make it a junction (`mklink /J`) and
 every script and Godot itself read straight through it.
@@ -240,9 +250,12 @@ The bounce light is the game's own too: CS2 bakes it into lightmaps, and the
 walls, ground and most props read those (`src/map/lightmap_materials.gd`,
 the `lightmapped*.gdshader`s) in place of Godot's flat sky ambient, so the
 shade under an arch is the warm dim of the game rather than a blue-grey.
-What has no lightmap coordinates of its own (props the game lights by light
-probes, the far skybox, the players) gets the lightmap's average light as
-its ambient instead.
+What has no lightmap coordinates of its own is lit by the game's light
+probes instead (`src/map/light_probes.gd`): an ambient cube baked at every
+cell of a grid across the map, which the remaining props read once where
+they stand and the players, bots and your own arms read every frame from
+where they are, so the arms dim in a tunnel and warm under an awning. The
+far skybox keeps the lightmap's average light as its ambient.
 
 To see what came through without opening the editor:
 
