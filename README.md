@@ -156,13 +156,16 @@ scripts/extract_assets.sh map          # extract it, then import it into Godot
 scripts/extract_assets.sh weapons      # the AK-47 and M4A1-S models
 ```
 
-`map` takes a couple of minutes and a little over a gigabyte. It pulls six
+`map` takes a few minutes and a little under two gigabytes. It pulls seven
 things out of the game: the visible world as glTF with its textures, the
 collision hull as a second glTF, the entity lump as text, the second texture
 layer of every material that has one (which a glTF has no room for), the sky
-as an HDR panorama, and the 3D skybox: the buildings and hills beyond the
-map, a small map of their own. `physics`, `entities`, `layers`, `sky` and
-`skybox` fetch the last five on their own, in seconds.
+as an HDR panorama, the 3D skybox (the buildings and hills beyond the map, a
+small map of their own), and the lightmaps the game baked its bounce light
+into. `physics`, `entities`, `layers`, `sky`, `skybox` and `lightmaps` fetch
+the last six on their own; all but the lightmaps take seconds. The
+lightmaps are one 300 MB image, which Godot's first import spends a few
+minutes compressing to 90.
 
 `weapons` fetches the AK-47 and M4A1-S with their animations. `characters`
 fetches one player model per side (Phoenix and SAS) with their skeletons,
@@ -207,8 +210,12 @@ The lighting is the map's own numbers, translated (`src/map/map_lighting.gd`):
 the sun's colour, brightness and size from `light_environment`, the sky
 panorama from `env_sky`, distance haze from `env_cubemap_fog`, exposure from
 the `post_processing_volume`, plus screen-space occlusion and a little bloom.
-It is the cheap kind of lighting, with no bounce light: CS2 bakes that, and
-baking it here is its own project.
+The bounce light is the game's own too: CS2 bakes it into lightmaps, and the
+walls and ground read those (`src/map/lightmap_materials.gd`, the
+`lightmapped*.gdshader`s) in place of Godot's flat sky ambient, so the shade
+under an arch is the warm dim of the game rather than a blue-grey. Props are
+lit by light probes in CS2 rather than lightmaps, and still get the sky
+ambient here.
 
 To see what came through without opening the editor:
 

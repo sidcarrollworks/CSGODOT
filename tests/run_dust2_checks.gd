@@ -69,6 +69,7 @@ func _import() -> bool:
 	_importer.collision_path = MapImporter.find_collision_file(COLLISION_DIR)
 	_importer.scale_factor = MapImporter.SOURCE2_VIEWER_SCALE
 	_importer.layer_textures_dir = MAP_DIR
+	_importer.lightmaps_dir = "."
 	_importer.report = false
 	root.add_child(_importer)
 	var stats := _importer.stats
@@ -89,6 +90,12 @@ func _import() -> bool:
 		int(blend.get("materials", 0)) >= 50 and (blend.get("missing", PackedStringArray()) as PackedStringArray).is_empty(),
 		"walls and ground have their second layer (%d blend materials, %d without their textures; scripts/extract_assets.sh layers)"
 			% [blend.get("materials", 0), (blend.get("missing", PackedStringArray()) as PackedStringArray).size()]
+	)
+	var lightmaps: Dictionary = stats.get("lightmaps", {})
+	_check(
+		lightmaps.get("found", false) and int(lightmaps.get("surfaces", 0)) >= 1000,
+		"the world has its baked bounce light (%d surfaces; scripts/extract_assets.sh lightmaps)"
+			% lightmaps.get("surfaces", 0)
 	)
 
 	var entities_path := ProjectSettings.globalize_path(

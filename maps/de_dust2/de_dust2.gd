@@ -57,6 +57,7 @@ func _ready() -> void:
 	importer.collision_path = MapImporter.find_collision_file(COLLISION_DIR)
 	importer.scale_factor = MapImporter.SOURCE2_VIEWER_SCALE
 	importer.layer_textures_dir = MAP_DIR
+	importer.lightmaps_dir = "."
 	add_child(importer)
 
 	if importer.stats.has("error"):

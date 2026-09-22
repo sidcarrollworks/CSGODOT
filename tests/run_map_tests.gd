@@ -72,6 +72,7 @@ func _process(_delta: float) -> bool:
 		_test_export_offset_fix()
 		_test_paint_channel()
 		_test_blend_materials()
+		_test_lightmap_materials()
 		_test_lighting()
 		_spawn_player()
 		_spawned_at_tick = Engine.get_physics_frames()
@@ -632,6 +633,90 @@ func _test_blend_materials() -> void:
 		not layered.vertex_color_use_as_albedo,
 		"and is not left tinted by its paint, which is a weight and not a colour"
 	)
+	instance.free()
+
+
+## The lightmaps are read by shaders in place of Godot's ambient light, so
+## the test is that the world's surfaces, and only those, are moved onto them
+## with what the import gave them, and that a map without lightmaps is left
+## as it was.
+func _test_lightmap_materials() -> void:
+	var dir := "user://export_fixture/lightmapped"
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir.path_join("lightmaps")))
+	Image.create(4, 4, false, Image.FORMAT_RGBAF).save_exr(dir.path_join(LightmapMaterials.IRRADIANCE_FILE))
+	Image.create(4, 4, false, Image.FORMAT_RGBA8).save_png(dir.path_join(LightmapMaterials.DIRECTION_FILE))
+
+	var wall := StandardMaterial3D.new()
+	wall.resource_name = "wall"
+	wall.set_meta("extras", {"vmat": {"ShaderName": "csgo_lightmappedgeneric.vfx"}})
+	wall.albedo_texture = PlaceholderTexture2D.new()
+	wall.albedo_color = Color(0.5, 0.25, 1.0)
+	wall.normal_enabled = true
+	wall.normal_texture = PlaceholderTexture2D.new()
+	wall.normal_scale = 0.6
+	wall.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	wall.alpha_scissor_threshold = 0.4
+	var sign := StandardMaterial3D.new()
+	sign.set_meta("extras", {"vmat": {"ShaderName": "csgo_static_overlay.vfx"}})
+	sign.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	sign.render_priority = 3
+	var prop := StandardMaterial3D.new()
+	prop.set_meta("extras", {"vmat": {"ShaderName": "csgo_environment.vfx"}})
+	var blend := ShaderMaterial.new()
+	blend.shader = BlendMaterials.SHADER
+	blend.set_meta("extras", {"vmat": {"ShaderName": "csgo_lightmappedgeneric.vfx", "IntParams": {"F_LAYERS": 1.0}}})
+
+	_check(
+		LightmapMaterials.is_lightmapped(BlendMaterials.vmat(wall))
+			and LightmapMaterials.is_lightmapped(BlendMaterials.vmat(sign))
+			and not LightmapMaterials.is_lightmapped(BlendMaterials.vmat(prop)),
+		"the world's shaders are lightmapped and a prop's is not"
+	)
+
+	var mesh := ArrayMesh.new()
+	for material: Material in [wall, sign, prop, blend]:
+		var box := BoxMesh.new()
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, box.get_mesh_arrays())
+		mesh.surface_set_material(mesh.get_surface_count() - 1, material)
+	var instance := MeshInstance3D.new()
+	instance.mesh = mesh
+	var meshes: Array[MeshInstance3D] = [instance]
+
+	var without := LightmapMaterials.apply(meshes, "user://export_fixture/nowhere")
+	_check(
+		not without["found"] and without["surfaces"] == 0 and instance.get_surface_override_material(0) == null,
+		"without the lightmaps extracted, nothing changes and the report says so"
+	)
+
+	var result := LightmapMaterials.apply(meshes, dir)
+	_check(result["found"] and result["surfaces"] == 3, "with them, the three world surfaces are lit by them")
+	var lit := instance.get_surface_override_material(0) as ShaderMaterial
+	var overlay := instance.get_surface_override_material(1) as ShaderMaterial
+	_check(
+		lit != null and lit.shader == LightmapMaterials.OPAQUE_SHADER
+			and overlay != null and overlay.shader == LightmapMaterials.OVERLAY_SHADER
+			and instance.get_surface_override_material(2) == null,
+		"the wall on the opaque shader, the sign on the blended one, the prop on neither"
+	)
+	if lit != null:
+		_check(
+			lit.get_shader_parameter("albedo_texture") == wall.albedo_texture
+				and (lit.get_shader_parameter("albedo_color") as Color).is_equal_approx(wall.albedo_color)
+				and lit.get_shader_parameter("has_normal_map") == true
+				and is_equal_approx(lit.get_shader_parameter("normal_depth"), 0.6)
+				and is_equal_approx(lit.get_shader_parameter("alpha_scissor"), 0.4),
+			"the wall keeps its textures, colour, normal depth and alpha cut"
+		)
+		_check(
+			lit.get_shader_parameter("lightmap_irradiance") is Texture2D
+				and lit.get_shader_parameter("lightmap_direction") is Texture2D
+				and blend.get_shader_parameter("lightmap_irradiance") is Texture2D,
+			"the lightmaps are handed to the new materials and to the blend material"
+		)
+		_check(
+			LightmapMaterials.is_lightmapped(BlendMaterials.vmat(lit)) and overlay.render_priority == 3,
+			"the vmat stays readable and the overlay keeps its draw order"
+		)
 	instance.free()
 
 

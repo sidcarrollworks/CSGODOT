@@ -39,6 +39,12 @@ const SOURCE2_VIEWER_SCALE := 1.0 / 0.0254
 ## first layer only. See BlendMaterials.
 @export_dir var layer_textures_dir: String = ""
 
+## Optional: where the map's lightmaps are, relative to the world glTF's
+## directory (the extraction puts them in lightmaps/ next to it). With them,
+## world surfaces get the bounce light CS2 baked; without, Godot's sky
+## ambient. See LightmapMaterials.
+@export var lightmaps_dir: String = ""
+
 ## What to multiply the export by. SOURCE2_VIEWER_SCALE for anything that came
 ## out of Source 2 Viewer; 1 for geometry already in Source units. If the
 ## reported bounding box is wrong by a constant factor, this is the knob.
@@ -225,6 +231,9 @@ func import_map() -> Dictionary:
 				solid_meshes.append(mesh_instance)
 
 	var blend := BlendMaterials.apply(visible_meshes, layer_textures_dir)
+	var lightmaps := {"surfaces": 0, "found": false}
+	if not lightmaps_dir.is_empty():
+		lightmaps = LightmapMaterials.apply(visible_meshes, source_path.get_base_dir().path_join(lightmaps_dir))
 
 	var collision_from := "the collision hull"
 	var targets: Array[MeshInstance3D] = []
@@ -249,6 +258,7 @@ func import_map() -> Dictionary:
 		"collision_from": collision_from,
 		"loaded_from": loaded_from,
 		"blend": blend,
+		"lightmaps": lightmaps,
 		"materials": materials,
 		"bounds": _bounds(meshes),
 	}
@@ -529,6 +539,11 @@ func _report_text() -> String:
 	]
 	var blend: Dictionary = stats["blend"]
 	lines.append("    blend materials: %d, on %d surfaces" % [blend["materials"], blend["blended"]])
+	var lightmaps: Dictionary = stats["lightmaps"]
+	if lightmaps["found"]:
+		lines.append("    baked bounce light on %d surfaces" % lightmaps["surfaces"])
+	elif not lightmaps_dir.is_empty():
+		lines.append("    no lightmaps found; run 'scripts/extract_assets.sh lightmaps' for the bounce light")
 	if not (blend["missing"] as PackedStringArray).is_empty():
 		lines.append(
 			"    %d more are showing their first layer only, their second not being on disk."

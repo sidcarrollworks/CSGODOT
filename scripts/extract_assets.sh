@@ -16,6 +16,7 @@
 #   scripts/extract_assets.sh layers          # just the blend materials' second layers
 #   scripts/extract_assets.sh sky             # just the sky panorama
 #   scripts/extract_assets.sh skybox          # just the 3D skybox: the far buildings
+#   scripts/extract_assets.sh lightmaps       # just the baked bounce light
 #   scripts/extract_assets.sh weapons         # extract the two weapons
 #   scripts/extract_assets.sh characters      # two player models and the first-person animations
 #   scripts/extract_assets.sh all             # map + weapons + characters
@@ -147,7 +148,7 @@ find_cs2() {
 
 COMMAND="${1:-}"
 case "$COMMAND" in
-	list-map|list-weapons|map|physics|entities|layers|sky|skybox|weapons|characters|all) ;;
+	list-map|list-weapons|map|physics|entities|layers|sky|skybox|lightmaps|weapons|characters|all) ;;
 	*)
 		# The header comment, down to the first line that is not one.
 		awk 'NR > 2 && /^#/ { sub(/^# ?/, ""); print; next } NR > 2 { exit }' "${BASH_SOURCE[0]}"
@@ -391,6 +392,22 @@ extract_sky() {
 		| grep -vE '^(Preloading|Added folder|--- \[)' || true
 }
 
+## The map's baked lighting. CS2 bakes the bounce light into an irradiance
+## lightmap (8192 square, HDR, 78 MB compressed) with a companion that says
+## which way the light mostly comes from; the sun's own light it computes
+## live, so its shadow masks are not fetched. Source 2 Viewer writes the
+## irradiance as an .exr of 300 MB, which Godot compresses back down on
+## import.
+extract_lightmaps() {
+	local maps
+	maps="$(list_paths "$MAP_VPK" | grep -E '/lightmaps/(irradiance|directional_irradiance)\.vtex_c$' | paste -sd, - || true)"
+	require_filter "$maps" "the lightmaps"
+	mkdir -p "$MAP_DEST"
+	echo "Extracting the baked lighting (a few hundred megabytes, uncompressed)"
+	echo "        -> $MAP_DEST"
+	"$S2V_BIN" -i "$MAP_VPK" -f "$maps" -o "$MAP_DEST" -d | grep -E '^--- Dump' || true
+}
+
 extract_map() {
 	extract_world
 	echo
@@ -403,6 +420,8 @@ extract_map() {
 	extract_sky
 	echo
 	extract_skybox
+	echo
+	extract_lightmaps
 }
 
 extract_weapons() {
@@ -512,6 +531,7 @@ case "$COMMAND" in
 	layers) extract_layers; finish ;;
 	sky) extract_sky; finish ;;
 	skybox) extract_skybox; finish ;;
+	lightmaps) extract_lightmaps; finish ;;
 	characters) extract_characters; finish ;;
 	weapons) extract_weapons; finish ;;
 	all) extract_map; echo; extract_weapons; echo; extract_characters; finish ;;
