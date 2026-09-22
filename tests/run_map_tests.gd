@@ -1064,8 +1064,9 @@ func _test_lighting() -> void:
 			sun.light_color.is_equal_approx(Color(1, 0, 0))
 				and is_equal_approx(sun.light_energy, 2.0 * MapLighting.SUN_ENERGY_PER_BRIGHTNESS)
 				and sun.directional_shadow_max_distance >= 8000.0
+				and sun.directional_shadow_pancake_size >= 2000.0
 				and is_equal_approx(sun.light_angular_distance, 0.25) and sun.shadow_enabled,
-			"the sun's colour, brightness and size come from light_environment"
+			"the sun's colour, brightness and size come from light_environment; its shadows reach the tallest roofs"
 		)
 		_check(
 			environment.fog_enabled and is_equal_approx(environment.fog_depth_begin, 100.0)
