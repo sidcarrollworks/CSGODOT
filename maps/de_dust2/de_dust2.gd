@@ -30,6 +30,10 @@ const SKY_FILE := "../../materials/skybox/sky_de_dust2.exr"
 ## rather than at spawn_position. Noclip (V) from there.
 @export var use_bounds_centre_as_spawn: bool = true
 
+## How many of the other side to put in. They walk their spawn area, which
+## is the one part of the map they can be sure of, and do nothing else yet.
+@export var bots: int = 2
+
 var importer: MapImporter
 var skybox: MapImporter
 var player: PlayerBody
@@ -76,6 +80,32 @@ func _ready() -> void:
 	])
 	_build_skybox()
 	_place_player(map_file)
+	_place_bots()
+
+
+## Bots on the other side, each walking that side's spawn points in a loop,
+## starting from a different one.
+func _place_bots() -> void:
+	var team := "CT" if spawn_team == "T" else "T"
+	var spawns: Array = SourceEntities.player_spawns(entities)[team]
+	if spawns.is_empty() or bots <= 0:
+		return
+	var route := PackedVector3Array()
+	for spawn: Dictionary in spawns:
+		route.append(spawn["position"])
+	var scene := load("res://src/bots/bot.tscn") as PackedScene
+	for i in mini(bots, spawns.size()):
+		var bot := scene.instantiate() as Bot
+		bot.name = "Bot%d" % (i + 1)
+		bot.team = team
+		bot.weapon_model = (WeaponLibrary.m4a1s() if team == "CT" else WeaponLibrary.ak47()).model_path
+		# Each starts at a different point and heads for the next.
+		var start := (i * spawns.size()) / maxi(bots, 1)
+		bot.route = route
+		add_child(bot)
+		bot.global_position = spawns[start]["position"]
+		bot.yaw_degrees = spawns[start]["yaw"]
+		bot.set("_next", (start + 1) % route.size())
 
 
 ## The buildings and horizon beyond the playable map. Source builds them as

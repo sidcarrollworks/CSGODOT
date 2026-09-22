@@ -1,0 +1,14 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/bots/bot.gd" id="1_bot"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_hull"]
+size = Vector3(32, 72, 32)
+
+[node name="Bot" type="CharacterBody3D"]
+collision_layer = 2
+script = ExtResource("1_bot")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 36, 0)
+shape = SubResource("BoxShape3D_hull")

@@ -165,9 +165,10 @@ map, a small map of their own. `physics`, `entities`, `layers`, `sky` and
 `skybox` fetch the last five on their own, in seconds.
 
 `weapons` fetches the AK-47 and M4A1-S with their animations. `characters`
-fetches one player model per side (Phoenix and SAS) with their skeletons and
-first-person arm meshes, and the first-person rifle animations, which in CS2
-are files of their own. `all` does the lot.
+fetches one player model per side (Phoenix and SAS) with their skeletons,
+and the rifle animations, which in CS2 are files of their own: the
+first-person set, and the third-person locomotion (eight-way run, walk and
+crouch, idles, in-air, jump, shoot). `all` does the lot.
 
 With those in place the player has arms and a weapon on screen, animated by
 the game's own clips: draw on equip, shoot and reload from the firing model,
@@ -177,6 +178,15 @@ weapon's meshes on the rigs the clips animate, and
 at CS2's `viewmodel_fov`, over the world, so they neither stretch at the
 edges nor poke through walls. Without the models extracted there are simply
 no arms, and everything else works.
+
+Other players are the same agents seen from outside (`src/player/player_model.gd`):
+the body on the third-person rig, the weapon in its hand, and the locomotion
+clip that fits how the body is moving relative to where it faces, cross-faded
+and scaled to its speed. dust2 puts two bots of the other side in
+(`bots` on the scene root), walking their spawn points on a loop. A bot
+(`src/bots/bot.gd`) is the player's own body and movement solver pushed by a
+route instead of keys, so it moves the way a player does; it does not aim,
+fire or think yet.
 
 `assets/` can live on another drive: make it a junction (`mklink /J`) and
 every script and Godot itself read straight through it.
@@ -292,9 +302,10 @@ original assets later is a content change rather than a git history problem.
 
 ## What is deliberately not here yet
 
-No weapon models, no bots, no nav mesh. dust2 is in as geometry, collision and
-spawn points and nothing more. Shooting works but fires from an invisible gun
-at a dummy that does not move.
+No bots that do anything but walk their spawn, no nav mesh, no firing
+animation on the third-person model, no per-bone hitboxes: a bullet hits a
+bot's hull, not its head. Shooting fires from a gun you can see at a dummy
+that does not move.
 
 Movement and shooting are tuned in flat grey rooms first, because tuning them
 on a real map is much harder and everything built on top of bad movement is

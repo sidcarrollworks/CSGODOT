@@ -472,11 +472,15 @@ extract_characters() {
 		| grep -vE '^(Preloading|Added folder|--- \[|--- Creating|--- Loading)' || true
 
 	local clips
-	clips="$(grep -E '^animation/(anims/viewmodel/rifle/(_default_rifle|rifle_ak|rifle_m4a4)/|skeletons/characters/viewmodel\.vnmskel_c$|skeletons/weapons/(ak47|m4a1)[a-z_]*\.vnmskel_c$)' <<<"$listing" \
+	# First person: the AK's clips and the shared rifle set, which is the
+	# M4A1-S's. Third person: the shared set's locomotion (idle, walk, run,
+	# crouch, in the eight directions, plus in-air, jump and shoot), and each
+	# weapon's own draw, reload and shoot.
+	clips="$(grep -E '^animation/(anims/viewmodel/rifle/(_default_rifle|rifle_ak)/|anims/world/rifle/(_default_rifle/(idle|run|walk|crouch|inair|jump_stand|shoot)_[a-z_]*|rifle_ak/|rifle_m4a1_silencer/)|skeletons/characters/(viewmodel|worldmodel)\.vnmskel_c$|skeletons/weapons/(ak47|m4a1)[a-z_]*\.vnmskel_c$)' <<<"$listing" \
 		| paste -sd, - || true)"
-	require_filter "$clips" "the first-person animations"
+	require_filter "$clips" "the animations"
 	echo
-	echo "Extracting $(tr ',' '\n' <<<"$clips" | wc -l | tr -d ' ') first-person rifle animations and skeletons"
+	echo "Extracting $(tr ',' '\n' <<<"$clips" | wc -l | tr -d ' ') rifle animations and skeletons, first and third person"
 	echo "        -> $CHARACTERS_DEST/animation"
 	"$S2V_BIN" -i "$PAK_VPK" -f "$clips" -o "$CHARACTERS_DEST" -d --gltf_export_format gltf \
 		| grep -vE '^(Preloading|Added folder|--- )' || true
