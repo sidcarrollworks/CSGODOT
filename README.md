@@ -116,8 +116,9 @@ the damage in how many hits and the time from the first to the last. The readout
 hitboxes it wears, and when they are the stand-in boxes on an extracted
 character, why the game's are missing. It starts
 in kevlar and a helmet, as an opponent in a rifle round would be. Killed, it
-goes down, and two and a half seconds later stands up again where it was,
-whole.
+falls as a ragdoll, knocked the way the round was going, and two and a half
+seconds later stands up again where it was, whole. G makes it never die
+instead.
 
 `P` turns the marks you just made back into a spray pattern file in the same
 format the weapons read, so a pattern can be adjusted by eye against a CS2
@@ -228,9 +229,13 @@ route instead of keys, so it moves the way a player does, and it can be
 shot: it wears the game's own hitboxes, the nineteen capsules CS2 defines
 for the model, riding its bones (`src/combat/skinned_hitboxes.gd`), so a
 bullet lands on the head, chest, stomach, an arm or a leg and is priced
-accordingly, ahead of the movement hull, which bullets pass. A kill plays
-one of the game's death clips for where the last round landed, and the bot
-is back at the start of its route a few seconds later. And it shoots back:
+accordingly, ahead of the movement hull, which bullets pass. A kill turns
+the body into a ragdoll (`src/combat/ragdoll.gd`): a rigid body on each bone
+with capsules, shaped by them and jointed in cones, knocked the way the last
+round was going, falling and lying where it lands; the bot is back at the
+start of its route a few seconds later. (CS2's own ragdoll description is
+not extracted yet; the hitbox capsules stand in for its shapes. Without
+them, the game's death clip for where the round landed plays instead.) And it shoots back:
 a player in its sight (in the open, within its cone, for half a second)
 stops it in its tracks; it turns, and fires its weapon in bursts with the
 weapon's own spread and recoil, reloading when it runs dry. You have the

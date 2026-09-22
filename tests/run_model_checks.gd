@@ -601,10 +601,10 @@ func _test_bot_dies_where_shot() -> void:
 		"one round to the head kills through the helmet (%.0f), and it says where it landed" % result.damage
 	)
 	_check(
-		_bot.model.animation_player.current_animation.begins_with("death_chest")
+		_bot.ragdoll != null and _bot.ragdoll.bodies.size() >= 10 and not _bot.model.animation_player.active
 			and _bot.collision_layer == 0 and head.collision_layer == 0,
-		"dead, it falls (a head has no fall of its own; the chest's), and neither its hull nor its hitboxes are there to hit (%s)"
-			% _bot.model.animation_player.current_animation
+		"dead, it goes limp: a body on each bone with a capsule (%d), the animation off, and neither its hull nor its hitboxes there to hit"
+			% (_bot.ragdoll.bodies.size() if _bot.ragdoll != null else 0)
 	)
 	shot = weapon.fire(300_000, 0.0, origin, angles.x, angles.y, Weapon.ShooterState.new(0.0, true, false))
 	_check(not Hitscan.trace(space, shot, data).hit, "a shot at the body now passes through")
@@ -615,8 +615,9 @@ func _test_bot_comes_back() -> void:
 		_bot.alive and _bot_events.has("respawned") and is_equal_approx(_bot.hit_target.health, 100.0)
 			and _bot.collision_layer == 2 and _bot.hitboxes.hitboxes[0].collision_layer == Hitbox.LAYER
 			and _bot.global_position.distance_to(Vector3(0, 0, -200)) < 2.0
+			and _bot.ragdoll == null and _bot.model.animation_player.active
 			and _bot.model.animation_player.current_animation == &"idle",
-		"after its respawn time it is back at the start of its route, whole, standing (%s)"
+		"after its respawn time it is back at the start of its route, whole, standing, the ragdoll gone (%s)"
 			% [_bot.model.animation_player.current_animation]
 	)
 

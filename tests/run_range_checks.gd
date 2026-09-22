@@ -149,6 +149,8 @@ func _run() -> void:
 		"the readout says which hitboxes it wears (%s)" % _range.hitbox_source
 	)
 
+	await _test_ragdoll()
+
 	# The armour rules themselves, on a target of their own.
 	var target := HitTarget.new()
 	target.build_own_hitboxes = false
@@ -161,6 +163,111 @@ func _run() -> void:
 	_check(target.armor == 100.0, "a reset puts back what it was given to wear, not what is left of it")
 
 	_report()
+
+
+## A ragdoll on a small skeleton of its own, in metres under a node scaled
+## to units the way the character is: a pelvis, a spine, a head and two legs
+## of thigh and shin, standing, with a capsule on each. Pushed backward, it
+## has to fall, come to rest on the floor, keep its joints together, bend
+## its knees the right way, and carry the skeleton with it.
+func _test_ragdoll() -> void:
+	var scale := MapImporter.SOURCE2_VIEWER_SCALE
+	var holder := Node3D.new()
+	holder.scale = Vector3.ONE * scale
+	holder.position = Vector3(-512.0, 0.0, -256.0)
+	_range.add_child(holder)
+	var skeleton := Skeleton3D.new()
+	holder.add_child(skeleton)
+	var bones := [
+		["pelvis", -1, Vector3(0, 0.95, 0)],
+		["spine_0", 0, Vector3(0, 0.15, 0)],
+		["spine_2", 1, Vector3(0, 0.2, 0)],
+		["head_0", 2, Vector3(0, 0.3, 0)],
+		["leg_upper_l", 0, Vector3(0.1, -0.05, 0)],
+		["leg_lower_l", 4, Vector3(0, -0.43, 0)],
+		["leg_upper_r", 0, Vector3(-0.1, -0.05, 0)],
+		["leg_lower_r", 6, Vector3(0, -0.43, 0)],
+	]
+	for bone: Array in bones:
+		var index := skeleton.add_bone(bone[0])
+		if bone[1] >= 0:
+			skeleton.set_bone_parent(index, bone[1])
+		skeleton.set_bone_rest(index, Transform3D(Basis.IDENTITY, bone[2]))
+	skeleton.reset_bone_poses()
+	var capsules: Array[Dictionary] = []
+	for spec: Array in [
+		["pelvis", 6.0, Vector3(-3, 0, 0), Vector3(3, 0, 0)],
+		["spine_0", 6.0, Vector3(0, 0, 0), Vector3(0, 5, 0)],
+		["spine_2", 7.0, Vector3(0, 0, 0), Vector3(0, 9, 0)],
+		["head_0", 4.3, Vector3(0, 2, 0), Vector3(0, 6, 0)],
+		["leg_upper_l", 4.0, Vector3(0, 0, 0), Vector3(0, -15, 0)],
+		["leg_lower_l", 3.5, Vector3(0, 0, 0), Vector3(0, -15, 0)],
+		["leg_upper_r", 4.0, Vector3(0, 0, 0), Vector3(0, -15, 0)],
+		["leg_lower_r", 3.5, Vector3(0, 0, 0), Vector3(0, -15, 0)],
+	]:
+		capsules.append({"bone": spec[0], "radius": spec[1], "point0": spec[2], "point1": spec[3]})
+	await physics_frame
+
+	var head := skeleton.find_bone("head_0")
+	var head_before := (skeleton.global_transform * skeleton.get_bone_global_pose(head)).origin
+	var ragdoll := Ragdoll.new()
+	_range.add_child(ragdoll)
+	var made := ragdoll.build(skeleton, capsules, scale, Vector3.ZERO, Vector3.FORWARD, Vector3.BACK, head)
+	_check(made == 8 and ragdoll.get_children().filter(func(n: Node) -> bool: return n is Joint3D).size() == 7,
+		"a body for every bone with a capsule and a joint to each one's parent (%d bodies)" % made)
+	var body_head: RigidBody3D = ragdoll.bodies.get(head)
+	_check(
+		body_head != null and body_head.collision_layer == Ragdoll.LAYER and body_head.collision_mask == Hitscan.WORLD_LAYER,
+		"the bodies touch the world and nothing else, and are nothing a round is traced against"
+	)
+
+	for i in 128 * 4:
+		await physics_frame
+	await process_frame
+
+	var lowest := INF
+	var fastest := 0.0
+	for body: RigidBody3D in ragdoll.bodies.values():
+		lowest = minf(lowest, body.global_position.y)
+		fastest = maxf(fastest, body.linear_velocity.length())
+	_check(
+		body_head.global_position.y < 16.0 and lowest > -2.0,
+		"it falls and lies on the floor, not through it (head at %.1f, lowest part at %.1f)" % [body_head.global_position.y, lowest]
+	)
+	_check(fastest < 20.0, "and comes to rest (%.1f u/s at most)" % fastest)
+	_check(
+		body_head.global_position.z > head_before.z + 10.0,
+		"it fell the way the round was going (head %.0f units back)" % (body_head.global_position.z - head_before.z)
+	)
+	var head_now := (skeleton.global_transform * skeleton.get_bone_global_pose(head)).origin
+	var expected := (body_head.global_transform * (ragdoll.get("_offsets")[head] as Transform3D)).origin
+	_check(head_now.distance_to(expected) < 0.5, "the skeleton's head is where the head's body is")
+
+	var worst_gap := 0.0
+	var knees_ok := true
+	for side in ["l", "r"]:
+		var thigh := skeleton.find_bone("leg_upper_" + side)
+		var shin := skeleton.find_bone("leg_lower_" + side)
+		var hip := (skeleton.global_transform * skeleton.get_bone_global_pose(thigh))
+		var knee := (skeleton.global_transform * skeleton.get_bone_global_pose(shin))
+		# The knee bone's head is where the thigh's capsule ends.
+		var thigh_end: Vector3 = hip * (Vector3(0, -15, 0) / scale)
+		worst_gap = maxf(worst_gap, thigh_end.distance_to(knee.origin) - 0.43 * scale + 15.0)
+		# Bent the right way: the shin swings behind the thigh, toward the
+		# back of the body, which the thigh's own frame still says.
+		var thigh_down := (hip.basis * Vector3.DOWN).normalized()
+		var shin_down := (knee.basis * Vector3.DOWN).normalized()
+		var thigh_back := (hip.basis * Vector3.BACK).normalized()
+		var bend := rad_to_deg(thigh_down.angle_to(shin_down))
+		if bend > 10.0 and shin_down.dot(thigh_back) < -0.05:
+			knees_ok = false
+		if bend > 140.0:
+			knees_ok = false
+	_check(absf(worst_gap) < 3.0, "the joints hold: a knee is where its thigh ends, give or take (%.1f)" % worst_gap)
+	_check(knees_ok, "the knees bend backward and no further than they can")
+
+	ragdoll.queue_free()
+	holder.queue_free()
 
 
 ## Where to aim for a zone: the middle of that zone's first hitbox.

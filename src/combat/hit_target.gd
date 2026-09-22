@@ -41,6 +41,9 @@ var alive: bool = true
 ## The hitbox the last damage came through, or null: for whoever wants to
 ## know which side was hit.
 var last_hitbox: Hitbox
+## The way the last round that hit was travelling, for a body to fall with
+## it.
+var last_hit_direction: Vector3 = Vector3.ZERO
 
 var _hitboxes: Array[Hitbox] = []
 var _starting_armor: float = 100.0
