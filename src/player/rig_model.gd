@@ -70,6 +70,12 @@ func load_clips(clips: PackedStringArray, suffix: String) -> bool:
 		return false
 	animation_player = players[0]
 	add_child(rig)
+	# Source 2 Viewer gives an animation's skeleton a placeholder mesh to hang
+	# the skin on: a few tiny triangles on the bones, which draw as white
+	# specks that ride the animation, around your gun and on everyone else.
+	for placeholder in rig.find_children("*empty_mesh_reference", "MeshInstance3D", true, false):
+		placeholder.get_parent().remove_child(placeholder)
+		placeholder.free()
 	for skeleton in rig.find_children("*", "Skeleton3D", true, false):
 		if skeleton.get_parent().name.begins_with("animation_skeletons_characters"):
 			character_rig = skeleton

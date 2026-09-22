@@ -126,9 +126,20 @@ func _place_bots() -> void:
 ## position puts the same buildings in the same places, a long way off, with
 ## the haze doing the rest. Nothing in it is solid.
 func _build_skybox() -> void:
-	var map_file := MapImporter.find_map_file(SKYBOX_DIR)
-	if map_file.is_empty():
+	skybox = make_skybox(SKYBOX_DIR)
+	if skybox == null:
 		return
+	add_child(skybox)
+	print("--- skybox: %d meshes at %.0fx" % [skybox.stats.get("meshes", 0), skybox.scale_factor / MapImporter.SOURCE2_VIEWER_SCALE])
+
+
+## The skybox's importer, set up and placed but not yet in the scene; null
+## when it has not been extracted. Static so the checks build the one the
+## game does.
+static func make_skybox(skybox_dir: String) -> MapImporter:
+	var map_file := MapImporter.find_map_file(skybox_dir)
+	if map_file.is_empty():
+		return null
 	var camera := Vector3.ZERO
 	var sky_scale := 16.0
 	for entity in SourceEntities.parse(
@@ -139,21 +150,21 @@ func _build_skybox() -> void:
 			sky_scale = float(entity.get("scale", "16"))
 			break
 
-	skybox = MapImporter.new()
-	skybox.name = "Skybox"
-	skybox.source_path = map_file
-	skybox.scale_factor = MapImporter.SOURCE2_VIEWER_SCALE * sky_scale
-	skybox.collision_source = MapImporter.CollisionSource.NONE
-	skybox.layer_textures_dir = SKYBOX_DIR
+	var importer := MapImporter.new()
+	importer.name = "Skybox"
+	importer.source_path = map_file
+	importer.scale_factor = MapImporter.SOURCE2_VIEWER_SCALE * sky_scale
+	importer.collision_source = MapImporter.CollisionSource.NONE
+	importer.layer_textures_dir = skybox_dir
 	# Its terrain sits at its own ground level, which is above some of the
 	# map's floors; the map must win wherever they overlap.
-	skybox.behind_everything = true
+	importer.behind_everything = true
 	# Scenery, not a caster: the game's skybox never shadows the map.
-	skybox.cast_shadows = false
-	skybox.report = false
-	skybox.position = -camera * scale
-	add_child(skybox)
-	print("--- skybox: %d meshes at %.0fx around %s" % [skybox.stats.get("meshes", 0), scale, camera])
+	importer.cast_shadows = false
+	importer.report = false
+	# The sky camera's point, scaled up about the map's origin, lands on it.
+	importer.position = -camera * sky_scale
+	return importer
 
 
 func _place_player(map_file: String) -> void:
