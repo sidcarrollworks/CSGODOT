@@ -39,6 +39,10 @@ var weapon: Weapon
 var view_model: ViewModel
 var view_model_overlay: ViewModelOverlay
 
+## What you hear of your own weapon and your hits, and of your own feet.
+var weapon_sounds: WeaponSounds
+var footsteps: Footsteps
+
 ## Your own body, seen when you look down: the third-person model without
 ## its head and arms, walking the same clips as a bot's. It stands in the
 ## world and casts your shadow.
@@ -78,6 +82,12 @@ func _ready() -> void:
 		camera.cull_mask &= ~(1 << (ViewModelOverlay.LAYER - 1))
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	_show_body()
+	weapon_sounds = WeaponSounds.new()
+	weapon_sounds.name = "WeaponSounds"
+	add_child(weapon_sounds)
+	footsteps = Footsteps.new()
+	footsteps.name = "Footsteps"
+	add_child(footsteps)
 	equip(WeaponLibrary.ak47())
 
 
@@ -86,6 +96,8 @@ func equip(data: WeaponData) -> void:
 	weapon = Weapon.new(data)
 	config.max_speed = data.max_player_speed
 	_show_view_model(data)
+	if weapon_sounds != null:
+		weapon_sounds.equip(data)
 
 
 func _show_view_model(data: WeaponData) -> void:
@@ -140,8 +152,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		equip(WeaponLibrary.m4a1s())
 		return
 	if event.is_action_pressed(&"reload"):
-		if weapon.start_reload(Time.get_ticks_usec()) and view_model != null:
-			view_model.play(&"reload")
+		if weapon.start_reload(Time.get_ticks_usec()):
+			if view_model != null:
+				view_model.play(&"reload")
+			if weapon_sounds != null:
+				weapon_sounds.reload()
 		return
 	if event.is_action_pressed(&"noclip"):
 		noclip = not noclip
@@ -263,9 +278,13 @@ func _try_shoot(
 		return
 	if view_model != null:
 		view_model.shoot()
+	if weapon_sounds != null:
+		weapon_sounds.shot()
 
 	var space := get_world_3d().direct_space_state
 	var result := Hitscan.fire_at(space, shot, weapon.data, [get_rid()])
+	if weapon_sounds != null and result.hitbox != null and result.hitbox.target != null:
+		weapon_sounds.hit(result.zone, result.hitbox.target, not result.hitbox.target.alive)
 	shot_traced.emit(shot, result)
 
 

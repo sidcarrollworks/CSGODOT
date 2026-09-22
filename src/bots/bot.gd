@@ -62,6 +62,9 @@ func _ready() -> void:
 		model.queue_free()
 		model = null
 		return
+	var footsteps := Footsteps.new()
+	footsteps.name = "Footsteps"
+	add_child(footsteps)
 	hitboxes = SkinnedHitboxes.new()
 	hitboxes.name = "Hitboxes"
 	add_child(hitboxes)

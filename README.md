@@ -154,6 +154,7 @@ somewhere it can be found:
 scripts/extract_assets.sh list-map     # see what is inside the dust2 VPK
 scripts/extract_assets.sh map          # extract it, then import it into Godot
 scripts/extract_assets.sh weapons      # the AK-47 and M4A1-S models
+scripts/extract_assets.sh sounds       # their sounds, footsteps by surface, hits
 ```
 
 `map` takes a few minutes and a little under two gigabytes. It pulls seven
@@ -203,6 +204,14 @@ accordingly, ahead of the movement hull, which bullets pass. A kill plays
 one of the game's death clips for where the last round landed, and the bot
 is back at the start of its route a few seconds later. It does not aim,
 fire or think yet.
+
+The sounds are the game's own too (`src/audio/`): the weapon's shots,
+reload in its parts and draw, flat in your ears the way the game plays your
+own gun; your hits, kevlar, headshot or kill; and footsteps and landings
+from everyone's feet, in the world, on the surface they stand on, which the
+collision hull names part by part (sand, dirt, wood, metal, tile). Running
+sounds, walking does not, as in CS. Without `sounds` extracted the game is
+silent and everything else works.
 
 `assets/` can live on another drive: make it a junction (`mklink /J`) and
 every script and Godot itself read straight through it.
