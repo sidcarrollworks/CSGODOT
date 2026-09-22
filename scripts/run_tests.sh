@@ -25,4 +25,5 @@ fi
 "$GODOT" --headless --path "$PROJECT_DIR" --script tests/run_map_tests.gd
 # Skips itself where dust2 has not been extracted.
 "$GODOT" --headless --path "$PROJECT_DIR" --script tests/run_dust2_checks.gd
+"$GODOT" --headless --path "$PROJECT_DIR" --script tests/run_model_checks.gd
 "$GODOT" --headless --path "$PROJECT_DIR" --script tests/run_weapon_tests.gd

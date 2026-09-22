@@ -16,7 +16,10 @@
 set -uo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ASSETS_DIR="$PROJECT_DIR/assets"
+# With a trailing slash: assets/ may be a junction to another drive, which
+# find and du treat as a link rather than a directory unless told to look
+# through it, and the slash tells them.
+ASSETS_DIR="$PROJECT_DIR/assets/"
 OUTPUT_FILE="$PROJECT_DIR/inspect-output.txt"
 
 source "$PROJECT_DIR/scripts/common.sh"
@@ -24,7 +27,7 @@ source "$PROJECT_DIR/scripts/common.sh"
 report_assets() {
 	echo "=== assets directory ==="
 	if [[ ! -d "$ASSETS_DIR" ]]; then
-		echo "$ASSETS_DIR does not exist."
+		echo "${ASSETS_DIR%/} does not exist."
 		echo "The extraction has not run, or it wrote somewhere else."
 		echo "Run: scripts/extract_assets.sh map"
 		return 1

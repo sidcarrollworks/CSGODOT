@@ -12,6 +12,7 @@ extends Node3D
 
 const MAP_DIR := "res://assets/maps/de_dust2"
 const COLLISION_DIR := "res://assets/maps/de_dust2_physics"
+const SKYBOX_DIR := "res://assets/maps/de_dust2_skybox"
 
 ## The entity lump and the sky panorama, relative to the directory the world
 ## glTF is in.
@@ -29,7 +30,12 @@ const SKY_FILE := "../../materials/skybox/sky_de_dust2.exr"
 ## rather than at spawn_position. Noclip (V) from there.
 @export var use_bounds_centre_as_spawn: bool = true
 
+## How many of the other side to put in. They walk their spawn area, which
+## is the one part of the map they can be sure of, and do nothing else yet.
+@export var bots: int = 2
+
 var importer: MapImporter
+var skybox: MapImporter
 var player: PlayerBody
 
 ## The map's entity lump, parsed once for whoever needs it.
@@ -51,6 +57,7 @@ func _ready() -> void:
 	importer.collision_path = MapImporter.find_collision_file(COLLISION_DIR)
 	importer.scale_factor = MapImporter.SOURCE2_VIEWER_SCALE
 	importer.layer_textures_dir = MAP_DIR
+	importer.lightmaps_dir = "."
 	add_child(importer)
 
 	if importer.stats.has("error"):
@@ -67,16 +74,77 @@ func _ready() -> void:
 
 	var lighting := MapLighting.build(
 		self, importer.stats.get("sun", {}), entities,
-		map_file.get_base_dir().path_join(SKY_FILE).simplify_path()
+		map_file.get_base_dir().path_join(SKY_FILE).simplify_path(),
+		importer.stats.get("lightmaps", {}).get("ambient")
 	)
-	print("--- lighting: sun energy %.2f, exposure %.2f, sky from %s, fog %s" % [
+	print("--- lighting: sun energy %.2f, exposure %.2f, sky from %s, fog %s, ambient from %s" % [
 		lighting["sun_energy"], lighting["exposure"], lighting["sky"], "on" if lighting["fog"] else "off",
+		lighting["ambient"],
 	])
+	_build_skybox()
 	_place_player(map_file)
+	_place_bots()
+
+
+## Bots on the other side, each walking that side's spawn points in a loop,
+## starting from a different one.
+func _place_bots() -> void:
+	var team := "CT" if spawn_team == "T" else "T"
+	var spawns: Array = SourceEntities.player_spawns(entities)[team]
+	if spawns.is_empty() or bots <= 0:
+		return
+	var route := PackedVector3Array()
+	for spawn: Dictionary in spawns:
+		route.append(spawn["position"])
+	var scene := load("res://src/bots/bot.tscn") as PackedScene
+	for i in mini(bots, spawns.size()):
+		var bot := scene.instantiate() as Bot
+		bot.name = "Bot%d" % (i + 1)
+		bot.team = team
+		bot.weapon_model = (WeaponLibrary.m4a1s() if team == "CT" else WeaponLibrary.ak47()).model_path
+		# Each starts at a different point and heads for the next.
+		var start := (i * spawns.size()) / maxi(bots, 1)
+		bot.route = route
+		add_child(bot)
+		bot.global_position = spawns[start]["position"]
+		bot.yaw_degrees = spawns[start]["yaw"]
+		bot.set("_next", (start + 1) % route.size())
+
+
+## The buildings and horizon beyond the playable map. Source builds them as
+## a separate small map at a sixteenth of the scale, around a sky_camera, and
+## draws that around the player. Scaling it up by sixteen about the camera's
+## position puts the same buildings in the same places, a long way off, with
+## the haze doing the rest. Nothing in it is solid.
+func _build_skybox() -> void:
+	var map_file := MapImporter.find_map_file(SKYBOX_DIR)
+	if map_file.is_empty():
+		return
+	var camera := Vector3.ZERO
+	var scale := 16.0
+	for entity in SourceEntities.parse(
+		ProjectSettings.globalize_path(map_file.get_base_dir().path_join(ENTITIES_FILE))
+	):
+		if entity.get("classname", "") == "sky_camera":
+			camera = SourceEntities.to_game(SourceEntities.vector(entity.get("origin", "")))
+			scale = float(entity.get("scale", "16"))
+			break
+
+	skybox = MapImporter.new()
+	skybox.name = "Skybox"
+	skybox.source_path = map_file
+	skybox.scale_factor = MapImporter.SOURCE2_VIEWER_SCALE * scale
+	skybox.collision_source = MapImporter.CollisionSource.NONE
+	skybox.layer_textures_dir = SKYBOX_DIR
+	skybox.report = false
+	skybox.position = -camera * scale
+	add_child(skybox)
+	print("--- skybox: %d meshes at %.0fx around %s" % [skybox.stats.get("meshes", 0), scale, camera])
 
 
 func _place_player(map_file: String) -> void:
 	player = (load("res://src/player/player.tscn") as PackedScene).instantiate()
+	(player as PlayerController).team = spawn_team
 	add_child(player)
 
 	var spawns: Array = SourceEntities.player_spawns(entities)[spawn_team]

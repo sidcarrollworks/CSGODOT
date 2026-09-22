@@ -39,6 +39,12 @@ const SOURCE2_VIEWER_SCALE := 1.0 / 0.0254
 ## first layer only. See BlendMaterials.
 @export_dir var layer_textures_dir: String = ""
 
+## Optional: where the map's lightmaps are, relative to the world glTF's
+## directory (the extraction puts them in lightmaps/ next to it). With them,
+## world surfaces get the bounce light CS2 baked; without, Godot's sky
+## ambient. See LightmapMaterials.
+@export var lightmaps_dir: String = ""
+
 ## What to multiply the export by. SOURCE2_VIEWER_SCALE for anything that came
 ## out of Source 2 Viewer; 1 for geometry already in Source units. If the
 ## reported bounding box is wrong by a constant factor, this is the knob.
@@ -55,6 +61,8 @@ enum CollisionSource {
 	COLLISION_MESHES_ONLY,
 	## Every mesh, collision-marked or not.
 	ALL_MESHES,
+	## Nothing: scenery that is never reached, such as a 3D skybox.
+	NONE,
 }
 
 ## Where collision comes from when there is no hull at collision_path.
@@ -68,10 +76,11 @@ enum CollisionSource {
 ])
 
 ## Material name fragments to drop entirely, drawn or not. Anything under
-## materials/tools/ or materials/effects/ goes the same way without needing a
-## hint, when the export says where a material came from.
+## materials/tools/ or materials/effects/, or drawn with the sky shader, goes
+## the same way without needing a hint, when the export says so. Not
+## "skybox": a 3D skybox's ground and far buildings are named that.
 @export var skip_material_hints: PackedStringArray = PackedStringArray([
-	"skybox", "skydome", "blocklight",
+	"skydome", "blocklight",
 ])
 
 ## Material name fragments for geometry that is drawn but not solid. Matters
@@ -222,10 +231,19 @@ func import_map() -> Dictionary:
 				solid_meshes.append(mesh_instance)
 
 	var blend := BlendMaterials.apply(visible_meshes, layer_textures_dir)
+	var lightmaps := {"surfaces": 0, "props": 0, "found": false, "ambient": null}
+	if not lightmaps_dir.is_empty():
+		lightmaps = LightmapMaterials.apply(
+			visible_meshes, source_path.get_base_dir().path_join(lightmaps_dir), scale_factor
+		)
 
 	var collision_from := "the collision hull"
-	var targets := _hull_meshes()
-	if targets.is_empty():
+	var targets: Array[MeshInstance3D] = []
+	if collision_source == CollisionSource.NONE:
+		collision_from = "nowhere, by request"
+	else:
+		targets = _hull_meshes()
+	if targets.is_empty() and collision_source != CollisionSource.NONE:
 		targets = _collision_targets(collision_meshes, solid_meshes)
 		collision_from = "the visible world"
 		if not collision_meshes.is_empty() and collision_source != CollisionSource.ALL_MESHES:
@@ -242,6 +260,7 @@ func import_map() -> Dictionary:
 		"collision_from": collision_from,
 		"loaded_from": loaded_from,
 		"blend": blend,
+		"lightmaps": lightmaps,
 		"materials": materials,
 		"bounds": _bounds(meshes),
 	}
@@ -390,6 +409,9 @@ func _classify(mesh_instance: MeshInstance3D) -> Kind:
 		var vmat_path: String = vmat.get("Name", "")
 		if vmat_path.begins_with("materials/tools/") or vmat_path.begins_with("materials/effects/"):
 			return Kind.SKIPPED
+		# A sky dome would hide the real sky.
+		if String(vmat.get("ShaderName", "")).begins_with("sky"):
+			return Kind.SKIPPED
 		var flags: Dictionary = vmat.get("IntParams", {})
 		# The flags arrive as floats.
 		if int(flags.get("F_OVERLAY", 0)) == 1 or int(flags.get("F_TRANSLUCENT", 0)) == 1:
@@ -519,6 +541,13 @@ func _report_text() -> String:
 	]
 	var blend: Dictionary = stats["blend"]
 	lines.append("    blend materials: %d, on %d surfaces" % [blend["materials"], blend["blended"]])
+	var lightmaps: Dictionary = stats["lightmaps"]
+	if lightmaps["found"]:
+		lines.append("    baked bounce light on %d surfaces, %d of them props" % [lightmaps["surfaces"], lightmaps["props"]])
+		if lightmaps["ambient"] == null:
+			lines.append("    the lightmap's average is not measured yet (scripts/prepare_export.gd); the rest get the sky's light")
+	elif not lightmaps_dir.is_empty():
+		lines.append("    no lightmaps found; run 'scripts/extract_assets.sh lightmaps' for the bounce light")
 	if not (blend["missing"] as PackedStringArray).is_empty():
 		lines.append(
 			"    %d more are showing their first layer only, their second not being on disk."

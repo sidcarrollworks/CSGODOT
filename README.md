@@ -27,6 +27,13 @@ It means Godot's default gravity is turned off in project settings and the
 camera near plane is set to one unit. If a number here looks enormous,
 that is why.
 
+One more unit to know about: CS2's field of view numbers (`fov 90`,
+`viewmodel_fov 68`) are the horizontal angle at 4:3, as Source games have
+always meant them; Godot's `Camera3D.fov` is vertical. They are converted
+(`ViewModelOverlay.vertical_fov`): 90 is 73.7 vertical, 68 is 53.6. Setting
+Godot's fov to 90 gives a 121 degree horizontal view at 16:9, which is what
+this project did until it was noticed.
+
 ## Running it
 
 Open the project in Godot 4.7 and press play. The main scene is the movement
@@ -149,12 +156,43 @@ scripts/extract_assets.sh map          # extract it, then import it into Godot
 scripts/extract_assets.sh weapons      # the AK-47 and M4A1-S models
 ```
 
-`map` takes a couple of minutes and a little over a gigabyte. It pulls five
+`map` takes a few minutes and a little under two gigabytes. It pulls seven
 things out of the game: the visible world as glTF with its textures, the
 collision hull as a second glTF, the entity lump as text, the second texture
-layer of every material that has one (which a glTF has no room for), and the
-sky as an HDR panorama. `physics`, `entities`, `layers` and `sky` fetch the
-last four on their own, in seconds.
+layer of every material that has one (which a glTF has no room for), the sky
+as an HDR panorama, the 3D skybox (the buildings and hills beyond the map, a
+small map of their own), and the lightmaps the game baked its bounce light
+into. `physics`, `entities`, `layers`, `sky`, `skybox` and `lightmaps` fetch
+the last six on their own; all but the lightmaps take seconds. The
+lightmaps are one 300 MB image, which Godot's first import spends a few
+minutes compressing to 90.
+
+`weapons` fetches the AK-47 and M4A1-S with their animations. `characters`
+fetches one player model per side (Phoenix and SAS) with their skeletons,
+and the rifle animations, which in CS2 are files of their own: the
+first-person set, and the third-person locomotion (eight-way run, walk and
+crouch, idles, in-air, jump, shoot). `all` does the lot.
+
+With those in place the player has arms and a weapon on screen, animated by
+the game's own clips: draw on equip, shoot and reload from the firing model,
+idle between. `src/player/view_model.gd` puts the agent's arm meshes and the
+weapon's meshes on the rigs the clips animate, and
+`src/player/view_model_overlay.gd` draws them through a camera of their own
+at CS2's `viewmodel_fov`, over the world, so they neither stretch at the
+edges nor poke through walls. Without the models extracted there are simply
+no arms, and everything else works.
+
+Other players are the same agents seen from outside (`src/player/player_model.gd`):
+the body on the third-person rig, the weapon in its hand, and the locomotion
+clip that fits how the body is moving relative to where it faces, cross-faded
+and scaled to its speed. dust2 puts two bots of the other side in
+(`bots` on the scene root), walking their spawn points on a loop. A bot
+(`src/bots/bot.gd`) is the player's own body and movement solver pushed by a
+route instead of keys, so it moves the way a player does; it does not aim,
+fire or think yet.
+
+`assets/` can live on another drive: make it a junction (`mklink /J`) and
+every script and Godot itself read straight through it.
 
 The script finds everything itself: Source2Viewer-CLI on `PATH` or where the
 release zip unpacks to in Downloads, CS2 by way of Steam's library list (so a
@@ -172,8 +210,13 @@ The lighting is the map's own numbers, translated (`src/map/map_lighting.gd`):
 the sun's colour, brightness and size from `light_environment`, the sky
 panorama from `env_sky`, distance haze from `env_cubemap_fog`, exposure from
 the `post_processing_volume`, plus screen-space occlusion and a little bloom.
-It is the cheap kind of lighting, with no bounce light: CS2 bakes that, and
-baking it here is its own project.
+The bounce light is the game's own too: CS2 bakes it into lightmaps, and the
+walls, ground and most props read those (`src/map/lightmap_materials.gd`,
+the `lightmapped*.gdshader`s) in place of Godot's flat sky ambient, so the
+shade under an arch is the warm dim of the game rather than a blue-grey.
+What has no lightmap coordinates of its own (props the game lights by light
+probes, the far skybox, the players) gets the lightmap's average light as
+its ambient instead.
 
 To see what came through without opening the editor:
 
@@ -267,9 +310,10 @@ original assets later is a content change rather than a git history problem.
 
 ## What is deliberately not here yet
 
-No weapon models, no bots, no nav mesh. dust2 is in as geometry, collision and
-spawn points and nothing more. Shooting works but fires from an invisible gun
-at a dummy that does not move.
+No bots that do anything but walk their spawn, no nav mesh, no firing
+animation on the third-person model, no per-bone hitboxes: a bullet hits a
+bot's hull, not its head. Shooting fires from a gun you can see at a dummy
+that does not move.
 
 Movement and shooting are tuned in flat grey rooms first, because tuning them
 on a real map is much harder and everything built on top of bad movement is

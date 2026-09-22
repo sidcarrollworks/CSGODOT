@@ -15,8 +15,11 @@
 #   scripts/extract_assets.sh entities        # just the entity lump (seconds)
 #   scripts/extract_assets.sh layers          # just the blend materials' second layers
 #   scripts/extract_assets.sh sky             # just the sky panorama
+#   scripts/extract_assets.sh skybox          # just the 3D skybox: the far buildings
+#   scripts/extract_assets.sh lightmaps       # just the baked bounce light
 #   scripts/extract_assets.sh weapons         # extract the two weapons
-#   scripts/extract_assets.sh all             # map + weapons
+#   scripts/extract_assets.sh characters      # two player models and the first-person animations
+#   scripts/extract_assets.sh all             # map + weapons + characters
 #
 # Requires Source2Viewer-CLI: https://github.com/ValveResourceFormat/ValveResourceFormat
 # Point at it with S2V=/path/to/Source2Viewer-CLI if it is not on PATH.
@@ -145,7 +148,7 @@ find_cs2() {
 
 COMMAND="${1:-}"
 case "$COMMAND" in
-	list-map|list-weapons|map|physics|entities|layers|sky|weapons|all) ;;
+	list-map|list-weapons|map|physics|entities|layers|sky|skybox|lightmaps|weapons|characters|all) ;;
 	*)
 		# The header comment, down to the first line that is not one.
 		awk 'NR > 2 && /^#/ { sub(/^# ?/, ""); print; next } NR > 2 { exit }' "${BASH_SOURCE[0]}"
@@ -201,25 +204,34 @@ list_weapons() {
 		| grep -iE '^weapons/models/.*(ak47|m4a1)'
 }
 
-## Prints the one resource in the map VPK matching a pattern, or fails saying
-## what was being looked for.
+## Prints the one resource in a VPK matching a pattern, or fails saying what
+## was being looked for. The VPK is the map's unless a third argument says.
 find_map_resource() {
-	local pattern="$1" description="$2"
-	require_file "$MAP_VPK"
+	local pattern="$1" description="$2" vpk="${3:-$MAP_VPK}"
+	require_file "$vpk"
 	# Listed first and searched second, so that the tool failing is reported
 	# as that and not as the VPK missing something.
 	local listing found
-	if ! listing="$(list_paths "$MAP_VPK")"; then
-		echo "Source2Viewer-CLI failed while listing $MAP_VPK." >&2
+	if ! listing="$(list_paths "$vpk")"; then
+		echo "Source2Viewer-CLI failed while listing $vpk." >&2
 		exit 1
 	fi
 	found="$(grep -iE "$pattern" <<<"$listing" | head -n 1 || true)"
 	if [[ -z "$found" ]]; then
-		echo "No $description inside $MAP_VPK." >&2
+		echo "No $description inside $vpk." >&2
 		echo "Run 'scripts/extract_assets.sh list-map' to see what is in there." >&2
 		exit 1
 	fi
 	echo "$found"
+}
+
+## Refuses to hand Source2Viewer-CLI an empty filter, which it reads as
+## "everything": the whole game, gigabytes of it, wherever -o points.
+require_filter() {
+	if [[ -z "$1" ]]; then
+		echo "Nothing to extract for $2: the filter came out empty." >&2
+		exit 1
+	fi
 }
 
 MAP_DEST="$OUT_DIR/maps/de_dust2"
@@ -227,6 +239,8 @@ MAP_DEST="$OUT_DIR/maps/de_dust2"
 # glTF, and the hull export includes a file that would overwrite one of the
 # world export's.
 PHYSICS_DEST="$OUT_DIR/maps/de_dust2_physics"
+SKYBOX_DEST="$OUT_DIR/maps/de_dust2_skybox"
+CHARACTERS_DEST="$OUT_DIR/characters"
 
 extract_world() {
 	local world
@@ -288,11 +302,16 @@ extract_entities() {
 ## textures it left behind can be read off the glTF and fetched by name. They
 ## land under materials/, by the same path the material refers to them by.
 extract_layers() {
+	extract_layers_under "$MAP_DEST"
+}
+
+extract_layers_under() {
+	local dest="$1"
 	require_file "$PAK_VPK"
 	local world
-	world="$(find "$MAP_DEST" -name 'world.gltf' 2>/dev/null | head -n 1)"
+	world="$(find "$dest" -name 'world.gltf' 2>/dev/null | head -n 1)"
 	if [[ -z "$world" ]]; then
-		echo "No world.gltf under $MAP_DEST to read the materials from." >&2
+		echo "No world.gltf under $dest to read the materials from." >&2
 		echo "Run 'scripts/extract_assets.sh map' first." >&2
 		exit 1
 	fi
@@ -306,9 +325,47 @@ extract_layers() {
 	fi
 
 	echo "Extracting $(echo "$textures" | wc -l | tr -d ' ') second-layer and blend-mask textures"
-	echo "        -> $MAP_DEST/materials"
-	"$S2V_BIN" -i "$PAK_VPK" -f "$(echo "$textures" | paste -sd, -)" -o "$MAP_DEST" -d \
+	echo "        -> $dest/materials"
+	"$S2V_BIN" -i "$PAK_VPK" -f "$(echo "$textures" | paste -sd, -)" -o "$dest" -d \
 		| grep -vE '^(Preloading|Added folder|--- \[)' || true
+}
+
+## The 3D skybox: the buildings and horizon beyond the playable map, which
+## are a small map of their own, built at a sixteenth of the scale around a
+## sky_camera. Which map is in the entity lump (skybox_reference), so that
+## runs first. It comes with its own entity lump, for the camera's position.
+extract_skybox() {
+	local entities
+	entities="$(find "$MAP_DEST" -name 'default_ents.vents' 2>/dev/null | head -n 1)"
+	if [[ -z "$entities" ]]; then
+		echo "No entity lump under $MAP_DEST to read the skybox map from." >&2
+		echo "Run 'scripts/extract_assets.sh entities' first." >&2
+		exit 1
+	fi
+	local target
+	target="$(tr -d '\r' < "$entities" | grep -oE 'targetmapname +"[^"]+"' | head -n 1 \
+		| sed -E 's/.*"([^"]+)"/\1/; s/\.vmap$//' || true)"
+	if [[ -z "$target" ]]; then
+		echo "No skybox_reference in $entities; the map has no 3D skybox."
+		return
+	fi
+	local vpk="$CSGO_DIR/$target.vpk"
+	require_file "$vpk"
+	mkdir -p "$SKYBOX_DEST"
+
+	local world
+	world="$(find_map_resource '\.vwrld_c$' ".vwrld_c" "$vpk")" || exit 1
+	echo "Extracting $world"
+	echo "        -> $SKYBOX_DEST"
+	"$S2V_BIN" -i "$vpk" -f "$world" -o "$SKYBOX_DEST" -d \
+		--gltf_export_format gltf --gltf_export_materials --gltf_textures_adapt \
+		| grep -vE '^(Preloading|Added folder|--- \[|--- Creating|--- Loading)' || true
+
+	local lump
+	lump="$(find_map_resource '/entities/default_ents\.vents_c$' "default_ents.vents_c" "$vpk")" || exit 1
+	"$S2V_BIN" -i "$vpk" -f "$lump" -o "$SKYBOX_DEST" -d | grep -E '^--- Dump' || true
+	echo
+	extract_layers_under "$SKYBOX_DEST"
 }
 
 ## The sky, as the HDR panorama the map's sky material is made of. Which
@@ -335,6 +392,22 @@ extract_sky() {
 		| grep -vE '^(Preloading|Added folder|--- \[)' || true
 }
 
+## The map's baked lighting. CS2 bakes the bounce light into an irradiance
+## lightmap (8192 square, HDR, 78 MB compressed) with a companion that says
+## which way the light mostly comes from; the sun's own light it computes
+## live, so its shadow masks are not fetched. Source 2 Viewer writes the
+## irradiance as an .exr of 300 MB, which Godot compresses back down on
+## import.
+extract_lightmaps() {
+	local maps
+	maps="$(list_paths "$MAP_VPK" | grep -E '/lightmaps/(irradiance|directional_irradiance)\.vtex_c$' | paste -sd, - || true)"
+	require_filter "$maps" "the lightmaps"
+	mkdir -p "$MAP_DEST"
+	echo "Extracting the baked lighting (a few hundred megabytes, uncompressed)"
+	echo "        -> $MAP_DEST"
+	"$S2V_BIN" -i "$MAP_VPK" -f "$maps" -o "$MAP_DEST" -d | grep -E '^--- Dump' || true
+}
+
 extract_map() {
 	extract_world
 	echo
@@ -345,6 +418,10 @@ extract_map() {
 	extract_layers
 	echo
 	extract_sky
+	echo
+	extract_skybox
+	echo
+	extract_lightmaps
 }
 
 extract_weapons() {
@@ -383,6 +460,51 @@ extract_weapons() {
 		--gltf_textures_adapt
 }
 
+## The player models, and the animations the first-person view is made of.
+##
+## The models under characters/ are stubs; the meshes are the "agents" under
+## agents/models, one variant of which is exported per side, without the two
+## thousand animations each one embeds. Animations in CS2 are files of their
+## own: the first-person rifle clips are fetched here, with the skeleton they
+## are for, and the rest can follow the same way when they are wanted.
+AGENTS="agents/models/tm_phoenix/tm_phoenix_varianta.vmdl_c,agents/models/ctm_sas/ctm_sas.vmdl_c"
+
+extract_characters() {
+	require_file "$PAK_VPK"
+	mkdir -p "$CHARACTERS_DEST"
+	local listing
+	if ! listing="$(list_paths "$PAK_VPK")"; then
+		echo "Source2Viewer-CLI failed while listing $PAK_VPK." >&2
+		exit 1
+	fi
+
+	local agents
+	agents="$(tr ',' '\n' <<<"$AGENTS" | while IFS= read -r agent; do
+		grep -xF "$agent" <<<"$listing" || echo "Not in the game archive: $agent" >&2
+	done | paste -sd, -)"
+	require_filter "$agents" "the player models"
+	echo "Extracting the player models:"
+	tr ',' '\n' <<<"$agents" | sed 's/^/  /'
+	"$S2V_BIN" -i "$PAK_VPK" -f "$agents" -o "$CHARACTERS_DEST" -d \
+		--gltf_export_format gltf --gltf_export_materials --gltf_textures_adapt \
+		--gltf_export_animations --gltf_animation_list "idle_default_stand" \
+		| grep -vE '^(Preloading|Added folder|--- \[|--- Creating|--- Loading)' || true
+
+	local clips
+	# First person: the AK's clips and the shared rifle set, which is the
+	# M4A1-S's. Third person: the shared set's locomotion (idle, walk, run,
+	# crouch, in the eight directions, plus in-air, jump and shoot), and each
+	# weapon's own draw, reload and shoot.
+	clips="$(grep -E '^animation/(anims/viewmodel/rifle/(_default_rifle|rifle_ak)/|anims/world/rifle/(_default_rifle/(idle|run|walk|crouch|inair|jump_stand|shoot)_[a-z_]*|rifle_ak/|rifle_m4a1_silencer/)|skeletons/characters/(viewmodel|worldmodel)\.vnmskel_c$|skeletons/weapons/(ak47|m4a1)[a-z_]*\.vnmskel_c$)' <<<"$listing" \
+		| paste -sd, - || true)"
+	require_filter "$clips" "the animations"
+	echo
+	echo "Extracting $(tr ',' '\n' <<<"$clips" | wc -l | tr -d ' ') rifle animations and skeletons, first and third person"
+	echo "        -> $CHARACTERS_DEST/animation"
+	"$S2V_BIN" -i "$PAK_VPK" -f "$clips" -o "$CHARACTERS_DEST" -d --gltf_export_format gltf \
+		| grep -vE '^(Preloading|Added folder|--- )' || true
+}
+
 ## Godot only picks up new files on an import pass, and the textures need
 ## their import settings written first (see write_import_settings.gd).
 finish() {
@@ -408,6 +530,9 @@ case "$COMMAND" in
 	entities) extract_entities ;;
 	layers) extract_layers; finish ;;
 	sky) extract_sky; finish ;;
+	skybox) extract_skybox; finish ;;
+	lightmaps) extract_lightmaps; finish ;;
+	characters) extract_characters; finish ;;
 	weapons) extract_weapons; finish ;;
-	all) extract_map; echo; extract_weapons; finish ;;
+	all) extract_map; echo; extract_weapons; echo; extract_characters; finish ;;
 esac

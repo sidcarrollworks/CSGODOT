@@ -28,6 +28,14 @@ var input := PlayerInput.new()
 ## The weapon currently held. Swapped with the number keys.
 var weapon: Weapon
 
+## Which side's arms are on screen. Set by the map from the spawn.
+@export_enum("T", "CT") var team: String = "T"
+
+## The arms and weapon, drawn over the world by a camera of their own, when
+## the models are there.
+var view_model: ViewModel
+var view_model_overlay: ViewModelOverlay
+
 signal shot_traced(shot: Weapon.Shot, result: Hitscan.Result)
 
 var _tick_start_usec: int = 0
@@ -45,7 +53,10 @@ func _ready() -> void:
 		# geometry clips through the view model later on.
 		camera.near = 1.0
 		camera.far = 16384.0
-		camera.fov = 90.0
+		# CS2's 90, which is horizontal at 4:3; Godot's number is vertical.
+		camera.fov = ViewModelOverlay.vertical_fov(90.0)
+		# The view model is drawn by the overlay's camera, not this one.
+		camera.cull_mask &= ~(1 << (ViewModelOverlay.LAYER - 1))
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	equip(WeaponLibrary.ak47())
 
@@ -54,6 +65,22 @@ func _ready() -> void:
 func equip(data: WeaponData) -> void:
 	weapon = Weapon.new(data)
 	config.max_speed = data.max_player_speed
+	_show_view_model(data)
+
+
+func _show_view_model(data: WeaponData) -> void:
+	if camera == null:
+		return
+	if view_model == null:
+		view_model_overlay = ViewModelOverlay.new()
+		add_child(view_model_overlay)
+		view_model = ViewModel.new()
+		view_model.name = "ViewModel"
+		view_model_overlay.camera.add_child(view_model)
+		# And it rides the recoil.
+		viewmodel = view_model
+	if view_model.setup(team, data.model_path, data.clip_set):
+		ViewModelOverlay.claim(view_model)
 
 
 func _find_camera() -> Camera3D:
@@ -78,7 +105,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		equip(WeaponLibrary.m4a1s())
 		return
 	if event.is_action_pressed(&"reload"):
-		weapon.start_reload(Time.get_ticks_usec())
+		if weapon.start_reload(Time.get_ticks_usec()) and view_model != null:
+			view_model.play(&"reload")
 		return
 	if event.is_action_pressed(&"noclip"):
 		noclip = not noclip
@@ -189,6 +217,8 @@ func _try_shoot(
 	)
 	if shot == null:
 		return
+	if view_model != null:
+		view_model.play(&"shoot1")
 
 	var space := get_world_3d().direct_space_state
 	var result := Hitscan.fire_at(space, shot, weapon.data, [get_rid()])
@@ -252,6 +282,8 @@ func _process(_delta: float) -> void:
 		0.0
 	)
 
+	if view_model_overlay != null:
+		view_model_overlay.follow(camera)
 	_update_viewmodel()
 
 

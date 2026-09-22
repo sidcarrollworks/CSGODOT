@@ -13,10 +13,13 @@ extends SceneTree
 
 const MAP_DIR := "res://assets/maps/de_dust2"
 const COLLISION_DIR := "res://assets/maps/de_dust2_physics"
+const SKYBOX_DIR := "res://assets/maps/de_dust2_skybox"
 const ENTITIES_FILE := "entities/default_ents.vents"
 
 ## Spawn points float above the floor, the highest on dust2 by 61 units.
 const MAX_DROP := 80.0
+
+const BOTS := 2
 const SETTLE_TICKS := 320
 
 var _failures: int = 0
@@ -27,6 +30,8 @@ var _spawned_at_tick: int = 0
 var _importer: MapImporter
 ## Player to the spawn it was put at.
 var _players: Dictionary = {}
+var _bots: Array[Bot] = []
+var _bot_starts: Array[Vector3] = []
 
 
 func _process(_delta: float) -> bool:
@@ -45,6 +50,7 @@ func _process(_delta: float) -> bool:
 		return false
 
 	_test_every_spawn_is_on_floor()
+	_test_bots_walk()
 	_importer.free()
 	_report()
 	return true
@@ -63,6 +69,7 @@ func _import() -> bool:
 	_importer.collision_path = MapImporter.find_collision_file(COLLISION_DIR)
 	_importer.scale_factor = MapImporter.SOURCE2_VIEWER_SCALE
 	_importer.layer_textures_dir = MAP_DIR
+	_importer.lightmaps_dir = "."
 	_importer.report = false
 	root.add_child(_importer)
 	var stats := _importer.stats
@@ -84,6 +91,17 @@ func _import() -> bool:
 		"walls and ground have their second layer (%d blend materials, %d without their textures; scripts/extract_assets.sh layers)"
 			% [blend.get("materials", 0), (blend.get("missing", PackedStringArray()) as PackedStringArray).size()]
 	)
+	var lightmaps: Dictionary = stats.get("lightmaps", {})
+	_check(
+		lightmaps.get("found", false) and int(lightmaps.get("surfaces", 0)) >= 2000
+			and int(lightmaps.get("props", 0)) >= 1000,
+		"the world and its lightmapped props have their baked bounce light (%d surfaces, %d props; scripts/extract_assets.sh lightmaps)"
+			% [lightmaps.get("surfaces", 0), lightmaps.get("props", 0)]
+	)
+	_check(
+		lightmaps.get("ambient") is Color,
+		"the lightmap's average is measured, for the ambient of the rest (scripts/extract_assets.sh lightmaps runs the prepare step)"
+	)
 
 	var entities_path := ProjectSettings.globalize_path(
 		map_file.get_base_dir().path_join(ENTITIES_FILE)
@@ -95,6 +113,40 @@ func _import() -> bool:
 			% [spawns["T"].size(), spawns["CT"].size()]
 	)
 
+	var skybox_file := MapImporter.find_map_file(SKYBOX_DIR)
+	_check(not skybox_file.is_empty(), "the 3D skybox is there (scripts/extract_assets.sh skybox)")
+	if not skybox_file.is_empty():
+		var skybox := MapImporter.new()
+		skybox.source_path = skybox_file
+		skybox.scale_factor = MapImporter.SOURCE2_VIEWER_SCALE * 16.0
+		skybox.collision_source = MapImporter.CollisionSource.NONE
+		skybox.report = false
+		root.add_child(skybox)
+		var sky_bounds: AABB = skybox.stats.get("bounds", AABB())
+		_check(
+			int(skybox.stats.get("meshes", 0)) > 100 and int(skybox.stats.get("skipped", 0)) < 40
+				and sky_bounds.size.x > bounds.size.x * 3.0,
+			"the skybox is %d meshes (%d hidden), far larger than the map (%.0f across)"
+				% [skybox.stats.get("meshes", 0), skybox.stats.get("skipped", 0), sky_bounds.size.x]
+		)
+		skybox.free()
+
+	# Bots walking the CT spawn points, the way the map places them.
+	var bot_scene: PackedScene = load("res://src/bots/bot.tscn")
+	var route := PackedVector3Array()
+	for spawn: Dictionary in spawns["CT"]:
+		route.append(spawn["position"])
+	for i in BOTS:
+		var bot := bot_scene.instantiate() as Bot
+		bot.team = "CT"
+		bot.weapon_model = WeaponLibrary.m4a1s().model_path
+		bot.route = route
+		_importer.add_child(bot)
+		bot.global_position = route[i]
+		bot.set("_next", i + 1)
+		_bots.append(bot)
+		_bot_starts.append(route[i])
+
 	var scene: PackedScene = load("res://src/player/player.tscn")
 	for team: String in spawns:
 		for spawn: Dictionary in spawns[team]:
@@ -103,6 +155,20 @@ func _import() -> bool:
 			player.global_position = spawn["position"]
 			_players[player] = spawn
 	return true
+
+
+func _test_bots_walk() -> void:
+	for i in _bots.size():
+		var bot := _bots[i]
+		var moved := Vector2(bot.global_position.x - _bot_starts[i].x, bot.global_position.z - _bot_starts[i].z).length()
+		_check(
+			bot.on_ground and moved > 100.0,
+			"bot %d has walked its route on the ground (%.0f units so far)" % [i + 1, moved]
+		)
+		_check(
+			bot.model != null and bot.model.animation_player.current_animation != &"",
+			"and is animated (%s)" % (bot.model.animation_player.current_animation if bot.model != null else "no model")
+		)
 
 
 func _test_every_spawn_is_on_floor() -> void:

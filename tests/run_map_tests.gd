@@ -72,6 +72,7 @@ func _process(_delta: float) -> bool:
 		_test_export_offset_fix()
 		_test_paint_channel()
 		_test_blend_materials()
+		_test_lightmap_materials()
 		_test_lighting()
 		_spawn_player()
 		_spawned_at_tick = Engine.get_physics_frames()
@@ -253,6 +254,20 @@ func _test_all_meshes_import() -> void:
 	)
 	importer.queue_free()
 
+	# Scenery: drawn, never collided with, and placed where it is told.
+	var scenery := _make_importer(MapImporter.CollisionSource.NONE)
+	scenery.scale_factor = 16.0
+	scenery.position = Vector3(1000.0, 0.0, 0.0)
+	root.add_child(scenery)
+	_check_equal(scenery.stats.get("collision_bodies", 0), 0, "none mode builds no collision at all")
+	_check_equal(scenery.stats.get("collision_from", ""), "nowhere, by request", "and says so")
+	var bounds: AABB = scenery.stats.get("bounds", AABB())
+	_check(
+		absf(bounds.size.x - FLOOR_SIZE.x * 16.0) < 1.0 and absf(bounds.get_center().x - 1000.0) < 1.0,
+		"scaled and placed like a 3D skybox: %.0f wide, centred at x=%.0f" % [bounds.size.x, bounds.get_center().x]
+	)
+	scenery.queue_free()
+
 
 ## An import shaped like the real thing: metres, a sun, a separate hull. This
 ## is the path dust2 takes, and the one where a scale applied twice, or not at
@@ -400,6 +415,12 @@ func _test_entities() -> void:
 			"Source yaw is turned half way round (%s, %s)"
 				% [spawns["CT"][0]["yaw"], spawns["CT"][1]["yaw"]]
 		)
+	_check(
+		SourceEntities.vector("-8.000000 -308.000000 202.000000").is_equal_approx(Vector3(-8, -308, 202))
+			and SourceEntities.vector("[ 1.5, -2, 3 ]").is_equal_approx(Vector3(1.5, -2, 3))
+			and SourceEntities.vector("nonsense") == Vector3.ZERO,
+		"vectors are read in both forms the game writes them in"
+	)
 	_check(
 		SourceEntities.parse("user://export_fixture/not_there.vents").is_empty(),
 		"a missing entity file is no entities, not an error"
@@ -615,6 +636,167 @@ func _test_blend_materials() -> void:
 	instance.free()
 
 
+## The lightmaps are read by shaders in place of Godot's ambient light, so
+## the test is that the right surfaces are moved onto them with what the
+## import gave them: the world's own, and the props whose second UV set is
+## laid out as lightmap charts, and not the props carrying their model's
+## own; and that a map without lightmaps is left as it was.
+func _test_lightmap_materials() -> void:
+	var dir := "user://export_fixture/lightmapped"
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir.path_join("lightmaps")))
+	Image.create(64, 64, false, Image.FORMAT_RGBAF).save_exr(dir.path_join(LightmapMaterials.IRRADIANCE_FILE))
+	Image.create(64, 64, false, Image.FORMAT_RGBA8).save_png(dir.path_join(LightmapMaterials.DIRECTION_FILE))
+	# Unmeasured, until this test measures it.
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(dir.path_join(LightmapMaterials.AVERAGE_FILE)))
+
+	var wall := StandardMaterial3D.new()
+	wall.resource_name = "wall"
+	wall.set_meta("extras", {"vmat": {"ShaderName": "csgo_lightmappedgeneric.vfx"}})
+	wall.albedo_texture = PlaceholderTexture2D.new()
+	wall.albedo_color = Color(0.5, 0.25, 1.0)
+	wall.normal_enabled = true
+	wall.normal_texture = PlaceholderTexture2D.new()
+	wall.normal_scale = 0.6
+	wall.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	wall.alpha_scissor_threshold = 0.4
+	var sign := StandardMaterial3D.new()
+	sign.set_meta("extras", {"vmat": {"ShaderName": "csgo_static_overlay.vfx"}})
+	sign.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	sign.render_priority = 3
+	var plank := StandardMaterial3D.new()
+	plank.set_meta("extras", {"vmat": {"ShaderName": "csgo_vertexlitgeneric.vfx"}})
+	var leaf := StandardMaterial3D.new()
+	leaf.set_meta("extras", {"vmat": {"ShaderName": "csgo_foliage.vfx"}})
+	leaf.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var pattern := StandardMaterial3D.new()
+	pattern.set_meta("extras", {"vmat": {"ShaderName": "csgo_vertexlitgeneric.vfx"}})
+	var effect := StandardMaterial3D.new()
+	effect.set_meta("extras", {"vmat": {"ShaderName": "csgo_effects.vfx"}})
+	var blend := ShaderMaterial.new()
+	blend.shader = BlendMaterials.SHADER
+	blend.set_meta("extras", {"vmat": {"ShaderName": "csgo_lightmappedgeneric.vfx", "IntParams": {"F_LAYERS": 1.0}}})
+
+	_check(
+		LightmapMaterials.is_lightmapped(BlendMaterials.vmat(wall))
+			and LightmapMaterials.is_lightmapped(BlendMaterials.vmat(plank))
+			and not LightmapMaterials.is_lightmapped(BlendMaterials.vmat(effect)),
+		"the world's and the props' shaders can be lightmapped, an effect's cannot"
+	)
+
+	# Six surfaces, 100 units square, at a 64-texel lightmap: the world's
+	# own are charted at 0.32 texels a unit; the plank at 0.26, so charted;
+	# the leaves collapsed onto one texel; the pattern at 3.2, a model's own
+	# UV set; the effect charted but not lightmappable; and a blend material
+	# charted like the world. Then a wall with no second UV set at all.
+	var mesh := ArrayMesh.new()
+	_add_quad(mesh, wall, 100.0, 0.5)
+	_add_quad(mesh, sign, 100.0, 0.5)
+	_add_quad(mesh, plank, 50.0, 0.2)
+	_add_quad(mesh, leaf, 50.0, 0.0)
+	_add_quad(mesh, pattern, 20.0, 1.0)
+	_add_quad(mesh, effect, 100.0, 0.5)
+	_add_quad(mesh, blend, 100.0, 0.5)
+	_add_quad(mesh, wall, 100.0, -1.0)
+	var instance := MeshInstance3D.new()
+	instance.mesh = mesh
+	var meshes: Array[MeshInstance3D] = [instance]
+
+	_check(
+		is_equal_approx(LightmapMaterials.chart_density(mesh, 0, 1.0, Vector2(64, 64)), 0.32)
+			and is_equal_approx(LightmapMaterials.chart_density(mesh, 4, 1.0, Vector2(64, 64)), 3.2)
+			and LightmapMaterials.chart_density(mesh, 3, 1.0, Vector2(64, 64)) == 0.0,
+		"a surface's lightmap density is measured in texels a unit, and is zero when collapsed"
+	)
+
+	var without := LightmapMaterials.apply(meshes, "user://export_fixture/nowhere")
+	_check(
+		not without["found"] and without["surfaces"] == 0 and instance.get_surface_override_material(0) == null,
+		"without the lightmaps extracted, nothing changes and the report says so"
+	)
+
+	var result := LightmapMaterials.apply(meshes, dir)
+	_check(
+		result["found"] and result["surfaces"] == 5 and result["props"] == 2,
+		"with them, the world's surfaces and the charted and collapsed props are lit by them (%d surfaces, %d props)"
+			% [result["surfaces"], result["props"]]
+	)
+	var lit := instance.get_surface_override_material(0) as ShaderMaterial
+	var overlay := instance.get_surface_override_material(1) as ShaderMaterial
+	var leaves := instance.get_surface_override_material(3) as ShaderMaterial
+	_check(
+		lit != null and lit.shader == LightmapMaterials.OPAQUE_SHADER
+			and overlay != null and overlay.shader == LightmapMaterials.OVERLAY_SHADER
+			and instance.get_surface_override_material(2) is ShaderMaterial
+			and instance.get_surface_override_material(4) == null
+			and instance.get_surface_override_material(5) == null
+			and instance.get_surface_override_material(7) == null,
+		"the wall on the opaque shader, the sign on the blended one, the plank lit, the pattern, effect and unmapped wall not"
+	)
+	_check(
+		leaves != null and leaves.shader != LightmapMaterials.OPAQUE_SHADER
+			and leaves.shader.code.contains("cull_disabled") and not leaves.shader.code.contains("cull_back"),
+		"two-sided foliage gets a two-sided variant of the shader"
+	)
+	if lit != null:
+		_check(
+			lit.get_shader_parameter("albedo_texture") == wall.albedo_texture
+				and (lit.get_shader_parameter("albedo_color") as Color).is_equal_approx(wall.albedo_color)
+				and lit.get_shader_parameter("has_normal_map") == true
+				and is_equal_approx(lit.get_shader_parameter("normal_depth"), 0.6)
+				and is_equal_approx(lit.get_shader_parameter("alpha_scissor"), 0.4),
+			"the wall keeps its textures, colour, normal depth and alpha cut"
+		)
+		_check(
+			lit.get_shader_parameter("lightmap_irradiance") is Texture2D
+				and lit.get_shader_parameter("lightmap_direction") is Texture2D
+				and blend.get_shader_parameter("lightmap_irradiance") is Texture2D
+				and is_equal_approx(blend.get_shader_parameter("lightmap_energy"), LightmapMaterials.ENERGY),
+			"the lightmaps are handed to the new materials and to the blend material, at the one energy"
+		)
+		_check(
+			LightmapMaterials.is_lightmapped(BlendMaterials.vmat(lit)) and overlay.render_priority == 3,
+			"the vmat stays readable and the overlay keeps its draw order"
+		)
+	instance.free()
+
+	# The average: measured over the texels that hold light, and read back.
+	var sample := Image.create(4, 4, false, Image.FORMAT_RGBAF)
+	sample.fill(Color(0.0, 0.0, 0.0))
+	sample.set_pixel(0, 0, Color(1.0, 0.5, 0.0))
+	sample.set_pixel(3, 3, Color(0.0, 0.5, 1.0))
+	var average := LightmapMaterials.measure_average(sample)
+	_check(average.is_equal_approx(Color(0.5, 0.5, 0.5)), "the average leaves out texels that hold no light")
+	_check(result["ambient"] == null, "unmeasured, the average is reported as such")
+	LightmapMaterials.write_average(dir, average)
+	var again := MeshInstance3D.new()
+	again.mesh = mesh
+	var again_meshes: Array[MeshInstance3D] = [again]
+	var measured := LightmapMaterials.apply(again_meshes, dir)
+	_check(
+		measured["ambient"] is Color and (measured["ambient"] as Color).is_equal_approx(average),
+		"measured and written down, it is read back with the lightmaps"
+	)
+	again.free()
+
+
+## A square of side units on its own surface of mesh with this material,
+## its second UV set spanning uv2_extent of the lightmap (0 collapses it
+## onto one texel, below 0 leaves it out).
+func _add_quad(mesh: ArrayMesh, material: Material, side: float, uv2_extent: float) -> void:
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array([
+		Vector3(0, 0, 0), Vector3(side, 0, 0), Vector3(side, 0, side), Vector3(0, 0, side)
+	])
+	arrays[Mesh.ARRAY_NORMAL] = PackedVector3Array([Vector3.UP, Vector3.UP, Vector3.UP, Vector3.UP])
+	arrays[Mesh.ARRAY_INDEX] = PackedInt32Array([0, 1, 2, 0, 2, 3])
+	if uv2_extent >= 0.0:
+		var e := uv2_extent
+		arrays[Mesh.ARRAY_TEX_UV2] = PackedVector2Array([Vector2(0, 0), Vector2(e, 0), Vector2(e, e), Vector2(0, e)])
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	mesh.surface_set_material(mesh.get_surface_count() - 1, material)
+
+
 ## The lighting is a translation of the map's own numbers, so the test is
 ## that they arrive: from a hand-written entity lump, and, without one, from
 ## the fallbacks.
@@ -666,6 +848,21 @@ func _test_lighting() -> void:
 		)
 		_check(environment.ssao_enabled and environment.glow_enabled, "occlusion and glow are on")
 	holder.free()
+
+	# With the lightmap's average measured, that is the ambient instead, at
+	# the lightmapped surfaces' own energy.
+	var measured := Node3D.new()
+	root.add_child(measured)
+	var with_bounce := MapLighting.build(measured, {}, entities, "", Color(0.5, 0.25, 0.25))
+	var measured_env := (measured.get_node_or_null("Atmosphere") as WorldEnvironment).environment
+	_check(
+		measured_env.ambient_light_source == Environment.AMBIENT_SOURCE_COLOR
+			and measured_env.ambient_light_color.is_equal_approx(Color(1.0, 0.5, 0.5).linear_to_srgb())
+			and is_equal_approx(measured_env.ambient_light_energy, 0.5 * LightmapMaterials.ENERGY)
+			and with_bounce["ambient"].contains("average"),
+		"with the lightmap's average measured, that is the ambient, at the lightmap's energy"
+	)
+	measured.free()
 
 	var bare := Node3D.new()
 	root.add_child(bare)

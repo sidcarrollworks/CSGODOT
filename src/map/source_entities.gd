@@ -64,12 +64,12 @@ static func parse(path: String) -> Array[Dictionary]:
 	return entities
 
 
-## Reads "[ x, y, z ]".
+## Reads "[ x, y, z ]", and "x y z", which is how a prefab's lump writes it.
 static func vector(value: String) -> Vector3:
-	var parts := value.trim_prefix("[").trim_suffix("]").replace(" ", "").split_floats(",")
+	var parts := value.trim_prefix("[").trim_suffix("]").replace(",", " ").split(" ", false)
 	if parts.size() != 3:
 		return Vector3.ZERO
-	return Vector3(parts[0], parts[1], parts[2])
+	return Vector3(float(parts[0]), float(parts[1]), float(parts[2]))
 
 
 ## A Source position (inches, Z-up) in game space. Source 2 Viewer's glTF puts

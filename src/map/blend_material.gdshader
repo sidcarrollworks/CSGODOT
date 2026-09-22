@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx;
+render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx, ambient_light_disabled;
 
 // Two texture layers mixed by a painted weight, the way CS2's
 // csgo_lightmappedgeneric does it with F_LAYERS on. BlendMaterials fills the
@@ -11,6 +11,11 @@ render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_sc
 // the weight is the paint's first component, the mask is the blend texture's
 // green, a weight of one is all layer 2, and normals are mixed as texels
 // before they are decoded, "not more correct, but how Source 2 does it".
+//
+// Bounce light comes from the map's lightmaps (lightmap.gdshaderinc) in
+// place of Godot's ambient, like every other world material.
+
+#include "res://src/map/lightmap.gdshaderinc"
 
 // Layer 1, as Godot's glTF import left it: colour, a normal map, and the
 // export's occlusion/roughness/metal texture with roughness in green.
@@ -74,9 +79,11 @@ void fragment() {
 	ALBEDO = mix(albedo, albedo * border_tint, border * border_strength);
 
 	vec4 second = texture(layer2_normal_roughness, uv2);
-	NORMAL_MAP = vec3(mix(texture(layer1_normal, UV).rg, second.rg, weight), 1.0);
+	vec2 normal_rg = mix(texture(layer1_normal, UV).rg, second.rg, weight);
+	NORMAL_MAP = vec3(normal_rg, 1.0);
 	vec3 orm = texture(layer1_orm, UV).rgb;
 	ROUGHNESS = mix(orm.g, second.a, weight);
 	AO = orm.r;
 	METALLIC = 0.0;
+	EMISSION = ALBEDO * orm.r * lightmap_indirect(UV2, lightmap_tangent_normal(normal_rg, 1.0));
 }

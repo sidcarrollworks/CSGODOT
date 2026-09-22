@@ -26,9 +26,12 @@ const OCCLUSION_RADIUS := 24.0
 
 ## Adds a sun and a WorldEnvironment under parent. sun is what MapImporter
 ## reports ({"basis", "color"}), or empty; entities is the parsed entity lump,
-## or empty; sky_path is the res:// path of the sky panorama, or "". Returns
-## what was used, for the report.
-static func build(parent: Node, sun: Dictionary, entities: Array[Dictionary], sky_path: String) -> Dictionary:
+## or empty; sky_path is the res:// path of the sky panorama, or "";
+## bounce is the lightmap's average light (LightmapMaterials), or null.
+## Returns what was used, for the report.
+static func build(
+	parent: Node, sun: Dictionary, entities: Array[Dictionary], sky_path: String, bounce: Variant = null
+) -> Dictionary:
 	var sun_entity := _first(entities, "light_environment")
 	var fog_entity := _first(entities, "env_cubemap_fog")
 	var post_entity := _first(entities, "post_processing_volume")
@@ -70,13 +73,23 @@ static func build(parent: Node, sun: Dictionary, entities: Array[Dictionary], sk
 	environment.background_mode = Environment.BG_SKY
 	environment.sky = sky
 
-	# Ambient: the sky's own light, plus a warm floor for the bounce that is
-	# not being computed. CS2 gives that bounce a colour of its own
+	# Ambient, for whatever has no lightmap coordinates of its own: props
+	# the map lights by light probes, the far skybox, the players. The
+	# lightmap's average light where it has been measured, in the same
+	# units as the lightmapped surfaces read it; otherwise the sky's own
+	# light plus a warm floor. CS2 gives that bounce a colour of its own
 	# (skyambientbounce), which is what the floor is tinted with.
-	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	environment.ambient_light_sky_contribution = 0.7
-	environment.ambient_light_color = _colour(sun_entity.get("skyambientbounce", ""), Color(0.6, 0.6, 0.6))
-	environment.ambient_light_energy = 1.0
+	if bounce is Color:
+		var average: Color = bounce
+		var peak := maxf(average.r, maxf(average.g, average.b))
+		environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+		environment.ambient_light_color = Color(average.r / peak, average.g / peak, average.b / peak).linear_to_srgb()
+		environment.ambient_light_energy = peak * LightmapMaterials.ENERGY
+	else:
+		environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+		environment.ambient_light_sky_contribution = 0.7
+		environment.ambient_light_color = _colour(sun_entity.get("skyambientbounce", ""), Color(0.6, 0.6, 0.6))
+		environment.ambient_light_energy = 1.0
 	environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 
 	# CS2's tone mapper is filmic with a fixed exposure window; the middle of
@@ -126,6 +139,7 @@ static func build(parent: Node, sun: Dictionary, entities: Array[Dictionary], sk
 
 	return {
 		"sun_energy": light.light_energy,
+		"ambient": "the lightmap's average" if bounce is Color else "the sky",
 		"sky": "the map's panorama" if panorama != null else "a procedural stand-in",
 		"fog": environment.fog_enabled,
 		"exposure": environment.tonemap_exposure,

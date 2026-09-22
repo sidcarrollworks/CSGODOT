@@ -23,6 +23,13 @@ const SETTLE_FRACTION := 0.01
 
 @export var display_name: String = ""
 
+## The weapon's model, as extracted by scripts/extract_assets.sh weapons, and
+## the set of first-person clips under animation/anims/viewmodel/rifle that
+## animate it. Both are Valve's and live in the gitignored assets/; with them
+## missing there are no arms on screen, and nothing else changes.
+@export var model_path: String = ""
+@export var clip_set: String = ""
+
 # --- Damage ---------------------------------------------------------------
 
 ## Damage to an unarmoured chest at point blank.

@@ -6,7 +6,9 @@ extends SceneTree
 ##   - overlays and depth-biased geometry pushed 15.5 units off their walls
 ##     (src/map/export_offset_fix.gd);
 ##   - the blend paint, in a vertex attribute Godot drops
-##     (src/map/export_paint_channel.gd).
+##     (src/map/export_paint_channel.gd);
+##   - the lightmap's average light, measured once for the ambient of what
+##     the lightmap does not cover (src/map/lightmap_materials.gd).
 ##
 ##   godot --headless --path . --script scripts/prepare_export.gd
 ##
@@ -19,6 +21,7 @@ const ASSETS_DIR := "res://assets"
 ## registers class names.
 const OffsetFix := preload("res://src/map/export_offset_fix.gd")
 const PaintChannel := preload("res://src/map/export_paint_channel.gd")
+const Lightmaps := preload("res://src/map/lightmap_materials.gd")
 
 
 func _init() -> void:
@@ -35,7 +38,22 @@ func _init() -> void:
 		var painted: int = PaintChannel.fix_file(gltf)
 		if painted > 0:
 			print("blend paint: %s, %d primitives' paint kept as vertex colour" % [gltf.get_file(), painted])
+		_measure_lightmap(gltf.get_base_dir())
 	quit(0)
+
+
+## The lightmap's average, once per map that has one.
+func _measure_lightmap(map_dir: String) -> void:
+	var exr: String = map_dir.path_join(Lightmaps.IRRADIANCE_FILE)
+	if not FileAccess.file_exists(exr) or FileAccess.file_exists(map_dir.path_join(Lightmaps.AVERAGE_FILE)):
+		return
+	print("lightmap average: reading %s (a few hundred megabytes)" % exr.get_file())
+	var image := Image.load_from_file(ProjectSettings.globalize_path(exr))
+	if image == null:
+		return
+	var average: Color = Lightmaps.measure_average(image)
+	Lightmaps.write_average(map_dir, average)
+	print("lightmap average: (%.3f, %.3f, %.3f) written to %s" % [average.r, average.g, average.b, Lightmaps.AVERAGE_FILE])
 
 
 func _walk(dir_path: String, out: PackedStringArray) -> void:

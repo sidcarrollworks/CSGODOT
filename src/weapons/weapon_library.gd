@@ -16,6 +16,8 @@ extends RefCounted
 static func ak47() -> WeaponData:
 	var data := WeaponData.new()
 	data.display_name = "AK-47"
+	data.model_path = "res://assets/weapons/weapons/models/ak47/weapon_rif_ak47.gltf"
+	data.clip_set = "rifle_ak"
 
 	# 36 to an unarmoured chest, x4 head, x1.25 stomach, x0.75 leg, and
 	# roughly 78% through armour.
@@ -52,6 +54,10 @@ static func ak47() -> WeaponData:
 static func m4a1s() -> WeaponData:
 	var data := WeaponData.new()
 	data.display_name = "M4A1-S"
+	data.model_path = "res://assets/weapons/weapons/models/m4a1_silencer/weapon_rif_m4a1_silencer.gltf"
+	# The shared rifle clips are the ones authored on the M4A1-S: the weapon rig
+	# they carry is its.
+	data.clip_set = "_default_rifle"
 
 	# 37 to an unarmoured chest, 132 to the head, 47 stomach, 28 leg.
 	data.base_damage = 37.0
