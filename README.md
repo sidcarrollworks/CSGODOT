@@ -161,12 +161,12 @@ saturation ramp. Their shape is measured; their overall size is an estimate,
 because the plots carry no angular scale, and `recoil_scale` on the weapon is
 the one number that corrects it.
 
-The rest of the stats are the weak part. CS2 keeps weapon tuning in
-`scripts/weapons.vdata_c`, which does not decode into usable values, so none of
-it could be extracted the way the map and models were. Everything else in
-`src/weapons/weapon_library.gd` is a published community figure.
-`reference/weapon_stats.md` lists every number, where it came from, and how to
-measure the real one.
+CS2 keeps weapon tuning in `scripts/weapons.vdata_c`, which does not decode
+into usable values, so none of it could be extracted the way the map and
+models were. Damage, armour, falloff, speed and inaccuracy come from the CS2
+Weapon Spreadsheet instead, the spray patterns and recovery timings from
+measuring CS2 by hand. `reference/weapon_stats.md` lists every number, where
+it came from, and where the sources disagree.
 
 ## dust2
 

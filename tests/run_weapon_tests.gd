@@ -55,6 +55,7 @@ func _process(_delta: float) -> bool:
 		_test_inaccuracy_by_state()
 		_test_damage_falloff()
 		_test_hitbox_multipliers()
+		_test_fatal_headshot_ranges()
 		_build_world()
 		_frames += 1
 		return false
@@ -1185,6 +1186,7 @@ func _test_inaccuracy_by_state() -> void:
 	var walking := weapon.current_inaccuracy(Weapon.ShooterState.new(40.0, true, false))
 	var running := weapon.current_inaccuracy(Weapon.ShooterState.new(215.0, true, false))
 	var jumping := weapon.current_inaccuracy(Weapon.ShooterState.new(0.0, false, false))
+	var running_jump := weapon.current_inaccuracy(Weapon.ShooterState.new(215.0, false, false))
 
 	_check(crouched < standing, "crouching is more accurate than standing")
 	_check(
@@ -1192,7 +1194,21 @@ func _test_inaccuracy_by_state() -> void:
 		"a slow walk costs nothing, which is what makes counter-strafing work"
 	)
 	_check(running > standing * 10.0, "running is far less accurate")
-	_check(jumping > running, "jumping is the worst of all")
+	_check(jumping > standing * 10.0, "a standing jump is far less accurate")
+	# The sheet has a standing jump's apex (147.77) under a full run (182.07):
+	# it is the two together that are worst.
+	_check(running_jump > running and running_jump > jumping, "jumping at a run is the worst of all")
+
+	# The sheet's own figures, back out of the cone: its accurate range is
+	# where the widest a standing round can land is 15.24 cm off.
+	var ak := WeaponLibrary.ak47()
+	_check_near(
+		tan(deg_to_rad(ak.inaccuracy_standing)) * 21.74 / 0.0254, 6.0,
+		"the AK standing still lands within 6 inches at the sheet's accurate range, 21.74 m"
+	)
+	_check_near(standing, WeaponLibrary.cs_inaccuracy(7.01), "the AK stands at the sheet's 7.01")
+	_check_near(running, WeaponLibrary.cs_inaccuracy(182.07), "and runs at its 182.07")
+	_check_near(jumping, WeaponLibrary.cs_inaccuracy(147.77), "and tops a standing jump at its 147.77")
 
 
 func _test_damage_falloff() -> void:
@@ -1223,6 +1239,53 @@ func _test_hitbox_multipliers() -> void:
 		data.hitbox_multiplier(&"leg") < data.hitbox_multiplier(&"chest"),
 		"legs take less than the chest"
 	)
+
+	var m4 := WeaponLibrary.m4a1s()
+	_check_near(m4.base_damage, 38.0, "an M4A1-S chest shot is 38 unarmoured at point blank")
+	_check_near(
+		m4.base_damage * m4.hitbox_multiplier(&"head"), 132.05,
+		"an M4A1-S headshot is 132 unarmoured at point blank"
+	)
+
+
+## The sheet's fatal headshot ranges, which are the damage, the multiplier,
+## the armour and the falloff all at once: a round to the head kills out to
+## there and not past it. Taken through HitTarget, the path a real round takes.
+func _test_fatal_headshot_ranges() -> void:
+	var cases := [
+		[WeaponLibrary.ak47(), false, 9024.61],
+		[WeaponLibrary.ak47(), true, 2716.24],
+		[WeaponLibrary.m4a1s(), false, 2246.53],
+	]
+	for case in cases:
+		var data: WeaponData = case[0]
+		var helmet: bool = case[1]
+		var reach: float = case[2]
+		var kills := func(distance: float) -> bool:
+			var target := HitTarget.new()
+			target.build_own_hitboxes = false
+			target.wear(100.0 if helmet else 0.0, helmet)
+			target.reset()
+			target.apply_damage(
+				data.damage_at(distance) * data.hitbox_multiplier(&"head"), &"head", data.armor_penetration
+			)
+			var dead := not target.alive
+			target.free()
+			return dead
+		_check(
+			kills.call(reach - 5.0) and not kills.call(reach + 5.0),
+			"%s headshot %s kills out to the sheet's %.0f units and no further"
+				% [data.display_name, "through a helmet" if helmet else "without a helmet", reach]
+		)
+	# And the sheet says none: the M4A1-S never one-shots through a helmet.
+	var m4 := WeaponLibrary.m4a1s()
+	var target := HitTarget.new()
+	target.build_own_hitboxes = false
+	target.wear(100.0, true)
+	target.reset()
+	target.apply_damage(m4.damage_at(0.0) * m4.hitbox_multiplier(&"head"), &"head", m4.armor_penetration)
+	_check(target.alive, "an M4A1-S headshot through a helmet does not kill, even point blank")
+	target.free()
 
 
 # --- Hit registration -----------------------------------------------------

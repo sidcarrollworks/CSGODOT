@@ -270,19 +270,24 @@ func viewmodel_punch() -> Vector2:
 ##
 ## This is the part that makes counter-strafing matter: stopping drops you
 ## below the speed threshold, and the cone collapses.
+##
+## Moving and jumping add up, as in CS: the moving and jumping figures are
+## totals over standing still, so what each adds is its excess over that.
+## A jump taken at a run is therefore worse than either, while a standing
+## jump is not as bad as a full run.
 func current_inaccuracy(state: ShooterState) -> float:
 	var base := data.inaccuracy_standing
 	if state.ducked:
 		base = data.inaccuracy_crouching
 	if not state.on_ground:
-		base = maxf(base, data.inaccuracy_jumping)
-	elif state.speed > data.inaccuracy_speed_threshold:
+		base += maxf(data.inaccuracy_jumping - data.inaccuracy_standing, 0.0)
+	if state.speed > data.inaccuracy_speed_threshold:
 		# Scales with how fast you are going, so a slow walk is nearly free
 		# and a full sprint is hopeless.
 		var over := (state.speed - data.inaccuracy_speed_threshold) / maxf(
 			data.max_player_speed - data.inaccuracy_speed_threshold, 1.0
 		)
-		base = maxf(base, data.inaccuracy_moving * clampf(over, 0.0, 1.0))
+		base += maxf(data.inaccuracy_moving - data.inaccuracy_standing, 0.0) * clampf(over, 0.0, 1.0)
 	return base + _inaccuracy
 
 

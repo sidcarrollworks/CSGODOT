@@ -3,15 +3,23 @@ extends RefCounted
 
 ## The two weapons the project starts with.
 ##
-## Every number here is a published community figure, not a measurement, and
-## the sources disagree in places. They are a starting point for tuning and
-## should not be trusted until someone has checked them in game. See
-## reference/weapon_stats.md for where each one came from.
+## Damage, armour, falloff, fire rate, speed and inaccuracy come from the CS2
+## Weapon Spreadsheet (last weapon update 18 March 2026) Sid supplied on
+## 2026-09-22; its rows for these two weapons are copied into
+## reference/weapon_stats.md. Reload times are not in it and are still
+## community figures.
 ##
-## The exceptions, which ARE measured, are the spray patterns, the M4A1-S
-## magazine size, and the two recovery timings below. The patterns and the
-## magazine come from CS2 spray plots Sid supplied on 2026-09-21; the timings
-## come from his frame-by-frame capture of CS2 on 2026-09-22.
+## Also measured: the spray patterns and the M4A1-S magazine size, from CS2
+## spray plots Sid supplied on 2026-09-21, and the two recovery timings
+## below, from his frame-by-frame capture of CS2 on 2026-09-22.
+
+
+## The sheet gives inaccuracy in CS's own units: thousandths of the tangent
+## of the largest angle a round can leave the aim by, the way the weapon
+## scripts store it. "Accurate range" checks it: 7.01 for the AK is 15.24 cm
+## off at 21.74 m, the sheet's figure. The cone here is in degrees.
+static func cs_inaccuracy(value: float) -> float:
+	return rad_to_deg(atan(value / 1000.0))
 
 static func ak47() -> WeaponData:
 	var data := WeaponData.new()
@@ -19,8 +27,9 @@ static func ak47() -> WeaponData:
 	data.model_path = "res://assets/weapons/weapons/models/ak47/weapon_rif_ak47.gltf"
 	data.clip_set = "rifle_ak"
 
-	# 36 to an unarmoured chest, x4 head, x1.25 stomach, x0.75 leg, and
-	# roughly 78% through armour.
+	# 36 to an unarmoured chest, x4 head, 77.5% through armour, 2% lost every
+	# 500 units. The sheet has no stomach or leg multiplier; x1.25 and x0.75
+	# are what every rifle in CS uses.
 	data.base_damage = 36.0
 	data.armor_penetration = 0.775
 	data.head_multiplier = 4.0
@@ -44,10 +53,14 @@ static func ak47() -> WeaponData:
 	data.recoil_animation_time = 0.644
 	data.accuracy_reset_time = 0.867
 
-	data.inaccuracy_standing = 0.02
-	data.inaccuracy_moving = 0.95
-	data.inaccuracy_jumping = 4.5
-	data.inaccuracy_per_shot = 0.13
+	# The sheet's figures are totals, the rifle's spread included: standing
+	# still, crouched, at full run, at the top of a standing jump, and added
+	# by each round.
+	data.inaccuracy_standing = cs_inaccuracy(7.01)
+	data.inaccuracy_crouching = cs_inaccuracy(5.41)
+	data.inaccuracy_moving = cs_inaccuracy(182.07)
+	data.inaccuracy_jumping = cs_inaccuracy(147.77)
+	data.inaccuracy_per_shot = cs_inaccuracy(7.80)
 	return data
 
 
@@ -59,18 +72,20 @@ static func m4a1s() -> WeaponData:
 	# they carry is its.
 	data.clip_set = "_default_rifle"
 
-	# 37 to an unarmoured chest, 132 to the head, 47 stomach, 28 leg.
-	data.base_damage = 37.0
+	# 38 to an unarmoured chest, x3.475 head (132), 70% through armour, 6%
+	# lost every 500 units. Stomach and leg as every rifle's.
+	data.base_damage = 38.0
 	data.armor_penetration = 0.70
-	data.head_multiplier = 3.57  # 132 / 37, rather than a clean x4
+	data.head_multiplier = 3.475
 	data.chest_multiplier = 1.0
-	data.stomach_multiplier = 1.27
-	data.leg_multiplier = 0.76
+	data.stomach_multiplier = 1.25
+	data.leg_multiplier = 0.75
 	data.range_modifier = 0.94
 
 	data.cycle_time = 0.1  # 600 RPM
 	# 25, not the 20 this used to say. The CS2 spray plot for this weapon has
-	# 25 dots on it, which settles it.
+	# 25 dots on it. The weapon spreadsheet says 20 (and 60 in reserve), so
+	# one of the two is wrong: see reference/weapon_stats.md.
 	data.magazine_size = 25
 	data.reserve_ammo = 75
 	data.reload_time = 3.1
@@ -84,10 +99,13 @@ static func m4a1s() -> WeaponData:
 	data.recoil_animation_time = 0.353
 	data.accuracy_reset_time = 0.542
 
-	data.inaccuracy_standing = 0.015
-	data.inaccuracy_moving = 0.8
-	data.inaccuracy_jumping = 4.0
-	data.inaccuracy_per_shot = 0.10
+	# The silencer-on row, since that is how it is carried. Firing costs it
+	# less than the AK, running costs it less, and it stands a little tighter.
+	data.inaccuracy_standing = cs_inaccuracy(5.40)
+	data.inaccuracy_crouching = cs_inaccuracy(4.60)
+	data.inaccuracy_moving = cs_inaccuracy(127.40)
+	data.inaccuracy_jumping = cs_inaccuracy(105.10)
+	data.inaccuracy_per_shot = cs_inaccuracy(7.00)
 	return data
 
 

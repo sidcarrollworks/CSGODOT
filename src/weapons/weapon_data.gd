@@ -3,14 +3,11 @@ extends Resource
 
 ## Everything that decides how a weapon behaves.
 ##
-## IMPORTANT: none of these numbers have been measured against CS2. They come
-## from published community figures, which are close but not authoritative, and
-## the values that matter most for feel (recoil, inaccuracy) are not published
-## at all in a form anyone can copy.
-##
 ## The weapon tuning data in CS2 lives in scripts/weapons.vdata_c and no
-## published artifact carries its values, so this cannot be extracted and has
-## to be measured:
+## published artifact carries its values, so this cannot be extracted. The
+## damage, armour, falloff, speed and inaccuracy figures come from the CS2
+## Weapon Spreadsheet (see WeaponLibrary and reference/weapon_stats.md); the
+## spray patterns and recovery timings were measured in CS2 by hand:
 ## https://github.com/CS2OpenDev/CS2OpenDev-SchemaTracker/issues/16
 ##
 ## reference/spray_patterns/README.md says how to do the measuring.
@@ -321,17 +318,19 @@ class Punch:
 
 # --- Inaccuracy -----------------------------------------------------------
 
-## Cone half-angle in degrees added to every shot, by player state. Standing
-## still and not firing should be very close to zero for a rifle; everything
-## else opens it up. These are the numbers that make spraying while running
-## useless, so they matter as much as the pattern.
-@export var inaccuracy_standing: float = 0.02
-@export var inaccuracy_crouching: float = 0.015
-@export var inaccuracy_moving: float = 0.9
-@export var inaccuracy_jumping: float = 4.0
+## Cone half-angle in degrees, by player state, each a TOTAL the way the
+## weapon spreadsheet gives them: standing still, crouched, at full run, and
+## at the top of a standing jump. Moving and jumping add up (see
+## Weapon.current_inaccuracy). These are the numbers that make spraying while
+## running useless, so they matter as much as the pattern. The defaults are
+## the AK-47's; WeaponLibrary.cs_inaccuracy converts the sheet's units.
+@export var inaccuracy_standing: float = 0.4016
+@export var inaccuracy_crouching: float = 0.31
+@export var inaccuracy_moving: float = 10.32
+@export var inaccuracy_jumping: float = 8.41
 
 ## Added per shot while firing, in degrees.
-@export var inaccuracy_per_shot: float = 0.12
+@export var inaccuracy_per_shot: float = 0.447
 
 ## How long a single standing shot takes to become fully accurate again, in
 ## seconds.

@@ -3,27 +3,33 @@
 Every number in `src/weapons/weapon_library.gd`, where it came from, and
 whether it has been checked against CS2.
 
-**Nothing here has been measured in-game yet.** CS2 keeps its weapon tuning in
-`scripts/weapons.vdata_c`, which Source 2 Viewer does not decode into usable
-values, so none of this can be extracted the way the map and the models were.
-It is rebuilt from published community figures and CS:GO-era script dumps, and
-the sources disagree in places. Treat it as a starting point for tuning.
+CS2 keeps its weapon tuning in `scripts/weapons.vdata_c`, which Source 2
+Viewer does not decode into usable values, so none of this can be extracted
+the way the map and the models were.
+
+Since 2026-09-22 the damage, armour, falloff, fire rate, speed and inaccuracy
+figures come from the **CS2 Weapon Spreadsheet** (last weapon update 18 March
+2026), which Sid supplied. Its rows for the two weapons are copied at the end
+of this file. The spray patterns and the recovery timings were measured in CS2
+by hand, and still rule where the sheet disagrees (see "Where the sheet and
+the build differ"). Reload times are not in the sheet and are still community
+figures.
 
 ## Damage
 
 | | AK-47 | M4A1-S |
 |---|---|---|
-| Chest, unarmoured | 36 | 37 |
+| Chest, unarmoured | 36 | 38 |
 | Head, unarmoured | 144 | 132 |
 | Armour penetration | 0.775 | 0.70 |
-| Head multiplier | x4 | x3.57 |
-| Stomach multiplier | x1.25 | x1.27 |
-| Leg multiplier | x0.75 | x0.76 |
+| Head multiplier | x4 | x3.475 |
+| Stomach multiplier | x1.25 | x1.25 |
+| Leg multiplier | x0.75 | x0.75 |
 | Range modifier | 0.98 | 0.94 |
 
-The M4A1-S head multiplier is 132/37 rather than a clean x4, which is why it is
-stored as 3.57. Published tables give the chest and head figures directly, so
-the multiplier is derived from them rather than the other way round.
+The sheet gives damage, armour penetration, the head multiplier and the
+falloff per 500 units. It has no stomach or leg multiplier; x1.25 and x0.75
+are what every rifle in CS uses.
 
 Range modifier is applied per 500 units travelled, Source's `flRangeModifier`.
 The AK barely falls off; the M4A1-S noticeably does, which is the usual
@@ -32,6 +38,11 @@ explanation for why it loses long-range trades it should win on paper.
 Armour penetration is the fraction of damage that gets through armour, and
 armour absorbs half of what it does stop. `WeaponData.damage_at()` holds the
 arithmetic.
+
+The sheet's "fatal headshot range" pins all of that at once, and the tests
+hold the build to it: an AK headshot kills out to 9,025 units without a helmet
+and 2,716 through one; an M4A1-S headshot kills out to 2,247 without a helmet
+and never through one.
 
 ## Firing
 
@@ -50,20 +61,34 @@ the tick boundary. That is the same sub-tick handling the shot direction uses.
 
 ## Inaccuracy
 
-These are the least trustworthy numbers here. CS2's inaccuracy model has a
-separate value for standing, moving, walking, crouching, jumping and landing,
-each decaying at its own rate, and none of them are published. What is in the
-library is a four-value approximation: a standing cone, a moving cone
-interpolated by speed, a jumping cone, and a per-shot addition that recovers
-over time.
+The sheet gives inaccuracy in CS's own units: thousandths of the tangent of
+the widest angle a round can leave the aim by, which is how the weapon scripts
+store it. Its "accurate range" is the check: the AK's standing 7.01 is 15.24
+cm (6 inches) off at 21.74 m, the sheet's accurate range.
+`WeaponLibrary.cs_inaccuracy()` turns them into the degrees the cone is kept
+in.
 
-The one part of it that IS measured is how long that per-shot addition takes
-to recover: see "Recovery timings, measured" below.
+| | AK-47 | | M4A1-S (silencer on) | |
+|---|---|---|---|---|
+| | sheet | degrees | sheet | degrees |
+| Standing | 7.01 | 0.40 | 5.40 | 0.31 |
+| Crouching | 5.41 | 0.31 | 4.60 | 0.26 |
+| Full run | 182.07 | 10.32 | 127.40 | 7.26 |
+| Top of a standing jump | 147.77 | 8.41 | 105.10 | 6.00 |
+| Each round fired | 7.80 | 0.45 | 7.00 | 0.40 |
 
-What the approximation does get right is the ordering, which is what the tests
-pin: crouched is tighter than standing, walking under about a third of run
-speed costs nothing, running is more than ten times the standing cone, and
-jumping is worse than any of them.
+Each figure is a total, the rifle's spread included: the AK's 7.01 standing
+is 6.41 of inaccuracy and 0.6 of spread. So moving and jumping add their excess
+over standing still, and a jump taken at a run is worse than either
+(`Weapon.current_inaccuracy`). Before the sheet the build had a standing cone
+twenty times too tight and a running one ten times too tight.
+
+The per-round figure is added on every round and recovers over the measured
+time below.
+
+The tests pin the ordering: crouched is tighter than standing, walking under
+about a third of run speed costs nothing, running is more than ten times the
+standing cone, and jumping at a run is worse than anything.
 
 ## View kick, and why it is not the spray
 
@@ -366,3 +391,57 @@ five numbers down. Replacing the four-value approximation with real per-state
 values is the single biggest improvement available to shooting feel.
 
 **Spray.** See the spray pattern README.
+
+## Where the sheet and the build differ
+
+- **M4A1-S magazine.** The sheet says 20 (reserve 60, 80 in all). The build
+  keeps 25, because the CS2 spray plot the pattern was read from has 25 dots.
+  One of the two is wrong; Sid decides.
+- **Recovery.** The sheet's recovery time (AK 0.368 s standing, 0.305
+  crouched; M4A1-S 0.339 and 0.242) is, going by CS:GO's code, the time for
+  the firing penalty to fall to a tenth. Sid's frame-by-frame capture (AK 867
+  ms, M4A1-S 542 ms back to baseline) is what the build uses, and the build
+  reads "baseline" as a hundredth. Read at a tenth, the capture gives AK 0.43
+  s and M4A1-S 0.27 s: the AK recovers a little slower than the sheet and the
+  M4A1-S a little faster. Worth a second look if taps feel off.
+- **Not modelled yet:** landing inaccuracy (AK 33.63, M4A1-S 21.98), ladder
+  inaccuracy (no ladders), tagging power (60% for both), penetration power
+  (200% for both), and recoil amount and variance (AK 30 / 70 / 0, M4A1-S with
+  its silencer 21 / 65 / 0). Tagging and penetration are on the roadmap. The
+  recoil amount may be the way to retire the estimated `recoil_scale`.
+- **The cone's shape.** CS:GO's code picks a round's offset with the radius linear in a
+  random number, which bunches rounds towards the centre. The build spreads
+  them evenly over the disc. Same widest angle, different average.
+
+## The sheet's rows
+
+CS2 Weapon Spreadsheet, last weapon update 18 March 2026. Inaccuracy in CS
+units; distances in metres as the sheet gives them; fatal headshot range in
+units.
+
+| | AK-47 | M4A1-S (no silencer) | M4A1-S (silencer) |
+|---|---|---|---|
+| Price | $2,700 | $2,900 | |
+| Kill award | $300 | $300 | |
+| Damage | 36 | 38 | same |
+| Armour penetration | 77.50% | 70.00% | same |
+| Falloff @ 500 u | 2% | 6% | same |
+| Headshot multiplier | 4.000x | 3.475x | same |
+| Fire rate (RPM) | 600 | 600 | same |
+| Penetration power | 200% | 200% | same |
+| Magazine / reserve / total | 30 / 90 / 120 | 20 / 60 / 80 | same |
+| Mobility | 215 | 225 | same |
+| Tagging power | 60% | 60% | same |
+| Bullet range | 8,192 | 8,192 | same |
+| Tracers | every third | every third | none |
+| Accurate range, stand / crouch | 21.74 m / 28.17 m | 27.71 m / 32.43 m | 28.22 m / 33.13 m |
+| Inaccuracy standing / crouching | 7.01 / 5.41 | 5.50 / 4.70 | 5.40 / 4.60 |
+| Inaccuracy running | 182.07 | 98.38 | 127.40 |
+| Inaccuracy on a ladder | 280.60 | 222.59 | 227.84 |
+| Inaccuracy at jump apex | 147.77 | 105.20 | 105.10 |
+| Inaccuracy after landing | 33.63 | 22.08 | 21.98 |
+| Inaccuracy from firing | 7.80 | 12.00 | 7.00 |
+| Recovery time crouch / stand | 0.305257 / 0.368000 | 0.242100 / 0.338941 | same |
+| Recoil amount / angle variance / amount variance | 30 / 70 / 0 | 25 / 65 / 3 | 21 / same / 0 |
+| Recoil pattern | set | set | same |
+| Fatal headshot range / with helmet | 9,024.61 / 2,716.24 | 2,246.53 / none | same |
