@@ -16,6 +16,7 @@ render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_sc
 // place of Godot's ambient, like every other world material.
 
 #include "res://src/map/lightmap.gdshaderinc"
+#include "res://src/map/baked_light.gdshaderinc"
 
 // Layer 1, as Godot's glTF import left it: colour, a normal map, and the
 // export's occlusion/roughness/metal texture with roughness in green.
@@ -85,5 +86,5 @@ void fragment() {
 	ROUGHNESS = mix(orm.g, second.a, weight);
 	AO = orm.r;
 	METALLIC = 0.0;
-	EMISSION = ALBEDO * orm.r * lightmap_indirect(UV2, lightmap_tangent_normal(normal_rg, 1.0));
+	baked_light = orm.r * lightmap_indirect(UV2, lightmap_tangent_normal(normal_rg, 1.0));
 }

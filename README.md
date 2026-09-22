@@ -30,7 +30,7 @@ that is why.
 One more unit to know about: CS2's field of view numbers (`fov 90`,
 `viewmodel_fov 68`) are the horizontal angle at 4:3, as Source games have
 always meant them; Godot's `Camera3D.fov` is vertical. They are converted
-(`ViewModelOverlay.vertical_fov`): 90 is 73.7 vertical, 68 is 53.6. Setting
+(`ViewModelProjection.vertical_fov`): 90 is 73.7 vertical, 68 is 53.6. Setting
 Godot's fov to 90 gives a 121 degree horizontal view at 16:9, which is what
 this project did until it was noticed.
 
@@ -207,9 +207,15 @@ With those in place the player has arms and a weapon on screen, animated by
 the game's own clips: draw on equip, shoot and reload from the firing model,
 idle between. `src/player/view_model.gd` puts the agent's arm meshes and the
 weapon's meshes on the rigs the clips animate, and
-`src/player/view_model_overlay.gd` draws them through a camera of their own
-at CS2's `viewmodel_fov`, over the world, so they neither stretch at the
-edges nor poke through walls. Without the models extracted there are simply
+`src/player/view_model_projection.gd` draws them in the world's own render
+with a projection of their own, set in their vertex pass: narrowed to CS2's
+`viewmodel_fov`, so they do not stretch at the edges, and squeezed towards
+the camera in depth, so they never poke through a wall. Being in the world's
+render is what lets the sun, its shadows and the probes reach them; drawn by
+a second camera in a viewport of their own, the usual way and how this
+project began, they got the sky's glow and never the sun, since a camera
+sees only the lights and shadow casters on its own layers. Without the
+models extracted there are simply
 no arms, and everything else works. On top of the clips, the weapon bobs as
 you walk and run, settles lower into the hands at speed, and lags a little
 behind a turn (`src/player/view_model_motion.gd`): the bob in Source's own
@@ -217,7 +223,8 @@ shape, the amounts set by eye against CS2. Look down and your own body is
 there, chest and legs, walking the same clips as a bot's, with your shadow
 on the ground: the third-person model with its head and arms folded away
 (`RigModel.fold_bones`), since the camera sits inside the one and the view
-model stands in for the others.
+model stands in for the others. The shadow is cast by a twin of that model
+drawn only into the shadow maps, with its head on, so the shadow has one.
 
 Other players are the same agents seen from outside (`src/player/player_model.gd`):
 the body on the third-person rig, the weapon in its hand, and the locomotion
@@ -266,8 +273,8 @@ guesses wrong.
 
 Then open `maps/de_dust2/de_dust2.tscn` and press play. You start at one of
 the map's own T spawn points (`spawn_team` on the scene root switches sides),
-colliding with the hull the game itself collides with, player clips included.
-None of the visible world is solid.
+colliding with the hull the game itself collides with, player clips included
+(which stop you and not your rounds). None of the visible world is solid.
 
 The lighting is the map's own numbers, translated (`src/map/map_lighting.gd`):
 the sun's colour, brightness and size from `light_environment`, the sky

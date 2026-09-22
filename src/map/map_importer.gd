@@ -115,6 +115,22 @@ enum CollisionSource {
 	"grenadeclip",
 ])
 
+## Node name fragments in the collision hull for the parts that stop players
+## and nothing else: player clips, which keep you off ledges and smooth the
+## edges of stairs and boxes, and the parts the game marks as letting rounds
+## through (chain-link, pottery). They go in a body of their own on
+## PLAYER_CLIP_LAYER, which movement collides with and a round, a bot's line
+## of sight and a footstep's trace do not. In with the rest of the world they
+## stopped rounds on thin air: ten units short of B site's back wall, and
+## the bullet holes with them.
+@export var player_only_hints: PackedStringArray = PackedStringArray([
+	"playerclip", "passbullets",
+])
+
+## The collision layer of the player_only_hints parts. The rest of the world
+## is on layer 1 (Hitscan.WORLD_LAYER).
+const PLAYER_CLIP_LAYER := 8
+
 ## Print the inventory on import. Worth leaving on until the map is settled.
 @export var report: bool = true
 
@@ -494,9 +510,8 @@ func _build_collision(targets: Array[MeshInstance3D]) -> int:
 	if targets.is_empty():
 		return 0
 
-	var body := StaticBody3D.new()
-	body.name = "Collision"
-	add_child(body)
+	var body := _collision_body("Collision", Hitscan.WORLD_LAYER)
+	var player_only: StaticBody3D = null
 	var to_body := body.global_transform.affine_inverse()
 
 	var triangles := 0
@@ -512,10 +527,24 @@ func _build_collision(targets: Array[MeshInstance3D]) -> int:
 		# _sand...), which is what footsteps and penetration will want.
 		collision.name = mesh_instance.name
 		collision.shape = shape
-		body.add_child(collision)
+		if _matches_any(PackedStringArray([mesh_instance.name]), player_only_hints):
+			if player_only == null:
+				player_only = _collision_body("PlayerClip", PLAYER_CLIP_LAYER)
+			player_only.add_child(collision)
+		else:
+			body.add_child(collision)
 		@warning_ignore("integer_division")
 		triangles += faces.size() / 3
 	return triangles
+
+
+func _collision_body(body_name: String, layer: int) -> StaticBody3D:
+	var body := StaticBody3D.new()
+	body.name = body_name
+	body.collision_layer = layer
+	body.collision_mask = 0
+	add_child(body)
+	return body
 
 
 ## In world space, so scale_factor is already in there by way of the scene's

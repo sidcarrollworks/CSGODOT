@@ -209,6 +209,7 @@ func _pack_slices(directory: String) -> bool:
 		return false
 	width = first.get_width()
 	height = first.get_height()
+	@warning_ignore("integer_division")
 	band = slices.size() / FACES
 	_texels = PackedByteArray()
 	for z in slices.size():

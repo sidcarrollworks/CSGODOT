@@ -34,10 +34,9 @@ var weapon: Weapon
 ## Which side's arms are on screen. Set by the map from the spawn.
 @export_enum("T", "CT") var team: String = "T"
 
-## The arms and weapon, drawn over the world by a camera of their own, when
-## the models are there.
+## The arms and weapon, drawn under the camera with a projection of their
+## own (ViewModelProjection), when the models are there.
 var view_model: ViewModel
-var view_model_overlay: ViewModelOverlay
 
 ## What you hear of your own weapon and your hits, and of your own feet.
 var weapon_sounds: WeaponSounds
@@ -45,13 +44,20 @@ var footsteps: Footsteps
 
 ## Your own body, seen when you look down: the third-person model without
 ## its head and arms, walking the same clips as a bot's. It stands in the
-## world and casts your shadow.
+## world and casts no shadow; that is body_shadow's job.
 var body_model: PlayerModel
+## Your shadow: the same model walking the same clips in the same place,
+## drawn only into the shadow maps, with its head. The body the camera sees
+## has none, and a shadow without one is a strange thing to see.
+var body_shadow: PlayerModel
 
 ## What the camera must not see of the body: the head it sits inside, and
 ## the arms the view model stands in for. Folding the upper arms folds the
 ## hands with them.
 const FOLDED_BONES: Array[String] = ["head_0", "neck_0", "arm_upper_L", "arm_upper_R"]
+## What the shadow does without: the arms, which would fall across the view
+## model's own from a pose that is not its.
+const SHADOW_FOLDED_BONES: Array[String] = ["arm_upper_L", "arm_upper_R"]
 
 ## How far behind the eyes the body stands, in units. The eyes are at the
 ## front of the head, over the chest; at zero the collar fills the bottom of
@@ -87,14 +93,12 @@ func _ready() -> void:
 		camera = _find_camera()
 	if camera != null:
 		camera.top_level = true
-		# Source-unit scale: the near plane has to be no more than an inch or
-		# geometry clips through the view model later on.
-		camera.near = 1.0
+		# Source-unit scale: the near plane has to be a fraction of an inch or
+		# the view model, drawn squeezed towards the camera, clips.
+		camera.near = ViewModelProjection.NEAR
 		camera.far = 16384.0
 		# CS2's 90, which is horizontal at 4:3; Godot's number is vertical.
-		camera.fov = ViewModelOverlay.vertical_fov(90.0)
-		# The view model is drawn by the overlay's camera, not this one.
-		camera.cull_mask &= ~(1 << (ViewModelOverlay.LAYER - 1))
+		camera.fov = ViewModelProjection.vertical_fov(ViewModelProjection.WORLD_FOV)
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	add_to_group(&"players")
 	hit_target = HitTarget.new()
@@ -125,30 +129,38 @@ func _show_view_model(data: WeaponData) -> void:
 	if camera == null:
 		return
 	if view_model == null:
-		view_model_overlay = ViewModelOverlay.new()
-		add_child(view_model_overlay)
 		view_model = ViewModel.new()
 		view_model.name = "ViewModel"
-		view_model_overlay.camera.add_child(view_model)
+		camera.add_child(view_model)
 		# And it rides the recoil.
 		viewmodel = view_model
 	if view_model.setup(team, data.model_path, data.clip_set):
-		ViewModelOverlay.claim(view_model)
+		ViewModelProjection.claim(view_model)
 
 
-## The body, when the models are there. It is top_level like the camera and
-## follows the interpolated position, so it does not step at the tick rate
-## against a camera that does not.
+## The body and its shadow, when the models are there. They are top_level
+## like the camera and follow the interpolated position, so they do not step
+## at the tick rate against a camera that does not.
 func _show_body() -> void:
-	body_model = PlayerModel.new()
-	body_model.name = "Body"
-	if not body_model.setup(team, ""):
-		body_model.free()
-		body_model = null
-		return
-	body_model.fold_bones(PackedStringArray(FOLDED_BONES))
-	body_model.top_level = true
-	add_child(body_model)
+	body_model = _build_body("Body", FOLDED_BONES, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
+	if body_model != null:
+		body_shadow = _build_body("BodyShadow", SHADOW_FOLDED_BONES, GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY)
+
+
+func _build_body(node_name: String, folded: Array[String], casting: GeometryInstance3D.ShadowCastingSetting) -> PlayerModel:
+	var model := PlayerModel.new()
+	model.name = node_name
+	# A model only the shadow maps see needs no lighting.
+	model.probe_lit = casting != GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+	if not model.setup(team, ""):
+		model.free()
+		return null
+	model.fold_bones(PackedStringArray(folded))
+	for mesh in model.find_children("*", "MeshInstance3D", true, false):
+		(mesh as MeshInstance3D).cast_shadow = casting
+	model.top_level = true
+	add_child(model)
+	return model
 
 
 func _find_camera() -> Camera3D:
@@ -207,10 +219,11 @@ func _on_died() -> void:
 	alive = false
 	velocity = Vector3.ZERO
 	hit_target.set_active(false)
-	if view_model_overlay != null:
-		view_model_overlay.visible = false
-	if body_model != null:
-		body_model.visible = false
+	if view_model != null:
+		view_model.visible = false
+	for body in [body_model, body_shadow]:
+		if body != null:
+			body.visible = false
 	_respawn_at_usec = Time.get_ticks_usec() + int(respawn_seconds * 1_000_000.0)
 	died.emit()
 
@@ -221,10 +234,11 @@ func respawn() -> void:
 	hit_target.set_active(true)
 	place(_spawn_position, _spawn_yaw)
 	velocity = Vector3.ZERO
-	if view_model_overlay != null:
-		view_model_overlay.visible = true
-	if body_model != null:
-		body_model.visible = true
+	if view_model != null:
+		view_model.visible = true
+	for body in [body_model, body_shadow]:
+		if body != null:
+			body.visible = true
 	if weapon != null:
 		equip(weapon.data)
 	respawned.emit()
@@ -281,8 +295,9 @@ func _physics_process(delta: float) -> void:
 
 	simulate(delta)
 	_update_weapon(delta, fire_events)
-	if body_model != null:
-		body_model.update_motion(velocity, input.yaw_degrees, is_ducked, on_ground)
+	for body in [body_model, body_shadow]:
+		if body != null:
+			body.update_motion(velocity, input.yaw_degrees, is_ducked, on_ground)
 
 
 ## Fires any shots that happened during the frames since the last tick, at the
@@ -407,9 +422,10 @@ func _process(delta: float) -> void:
 	var interpolated := previous_position.lerp(global_position, alpha)
 
 	camera.global_position = interpolated + Vector3.UP * eye_height()
-	if body_model != null:
-		var yaw := deg_to_rad(input.yaw_degrees)
-		body_model.global_position = interpolated + Vector3(sin(yaw), 0.0, cos(yaw)) * BODY_SETBACK
+	var yaw := deg_to_rad(input.yaw_degrees)
+	for body in [body_model, body_shadow]:
+		if body != null:
+			body.global_position = interpolated + Vector3(sin(yaw), 0.0, cos(yaw)) * BODY_SETBACK
 	# The recoil punch is added here rather than to the player's own look
 	# angles, so the view kicks while the angles the player is actually
 	# holding stay untouched. It is also deliberately smaller than the spray:
@@ -421,8 +437,6 @@ func _process(delta: float) -> void:
 		0.0
 	)
 
-	if view_model_overlay != null:
-		view_model_overlay.follow(camera)
 	_update_viewmodel(delta)
 	# The arms from where the eyes are, the body from its middle.
 	if view_model != null:

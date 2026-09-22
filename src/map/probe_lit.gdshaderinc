@@ -6,8 +6,8 @@
 // normal's part along that axis, which is Valve's ambient cube.
 //
 // A material that uses this turns Godot's ambient off for itself and adds
-// the result as emission, times its albedo and occlusion, at the same
-// energy as the lightmapped surfaces.
+// the result, times its occlusion, in the light pass (baked_light.gdshaderinc),
+// at the same energy as the lightmapped surfaces.
 
 instance uniform vec3 probe_px = vec3(0.4);
 instance uniform vec3 probe_nx = vec3(0.4);

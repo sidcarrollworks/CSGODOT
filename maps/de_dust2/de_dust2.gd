@@ -111,6 +111,7 @@ func _place_bots() -> void:
 		bot.weapon_data = WeaponLibrary.m4a1s() if team == "CT" else WeaponLibrary.ak47()
 		bot.weapon_model = bot.weapon_data.model_path
 		# Each starts at a different point and heads for the next.
+		@warning_ignore("integer_division")
 		var start := (i * spawns.size()) / maxi(bots, 1)
 		bot.route = route
 		add_child(bot)
@@ -129,19 +130,19 @@ func _build_skybox() -> void:
 	if map_file.is_empty():
 		return
 	var camera := Vector3.ZERO
-	var scale := 16.0
+	var sky_scale := 16.0
 	for entity in SourceEntities.parse(
 		ProjectSettings.globalize_path(map_file.get_base_dir().path_join(ENTITIES_FILE))
 	):
 		if entity.get("classname", "") == "sky_camera":
 			camera = SourceEntities.to_game(SourceEntities.vector(entity.get("origin", "")))
-			scale = float(entity.get("scale", "16"))
+			sky_scale = float(entity.get("scale", "16"))
 			break
 
 	skybox = MapImporter.new()
 	skybox.name = "Skybox"
 	skybox.source_path = map_file
-	skybox.scale_factor = MapImporter.SOURCE2_VIEWER_SCALE * scale
+	skybox.scale_factor = MapImporter.SOURCE2_VIEWER_SCALE * sky_scale
 	skybox.collision_source = MapImporter.CollisionSource.NONE
 	skybox.layer_textures_dir = SKYBOX_DIR
 	# Its terrain sits at its own ground level, which is above some of the

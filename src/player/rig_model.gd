@@ -20,6 +20,12 @@ extends Node3D
 ## degenerate matrix for the skin to chew on.
 const FOLDED := 0.001
 
+## The visual layer the players' models, the bots' and your own arms are
+## drawn on, apart from the world's: a bullet hole's projection is deep, and
+## would otherwise print itself on someone standing at the wall, or on your
+## own gun, whose true place is in the wall when you are pressed against it.
+const LAYER := 2
+
 ## Lit by the map's light probes rather than Godot's ambient: every mesh
 ## adopted goes on the probe shader, and light_from hands it a cube.
 var probe_lit: bool = true
@@ -92,9 +98,9 @@ func load_clips(clips: PackedStringArray, suffix: String) -> bool:
 				if not names.is_empty():
 					library.add_animation(short, (donor[0] as AnimationPlayer).get_animation(names[0]))
 			scene.free()
-	for name in library.get_animation_list():
-		if not _is_one_shot(name):
-			library.get_animation(name).loop_mode = Animation.LOOP_LINEAR
+	for clip in library.get_animation_list():
+		if not _is_one_shot(clip):
+			library.get_animation(clip).loop_mode = Animation.LOOP_LINEAR
 	if not animation_player.animation_finished.is_connected(_on_finished):
 		animation_player.animation_finished.connect(_on_finished)
 	return true
@@ -115,7 +121,8 @@ func fold_bones(bone_names: PackedStringArray) -> void:
 	for clip_name in library.get_animation_list():
 		var copy := library.get_animation(clip_name).duplicate() as Animation
 		for track in range(copy.get_track_count() - 1, -1, -1):
-			if copy.track_get_type(track) == Animation.TYPE_SCALE_3D 					and String(copy.track_get_path(track).get_subname(0)) in bone_names:
+			if copy.track_get_type(track) == Animation.TYPE_SCALE_3D \
+					and String(copy.track_get_path(track).get_subname(0)) in bone_names:
 				copy.remove_track(track)
 		library.remove_animation(clip_name)
 		library.add_animation(clip_name, copy)
@@ -173,9 +180,9 @@ func clips_named(prefix: String) -> PackedStringArray:
 		return found
 	var names := animation_player.get_animation_list()
 	names.sort()
-	for name in names:
-		if String(name).begins_with(prefix):
-			found.append(name)
+	for clip in names:
+		if String(clip).begins_with(prefix):
+			found.append(clip)
 	return found
 
 
@@ -188,19 +195,20 @@ func _on_finished(finished: StringName) -> void:
 
 ## Whether a one-shot clip is running now and should be left to finish.
 func playing_one_shot() -> bool:
-	return animation_player != null and animation_player.is_playing() 		and _is_one_shot(animation_player.current_animation)
+	return animation_player != null and animation_player.is_playing() \
+		and _is_one_shot(animation_player.current_animation)
 
 
-func _is_held(name: StringName) -> bool:
+func _is_held(clip: StringName) -> bool:
 	for prefix in held:
-		if String(name).begins_with(prefix):
+		if String(clip).begins_with(prefix):
 			return true
 	return false
 
 
-func _is_one_shot(name: StringName) -> bool:
+func _is_one_shot(clip: StringName) -> bool:
 	for prefix in one_shots:
-		if String(name).begins_with(prefix):
+		if String(clip).begins_with(prefix):
 			return true
 	return false
 
@@ -220,6 +228,7 @@ func adopt(mesh: MeshInstance3D, rig: Skeleton3D) -> void:
 	rig.add_child(mesh)
 	mesh.skeleton = NodePath("..")
 	mesh.transform = Transform3D.IDENTITY
+	mesh.layers = LAYER
 	if probe_lit:
 		_probe_light(mesh)
 
@@ -236,11 +245,11 @@ func _probe_light(mesh: MeshInstance3D) -> void:
 
 ## Lights every mesh of the model from a point in the world, through the
 ## scene's light probes, if it has any. Called by whoever moves the model.
-func light_from(position: Vector3) -> void:
+func light_from(at: Vector3) -> void:
 	var probes := LightProbeField.find(get_tree()) if is_inside_tree() else null
 	if probes == null:
 		return
-	var cube := probes.cube_at(position)
+	var cube := probes.cube_at(at)
 	for mesh in find_children("*", "MeshInstance3D", true, false):
 		ProbeMaterials.light_instance(mesh as MeshInstance3D, cube)
 

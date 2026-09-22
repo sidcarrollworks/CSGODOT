@@ -34,8 +34,8 @@ var _combat_started_usec: int = 0
 func _init() -> void:
 	# CS2's field of view numbers are horizontal at 4:3; Godot's are vertical.
 	_check(
-		absf(ViewModelOverlay.vertical_fov(90.0) - 73.74) < 0.05
-			and absf(ViewModelOverlay.vertical_fov(68.0) - 53.64) < 0.05,
+		absf(ViewModelProjection.vertical_fov(90.0) - 73.74) < 0.05
+			and absf(ViewModelProjection.vertical_fov(68.0) - 53.64) < 0.05,
 		"CS2's fov 90 and viewmodel_fov 68 convert to 73.7 and 53.6 vertical"
 	)
 
@@ -66,6 +66,7 @@ func _init() -> void:
 			and BulletImpacts.surface_for("") == "concrete" and BulletImpacts.surface_for("physics_group_glass") == "default",
 		"a hull part's name says which impact a round makes on it: sand, wood, metal, concrete, or the general one"
 	)
+	_test_hole_materials()
 
 	var weapons := _find(WEAPONS_DIR, "weapon_rif_")
 	var agents := _find(CHARACTERS_DIR.path_join("agents"), "")
@@ -139,7 +140,7 @@ func _init() -> void:
 	root.add_child(_view_model)
 	var data := WeaponLibrary.ak47()
 	_check(_view_model.setup("T", data.model_path, data.clip_set), "the view model builds for the AK-47 and a T")
-	ViewModelOverlay.claim(_view_model)
+	ViewModelProjection.claim(_view_model)
 
 	_player_model = PlayerModel.new()
 	root.add_child(_player_model)
@@ -176,11 +177,11 @@ func _process(_delta: float) -> bool:
 			arms += 1
 		if mesh.name.contains("weapon_rif"):
 			weapon += 1
-		if (mesh as MeshInstance3D).layers == 1 << (ViewModelOverlay.LAYER - 1) \
+		if ViewModelProjection.claimed(mesh as MeshInstance3D) \
 				and (mesh as MeshInstance3D).cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
 			on_layer += 1
 	_check(arms == 2 and weapon >= 1, "the arm meshes and the weapon are on the rigs (%d arms, %d weapon)" % [arms, weapon])
-	_check(on_layer == meshes.size(), "and every mesh is on the overlay's layer, casting no shadow")
+	_check(on_layer == meshes.size(), "and every mesh draws with the view model's projection, casting no shadow")
 
 	var arm_rig: Skeleton3D = _view_model.character_rig
 	var weapon_rig: Skeleton3D = _view_model.weapon_rig
@@ -359,8 +360,61 @@ func _start_bot() -> void:
 
 ## A round into the floor leaves a hole and a sound there; the holes are
 ## recycled past the limit; a round into a person leaves nothing.
+## A bullet-hole material as Source 2 Viewer decompiles it, read; and a
+## hole's colour darkened by its occlusion.
+func _test_hole_materials() -> void:
+	var path := "user://hole_fixture/concrete9.vmat"
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(path.get_base_dir()))
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	file.store_string("""// THIS FILE IS AUTO-GENERATED
+
+Layer0
+{
+	shader "csgo_projected_decals.vfx"
+	"g_flCutoffAngle" "60"
+	"TextureColor" "materials/decals/concrete/hole_color.png"
+	"Compiled Textures"
+	{
+		"g_tAmbientOcclusion" "materials/decals/concrete/hole_ao_tif_1234abcd.vtex"
+		"g_tColor" "materials/decals/concrete/hole_color_psd_5678ef01.vtex"
+		"g_tNormal" "materials/decals/concrete/hole_normal_tif_9abc2345.vtex"
+	}
+	"Attributes"
+	{
+		"DecalDepth" "10"
+		"DecalSizeVariance" "1.25"
+		"DecalWorldHeight" "7"
+		"DecalWorldWidth" "6"
+	}
+}
+""")
+	file.close()
+	var hole := BulletImpacts.read_hole(path)
+	_check(
+		hole.get("color") == "res://assets/decals/materials/decals/concrete/hole_color_psd_5678ef01.png"
+			and str(hole.get("occlusion")).ends_with("concrete/hole_ao_tif_1234abcd.png")
+			and str(hole.get("normal")).ends_with("concrete/hole_normal_tif_9abc2345.png")
+			and hole.get("width") == 6.0 and hole.get("height") == 7.0 and hole.get("variance") == 1.25
+			and hole.get("depth") == 10.0 and hole.get("offset") == BulletImpacts.DEFAULT_DEPTH_OFFSET,
+		"a bullet-hole material says which compiled texture is which, how big the hole is and how deep it reaches"
+	)
+	_check(BulletImpacts.read_hole("user://hole_fixture/none.vmat").is_empty(), "and a missing one says nothing")
+
+	var color := Image.create(512, 512, false, Image.FORMAT_RGBA8)
+	color.fill(Color(0.8, 0.6, 0.4, 0.5))
+	var occlusion := Image.create(256, 256, false, Image.FORMAT_RGBA8)
+	occlusion.fill(Color(0.5, 1.0, 1.0))
+	var folded := BulletImpacts.occluded(color, occlusion)
+	var texel := folded.get_pixel(10, 10)
+	_check(
+		folded.get_width() == BulletImpacts.MAX_TEXELS and folded.has_mipmaps()
+			and absf(texel.r - 0.4) < 0.01 and absf(texel.g - 0.3) < 0.01 and absf(texel.a - 0.5) < 0.01,
+		"a hole's colour is darkened by its occlusion's red, its alpha kept, at most %d texels across (%s)" % [BulletImpacts.MAX_TEXELS, texel]
+	)
+
+
 func _test_bullet_impacts() -> void:
-	var impacts := _bot_world.get_node("BulletImpacts") as BulletImpacts
+	var impacts := _bot_world.get_node_or_null("BulletImpacts") as BulletImpacts
 	if impacts == null:
 		impacts = _bot_world.get_child(_bot_world.get_child_count() - 1) as BulletImpacts
 	var data := WeaponLibrary.ak47()
@@ -381,12 +435,27 @@ func _test_bullet_impacts() -> void:
 		return
 	impacts.mark(result)
 	var decals := impacts.find_children("*", "Decal", false, false)
+	var hole := decals[0] as Decal if decals.size() == 1 else null
 	_check(
-		impacts.holes == 1 and decals.size() == 1 and (decals[0] as Decal).texture_albedo != null
-			and (decals[0] as Decal).global_position.distance_to(result.position) < BulletImpacts.new().hole_size
-			and ((decals[0] as Decal).global_transform.basis.y).dot(result.normal) > 0.99,
-		"and gets a hole there, a texture of the game's, its face along the surface's normal"
+		impacts.holes == 1 and hole != null and hole.texture_albedo != null and hole.texture_normal != null
+			and hole.global_transform.basis.y.normalized().dot(result.normal) > 0.99
+			and (hole.cull_mask & RigModel.LAYER) == 0,
+		"and gets a hole there, the game's colour and normal, facing out of the surface, printed on the world and not on people"
 	)
+	if hole != null:
+		# The box reaches 4 units in front of the surface and 8 behind it.
+		var along := (result.position - hole.global_position).dot(result.normal)
+		_check(
+			is_equal_approx(hole.size.y, BulletImpacts.DEFAULT_DEPTH) and absf(along - 2.0) < 0.01
+				and hole.size.x >= 2.0 and hole.size.x <= 10.0 and hole.upper_fade == 0.0 and hole.lower_fade == 0.0,
+			"projected through a box 12 deep from 4 in front of the surface, a few inches across (%.1f), unfaded" % hole.size.x
+		)
+	var sky := Hitscan.Result.new()
+	sky.hit = true
+	sky.surface = "physics_sky"
+	sky.normal = Vector3.DOWN
+	impacts.mark(sky)
+	_check(impacts.holes == 1, "a round into the sky leaves no hole")
 	for i in 3:
 		shot = weapon.fire((i + 1) * 200_000, 0.0, origin, angles.x + i, angles.y, Weapon.ShooterState.new(0.0, true, false))
 		impacts.mark(Hitscan.trace(space, shot, data))
@@ -408,7 +477,8 @@ func _test_bullet_impacts() -> void:
 ## waits are on the clock and the animation, not the frame count.
 func _bot_step() -> bool:
 	var since := _frames - _bot_started_frame
-	var settled: bool = _bot.model != null and _bot.model.animation_player.current_animation == &"idle" 		and not _bot.model.playing_one_shot()
+	var settled: bool = _bot.model != null and _bot.model.animation_player.current_animation == &"idle" \
+		and not _bot.model.playing_one_shot()
 	match _bot_phase:
 		0:
 			if since >= 3:
@@ -654,6 +724,28 @@ func _test_player_composes_kick_and_bob() -> void:
 				and rig.get_bone_pose_scale(rig.find_bone("pelvis")).is_equal_approx(Vector3.ONE),
 			"with its head and arms folded and the rest whole"
 		)
+		var shadow_rig: Skeleton3D = player.body_shadow.character_rig if player.body_shadow != null else null
+		var body_casting := 0
+		for mesh in player.body_model.find_children("*", "MeshInstance3D", true, false):
+			if (mesh as MeshInstance3D).cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+				body_casting += 1
+		var shadow_only := 0
+		var shadow_meshes := player.body_shadow.find_children("*", "MeshInstance3D", true, false) if player.body_shadow != null else []
+		for mesh in shadow_meshes:
+			if (mesh as MeshInstance3D).cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY:
+				shadow_only += 1
+		_check(
+			shadow_rig != null and body_casting == 0 and not shadow_meshes.is_empty() and shadow_only == shadow_meshes.size()
+				and shadow_rig.get_bone_pose_scale(shadow_rig.find_bone("head_0")).is_equal_approx(Vector3.ONE)
+				and shadow_rig.get_bone_pose_scale(shadow_rig.find_bone("arm_upper_R")).is_equal_approx(Vector3.ONE * RigModel.FOLDED),
+			"and its shadow is cast by a twin drawn only into the shadow maps, with its head and without its arms"
+		)
+		player._process(1.0 / 60.0)
+		_check(
+			player.body_shadow != null and player.body_shadow.global_position.is_equal_approx(player.body_model.global_position)
+				and player.body_shadow.animation_player.current_animation == player.body_model.animation_player.current_animation,
+			"the twin stands where the body stands, playing the same clip"
+		)
 
 	# Frame one captures the rest pose; then a kick from a real shot.
 	player.velocity = Vector3.ZERO
@@ -747,6 +839,17 @@ func _test_player_model() -> void:
 	var body := model.find_children("*thirdperson_body", "MeshInstance3D", true, false)
 	var arms := model.find_children("*firstperson*", "MeshInstance3D", true, false)
 	_check(not body.is_empty() and arms.is_empty(), "the third-person body is on the rig and the first-person arms are not")
+	var off_layer := 0
+	var all_meshes := model.find_children("*", "MeshInstance3D", true, false).filter(
+		func(mesh: Node) -> bool: return mesh.name.contains("thirdperson") or mesh.name.contains("weapon_")
+	)
+	for mesh in all_meshes:
+		if (mesh as MeshInstance3D).layers != RigModel.LAYER:
+			off_layer += 1
+	_check(
+		all_meshes.size() > 2 and off_layer == 0,
+		"the body and its weapon are drawn on the people's layer, where the bullet holes do not print (%d of %d off it)" % [off_layer, all_meshes.size()]
+	)
 	var rig: Skeleton3D = model.character_rig
 	_check(
 		rig != null and rig.find_bone("arm_lower_R_TWIST") >= 0,

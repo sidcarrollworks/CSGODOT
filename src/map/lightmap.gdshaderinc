@@ -10,8 +10,8 @@
 // buys very little on a map of flat walls.
 //
 // A material that uses this turns Godot's ambient light off for itself and
-// adds the result as emission, times its albedo and occlusion: the same
-// place in the equation, by another door.
+// adds the result, times its occlusion, in the light pass, where Godot
+// multiplies it by the albedo as the decals left it (baked_light.gdshaderinc).
 
 uniform sampler2D lightmap_irradiance : hint_default_black, filter_linear_mipmap, repeat_disable;
 uniform sampler2D lightmap_direction : hint_default_white, filter_linear, repeat_disable;
