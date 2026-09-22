@@ -149,12 +149,21 @@ scripts/extract_assets.sh map          # extract it, then import it into Godot
 scripts/extract_assets.sh weapons      # the AK-47 and M4A1-S models
 ```
 
-`map` takes a couple of minutes and a little over a gigabyte. It pulls five
+`map` takes a couple of minutes and a little over a gigabyte. It pulls six
 things out of the game: the visible world as glTF with its textures, the
 collision hull as a second glTF, the entity lump as text, the second texture
-layer of every material that has one (which a glTF has no room for), and the
-sky as an HDR panorama. `physics`, `entities`, `layers` and `sky` fetch the
-last four on their own, in seconds.
+layer of every material that has one (which a glTF has no room for), the sky
+as an HDR panorama, and the 3D skybox: the buildings and hills beyond the
+map, a small map of their own. `physics`, `entities`, `layers`, `sky` and
+`skybox` fetch the last five on their own, in seconds.
+
+`weapons` fetches the AK-47 and M4A1-S with their animations. `characters`
+fetches one player model per side (Phoenix and SAS) with their skeletons and
+first-person arm meshes, and the first-person rifle animations, which in CS2
+are files of their own. `all` does the lot.
+
+`assets/` can live on another drive: make it a junction (`mklink /J`) and
+every script and Godot itself read straight through it.
 
 The script finds everything itself: Source2Viewer-CLI on `PATH` or where the
 release zip unpacks to in Downloads, CS2 by way of Steam's library list (so a

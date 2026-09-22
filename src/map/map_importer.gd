@@ -55,6 +55,8 @@ enum CollisionSource {
 	COLLISION_MESHES_ONLY,
 	## Every mesh, collision-marked or not.
 	ALL_MESHES,
+	## Nothing: scenery that is never reached, such as a 3D skybox.
+	NONE,
 }
 
 ## Where collision comes from when there is no hull at collision_path.
@@ -68,10 +70,11 @@ enum CollisionSource {
 ])
 
 ## Material name fragments to drop entirely, drawn or not. Anything under
-## materials/tools/ or materials/effects/ goes the same way without needing a
-## hint, when the export says where a material came from.
+## materials/tools/ or materials/effects/, or drawn with the sky shader, goes
+## the same way without needing a hint, when the export says so. Not
+## "skybox": a 3D skybox's ground and far buildings are named that.
 @export var skip_material_hints: PackedStringArray = PackedStringArray([
-	"skybox", "skydome", "blocklight",
+	"skydome", "blocklight",
 ])
 
 ## Material name fragments for geometry that is drawn but not solid. Matters
@@ -224,8 +227,12 @@ func import_map() -> Dictionary:
 	var blend := BlendMaterials.apply(visible_meshes, layer_textures_dir)
 
 	var collision_from := "the collision hull"
-	var targets := _hull_meshes()
-	if targets.is_empty():
+	var targets: Array[MeshInstance3D] = []
+	if collision_source == CollisionSource.NONE:
+		collision_from = "nowhere, by request"
+	else:
+		targets = _hull_meshes()
+	if targets.is_empty() and collision_source != CollisionSource.NONE:
 		targets = _collision_targets(collision_meshes, solid_meshes)
 		collision_from = "the visible world"
 		if not collision_meshes.is_empty() and collision_source != CollisionSource.ALL_MESHES:
@@ -389,6 +396,9 @@ func _classify(mesh_instance: MeshInstance3D) -> Kind:
 		var vmat := _vmat(mesh_instance.get_active_material(surface))
 		var vmat_path: String = vmat.get("Name", "")
 		if vmat_path.begins_with("materials/tools/") or vmat_path.begins_with("materials/effects/"):
+			return Kind.SKIPPED
+		# A sky dome would hide the real sky.
+		if String(vmat.get("ShaderName", "")).begins_with("sky"):
 			return Kind.SKIPPED
 		var flags: Dictionary = vmat.get("IntParams", {})
 		# The flags arrive as floats.

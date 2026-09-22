@@ -253,6 +253,20 @@ func _test_all_meshes_import() -> void:
 	)
 	importer.queue_free()
 
+	# Scenery: drawn, never collided with, and placed where it is told.
+	var scenery := _make_importer(MapImporter.CollisionSource.NONE)
+	scenery.scale_factor = 16.0
+	scenery.position = Vector3(1000.0, 0.0, 0.0)
+	root.add_child(scenery)
+	_check_equal(scenery.stats.get("collision_bodies", 0), 0, "none mode builds no collision at all")
+	_check_equal(scenery.stats.get("collision_from", ""), "nowhere, by request", "and says so")
+	var bounds: AABB = scenery.stats.get("bounds", AABB())
+	_check(
+		absf(bounds.size.x - FLOOR_SIZE.x * 16.0) < 1.0 and absf(bounds.get_center().x - 1000.0) < 1.0,
+		"scaled and placed like a 3D skybox: %.0f wide, centred at x=%.0f" % [bounds.size.x, bounds.get_center().x]
+	)
+	scenery.queue_free()
+
 
 ## An import shaped like the real thing: metres, a sun, a separate hull. This
 ## is the path dust2 takes, and the one where a scale applied twice, or not at
@@ -400,6 +414,12 @@ func _test_entities() -> void:
 			"Source yaw is turned half way round (%s, %s)"
 				% [spawns["CT"][0]["yaw"], spawns["CT"][1]["yaw"]]
 		)
+	_check(
+		SourceEntities.vector("-8.000000 -308.000000 202.000000").is_equal_approx(Vector3(-8, -308, 202))
+			and SourceEntities.vector("[ 1.5, -2, 3 ]").is_equal_approx(Vector3(1.5, -2, 3))
+			and SourceEntities.vector("nonsense") == Vector3.ZERO,
+		"vectors are read in both forms the game writes them in"
+	)
 	_check(
 		SourceEntities.parse("user://export_fixture/not_there.vents").is_empty(),
 		"a missing entity file is no entities, not an error"

@@ -12,6 +12,7 @@ extends Node3D
 
 const MAP_DIR := "res://assets/maps/de_dust2"
 const COLLISION_DIR := "res://assets/maps/de_dust2_physics"
+const SKYBOX_DIR := "res://assets/maps/de_dust2_skybox"
 
 ## The entity lump and the sky panorama, relative to the directory the world
 ## glTF is in.
@@ -30,6 +31,7 @@ const SKY_FILE := "../../materials/skybox/sky_de_dust2.exr"
 @export var use_bounds_centre_as_spawn: bool = true
 
 var importer: MapImporter
+var skybox: MapImporter
 var player: PlayerBody
 
 ## The map's entity lump, parsed once for whoever needs it.
@@ -72,7 +74,39 @@ func _ready() -> void:
 	print("--- lighting: sun energy %.2f, exposure %.2f, sky from %s, fog %s" % [
 		lighting["sun_energy"], lighting["exposure"], lighting["sky"], "on" if lighting["fog"] else "off",
 	])
+	_build_skybox()
 	_place_player(map_file)
+
+
+## The buildings and horizon beyond the playable map. Source builds them as
+## a separate small map at a sixteenth of the scale, around a sky_camera, and
+## draws that around the player. Scaling it up by sixteen about the camera's
+## position puts the same buildings in the same places, a long way off, with
+## the haze doing the rest. Nothing in it is solid.
+func _build_skybox() -> void:
+	var map_file := MapImporter.find_map_file(SKYBOX_DIR)
+	if map_file.is_empty():
+		return
+	var camera := Vector3.ZERO
+	var scale := 16.0
+	for entity in SourceEntities.parse(
+		ProjectSettings.globalize_path(map_file.get_base_dir().path_join(ENTITIES_FILE))
+	):
+		if entity.get("classname", "") == "sky_camera":
+			camera = SourceEntities.to_game(SourceEntities.vector(entity.get("origin", "")))
+			scale = float(entity.get("scale", "16"))
+			break
+
+	skybox = MapImporter.new()
+	skybox.name = "Skybox"
+	skybox.source_path = map_file
+	skybox.scale_factor = MapImporter.SOURCE2_VIEWER_SCALE * scale
+	skybox.collision_source = MapImporter.CollisionSource.NONE
+	skybox.layer_textures_dir = SKYBOX_DIR
+	skybox.report = false
+	skybox.position = -camera * scale
+	add_child(skybox)
+	print("--- skybox: %d meshes at %.0fx around %s" % [skybox.stats.get("meshes", 0), scale, camera])
 
 
 func _place_player(map_file: String) -> void:

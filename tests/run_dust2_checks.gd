@@ -13,6 +13,7 @@ extends SceneTree
 
 const MAP_DIR := "res://assets/maps/de_dust2"
 const COLLISION_DIR := "res://assets/maps/de_dust2_physics"
+const SKYBOX_DIR := "res://assets/maps/de_dust2_skybox"
 const ENTITIES_FILE := "entities/default_ents.vents"
 
 ## Spawn points float above the floor, the highest on dust2 by 61 units.
@@ -94,6 +95,24 @@ func _import() -> bool:
 		"both teams have spawn points (%d T, %d CT; scripts/extract_assets.sh entities)"
 			% [spawns["T"].size(), spawns["CT"].size()]
 	)
+
+	var skybox_file := MapImporter.find_map_file(SKYBOX_DIR)
+	_check(not skybox_file.is_empty(), "the 3D skybox is there (scripts/extract_assets.sh skybox)")
+	if not skybox_file.is_empty():
+		var skybox := MapImporter.new()
+		skybox.source_path = skybox_file
+		skybox.scale_factor = MapImporter.SOURCE2_VIEWER_SCALE * 16.0
+		skybox.collision_source = MapImporter.CollisionSource.NONE
+		skybox.report = false
+		root.add_child(skybox)
+		var sky_bounds: AABB = skybox.stats.get("bounds", AABB())
+		_check(
+			int(skybox.stats.get("meshes", 0)) > 100 and int(skybox.stats.get("skipped", 0)) < 40
+				and sky_bounds.size.x > bounds.size.x * 3.0,
+			"the skybox is %d meshes (%d hidden), far larger than the map (%.0f across)"
+				% [skybox.stats.get("meshes", 0), skybox.stats.get("skipped", 0), sky_bounds.size.x]
+		)
+		skybox.free()
 
 	var scene: PackedScene = load("res://src/player/player.tscn")
 	for team: String in spawns:
