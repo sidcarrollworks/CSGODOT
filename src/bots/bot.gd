@@ -5,8 +5,8 @@ extends PlayerBody
 ## local player, pushed by a route rather than by keys, and wearing the
 ## third-person model. It walks its route round and round, facing the way it
 ## goes, and can be shot: it wears the model's own hitboxes on its bones,
-## dies where the last round lands, and comes back at the start of its
-## route. It shoots back: when a player is in its sight, in the open and
+## goes limp and falls the way the last round pushed it (a ragdoll), and
+## comes back at the start of its route. It shoots back: when a player is in its sight, in the open and
 ## within its cone for long enough to react, it stops, turns, and fires its
 ## weapon at them in bursts with the weapon's own spread and recoil, and
 ## reloads when it runs dry. It does not flinch, take cover or think.
@@ -54,6 +54,8 @@ var model: PlayerModel
 var hit_target: HitTarget
 ## The model's hitboxes, on its bones.
 var hitboxes: SkinnedHitboxes
+## Its body falling, while it is dead; null otherwise.
+var ragdoll: Ragdoll
 var alive: bool = true
 
 ## What it shoots with, and what it hears of it, in the world.
@@ -69,6 +71,7 @@ signal respawned
 signal fired(shot: Weapon.Shot, result: Hitscan.Result)
 
 var _next: int = 0
+var _capsules: Array[Dictionary] = []
 var _deaths: int = 0
 var _respawn_at_usec: int = 0
 var _seen_for: float = 0.0
@@ -106,10 +109,8 @@ func _ready() -> void:
 	hitboxes = SkinnedHitboxes.new()
 	hitboxes.name = "Hitboxes"
 	add_child(hitboxes)
-	hitboxes.build(
-		model.character_rig, HitboxSet.load_for(PlayerModel.AGENTS.get(team, PlayerModel.AGENTS["T"])),
-		hit_target, MapImporter.SOURCE2_VIEWER_SCALE
-	)
+	_capsules = HitboxSet.load_for(PlayerModel.AGENTS.get(team, PlayerModel.AGENTS["T"]))
+	hitboxes.build(model.character_rig, _capsules, hit_target, MapImporter.SOURCE2_VIEWER_SCALE)
 
 
 func _physics_process(delta: float) -> void:
@@ -234,23 +235,52 @@ func _engage(enemy: Node3D, delta: float) -> void:
 	fired.emit(shot, result)
 
 
-## Dies where the last round landed: the model plays that death and stays
-## down, the hull and the hitboxes go, and the route waits.
+## Dies where the last round landed: the body goes limp and falls, pushed
+## the way the round was going, and stays down; the hull and the hitboxes
+## go, and the route waits. Without the hitbox set to build a ragdoll from,
+## the model plays the game's death clip for where the round landed instead.
 func _on_died() -> void:
 	alive = false
 	_deaths += 1
-	velocity = Vector3.ZERO
 	var zone: StringName = hit_target.last_hitbox.zone if hit_target.last_hitbox != null else &"chest"
-	if model != null:
+	if model != null and not _ragdoll():
 		model.play(PlayerModel.death_for(zone, _deaths), 0.05)
-	if hitboxes != null:
-		hitboxes.set_active(false)
+	velocity = Vector3.ZERO
+	hit_target.set_active(false)
 	collision_layer = 0
 	_respawn_at_usec = Time.get_ticks_usec() + int(respawn_seconds * 1_000_000.0)
 	died.emit(zone)
 
 
-## Back at the start of the route, whole.
+## Hands the skeleton to a ragdoll made from the hitbox capsules. False,
+## with nothing done, when there are none to make it from.
+func _ragdoll() -> bool:
+	if _capsules.is_empty() or model.character_rig == null:
+		return false
+	ragdoll = Ragdoll.new()
+	ragdoll.name = "Ragdoll"
+	add_child(ragdoll)
+	var forward := Vector3(-sin(deg_to_rad(yaw_degrees)), 0.0, -cos(deg_to_rad(yaw_degrees)))
+	var hit_bone := -1
+	if hit_target.last_hitbox != null:
+		hit_bone = hitboxes.bone_of(hit_target.last_hitbox)
+	if ragdoll.build(
+		model.character_rig, _capsules, MapImporter.SOURCE2_VIEWER_SCALE,
+		velocity, forward, hit_target.last_hit_direction, hit_bone
+	) == 0:
+		ragdoll.queue_free()
+		ragdoll = null
+		return false
+	# The animation would pose the bones over the bodies' every frame.
+	model.animation_player.active = false
+	return true
+
+
+func seconds_to_respawn() -> float:
+	return maxf(0.0, float(_respawn_at_usec - Time.get_ticks_usec()) / 1_000_000.0)
+
+
+## Back at the start of the route, whole; without a route, where it fell.
 func respawn() -> void:
 	alive = true
 	hit_target.reset()
@@ -260,12 +290,17 @@ func respawn() -> void:
 	_seen_for = 0.0
 	target = null
 	collision_layer = 2
-	if hitboxes != null:
-		hitboxes.set_active(true)
+	hit_target.set_active(true)
 	if not route.is_empty():
 		global_position = route[0]
 		_next = 1 % route.size()
 	velocity = Vector3.ZERO
+	if ragdoll != null:
+		ragdoll.queue_free()
+		ragdoll = null
+		if model != null:
+			model.character_rig.reset_bone_poses()
+			model.animation_player.active = true
 	if model != null:
 		model.play(model.idle)
 	respawned.emit()

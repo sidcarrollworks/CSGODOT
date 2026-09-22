@@ -64,6 +64,14 @@ func clear() -> void:
 	_entries.clear()
 
 
+## The skeleton's bone a hitbox rides, or -1 for one that is not here.
+func bone_of(hitbox: Hitbox) -> int:
+	for entry in _entries:
+		if entry["hitbox"] == hitbox:
+			return entry["bone"]
+	return -1
+
+
 ## Turns the hitboxes on or off together: off, a body cannot be shot.
 func set_active(active: bool) -> void:
 	for hitbox in hitboxes:

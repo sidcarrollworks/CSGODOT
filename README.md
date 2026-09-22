@@ -78,20 +78,47 @@ Everything on it is a measurement, not decoration:
 
 ## The test range
 
-`maps/test_range/test_range.tscn`. A flat wall 512 units away to spray at, and
-a dummy at 1024 units with head, chest, stomach and leg hitboxes to check
-damage against.
+`maps/test_range/test_range.tscn`. A flat wall 512 units away to spray at,
+ruled in degrees, and beside it a lane with a dummy in it to check damage
+against.
 
 | Key | |
 |---|---|
 | `1` / `2` | AK-47 / M4A1-S |
 | `R` | reload |
 | `P` | export the spray you just fired |
-| `O` | clear the impact markers |
+| `O` | clear the impact markers, the log, and stand the dummy up |
+| `H` | draw or hide the dummy's hitboxes |
+| `K` | the dummy's armour: kevlar and helmet, kevlar, none |
+| `N` | the dummy's distance: 256, 512, 1024, 2048 units |
+| `G` | the dummy never dies: a kill is logged and it is refilled, so a whole spray registers |
 
 Every bullet leaves a mark: dark on the wall, red on the dummy. The readout
 shows the current shot index in the pattern and the size of the inaccuracy cone
 right now, which is the number that moves when you walk, crouch or jump.
+
+**The wall** is ruled at every degree from the spawn's eye, bold every five and
+numbered: up and down from the aim line, left and right from the centre. A
+spray fired from the spawn reads off in degrees, and so does a CS2 spray fired
+at a wall from the same distance (496 units to the wall's face), so the two can
+be compared without knowing either's scale.
+
+**The dummy** is a bot that stands still and does not shoot back: the same
+body and hitboxes the bots on dust2 wear, CS2's nineteen capsules on its bones
+where the characters have been extracted, the four standard boxes where they
+have not. Fire at it from the yellow spot to the right of the spawn, where
+nothing stands between you at any distance. Its hitboxes are drawn over it,
+coloured by zone, and the one a round goes into lights up. Each round shows
+the damage it did beside where it landed (red for the head), and the readout
+at the top right keeps a log: what each round did, to which part, from how
+far, what it carried before the armour, and the health left; and for a kill,
+the damage in how many hits and the time from the first to the last. The readout also says which
+hitboxes it wears, and when they are the stand-in boxes on an extracted
+character, why the game's are missing. It starts
+in kevlar and a helmet, as an opponent in a rifle round would be. Killed, it
+falls as a ragdoll, knocked the way the round was going, and two and a half
+seconds later stands up again where it was, whole. G makes it never die
+instead.
 
 `P` turns the marks you just made back into a spray pattern file in the same
 format the weapons read, so a pattern can be adjusted by eye against a CS2
@@ -202,9 +229,13 @@ route instead of keys, so it moves the way a player does, and it can be
 shot: it wears the game's own hitboxes, the nineteen capsules CS2 defines
 for the model, riding its bones (`src/combat/skinned_hitboxes.gd`), so a
 bullet lands on the head, chest, stomach, an arm or a leg and is priced
-accordingly, ahead of the movement hull, which bullets pass. A kill plays
-one of the game's death clips for where the last round landed, and the bot
-is back at the start of its route a few seconds later. And it shoots back:
+accordingly, ahead of the movement hull, which bullets pass. A kill turns
+the body into a ragdoll (`src/combat/ragdoll.gd`): a rigid body on each bone
+with capsules, shaped by them and jointed in cones, knocked the way the last
+round was going, falling and lying where it lands; the bot is back at the
+start of its route a few seconds later. (CS2's own ragdoll description is
+not extracted yet; the hitbox capsules stand in for its shapes. Without
+them, the game's death clip for where the round landed plays instead.) And it shoots back:
 a player in its sight (in the open, within its cone, for half a second)
 stops it in its tracks; it turns, and fires its weapon in bursts with the
 weapon's own spread and recoil, reloading when it runs dry. You have the

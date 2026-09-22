@@ -13,6 +13,12 @@ signal died
 
 @export var max_health: float = 100.0
 @export var armor: float = 100.0
+## Whether the armour includes a helmet. Kevlar covers the chest, stomach
+## and arms; only a helmet covers the head, and nothing covers the legs.
+@export var helmet: bool = true
+## Takes every round but never dies: a round that would kill leaves it at
+## no health, alive, for whoever is counting to refill.
+@export var immortal: bool = false
 
 ## Off for a target whose hitboxes come from elsewhere; the crude body that
 ## goes with them stays away too, or on its own for a target that has a
@@ -35,22 +41,56 @@ var alive: bool = true
 ## The hitbox the last damage came through, or null: for whoever wants to
 ## know which side was hit.
 var last_hitbox: Hitbox
+## The way the last round that hit was travelling, for a body to fall with
+## it.
+var last_hit_direction: Vector3 = Vector3.ZERO
 
 var _hitboxes: Array[Hitbox] = []
+var _starting_armor: float = 100.0
+var _drawn: bool = false
 
 
 func _ready() -> void:
 	health = max_health
+	_starting_armor = armor
 	if build_own_hitboxes:
-		_build_hitboxes()
-		if build_visual:
-			_build_visual()
+		build_standard_body(build_visual)
+
+
+## The four fixed boxes of a standing player, and the crude body to go with
+## them when visual is on: for a target that has no model to take its
+## hitboxes from.
+func build_standard_body(visual: bool) -> void:
+	_build_hitboxes()
+	if visual:
+		_build_visual()
+
+
+## Puts armour on, or takes it off: what the target has now and what it
+## comes back with after a reset.
+func wear(armor_value: float, with_helmet: bool) -> void:
+	_starting_armor = armor_value
+	armor = armor_value
+	helmet = with_helmet
+
+
+## Draws every hitbox over the body, or stops drawing them.
+func set_hitboxes_drawn(on: bool) -> void:
+	_drawn = on
+	for hitbox in _hitboxes:
+		hitbox.set_drawn(on)
+
+
+func hitboxes_drawn() -> bool:
+	return _drawn
 
 
 ## Takes a hitbox built elsewhere as one of this target's.
 func adopt(hitbox: Hitbox) -> void:
 	hitbox.target = self
 	_hitboxes.append(hitbox)
+	if _drawn:
+		hitbox.set_drawn(true)
 
 
 func _build_hitboxes() -> void:
@@ -70,6 +110,8 @@ func _build_hitboxes() -> void:
 
 		add_child(hitbox)
 		_hitboxes.append(hitbox)
+		if _drawn:
+			hitbox.set_drawn(true)
 
 
 ## A crude body so there is something to aim at. Replaced by a real player
@@ -119,9 +161,7 @@ func apply_damage(amount: float, zone: StringName, armor_penetration: float, hit
 	last_hitbox = hitbox
 
 	var dealt := amount
-	if armor > 0.0 and zone != &"leg":
-		# Legs are not covered by kevlar in CS, which is why leg shots do not
-		# get the armour reduction.
+	if is_armored(zone):
 		dealt = amount * armor_penetration
 		armor = maxf(armor - (amount - dealt) * 0.5, 0.0)
 
@@ -130,12 +170,23 @@ func apply_damage(amount: float, zone: StringName, armor_penetration: float, hit
 
 	if health <= 0.0:
 		health = 0.0
+		if immortal:
+			return dealt
 		alive = false
 		died.emit()
 	return dealt
 
 
+## Whether armour softens a round to this zone. Legs are not covered by
+## kevlar in CS, which is why leg shots do not get the armour reduction, and
+## the head is covered only by a helmet.
+func is_armored(zone: StringName) -> bool:
+	if armor <= 0.0 or zone == &"leg":
+		return false
+	return helmet or zone != &"head"
+
+
 func reset() -> void:
 	health = max_health
-	armor = 100.0
+	armor = _starting_armor
 	alive = true

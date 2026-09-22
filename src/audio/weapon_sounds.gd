@@ -98,8 +98,8 @@ func hit(zone: StringName, target: HitTarget, killed: bool) -> void:
 	if killed and zone != &"head":
 		_play(_hits, "player/bodyshot_kill_01", HIT_DB)
 	elif zone == &"head":
-		_play(_hits, "player/headshot_armor_01" if target.armor > 0.0 else "player/headshot_noarmor_0", HIT_DB)
-	elif target.armor > 0.0 and zone != &"leg":
+		_play(_hits, "player/headshot_armor_01" if target.is_armored(zone) else "player/headshot_noarmor_0", HIT_DB)
+	elif target.is_armored(zone):
 		_play(_hits, "player/kevlar", HIT_DB)
 
 
