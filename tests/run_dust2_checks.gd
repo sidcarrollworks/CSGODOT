@@ -62,6 +62,7 @@ func _import() -> bool:
 	_importer.source_path = map_file
 	_importer.collision_path = MapImporter.find_collision_file(COLLISION_DIR)
 	_importer.scale_factor = MapImporter.SOURCE2_VIEWER_SCALE
+	_importer.layer_textures_dir = MAP_DIR
 	_importer.report = false
 	root.add_child(_importer)
 	var stats := _importer.stats
@@ -77,6 +78,12 @@ func _import() -> bool:
 		"collision comes from the hull (scripts/extract_assets.sh physics)"
 	)
 	_check(stats.has("sun"), "the map's sun came through")
+	var blend: Dictionary = stats.get("blend", {})
+	_check(
+		int(blend.get("materials", 0)) >= 50 and (blend.get("missing", PackedStringArray()) as PackedStringArray).is_empty(),
+		"walls and ground have their second layer (%d blend materials, %d without their textures; scripts/extract_assets.sh layers)"
+			% [blend.get("materials", 0), (blend.get("missing", PackedStringArray()) as PackedStringArray).size()]
+	)
 
 	var entities_path := ProjectSettings.globalize_path(
 		map_file.get_base_dir().path_join(ENTITIES_FILE)

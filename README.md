@@ -144,10 +144,12 @@ scripts/extract_assets.sh map          # extract it, then import it into Godot
 scripts/extract_assets.sh weapons      # the AK-47 and M4A1-S models
 ```
 
-`map` takes a couple of minutes and a little over a gigabyte. It pulls three
-things out of the VPK: the visible world as glTF with its textures, the
-collision hull as a second glTF, and the entity lump as text. `physics` and
-`entities` fetch the last two on their own, in seconds.
+`map` takes a couple of minutes and a little over a gigabyte. It pulls four
+things out of the game: the visible world as glTF with its textures, the
+collision hull as a second glTF, the entity lump as text, and the second
+texture layer of every material that has one, which a glTF has no room for.
+`physics`, `entities` and `layers` fetch the last three on their own, in
+seconds.
 
 The script finds everything itself: Source2Viewer-CLI on `PATH` or where the
 release zip unpacks to in Downloads, CS2 by way of Steam's library list (so a
@@ -174,12 +176,15 @@ That prints the file layout and then the import inventory: mesh counts, the
 bounding box, where collision came from, the spawn points and every distinct
 material name. It is the output to send over when an import is misbehaving.
 
-Two things are put right between extraction and import, both by scripts that
-the commands above run for you. Source 2 Viewer exports overlays and the
-kasbah window insets 15.5 units out along their normals, which leaves signs
-hanging off their walls and windows standing proud of their holes;
-`scripts/fix_export_offsets.gd` moves them back
-(`reference/asset-pipeline.md` has the measurements). And
+Three things are put right between extraction and import, by scripts that
+the commands above run for you (`reference/asset-pipeline.md` has the
+measurements behind each). Source 2 Viewer exports overlays and the kasbah
+window insets 15.5 units out along their normals, which leaves signs hanging
+off their walls and windows standing proud of their holes;
+`scripts/prepare_export.gd` moves them back. The same script keeps the paint
+that says where a wall is plaster and where it is brick, which arrives in a
+vertex attribute Godot would otherwise drop; with that and the second layers,
+`src/map/blend_materials.gd` mixes the two the way the game does. And
 extracted textures are imported VRAM-compressed with mipmaps, which Godot
 does not do by itself for textures it only ever meets headless:
 `scripts/write_import_settings.gd` sets that up before each import. It is the

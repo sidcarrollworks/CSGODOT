@@ -43,6 +43,7 @@ func _process(_delta: float) -> bool:
 	importer.source_path = map_file
 	importer.collision_path = MapImporter.find_collision_file(COLLISION_DIR)
 	importer.scale_factor = MapImporter.SOURCE2_VIEWER_SCALE
+	importer.layer_textures_dir = MAP_DIR
 	importer.report = true
 	root.add_child(importer)
 

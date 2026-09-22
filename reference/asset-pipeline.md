@@ -71,6 +71,34 @@ What dust2 turned out to be:
   `csgo_static_overlay` shader; nothing else on the map was displaced. Worth
   reporting upstream, and worth re-measuring after a Source 2 Viewer update:
   if they fix it, this would over-correct.
+- **Most walls and ground are two layers, and a glTF carries one.** 60 of
+  dust2's materials are `csgo_lightmappedgeneric` with `F_LAYERS`: two sets of
+  textures mixed by a weight painted on the vertices and broken up by a mask,
+  so plaster gives way to brick along a ragged edge. The export has the first
+  layer only, which made every kasbah wall its rough layer from end to end
+  and every change of ground a straight line. Three things put it back:
+  - `scripts/extract_assets.sh layers` fetches the 72 textures the glTF had no
+    slot for (second-layer colour, second-layer normal with roughness in its
+    alpha, and the blend mask), reading their names out of the material
+    descriptions the export keeps in each material's extras. A raw decompile
+    of a normal texture is identical, channel for channel, to what the glTF
+    export writes for layer 1, so they need no conversion.
+  - The paint is a float VEC4 vertex attribute, `_TEXCOORD_4`, which Godot's
+    importer silently drops: it looks up the names it knows. Renamed to
+    `COLOR_0` (`src/map/export_paint_channel.gd`) it arrives as vertex colour,
+    bit for bit: every one of the 16.6 million components is an exact multiple
+    of 1/255, and Godot stores vertex colour as 8 bits a channel with no sRGB
+    conversion. The first component is the weight; the other three are equal
+    to each other, differ from the first on 13% of vertices, and are not used
+    by this shader.
+  - `src/map/blend_material.gdshader` follows Source 2 Viewer's implementation
+    of the same shader (`complex.frag.slang`, `ApplyBlendModulation`): weight
+    from the paint's first component, mask from the blend texture's green,
+    `smoothstep` between mask minus and plus a softness that comes from the
+    mask's red (`F_FANCY_BLENDING` 1) or from `g_flBlendSoftness` (2), a
+    weight of one being all layer 2, normals mixed as texels. The tinted band
+    along the edge (`g_flLayerBorder*`) is not in their implementation, so
+    ours is a reading of the parameter names and nothing better.
 - **Textures need telling.** Godot imports them lossless with no mipmaps
   unless it sees them drawn in the editor, which never happens for a map built
   at runtime. `scripts/write_import_settings.gd` writes the import settings
