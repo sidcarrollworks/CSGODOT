@@ -47,6 +47,8 @@ func _init() -> void:
 		"walking, crouching, standing and being in the air each have their own"
 	)
 
+	_test_view_model_motion()
+
 	var weapons := _find(WEAPONS_DIR, "weapon_rif_")
 	var agents := _find(CHARACTERS_DIR.path_join("agents"), "")
 	var clips := _find(CHARACTERS_DIR.path_join("animation/anims"), "")
@@ -191,6 +193,50 @@ func _process(_delta: float) -> bool:
 	return true
 
 
+## The bob and sway need no assets: a clock, a speed and a look.
+func _test_view_model_motion() -> void:
+	_check(
+		ViewModelMotion.bob_at(0.37, 0.0) == Vector2.ZERO
+			and ViewModelMotion.bob_at(0.0, 320.0).is_equal_approx(Vector2(0.96 * 0.3, 1.6 * 0.3)),
+		"standing still there is no bob; at full speed it starts at three tenths of its amounts"
+	)
+	var peak := ViewModelMotion.bob_at(ViewModelMotion.BOB_CYCLE * ViewModelMotion.BOB_UP * 0.5, 320.0)
+	var trough := ViewModelMotion.bob_at(ViewModelMotion.BOB_CYCLE * (ViewModelMotion.BOB_UP + (1.0 - ViewModelMotion.BOB_UP) * 0.5), 320.0)
+	_check(
+		is_equal_approx(peak.x, 0.96) and is_equal_approx(trough.x, -0.96 * 0.4)
+			and is_equal_approx(peak.y, 1.6 * 0.3 + 1.6 * 0.7 * sin(PI * 0.25)),
+		"the vertical bob peaks a quarter cycle in and troughs at three quarters; the lateral runs at half the rate"
+	)
+
+	var motion := ViewModelMotion.new()
+	var still := motion.update(1.0 / 60.0, Vector3.ZERO, true, Vector2(90.0, 0.0))
+	_check(
+		still.origin.is_zero_approx() and still.basis.is_equal_approx(Basis.IDENTITY),
+		"standing still and looking steadily, the weapon is where the clip put it"
+	)
+	var running := Transform3D.IDENTITY
+	for frame in 30:
+		running = motion.update(1.0 / 60.0, Vector3(0.0, 0.0, -250.0), true, Vector2(90.0, 0.0))
+	_check(
+		running.origin.z > 1.0 and running.origin.y < 0.0 and absf(running.origin.x) <= 1.6 * 0.8 + 0.001,
+		"running settles the weapon back and down, and bobs it sideways within its amount (%s)" % running.origin
+	)
+	var airborne := motion.update(1.0 / 60.0, Vector3(0.0, 0.0, -250.0), false, Vector2(90.0, 0.0))
+	_check(
+		is_zero_approx(motion.vertical_bob) and airborne.origin.z < 0.001,
+		"in the air there is no bob and nothing to settle"
+	)
+	var turned := motion.update(1.0 / 60.0, Vector3.ZERO, true, Vector2(95.0, 0.0))
+	_check(
+		motion.sway.x < 0.0 and motion.sway.x >= -ViewModelMotion.SWAY_MAX
+			and turned.basis.get_euler().y < 0.0,
+		"turning left, the weapon lags to the right, within its limit (%.2f degrees)" % motion.sway.x
+	)
+	for frame in 120:
+		motion.update(1.0 / 60.0, Vector3.ZERO, true, Vector2(95.0, 0.0))
+	_check(absf(motion.sway.x) < 0.01, "and settles back once the turn stops")
+
+
 func _test_player_model() -> void:
 	var model := _player_model
 	if model == null:
@@ -233,6 +279,25 @@ func _test_player_model() -> void:
 	)
 	model.update_motion(Vector3(-100, 0, 0), 180.0, false, true)
 	_check(animations.current_animation == &"walk_e", "sidestepping to the right at walking pace plays walk_e (%s)" % animations.current_animation)
+
+	# The first-person body: the head and arms folded away, and staying so
+	# under the clips, which animate every bone's scale.
+	model.update_motion(Vector3.ZERO, 180.0, false, true)
+	model.fold_bones(PackedStringArray(["head_0", "arm_upper_L"]))
+	var folded_head := rig.get_bone_pose_scale(rig.find_bone("head_0"))
+	var idle: Animation = animations.get_animation(&"idle")
+	var head_scale_tracks := 0
+	var head_tracks := 0
+	for track in idle.get_track_count():
+		if String(idle.track_get_path(track).get_subname(0)) == "head_0":
+			head_tracks += 1
+			head_scale_tracks += 1 if idle.track_get_type(track) == Animation.TYPE_SCALE_3D else 0
+	_check(
+		folded_head.is_equal_approx(Vector3.ONE * RigModel.FOLDED)
+			and head_scale_tracks == 0 and head_tracks > 0
+			and animations.current_animation == &"idle" and animations.is_playing(),
+		"folding a bone shrinks it to nothing and takes its scale track, and only that, out of the clips, which keep playing"
+	)
 	model.free()
 	_player_model = null
 

@@ -18,10 +18,13 @@ extends PlayerBody
 ## alone. Cosmetic in full; it changes nothing about aim or bullets.
 @export var viewmodel: Node3D
 
-## The weapon model's rest orientation, captured on the first frame so the
-## recoil can be applied relative to however it was posed in the scene.
-var _viewmodel_rest := Basis.IDENTITY
+## The weapon model's rest pose, captured on the first frame so the recoil,
+## bob and sway can be applied relative to however it was posed in the scene.
+var _viewmodel_rest := Transform3D.IDENTITY
 var _viewmodel_rest_captured := false
+
+## The bob of walking and the lag of turning, on the weapon model.
+var viewmodel_motion := ViewModelMotion.new()
 
 var input := PlayerInput.new()
 
@@ -35,6 +38,22 @@ var weapon: Weapon
 ## the models are there.
 var view_model: ViewModel
 var view_model_overlay: ViewModelOverlay
+
+## Your own body, seen when you look down: the third-person model without
+## its head and arms, walking the same clips as a bot's. It stands in the
+## world and casts your shadow.
+var body_model: PlayerModel
+
+## What the camera must not see of the body: the head it sits inside, and
+## the arms the view model stands in for. Folding the upper arms folds the
+## hands with them.
+const FOLDED_BONES: Array[String] = ["head_0", "neck_0", "arm_upper_L", "arm_upper_R"]
+
+## How far behind the eyes the body stands, in units. The eyes are at the
+## front of the head, over the chest; at zero the collar fills the bottom of
+## the view looking straight ahead. This puts the chest below the view until
+## you look down for it.
+const BODY_SETBACK := 8.0
 
 signal shot_traced(shot: Weapon.Shot, result: Hitscan.Result)
 
@@ -58,6 +77,7 @@ func _ready() -> void:
 		# The view model is drawn by the overlay's camera, not this one.
 		camera.cull_mask &= ~(1 << (ViewModelOverlay.LAYER - 1))
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	_show_body()
 	equip(WeaponLibrary.ak47())
 
 
@@ -81,6 +101,21 @@ func _show_view_model(data: WeaponData) -> void:
 		viewmodel = view_model
 	if view_model.setup(team, data.model_path, data.clip_set):
 		ViewModelOverlay.claim(view_model)
+
+
+## The body, when the models are there. It is top_level like the camera and
+## follows the interpolated position, so it does not step at the tick rate
+## against a camera that does not.
+func _show_body() -> void:
+	body_model = PlayerModel.new()
+	body_model.name = "Body"
+	if not body_model.setup(team, ""):
+		body_model.free()
+		body_model = null
+		return
+	body_model.fold_bones(PackedStringArray(FOLDED_BONES))
+	body_model.top_level = true
+	add_child(body_model)
 
 
 func _find_camera() -> Camera3D:
@@ -162,6 +197,8 @@ func _physics_process(delta: float) -> void:
 
 	simulate(delta)
 	_update_weapon(delta, fire_events)
+	if body_model != null:
+		body_model.update_motion(velocity, input.yaw_degrees, is_ducked, on_ground)
 
 
 ## Fires any shots that happened during the frames since the last tick, at the
@@ -258,7 +295,7 @@ func _current_max_speed() -> float:
 	return speed
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if camera == null:
 		return
 
@@ -271,6 +308,9 @@ func _process(_delta: float) -> void:
 	var interpolated := previous_position.lerp(global_position, alpha)
 
 	camera.global_position = interpolated + Vector3.UP * eye_height()
+	if body_model != null:
+		var yaw := deg_to_rad(input.yaw_degrees)
+		body_model.global_position = interpolated + Vector3(sin(yaw), 0.0, cos(yaw)) * BODY_SETBACK
 	# The recoil punch is added here rather than to the player's own look
 	# angles, so the view kicks while the angles the player is actually
 	# holding stay untouched. It is also deliberately smaller than the spray:
@@ -284,7 +324,7 @@ func _process(_delta: float) -> void:
 
 	if view_model_overlay != null:
 		view_model_overlay.follow(camera)
-	_update_viewmodel()
+	_update_viewmodel(delta)
 
 
 ## Rides the weapon model on the same punch, scaled by viewmodel_recoil.
@@ -292,15 +332,21 @@ func _process(_delta: float) -> void:
 ## The model is a child of the camera, so it already follows the view kick.
 ## This is the extra movement on top: the gun climbing in the hands relative
 ## to the screen, which is most of what reads as recoil.
-func _update_viewmodel() -> void:
+func _update_viewmodel(delta: float) -> void:
 	if viewmodel == null or weapon == null:
 		return
 	if not _viewmodel_rest_captured:
-		_viewmodel_rest = viewmodel.transform.basis
+		_viewmodel_rest = viewmodel.transform
 		_viewmodel_rest_captured = true
 
+	# The bob and sway move the model in the camera's frame, the kick in the
+	# model's own.
+	var motion := viewmodel_motion.update(
+		delta, velocity, on_ground, Vector2(input.yaw_degrees, input.pitch_degrees)
+	)
 	var kick := weapon.viewmodel_punch()
-	viewmodel.transform.basis = (
-		_viewmodel_rest
-		* Basis.from_euler(Vector3(deg_to_rad(kick.y), deg_to_rad(-kick.x), 0.0))
+	viewmodel.transform = Transform3D(
+		motion.basis * _viewmodel_rest.basis
+			* Basis.from_euler(Vector3(deg_to_rad(kick.y), deg_to_rad(-kick.x), 0.0)),
+		_viewmodel_rest.origin + motion.origin
 	)

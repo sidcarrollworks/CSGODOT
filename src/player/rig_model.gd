@@ -16,6 +16,10 @@ extends Node3D
 ## to a bone the rig has not got is pulled towards the origin. Those are
 ## added at adoption, following their nearest present ancestor rigidly.
 
+## A folded bone's scale (fold_bones). Not zero: a zero scale is a
+## degenerate matrix for the skin to chew on.
+const FOLDED := 0.001
+
 var animation_player: AnimationPlayer
 ## The rig the character meshes hang off, and the weapon's, if the clips
 ## carry one.
@@ -87,6 +91,34 @@ func load_clips(clips: PackedStringArray, suffix: String) -> bool:
 	if not animation_player.animation_finished.is_connected(_on_finished):
 		animation_player.animation_finished.connect(_on_finished)
 	return true
+
+
+## Folds bones away to nothing, for the parts of a body the camera must
+## not see: the head the camera sits inside, the arms a view model stands in
+## for. Everything skinned to them, and to their children, gathers at the
+## joint, inside the body and out of sight.
+##
+## Every clip carries a scale track for every bone and would put the scale
+## back each frame, so this model gets copies of the clips without those
+## tracks; the clips themselves are shared with every other model.
+func fold_bones(bone_names: PackedStringArray) -> void:
+	if animation_player == null or character_rig == null:
+		return
+	var library := animation_player.get_animation_library(&"")
+	for clip_name in library.get_animation_list():
+		var copy := library.get_animation(clip_name).duplicate() as Animation
+		for track in range(copy.get_track_count() - 1, -1, -1):
+			if copy.track_get_type(track) == Animation.TYPE_SCALE_3D 					and String(copy.track_get_path(track).get_subname(0)) in bone_names:
+				copy.remove_track(track)
+		library.remove_animation(clip_name)
+		library.add_animation(clip_name, copy)
+	for bone_name in bone_names:
+		var index := character_rig.find_bone(bone_name)
+		if index >= 0:
+			character_rig.set_bone_pose_scale(index, Vector3.ONE * FOLDED)
+	# Swapping the clips under a playing animation stops it.
+	if idle != &"":
+		play(idle)
 
 
 ## Plays a clip by its short name. Unknown names go to idle, and so does

@@ -180,7 +180,14 @@ weapon's meshes on the rigs the clips animate, and
 `src/player/view_model_overlay.gd` draws them through a camera of their own
 at CS2's `viewmodel_fov`, over the world, so they neither stretch at the
 edges nor poke through walls. Without the models extracted there are simply
-no arms, and everything else works.
+no arms, and everything else works. On top of the clips, the weapon bobs as
+you walk and run, settles lower into the hands at speed, and lags a little
+behind a turn (`src/player/view_model_motion.gd`): the bob in Source's own
+shape, the amounts set by eye against CS2. Look down and your own body is
+there, chest and legs, walking the same clips as a bot's, with your shadow
+on the ground: the third-person model with its head and arms folded away
+(`RigModel.fold_bones`), since the camera sits inside the one and the view
+model stands in for the others.
 
 Other players are the same agents seen from outside (`src/player/player_model.gd`):
 the body on the third-person rig, the weapon in its hand, and the locomotion
