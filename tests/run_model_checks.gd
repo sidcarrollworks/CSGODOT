@@ -181,6 +181,11 @@ func _process(_delta: float) -> bool:
 				and (mesh as MeshInstance3D).cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
 			on_layer += 1
 	_check(arms == 2 and weapon >= 1, "the arm meshes and the weapon are on the rigs (%d arms, %d weapon)" % [arms, weapon])
+	_check(
+		_view_model.find_children("*empty_mesh_reference", "MeshInstance3D", true, false).is_empty()
+			and _player_model.find_children("*empty_mesh_reference", "MeshInstance3D", true, false).is_empty(),
+		"the skeletons' placeholder meshes, which drew as white specks on the bones, are gone"
+	)
 	_check(on_layer == meshes.size(), "and every mesh draws with the view model's projection, casting no shadow")
 
 	var arm_rig: Skeleton3D = _view_model.character_rig
