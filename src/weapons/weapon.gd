@@ -66,6 +66,9 @@ var reserve: int = 0
 ## Seeds the per-shot spread. Same seed and shot index give the same offset.
 var spray_seed: int = 1
 
+var _view := WeaponData.Punch.new()
+var _model := WeaponData.Punch.new()
+
 ## Where the recoil has pushed the VIEW, in degrees, as (right, up).
 ##
 ## The player's own look angles are never touched by recoil. The camera adds
@@ -73,12 +76,16 @@ var spray_seed: int = 1
 ## to exactly where the player was pointing rather than somewhere near it.
 ##
 ## This does NOT decide where bullets go. See fire().
-var aim_punch: Vector2 = Vector2.ZERO
+var aim_punch: Vector2:
+	get: return _view.value
+	set(to): _view.value = to
 
-## The punch angle's own velocity. A shot pushes this rather than pushing the
+## The punch angle's own velocity. A round pushes this rather than pushing the
 ## angle, so the view rises into a kick over a few ticks instead of teleporting
-## to it, and the spring below brings it back.
-var aim_punch_velocity: Vector2 = Vector2.ZERO
+## to it, and the spring brings it back.
+var aim_punch_velocity: Vector2:
+	get: return _view.velocity
+	set(to): _view.velocity = to
 
 var _last_shot_usec: int = -1_000_000_000
 var _shot_index: int = 0
@@ -128,48 +135,18 @@ func update(dt: float, now_usec: int) -> void:
 	_decay_inaccuracy(dt)
 
 
-## Source's DecayPunchAngle: the punch angle carries its own velocity, which
-## is damped, and a spring pulls the angle back toward zero.
+## Runs both punch springs forward: the camera's, which settles slowly enough
+## that the crosshair climbs with a spray, and the weapon model's, which
+## settles in the few hundred milliseconds measured off CS2.
 ##
-## Running every tick, including while firing, is deliberate. The old code
-## only decayed between shots, which is what made the view snap up to each
-## bullet and then sag. A spring that is always acting gives the rise and the
-## settle that CS actually has.
-##
-## Substepped rather than clamped. The spring is stiff enough on a fast
-## weapon that a single long frame would integrate it into a growing
-## oscillation; stepping at the simulation rate the constants were derived
-## for makes the result the same whatever the caller's frame length is.
+## Running them every tick, including while firing, is deliberate. The old
+## code only decayed between rounds, which is what made the view snap up to
+## each bullet and then sag.
 func _decay_punch(dt: float) -> void:
-	if aim_punch.length_squared() < 1e-10 \
-			and aim_punch_velocity.length_squared() < 1e-10:
-		aim_punch = Vector2.ZERO
-		aim_punch_velocity = Vector2.ZERO
-		return
-
-	var damping := data.punch_damping()
-	var spring := data.punch_spring()
-	var remaining := dt
-	while remaining > 0.0:
-		var step := minf(remaining, PUNCH_MAX_STEP)
-		var half := step * 0.5
-		# Leapfrog: half a step of spring and damping, a whole step of
-		# movement at that mid-step velocity, then the other half. Moving on
-		# the end-of-step velocity instead biases the kick upward by half a
-		# tick of it, which is small on a slow spring and not small on a fast
-		# one, so the same weapon would throw the view further just for
-		# settling sooner.
-		#
-		# exp() rather than (1 - damping * step) for the same reason: the
-		# linear form takes more out of the velocity than the damping it
-		# stands for would, which cut the kick short of the measurement it is
-		# derived from.
-		aim_punch_velocity *= exp(-damping * half)
-		aim_punch_velocity -= aim_punch * spring * half
-		aim_punch += aim_punch_velocity * step
-		aim_punch_velocity -= aim_punch * spring * half
-		aim_punch_velocity *= exp(-damping * half)
-		remaining -= step
+	_view.advance(dt, data.punch_damping(), data.punch_spring(), PUNCH_MAX_STEP)
+	_model.advance(
+		dt, data.model_punch_damping(), data.model_punch_spring(), PUNCH_MAX_STEP
+	)
 
 
 ## The accuracy penalty decays exponentially toward zero and snaps to it once
@@ -197,6 +174,13 @@ func is_accuracy_reset() -> bool:
 	return _inaccuracy <= 0.0
 
 
+## Where the recoil has pushed the WEAPON MODEL, in degrees, before
+## viewmodel_recoil scales it. Its own spring, settling in the few hundred
+## milliseconds measured off CS2 rather than the camera's couple of seconds.
+var model_punch: Vector2:
+	get: return _model.value
+
+
 ## Where the weapon model should be pushed to, in degrees, over and above the
 ## camera it already hangs from. Cosmetic only: it moves the gun in the
 ## player's hands and changes nothing about aim or bullets.
@@ -205,8 +189,8 @@ func is_accuracy_reset() -> bool:
 ## wandering off the middle of the screen.
 func viewmodel_punch() -> Vector2:
 	return Vector2(
-		aim_punch.x * data.viewmodel_recoil * data.viewmodel_sway,
-		aim_punch.y * data.viewmodel_recoil
+		_model.value.x * data.viewmodel_recoil * data.viewmodel_sway,
+		_model.value.y * data.viewmodel_recoil
 	)
 
 
@@ -301,7 +285,8 @@ func fire(
 	shot.base_yaw = yaw_degrees
 	shot.base_pitch = pitch_degrees
 
-	aim_punch_velocity += punch * data.punch_impulse_scale()
+	_view.kick(punch * data.punch_impulse_scale())
+	_model.kick(punch * data.model_punch_impulse_scale())
 	_inaccuracy += data.inaccuracy_per_shot
 	_shot_index += 1
 	_last_shot_usec = now_usec

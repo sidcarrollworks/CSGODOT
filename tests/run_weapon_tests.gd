@@ -39,12 +39,13 @@ func _process(_delta: float) -> bool:
 		_test_the_solver_agrees_with_the_weapon()
 		_test_view_rises_rather_than_teleporting()
 		_test_viewmodel_follows_the_view()
+		_test_the_camera_settles_long_after_the_model()
 		_test_the_model_moves_less_than_the_view()
 		_test_a_single_tap_kicks_the_view()
 		_test_animation_lasts_as_long_as_measured()
 		_test_accuracy_resets_as_slowly_as_measured()
 		_test_the_gun_looks_ready_before_it_is()
-		_test_spray_peak_survives_a_faster_animation()
+		_test_spray_peak_survives_a_faster_camera()
 		_test_punch_is_the_same_at_any_frame_length()
 		_test_inaccuracy_by_state()
 		_test_damage_falloff()
@@ -207,8 +208,9 @@ func _test_recoil_recovers() -> void:
 	)
 	_check(weapon.shot_index() == 6, "six shots into the pattern")
 
-	# Let go of the trigger and wait.
-	for tick in 512:
+	# Let go of the trigger and wait. The camera's spring settles over about
+	# two seconds, so this is a little over three of them.
+	for tick in 800:
 		now += int(DT * SECOND)
 		weapon.update(DT, now)
 
@@ -504,8 +506,8 @@ func _test_view_rises_rather_than_teleporting() -> void:
 	)
 
 
-## The weapon model rides the same punch, scaled per axis, and changes
-## nothing else.
+## The weapon model rides its own punch, scaled per axis, and changes nothing
+## else.
 func _test_viewmodel_follows_the_view() -> void:
 	var data := WeaponLibrary.ak47()
 	data.viewmodel_recoil = 2.0
@@ -520,16 +522,16 @@ func _test_viewmodel_follows_the_view() -> void:
 		weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, state)
 
 	_check(
-		weapon.aim_punch.length() > 0.1,
-		"the view has kicked, so there is something to follow (%.2f degrees)"
-			% weapon.aim_punch.length()
+		weapon.model_punch.length() > 0.1,
+		"the model has kicked, so there is something to follow (%.2f degrees)"
+			% weapon.model_punch.length()
 	)
 	_check(
-		is_equal_approx(weapon.viewmodel_punch().y, weapon.aim_punch.y * 2.0),
-		"the weapon model climbs by viewmodel_recoil times the view punch"
+		is_equal_approx(weapon.viewmodel_punch().y, weapon.model_punch.y * 2.0),
+		"the weapon model climbs by viewmodel_recoil times its own punch"
 	)
 	_check(
-		is_equal_approx(weapon.viewmodel_punch().x, weapon.aim_punch.x * 1.0),
+		is_equal_approx(weapon.viewmodel_punch().x, weapon.model_punch.x * 1.0),
 		"and sways by viewmodel_sway times that again"
 	)
 
@@ -538,6 +540,47 @@ func _test_viewmodel_follows_the_view() -> void:
 		weapon.viewmodel_punch() == Vector2.ZERO,
 		"and holds still when viewmodel_recoil is zero"
 	)
+
+
+## The camera and the weapon model are separate springs on purpose, and the
+## camera's is the slow one. Driving both off the model's measured time made
+## the crosshair reach its full height within a couple of rounds and sit
+## there, when it should climb with the spray.
+func _test_the_camera_settles_long_after_the_model() -> void:
+	for data in [WeaponLibrary.ak47(), WeaponLibrary.m4a1s()]:
+		var weapon := Weapon.new(data)
+		var now := int(SECOND)
+		weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, _standing())
+
+		var view_peak := 0.0
+		var view_samples: Array[float] = []
+		for tick in 1024:
+			now += int(DT * SECOND)
+			weapon.update(DT, now)
+			var size := weapon.aim_punch.length()
+			view_peak = maxf(view_peak, size)
+			view_samples.append(size)
+
+		var settled := 0.0
+		for i in range(view_samples.size() - 1, -1, -1):
+			if view_samples[i] >= view_peak * WeaponData.SETTLE_FRACTION:
+				settled = float(i + 1) * DT
+				break
+
+		_check(
+			absf(settled - data.view_punch_recovery_time) < 0.03,
+			"%s camera settles in view_punch_recovery_time, %.0f ms (%.0f ms)"
+				% [
+					data.display_name,
+					data.view_punch_recovery_time * 1000.0,
+					settled * 1000.0
+				]
+		)
+		_check(
+			settled > _settle(data)[0] * 2.0,
+			"%s camera is still moving long after the gun has stopped (%.0f ms against %.0f ms)"
+				% [data.display_name, settled * 1000.0, _settle(data)[0] * 1000.0]
+		)
 
 
 ## Sid, 2026-09-22: the weapon model "looks like it's teleporting". It hangs
@@ -588,8 +631,9 @@ func _test_the_model_moves_less_than_the_view() -> void:
 # cannot be trusted as a readout.
 
 
-## How long after a single shot the view punch is still visibly moving, and
-## how far it got, both in one pass.
+## How long after a single round the WEAPON MODEL's punch is still visibly
+## moving, and how far it got, both in one pass. That is what Sid measured off
+## CS2; the camera is a separate, much slower spring.
 func _settle(data: WeaponData) -> Array:
 	var weapon := Weapon.new(data)
 	var now := int(SECOND)
@@ -600,7 +644,7 @@ func _settle(data: WeaponData) -> Array:
 	for tick in 1024:
 		now += int(DT * SECOND)
 		weapon.update(DT, now)
-		var size := weapon.aim_punch.length()
+		var size := weapon.model_punch.length()
 		peak = maxf(peak, size)
 		samples.append(size)
 
@@ -683,21 +727,21 @@ func _test_the_gun_looks_ready_before_it_is() -> void:
 		)
 
 
-## Re-measuring how long the kick lasts must not quietly change where the
-## crosshair ends up over a spray, which is the thing that was observed.
+## Changing how long the crosshair takes to settle must not quietly change
+## where it gets to over a spray, which is the thing that was observed.
 ##
 ## A faster spring stacks the rounds up less, so the solver raises the
 ## per-round kick to compensate. That is the point of solving it.
-func _test_spray_peak_survives_a_faster_animation() -> void:
+func _test_spray_peak_survives_a_faster_camera() -> void:
 	var slow := WeaponLibrary.ak47()
 	var fast := WeaponLibrary.ak47()
-	fast.recoil_animation_time = slow.recoil_animation_time * 0.5
+	fast.view_punch_recovery_time = slow.view_punch_recovery_time * 0.5
 
 	var slow_peak: float = slow.spray_peak_per_degree() * slow.view_kick_up()
 	var fast_peak: float = fast.spray_peak_per_degree() * fast.view_kick_up()
 	_check(
 		absf(fast_peak - slow_peak) < slow_peak * 0.02,
-		"halving the animation leaves the spray's peak alone (%.3f against %.3f degrees)"
+		"halving the camera's recovery leaves the spray's peak alone (%.3f against %.3f degrees)"
 			% [fast_peak, slow_peak]
 	)
 	_check(

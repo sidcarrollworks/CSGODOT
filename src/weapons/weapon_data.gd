@@ -27,6 +27,52 @@ const SIMULATION_HZ := 128.0
 
 var _solved_kick_up: float = -1.0
 
+## A punch angle with its own velocity, damped, with a spring pulling it back
+## to zero. Source's DecayPunchAngle.
+##
+## Two of these are in flight at once and they are deliberately different: the
+## camera's settles over about two seconds so the crosshair climbs with a
+## spray, the weapon model's over the few hundred milliseconds that were
+## measured off CS2.
+class Punch:
+	var value := Vector2.ZERO
+	var velocity := Vector2.ZERO
+
+	## A round's kick, as a push on the VELOCITY rather than a jump in the
+	## angle, which is what makes the punch rise into a kick over several
+	## ticks instead of teleporting to it.
+	func kick(impulse: Vector2) -> void:
+		velocity += impulse
+
+	## Runs the spring forward, substepped so the result does not depend on
+	## the caller's frame length.
+	##
+	## Leapfrog: half a step of spring and damping, a whole step of movement
+	## at that mid-step velocity, then the other half. Moving on the
+	## end-of-step velocity instead biases the punch upward by half a tick of
+	## it, which is small on a slow spring and not small on a fast one, so the
+	## same weapon would throw further just for settling sooner.
+	##
+	## exp() rather than (1 - damping * step) for the same reason: the linear
+	## form takes more out of the velocity than the damping it stands for
+	## would, which cut the punch short of the time it is derived from.
+	func advance(dt: float, damping: float, spring: float, max_step: float) -> void:
+		if value.length_squared() < 1e-10 and velocity.length_squared() < 1e-10:
+			value = Vector2.ZERO
+			velocity = Vector2.ZERO
+			return
+		var remaining := dt
+		while remaining > 0.0:
+			var step := minf(remaining, max_step)
+			var half := step * 0.5
+			velocity *= exp(-damping * half)
+			velocity -= value * spring * half
+			value += velocity * step
+			velocity -= value * spring * half
+			velocity *= exp(-damping * half)
+			remaining -= step
+
+
 @export var display_name: String = ""
 
 ## The weapon's model, as extracted by scripts/extract_assets.sh weapons, and
@@ -123,10 +169,12 @@ var _solved_kick_up: float = -1.0
 ## per-round kick is solved from it. Changing the spring, the fire rate or the
 ## pattern therefore moves the kick and leaves this alone.
 ##
-## Sid read half the spray's height off CS2 on 2026-09-22, tried it, and said
-## it was far too high. This is a fifth, which is where it sat in the build he
-## preferred. His reading and his eye disagree, and his eye wins.
-@export_range(0.0, 1.0) var view_kick_spray_peak: float = 0.2
+## Sid read half the spray's height off CS2 on 2026-09-22 and that is what
+## this is. It was tried once at half with the camera on the weapon model's
+## own recovery time, which made it far too high in the hand: the crosshair
+## got there in two rounds and a single tap threw the view five degrees. The
+## reading was right; what was wrong was how quickly the view got there.
+@export_range(0.0, 1.0) var view_kick_spray_peak: float = 0.5
 
 ## How far the view is kicked sideways each round, against how far up.
 ##
@@ -136,20 +184,35 @@ var _solved_kick_up: float = -1.0
 ## decides how far, so it stays small however far the pattern wanders.
 @export_range(0.0, 1.0) var view_kick_side_ratio: float = 0.2
 
-## How long the visual recoil takes to settle after a shot, in seconds.
+## How long the WEAPON MODEL's recoil takes to settle after a round, in
+## seconds.
 ##
 ## MEASURED, from Sid's frame-by-frame capture of CS2: the weapon model is
 ## tracked away from its resting position and this is where that movement
-## levels off. AK-47 644 +- 5 ms, M4A1-S 353 +- 5 ms.
+## levels off. AK-47 644 +- 5 ms, M4A1-S 353 +- 5 ms. "Settled" means down to
+## SETTLE_FRACTION of the kick's own peak.
 ##
-## This is the only knob for how long the kick lasts. The spring and the
-## damping below are derived from it, so changing it moves the whole
-## animation rather than requiring two constants to be re-balanced by hand.
-## "Settled" means down to SETTLE_FRACTION of the kick's own peak.
+## The camera is a separate system with a separate, much longer recovery: see
+## view_punch_recovery_time. Driving both off this number was a mistake worth
+## not repeating. It made the crosshair reach its full height within two or
+## three rounds and sit there, when it should climb with the spray, and it
+## forced the per-round kick so high that a single tap threw the view five
+## degrees.
 ##
-## Note what it is NOT: the time the weapon takes to become accurate again.
-## Those are separate in CS2 and separate here. See accuracy_reset_time.
+## Nor is it the time the weapon takes to become accurate again: see
+## accuracy_reset_time.
 @export var recoil_animation_time: float = 0.644
+
+## How long the CAMERA's recoil takes to settle after a round, in seconds.
+##
+## Not measured, and much longer than the weapon model's. It has to be: the
+## crosshair should climb with the spray over a magazine rather than reach its
+## height in the first few rounds, and that only happens if a round's kick is
+## still there when the next few land.
+##
+## Sid, 2026-09-22: "the crosshair still needs to move up about halfway as the
+## shots go up. It maxes out about 3 shots up."
+@export var view_punch_recovery_time: float = 1.9
 
 ## How the kick is shaped, against how long it lasts.
 ##
@@ -208,7 +271,7 @@ var _solved_kick_up: float = -1.0
 @export var inaccuracy_speed_threshold: float = 55.0
 
 
-## How high the punch peaks, against the velocity a shot gives it and the
+## How high a punch peaks, against the velocity a shot gives it and the
 ## spring's frequency: peak = impulse / frequency * this. Depends only on the
 ## damping ratio.
 func punch_peak_ratio() -> float:
@@ -217,42 +280,64 @@ func punch_peak_ratio() -> float:
 	return exp(-z * atan(ringing / z) / ringing)
 
 
-## The spring's undamped frequency, in radians per second.
+## A spring's undamped frequency, in radians per second, for a punch that
+## should be down to SETTLE_FRACTION of its own peak after `recovery`.
 ##
-## Derived so the punch is down to SETTLE_FRACTION of its own peak after
-## exactly recoil_animation_time. A damped spring's impulse response decays
-## inside an exp(-zeta*w*t) envelope, so zeta*w is what the measurement fixes;
-## the peak term is there because the peak is reached some way into the
-## response, well below where the envelope starts.
-func punch_frequency() -> float:
+## A damped spring's impulse response decays inside an exp(-zeta*w*t)
+## envelope, so zeta*w is what the recovery time fixes; the peak term is there
+## because the peak is reached some way into the response, well below where
+## the envelope starts.
+func punch_frequency_for(recovery: float) -> float:
 	var z := _damping_ratio()
 	var ringing := sqrt(1.0 - z * z)
 	var peak := ringing * punch_peak_ratio()
-	return -log(SETTLE_FRACTION * peak) / maxf(
-		z * recoil_animation_time, 0.0001
-	)
+	return -log(SETTLE_FRACTION * peak) / maxf(z * recovery, 0.0001)
 
 
-## Viscous damping on the punch velocity, per second.
-func punch_damping() -> float:
-	return 2.0 * _damping_ratio() * punch_frequency()
+func punch_damping_for(recovery: float) -> float:
+	return 2.0 * _damping_ratio() * punch_frequency_for(recovery)
 
 
-## Torsional spring pulling the view back to where the player is pointing.
-func punch_spring() -> float:
-	var w := punch_frequency()
+func punch_spring_for(recovery: float) -> float:
+	var w := punch_frequency_for(recovery)
 	return w * w
 
 
-## What a shot adds to the punch VELOCITY, per degree of view kick asked for.
+## What a round adds to a punch's VELOCITY, per degree of kick asked for.
 ##
-## Normalised against the spring, so the punch peaks at exactly the kick it
-## was given and re-measuring recoil_animation_time changes how long the view
-## moves without changing how far. Source's ViewPunch pushes the punch
-## VELOCITY rather than the angle, which is what makes the view rise into a
-## kick instead of teleporting to it; this is that push.
+## Normalised against the spring, so one round's punch peaks at exactly the
+## kick it was given and changing a recovery time moves how long that punch
+## lasts without moving how far it throws. Source's ViewPunch pushes the punch
+## VELOCITY rather than the angle, which is what makes it rise into a kick
+## instead of teleporting to it; this is that push.
+func punch_impulse_scale_for(recovery: float) -> float:
+	return punch_frequency_for(recovery) / punch_peak_ratio()
+
+
+## The camera's spring.
+func punch_damping() -> float:
+	return punch_damping_for(view_punch_recovery_time)
+
+
+func punch_spring() -> float:
+	return punch_spring_for(view_punch_recovery_time)
+
+
 func punch_impulse_scale() -> float:
-	return punch_frequency() / punch_peak_ratio()
+	return punch_impulse_scale_for(view_punch_recovery_time)
+
+
+## The weapon model's own spring, which settles far sooner than the camera's.
+func model_punch_damping() -> float:
+	return punch_damping_for(recoil_animation_time)
+
+
+func model_punch_spring() -> float:
+	return punch_spring_for(recoil_animation_time)
+
+
+func model_punch_impulse_scale() -> float:
+	return punch_impulse_scale_for(recoil_animation_time)
 
 
 func _damping_ratio() -> float:
@@ -316,23 +401,16 @@ func spray_peak_per_degree() -> float:
 	var spring := punch_spring()
 	var impulse := punch_impulse_scale()
 	var tick := 1.0 / SIMULATION_HZ
-	var punch := 0.0
-	var velocity := 0.0
+	var punch := Punch.new()
 	var peak := 0.0
 	var until_shot := 0.0
-	for round_index in maxi(magazine_size, 1) * maxi(int(cycle_time * SIMULATION_HZ), 1):
+	for tick_index in maxi(magazine_size, 1) * maxi(int(cycle_time * SIMULATION_HZ), 1):
 		if until_shot <= 0.0:
-			velocity += impulse
+			punch.kick(Vector2(0.0, impulse))
 			until_shot += cycle_time
 		until_shot -= tick
-		# The same leapfrog Weapon._decay_punch uses.
-		var half := tick * 0.5
-		velocity *= exp(-damping * half)
-		velocity -= punch * spring * half
-		punch += velocity * tick
-		velocity -= punch * spring * half
-		velocity *= exp(-damping * half)
-		peak = maxf(peak, punch)
+		punch.advance(tick, damping, spring, tick)
+		peak = maxf(peak, punch.value.y)
 	return peak
 
 

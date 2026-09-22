@@ -79,8 +79,8 @@ Measured in our build, holding the trigger for a full magazine:
 
 | | Bullets climb | View peaks at | View as a share |
 |---|---|---|---|
-| AK-47 | 16.00° | 3.20° | 20% |
-| M4A1-S | 9.57° | 1.91° | 20% |
+| AK-47 | 16.00° | 7.89° | 49% |
+| M4A1-S | 9.57° | 4.72° | 49% |
 
 The view gets there and no further because the spring pulls it back between rounds while the muzzle
 keeps every degree it has climbed: the bullets accumulate and the view does
@@ -97,15 +97,16 @@ crosshair kicks up but only so much" means.
 pulling it back to zero. This is Source's `DecayPunchAngle`. A shot pushes the
 **velocity**, not the angle, which is why the view rises into a kick over
 several ticks instead of teleporting to it: the largest single-tick movement
-during an AK spray is 0.46°, against 3.44° for the steepest single bullet step.
+during an AK spray is 0.22°, against 3.44° for the steepest single bullet step.
 
 The knobs, all on `WeaponData`:
 
 | | Default | |
 |---|---|---|
-| `view_kick_spray_peak` | 0.2 | Where the crosshair peaks over a spray, against the spray's own climb |
+| `view_kick_spray_peak` | 0.5 | Where the crosshair peaks over a spray, against the spray's own climb |
+| `view_punch_recovery_time` | 1.9 | How long the CAMERA takes to settle, in seconds |
 | `view_kick_side_ratio` | 0.2 | Sideways kick per round, against the climb |
-| `recoil_animation_time` | measured | How long the kick lasts, in seconds |
+| `recoil_animation_time` | measured | How long the WEAPON MODEL takes to settle, in seconds |
 | `punch_damping_ratio` | 0.558 | Shape of the kick: rise and settle, no visible bounce |
 | `viewmodel_recoil` | 0.35 | How much the weapon model climbs on top of the camera |
 | `viewmodel_sway` | 0.2 | How much of that it gets sideways, against the climb |
@@ -116,7 +117,8 @@ derived from those.
 ### The per-round kick is solved, not picked
 
 `view_kick_spray_peak` is the one knob for how hard the view kicks, expressed
-as the thing you can actually see, and `view_kick_up()` is solved from it: the spring is linear, so one pass of a
+as the thing you can actually see, and it is half: Sid read that off CS2 on
+2026-09-22. `view_kick_up()` is solved from it: the spring is linear, so one pass of a
 magazine with a unit kick gives the scale factor exactly, and the per-round
 kick is one division rather than a search.
 
@@ -148,21 +150,26 @@ goes with the gun. It does not decide how far.
 
 | | Spray peaks | Per round | Single tap |
 |---|---|---|---|
-| AK-47 | 3.20° of a 16.00° spray | 2.16° up, 0.43° sideways | 2.16° |
-| M4A1-S | 1.91° of a 9.57° spray | 1.95° up, 0.39° sideways | 1.95° |
+| AK-47 | 7.89° of a 16.00° spray | 1.92° up, 0.38° sideways | 1.92° |
+| M4A1-S | 4.72° of a 9.57° spray | 1.15° up, 0.23° sideways | 1.15° |
 
-A fifth, not the half Sid read off CS2 on 2026-09-22. He tried the half and
-said it was far too high; his reading and his eye disagreed and his eye won.
-A fifth is where it sat in the build he preferred.
+### The camera and the weapon model are separate springs
 
-Raising it has a cost worth knowing before anyone tries again: it lifts the
-single tap in step, and it lifts the M4's per-round kick faster than the AK's,
-because the M4's punch settles in 353 ms against the AK's 644 ms so its rounds
-stack up far less. At half the spray, the lighter gun kicks nearly as hard per
-round as the heavier one. If spraying and tapping ever want different levels,
-the fix is to let the crosshair settle more slowly than the weapon model does
-— the two are separate systems in CS2 and only the model's timing was
-measured.
+This is the part that took three goes to get right, so it is worth stating
+plainly: **the camera settles in about two seconds and the weapon model in a
+few hundred milliseconds, and only the model's timing was ever measured.**
+
+Driving both off `recoil_animation_time` is the mistake. The crosshair then
+reaches its full height within two or three rounds and sits there, when it
+should climb with the spray, and the solver is forced to pick a per-round kick
+high enough that a single tap throws the view five degrees. Sid, 2026-09-22:
+"the crosshair still needs to move up about halfway as the shots go up. It
+maxes out about 3 shots up."
+
+With the camera on its own two-second recovery, the AK's crosshair passes
+halfway up the spray while the bullets do, and a single tap is under two
+degrees. The M4's is a degree, lighter than the AK's as it should be, which is
+not something that came out when the two springs were one.
 
 ### The weapon model
 
