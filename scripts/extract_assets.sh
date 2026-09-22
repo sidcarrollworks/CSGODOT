@@ -14,6 +14,7 @@
 #   scripts/extract_assets.sh physics         # just the collision hull (seconds)
 #   scripts/extract_assets.sh entities        # just the entity lump (seconds)
 #   scripts/extract_assets.sh layers          # just the blend materials' second layers
+#   scripts/extract_assets.sh sky             # just the sky panorama
 #   scripts/extract_assets.sh weapons         # extract the two weapons
 #   scripts/extract_assets.sh all             # map + weapons
 #
@@ -144,7 +145,7 @@ find_cs2() {
 
 COMMAND="${1:-}"
 case "$COMMAND" in
-	list-map|list-weapons|map|physics|entities|layers|weapons|all) ;;
+	list-map|list-weapons|map|physics|entities|layers|sky|weapons|all) ;;
 	*)
 		# The header comment, down to the first line that is not one.
 		awk 'NR > 2 && /^#/ { sub(/^# ?/, ""); print; next } NR > 2 { exit }' "${BASH_SOURCE[0]}"
@@ -310,6 +311,30 @@ extract_layers() {
 		| grep -vE '^(Preloading|Added folder|--- \[)' || true
 }
 
+## The sky, as the HDR panorama the map's sky material is made of. Which
+## material that is comes from the entity lump (env_sky), so that runs first.
+extract_sky() {
+	require_file "$PAK_VPK"
+	local entities
+	entities="$(find "$MAP_DEST" -name 'default_ents.vents' 2>/dev/null | head -n 1)"
+	if [[ -z "$entities" ]]; then
+		echo "No entity lump under $MAP_DEST to read the sky material from." >&2
+		echo "Run 'scripts/extract_assets.sh entities' first." >&2
+		exit 1
+	fi
+	local sky
+	sky="$(tr -d '\r' < "$entities" | grep -oE 'skyname +resource_name:"[^"]+"' | head -n 1 \
+		| sed -E 's/.*"([^"]+)"/\1/; s/\.vmat$/.vmat_c/' || true)"
+	if [[ -z "$sky" ]]; then
+		echo "No env_sky in $entities; the map has no sky material to fetch."
+		return
+	fi
+	echo "Extracting $sky"
+	echo "        -> $MAP_DEST"
+	"$S2V_BIN" -i "$PAK_VPK" -f "$sky" -o "$MAP_DEST" -d \
+		| grep -vE '^(Preloading|Added folder|--- \[)' || true
+}
+
 extract_map() {
 	extract_world
 	echo
@@ -318,6 +343,8 @@ extract_map() {
 	extract_entities
 	echo
 	extract_layers
+	echo
+	extract_sky
 }
 
 extract_weapons() {
@@ -380,6 +407,7 @@ case "$COMMAND" in
 	physics) extract_physics; finish ;;
 	entities) extract_entities ;;
 	layers) extract_layers; finish ;;
+	sky) extract_sky; finish ;;
 	weapons) extract_weapons; finish ;;
 	all) extract_map; echo; extract_weapons; finish ;;
 esac

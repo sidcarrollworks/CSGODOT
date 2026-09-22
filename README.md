@@ -144,12 +144,12 @@ scripts/extract_assets.sh map          # extract it, then import it into Godot
 scripts/extract_assets.sh weapons      # the AK-47 and M4A1-S models
 ```
 
-`map` takes a couple of minutes and a little over a gigabyte. It pulls four
+`map` takes a couple of minutes and a little over a gigabyte. It pulls five
 things out of the game: the visible world as glTF with its textures, the
-collision hull as a second glTF, the entity lump as text, and the second
-texture layer of every material that has one, which a glTF has no room for.
-`physics`, `entities` and `layers` fetch the last three on their own, in
-seconds.
+collision hull as a second glTF, the entity lump as text, the second texture
+layer of every material that has one (which a glTF has no room for), and the
+sky as an HDR panorama. `physics`, `entities`, `layers` and `sky` fetch the
+last four on their own, in seconds.
 
 The script finds everything itself: Source2Viewer-CLI on `PATH` or where the
 release zip unpacks to in Downloads, CS2 by way of Steam's library list (so a
@@ -160,8 +160,15 @@ guesses wrong.
 
 Then open `maps/de_dust2/de_dust2.tscn` and press play. You start at one of
 the map's own T spawn points (`spawn_team` on the scene root switches sides),
-under the map's own sun, colliding with the hull the game itself collides
-with, player clips included. None of the visible world is solid.
+colliding with the hull the game itself collides with, player clips included.
+None of the visible world is solid.
+
+The lighting is the map's own numbers, translated (`src/map/map_lighting.gd`):
+the sun's colour, brightness and size from `light_environment`, the sky
+panorama from `env_sky`, distance haze from `env_cubemap_fog`, exposure from
+the `post_processing_volume`, plus screen-space occlusion and a little bloom.
+It is the cheap kind of lighting, with no bounce light: CS2 bakes that, and
+baking it here is its own project.
 
 To see what came through without opening the editor:
 

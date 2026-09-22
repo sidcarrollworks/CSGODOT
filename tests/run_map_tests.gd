@@ -72,6 +72,7 @@ func _process(_delta: float) -> bool:
 		_test_export_offset_fix()
 		_test_paint_channel()
 		_test_blend_materials()
+		_test_lighting()
 		_spawn_player()
 		_spawned_at_tick = Engine.get_physics_frames()
 		return false
@@ -612,6 +613,70 @@ func _test_blend_materials() -> void:
 		"and is not left tinted by its paint, which is a weight and not a colour"
 	)
 	instance.free()
+
+
+## The lighting is a translation of the map's own numbers, so the test is
+## that they arrive: from a hand-written entity lump, and, without one, from
+## the fallbacks.
+func _test_lighting() -> void:
+	var entities: Array[Dictionary] = [
+		{"classname": "info_player_terrorist", "origin": "[ 0, 0, 0 ]"},
+		{
+			"classname": "light_environment", "color": "[ 255, 0, 0 ]", "brightness": "2.0",
+			"angulardiameter": "0.25", "skycolor": "[ 0, 255, 0 ]", "skyambientbounce": "[ 0, 0, 255 ]",
+		},
+		{
+			"classname": "env_cubemap_fog", "cubemapfogstartdistance": "100.0",
+			"cubemapfogenddistance": "5000.0", "cubemapfogmaxopacity": "0.4", "cubemapfogfalloffexponent": "1.5",
+		},
+		{"classname": "post_processing_volume", "minexposure": "0.5", "maxexposure": "1.5"},
+	]
+	var holder := Node3D.new()
+	root.add_child(holder)
+	var used := MapLighting.build(holder, {"basis": Basis.IDENTITY, "color": Color.WHITE}, entities, "")
+
+	var sun := holder.get_node_or_null("Sun") as DirectionalLight3D
+	var atmosphere := holder.get_node_or_null("Atmosphere") as WorldEnvironment
+	_check(sun != null and atmosphere != null and atmosphere.environment != null, "a sun and an environment are built")
+	if sun != null and atmosphere != null:
+		var environment := atmosphere.environment
+		_check(
+			sun.light_color.is_equal_approx(Color(1, 0, 0))
+				and is_equal_approx(sun.light_energy, 2.0 * MapLighting.SUN_ENERGY_PER_BRIGHTNESS)
+				and is_equal_approx(sun.light_angular_distance, 0.25) and sun.shadow_enabled,
+			"the sun's colour, brightness and size come from light_environment"
+		)
+		_check(
+			environment.fog_enabled and is_equal_approx(environment.fog_depth_begin, 100.0)
+				and is_equal_approx(environment.fog_depth_end, 5000.0)
+				and is_equal_approx(environment.fog_density, 0.4)
+				and is_equal_approx(environment.fog_depth_curve, 1.5),
+			"the fog's reach and opacity come from env_cubemap_fog"
+		)
+		_check(is_equal_approx(environment.tonemap_exposure, 1.0), "the exposure is the middle of the post-processing window")
+		_check(
+			environment.ambient_light_color.is_equal_approx(Color(0, 0, 1))
+				and environment.ambient_light_source == Environment.AMBIENT_SOURCE_SKY,
+			"the ambient floor is the map's bounce colour, under the sky's light"
+		)
+		_check(
+			environment.sky != null and environment.sky.sky_material is ProceduralSkyMaterial
+				and used["sky"].contains("stand-in"),
+			"with no panorama on disk the sky is procedural, and the report says so"
+		)
+		_check(environment.ssao_enabled and environment.glow_enabled, "occlusion and glow are on")
+	holder.free()
+
+	var bare := Node3D.new()
+	root.add_child(bare)
+	var fallback := MapLighting.build(bare, {}, [], "")
+	var bare_sun := bare.get_node_or_null("Sun") as DirectionalLight3D
+	var bare_env := (bare.get_node_or_null("Atmosphere") as WorldEnvironment).environment
+	_check(
+		bare_sun != null and bare_sun.light_energy > 0.0 and not bare_env.fog_enabled and not fallback["fog"],
+		"with no entities at all there is still a sun, and no fog to hide a grey room in"
+	)
+	bare.free()
 
 
 func _write_text(path: String, text: String) -> void:
