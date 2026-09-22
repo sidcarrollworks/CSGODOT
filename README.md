@@ -161,8 +161,8 @@ things out of the game: the visible world as glTF with its textures, the
 collision hull as a second glTF, the entity lump as text, the second texture
 layer of every material that has one (which a glTF has no room for), the sky
 as an HDR panorama, the 3D skybox (the buildings and hills beyond the map, a
-small map of their own), and the lightmaps the game baked its bounce light
-into. `physics`, `entities`, `layers`, `sky`, `skybox` and `lightmaps` fetch
+small map of their own, drawn behind everything as the game draws it), and
+the lightmaps the game baked its bounce light into. `physics`, `entities`, `layers`, `sky`, `skybox` and `lightmaps` fetch
 the last six on their own; all but the lightmaps take seconds. The
 lightmaps are one 300 MB image, which Godot's first import spends a few
 minutes compressing to 90.

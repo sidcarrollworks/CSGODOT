@@ -45,6 +45,12 @@ const SOURCE2_VIEWER_SCALE := 1.0 / 0.0254
 ## ambient. See LightmapMaterials.
 @export var lightmaps_dir: String = ""
 
+## Draw everything of this map behind everything else, whatever the
+## distance: for a 3D skybox scaled up into the world, whose terrain would
+## otherwise show through the map's floors where they lie below it. See
+## FarMaterials.
+@export var behind_everything: bool = false
+
 ## What to multiply the export by. SOURCE2_VIEWER_SCALE for anything that came
 ## out of Source 2 Viewer; 1 for geometry already in Source units. If the
 ## reported bounding box is wrong by a constant factor, this is the knob.
@@ -237,6 +243,8 @@ func import_map() -> Dictionary:
 			visible_meshes, source_path.get_base_dir().path_join(lightmaps_dir), scale_factor
 		)
 
+	var behind := FarMaterials.apply(visible_meshes) if behind_everything else 0
+
 	var collision_from := "the collision hull"
 	var targets: Array[MeshInstance3D] = []
 	if collision_source == CollisionSource.NONE:
@@ -261,6 +269,7 @@ func import_map() -> Dictionary:
 		"loaded_from": loaded_from,
 		"blend": blend,
 		"lightmaps": lightmaps,
+		"behind": behind,
 		"materials": materials,
 		"bounds": _bounds(meshes),
 	}

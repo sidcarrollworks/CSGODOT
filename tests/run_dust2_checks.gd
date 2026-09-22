@@ -120,9 +120,14 @@ func _import() -> bool:
 		skybox.source_path = skybox_file
 		skybox.scale_factor = MapImporter.SOURCE2_VIEWER_SCALE * 16.0
 		skybox.collision_source = MapImporter.CollisionSource.NONE
+		skybox.behind_everything = true
 		skybox.report = false
 		root.add_child(skybox)
 		var sky_bounds: AABB = skybox.stats.get("bounds", AABB())
+		_check(
+			int(skybox.stats.get("behind", 0)) >= 100,
+			"and its surfaces are drawn behind the map (%d of them)" % skybox.stats.get("behind", 0)
+		)
 		_check(
 			int(skybox.stats.get("meshes", 0)) > 100 and int(skybox.stats.get("skipped", 0)) < 40
 				and sky_bounds.size.x > bounds.size.x * 3.0,
