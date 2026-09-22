@@ -7,13 +7,12 @@ CS2 keeps its weapon tuning in `scripts/weapons.vdata_c`, which Source 2
 Viewer does not decode into usable values, so none of this can be extracted
 the way the map and the models were.
 
-Since 2026-09-22 the damage, armour, falloff, fire rate, speed and inaccuracy
-figures come from the **CS2 Weapon Spreadsheet** (last weapon update 18 March
-2026), which Sid supplied. Its rows for the two weapons are copied at the end
-of this file. The spray patterns and the recovery timings were measured in CS2
-by hand, and still rule where the sheet disagrees (see "Where the sheet and
-the build differ"). Reload times are not in the sheet and are still community
-figures.
+Since 2026-09-22 every number the sheet has comes from the **CS2 Weapon
+Spreadsheet** (last weapon update 18 March 2026), which Sid supplied:
+`reference/weapons/cs2_weapon_sheet.csv`, read by `WeaponSheet`, with what
+every column means in `reference/weapons/README.md`. The spray patterns and
+the weapon model's recoil animation were measured in CS2 by hand. Reload
+times are not in the sheet and are still community figures.
 
 ## Damage
 
@@ -49,15 +48,18 @@ and never through one.
 | | AK-47 | M4A1-S |
 |---|---|---|
 | Cycle time | 0.1 s (600 RPM) | 0.1 s (600 RPM) |
-| Magazine | 30 | 25 |
-| Reserve | 90 | 75 |
+| Magazine | 30 | 20 |
+| Reserve | 90 | 60 |
 | Reload | 2.5 s | 3.1 s |
 | Move speed | 215 u/s | 225 u/s |
 
 Both fire at 600 RPM, which is one shot every 12.8 ticks at 128 Hz. The weapon
 does not round to ticks: `Weapon.can_fire()` compares against a timestamp, so a
 click landing part-way through a tick fires at that fractional time and not at
-the tick boundary. That is the same sub-tick handling the shot direction uses.
+the tick boundary. On a held trigger the next round goes at
+`Weapon.next_shot_usec()`, the last round plus the cycle exactly, part-way
+through whatever tick that falls in. Firing on the tick instead, as the build
+did until 2026-09-22, rounds every gap up to 13 ticks: 591 rounds a minute.
 
 ## Inaccuracy
 
@@ -65,7 +67,7 @@ The sheet gives inaccuracy in CS's own units: thousandths of the tangent of
 the widest angle a round can leave the aim by, which is how the weapon scripts
 store it. Its "accurate range" is the check: the AK's standing 7.01 is 15.24
 cm (6 inches) off at 21.74 m, the sheet's accurate range.
-`WeaponLibrary.cs_inaccuracy()` turns them into the degrees the cone is kept
+`WeaponSheet.cone_degrees()` turns them into the degrees the cone is kept
 in.
 
 | | AK-47 | | M4A1-S (silencer on) | |
@@ -83,12 +85,62 @@ over standing still, and a jump taken at a run is worse than either
 (`Weapon.current_inaccuracy`). Before the sheet the build had a standing cone
 twenty times too tight and a running one ten times too tight.
 
-The per-round figure is added on every round and recovers over the measured
-time below.
+The per-round figure is added on every round and recovers on the sheet's
+recovery time: down to a tenth after 0.368 s standing for the AK (0.305
+crouched), 0.339 s for the M4A1-S (0.242). Landing from a jump puts on the
+sheet's after-landing figure (AK 33.63, 1.93 degrees), which recovers the same
+way.
+
+Movement costs nothing under a third of the weapon's top speed (73 u/s for the
+AK) and all of it from 95% (204 u/s), as in CS:GO. In between it rises as the
+fourth root, steeply: the AK is already at 5 degrees at 80 u/s. With the walk
+key down it rises in proportion instead (0.9 degrees at 80 u/s). This is the
+counter-strafe: the cone is only tight once you are nearly stopped.
+
+A round's offset within the cone is a uniform share of the cone's radius, as
+CS draws it, so rounds bunch towards the centre: half land within half the
+cone.
 
 The tests pin the ordering: crouched is tighter than standing, walking under
-about a third of run speed costs nothing, running is more than ten times the
+a third of run speed costs nothing, running is more than ten times the
 standing cone, and jumping at a run is worse than anything.
+
+## Tapping: how the recoil recovers between rounds
+
+`src/weapons/recoil_state.gd`. The bullets are carried by CS's aim punch, in
+the shape CS:GO's code gives it (public reimplementations and CS:GO's cvar
+list; CS2's own constants are not published):
+
+- each round pushes the punch's velocity;
+- the punch decays by 8 per second exponentially and 18 degrees a second
+  linearly (36 in the bullets' degrees, which move twice the punch), and its
+  velocity by 4.5 per second;
+- the recoil index, which picks the push, goes up by one a round and, once the
+  trigger has been off for 1.1 cycles, decays to a tenth every half second.
+  It resets on a fresh magazine.
+
+The patterns are measured positions, not pushes, so the pushes are solved
+from them: the push each round needs so that, held at 600 RPM and decaying
+all the while, the next round lands exactly on the pattern. Held down, the
+bullets walk the measured pattern to a hundredth of a degree. Tapped, the
+same pushes decay between rounds, so:
+
+| AK, 10 rounds held, then a pause, then one round | Round | Lands |
+|---|---|---|
+| no pause (held) | 10 | 13.64 degrees up |
+| 0.15 s | 8 | 12.10 |
+| 0.2 s | 6 | 10.19 |
+| 0.3 s | 4 | 6.31 |
+| 0.5 s | 1 | 0.69 |
+| 1 s | 0 | 0.00 |
+
+Steady taps every 0.2 s settle about 1.4 degrees up; every 0.25 s they stay
+within half a degree; every 0.35 s they are all first rounds. The size of all
+of it scales with `recoil_scale`, which the 496-unit wall spray settles.
+
+Until 2026-09-22 the build carried on down the pattern exactly for any pause
+under 0.4 s and started from the top after it. Sid: tapping "has the tendency
+to continue the spray pattern to the T instead of slowly being reset".
 
 ## View kick, and why it is not the spray
 
@@ -339,19 +391,14 @@ when the weapon is accurate again. Three shots per weapon.
 finishes moving a couple of hundred milliseconds before it finishes
 recovering, so a player who taps again the moment the animation settles is
 firing an inaccurate round. Across the wider set of weapons the desync runs
-both ways and the Deagle is about 1250 ms out. This is CS2 behaviour, not a
-bug, and reproducing it is deliberate: it is the reason the recoil animation
-cannot be trusted as a readout of anything.
+both ways and the Deagle is about 1250 ms out.
 
-They live on `WeaponData` as `recoil_animation_time` and
-`accuracy_reset_time`, per weapon, and everything else about the view spring
-and the accuracy decay is derived from them. There are tests asserting each
-build still hits both numbers and that the gap between them survives.
-
-The accuracy penalty decays exponentially rather than linearly, which is both
-what the measured curve does (its steps shrink as it recovers, a straight line
-only on a log scale) and what CS:GO's accuracy penalty did. A single shot
-recovers in exactly the measured time; a spray takes proportionally longer.
+The recoil animation lives on `WeaponData.recoil_animation_time`, and the view
+springs are derived from it. The accuracy recovery now comes from the sheet's
+recovery times instead (Sid, 2026-09-22: take all values from the sheet),
+which put the AK back to baseline at 736 ms and the M4A1-S at 678, against
+867 and 542 by eye. The gun still looks ready before it is, and a test holds
+that.
 
 The test range prints both states side by side, so the desync is visible
 without a capture: `cone ... ready|recovering` next to `view ... still|moving`.
@@ -372,8 +419,8 @@ angular scale, so both were scaled together by assuming the AK climbs 16
 degrees. `recoil_scale` on the weapon corrects that in one number.
 `reference/spray_patterns/README.md` has the arithmetic.
 
-The M4A1-S magazine is 25 rather than the 20 this file used to claim. Its
-spray plot has 25 dots on it, which settles it.
+The M4A1-S plot has 25 dots, most likely taken in CS:GO before the magazine
+was cut to 20. The sheet's magazine is 20, so the gun fires the first 20.
 
 ## How to measure each kind
 
@@ -385,63 +432,12 @@ then repeat at 1000 and 2000 units for the falloff curve.
 magazine size by the elapsed time. Both rifles should come out at 600 RPM; if
 they do not, the recording is wrong.
 
-**Inaccuracy.** `weapon_debug_spread_show 1` draws the cone in CS2. Standing,
-walking, running, crouched, mid-jump: read the cone in each state and write the
-five numbers down. Replacing the four-value approximation with real per-state
-values is the single biggest improvement available to shooting feel.
+**Inaccuracy.** Now the sheet's. `weapon_debug_spread_show 1` draws the cone
+in CS2 if a figure ever needs checking.
 
 **Spray.** See the spray pattern README.
 
 ## Where the sheet and the build differ
 
-- **M4A1-S magazine.** The sheet says 20 (reserve 60, 80 in all). The build
-  keeps 25, because the CS2 spray plot the pattern was read from has 25 dots.
-  One of the two is wrong; Sid decides.
-- **Recovery.** The sheet's recovery time (AK 0.368 s standing, 0.305
-  crouched; M4A1-S 0.339 and 0.242) is, going by CS:GO's code, the time for
-  the firing penalty to fall to a tenth. Sid's frame-by-frame capture (AK 867
-  ms, M4A1-S 542 ms back to baseline) is what the build uses, and the build
-  reads "baseline" as a hundredth. Read at a tenth, the capture gives AK 0.43
-  s and M4A1-S 0.27 s: the AK recovers a little slower than the sheet and the
-  M4A1-S a little faster. Worth a second look if taps feel off.
-- **Not modelled yet:** landing inaccuracy (AK 33.63, M4A1-S 21.98), ladder
-  inaccuracy (no ladders), tagging power (60% for both), penetration power
-  (200% for both), and recoil amount and variance (AK 30 / 70 / 0, M4A1-S with
-  its silencer 21 / 65 / 0). Tagging and penetration are on the roadmap. The
-  recoil amount may be the way to retire the estimated `recoil_scale`.
-- **The cone's shape.** CS:GO's code picks a round's offset with the radius linear in a
-  random number, which bunches rounds towards the centre. The build spreads
-  them evenly over the disc. Same widest angle, different average.
-
-## The sheet's rows
-
-CS2 Weapon Spreadsheet, last weapon update 18 March 2026. Inaccuracy in CS
-units; distances in metres as the sheet gives them; fatal headshot range in
-units.
-
-| | AK-47 | M4A1-S (no silencer) | M4A1-S (silencer) |
-|---|---|---|---|
-| Price | $2,700 | $2,900 | |
-| Kill award | $300 | $300 | |
-| Damage | 36 | 38 | same |
-| Armour penetration | 77.50% | 70.00% | same |
-| Falloff @ 500 u | 2% | 6% | same |
-| Headshot multiplier | 4.000x | 3.475x | same |
-| Fire rate (RPM) | 600 | 600 | same |
-| Penetration power | 200% | 200% | same |
-| Magazine / reserve / total | 30 / 90 / 120 | 20 / 60 / 80 | same |
-| Mobility | 215 | 225 | same |
-| Tagging power | 60% | 60% | same |
-| Bullet range | 8,192 | 8,192 | same |
-| Tracers | every third | every third | none |
-| Accurate range, stand / crouch | 21.74 m / 28.17 m | 27.71 m / 32.43 m | 28.22 m / 33.13 m |
-| Inaccuracy standing / crouching | 7.01 / 5.41 | 5.50 / 4.70 | 5.40 / 4.60 |
-| Inaccuracy running | 182.07 | 98.38 | 127.40 |
-| Inaccuracy on a ladder | 280.60 | 222.59 | 227.84 |
-| Inaccuracy at jump apex | 147.77 | 105.20 | 105.10 |
-| Inaccuracy after landing | 33.63 | 22.08 | 21.98 |
-| Inaccuracy from firing | 7.80 | 12.00 | 7.00 |
-| Recovery time crouch / stand | 0.305257 / 0.368000 | 0.242100 / 0.338941 | same |
-| Recoil amount / angle variance / amount variance | 30 / 70 / 0 | 25 / 65 / 3 | 21 / same / 0 |
-| Recoil pattern | set | set | same |
-| Fatal headshot range / with helmet | 9,024.61 / 2,716.24 | 2,246.53 / none | same |
+See `reference/weapons/README.md`, which also has what every column of the
+sheet means and the nuances by weapon.

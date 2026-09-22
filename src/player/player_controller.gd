@@ -321,7 +321,8 @@ func _update_weapon(
 		Input.is_action_pressed(&"attack") or not fire_events.is_empty()
 	)
 	var state := Weapon.ShooterState.new(
-		Vector2(velocity.x, velocity.z).length(), on_ground, is_ducked
+		Vector2(velocity.x, velocity.z).length(), on_ground, is_ducked,
+		Input.is_action_pressed(&"walk")
 	)
 	weapon.update(delta, now, state)
 
@@ -336,8 +337,19 @@ func _update_weapon(
 			state
 		)
 
+	# Held down, the next round goes the moment the weapon is ready, not on
+	# the tick after: on the tick, every gap rounds up to whole ticks and 600
+	# rounds a minute comes out at 591.
 	if Input.is_action_pressed(&"attack"):
-		_try_shoot(now, 1.0, input.yaw_degrees, input.pitch_degrees, state)
+		var tick_began := now - _tick_length_usec
+		var at := clampi(weapon.next_shot_usec(), tick_began, now)
+		_try_shoot(
+			at,
+			PlayerInput.tick_fraction(at, tick_began, _tick_length_usec),
+			input.yaw_degrees,
+			input.pitch_degrees,
+			state
+		)
 
 
 func _try_shoot(

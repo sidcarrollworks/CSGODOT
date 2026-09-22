@@ -28,7 +28,8 @@ func _process(_delta: float) -> bool:
 		_test_recoil_follows_the_pattern()
 		_test_recoil_recovers()
 		_test_held_trigger_walks_the_whole_pattern()
-		_test_spray_resets_on_time()
+		_test_tapping_recovers_gradually()
+		_test_the_rate_of_fire_is_exact()
 		_test_patterns_are_the_measured_ones()
 		_test_recoil_scale()
 		_test_bullets_ignore_the_view_kick()
@@ -279,44 +280,78 @@ func _test_held_trigger_walks_the_whole_pattern() -> void:
 			)
 
 
-## The spray restarts on time off the trigger, not on how far the view has
-## recovered. A pattern's first entry is (0, 0), so punch after shot one is
-## zero and a recovery test resets a spray that has not started.
-func _test_spray_resets_on_time() -> void:
+## Tapping is not spraying slowly. Off the trigger both the recoil and the
+## recoil index recover, so a round after a pause lands short of where the
+## spray would have got to, the more so the longer the pause, and steady taps
+## settle low instead of walking the whole pattern. Sid, 2026-09-22: tapping
+## "has the tendency to continue the spray pattern to the T instead of slowly
+## being reset".
+func _test_tapping_recovers_gradually() -> void:
+	var data := WeaponLibrary.ak47()
+	data.inaccuracy_standing = 0.0
+	data.inaccuracy_per_shot = 0.0
+	var cycle := int(data.cycle_time * SECOND)
+
+	var first := Weapon.new(data).fire(0, 0.0, Vector3.ZERO, 0.0, 0.0, _standing())
+	_check(first != null and first.shot_index == 0, "the first shot is shot zero")
+
+	# Ten rounds held, a pause, then one more.
+	var heights: Array[float] = []
+	var indices: Array[int] = []
+	for pause in [0.15, 0.3, 0.6, 1.5]:
+		var weapon := Weapon.new(data)
+		for shot in 10:
+			weapon.fire(shot * cycle, 0.0, Vector3.ZERO, 0.0, 0.0, _standing())
+		var at := 9 * cycle + int(pause * SECOND)
+		var shot := weapon.fire(at, 0.0, Vector3.ZERO, 0.0, 0.0, _standing())
+		heights.append(PlayerInput.angles_from_direction(shot.direction).y)
+		indices.append(shot.shot_index)
+	var held: float = data.recoil_offset(10).y
+	_check(
+		heights[0] < held and heights[0] > 0.5,
+		"after 0.15 s off the trigger a round lands short of the spray's %.2f degrees, but not at the aim (%.2f)"
+			% [held, heights[0]]
+	)
+	_check(
+		heights[0] > heights[1] and heights[1] > heights[2] and heights[2] >= heights[3],
+		"the longer the pause, the lower it lands (%s)" % [heights]
+	)
+	_check(absf(heights[3]) < 0.01, "after a second and a half the recoil is gone (%.3f)" % heights[3])
+	_check(
+		indices[0] > indices[1] and indices[1] > indices[2] and indices[3] == 0,
+		"and the pattern falls back towards its top, not to it at once (%s)" % [indices]
+	)
+	# Ten rounds leave the index at 10; 0.6 s off, less the 0.11 s it waits,
+	# takes it to a tenth to the power of 0.98.
+	_check_equal(indices[2], 1, "0.6 s off the trigger, ten rounds in, the next is round 1")
+
+	# Steady taps a quarter of a second apart stay near the aim; the same
+	# eight rounds held climb most of the way up the pattern.
+	var tapper := Weapon.new(data)
+	var highest := 0.0
+	for shot in 8:
+		var tap := tapper.fire(shot * int(0.25 * SECOND), 0.0, Vector3.ZERO, 0.0, 0.0, _standing())
+		highest = maxf(highest, PlayerInput.angles_from_direction(tap.direction).y)
+	_check(
+		highest < 1.0 and highest < data.recoil_offset(7).y * 0.2,
+		"tapping every 0.25 s stays within a degree (%.2f), where holding climbs %.2f"
+			% [highest, data.recoil_offset(7).y]
+	)
+
+	# And the view: the first round's kick is a push on the spring, so the
+	# view has not moved yet the instant it goes.
+	var viewer := Weapon.new(data)
+	viewer.fire(0, 0.0, Vector3.ZERO, 0.0, 0.0, _standing())
+	_check_near(viewer.aim_punch.length(), 0.0, "the first shot has not moved the view yet")
+
+
+## A held trigger fires at the weapon's own rate however the ticks fall: the
+## next round is due at the last one plus the cycle, not on the tick after.
+func _test_the_rate_of_fire_is_exact() -> void:
 	var data := WeaponLibrary.ak47()
 	var weapon := Weapon.new(data)
-	var state := _standing()
-	var now := 0
-
-	# One shot, then wait less than the reset time.
-	now += int(DT * SECOND)
-	weapon.update(DT, now)
-	var first := weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, state)
-	_check(first != null and first.shot_index == 0, "the first shot is shot zero")
-	_check_near(
-		weapon.aim_punch.length(), 0.0,
-		"the first shot kicks the view nowhere, because the pattern starts at zero"
-	)
-
-	var short_wait := int(data.recoil_reset_time * 0.5 * SECOND)
-	var target := now + short_wait
-	while now < target:
-		now += int(DT * SECOND)
-		weapon.update(DT, now)
-	_check_equal(
-		weapon.shot_index(), 1,
-		"a pause shorter than the reset time keeps the place in the pattern"
-	)
-
-	var long_wait := int(data.recoil_reset_time * 1.5 * SECOND)
-	target = now + long_wait
-	while now < target:
-		now += int(DT * SECOND)
-		weapon.update(DT, now)
-	_check_equal(
-		weapon.shot_index(), 0,
-		"a pause longer than the reset time starts the pattern again"
-	)
+	weapon.fire(0, 0.0, Vector3.ZERO, 0.0, 0.0, _standing())
+	_check_equal(weapon.next_shot_usec(), int(data.cycle_time * SECOND), "the next round is due one cycle on")
 
 
 ## The patterns are the ones read off the CS2 spray plots, not placeholders.

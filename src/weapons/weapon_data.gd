@@ -154,15 +154,6 @@ class Punch:
 @export var recoil_scale: float = 1.0
 
 
-## How long the trigger has to be off before the spray starts from the top
-## again, in seconds.
-##
-## This is deliberately a time and not a test on how far the view has
-## recovered. The first entry of a pattern is (0, 0) by definition, so the
-## accumulated punch after shot one is zero, and a recovery test would decide
-## the spray had finished before it had started. That bug made every shot
-## shot number one and flattened the pattern entirely.
-@export var recoil_reset_time: float = 0.4
 
 # --- View punch -----------------------------------------------------------
 #
@@ -369,9 +360,6 @@ class Punch:
 @export var recovery_time_stand: float = 0.368
 @export var recovery_time_crouch: float = 0.305257
 
-## Speed below which movement inaccuracy does not apply. CS lets you walk
-## slowly without penalty, which is why counter-strafing matters.
-@export var inaccuracy_speed_threshold: float = 55.0
 
 
 ## How high a punch peaks, against the velocity a shot gives it and the
