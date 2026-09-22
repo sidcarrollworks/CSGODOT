@@ -23,6 +23,22 @@ extends Control
 ## exact pixel a shot with no spread passes through.
 @export var centre_dot: bool = false
 
+## The weapon's cone, in degrees, drawn as a circle the way CS2's
+## weapon_debug_spread_show draws its box: every round can land anywhere
+## inside it. Negative draws nothing. Whoever owns the crosshair sets it
+## every frame, with the camera's vertical field of view.
+var spread_degrees: float = -1.0:
+	set(value):
+		if value != spread_degrees:
+			spread_degrees = value
+			queue_redraw()
+var fov_degrees: float = 75.0:
+	set(value):
+		if value != fov_degrees:
+			fov_degrees = value
+			queue_redraw()
+@export var spread_colour: Color = Color(1.0, 1.0, 1.0, 0.6)
+
 
 func _ready() -> void:
 	# The whole viewport, so the centre of this Control is the centre of the
@@ -49,7 +65,18 @@ func _draw() -> void:
 	for arm in arms:
 		draw_rect(arm, colour)
 
+	if spread_degrees >= 0.0:
+		var radius := spread_radius(spread_degrees, fov_degrees, size.y)
+		draw_arc(centre, radius, 0.0, TAU, 96, outline_colour, 3.0, true)
+		draw_arc(centre, radius, 0.0, TAU, 96, spread_colour, 1.0, true)
+
 	if centre_dot:
 		var dot := Rect2(centre.x - half, centre.y - half, thickness, thickness)
 		draw_rect(dot.grow(outline), outline_colour)
 		draw_rect(dot, colour)
+
+
+## Pixels from the centre of a view `height` pixels tall, with a vertical
+## field of view of `fov`, at which a round `degrees` off the aim lands.
+static func spread_radius(degrees: float, fov: float, height: float) -> float:
+	return tan(deg_to_rad(degrees)) / tan(deg_to_rad(fov) * 0.5) * height * 0.5

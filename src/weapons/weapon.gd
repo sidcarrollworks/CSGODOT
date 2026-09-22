@@ -9,8 +9,9 @@ extends RefCounted
 ##
 ## Two things here are load-bearing for how CS feels:
 ##
-## The view kick and the bullet trajectory are SEPARATE. Bullets follow the
-## spray pattern exactly. The view gets a smaller, spring-damped nudge that
+## The view kick and the bullet trajectory are SEPARATE. Bullets walk the
+## spray pattern exactly on a held trigger (RecoilState). The view gets a
+## smaller, spring-damped nudge that
 ## only suggests the pattern, so you cannot read your own recoil off the
 ## screen: you learn the pattern and pull against it. Gluing the two together
 ## gives a view that snaps to each bullet and sags between them, which is
@@ -26,13 +27,17 @@ class ShooterState:
 	var speed: float = 0.0
 	var on_ground: bool = true
 	var ducked: bool = false
+	## Holding the walk key, which makes moving cost accuracy in proportion
+	## to speed rather than steeply, as CS does.
+	var walking: bool = false
 
 	func _init(
-		p_speed: float = 0.0, p_on_ground: bool = true, p_ducked: bool = false
+		p_speed: float = 0.0, p_on_ground: bool = true, p_ducked: bool = false, p_walking: bool = false
 	) -> void:
 		speed = p_speed
 		on_ground = p_on_ground
 		ducked = p_ducked
+		walking = p_walking
 
 
 ## One bullet, with everything needed to trace it and to explain it later.
@@ -57,6 +62,19 @@ class Shot:
 ## The punch spring is integrated at no coarser than this, whatever the
 ## caller's frame length. 128 Hz, the simulation tick the constants suit.
 const PUNCH_MAX_STEP := 1.0 / WeaponData.SIMULATION_HZ
+
+## The recoil index starts to decay once the trigger has been off this many
+## cycles, so it never does during a spray, and then falls to a tenth every
+## 1 / RECOIL_INDEX_DECAY seconds. CS:GO's weapon_recoil_decay_coefficient,
+## which replaced a flat 0.55 s reset (weapon_recoil_cooldown); CS2's own
+## value is not published.
+const RECOIL_INDEX_DELAY_CYCLES := 1.1
+const RECOIL_INDEX_DECAY := 2.0
+
+## Movement inaccuracy starts at this share of the weapon's top speed and is
+## all there at the second (CS:GO's 0.34 and 0.95).
+const MOVING_FROM := 0.34
+const MOVING_FULL := 0.95
 
 var data: WeaponData
 
@@ -103,8 +121,19 @@ var aim_punch_velocity: Vector2:
 	get: return _snap.velocity + _hold.velocity
 
 var _last_shot_usec: int = -1_000_000_000
-var _shot_index: int = 0
+## CS's recoil index, as it stood just after the last round: which round of
+## the pattern the next one is. A round adds one; off the trigger it decays,
+## to a tenth every half second (recoil_index_at), so a tap after a short
+## pause carries on from part-way down the pattern rather than from where the
+## spray left off or from the top.
+var _recoil_index: float = 0.0
+## The latest time the weapon has been told about, for shot_index().
+var _clock_usec: int = 0
+## Where the recoil has carried the bullets, and the pushes the rounds give it.
+var _recoil := RecoilState.new()
+var _impulses := PackedVector2Array()
 var _inaccuracy: float = 0.0
+var _was_on_ground: bool = true
 var _reloading_until_usec: int = -1
 
 
@@ -112,12 +141,35 @@ func _init(p_data: WeaponData) -> void:
 	data = p_data
 	ammo = data.magazine_size
 	reserve = data.reserve_ammo
+	var pattern := PackedVector2Array()
+	for i in data.recoil_pattern.size():
+		pattern.append(data.recoil_offset(i))
+	_impulses = RecoilState.solve_impulses(pattern, data.cycle_time)
 
 
-## How far through the spray we are. Resets when you stop firing long enough
-## for the recoil to recover.
+## Which round of the pattern the next one is, now. Falls back towards zero
+## off the trigger.
 func shot_index() -> int:
-	return _shot_index
+	return floori(recoil_index_at(_clock_usec))
+
+
+## The recoil index at a moment: as the last round left it, decayed for as
+## long as the trigger has been off past RECOIL_INDEX_DELAY_CYCLES. Worked
+## out from the time rather than stepped, so it is the same however the ticks
+## fell.
+func recoil_index_at(now_usec: int) -> float:
+	var gap := float(now_usec - _last_shot_usec) / 1_000_000.0
+	var off_trigger := gap - data.cycle_time * RECOIL_INDEX_DELAY_CYCLES
+	if off_trigger <= 0.0:
+		return _recoil_index
+	return _recoil_index * exp(-off_trigger * log(10.0) * RECOIL_INDEX_DECAY)
+
+
+## When a held trigger fires next: the last round plus the cycle time,
+## exactly. Firing on the tick instead rounds every gap up to a whole tick,
+## which is 591 rounds a minute at 128 Hz rather than 600.
+func next_shot_usec() -> int:
+	return _last_shot_usec + int(round(data.cycle_time * 1_000_000.0))
 
 
 func is_reloading(now_usec: int) -> bool:
@@ -133,7 +185,13 @@ func can_fire(now_usec: int) -> bool:
 
 ## Advances recoil recovery and inaccuracy decay. Call once per simulation
 ## tick, whether or not anything was fired.
-func update(dt: float, now_usec: int) -> void:
+##
+## state is what the shooter is doing this tick, where the caller knows it:
+## crouched, the penalty recovers on the crouched time, and landing from a
+## jump puts the landing penalty on. Without it the shooter counts as
+## standing on the ground.
+func update(dt: float, now_usec: int, state: ShooterState = null) -> void:
+	_clock_usec = maxi(_clock_usec, now_usec)
 	var since_shot := float(now_usec - _last_shot_usec) / 1_000_000.0
 
 	# Held, and still shooting. The gap matters as well as the button, because
@@ -148,16 +206,12 @@ func update(dt: float, now_usec: int) -> void:
 
 	_decay_punch(dt, firing)
 
-	# Back to the top of the pattern once the trigger has been off long enough.
-	#
-	# Keyed on time, not on how far the view has recovered. Every pattern's
-	# first entry is (0, 0), so the punch after shot one is zero and a
-	# recovery test would reset the spray before it had begun: every shot came
-	# out as shot one and the gun had no pattern at all.
-	if since_shot > data.recoil_reset_time:
-		_shot_index = 0
-
-	_decay_inaccuracy(dt)
+	var ducked := state != null and state.ducked
+	if state != null:
+		if state.on_ground and not _was_on_ground:
+			_inaccuracy = maxf(_inaccuracy, data.inaccuracy_landing - data.inaccuracy_standing)
+		_was_on_ground = state.on_ground
+	_decay_inaccuracy(dt, ducked)
 
 
 ## Runs the three punch springs forward.
@@ -223,13 +277,13 @@ func _let_go_of_the_trigger() -> void:
 ##
 ## Exponential, not linear, for two reasons: it is what the measured accuracy
 ## box does (the steps shrink as it recovers, which is a straight line only on
-## a log scale), and it is what CS:GO's accuracy penalty did. The time
-## constant comes from data.accuracy_reset_time, so one standing shot recovers
-## in exactly the measured time and a spray takes proportionally longer.
-func _decay_inaccuracy(dt: float) -> void:
+## a log scale), and it is what CS's accuracy penalty does. The time constant
+## comes from the weapon sheet's recovery time, standing or crouched: the
+## penalty is down to a tenth after it.
+func _decay_inaccuracy(dt: float, ducked: bool = false) -> void:
 	if _inaccuracy <= 0.0:
 		return
-	_inaccuracy *= exp(-dt / data.accuracy_time_constant())
+	_inaccuracy *= exp(-dt / data.accuracy_time_constant(ducked))
 	if _inaccuracy < data.accuracy_reset_threshold():
 		_inaccuracy = 0.0
 
@@ -270,19 +324,29 @@ func viewmodel_punch() -> Vector2:
 ##
 ## This is the part that makes counter-strafing matter: stopping drops you
 ## below the speed threshold, and the cone collapses.
+##
+## Moving and jumping add up, as in CS: the moving and jumping figures are
+## totals over standing still, so what each adds is its excess over that.
+## A jump taken at a run is therefore worse than either, while a standing
+## jump is not as bad as a full run.
 func current_inaccuracy(state: ShooterState) -> float:
 	var base := data.inaccuracy_standing
 	if state.ducked:
 		base = data.inaccuracy_crouching
 	if not state.on_ground:
-		base = maxf(base, data.inaccuracy_jumping)
-	elif state.speed > data.inaccuracy_speed_threshold:
-		# Scales with how fast you are going, so a slow walk is nearly free
-		# and a full sprint is hopeless.
-		var over := (state.speed - data.inaccuracy_speed_threshold) / maxf(
-			data.max_player_speed - data.inaccuracy_speed_threshold, 1.0
-		)
-		base = maxf(base, data.inaccuracy_moving * clampf(over, 0.0, 1.0))
+		base += maxf(data.inaccuracy_jumping - data.inaccuracy_standing, 0.0)
+	# Nothing under a third of the weapon's top speed, all of it from 95% up,
+	# as CS does. Between, it rises steeply (the fourth root) unless the walk
+	# key is down, when it is in proportion: a little speed costs a lot
+	# unless you are walking, which is what makes counter-strafing matter.
+	var over := inverse_lerp(
+		data.max_player_speed * MOVING_FROM, data.max_player_speed * MOVING_FULL, state.speed
+	)
+	if over > 0.0:
+		over = minf(over, 1.0)
+		if not state.walking:
+			over = pow(over, 0.25)
+		base += maxf(data.inaccuracy_moving - data.inaccuracy_standing, 0.0) * over
 	return base + _inaccuracy
 
 
@@ -322,13 +386,21 @@ func fire(
 	if not can_fire(now_usec):
 		return null
 
-	var current := data.recoil_offset(_shot_index)
+	# The recoil since the last round: the punch decays, and once the trigger
+	# has been off for a little over a cycle, so does the index. Both run on
+	# the time between rounds, so where a round goes does not depend on how
+	# the ticks fell.
+	_recoil.advance(float(now_usec - _last_shot_usec) / 1_000_000.0)
+	var index := recoil_index_at(now_usec)
+	var round_index := floori(index)
+	var current := _recoil.value
 
-	# The bullet goes exactly to this shot's entry in the pattern, measured
-	# from where the player is actually pointing. Nothing about the view is
-	# involved: not the punch that has built up, not how much of it has sprung
-	# back, not how large the view kick is configured to be. Turning the view
-	# kick off entirely would leave every bullet hole where it is.
+	# The bullet goes where the recoil has carried it, measured from where the
+	# player is actually pointing. Held down, that is exactly this round's
+	# entry in the pattern. Nothing about the view is involved: not the punch
+	# that has built up, not how much of it has sprung back, not how large the
+	# view kick is configured to be. Turning the view kick off entirely would
+	# leave every bullet hole where it is.
 	#
 	# This is the whole point. The pattern is the truth and it is the same
 	# every spray, which is what makes it learnable. The view only suggests it.
@@ -338,18 +410,18 @@ func fire(
 		yaw_degrees - current.x,
 		pitch_degrees + current.y,
 		spread,
-		_shot_index
+		round_index
 	)
 
 	# The view gets kicked by this shot's own recoil, scaled down, and as a
 	# push on the punch velocity rather than a jump in the angle, so it rises
 	# into the kick over the next few ticks.
-	var punch := _view_kick_for(_shot_index)
+	var punch := _view_kick_for(round_index)
 
 	var shot := Shot.new()
 	shot.origin = origin
 	shot.direction = direction
-	shot.shot_index = _shot_index
+	shot.shot_index = round_index
 	shot.timestamp_usec = now_usec
 	shot.tick_fraction = tick_fraction
 	shot.inaccuracy = spread
@@ -362,8 +434,11 @@ func fire(
 	_model_snap.kick(punch * data.model_snap_punch_impulse_scale())
 	_model_hold.kick(punch * data.model_hold_punch_impulse_scale())
 	_inaccuracy += data.inaccuracy_per_shot
-	_shot_index += 1
+	if not _impulses.is_empty():
+		_recoil.velocity += _impulses[mini(round_index, _impulses.size() - 1)]
+	_recoil_index = index + 1.0
 	_last_shot_usec = now_usec
+	_clock_usec = maxi(_clock_usec, now_usec)
 	ammo -= 1
 
 	return shot
@@ -385,11 +460,15 @@ func finish_reload_if_due(now_usec: int) -> bool:
 	ammo += taken
 	reserve -= taken
 	_reloading_until_usec = -1
+	# CS starts the pattern again on a fresh magazine.
+	_recoil_index = 0.0
 	return true
 
 
-## Applies the spread cone to an aim direction. Uniform over the disc rather
-## than over the radius, so shots are not bunched toward the centre.
+## Applies the spread cone to an aim direction. The radius is a uniform
+## random share of the cone, as CS draws it, which bunches rounds towards the
+## centre: half of them land within half the cone, where spreading them evenly
+## over the disc would put only a quarter there.
 func _spread_direction(
 	yaw_degrees: float, pitch_degrees: float, spread_degrees: float, shot: int
 ) -> Vector3:
@@ -401,7 +480,7 @@ func _spread_direction(
 	rng.seed = _shot_seed(shot)
 
 	var angle := rng.randf() * TAU
-	var radius := sqrt(rng.randf()) * spread_degrees
+	var radius := rng.randf() * spread_degrees
 
 	var right := direction.cross(Vector3.UP)
 	if right.length_squared() < 0.0001:

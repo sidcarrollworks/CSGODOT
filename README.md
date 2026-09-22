@@ -150,23 +150,26 @@ counter the kick changes your aim by exactly what you pulled, the same as CS.
 
 The view kick is also deliberately much smaller than the spray: about a fifth
 of it, and it settles back while the spray carries on climbing. Bullets follow
-the pattern and nothing else. Turning the view kick off entirely leaves every
+the recoil and nothing else: held down, they walk the pattern exactly; off the
+trigger the recoil and its place in the pattern both recover over a few tenths
+of a second, so taps land near the aim and a burst after a short pause picks
+up part-way down (`src/weapons/recoil_state.gd`). Turning the view kick off entirely leaves every
 bullet hole exactly where it was, which is the property that makes a spray
 learnable rather than something you read off the screen.
 `reference/weapon_stats.md` has the measurements and the knobs.
 
 The spray patterns are the real ones, read off CS2 spray plots: 30 shots for
-the AK-47 and 25 for the M4A1-S, with firing order recovered from the plots'
+the AK-47 and 25 for the M4A1-S (whose magazine is 20), with firing order recovered from the plots'
 saturation ramp. Their shape is measured; their overall size is an estimate,
 because the plots carry no angular scale, and `recoil_scale` on the weapon is
 the one number that corrects it.
 
-The rest of the stats are the weak part. CS2 keeps weapon tuning in
-`scripts/weapons.vdata_c`, which does not decode into usable values, so none of
-it could be extracted the way the map and models were. Everything else in
-`src/weapons/weapon_library.gd` is a published community figure.
-`reference/weapon_stats.md` lists every number, where it came from, and how to
-measure the real one.
+CS2 keeps weapon tuning in `scripts/weapons.vdata_c`, which does not decode
+into usable values, so none of it could be extracted the way the map and
+models were. Damage, armour, falloff, speed and inaccuracy come from the CS2
+Weapon Spreadsheet instead, the spray patterns and recovery timings from
+measuring CS2 by hand. `reference/weapon_stats.md` lists every number, where
+it came from, and where the sources disagree.
 
 ## dust2
 

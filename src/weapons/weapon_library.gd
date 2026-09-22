@@ -3,15 +3,22 @@ extends RefCounted
 
 ## The two weapons the project starts with.
 ##
-## Every number here is a published community figure, not a measurement, and
-## the sources disagree in places. They are a starting point for tuning and
-## should not be trusted until someone has checked them in game. See
-## reference/weapon_stats.md for where each one came from.
+## Every number the firing model uses comes from the CS2 Weapon Spreadsheet,
+## read through WeaponSheet: damage, armour, falloff, fire rate, magazine and
+## reserve, speed, inaccuracy and recovery. What the sheet does not carry is
+## set here:
 ##
-## The exceptions, which ARE measured, are the spray patterns, the M4A1-S
-## magazine size, and the two recovery timings below. The patterns and the
-## magazine come from CS2 spray plots Sid supplied on 2026-09-21; the timings
-## come from his frame-by-frame capture of CS2 on 2026-09-22.
+## - the spray patterns, read off CS2 spray plots Sid supplied on 2026-09-21;
+## - how long the weapon model's recoil takes to settle, from his
+##   frame-by-frame capture of CS2 on 2026-09-22;
+## - the stomach and leg multipliers, x1.25 and x0.75 as on every rifle in CS;
+## - reload times, still community figures.
+
+
+## The sheet's inaccuracy in the cone's degrees. See WeaponSheet.cone_degrees.
+static func cs_inaccuracy(value: float) -> float:
+	return WeaponSheet.cone_degrees(value)
+
 
 static func ak47() -> WeaponData:
 	var data := WeaponData.new()
@@ -19,35 +26,18 @@ static func ak47() -> WeaponData:
 	data.model_path = "res://assets/weapons/weapons/models/ak47/weapon_rif_ak47.gltf"
 	data.clip_set = "rifle_ak"
 
-	# 36 to an unarmoured chest, x4 head, x1.25 stomach, x0.75 leg, and
-	# roughly 78% through armour.
-	data.base_damage = 36.0
-	data.armor_penetration = 0.775
-	data.head_multiplier = 4.0
+	# 36 to an unarmoured chest, x4 head, 77.5% through armour, 2% lost every
+	# 500 units, 600 RPM, 30 and 90, 215 u/s.
+	WeaponSheet.apply(data, "AK-47")
 	data.chest_multiplier = 1.0
 	data.stomach_multiplier = 1.25
 	data.leg_multiplier = 0.75
-	data.range_modifier = 0.98
-
-	data.cycle_time = 0.1  # 600 RPM
-	data.magazine_size = 30
-	data.reserve_ammo = 90
 	data.reload_time = 2.5
-
-	data.max_player_speed = 215.0
 
 	data.recoil_pattern = RecoilPattern.load_pattern("ak47")
 
-	# Measured in CS2: the weapon model stops moving after 644 +- 5 ms, and
-	# the accuracy box is back to baseline after 867 +- 0 ms. The gun looks
-	# ready 223 ms before it is.
+	# Measured in CS2: the weapon model stops moving after 644 +- 5 ms.
 	data.recoil_animation_time = 0.644
-	data.accuracy_reset_time = 0.867
-
-	data.inaccuracy_standing = 0.02
-	data.inaccuracy_moving = 0.95
-	data.inaccuracy_jumping = 4.5
-	data.inaccuracy_per_shot = 0.13
 	return data
 
 
@@ -59,35 +49,22 @@ static func m4a1s() -> WeaponData:
 	# they carry is its.
 	data.clip_set = "_default_rifle"
 
-	# 37 to an unarmoured chest, 132 to the head, 47 stomach, 28 leg.
-	data.base_damage = 37.0
-	data.armor_penetration = 0.70
-	data.head_multiplier = 3.57  # 132 / 37, rather than a clean x4
+	# Carried with the silencer on, so its row is read over the main one: the
+	# damage is the same either way (38, x3.475 head, 132), the silencer
+	# changes the inaccuracy and the recoil. 20 in the magazine and 60 in
+	# reserve, as the sheet says. The spray plot its pattern was read from has
+	# 25 dots, most likely from CS:GO before the magazine was cut to 20; the
+	# pattern file keeps them and the gun fires the first 20.
+	WeaponSheet.apply(data, "M4A1-S (no silencer)", "M4A1-S (silencer)")
 	data.chest_multiplier = 1.0
-	data.stomach_multiplier = 1.27
-	data.leg_multiplier = 0.76
-	data.range_modifier = 0.94
-
-	data.cycle_time = 0.1  # 600 RPM
-	# 25, not the 20 this used to say. The CS2 spray plot for this weapon has
-	# 25 dots on it, which settles it.
-	data.magazine_size = 25
-	data.reserve_ammo = 75
+	data.stomach_multiplier = 1.25
+	data.leg_multiplier = 0.75
 	data.reload_time = 3.1
-
-	data.max_player_speed = 225.0
 
 	data.recoil_pattern = RecoilPattern.load_pattern("m4a1s")
 
-	# Measured in CS2: animation 353 +- 5 ms, accuracy 542 +- 0 ms. Both are
-	# faster than the AK, and the gap between them is a similar 189 ms.
+	# Measured in CS2: the weapon model stops moving after 353 +- 5 ms.
 	data.recoil_animation_time = 0.353
-	data.accuracy_reset_time = 0.542
-
-	data.inaccuracy_standing = 0.015
-	data.inaccuracy_moving = 0.8
-	data.inaccuracy_jumping = 4.0
-	data.inaccuracy_per_shot = 0.10
 	return data
 
 

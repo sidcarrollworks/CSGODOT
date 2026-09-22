@@ -215,10 +215,13 @@ func _engage(enemy: Node3D, delta: float) -> void:
 	if _burst_clock < delta:
 		_aim_error = Vector2(_rng.randf_range(-AIM_ERROR_DEGREES, AIM_ERROR_DEGREES), _rng.randf_range(-AIM_ERROR_DEGREES, AIM_ERROR_DEGREES))
 	weapon.trigger_held = bursting
-	weapon.update(delta, now)
+	var state := Weapon.ShooterState.new(Vector2(velocity.x, velocity.z).length(), on_ground, is_ducked)
+	weapon.update(delta, now, state)
+	# The round goes when the weapon is ready, not on the tick after, so a
+	# bot's rifle fires at its own rate as the player's does.
+	now = clampi(weapon.next_shot_usec(), now - int(delta * 1_000_000.0), now)
 	if not bursting or not weapon.can_fire(now):
 		return
-	var state := Weapon.ShooterState.new(Vector2(velocity.x, velocity.z).length(), on_ground, is_ducked)
 	var shot := weapon.fire(now, 0.0, eyes, yaw_degrees + _aim_error.x, pitch_degrees + _aim_error.y, state)
 	if shot == null:
 		return

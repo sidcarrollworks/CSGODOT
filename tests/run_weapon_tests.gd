@@ -28,7 +28,8 @@ func _process(_delta: float) -> bool:
 		_test_recoil_follows_the_pattern()
 		_test_recoil_recovers()
 		_test_held_trigger_walks_the_whole_pattern()
-		_test_spray_resets_on_time()
+		_test_tapping_recovers_gradually()
+		_test_the_rate_of_fire_is_exact()
 		_test_patterns_are_the_measured_ones()
 		_test_recoil_scale()
 		_test_bullets_ignore_the_view_kick()
@@ -53,8 +54,12 @@ func _process(_delta: float) -> bool:
 		_test_spray_peak_survives_a_faster_camera()
 		_test_punch_is_the_same_at_any_frame_length()
 		_test_inaccuracy_by_state()
+		_test_the_drawn_cone_is_where_rounds_land()
 		_test_damage_falloff()
 		_test_hitbox_multipliers()
+		_test_fatal_headshot_ranges()
+		_test_landing_costs_accuracy()
+		_test_every_value_comes_from_the_sheet()
 		_build_world()
 		_frames += 1
 		return false
@@ -276,44 +281,78 @@ func _test_held_trigger_walks_the_whole_pattern() -> void:
 			)
 
 
-## The spray restarts on time off the trigger, not on how far the view has
-## recovered. A pattern's first entry is (0, 0), so punch after shot one is
-## zero and a recovery test resets a spray that has not started.
-func _test_spray_resets_on_time() -> void:
+## Tapping is not spraying slowly. Off the trigger both the recoil and the
+## recoil index recover, so a round after a pause lands short of where the
+## spray would have got to, the more so the longer the pause, and steady taps
+## settle low instead of walking the whole pattern. Sid, 2026-09-22: tapping
+## "has the tendency to continue the spray pattern to the T instead of slowly
+## being reset".
+func _test_tapping_recovers_gradually() -> void:
+	var data := WeaponLibrary.ak47()
+	data.inaccuracy_standing = 0.0
+	data.inaccuracy_per_shot = 0.0
+	var cycle := int(data.cycle_time * SECOND)
+
+	var first := Weapon.new(data).fire(0, 0.0, Vector3.ZERO, 0.0, 0.0, _standing())
+	_check(first != null and first.shot_index == 0, "the first shot is shot zero")
+
+	# Ten rounds held, a pause, then one more.
+	var heights: Array[float] = []
+	var indices: Array[int] = []
+	for pause in [0.15, 0.3, 0.6, 1.5]:
+		var weapon := Weapon.new(data)
+		for shot in 10:
+			weapon.fire(shot * cycle, 0.0, Vector3.ZERO, 0.0, 0.0, _standing())
+		var at := 9 * cycle + int(pause * SECOND)
+		var shot := weapon.fire(at, 0.0, Vector3.ZERO, 0.0, 0.0, _standing())
+		heights.append(PlayerInput.angles_from_direction(shot.direction).y)
+		indices.append(shot.shot_index)
+	var held: float = data.recoil_offset(10).y
+	_check(
+		heights[0] < held and heights[0] > 0.5,
+		"after 0.15 s off the trigger a round lands short of the spray's %.2f degrees, but not at the aim (%.2f)"
+			% [held, heights[0]]
+	)
+	_check(
+		heights[0] > heights[1] and heights[1] > heights[2] and heights[2] >= heights[3],
+		"the longer the pause, the lower it lands (%s)" % [heights]
+	)
+	_check(absf(heights[3]) < 0.01, "after a second and a half the recoil is gone (%.3f)" % heights[3])
+	_check(
+		indices[0] > indices[1] and indices[1] > indices[2] and indices[3] == 0,
+		"and the pattern falls back towards its top, not to it at once (%s)" % [indices]
+	)
+	# Ten rounds leave the index at 10; 0.6 s off, less the 0.11 s it waits,
+	# takes it to a tenth to the power of 0.98.
+	_check_equal(indices[2], 1, "0.6 s off the trigger, ten rounds in, the next is round 1")
+
+	# Steady taps a quarter of a second apart stay near the aim; the same
+	# eight rounds held climb most of the way up the pattern.
+	var tapper := Weapon.new(data)
+	var highest := 0.0
+	for shot in 8:
+		var tap := tapper.fire(shot * int(0.25 * SECOND), 0.0, Vector3.ZERO, 0.0, 0.0, _standing())
+		highest = maxf(highest, PlayerInput.angles_from_direction(tap.direction).y)
+	_check(
+		highest < 1.0 and highest < data.recoil_offset(7).y * 0.2,
+		"tapping every 0.25 s stays within a degree (%.2f), where holding climbs %.2f"
+			% [highest, data.recoil_offset(7).y]
+	)
+
+	# And the view: the first round's kick is a push on the spring, so the
+	# view has not moved yet the instant it goes.
+	var viewer := Weapon.new(data)
+	viewer.fire(0, 0.0, Vector3.ZERO, 0.0, 0.0, _standing())
+	_check_near(viewer.aim_punch.length(), 0.0, "the first shot has not moved the view yet")
+
+
+## A held trigger fires at the weapon's own rate however the ticks fall: the
+## next round is due at the last one plus the cycle, not on the tick after.
+func _test_the_rate_of_fire_is_exact() -> void:
 	var data := WeaponLibrary.ak47()
 	var weapon := Weapon.new(data)
-	var state := _standing()
-	var now := 0
-
-	# One shot, then wait less than the reset time.
-	now += int(DT * SECOND)
-	weapon.update(DT, now)
-	var first := weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, state)
-	_check(first != null and first.shot_index == 0, "the first shot is shot zero")
-	_check_near(
-		weapon.aim_punch.length(), 0.0,
-		"the first shot kicks the view nowhere, because the pattern starts at zero"
-	)
-
-	var short_wait := int(data.recoil_reset_time * 0.5 * SECOND)
-	var target := now + short_wait
-	while now < target:
-		now += int(DT * SECOND)
-		weapon.update(DT, now)
-	_check_equal(
-		weapon.shot_index(), 1,
-		"a pause shorter than the reset time keeps the place in the pattern"
-	)
-
-	var long_wait := int(data.recoil_reset_time * 1.5 * SECOND)
-	target = now + long_wait
-	while now < target:
-		now += int(DT * SECOND)
-		weapon.update(DT, now)
-	_check_equal(
-		weapon.shot_index(), 0,
-		"a pause longer than the reset time starts the pattern again"
-	)
+	weapon.fire(0, 0.0, Vector3.ZERO, 0.0, 0.0, _standing())
+	_check_equal(weapon.next_shot_usec(), int(data.cycle_time * SECOND), "the next round is due one cycle on")
 
 
 ## The patterns are the ones read off the CS2 spray plots, not placeholders.
@@ -327,9 +366,10 @@ func _test_patterns_are_the_measured_ones() -> void:
 		ak.magazine_size, ak.recoil_pattern.size(),
 		"the AK magazine and its pattern are the same length"
 	)
-	_check_equal(
-		m4.magazine_size, m4.recoil_pattern.size(),
-		"the M4A1-S magazine and its pattern are the same length"
+	_check_equal(m4.magazine_size, 20, "the M4A1-S magazine is the sheet's 20")
+	_check(
+		m4.recoil_pattern.size() >= m4.magazine_size,
+		"the M4A1-S pattern covers its whole magazine"
 	)
 
 	for data in [ak, m4]:
@@ -837,14 +877,71 @@ func _test_accuracy_resets_as_slowly_as_measured() -> void:
 	for data in [WeaponLibrary.ak47(), WeaponLibrary.m4a1s()]:
 		var reset := _accuracy_reset(data)
 		_check(
-			absf(reset - data.accuracy_reset_time) < 0.02,
-			"%s accuracy resets in the measured %.0f ms (%.0f ms)"
+			absf(reset - data.accuracy_reset_time()) < 0.02,
+			"%s accuracy resets in %.0f ms (%.0f ms)"
 				% [
 					data.display_name,
-					data.accuracy_reset_time * 1000.0,
+					data.accuracy_reset_time() * 1000.0,
 					reset * 1000.0
 				]
 		)
+		# The sheet's recovery time is when a round's penalty is down to a tenth.
+		var weapon := Weapon.new(data)
+		var now := int(SECOND)
+		weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, _standing())
+		var ticks := int(round(data.recovery_time_stand / DT))
+		for tick in ticks:
+			now += int(DT * SECOND)
+			weapon.update(DT, now)
+		var left: float = weapon.current_inaccuracy(_standing()) - data.inaccuracy_standing
+		_check(
+			absf(left / data.inaccuracy_per_shot - 0.1) < 0.01,
+			"%s is down to a tenth of a round's penalty after the sheet's %.3f s (%.3f)"
+				% [data.display_name, data.recovery_time_stand, left / data.inaccuracy_per_shot]
+		)
+
+		# Crouched it recovers on the sheet's crouched time, which is shorter.
+		var crouched := Weapon.new(data)
+		var ducked := Weapon.ShooterState.new(0.0, true, true)
+		now = int(SECOND)
+		crouched.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, ducked)
+		for tick in int(round(data.recovery_time_crouch / DT)):
+			now += int(DT * SECOND)
+			crouched.update(DT, now, ducked)
+		left = crouched.current_inaccuracy(ducked) - data.inaccuracy_crouching
+		_check(
+			absf(left / data.inaccuracy_per_shot - 0.1) < 0.01,
+			"%s crouched is down to a tenth after the sheet's %.3f s (%.3f)"
+				% [data.display_name, data.recovery_time_crouch, left / data.inaccuracy_per_shot]
+		)
+
+
+## Landing from a jump costs accuracy for a moment, as the sheet's "after
+## landing" figure says, and it recovers the way a round's penalty does.
+func _test_landing_costs_accuracy() -> void:
+	var data := WeaponLibrary.ak47()
+	var weapon := Weapon.new(data)
+	var now := int(SECOND)
+	weapon.update(DT, now, Weapon.ShooterState.new(0.0, false, false))
+	now += int(DT * SECOND)
+	weapon.update(DT, now, _standing())
+	# The tick it lands on has already begun to recover it.
+	var landed := weapon.current_inaccuracy(_standing())
+	var expected := data.inaccuracy_standing + (data.inaccuracy_landing - data.inaccuracy_standing) * exp(
+		-DT / data.accuracy_time_constant()
+	)
+	_check(
+		absf(landed - expected) < 0.001,
+		"just landed, the AK's cone is the sheet's 33.63, a tick recovered (%.3f against %.3f degrees)"
+			% [landed, expected]
+	)
+	for tick in int(round(data.recovery_time_stand * 2.0 / DT)):
+		now += int(DT * SECOND)
+		weapon.update(DT, now, _standing())
+	_check(
+		weapon.current_inaccuracy(_standing()) < data.inaccuracy_standing * 1.1,
+		"and it is back to standing accuracy shortly after"
+	)
 
 
 ## The point of the two numbers being separate. A player who taps again the
@@ -1185,6 +1282,7 @@ func _test_inaccuracy_by_state() -> void:
 	var walking := weapon.current_inaccuracy(Weapon.ShooterState.new(40.0, true, false))
 	var running := weapon.current_inaccuracy(Weapon.ShooterState.new(215.0, true, false))
 	var jumping := weapon.current_inaccuracy(Weapon.ShooterState.new(0.0, false, false))
+	var running_jump := weapon.current_inaccuracy(Weapon.ShooterState.new(215.0, false, false))
 
 	_check(crouched < standing, "crouching is more accurate than standing")
 	_check(
@@ -1192,7 +1290,41 @@ func _test_inaccuracy_by_state() -> void:
 		"a slow walk costs nothing, which is what makes counter-strafing work"
 	)
 	_check(running > standing * 10.0, "running is far less accurate")
-	_check(jumping > running, "jumping is the worst of all")
+	_check(jumping > standing * 10.0, "a standing jump is far less accurate")
+	# The sheet has a standing jump's apex (147.77) under a full run (182.07):
+	# it is the two together that are worst.
+	_check(running_jump > running and running_jump > jumping, "jumping at a run is the worst of all")
+
+	# The sheet's own figures, back out of the cone: its accurate range is
+	# where the widest a standing round can land is 15.24 cm off.
+	var ak := WeaponLibrary.ak47()
+	_check_near(
+		tan(deg_to_rad(ak.inaccuracy_standing)) * 21.74 / 0.0254, 6.0,
+		"the AK standing still lands within 6 inches at the sheet's accurate range, 21.74 m"
+	)
+	_check_near(standing, WeaponLibrary.cs_inaccuracy(7.01), "the AK stands at the sheet's 7.01")
+	_check_near(running, WeaponLibrary.cs_inaccuracy(182.07), "and runs at its 182.07")
+	_check_near(jumping, WeaponLibrary.cs_inaccuracy(147.77), "and tops a standing jump at its 147.77")
+
+
+## The range draws the cone round the crosshair. A perspective camera puts a
+## direction at angle a off the view axis tan(a) / tan(fov / 2) of the way
+## from the centre to the top edge, so that is the circle's radius.
+func _test_the_drawn_cone_is_where_rounds_land() -> void:
+	_check_near(Crosshair.spread_radius(0.0, 75.0, 1080.0), 0.0, "no cone, no circle")
+	_check_near(
+		Crosshair.spread_radius(37.5, 75.0, 1080.0), 540.0,
+		"a round half the field of view off lands on the screen's edge"
+	)
+	# What Camera3D uses with its default of keeping the height: fov is the
+	# vertical angle.
+	var projection := Projection.create_perspective(75.0, 16.0 / 9.0, 1.0, 10000.0)
+	var up := Vector3(0.0, sin(deg_to_rad(10.32)), -cos(deg_to_rad(10.32)))
+	var clip: Vector4 = projection * Vector4(up.x, up.y, up.z, 1.0)
+	_check_near(
+		Crosshair.spread_radius(10.32, 75.0, 1080.0), clip.y / clip.w * 540.0,
+		"the AK's running cone is drawn where the camera's own projection puts a round"
+	)
 
 
 func _test_damage_falloff() -> void:
@@ -1223,6 +1355,92 @@ func _test_hitbox_multipliers() -> void:
 		data.hitbox_multiplier(&"leg") < data.hitbox_multiplier(&"chest"),
 		"legs take less than the chest"
 	)
+
+	var m4 := WeaponLibrary.m4a1s()
+	_check_near(m4.base_damage, 38.0, "an M4A1-S chest shot is 38 unarmoured at point blank")
+	_check_near(
+		m4.base_damage * m4.hitbox_multiplier(&"head"), 132.05,
+		"an M4A1-S headshot is 132 unarmoured at point blank"
+	)
+
+
+## Everything the firing model reads is the sheet's, read through
+## WeaponSheet rather than typed in, so a new weapon is one line.
+func _test_every_value_comes_from_the_sheet() -> void:
+	_check(WeaponSheet.rows().size() == 45, "the sheet has its 45 rows (%d)" % WeaponSheet.rows().size())
+	var ak := WeaponLibrary.ak47()
+	_check_near(ak.base_damage, 36.0, "AK damage 36")
+	_check_near(ak.armor_penetration, 0.775, "AK armour penetration 77.5%")
+	_check_near(ak.range_modifier, 0.98, "AK loses 2% every 500 units")
+	_check_near(ak.cycle_time, 0.1, "AK at 600 RPM")
+	_check_equal(ak.magazine_size, 30, "AK magazine 30")
+	_check_equal(ak.reserve_ammo, 90, "AK reserve 90")
+	_check_near(ak.max_player_speed, 215.0, "AK mobility 215")
+	_check_near(ak.max_range, 8192.0, "AK range 8192")
+	_check_near(ak.recovery_time_stand, 0.368, "AK recovers standing in 0.368 s")
+	_check(ak.automatic, "the AK is automatic")
+	var m4 := WeaponLibrary.m4a1s()
+	_check_equal(m4.reserve_ammo, 60, "M4A1-S reserve 60")
+	_check_near(m4.inaccuracy_per_shot, WeaponSheet.cone_degrees(7.0), "the M4A1-S reads its silencer row for firing inaccuracy")
+	_check_near(m4.base_damage, 38.0, "and its main row where the silencer row says the same")
+	# Units the sheet writes its own way.
+	_check_near(WeaponSheet.parse_number("$2,700"), 2700.0, "prices lose their dollar and comma")
+	_check_near(WeaponSheet.parse_number("77.50%"), 0.775, "percentages become fractions")
+	_check_near(WeaponSheet.parse_number("3.475x"), 3.475, "multipliers lose their x")
+	_check_near(WeaponSheet.parse_number("21.74m"), 21.74, "metres lose their m")
+	_check(is_nan(WeaponSheet.parse_number("-")), "a dash is no number")
+	_check(is_nan(WeaponSheet.parse_number("see note")), "nor is a note")
+	# The sheet's accurate range is where its standing cone is six inches wide,
+	# for every weapon that has both: the conversion to degrees holds for all.
+	var worst := 0.0
+	for weapon: String in WeaponSheet.rows():
+		var metres := WeaponSheet.number(weapon, "Accurate Range Stand")
+		var stand := WeaponSheet.number(weapon, "Standing Inaccuracy")
+		if is_nan(metres) or is_nan(stand):
+			continue
+		var inches := tan(deg_to_rad(WeaponSheet.cone_degrees(stand))) * metres / 0.0254
+		worst = maxf(worst, absf(inches - 6.0))
+	_check(worst < 0.02, "every weapon's accurate range is its six-inch cone (worst off by %.3f in)" % worst)
+
+
+## The sheet's fatal headshot ranges, which are the damage, the multiplier,
+## the armour and the falloff all at once: a round to the head kills out to
+## there and not past it. Taken through HitTarget, the path a real round takes.
+func _test_fatal_headshot_ranges() -> void:
+	var cases := [
+		[WeaponLibrary.ak47(), false, 9024.61],
+		[WeaponLibrary.ak47(), true, 2716.24],
+		[WeaponLibrary.m4a1s(), false, 2246.53],
+	]
+	for case in cases:
+		var data: WeaponData = case[0]
+		var helmet: bool = case[1]
+		var reach: float = case[2]
+		var kills := func(distance: float) -> bool:
+			var target := HitTarget.new()
+			target.build_own_hitboxes = false
+			target.wear(100.0 if helmet else 0.0, helmet)
+			target.reset()
+			target.apply_damage(
+				data.damage_at(distance) * data.hitbox_multiplier(&"head"), &"head", data.armor_penetration
+			)
+			var dead := not target.alive
+			target.free()
+			return dead
+		_check(
+			kills.call(reach - 5.0) and not kills.call(reach + 5.0),
+			"%s headshot %s kills out to the sheet's %.0f units and no further"
+				% [data.display_name, "through a helmet" if helmet else "without a helmet", reach]
+		)
+	# And the sheet says none: the M4A1-S never one-shots through a helmet.
+	var m4 := WeaponLibrary.m4a1s()
+	var target := HitTarget.new()
+	target.build_own_hitboxes = false
+	target.wear(100.0, true)
+	target.reset()
+	target.apply_damage(m4.damage_at(0.0) * m4.hitbox_multiplier(&"head"), &"head", m4.armor_penetration)
+	_check(target.alive, "an M4A1-S headshot through a helmet does not kill, even point blank")
+	target.free()
 
 
 # --- Hit registration -----------------------------------------------------

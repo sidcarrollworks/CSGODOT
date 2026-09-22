@@ -64,6 +64,7 @@ var _markers: Node3D
 var _numbers: Node3D
 var _label: Label
 var _dummy_label: Label
+var _crosshair: Crosshair
 
 ## What the dummy's hitboxes are, for the readout: the game's capsules, or
 ## the stand-in boxes and why.
@@ -114,18 +115,27 @@ func _process(_delta: float) -> void:
 	if player == null or player.weapon == null:
 		return
 	var weapon := player.weapon
-	var state := Weapon.ShooterState.new(
-		Vector2(player.velocity.x, player.velocity.z).length(),
-		player.on_ground,
-		player.is_ducked
-	)
+	var state := player.shooter_state
+	var cone := weapon.current_inaccuracy(state)
+	# The cone drawn round the crosshair, so moving, stopping and
+	# counter-strafing can be watched opening and closing it.
+	_crosshair.spread_degrees = cone
+	var camera := get_viewport().get_camera_3d()
+	if camera != null:
+		_crosshair.fov_degrees = camera.fov
 	_label.text = "\n".join([
 		"%s" % weapon.data.display_name,
 		"ammo       %d / %d" % [weapon.ammo, weapon.reserve],
 		"shot       %d" % weapon.shot_index(),
 		"cone       %.3f deg  %s" % [
-			weapon.current_inaccuracy(state),
+			cone,
 			"ready" if weapon.is_accuracy_reset() else "recovering",
+		],
+		# Moving costs nothing under a third of the weapon's top speed.
+		"speed      %.0f u/s  %s" % [
+			state.speed,
+			"accurate" if state.speed <= weapon.data.max_player_speed * Weapon.MOVING_FROM
+			else "moving, cone open",
 		],
 		# Side by side on purpose. The gun stops moving before the cone
 		# closes, so these two disagree for a couple of hundred milliseconds
@@ -601,9 +611,9 @@ func _build_hud() -> void:
 	# A crosshair, since aiming at a wall without one is guesswork. The centre
 	# dot is on here because this is the range where the question being asked
 	# is whether a bullet went exactly where it was aimed.
-	var crosshair := Crosshair.new()
-	crosshair.centre_dot = true
-	layer.add_child(crosshair)
+	_crosshair = Crosshair.new()
+	_crosshair.centre_dot = true
+	layer.add_child(_crosshair)
 
 	_dummy_label = Label.new()
 	_dummy_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)

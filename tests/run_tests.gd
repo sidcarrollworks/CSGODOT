@@ -88,6 +88,11 @@ var _subtick_speeds: Array[float] = []
 var _subtick_entry_speeds: Array[float] = []
 var _subtick_airborne: Array[bool] = []
 
+## Per weapon: ticks from full run to a standing-still cone, pressing the
+## opposite key or letting go, and how many ticks the opposite key can be held
+## before the cone opens again.
+var _counter_strafe: Dictionary = {}
+
 
 func _process(_delta: float) -> bool:
 	# The scene is loaded on the first frame rather than in _initialize,
@@ -123,6 +128,7 @@ func _process(_delta: float) -> bool:
 		6: _phase_stairs(false)
 		7: _phase_ledge()
 		8: _phase_subtick_jump()
+		9: _phase_counter_strafe()
 		_:
 			_test_jump_height()
 			_test_crouch_jump()
@@ -131,6 +137,7 @@ func _process(_delta: float) -> bool:
 			_test_stay_on_ground()
 			_test_quadrant_ground()
 			_test_subtick_jump()
+			_test_counter_strafe()
 			_report()
 			return true
 	return false
@@ -342,6 +349,69 @@ func _phase_subtick_jump() -> void:
 	_step()
 
 
+## Counter-strafing, through the real body and the real cone. Running flat
+## out, the player presses the opposite key (or lets go of everything) and
+## the weapon is asked for its cone after every tick, exactly as the
+## controller asks it before a shot.
+func _phase_counter_strafe() -> void:
+	var saved_max_speed := _player.config.max_speed
+	for data: WeaponData in [WeaponLibrary.ak47(), WeaponLibrary.m4a1s()]:
+		var weapon := Weapon.new(data)
+		var result := {
+			"running": 0.0, "expected_running": data.inaccuracy_moving,
+			"counter": -1, "release": -1, "window": -1,
+		}
+
+		_run_flat_out(data)
+		result["running"] = _cone(weapon)
+		result["counter"] = _ticks_until(weapon, Vector3(0.0, 0.0, 1.0), true)
+		# Keep holding it: the player stops, then starts running the other
+		# way, and the cone opens again. The ticks in between are the window
+		# a counter-strafe gives.
+		var reopened := _ticks_until(weapon, Vector3(0.0, 0.0, 1.0), false)
+		if reopened >= 0:
+			result["window"] = reopened
+
+		_run_flat_out(data)
+		result["release"] = _ticks_until(weapon, Vector3.ZERO, true)
+
+		_counter_strafe[data.display_name] = result
+	_player.config.max_speed = saved_max_speed
+	_advance_phase()
+
+
+## Placed on flat ground running at the weapon's top speed toward -Z.
+func _run_flat_out(data: WeaponData) -> void:
+	_player.config.max_speed = data.max_player_speed
+	_place(Vector3(0.0, 8.0, 256.0))
+	# Down onto the floor first: in the air there is no friction to stop
+	# with, and the jump's cone is added on top.
+	for i in SETTLE_TICKS:
+		_step()
+	_player.velocity = Vector3(0.0, 0.0, -data.max_player_speed)
+	for i in 8:
+		_step(Vector3(0.0, 0.0, -1.0))
+
+
+func _cone(weapon: Weapon) -> float:
+	return weapon.current_inaccuracy(Weapon.ShooterState.new(
+		Vector2(_player.velocity.x, _player.velocity.z).length(),
+		_player.on_ground, _player.is_ducked
+	))
+
+
+## Ticks with this intent until the cone is (or, with accurate false, stops
+## being) the standing one. -1 if it never happens within a second.
+func _ticks_until(weapon: Weapon, wish_dir: Vector3, accurate: bool) -> int:
+	var standing := weapon.data.inaccuracy_standing
+	for tick in range(1, 129):
+		_step(wish_dir)
+		var at_standing := absf(_cone(weapon) - standing) < 1e-6
+		if at_standing == accurate:
+			return tick
+	return -1
+
+
 ## Walking up the access ramp to the top of the surf lane, starting on the
 ## floor short of it so the seam where ramp meets floor is tested too. "I could
 ## not reach the top" is a movement bug, not a level design opinion.
@@ -391,6 +461,12 @@ func _report() -> void:
 	print("hop speed by press fraction, from %.1f u/s: %s" % [
 		SUBTICK_HOP_SPEED, ", ".join(hops)
 	])
+	for weapon_name: String in _counter_strafe:
+		var r: Dictionary = _counter_strafe[weapon_name]
+		print("counter-strafe %s: running cone %.2f deg, standing cone after %.1f ms (letting go %.1f ms), for %.1f ms before the other way opens it" % [
+			weapon_name, r["running"], r["counter"] * DT * 1000.0,
+			r["release"] * DT * 1000.0, r["window"] * DT * 1000.0,
+		])
 	if _failures == 0:
 		print("%d checks passed." % _checks)
 		quit(0)
@@ -435,6 +511,39 @@ func _test_quadrant_ground() -> void:
 		"and stays up on the step rather than falling off it (y %.1f)"
 			% _ledge_height
 	)
+
+
+## Moving costs accuracy, and pressing the opposite key is the fast way to
+## get it back, as in CS: friction and the opposite key's acceleration
+## together bring a rifle under a third of its top speed, where the cone is
+## the standing one, in well under half the time friction alone takes.
+func _test_counter_strafe() -> void:
+	for weapon_name: String in ["AK-47", "M4A1-S"]:
+		if not _counter_strafe.has(weapon_name):
+			_check(false, "counter-strafe phase ran for the %s" % weapon_name)
+			continue
+		var r: Dictionary = _counter_strafe[weapon_name]
+		var ms := func(ticks: int) -> float: return ticks * DT * 1000.0
+		_check(
+			absf(r["running"] - r["expected_running"]) < 1e-4,
+			"the %s at a full run on the ground has the sheet's running cone (%.2f deg)"
+				% [weapon_name, r["running"]]
+		)
+		_check(
+			r["counter"] > 0 and r["counter"] <= 11,
+			"a counter-strafe gives the %s its standing cone within 86 ms (%.1f ms)"
+				% [weapon_name, ms.call(r["counter"])]
+		)
+		_check(
+			r["release"] > 0 and r["release"] >= 2 * r["counter"],
+			"letting go instead takes over twice as long (%.1f ms against %.1f ms)"
+				% [ms.call(r["release"]), ms.call(r["counter"])]
+		)
+		_check(
+			r["window"] > 8,
+			"held too long, the opposite key runs the %s the other way, but only after %.1f ms of standing accuracy"
+				% [weapon_name, ms.call(r["window"])]
+		)
 
 
 func _test_subtick_jump() -> void:

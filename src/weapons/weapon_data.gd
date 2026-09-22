@@ -3,14 +3,11 @@ extends Resource
 
 ## Everything that decides how a weapon behaves.
 ##
-## IMPORTANT: none of these numbers have been measured against CS2. They come
-## from published community figures, which are close but not authoritative, and
-## the values that matter most for feel (recoil, inaccuracy) are not published
-## at all in a form anyone can copy.
-##
 ## The weapon tuning data in CS2 lives in scripts/weapons.vdata_c and no
-## published artifact carries its values, so this cannot be extracted and has
-## to be measured:
+## published artifact carries its values, so this cannot be extracted. The
+## damage, armour, falloff, speed and inaccuracy figures come from the CS2
+## Weapon Spreadsheet (see WeaponLibrary and reference/weapon_stats.md); the
+## spray patterns and recovery timings were measured in CS2 by hand:
 ## https://github.com/CS2OpenDev/CS2OpenDev-SchemaTracker/issues/16
 ##
 ## reference/spray_patterns/README.md says how to do the measuring.
@@ -105,10 +102,26 @@ class Punch:
 ## Beyond this the bullet stops entirely.
 @export var max_range: float = 8192.0
 
+## Rounds a trigger pull puts out: 1, or a shotgun's pellets. Not used yet.
+@export var pellets: int = 1
+
+## How well a round carries through walls and props, as the weapon sheet
+## gives it (2.0 for rifles, 1.0 for SMGs). Not used yet: penetration is on
+## the roadmap.
+@export var penetration_power: float = 2.0
+
+## How much of a victim's speed a hit takes away, as the weapon sheet gives
+## it (0.6 for rifles). Not used yet: tagging is on the roadmap.
+@export var tagging_power: float = 0.6
+
 # --- Rate of fire ---------------------------------------------------------
 
 ## Seconds between shots. 600 RPM is 0.1.
 @export var cycle_time: float = 0.1
+
+## Whether holding the trigger keeps firing (the sheet's "hold to shoot").
+## Both rifles are; most pistols are not.
+@export var automatic: bool = true
 
 @export var magazine_size: int = 30
 @export var reserve_ammo: int = 90
@@ -141,15 +154,6 @@ class Punch:
 @export var recoil_scale: float = 1.0
 
 
-## How long the trigger has to be off before the spray starts from the top
-## again, in seconds.
-##
-## This is deliberately a time and not a test on how far the view has
-## recovered. The first entry of a pattern is (0, 0) by definition, so the
-## accumulated punch after shot one is zero, and a recovery test would decide
-## the spray had finished before it had started. That bug made every shot
-## shot number one and flattened the pattern entirely.
-@export var recoil_reset_time: float = 0.4
 
 # --- View punch -----------------------------------------------------------
 #
@@ -202,7 +206,7 @@ class Punch:
 ## degrees.
 ##
 ## Nor is it the time the weapon takes to become accurate again: see
-## accuracy_reset_time.
+## recovery_time_stand.
 @export var recoil_animation_time: float = 0.644
 
 ## How long the CAMERA's slow half takes to settle after a round, in seconds.
@@ -321,35 +325,41 @@ class Punch:
 
 # --- Inaccuracy -----------------------------------------------------------
 
-## Cone half-angle in degrees added to every shot, by player state. Standing
-## still and not firing should be very close to zero for a rifle; everything
-## else opens it up. These are the numbers that make spraying while running
-## useless, so they matter as much as the pattern.
-@export var inaccuracy_standing: float = 0.02
-@export var inaccuracy_crouching: float = 0.015
-@export var inaccuracy_moving: float = 0.9
-@export var inaccuracy_jumping: float = 4.0
+## Cone half-angle in degrees, by player state, each a TOTAL the way the
+## weapon spreadsheet gives them: standing still, crouched, at full run, and
+## at the top of a standing jump. Moving and jumping add up (see
+## Weapon.current_inaccuracy). These are the numbers that make spraying while
+## running useless, so they matter as much as the pattern. The defaults are
+## the AK-47's; WeaponLibrary.cs_inaccuracy converts the sheet's units.
+@export var inaccuracy_standing: float = 0.4016
+@export var inaccuracy_crouching: float = 0.31
+@export var inaccuracy_moving: float = 10.32
+@export var inaccuracy_jumping: float = 8.41
 
 ## Added per shot while firing, in degrees.
-@export var inaccuracy_per_shot: float = 0.12
+@export var inaccuracy_per_shot: float = 0.447
 
-## How long a single standing shot takes to become fully accurate again, in
-## seconds.
-##
-## MEASURED, from Sid's frame-by-frame capture of CS2: the accuracy box from
-## weapon_debug_spread_show is tracked until it returns to its baseline size.
-## AK-47 867 +- 0 ms, M4A1-S 542 +- 0 ms.
-##
-## This is deliberately a different number from recoil_animation_time, and for
-## both weapons it is the LONGER of the two. The gun finishes moving before it
-## finishes recovering, so the animation tells you the weapon is ready a couple
-## of hundred milliseconds before it is. That desync is real CS2 behaviour and
-## reproducing it is the point: a player who taps on the animation is early.
-@export var accuracy_reset_time: float = 0.867
+## Inaccuracy on a ladder, and the penalty landing from a jump puts on, both
+## totals in degrees like the rest. Landing adds its excess over standing to
+## the firing penalty, which then recovers the way a round's does.
+@export var inaccuracy_ladder: float = 15.67
+@export var inaccuracy_landing: float = 1.93
 
-## Speed below which movement inaccuracy does not apply. CS lets you walk
-## slowly without penalty, which is why counter-strafing matters.
-@export var inaccuracy_speed_threshold: float = 55.0
+## How long the accuracy penalty takes to fall to a tenth, standing and
+## crouched, in seconds: the weapon sheet's recovery times, which are how CS
+## defines them.
+##
+## This is deliberately separate from recoil_animation_time, and longer for
+## both rifles once read to the same threshold: the gun finishes moving before
+## it finishes recovering, so the animation tells you the weapon is ready
+## before it is. A player who taps on the animation is early.
+##
+## Sid measured the AK back to baseline at 867 ms and the M4A1-S at 542 ms
+## off weapon_debug_spread_show on 2026-09-22. Taken at a hundredth, the
+## sheet gives 736 and 678.
+@export var recovery_time_stand: float = 0.368
+@export var recovery_time_crouch: float = 0.305257
+
 
 
 ## How high a punch peaks, against the velocity a shot gives it and the
@@ -546,15 +556,21 @@ func _damping_ratio(ratio: float = -1.0) -> float:
 	)
 
 
-## Time constant of the accuracy decay, in seconds.
+## Time constant of the accuracy decay, in seconds, standing or crouched.
 ##
 ## Exponential rather than linear, which is both what the measured curve looks
-## like on a log scale and what CS:GO's accuracy penalty did. Derived so a
-## single shot's penalty falls below the reset threshold in exactly
-## accuracy_reset_time; a longer spray therefore takes proportionally longer,
-## which is also what CS2 does.
-func accuracy_time_constant() -> float:
-	return maxf(accuracy_reset_time, 0.0001) / -log(SETTLE_FRACTION)
+## like on a log scale and what CS's accuracy penalty does: the recovery time
+## is when it is down to a tenth. A longer spray therefore takes
+## proportionally longer.
+func accuracy_time_constant(ducked: bool = false) -> float:
+	var recovery := recovery_time_crouch if ducked else recovery_time_stand
+	return maxf(recovery, 0.0001) / log(10.0)
+
+
+## How long one round's accuracy penalty takes to be gone, below the reset
+## threshold, in seconds.
+func accuracy_reset_time(ducked: bool = false) -> float:
+	return accuracy_time_constant(ducked) * -log(SETTLE_FRACTION)
 
 
 ## Below this fraction of one shot's penalty the weapon counts as fully
