@@ -694,6 +694,8 @@ func _test_lightmap_materials() -> void:
 	leaf.cull_mode = BaseMaterial3D.CULL_DISABLED
 	var pattern := StandardMaterial3D.new()
 	pattern.set_meta("extras", {"vmat": {"ShaderName": "csgo_vertexlitgeneric.vfx"}})
+	var sticker := StandardMaterial3D.new()
+	sticker.set_meta("extras", {"vmat": {"ShaderName": "csgo_vertexlitgeneric.vfx", "IntParams": {"F_FORCE_UV2": 1.0}}})
 	var effect := StandardMaterial3D.new()
 	effect.set_meta("extras", {"vmat": {"ShaderName": "csgo_effects.vfx"}})
 	var blend := ShaderMaterial.new()
@@ -707,11 +709,13 @@ func _test_lightmap_materials() -> void:
 		"the world's and the props' shaders can be lightmapped, an effect's cannot"
 	)
 
-	# Six surfaces, 100 units square, at a 64-texel lightmap: the world's
-	# own are charted at 0.32 texels a unit; the plank at 0.26, so charted;
-	# the leaves collapsed onto one texel; the pattern at 3.2, a model's own
-	# UV set; the effect charted but not lightmappable; and a blend material
-	# charted like the world. Then a wall with no second UV set at all.
+	# Surfaces 100 units square, at a 64-texel lightmap: the world's own
+	# are charted at 0.32 texels a unit; the plank at 0.26, so charted; the
+	# leaves collapsed onto one texel; the pattern at 3.2, a model's own UV
+	# set by its density; the effect charted but not lightmappable; a blend
+	# material charted like the world; a wall with no second UV set at all;
+	# and a sticker whose UV set is charted like a lightmap's but whose
+	# material says F_FORCE_UV2, the model's own.
 	var mesh := ArrayMesh.new()
 	_add_quad(mesh, wall, 100.0, 0.5)
 	_add_quad(mesh, sign, 100.0, 0.5)
@@ -721,6 +725,7 @@ func _test_lightmap_materials() -> void:
 	_add_quad(mesh, effect, 100.0, 0.5)
 	_add_quad(mesh, blend, 100.0, 0.5)
 	_add_quad(mesh, wall, 100.0, -1.0)
+	_add_quad(mesh, sticker, 100.0, 0.5)
 	var instance := MeshInstance3D.new()
 	instance.mesh = mesh
 	var meshes: Array[MeshInstance3D] = [instance]
@@ -753,8 +758,13 @@ func _test_lightmap_materials() -> void:
 			and instance.get_surface_override_material(2) is ShaderMaterial
 			and instance.get_surface_override_material(4) == null
 			and instance.get_surface_override_material(5) == null
-			and instance.get_surface_override_material(7) == null,
-		"the wall on the opaque shader, the sign on the blended one, the plank lit, the pattern, effect and unmapped wall not"
+			and instance.get_surface_override_material(7) == null
+			and instance.get_surface_override_material(8) == null,
+		"the wall on the opaque shader, the sign on the blended one, the plank lit; the pattern, effect, unmapped wall and sticker not"
+	)
+	_check(
+		LightmapMaterials.uses_own_uv2(BlendMaterials.vmat(sticker)) and not LightmapMaterials.uses_own_uv2(BlendMaterials.vmat(plank)),
+		"F_FORCE_UV2 says a material's second UV set is the model's own"
 	)
 	_check(
 		leaves != null and leaves.shader != LightmapMaterials.OPAQUE_SHADER

@@ -14,9 +14,9 @@ extends RefCounted
 ## when it was placed so: its second UV set is then laid out as charts at
 ## the map's texel density, or, for a prop the map lights by light probes,
 ## collapsed onto one texel of its own that holds that light. Other props
-## carry their model's own second UV set, or none, and keep Godot's ambient,
-## which MapLighting sets to the lightmap's average when it has been
-## measured (measure_average, run by scripts/prepare_export.gd).
+## carry their model's own second UV set, which their material says with
+## F_FORCE_UV2 (a decal or a tint mask reads it), or none; those are lit
+## by the light probes instead (ProbeMaterials).
 
 const OPAQUE_SHADER := preload("res://src/map/lightmapped.gdshader")
 const OVERLAY_SHADER := preload("res://src/map/lightmapped_overlay.gdshader")
@@ -35,9 +35,11 @@ const WORLD_SHADERS := ["csgo_lightmappedgeneric.vfx", "csgo_static_overlay.vfx"
 const PROP_SHADERS := ["csgo_vertexlitgeneric.vfx", "csgo_foliage.vfx", "csgo_complex.vfx", "csgo_environment.vfx"]
 
 ## A prop's charts sit at the world's texel density, give or take a
-## mapper's resolution bias; a model's own second UV set is ten times
-## denser and more. Measured against the world's own surfaces, or against
-## dust2's density when there are none to measure.
+## mapper's resolution bias; a model's own second UV set is usually ten
+## times denser, but not always (a crate's decal coordinates came out at
+## twice the world's), so the material's F_FORCE_UV2 is what decides, and
+## the density is the check behind it. Measured against the world's own
+## surfaces, or against dust2's density when there are none to measure.
 const DENSITY_BELOW := 8.0
 const DENSITY_ABOVE := 4.0
 const DEFAULT_DENSITY := 0.75
@@ -70,9 +72,12 @@ static func apply(meshes: Array[MeshInstance3D], map_dir: String, unit_scale: fl
 			var material := mesh_instance.get_active_material(surface)
 			if material == null or not (mesh.surface_get_format(surface) & Mesh.ARRAY_FORMAT_TEX_UV2):
 				continue
-			var shader := String(BlendMaterials.vmat(material).get("ShaderName", ""))
+			var description := BlendMaterials.vmat(material)
+			var shader := String(description.get("ShaderName", ""))
 			var is_prop := shader in PROP_SHADERS
 			if not (is_prop or shader in WORLD_SHADERS):
+				continue
+			if is_prop and uses_own_uv2(description):
 				continue
 			var density := chart_density(mesh, surface, unit_scale, lightmap_size)
 			if not is_prop and density > 0.0:
@@ -113,15 +118,23 @@ static func is_lightmapped(description: Dictionary) -> bool:
 	return shader in WORLD_SHADERS or shader in PROP_SHADERS
 
 
+## Whether a material's second UV set is the model's own rather than a
+## lightmap's: F_FORCE_UV2 keeps it for a decal or a tint mask.
+static func uses_own_uv2(description: Dictionary) -> bool:
+	return int((description.get("IntParams", {}) as Dictionary).get("F_FORCE_UV2", 0)) != 0
+
+
 ## How densely a surface's second UV set covers the lightmap, in texels per
 ## unit of its edges, over a sample of its triangles: the median, leaving
 ## out triangles collapsed onto one texel. Zero when every sampled triangle
 ## is, or when there is nothing to measure.
 static func chart_density(mesh: Mesh, surface: int, unit_scale: float, lightmap_size: Vector2) -> float:
 	var arrays := mesh.surface_get_arrays(surface)
+	if arrays[Mesh.ARRAY_TEX_UV2] == null or arrays[Mesh.ARRAY_VERTEX] == null:
+		return 0.0
 	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 	var uv2: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV2]
-	var index: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	var index: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
 	var triangles := index.size() / 3 if not index.is_empty() else vertices.size() / 3
 	if triangles == 0 or uv2.size() != vertices.size():
 		return 0.0

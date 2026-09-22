@@ -102,6 +102,19 @@ func _import() -> bool:
 		lightmaps.get("ambient") is Color,
 		"the lightmap's average is measured, for the ambient of the rest (scripts/extract_assets.sh lightmaps runs the prepare step)"
 	)
+	# A crate whose decal coordinates happen to sit at lightmap density
+	# must still not read the lightmap through them: its material says so.
+	var crate_shader := ""
+	for node in _importer.get_child(0).find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := node as MeshInstance3D
+		for surface in mesh_instance.mesh.get_surface_count():
+			if (mesh_instance.mesh as ArrayMesh).surface_get_name(surface) == "dust_shipping_crate_01_painted_color":
+				var material := mesh_instance.get_active_material(surface)
+				crate_shader = (material as ShaderMaterial).shader.resource_path.get_file() if material is ShaderMaterial else "standard"
+	_check(
+		crate_shader == "probe_lit.gdshader",
+		"the painted crates, whose second UV set is their stickers', are lit by the probes and not the lightmap (%s)" % crate_shader
+	)
 	var probes: Dictionary = stats.get("probes", {})
 	_check(
 		int(probes.get("volumes", 0)) == 43 and int(probes.get("surfaces", 0)) >= 1000,

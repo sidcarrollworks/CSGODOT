@@ -48,7 +48,9 @@ const HOLE_FOR := {"concrete": "concrete", "sand": "plaster", "dirt": "plaster",
 @export var hole_size: float = 5.0
 ## Godot's 3D audio is set out in metres; the map is in inches.
 const METRE := 39.37
-const SOUND_DB := -8.0
+## Quiet, and quick to fade with distance: the hit is a tick under the
+## shot, not a rock wall with every round.
+const SOUND_DB := -20.0
 
 var holes: int = 0
 var _hole_nodes: Array[Decal] = []
@@ -63,8 +65,8 @@ func _ready() -> void:
 	add_to_group(&"bullet_impacts")
 	for i in 8:
 		var player := AudioStreamPlayer3D.new()
-		player.unit_size = 8.0 * METRE
-		player.max_distance = 120.0 * METRE
+		player.unit_size = 4.0 * METRE
+		player.max_distance = 80.0 * METRE
 		player.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
 		add_child(player)
 		_players.append(player)
