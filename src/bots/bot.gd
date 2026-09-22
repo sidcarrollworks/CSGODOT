@@ -133,13 +133,13 @@ func _physics_process(delta: float) -> void:
 	if target != null and _seen_for >= REACTION_SECONDS:
 		_engage(target, delta)
 	elif not route.is_empty():
-		var target := route[_next]
-		var to_target := target - global_position
-		to_target.y = 0.0
-		if to_target.length() < arrive_distance:
+		var waypoint := route[_next]
+		var to_waypoint := waypoint - global_position
+		to_waypoint.y = 0.0
+		if to_waypoint.length() < arrive_distance:
 			_next = (_next + 1) % route.size()
-		elif to_target.length_squared() > 0.0:
-			wish_dir = to_target.normalized()
+		elif to_waypoint.length_squared() > 0.0:
+			wish_dir = to_waypoint.normalized()
 			wish_speed = config.max_speed
 			# The game's yaw 0 looks down -Z, and yaw grows towards -X.
 			var wanted := rad_to_deg(atan2(-wish_dir.x, -wish_dir.z))

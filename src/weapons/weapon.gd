@@ -297,12 +297,12 @@ func current_inaccuracy(state: ShooterState) -> float:
 ## goes flat, while its sideways steps grow to three degrees. Scale the kick
 ## by those and the view punches twice and then only sways, which is not what
 ## a gun does and is not what CS2 does either.
-func _view_kick_for(shot_index: int) -> Vector2:
-	var here := data.recoil_offset(shot_index)
-	var sideways := data.recoil_offset(shot_index + 1).x - here.x
-	if is_zero_approx(sideways) and shot_index > 0:
+func _view_kick_for(round_index: int) -> Vector2:
+	var here := data.recoil_offset(round_index)
+	var sideways := data.recoil_offset(round_index + 1).x - here.x
+	if is_zero_approx(sideways) and round_index > 0:
 		# Past the end of the pattern, lean the way the last round did.
-		sideways = here.x - data.recoil_offset(shot_index - 1).x
+		sideways = here.x - data.recoil_offset(round_index - 1).x
 	return Vector2(signf(sideways) * data.view_kick_side(), data.view_kick_up())
 
 

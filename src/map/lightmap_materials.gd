@@ -83,10 +83,11 @@ static func apply(meshes: Array[MeshInstance3D], map_dir: String, unit_scale: fl
 			if not is_prop and density > 0.0:
 				world_densities.append(density)
 			candidates.append([mesh_instance, surface, material, is_prop, density])
-	var reference := DEFAULT_DENSITY
+	var world_median := DEFAULT_DENSITY
 	if not world_densities.is_empty():
 		world_densities.sort()
-		reference = world_densities[world_densities.size() / 2]
+		@warning_ignore("integer_division")
+		world_median = world_densities[world_densities.size() / 2]
 
 	var built := {}
 	var surfaces := 0
@@ -97,7 +98,7 @@ static func apply(meshes: Array[MeshInstance3D], map_dir: String, unit_scale: fl
 		var material: Material = candidate[2]
 		var density: float = candidate[4]
 		if candidate[3]:
-			if density > 0.0 and (density < reference / DENSITY_BELOW or density > reference * DENSITY_ABOVE):
+			if density > 0.0 and (density < world_median / DENSITY_BELOW or density > world_median * DENSITY_ABOVE):
 				continue
 			props += 1
 		surfaces += 1
@@ -135,11 +136,13 @@ static func chart_density(mesh: Mesh, surface: int, unit_scale: float, lightmap_
 	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 	var uv2: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV2]
 	var index: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
+	@warning_ignore("integer_division")
 	var triangles := index.size() / 3 if not index.is_empty() else vertices.size() / 3
 	if triangles == 0 or uv2.size() != vertices.size():
 		return 0.0
 	var texels_per_uv := lightmap_size.x * lightmap_size.y
 	var densities := PackedFloat32Array()
+	@warning_ignore("integer_division")
 	for triangle in range(0, triangles, maxi(1, triangles / SAMPLE_TRIANGLES)):
 		var i0 := index[triangle * 3] if not index.is_empty() else triangle * 3
 		var i1 := index[triangle * 3 + 1] if not index.is_empty() else triangle * 3 + 1
@@ -153,6 +156,7 @@ static func chart_density(mesh: Mesh, surface: int, unit_scale: float, lightmap_
 	if densities.is_empty():
 		return 0.0
 	densities.sort()
+	@warning_ignore("integer_division")
 	return densities[densities.size() / 2]
 
 
@@ -206,6 +210,7 @@ static func shader_for(blended: bool, two_sided: bool) -> Shader:
 static func measure_average(image: Image) -> Color:
 	var sum := Color(0.0, 0.0, 0.0, 0.0)
 	var count := 0
+	@warning_ignore("integer_division")
 	var step := maxi(1, image.get_width() / 1024)
 	for y in range(0, image.get_height(), step):
 		for x in range(0, image.get_width(), step):

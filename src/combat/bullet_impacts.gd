@@ -89,8 +89,8 @@ func _ready() -> void:
 		_players.append(player)
 	# The textures are made here, once, rather than on the first round into
 	# each surface, which would hitch.
-	for set_name in HOLE_MATERIALS:
-		_variants_for(set_name)
+	for hole_set in HOLE_MATERIALS:
+		_variants_for(hole_set)
 
 
 ## Reports a shot's result to the scene's impacts, if it has any.
@@ -198,11 +198,11 @@ func _hole(surface: String, at: Vector3, normal: Vector3) -> void:
 
 ## The holes of a set, read and made once: the ones whose colour texture
 ## is there.
-func _variants_for(set_name: String) -> Array:
-	if _variants.has(set_name):
-		return _variants[set_name]
+func _variants_for(hole_set: String) -> Array:
+	if _variants.has(hole_set):
+		return _variants[hole_set]
 	var found := []
-	for material in HOLE_MATERIALS.get(set_name, []):
+	for material in HOLE_MATERIALS.get(hole_set, []):
 		var hole := read_hole(DECALS_ROOT.path_join(material + ".vmat"))
 		if hole.is_empty() or not ResourceLoader.exists(hole["color"]):
 			continue
@@ -213,7 +213,7 @@ func _variants_for(set_name: String) -> Array:
 		hole["albedo_texture"] = ImageTexture.create_from_image(occluded(color, occlusion))
 		hole["normal_texture"] = load(hole["normal"]) as Texture2D if ResourceLoader.exists(hole["normal"]) else null
 		found.append(hole)
-	_variants[set_name] = found
+	_variants[hole_set] = found
 	return found
 
 

@@ -50,13 +50,13 @@ func _ready() -> void:
 
 func _make_player(polyphony: int) -> Node:
 	if spatial:
-		var player := AudioStreamPlayer3D.new()
-		player.max_polyphony = polyphony
-		player.unit_size = 20.0 * METRE
-		player.max_distance = 300.0 * METRE
-		player.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
-		add_child(player)
-		return player
+		var placed := AudioStreamPlayer3D.new()
+		placed.max_polyphony = polyphony
+		placed.unit_size = 20.0 * METRE
+		placed.max_distance = 300.0 * METRE
+		placed.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
+		add_child(placed)
+		return placed
 	var player := AudioStreamPlayer.new()
 	player.max_polyphony = polyphony
 	add_child(player)

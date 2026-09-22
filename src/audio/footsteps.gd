@@ -94,10 +94,10 @@ func step() -> void:
 func land() -> void:
 	surface = surface_below()
 	landings += 1
-	var set_name := surface.trim_suffix("_ct")
-	if set_name not in LANDINGS:
-		set_name = "auto"
-	_play("player/footsteps/land_%s" % set_name, 0.0)
+	var landing := surface.trim_suffix("_ct")
+	if landing not in LANDINGS:
+		landing = "auto"
+	_play("player/footsteps/land_%s" % landing, 0.0)
 
 
 ## The footstep set for the hull part under the body's feet.

@@ -98,9 +98,9 @@ func load_clips(clips: PackedStringArray, suffix: String) -> bool:
 				if not names.is_empty():
 					library.add_animation(short, (donor[0] as AnimationPlayer).get_animation(names[0]))
 			scene.free()
-	for name in library.get_animation_list():
-		if not _is_one_shot(name):
-			library.get_animation(name).loop_mode = Animation.LOOP_LINEAR
+	for clip in library.get_animation_list():
+		if not _is_one_shot(clip):
+			library.get_animation(clip).loop_mode = Animation.LOOP_LINEAR
 	if not animation_player.animation_finished.is_connected(_on_finished):
 		animation_player.animation_finished.connect(_on_finished)
 	return true
@@ -180,9 +180,9 @@ func clips_named(prefix: String) -> PackedStringArray:
 		return found
 	var names := animation_player.get_animation_list()
 	names.sort()
-	for name in names:
-		if String(name).begins_with(prefix):
-			found.append(name)
+	for clip in names:
+		if String(clip).begins_with(prefix):
+			found.append(clip)
 	return found
 
 
@@ -199,16 +199,16 @@ func playing_one_shot() -> bool:
 		and _is_one_shot(animation_player.current_animation)
 
 
-func _is_held(name: StringName) -> bool:
+func _is_held(clip: StringName) -> bool:
 	for prefix in held:
-		if String(name).begins_with(prefix):
+		if String(clip).begins_with(prefix):
 			return true
 	return false
 
 
-func _is_one_shot(name: StringName) -> bool:
+func _is_one_shot(clip: StringName) -> bool:
 	for prefix in one_shots:
-		if String(name).begins_with(prefix):
+		if String(clip).begins_with(prefix):
 			return true
 	return false
 
@@ -245,11 +245,11 @@ func _probe_light(mesh: MeshInstance3D) -> void:
 
 ## Lights every mesh of the model from a point in the world, through the
 ## scene's light probes, if it has any. Called by whoever moves the model.
-func light_from(position: Vector3) -> void:
+func light_from(at: Vector3) -> void:
 	var probes := LightProbeField.find(get_tree()) if is_inside_tree() else null
 	if probes == null:
 		return
-	var cube := probes.cube_at(position)
+	var cube := probes.cube_at(at)
 	for mesh in find_children("*", "MeshInstance3D", true, false):
 		ProbeMaterials.light_instance(mesh as MeshInstance3D, cube)
 

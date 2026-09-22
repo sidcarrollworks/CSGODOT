@@ -35,10 +35,10 @@ func _process(_delta: float) -> void:
 		_dead.text = "You died. Back in %d" % ceili(player.seconds_to_respawn())
 
 
-func _label(preset: Control.LayoutPreset, offset: Vector2, alignment: HorizontalAlignment, size: int) -> Label:
+func _label(preset: Control.LayoutPreset, at: Vector2, alignment: HorizontalAlignment, size: int) -> Label:
 	var label := Label.new()
 	label.set_anchors_preset(preset)
-	label.position = offset
+	label.position = at
 	label.horizontal_alignment = alignment
 	label.add_theme_font_size_override("font_size", size)
 	label.add_theme_color_override("font_color", Color(1, 1, 1))
