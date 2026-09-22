@@ -107,7 +107,8 @@ The knobs, all on `WeaponData`:
 | `recoil_animation_time` | measured | How long the kick lasts, in seconds |
 | `recoil_view_fraction` | 1.0 | How far one shot throws the view, against how far it throws the muzzle |
 | `punch_damping_ratio` | 0.558 | Shape of the kick: rise and settle, no visible bounce |
-| `viewmodel_recoil` | 3.0 | How much harder the weapon model moves than the camera |
+| `viewmodel_recoil` | 0.35 | How much the weapon model climbs on top of the camera |
+| `viewmodel_sway` | 0.35 | How much of that it gets sideways, against the climb |
 
 The spring frequency, the damping and the impulse are all derived from those,
 which is why they are not on the list. Two properties fall out of the
@@ -121,9 +122,16 @@ derivation and are worth keeping:
   still by eye rather than measured. It is the first thing to change if the
   kick feels wrong, and the only thing.
 
-Anything meant to read the recoil back to the player belongs in
-`viewmodel_recoil`, where it moves the gun and cannot mislead anyone about
-where a bullet went, rather than in the camera, where it would.
+The weapon model hangs off the camera, so it already carries the whole view
+kick; `viewmodel_recoil` is only the gun moving relative to the screen. That
+rotation happens about the eye, so a degree of it throws the gun a long way
+sideways, and anything but a small number reads as the weapon teleporting from
+shot to shot (Sid, 2026-09-22). The view kick should be most of what moves.
+
+Firing replays the `shoot1` clip from the top on every round, cross-faded over
+30 ms. Both halves matter: hard-cutting to frame zero snaps the model, and not
+replaying while the last clip runs meant the second round of a spray moved the
+gun less than the first.
 
 Setting `recoil_view_fraction` to 0 removes the view kick entirely and **every
 bullet still lands in exactly the same place**. There is a test that asserts

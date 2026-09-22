@@ -35,6 +35,7 @@ func _process(_delta: float) -> bool:
 		_test_view_kicks_less_than_the_spray()
 		_test_view_rises_rather_than_teleporting()
 		_test_viewmodel_follows_the_view()
+		_test_the_model_moves_less_than_the_view()
 		_test_a_single_tap_kicks_the_view()
 		_test_animation_lasts_as_long_as_measured()
 		_test_accuracy_resets_as_slowly_as_measured()
@@ -493,10 +494,12 @@ func _test_view_rises_rather_than_teleporting() -> void:
 	)
 
 
-## The weapon model rides the same punch, scaled, and changes nothing else.
+## The weapon model rides the same punch, scaled per axis, and changes
+## nothing else.
 func _test_viewmodel_follows_the_view() -> void:
 	var data := WeaponLibrary.ak47()
 	data.viewmodel_recoil = 2.0
+	data.viewmodel_sway = 0.5
 	var weapon := Weapon.new(data)
 	var state := _standing()
 	var now := 0
@@ -512,8 +515,12 @@ func _test_viewmodel_follows_the_view() -> void:
 			% weapon.aim_punch.length()
 	)
 	_check(
-		weapon.viewmodel_punch().is_equal_approx(weapon.aim_punch * 2.0),
-		"the weapon model moves by viewmodel_recoil times the view punch"
+		is_equal_approx(weapon.viewmodel_punch().y, weapon.aim_punch.y * 2.0),
+		"the weapon model climbs by viewmodel_recoil times the view punch"
+	)
+	_check(
+		is_equal_approx(weapon.viewmodel_punch().x, weapon.aim_punch.x * 1.0),
+		"and sways by viewmodel_sway times that again"
 	)
 
 	data.viewmodel_recoil = 0.0
@@ -521,6 +528,41 @@ func _test_viewmodel_follows_the_view() -> void:
 		weapon.viewmodel_punch() == Vector2.ZERO,
 		"and holds still when viewmodel_recoil is zero"
 	)
+
+
+## Sid, 2026-09-22: the weapon model "looks like it's teleporting". It hangs
+## off the camera, so it already carries the whole view kick, and the rotation
+## on top of that happens about the eye: a degree of it throws the gun a long
+## way across the screen. The view kick has to be most of what moves.
+func _test_the_model_moves_less_than_the_view() -> void:
+	for data in [WeaponLibrary.ak47(), WeaponLibrary.m4a1s()]:
+		var weapon := Weapon.new(data)
+		var state := _standing()
+		var now := 0
+		var worst_view := 0.0
+		var worst_extra := Vector2.ZERO
+		var fired := 0
+
+		while fired < data.magazine_size:
+			now += int(DT * SECOND)
+			weapon.update(DT, now)
+			if weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, state) != null:
+				fired += 1
+			worst_view = maxf(worst_view, weapon.aim_punch.length())
+			var extra := weapon.viewmodel_punch()
+			worst_extra.x = maxf(worst_extra.x, absf(extra.x))
+			worst_extra.y = maxf(worst_extra.y, absf(extra.y))
+
+		_check(
+			worst_extra.length() < worst_view * 0.5,
+			"%s weapon model adds well under half of what the view kick moves (%.2f against %.2f degrees)"
+				% [data.display_name, worst_extra.length(), worst_view]
+		)
+		_check(
+			worst_extra.x > 0.0 and worst_extra.x < worst_extra.y,
+			"%s sways sideways, visibly and less than it climbs (%.2f against %.2f degrees)"
+				% [data.display_name, worst_extra.x, worst_extra.y]
+		)
 
 
 # --- Measured recovery timings --------------------------------------------
