@@ -14,6 +14,9 @@ extends SceneTree
 ## 800 megapixels, which is 4 GB of video memory uncompressed and 1 GB
 ## compressed, and without mipmaps every distant wall shimmers.
 ##
+## The sky panorama comes as an .exr and gets the same treatment; VRAM
+## compression of an HDR image is BC6H, which is what a sky wants.
+##
 ## Godot keeps a texture's settings in a .import file next to it, and reimports
 ## when that file changes, so this writes those. Only [params] is touched; an
 ## existing file keeps its uid. Safe to run repeatedly: a file that is already
@@ -57,7 +60,7 @@ func _init() -> void:
 func _walk(dir_path: String, textures: PackedStringArray, gltfs: PackedStringArray) -> void:
 	for file in DirAccess.get_files_at(dir_path):
 		var extension := file.get_extension().to_lower()
-		if extension == "png" or extension == "jpg" or extension == "jpeg":
+		if extension in ["png", "jpg", "jpeg", "exr", "hdr"]:
 			textures.append(dir_path.path_join(file))
 		elif extension == "gltf":
 			gltfs.append(dir_path.path_join(file))

@@ -27,7 +27,7 @@ updates and a hardcoded one fails silently a year from now. `list-map` and
 | dust2 world geometry | Yes, glTF | 3613 meshes, 4.5M triangles, 648 PNGs. In metres, Y-up. |
 | dust2 collision | Yes, glTF | A separate export of `world_physics.vmdl_c`: 39 meshes, 435k triangles, grouped by surface type and by what they interact with. Player clips included. |
 | dust2 entities | Yes, text | `default_ents.vents_c` decompiles to key/value text: 15 T and 15 CT spawns, bomb sites, buy zones, the sun. |
-| dust2 lighting | The sun only | One directional light, at a physical intensity Godot cannot use as is. The importer keeps its direction and colour. No baked lighting. |
+| dust2 lighting | Sun, sky, fog, exposure | The glTF's one light gives the sun's direction; `light_environment`, `env_sky`, `env_cubemap_fog` and the `post_processing_volume` in the entity lump give its colour and brightness, the sky material (exported as an equirect HDR `.exr`), the haze and the exposure window. No baked bounce light, which on dust2 is a lot (`bouncescale` 1.75): shadows are lit by the sky and a warm ambient floor instead. |
 | dust2 nav mesh | No | Bake our own for bots. |
 | Sounds | Yes | |
 | Weapon tuning numbers | **No** | See below. |

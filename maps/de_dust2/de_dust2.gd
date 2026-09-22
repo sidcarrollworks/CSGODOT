@@ -13,8 +13,10 @@ extends Node3D
 const MAP_DIR := "res://assets/maps/de_dust2"
 const COLLISION_DIR := "res://assets/maps/de_dust2_physics"
 
-## The entity lump, relative to the directory the world glTF is in.
+## The entity lump and the sky panorama, relative to the directory the world
+## glTF is in.
 const ENTITIES_FILE := "entities/default_ents.vents"
+const SKY_FILE := "../../materials/skybox/sky_de_dust2.exr"
 
 ## Which side's spawn points to start at. They come from the map's entity
 ## lump; the glTF does not carry them.
@@ -30,13 +32,19 @@ const ENTITIES_FILE := "entities/default_ents.vents"
 var importer: MapImporter
 var player: PlayerBody
 
+## The map's entity lump, parsed once for whoever needs it.
+var entities: Array[Dictionary] = []
+
 
 func _ready() -> void:
 	var map_file := MapImporter.find_map_file(MAP_DIR)
 	if map_file.is_empty():
-		_build_lighting({})
+		MapLighting.build(self, {}, entities, "")
 		_build_fallback()
 		return
+	entities = SourceEntities.parse(
+		ProjectSettings.globalize_path(map_file.get_base_dir().path_join(ENTITIES_FILE))
+	)
 
 	importer = MapImporter.new()
 	importer.source_path = map_file
@@ -48,7 +56,7 @@ func _ready() -> void:
 	if importer.stats.has("error"):
 		# Found but unreadable, which is what an interrupted extraction leaves.
 		push_error("dust2 import failed: %s" % importer.stats["error"])
-		_build_lighting({})
+		MapLighting.build(self, {}, entities, "")
 		_build_fallback(
 			"dust2 is there but would not load:\n    %s\n\n" % importer.stats["error"]
 			+ "An extraction that was interrupted leaves it like this.\n"
@@ -57,7 +65,13 @@ func _ready() -> void:
 		)
 		return
 
-	_build_lighting(importer.stats.get("sun", {}))
+	var lighting := MapLighting.build(
+		self, importer.stats.get("sun", {}), entities,
+		map_file.get_base_dir().path_join(SKY_FILE).simplify_path()
+	)
+	print("--- lighting: sun energy %.2f, exposure %.2f, sky from %s, fog %s" % [
+		lighting["sun_energy"], lighting["exposure"], lighting["sky"], "on" if lighting["fog"] else "off",
+	])
 	_place_player(map_file)
 
 
@@ -65,12 +79,7 @@ func _place_player(map_file: String) -> void:
 	player = (load("res://src/player/player.tscn") as PackedScene).instantiate()
 	add_child(player)
 
-	var entities_path := ProjectSettings.globalize_path(
-		map_file.get_base_dir().path_join(ENTITIES_FILE)
-	)
-	var spawns: Array = SourceEntities.player_spawns(
-		SourceEntities.parse(entities_path)
-	)[spawn_team]
+	var spawns: Array = SourceEntities.player_spawns(entities)[spawn_team]
 	if not spawns.is_empty():
 		# Any of the spawns the game would fill first. They sit a little above
 		# the floor, as they do in the game, and the player drops onto it.
@@ -83,7 +92,7 @@ func _place_player(map_file: String) -> void:
 
 	push_warning(
 		"No spawn points: %s is not there. Run scripts/extract_assets.sh entities."
-		% entities_path
+		% map_file.get_base_dir().path_join(ENTITIES_FILE)
 	)
 	var drop_position := spawn_position
 	if use_bounds_centre_as_spawn and importer.stats.has("bounds"):
@@ -155,29 +164,3 @@ func _show_message(text: String) -> void:
 	label.add_theme_constant_override("outline_size", 6)
 	layer.add_child(label)
 	add_child(layer)
-
-
-## The sun goes where the map says it is, when the map says: the export
-## carries dust2's own, as a direction and a colour.
-func _build_lighting(sun: Dictionary) -> void:
-	var light := DirectionalLight3D.new()
-	light.rotation_degrees = Vector3(-50.0, -120.0, 0.0)
-	if not sun.is_empty():
-		light.basis = sun["basis"]
-		light.light_color = sun["color"]
-	light.light_energy = 1.2
-	light.shadow_enabled = true
-	# The default is 100, which is metres to Godot and eight feet to us.
-	light.directional_shadow_max_distance = 4096.0
-	add_child(light)
-
-	var environment := Environment.new()
-	environment.background_mode = Environment.BG_SKY
-	environment.sky = Sky.new()
-	environment.sky.sky_material = ProceduralSkyMaterial.new()
-	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	environment.ambient_light_energy = 0.5
-
-	var world_environment := WorldEnvironment.new()
-	world_environment.environment = environment
-	add_child(world_environment)
