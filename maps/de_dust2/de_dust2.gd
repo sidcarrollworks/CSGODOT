@@ -139,6 +139,8 @@ func _build_skybox() -> void:
 	# Its terrain sits at its own ground level, which is above some of the
 	# map's floors; the map must win wherever they overlap.
 	skybox.behind_everything = true
+	# Scenery, not a caster: the game's skybox never shadows the map.
+	skybox.cast_shadows = false
 	skybox.report = false
 	skybox.position = -camera * scale
 	add_child(skybox)

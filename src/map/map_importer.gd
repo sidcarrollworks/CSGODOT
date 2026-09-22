@@ -50,6 +50,15 @@ const SOURCE2_VIEWER_SCALE := 1.0 / 0.0254
 ## otherwise show through the map's floors where they lie below it. See
 ## FarMaterials.
 @export var behind_everything: bool = false
+## Whether this map's surfaces cast shadows. The map itself does, and with
+## both faces: its walls are one-sided and often have no face on their far
+## side (a room's wall is the face that looks into the room), so a shadow
+## pass that culls back faces sees nothing where the sun hits a wall's
+## back, and the sun walks into the room. A 3D skybox does not: its hills
+## are one-sided shells too, and cast double-sided they would throw the
+## shadow of a far mountain over half the map; the game's skybox never
+## casts onto the map at all.
+@export var cast_shadows: bool = true
 
 ## What to multiply the export by. SOURCE2_VIEWER_SCALE for anything that came
 ## out of Source 2 Viewer; 1 for geometry already in Source units. If the
@@ -235,6 +244,11 @@ func import_map() -> Dictionary:
 			_:
 				visible_meshes.append(mesh_instance)
 				solid_meshes.append(mesh_instance)
+	for mesh_instance in visible_meshes:
+		mesh_instance.cast_shadow = (
+			GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED if cast_shadows
+			else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		)
 
 	var blend := BlendMaterials.apply(visible_meshes, layer_textures_dir)
 	var lightmaps := {"surfaces": 0, "props": 0, "found": false, "ambient": null}

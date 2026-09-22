@@ -319,6 +319,28 @@ func _test_export_shaped_import() -> void:
 	var hull := importer.get_node_or_null("CollisionHull") as Node3D
 	_check(hull != null and not hull.visible, "the hull is not drawn")
 
+	# The world's one-sided walls cast with both faces, or the sun walks
+	# through them; scenery asked not to casts nothing.
+	var casting := 0
+	var drawn := 0
+	for node in importer.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := node as MeshInstance3D
+		# The hull's meshes are under a hidden node.
+		if mesh_instance.is_visible_in_tree():
+			drawn += 1
+			casting += 1 if mesh_instance.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED else 0
+	_check(drawn > 0 and casting == drawn, "every drawn surface casts shadows with both faces (%d of %d)" % [casting, drawn])
+	var scenery := _make_importer(MapImporter.CollisionSource.NONE)
+	scenery.source_path = EXPORT_WORLD_PATH
+	scenery.cast_shadows = false
+	root.add_child(scenery)
+	var casting_scenery := 0
+	for node in scenery.find_children("*", "MeshInstance3D", true, false):
+		if (node as MeshInstance3D).is_visible_in_tree() and (node as MeshInstance3D).cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+			casting_scenery += 1
+	_check(casting_scenery == 0, "and a map imported as scenery casts none")
+	scenery.free()
+
 	for shape in importer.find_children("*", "CollisionShape3D", true, false):
 		_check(
 			(shape as Node3D).global_transform.basis.get_scale().is_equal_approx(Vector3.ONE),
@@ -884,6 +906,7 @@ func _test_lighting() -> void:
 		_check(
 			sun.light_color.is_equal_approx(Color(1, 0, 0))
 				and is_equal_approx(sun.light_energy, 2.0 * MapLighting.SUN_ENERGY_PER_BRIGHTNESS)
+				and sun.directional_shadow_max_distance >= 8000.0
 				and is_equal_approx(sun.light_angular_distance, 0.25) and sun.shadow_enabled,
 			"the sun's colour, brightness and size come from light_environment"
 		)
