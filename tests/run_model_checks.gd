@@ -67,6 +67,10 @@ func _init() -> void:
 		"a hull part's name says which impact a round makes on it: sand, wood, metal, concrete, or the general one"
 	)
 	_test_hole_materials()
+	_check(
+		GameHud.where_line(Vector3(-780.44, 123.0, -1330.2), -138.0, -32.04) == "pos -780.4 123.0 -1330.2   yaw 222.0   pitch -32.0",
+		"the HUD says where you stand and look, yaw from 0 to 360, in the numbers a render is set up from"
+	)
 
 	var weapons := _find(WEAPONS_DIR, "weapon_rif_")
 	var agents := _find(CHARACTERS_DIR.path_join("agents"), "")

@@ -252,7 +252,10 @@ weapon's own spread and recoil, reloading when it runs dry. You have the
 same health and armour a bot has, zones a round can land on, a HUD with a
 crosshair, health and ammunition, and three seconds dead before you are
 back at your spawn with a full magazine. Bots do not take cover, flinch or
-think beyond that.
+think beyond that. In the top left the HUD says where you stand and look,
+like CS2's `getpos`: the feet's position and the view's yaw and pitch,
+which is everything needed to put a render where a screenshot was taken.
+F3 hides it.
 
 The sounds are the game's own too (`src/audio/`): the weapon's shots,
 reload in its parts and draw, flat in your ears the way the game plays your
