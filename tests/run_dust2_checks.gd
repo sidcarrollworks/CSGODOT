@@ -143,14 +143,24 @@ func _import() -> bool:
 	var skybox_file := MapImporter.find_map_file(SKYBOX_DIR)
 	_check(not skybox_file.is_empty(), "the 3D skybox is there (scripts/extract_assets.sh skybox)")
 	if not skybox_file.is_empty():
-		var skybox := MapImporter.new()
-		skybox.source_path = skybox_file
-		skybox.scale_factor = MapImporter.SOURCE2_VIEWER_SCALE * 16.0
-		skybox.collision_source = MapImporter.CollisionSource.NONE
-		skybox.behind_everything = true
-		skybox.cast_shadows = false
-		skybox.report = false
+		# The skybox the game builds, placed as it places it.
+		var skybox: MapImporter = load("res://maps/de_dust2/de_dust2.gd").make_skybox(SKYBOX_DIR)
 		root.add_child(skybox)
+		# Where the sky camera is, read here on its own: scaled up about the
+		# map's origin by its own scale, it must land there.
+		var sky_camera := {}
+		for entity in SourceEntities.parse(ProjectSettings.globalize_path(skybox_file.get_base_dir().path_join("entities/default_ents.vents"))):
+			if entity.get("classname", "") == "sky_camera":
+				sky_camera = entity
+		var camera := SourceEntities.to_game(SourceEntities.vector(sky_camera.get("origin", "[ 0 0 0 ]")))
+		var sky_scale := float(sky_camera.get("scale", "16"))
+		_check(
+			not sky_camera.is_empty() and camera.length() > 1.0
+				and is_equal_approx(skybox.scale_factor, MapImporter.SOURCE2_VIEWER_SCALE * sky_scale)
+				and (skybox.position + camera * sky_scale).length() < 0.01,
+			"the skybox is scaled by the sky camera's %.0f about the camera's point, which lands on the map's origin (off by %.1f)"
+				% [sky_scale, (skybox.position + camera * sky_scale).length()]
+		)
 		var sky_bounds: AABB = skybox.stats.get("bounds", AABB())
 		var sky_casting := 0
 		for node in skybox.find_children("*", "MeshInstance3D", true, false):
