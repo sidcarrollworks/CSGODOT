@@ -467,12 +467,7 @@ extract_weapons() {
 ## few variants to a set, which the decompile writes out as the audio they
 ## hold. The sound event definitions that pair them with volumes and
 ## distances are not fetched; the numbers are set by ear.
-SOUND_FILTER='^sounds/(weapons/ak47/ak47_(0[1-4]|distant|clipout_01|boltpull_0[14]|addammo_02|draw)|weapons/m4a1/m4a1_(silencer_01|us_distant|clipout|clipin|silencer_boltback|silencer_boltforward|draw)|player/footsteps/(concrete_ct|dirt|sand|wood|metal_solid|metal_vent|metal_chainlink|metal_grate|tile|gravel|grass|carpet|glass|rubber|plastic_barrel|mud)_[0-9]+|player/footsteps/land_(concrete|dirt|sand|metal_solid|metal_vent|metal_grate|tile|gravel|grass|carpet|glass|rubber|mud|auto)(_[0-9]+)?|player/(kevlar[0-9]|headshot_armor_01|headshot_noarmor_0[1-5]|bodyshot_kill_01)|physics/(concrete/concrete_impact_bullet[0-9]|surfaces/(sand|dirt|tile|default|carpet|grass)_impact_bullet[0-9_]*|metal/metal_solid_impact_bullet[0-9]|wood/wood_solid_impact_bullet[0-9]))\.vsnd_c$'
-
-## The bullet holes: the game's decal textures for concrete, plaster and
-## metal, which are what dust2 is made of. Decompiled to png beside the
-## sounds, under decals/.
-DECAL_FILTER='^materials/decals/(concrete/bullethole_concrete_[1-5]_color|plaster/plaster[12]_bullet_color|metal/bullethole_metal_[123]_color)_[a-z0-9_]*\.vtex_c$'
+SOUND_FILTER='^sounds/(weapons/ak47/ak47_(0[1-4]|distant|clipout_01|boltpull_0[14]|addammo_02|draw)|weapons/m4a1/m4a1_(silencer_01|us_distant|clipout|clipin|silencer_boltback|silencer_boltforward|draw)|player/footsteps/(concrete_ct|dirt|sand|wood|metal_solid|metal_vent|metal_chainlink|metal_grate|tile|gravel|grass|carpet|glass|rubber|plastic_barrel|mud)_[0-9]+|player/footsteps/land_(concrete|dirt|sand|metal_solid|metal_vent|metal_grate|tile|gravel|grass|carpet|glass|rubber|mud|auto)(_[0-9]+)?|player/(kevlar[0-9]|headshot_armor_01|headshot_noarmor_0[1-5]|bodyshot_kill_01))\.vsnd_c$'
 
 extract_sounds() {
 	require_file "$PAK_VPK"
@@ -485,18 +480,9 @@ extract_sounds() {
 	fi
 	sounds="$(grep -E "$SOUND_FILTER" <<<"$listing" | paste -sd, - || true)"
 	require_filter "$sounds" "the sounds"
-	echo "Extracting $(tr ',' '\n' <<<"$sounds" | wc -l | tr -d ' ') sounds: the weapons, footsteps by surface, hits, impacts"
+	echo "Extracting $(tr ',' '\n' <<<"$sounds" | wc -l | tr -d ' ') sounds: the weapons, footsteps by surface, hits"
 	echo "        -> $dest"
 	"$S2V_BIN" -i "$PAK_VPK" -f "$sounds" -o "$dest" -d \
-		| grep -vE '^(Preloading|Added folder|--- )' || true
-
-	local decals
-	decals="$(grep -E "$DECAL_FILTER" <<<"$listing" | paste -sd, - || true)"
-	require_filter "$decals" "the bullet holes"
-	mkdir -p "$OUT_DIR/decals"
-	echo "Extracting $(tr ',' '\n' <<<"$decals" | wc -l | tr -d ' ') bullet-hole decals"
-	echo "        -> $OUT_DIR/decals"
-	"$S2V_BIN" -i "$PAK_VPK" -f "$decals" -o "$OUT_DIR/decals" -d \
 		| grep -vE '^(Preloading|Added folder|--- )' || true
 }
 

@@ -84,13 +84,6 @@ func _ready() -> void:
 	_build_skybox()
 	_place_player(map_file)
 	_place_bots()
-	var hud := GameHud.new()
-	hud.name = "Hud"
-	hud.player = player as PlayerController
-	add_child(hud)
-	var impacts := BulletImpacts.new()
-	impacts.name = "BulletImpacts"
-	add_child(impacts)
 
 
 ## Bots on the other side, each walking that side's spawn points in a loop,
@@ -108,8 +101,7 @@ func _place_bots() -> void:
 		var bot := scene.instantiate() as Bot
 		bot.name = "Bot%d" % (i + 1)
 		bot.team = team
-		bot.weapon_data = WeaponLibrary.m4a1s() if team == "CT" else WeaponLibrary.ak47()
-		bot.weapon_model = bot.weapon_data.model_path
+		bot.weapon_model = (WeaponLibrary.m4a1s() if team == "CT" else WeaponLibrary.ak47()).model_path
 		# Each starts at a different point and heads for the next.
 		var start := (i * spawns.size()) / maxi(bots, 1)
 		bot.route = route
@@ -165,7 +157,8 @@ func _place_player(map_file: String) -> void:
 		var first_choice := spawns.filter(func(candidate: Dictionary) -> bool:
 			return candidate["priority"] == spawns[0]["priority"])
 		var spawn: Dictionary = first_choice.pick_random()
-		(player as PlayerController).place(spawn["position"], spawn["yaw"])
+		player.global_position = spawn["position"]
+		(player as PlayerController).input.yaw_degrees = spawn["yaw"]
 		return
 
 	push_warning(

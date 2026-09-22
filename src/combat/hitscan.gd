@@ -22,9 +22,6 @@ class Result:
 	var hitbox: Hitbox = null
 	var zone: StringName = &""
 	var damage: float = 0.0
-	## The name of the part of the world it hit, if it hit the world: the
-	## collision hull names its parts by material (physics_group_sand).
-	var surface: String = ""
 
 
 static func trace(
@@ -54,11 +51,6 @@ static func trace(
 	result.distance = shot.origin.distance_to(result.position)
 
 	var collider = collision["collider"]
-	if collider is CollisionObject3D and not collider is Hitbox and collision.has("shape"):
-		var owner_id: int = (collider as CollisionObject3D).shape_find_owner(collision["shape"])
-		var shape_node := (collider as CollisionObject3D).shape_owner_get_owner(owner_id)
-		if shape_node != null:
-			result.surface = shape_node.name
 	if collider is Hitbox:
 		var hitbox := collider as Hitbox
 		result.hitbox = hitbox

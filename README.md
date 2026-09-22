@@ -202,24 +202,16 @@ for the model, riding its bones (`src/combat/skinned_hitboxes.gd`), so a
 bullet lands on the head, chest, stomach, an arm or a leg and is priced
 accordingly, ahead of the movement hull, which bullets pass. A kill plays
 one of the game's death clips for where the last round landed, and the bot
-is back at the start of its route a few seconds later. And it shoots back:
-a player in its sight (in the open, within its cone, for half a second)
-stops it in its tracks; it turns, and fires its weapon in bursts with the
-weapon's own spread and recoil, reloading when it runs dry. You have the
-same health and armour a bot has, zones a round can land on, a HUD with a
-crosshair, health and ammunition, and three seconds dead before you are
-back at your spawn with a full magazine. Bots do not take cover, flinch or
-think beyond that.
+is back at the start of its route a few seconds later. It does not aim,
+fire or think yet.
 
 The sounds are the game's own too (`src/audio/`): the weapon's shots,
 reload in its parts and draw, flat in your ears the way the game plays your
 own gun; your hits, kevlar, headshot or kill; and footsteps and landings
 from everyone's feet, in the world, on the surface they stand on, which the
 collision hull names part by part (sand, dirt, wood, metal, tile). Running
-sounds, walking does not, as in CS. A round that meets the world leaves one
-of the game's bullet holes there and the sound of that surface taking it
-(`src/combat/bullet_impacts.gd`). Without `sounds` extracted the game is
-silent, the walls unmarked, and everything else works.
+sounds, walking does not, as in CS. Without `sounds` extracted the game is
+silent and everything else works.
 
 `assets/` can live on another drive: make it a junction (`mklink /J`) and
 every script and Godot itself read straight through it.

@@ -1,10 +1,10 @@
 class_name WeaponSounds
 extends Node
 
-## What is heard of a weapon: the shot, the reload in its parts, the draw;
-## and, for the shooter, of a hit: kevlar, a headshot, a kill. The player's
-## own plays flat, not in the world, the way the game plays your own gun;
-## a bot's plays from where the bot stands (spatial).
+## What the player hears of their own weapon: the shot, the reload in its
+## parts, the draw; and of a hit: kevlar, a headshot, a kill. Played flat,
+## not in the world, the way the game plays your own gun. Bots do not fire
+## yet; when they do, theirs go in the world.
 ##
 ## The sounds are the game's, by the weapon's model name (weapon_rif_ak47
 ## has the ak47 set). The reload's parts are spaced by ear to the game's
@@ -29,38 +29,24 @@ const SETS := {
 const FIRE_DB := -6.0
 const HANDLING_DB := -4.0
 const HIT_DB := -3.0
-## Godot's 3D audio is set out in metres; the map is in inches.
-const METRE := 39.37
-
-## In the world, from this node's place, rather than flat in the ears.
-@export var spatial: bool = false
 
 var weapon_set: Dictionary = {}
-var _fire: Node
-var _handling: Node
-var _hits: Node
+var _fire: AudioStreamPlayer
+var _handling: AudioStreamPlayer
+var _hits: AudioStreamPlayer
 var _reload_serial: int = 0
 
 
 func _ready() -> void:
-	_fire = _make_player(4)
-	_handling = _make_player(2)
-	_hits = _make_player(2)
-
-
-func _make_player(polyphony: int) -> Node:
-	if spatial:
-		var player := AudioStreamPlayer3D.new()
-		player.max_polyphony = polyphony
-		player.unit_size = 20.0 * METRE
-		player.max_distance = 300.0 * METRE
-		player.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
-		add_child(player)
-		return player
-	var player := AudioStreamPlayer.new()
-	player.max_polyphony = polyphony
-	add_child(player)
-	return player
+	_fire = AudioStreamPlayer.new()
+	_fire.max_polyphony = 4
+	add_child(_fire)
+	_handling = AudioStreamPlayer.new()
+	_handling.max_polyphony = 2
+	add_child(_handling)
+	_hits = AudioStreamPlayer.new()
+	_hits.max_polyphony = 2
+	add_child(_hits)
 
 
 ## Takes up a weapon's set, by its model, and plays its draw.
@@ -103,7 +89,7 @@ func hit(zone: StringName, target: HitTarget, killed: bool) -> void:
 		_play(_hits, "player/kevlar", HIT_DB)
 
 
-func _play(player: Node, stem: String, volume_db: float) -> void:
+func _play(player: AudioStreamPlayer, stem: String, volume_db: float) -> void:
 	if stem.is_empty() or not SoundBank.available():
 		return
 	var stream := SoundBank.randomizer(stem)
@@ -111,7 +97,7 @@ func _play(player: Node, stem: String, volume_db: float) -> void:
 		return
 	# Swapping the stream stops what is playing, so only when it is another
 	# set: shots of one set overlap.
-	if player.get("stream") != stream:
-		player.set("stream", stream)
-	player.set("volume_db", volume_db)
-	player.call("play")
+	if player.stream != stream:
+		player.stream = stream
+	player.volume_db = volume_db
+	player.play()
