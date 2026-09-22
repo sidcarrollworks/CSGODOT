@@ -203,7 +203,7 @@ class Punch:
 ## accuracy_reset_time.
 @export var recoil_animation_time: float = 0.644
 
-## How long the CAMERA's recoil takes to settle after a round, in seconds.
+## How long the CAMERA's slow half takes to settle after a round, in seconds.
 ##
 ## Not measured, and much longer than the weapon model's. It has to be: the
 ## crosshair should climb with the spray over a magazine rather than reach its
@@ -213,6 +213,29 @@ class Punch:
 ## Sid, 2026-09-22: "the crosshair still needs to move up about halfway as the
 ## shots go up. It maxes out about 3 shots up."
 @export var view_punch_recovery_time: float = 1.9
+
+## How long the CAMERA's fast half takes to settle after a round, in seconds.
+##
+## The camera's kick is two springs added together, and this is why. One
+## spring cannot rise fast and fall slowly: a damped spring's rise and its
+## decay are the same two constants read two ways, and making it rise in a
+## few ticks makes it fall in a few ticks too. Slow enough to accumulate over
+## a spray is therefore also smooth enough to have no per-round kick in it at
+## all, which is what a single spring gave: a clean ramp with no shots in it.
+##
+## Sid, 2026-09-22: "the motion as it moves up is too smooth. we still want it
+## to feel staccato, like each shot pushes it up."
+##
+## Short enough to land inside the gap between rounds at 600 RPM, so each
+## round reads as its own shove.
+@export var view_punch_snap_time: float = 0.18
+
+## How much of a round's kick goes to the fast half.
+##
+## The rest goes to the slow one. This is the balance between "you can see
+## each shot" and "the crosshair holds its height through the spray"; both
+## halves are wanted and neither should have all of it.
+@export_range(0.0, 1.0) var view_kick_snap_share: float = 0.4
 
 ## How the kick is shaped, against how long it lasts.
 ##
@@ -314,17 +337,32 @@ func punch_impulse_scale_for(recovery: float) -> float:
 	return punch_frequency_for(recovery) / punch_peak_ratio()
 
 
-## The camera's spring.
-func punch_damping() -> float:
+## The camera's slow half: what carries the crosshair up the spray.
+func hold_punch_damping() -> float:
 	return punch_damping_for(view_punch_recovery_time)
 
 
-func punch_spring() -> float:
+func hold_punch_spring() -> float:
 	return punch_spring_for(view_punch_recovery_time)
 
 
-func punch_impulse_scale() -> float:
-	return punch_impulse_scale_for(view_punch_recovery_time)
+func hold_punch_impulse_scale() -> float:
+	return punch_impulse_scale_for(view_punch_recovery_time) * (
+		1.0 - view_kick_snap_share
+	)
+
+
+## The camera's fast half: what makes each round its own shove.
+func snap_punch_damping() -> float:
+	return punch_damping_for(view_punch_snap_time)
+
+
+func snap_punch_spring() -> float:
+	return punch_spring_for(view_punch_snap_time)
+
+
+func snap_punch_impulse_scale() -> float:
+	return punch_impulse_scale_for(view_punch_snap_time) * view_kick_snap_share
 
 
 ## The weapon model's own spring, which settles far sooner than the camera's.
@@ -397,20 +435,26 @@ func view_kick_side() -> float:
 ## this agrees with what Weapon actually produces, since the two integrate the
 ## same spring in two places.
 func spray_peak_per_degree() -> float:
-	var damping := punch_damping()
-	var spring := punch_spring()
-	var impulse := punch_impulse_scale()
 	var tick := 1.0 / SIMULATION_HZ
-	var punch := Punch.new()
+	var snap := Punch.new()
+	var hold := Punch.new()
+	var snap_damping := snap_punch_damping()
+	var snap_spring := snap_punch_spring()
+	var snap_impulse := snap_punch_impulse_scale()
+	var hold_damping := hold_punch_damping()
+	var hold_spring := hold_punch_spring()
+	var hold_impulse := hold_punch_impulse_scale()
 	var peak := 0.0
 	var until_shot := 0.0
 	for tick_index in maxi(magazine_size, 1) * maxi(int(cycle_time * SIMULATION_HZ), 1):
 		if until_shot <= 0.0:
-			punch.kick(Vector2(0.0, impulse))
+			snap.kick(Vector2(0.0, snap_impulse))
+			hold.kick(Vector2(0.0, hold_impulse))
 			until_shot += cycle_time
 		until_shot -= tick
-		punch.advance(tick, damping, spring, tick)
-		peak = maxf(peak, punch.value.y)
+		snap.advance(tick, snap_damping, snap_spring, tick)
+		hold.advance(tick, hold_damping, hold_spring, tick)
+		peak = maxf(peak, snap.value.y + hold.value.y)
 	return peak
 
 

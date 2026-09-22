@@ -36,6 +36,7 @@ func _process(_delta: float) -> bool:
 		_test_every_round_kicks_the_view()
 		_test_the_view_leans_without_swinging()
 		_test_the_spray_peaks_where_it_was_asked_to()
+		_test_each_round_shoves_the_crosshair()
 		_test_the_solver_agrees_with_the_weapon()
 		_test_view_rises_rather_than_teleporting()
 		_test_viewmodel_follows_the_view()
@@ -898,6 +899,62 @@ func _test_the_solver_agrees_with_the_weapon() -> void:
 			absf(peak - predicted) < predicted * 0.05,
 			"%s solver predicts the spray peak the weapon actually reaches (%.3f against %.3f degrees)"
 				% [data.display_name, predicted, peak]
+		)
+
+
+## Sid, 2026-09-22: "the motion as it moves up is too smooth. we still want it
+## to feel staccato, like each shot pushes it up."
+##
+## A single spring cannot give that. Its rise and its decay are the same two
+## constants read two ways, so one slow enough to carry the crosshair up a
+## whole spray is also smooth enough to have no rounds in it. The camera's
+## kick is two springs added together for exactly this reason, and what this
+## checks is that the fast one is actually visible: the crosshair has to shove
+## up and fall back between rounds rather than ramp.
+func _test_each_round_shoves_the_crosshair() -> void:
+	for data in [WeaponLibrary.ak47(), WeaponLibrary.m4a1s()]:
+		var weapon := Weapon.new(data)
+		var state := _standing()
+		var now := 0
+		var fired := 0
+		var peak := 0.0
+		var low := 0.0
+		var high := 0.0
+		var rises: Array[float] = []
+		var falls := 0
+
+		while fired < data.magazine_size:
+			now += int(DT * SECOND)
+			weapon.update(DT, now)
+			if weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, state) != null:
+				fired += 1
+				# The first few rounds are still building, so the shove is
+				# measured once the crosshair has something to fall back to.
+				if fired > 3:
+					rises.append(high - low)
+					if high > low:
+						falls += 1
+				low = weapon.aim_punch.y
+				high = weapon.aim_punch.y
+			var y := weapon.aim_punch.y
+			low = minf(low, y)
+			high = maxf(high, y)
+			peak = maxf(peak, y)
+
+		var shove := 0.0
+		for rise in rises:
+			shove += rise
+		shove /= maxf(float(rises.size()), 1.0)
+
+		_check(
+			shove > peak * 0.1,
+			"%s shoves the crosshair %.2f degrees a round against a %.2f degree climb"
+				% [data.display_name, shove, peak]
+		)
+		_check(
+			falls == rises.size(),
+			"%s falls back between every round rather than ramping (%d of %d)"
+				% [data.display_name, falls, rises.size()]
 		)
 
 

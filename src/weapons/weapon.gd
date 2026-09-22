@@ -66,7 +66,8 @@ var reserve: int = 0
 ## Seeds the per-shot spread. Same seed and shot index give the same offset.
 var spray_seed: int = 1
 
-var _view := WeaponData.Punch.new()
+var _snap := WeaponData.Punch.new()
+var _hold := WeaponData.Punch.new()
 var _model := WeaponData.Punch.new()
 
 ## Where the recoil has pushed the VIEW, in degrees, as (right, up).
@@ -77,15 +78,13 @@ var _model := WeaponData.Punch.new()
 ##
 ## This does NOT decide where bullets go. See fire().
 var aim_punch: Vector2:
-	get: return _view.value
-	set(to): _view.value = to
+	get: return _snap.value + _hold.value
 
-## The punch angle's own velocity. A round pushes this rather than pushing the
-## angle, so the view rises into a kick over a few ticks instead of teleporting
-## to it, and the spring brings it back.
+## The punch angle's own velocity, both halves together. A round pushes this
+## rather than pushing the angle, so the view rises into a kick over a few
+## ticks instead of teleporting to it, and the springs bring it back.
 var aim_punch_velocity: Vector2:
-	get: return _view.velocity
-	set(to): _view.velocity = to
+	get: return _snap.velocity + _hold.velocity
 
 var _last_shot_usec: int = -1_000_000_000
 var _shot_index: int = 0
@@ -135,15 +134,26 @@ func update(dt: float, now_usec: int) -> void:
 	_decay_inaccuracy(dt)
 
 
-## Runs both punch springs forward: the camera's, which settles slowly enough
-## that the crosshair climbs with a spray, and the weapon model's, which
-## settles in the few hundred milliseconds measured off CS2.
+## Runs the three punch springs forward.
+##
+## The camera's kick is two of them added together: a fast half so each round
+## reads as its own shove, and a slow half that carries the crosshair up the
+## spray and holds it there. One spring cannot do both, because a damped
+## spring's rise and its decay are the same two constants read two ways.
+##
+## The third is the weapon model's, on the few hundred milliseconds measured
+## off CS2.
 ##
 ## Running them every tick, including while firing, is deliberate. The old
 ## code only decayed between rounds, which is what made the view snap up to
 ## each bullet and then sag.
 func _decay_punch(dt: float) -> void:
-	_view.advance(dt, data.punch_damping(), data.punch_spring(), PUNCH_MAX_STEP)
+	_snap.advance(
+		dt, data.snap_punch_damping(), data.snap_punch_spring(), PUNCH_MAX_STEP
+	)
+	_hold.advance(
+		dt, data.hold_punch_damping(), data.hold_punch_spring(), PUNCH_MAX_STEP
+	)
 	_model.advance(
 		dt, data.model_punch_damping(), data.model_punch_spring(), PUNCH_MAX_STEP
 	)
@@ -285,7 +295,8 @@ func fire(
 	shot.base_yaw = yaw_degrees
 	shot.base_pitch = pitch_degrees
 
-	_view.kick(punch * data.punch_impulse_scale())
+	_snap.kick(punch * data.snap_punch_impulse_scale())
+	_hold.kick(punch * data.hold_punch_impulse_scale())
 	_model.kick(punch * data.model_punch_impulse_scale())
 	_inaccuracy += data.inaccuracy_per_shot
 	_shot_index += 1
