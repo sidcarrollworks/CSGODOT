@@ -211,11 +211,12 @@ the sun's colour, brightness and size from `light_environment`, the sky
 panorama from `env_sky`, distance haze from `env_cubemap_fog`, exposure from
 the `post_processing_volume`, plus screen-space occlusion and a little bloom.
 The bounce light is the game's own too: CS2 bakes it into lightmaps, and the
-walls and ground read those (`src/map/lightmap_materials.gd`, the
-`lightmapped*.gdshader`s) in place of Godot's flat sky ambient, so the shade
-under an arch is the warm dim of the game rather than a blue-grey. Props are
-lit by light probes in CS2 rather than lightmaps, and still get the sky
-ambient here.
+walls, ground and most props read those (`src/map/lightmap_materials.gd`,
+the `lightmapped*.gdshader`s) in place of Godot's flat sky ambient, so the
+shade under an arch is the warm dim of the game rather than a blue-grey.
+What has no lightmap coordinates of its own (props the game lights by light
+probes, the far skybox, the players) gets the lightmap's average light as
+its ambient instead.
 
 To see what came through without opening the editor:
 

@@ -74,10 +74,12 @@ func _ready() -> void:
 
 	var lighting := MapLighting.build(
 		self, importer.stats.get("sun", {}), entities,
-		map_file.get_base_dir().path_join(SKY_FILE).simplify_path()
+		map_file.get_base_dir().path_join(SKY_FILE).simplify_path(),
+		importer.stats.get("lightmaps", {}).get("ambient")
 	)
-	print("--- lighting: sun energy %.2f, exposure %.2f, sky from %s, fog %s" % [
+	print("--- lighting: sun energy %.2f, exposure %.2f, sky from %s, fog %s, ambient from %s" % [
 		lighting["sun_energy"], lighting["exposure"], lighting["sky"], "on" if lighting["fog"] else "off",
+		lighting["ambient"],
 	])
 	_build_skybox()
 	_place_player(map_file)

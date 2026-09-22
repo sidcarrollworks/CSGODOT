@@ -231,9 +231,11 @@ func import_map() -> Dictionary:
 				solid_meshes.append(mesh_instance)
 
 	var blend := BlendMaterials.apply(visible_meshes, layer_textures_dir)
-	var lightmaps := {"surfaces": 0, "found": false}
+	var lightmaps := {"surfaces": 0, "props": 0, "found": false, "ambient": null}
 	if not lightmaps_dir.is_empty():
-		lightmaps = LightmapMaterials.apply(visible_meshes, source_path.get_base_dir().path_join(lightmaps_dir))
+		lightmaps = LightmapMaterials.apply(
+			visible_meshes, source_path.get_base_dir().path_join(lightmaps_dir), scale_factor
+		)
 
 	var collision_from := "the collision hull"
 	var targets: Array[MeshInstance3D] = []
@@ -541,7 +543,9 @@ func _report_text() -> String:
 	lines.append("    blend materials: %d, on %d surfaces" % [blend["materials"], blend["blended"]])
 	var lightmaps: Dictionary = stats["lightmaps"]
 	if lightmaps["found"]:
-		lines.append("    baked bounce light on %d surfaces" % lightmaps["surfaces"])
+		lines.append("    baked bounce light on %d surfaces, %d of them props" % [lightmaps["surfaces"], lightmaps["props"]])
+		if lightmaps["ambient"] == null:
+			lines.append("    the lightmap's average is not measured yet (scripts/prepare_export.gd); the rest get the sky's light")
 	elif not lightmaps_dir.is_empty():
 		lines.append("    no lightmaps found; run 'scripts/extract_assets.sh lightmaps' for the bounce light")
 	if not (blend["missing"] as PackedStringArray).is_empty():

@@ -93,9 +93,14 @@ func _import() -> bool:
 	)
 	var lightmaps: Dictionary = stats.get("lightmaps", {})
 	_check(
-		lightmaps.get("found", false) and int(lightmaps.get("surfaces", 0)) >= 1000,
-		"the world has its baked bounce light (%d surfaces; scripts/extract_assets.sh lightmaps)"
-			% lightmaps.get("surfaces", 0)
+		lightmaps.get("found", false) and int(lightmaps.get("surfaces", 0)) >= 2000
+			and int(lightmaps.get("props", 0)) >= 1000,
+		"the world and its lightmapped props have their baked bounce light (%d surfaces, %d props; scripts/extract_assets.sh lightmaps)"
+			% [lightmaps.get("surfaces", 0), lightmaps.get("props", 0)]
+	)
+	_check(
+		lightmaps.get("ambient") is Color,
+		"the lightmap's average is measured, for the ambient of the rest (scripts/extract_assets.sh lightmaps runs the prepare step)"
 	)
 
 	var entities_path := ProjectSettings.globalize_path(
