@@ -15,6 +15,12 @@ extends Resource
 ##
 ## reference/spray_patterns/README.md says how to do the measuring.
 
+## What counts as settled, for both the view punch and the accuracy penalty:
+## one percent of the peak. Both of Sid's measurements are of something
+## visually reaching rest, and a decaying exponential never reaches zero, so
+## the two need a shared threshold to be derived from. One place to change it.
+const SETTLE_FRACTION := 0.01
+
 @export var display_name: String = ""
 
 # --- Damage ---------------------------------------------------------------
@@ -96,33 +102,56 @@ extends Resource
 # that snaps to each bullet and sags between shots. That is not what CS looks
 # like and it is not what CS plays like.
 
-## How much of the pattern the view is kicked by, against the full amount the
-## bullets move. Well under 1.0: the crosshair moves noticeably less than the
-## spray.
+## How far ONE shot throws the view, as a fraction of how far that same shot
+## throws the muzzle. The default of 1.0 means the view is kicked by a full
+## shot's worth of recoil.
 ##
-## Tuned by eye against CS2 rather than measured, so it is a starting point.
-@export_range(0.0, 1.0) var recoil_view_fraction: float = 0.45
-
-## How hard a shot kicks the view, as a multiplier on the impulse given to the
-## punch velocity. Source's ViewPunch adds to the punch VELOCITY rather than
-## to the angle, scaled by 20, which is why the view rises into a kick instead
-## of teleporting to it.
-@export var punch_impulse_scale: float = 20.0
-
-## The spring that pulls the view back to where the player is actually
-## pointing, and the damping that stops it oscillating.
+## A full shot's worth, and the crosshair still moves a small fraction of what
+## the spray does, because the spring pulls the view back between rounds while
+## the muzzle keeps every degree it has climbed. The bullets accumulate and
+## the view does not. That, rather than any scale factor, is why you cannot
+## read your own recoil off the screen.
 ##
-## This is Source's DecayPunchAngle: an angle with its own velocity, a
-## viscous damping term and a torsional spring toward zero. The structure is
-## Source's; these two constants are from memory of the SDK and were not
-## verifiable from here, so treat them as tunables rather than as facts.
-@export var punch_damping: float = 9.0
-@export var punch_spring: float = 65.0
+## This is the one knob for the SIZE of the kick, and it is exact: the impulse
+## is normalised against the spring, so the punch peaks at this fraction of
+## the shot's own pattern step whatever the spring is doing. Changing how long
+## the kick lasts leaves how far it throws the view alone.
+##
+## Still by eye rather than measured, unlike the two timings.
+@export_range(0.0, 2.0) var recoil_view_fraction: float = 1.0
+
+## How long the visual recoil takes to settle after a shot, in seconds.
+##
+## MEASURED, from Sid's frame-by-frame capture of CS2: the weapon model is
+## tracked away from its resting position and this is where that movement
+## levels off. AK-47 644 +- 5 ms, M4A1-S 353 +- 5 ms.
+##
+## This is the only knob for how long the kick lasts. The spring and the
+## damping below are derived from it, so changing it moves the whole
+## animation rather than requiring two constants to be re-balanced by hand.
+## "Settled" means down to SETTLE_FRACTION of the kick's own peak.
+##
+## Note what it is NOT: the time the weapon takes to become accurate again.
+## Those are separate in CS2 and separate here. See accuracy_reset_time.
+@export var recoil_animation_time: float = 0.644
+
+## How the kick is shaped, against how long it lasts.
+##
+## Source's DecayPunchAngle is an angle with its own velocity, a viscous
+## damping term and a torsional spring toward zero; this is that system's
+## damping ratio. Under 1.0 it rises into the kick and settles back without a
+## visible bounce, which is what CS looks like. Tuned by eye, not measured.
+@export_range(0.05, 1.5) var punch_damping_ratio: float = 0.558
 
 ## How much of the view punch the weapon model is moved by, on top of the
 ## camera. CS exposes this as viewmodel_recoil. Purely cosmetic: it moves the
 ## gun in your hands and changes nothing about aim or bullets.
-@export_range(0.0, 4.0) var viewmodel_recoil: float = 1.0
+##
+## Well above 1.0 on purpose. The gun is what should visibly buck and sway;
+## the crosshair should barely move. Anything that reads the recoil back to
+## the player belongs here, where it cannot mislead them about where a bullet
+## went, rather than in the camera, where it would.
+@export_range(0.0, 8.0) var viewmodel_recoil: float = 3.0
 
 # --- Inaccuracy -----------------------------------------------------------
 
@@ -135,13 +164,94 @@ extends Resource
 @export var inaccuracy_moving: float = 0.9
 @export var inaccuracy_jumping: float = 4.0
 
-## Added per shot while firing, and how fast it decays, in degrees.
+## Added per shot while firing, in degrees.
 @export var inaccuracy_per_shot: float = 0.12
-@export var inaccuracy_recovery_rate: float = 1.4
+
+## How long a single standing shot takes to become fully accurate again, in
+## seconds.
+##
+## MEASURED, from Sid's frame-by-frame capture of CS2: the accuracy box from
+## weapon_debug_spread_show is tracked until it returns to its baseline size.
+## AK-47 867 +- 0 ms, M4A1-S 542 +- 0 ms.
+##
+## This is deliberately a different number from recoil_animation_time, and for
+## both weapons it is the LONGER of the two. The gun finishes moving before it
+## finishes recovering, so the animation tells you the weapon is ready a couple
+## of hundred milliseconds before it is. That desync is real CS2 behaviour and
+## reproducing it is the point: a player who taps on the animation is early.
+@export var accuracy_reset_time: float = 0.867
 
 ## Speed below which movement inaccuracy does not apply. CS lets you walk
 ## slowly without penalty, which is why counter-strafing matters.
 @export var inaccuracy_speed_threshold: float = 55.0
+
+
+## How high the punch peaks, against the velocity a shot gives it and the
+## spring's frequency: peak = impulse / frequency * this. Depends only on the
+## damping ratio.
+func punch_peak_ratio() -> float:
+	var z := _damping_ratio()
+	var ringing := sqrt(1.0 - z * z)
+	return exp(-z * atan(ringing / z) / ringing)
+
+
+## The spring's undamped frequency, in radians per second.
+##
+## Derived so the punch is down to SETTLE_FRACTION of its own peak after
+## exactly recoil_animation_time. A damped spring's impulse response decays
+## inside an exp(-zeta*w*t) envelope, so zeta*w is what the measurement fixes;
+## the peak term is there because the peak is reached some way into the
+## response, well below where the envelope starts.
+func punch_frequency() -> float:
+	var z := _damping_ratio()
+	var ringing := sqrt(1.0 - z * z)
+	var peak := ringing * punch_peak_ratio()
+	return -log(SETTLE_FRACTION * peak) / maxf(
+		z * recoil_animation_time, 0.0001
+	)
+
+
+## Viscous damping on the punch velocity, per second.
+func punch_damping() -> float:
+	return 2.0 * _damping_ratio() * punch_frequency()
+
+
+## Torsional spring pulling the view back to where the player is pointing.
+func punch_spring() -> float:
+	var w := punch_frequency()
+	return w * w
+
+
+## What a shot adds to the punch VELOCITY, per degree of view kick asked for.
+##
+## Normalised against the spring, so the punch peaks at exactly the kick it
+## was given and re-measuring recoil_animation_time changes how long the view
+## moves without changing how far. Source's ViewPunch pushes the punch
+## VELOCITY rather than the angle, which is what makes the view rise into a
+## kick instead of teleporting to it; this is that push.
+func punch_impulse_scale() -> float:
+	return punch_frequency() / punch_peak_ratio()
+
+
+func _damping_ratio() -> float:
+	return clampf(punch_damping_ratio, 0.05, 0.999)
+
+
+## Time constant of the accuracy decay, in seconds.
+##
+## Exponential rather than linear, which is both what the measured curve looks
+## like on a log scale and what CS:GO's accuracy penalty did. Derived so a
+## single shot's penalty falls below the reset threshold in exactly
+## accuracy_reset_time; a longer spray therefore takes proportionally longer,
+## which is also what CS2 does.
+func accuracy_time_constant() -> float:
+	return maxf(accuracy_reset_time, 0.0001) / -log(SETTLE_FRACTION)
+
+
+## Below this fraction of one shot's penalty the weapon counts as fully
+## accurate again, matching the measurement's "back to baseline".
+func accuracy_reset_threshold() -> float:
+	return inaccuracy_per_shot * SETTLE_FRACTION
 
 
 ## The pattern offset for a shot, scaled, holding the last entry once the

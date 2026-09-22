@@ -8,8 +8,10 @@ extends RefCounted
 ## should not be trusted until someone has checked them in game. See
 ## reference/weapon_stats.md for where each one came from.
 ##
-## The two exceptions are the spray patterns and the M4A1-S magazine size,
-## which come from CS2 spray plots Sid supplied on 2026-09-21.
+## The exceptions, which ARE measured, are the spray patterns, the M4A1-S
+## magazine size, and the two recovery timings below. The patterns and the
+## magazine come from CS2 spray plots Sid supplied on 2026-09-21; the timings
+## come from his frame-by-frame capture of CS2 on 2026-09-22.
 
 static func ak47() -> WeaponData:
 	var data := WeaponData.new()
@@ -33,6 +35,13 @@ static func ak47() -> WeaponData:
 	data.max_player_speed = 215.0
 
 	data.recoil_pattern = RecoilPattern.load_pattern("ak47")
+
+	# Measured in CS2: the weapon model stops moving after 644 +- 5 ms, and
+	# the accuracy box is back to baseline after 867 +- 0 ms. The gun looks
+	# ready 223 ms before it is.
+	data.recoil_animation_time = 0.644
+	data.accuracy_reset_time = 0.867
+
 	data.inaccuracy_standing = 0.02
 	data.inaccuracy_moving = 0.95
 	data.inaccuracy_jumping = 4.5
@@ -63,6 +72,12 @@ static func m4a1s() -> WeaponData:
 	data.max_player_speed = 225.0
 
 	data.recoil_pattern = RecoilPattern.load_pattern("m4a1s")
+
+	# Measured in CS2: animation 353 +- 5 ms, accuracy 542 +- 0 ms. Both are
+	# faster than the AK, and the gap between them is a similar 189 ms.
+	data.recoil_animation_time = 0.353
+	data.accuracy_reset_time = 0.542
+
 	data.inaccuracy_standing = 0.015
 	data.inaccuracy_moving = 0.8
 	data.inaccuracy_jumping = 4.0
