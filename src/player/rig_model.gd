@@ -91,14 +91,27 @@ func load_clips(clips: PackedStringArray, suffix: String) -> bool:
 
 ## Plays a clip by its short name. Unknown names go to idle, and so does
 ## anything that plays once, when it ends.
-func play(short: StringName, blend: float = 0.0, speed: float = 1.0) -> void:
+##
+## restart replays a clip that is already running, from the top. Firing needs
+## it: a round fired while the last one's animation is still going has to kick
+## the gun again, and without it the second round of a spray moved nothing.
+func play(
+	short: StringName,
+	blend: float = 0.0,
+	speed: float = 1.0,
+	restart: bool = false
+) -> void:
 	if animation_player == null:
 		return
 	if not animation_player.has_animation(short):
 		short = idle
 		if short == &"" or not animation_player.has_animation(short):
 			return
-	if animation_player.current_animation == short and animation_player.is_playing():
+	var already := (
+		animation_player.current_animation == short
+		and animation_player.is_playing()
+	)
+	if already and not restart:
 		animation_player.speed_scale = speed
 		return
 	if blend <= 0.0:

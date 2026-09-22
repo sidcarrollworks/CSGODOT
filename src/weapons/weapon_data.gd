@@ -150,15 +150,21 @@ const SETTLE_FRACTION := 0.01
 ## visible bounce, which is what CS looks like. Tuned by eye, not measured.
 @export_range(0.05, 1.5) var punch_damping_ratio: float = 0.558
 
-## How much of the view punch the weapon model is moved by, on top of the
-## camera. CS exposes this as viewmodel_recoil. Purely cosmetic: it moves the
-## gun in your hands and changes nothing about aim or bullets.
+## How much the weapon model climbs on its own, on top of the camera.
 ##
-## Well above 1.0 on purpose. The gun is what should visibly buck and sway;
-## the crosshair should barely move. Anything that reads the recoil back to
-## the player belongs here, where it cannot mislead them about where a bullet
-## went, rather than in the camera, where it would.
-@export_range(0.0, 8.0) var viewmodel_recoil: float = 3.0
+## Small on purpose, and much smaller than it used to be. The model hangs off
+## the camera, so it already carries the whole view kick; this is only the gun
+## moving relative to the screen. Rotating it happens about the eye, so a
+## degree here throws the gun a long way across the screen, and anything but a
+## small number reads as the weapon teleporting from shot to shot.
+##
+## The view kick should be most of what moves. This is the bit on top.
+@export_range(0.0, 2.0) var viewmodel_recoil: float = 0.35
+
+## How much of that the model gets sideways, against how much it gets
+## vertically. Side to side should be visible and clearly less than the climb,
+## which is also how the patterns themselves are shaped.
+@export_range(0.0, 1.0) var viewmodel_sway: float = 0.35
 
 # --- Inaccuracy -----------------------------------------------------------
 
