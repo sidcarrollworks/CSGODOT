@@ -560,12 +560,11 @@ func _build_dummy() -> void:
 	dummy.yaw_degrees = 180.0
 	add_child(dummy)
 	hitbox_source = _hitbox_source()
-	if dummy.hitboxes == null or dummy.hitboxes.hitboxes.is_empty():
-		dummy.hit_target.build_standard_body(dummy.model == null)
-		if dummy.model != null:
-			# A model without its hitboxes is a broken extraction, not a
-			# fresh clone: say so where it will be seen.
-			push_warning("Test range dummy: %s" % hitbox_source)
+	# Without the capsules the bot wears the four standard boxes (Bot).
+	if dummy.model != null and (dummy.hitboxes == null or dummy.hitboxes.hitboxes.is_empty()):
+		# A model without its hitboxes is a broken extraction, not a fresh
+		# clone: say so where it will be seen.
+		push_warning("Test range dummy: %s" % hitbox_source)
 	_wear_armour()
 	dummy.hit_target.set_hitboxes_drawn(true)
 	dummy.respawned.connect(_on_dummy_respawned)

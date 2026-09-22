@@ -1,170 +1,52 @@
 class_name PlayerController
-extends PlayerBody
+extends PlayerSim
 
-## Drives the player body from local input, and owns the first-person camera.
+## You: a player in the simulation (PlayerSim), driven by your keys and
+## mouse, and drawn for you in first person (PlayerView).
 ##
-## The camera is deliberately NOT a plain child of the body. The body moves on
-## the 128 Hz simulation tick; the camera has to be smooth at whatever the
-## monitor runs at, and mouse look has to be sampled at render rate. So the
-## camera is top_level and its transform is rebuilt every frame from the
-## interpolated body position plus the render-rate look angles.
+## Every tick your input becomes one UserCmd (PlayerInput.build_command) and
+## the simulation runs it, exactly as it runs a bot's, and as a server will
+## run the commands a client sends. Nothing here decides anything about the
+## game; it only turns keys into commands and hands the drawing to the view.
 
 @export var camera: Camera3D
 
-## The weapon model, if there is one. Assign it and it rides the recoil.
-##
-## Optional and read-only from here: this rotates the node and touches nothing
-## else, so whatever the model does for itself (bob, sway, animations) is left
-## alone. Cosmetic in full; it changes nothing about aim or bullets.
-@export var viewmodel: Node3D
-
-## The weapon model's rest pose, captured on the first frame so the recoil,
-## bob and sway can be applied relative to however it was posed in the scene.
-var _viewmodel_rest := Transform3D.IDENTITY
-var _viewmodel_rest_captured := false
-
-## The bob of walking and the lag of turning, on the weapon model.
-var viewmodel_motion := ViewModelMotion.new()
-
+## Your keys and mouse, sampled as they happen; the look angles move at the
+## rate frames are drawn, not the tick rate.
 var input := PlayerInput.new()
 
-## The weapon currently held. Swapped with the number keys.
-var weapon: Weapon
+## The camera, arms, body, shadow, sounds and bullet marks.
+var view: PlayerView
 
-## How the player was moving on the last tick, as the weapon was told: what
-## its cone is judged by. HUDs read it rather than building their own.
-var shooter_state := Weapon.ShooterState.new()
-
-## Which side's arms are on screen. Set by the map from the spawn.
-@export_enum("T", "CT") var team: String = "T"
-
-## The arms and weapon, drawn under the camera with a projection of their
-## own (ViewModelProjection), when the models are there.
-var view_model: ViewModel
-
-## What you hear of your own weapon and your hits, and of your own feet.
-var weapon_sounds: WeaponSounds
-var footsteps: Footsteps
-
-## Your own body, seen when you look down: the third-person model without
-## its head and arms, walking the same clips as a bot's. It stands in the
-## world and casts no shadow; that is body_shadow's job.
-var body_model: PlayerModel
-## Your shadow: the same model walking the same clips in the same place,
-## drawn only into the shadow maps, with its head. The body the camera sees
-## has none, and a shadow without one is a strange thing to see.
-var body_shadow: PlayerModel
-
-## What the camera must not see of the body: the head it sits inside, and
-## the arms the view model stands in for. Folding the upper arms folds the
-## hands with them.
-const FOLDED_BONES: Array[String] = ["head_0", "neck_0", "arm_upper_L", "arm_upper_R"]
-## What the shadow does without: the arms, which would fall across the view
-## model's own from a pose that is not its.
-const SHADOW_FOLDED_BONES: Array[String] = ["arm_upper_L", "arm_upper_R"]
-
-## How far behind the eyes the body stands, in units. The eyes are at the
-## front of the head, over the chest; at zero the collar fills the bottom of
-## the view looking straight ahead. This puts the chest below the view until
-## you look down for it.
-const BODY_SETBACK := 8.0
-
-signal shot_traced(shot: Weapon.Shot, result: Hitscan.Result)
 signal died
-signal respawned
 
-## Health and armour, and the zones a bot's round can land on: the standing
-## proportions of HitTarget, with no body of its own since the player has
-## one. A round to the head kills as it kills a bot.
-var hit_target: HitTarget
-var alive: bool = true
-
-## How long death lasts before the respawn, at the last place the map put
-## you (place), whole and reloaded.
-@export var respawn_seconds: float = 3.0
-var _spawn_position: Vector3 = Vector3.ZERO
-var _spawn_yaw: float = 0.0
-var _respawn_at_usec: int = 0
-
-var _tick_start_usec: int = 0
-var _tick_length_usec: int = 0
+## The view's parts, where the tests and the maps have always found them.
+var view_model: ViewModel:
+	get:
+		return view.view_model if view != null else null
+var body_model: PlayerModel:
+	get:
+		return view.body_model if view != null else null
+var body_shadow: PlayerModel:
+	get:
+		return view.body_shadow if view != null else null
+var weapon_sounds: WeaponSounds:
+	get:
+		return view.weapon_sounds if view != null else null
+var footsteps: Footsteps:
+	get:
+		return view.footsteps if view != null else null
 
 
 func _ready() -> void:
 	super._ready()
-	_tick_length_usec = int(1_000_000.0 / float(Engine.physics_ticks_per_second))
 	if camera == null:
 		camera = _find_camera()
-	if camera != null:
-		camera.top_level = true
-		# Source-unit scale: the near plane has to be a fraction of an inch or
-		# the view model, drawn squeezed towards the camera, clips.
-		camera.near = ViewModelProjection.NEAR
-		camera.far = 16384.0
-		# CS2's 90, which is horizontal at 4:3; Godot's number is vertical.
-		camera.fov = ViewModelProjection.vertical_fov(ViewModelProjection.WORLD_FOV)
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
-	add_to_group(&"players")
-	hit_target = HitTarget.new()
-	hit_target.name = "HitTarget"
-	hit_target.build_visual = false
-	add_child(hit_target)
-	hit_target.died.connect(_on_died)
-	_show_body()
-	weapon_sounds = WeaponSounds.new()
-	weapon_sounds.name = "WeaponSounds"
-	add_child(weapon_sounds)
-	footsteps = Footsteps.new()
-	footsteps.name = "Footsteps"
-	add_child(footsteps)
+	view = PlayerView.new(self)
+	add_child(view)
+	killed.connect(func(_zone: StringName) -> void: died.emit())
 	equip(WeaponLibrary.ak47())
-
-
-## Swaps to a weapon, which also changes how fast you can run.
-func equip(data: WeaponData) -> void:
-	weapon = Weapon.new(data)
-	config.max_speed = data.max_player_speed
-	_show_view_model(data)
-	if weapon_sounds != null:
-		weapon_sounds.equip(data)
-
-
-func _show_view_model(data: WeaponData) -> void:
-	if camera == null:
-		return
-	if view_model == null:
-		view_model = ViewModel.new()
-		view_model.name = "ViewModel"
-		camera.add_child(view_model)
-		# And it rides the recoil.
-		viewmodel = view_model
-	if view_model.setup(team, data.model_path, data.clip_set):
-		ViewModelProjection.claim(view_model)
-
-
-## The body and its shadow, when the models are there. They are top_level
-## like the camera and follow the interpolated position, so they do not step
-## at the tick rate against a camera that does not.
-func _show_body() -> void:
-	body_model = _build_body("Body", FOLDED_BONES, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
-	if body_model != null:
-		body_shadow = _build_body("BodyShadow", SHADOW_FOLDED_BONES, GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY)
-
-
-func _build_body(node_name: String, folded: Array[String], casting: GeometryInstance3D.ShadowCastingSetting) -> PlayerModel:
-	var model := PlayerModel.new()
-	model.name = node_name
-	# A model only the shadow maps see needs no lighting.
-	model.probe_lit = casting != GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
-	if not model.setup(team, ""):
-		model.free()
-		return null
-	model.fold_bones(PackedStringArray(folded))
-	for mesh in model.find_children("*", "MeshInstance3D", true, false):
-		(mesh as MeshInstance3D).cast_shadow = casting
-	model.top_level = true
-	add_child(model)
-	return model
 
 
 func _find_camera() -> Camera3D:
@@ -182,304 +64,16 @@ func _unhandled_input(event: InputEvent) -> void:
 			else Input.MOUSE_MODE_CAPTURED
 		)
 		return
-	if event.is_action_pressed(&"slot1"):
-		equip(WeaponLibrary.ak47())
-		return
-	if event.is_action_pressed(&"slot2"):
-		equip(WeaponLibrary.m4a1s())
-		return
-	if event.is_action_pressed(&"reload"):
-		if weapon.start_reload(Time.get_ticks_usec()):
-			if view_model != null:
-				view_model.play(&"reload")
-			if weapon_sounds != null:
-				weapon_sounds.reload()
-		return
-	if event.is_action_pressed(&"noclip"):
-		noclip = not noclip
-		velocity = Vector3.ZERO
-		return
 	if Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
 		input.handle_event(event)
 
 
-## Where the map put you, to come back to.
-func place(spawn_position: Vector3, yaw_degrees: float) -> void:
-	_spawn_position = spawn_position
-	_spawn_yaw = yaw_degrees
-	global_position = spawn_position
-	previous_position = spawn_position
-	input.yaw_degrees = yaw_degrees
+## Where the map put you, to come back to, looking the way it faced you.
+func place(spawn_position: Vector3, yaw: float) -> void:
+	super.place(spawn_position, yaw)
+	input.yaw_degrees = yaw
 	input.pitch_degrees = 0.0
 
 
-func seconds_to_respawn() -> float:
-	return maxf(0.0, float(_respawn_at_usec - Time.get_ticks_usec()) / 1_000_000.0)
-
-
-## Dead: still, out of reach of rounds, the arms and body gone, until the
-## respawn.
-func _on_died() -> void:
-	alive = false
-	velocity = Vector3.ZERO
-	hit_target.set_active(false)
-	if view_model != null:
-		view_model.visible = false
-	for body in [body_model, body_shadow]:
-		if body != null:
-			body.visible = false
-	_respawn_at_usec = Time.get_ticks_usec() + int(respawn_seconds * 1_000_000.0)
-	died.emit()
-
-
-func respawn() -> void:
-	alive = true
-	hit_target.reset()
-	hit_target.set_active(true)
-	place(_spawn_position, _spawn_yaw)
-	velocity = Vector3.ZERO
-	if view_model != null:
-		view_model.visible = true
-	for body in [body_model, body_shadow]:
-		if body != null:
-			body.visible = true
-	if weapon != null:
-		equip(weapon.data)
-	respawned.emit()
-
-
 func _physics_process(delta: float) -> void:
-	_tick_start_usec = Time.get_ticks_usec()
-	if not alive:
-		input.take_events()
-		if Time.get_ticks_usec() >= _respawn_at_usec:
-			respawn()
-		return
-
-	# Button transitions that happened during the frames since the last tick.
-	# A tap shorter than one tick still has to register, so a press event in
-	# the buffer counts even if the key is already back up by now. Each one
-	# carries the instant it happened, which is what lets the jump and the
-	# shot below land inside the tick rather than at its boundary.
-	var jump_tapped := false
-	var jump_press_usec := 0
-	var fire_events: Array[PlayerInput.ButtonEvent] = []
-	for event in input.take_events():
-		if event.action == &"jump" and event.pressed:
-			# The earliest press in the buffer is the one that jumps, so a
-			# double tap inside one tick does not push the jump later.
-			if not jump_tapped:
-				jump_press_usec = event.timestamp_usec
-			jump_tapped = true
-		elif event.action == &"attack" and event.pressed:
-			fire_events.append(event)
-
-	wants_jump = Input.is_action_pressed(&"jump") or jump_tapped
-	wants_duck = Input.is_action_pressed(&"duck")
-
-	# Where inside this tick the press happened, so the body can split the tick
-	# there instead of rounding the jump to the boundary. A jump from a held
-	# key has no transition to time, so it stays at the boundary.
-	jump_fraction = -1.0
-	if jump_tapped:
-		jump_fraction = PlayerInput.tick_fraction(
-			jump_press_usec, _tick_start_usec, _tick_length_usec
-		)
-
-	if noclip:
-		wish_dir = _noclip_direction()
-		wish_speed = 0.0
-		simulate(delta)
-		return
-
-	wish_dir = input.wish_direction()
-	wish_speed = _current_max_speed()
-	if wish_dir.length_squared() == 0.0:
-		wish_speed = 0.0
-
-	simulate(delta)
-	_update_weapon(delta, fire_events)
-	for body in [body_model, body_shadow]:
-		if body != null:
-			body.update_motion(velocity, input.yaw_degrees, is_ducked, on_ground)
-
-
-## Fires any shots that happened during the frames since the last tick, at the
-## instant and the aim angles they actually happened at.
-##
-## A held trigger fires on the tick as well, since an automatic weapon keeps
-## going without further input events.
-func _update_weapon(
-	delta: float, fire_events: Array[PlayerInput.ButtonEvent]
-) -> void:
-	if weapon == null:
-		return
-
-	var now := Time.get_ticks_usec()
-	weapon.finish_reload_if_due(now)
-	# The weapon is told about the trigger rather than left to infer it from
-	# the gap since the last round, so the crosshair starts coming home on the
-	# frame the button comes up instead of a round and a quarter later. A press
-	# that happened and ended between ticks still counts as held for this one.
-	weapon.trigger_held = (
-		Input.is_action_pressed(&"attack") or not fire_events.is_empty()
-	)
-	shooter_state = Weapon.ShooterState.new(
-		Vector2(velocity.x, velocity.z).length(), on_ground, is_ducked,
-		Input.is_action_pressed(&"walk")
-	)
-	weapon.update(delta, now, shooter_state)
-
-	for event in fire_events:
-		_try_shoot(
-			event.timestamp_usec,
-			PlayerInput.tick_fraction(
-				event.timestamp_usec, _tick_start_usec, _tick_length_usec
-			),
-			event.yaw_degrees,
-			event.pitch_degrees,
-			shooter_state
-		)
-
-	# Held down, the next round goes the moment the weapon is ready, not on
-	# the tick after: on the tick, every gap rounds up to whole ticks and 600
-	# rounds a minute comes out at 591.
-	if Input.is_action_pressed(&"attack"):
-		var tick_began := now - _tick_length_usec
-		var at := clampi(weapon.next_shot_usec(), tick_began, now)
-		_try_shoot(
-			at,
-			PlayerInput.tick_fraction(at, tick_began, _tick_length_usec),
-			input.yaw_degrees,
-			input.pitch_degrees,
-			shooter_state
-		)
-
-
-func _try_shoot(
-	timestamp_usec: int,
-	tick_fraction: float,
-	yaw: float,
-	pitch: float,
-	state: Weapon.ShooterState
-) -> void:
-	# The shot came from where the player was at the instant of the click, not
-	# from where the tick left them. CS2 sends this as an explicit
-	# shoot_position. At 250 u/s, skipping it puts the muzzle up to ~1.6 units
-	# from where it belongs, which is exactly the strafe-and-tap case that hit
-	# registration arguments are made of.
-	var at := previous_position.lerp(global_position, clampf(tick_fraction, 0.0, 1.0))
-	var origin := at + Vector3.UP * eye_height()
-	var shot := weapon.fire(
-		timestamp_usec, tick_fraction, origin, yaw, pitch, state
-	)
-	if shot == null:
-		return
-	if view_model != null:
-		view_model.shoot()
-	if weapon_sounds != null:
-		weapon_sounds.shot()
-
-	var space := get_world_3d().direct_space_state
-	# Your own hull and hitboxes are not targets.
-	var exclude: Array[RID] = [get_rid()]
-	exclude.append_array(hit_target.rids())
-	var result := Hitscan.fire_at(space, shot, weapon.data, exclude)
-	if weapon_sounds != null and result.hitbox != null and result.hitbox.target != null:
-		weapon_sounds.hit(result.zone, result.hitbox.target, not result.hitbox.target.alive)
-	BulletImpacts.mark_in(get_tree(), result)
-	shot_traced.emit(shot, result)
-
-
-## Noclip flies where you are looking, pitch included, with jump and duck for
-## straight up and down.
-func _noclip_direction() -> Vector3:
-	var pitch := deg_to_rad(input.pitch_degrees)
-	var yaw := deg_to_rad(input.yaw_degrees)
-	var forward := Vector3(
-		-sin(yaw) * cos(pitch), sin(pitch), -cos(yaw) * cos(pitch)
-	)
-	var right := Vector3(cos(yaw), 0.0, -sin(yaw))
-
-	var direction := (
-		forward * Input.get_axis(&"move_back", &"move_forward")
-		+ right * Input.get_axis(&"move_left", &"move_right")
-	)
-	if Input.is_action_pressed(&"jump"):
-		direction += Vector3.UP
-	if Input.is_action_pressed(&"duck"):
-		direction += Vector3.DOWN
-
-	if direction.length_squared() == 0.0:
-		return Vector3.ZERO
-	return direction.normalized()
-
-
-func _current_max_speed() -> float:
-	var speed := config.max_speed
-	if is_ducked:
-		speed *= config.duck_modifier
-	elif Input.is_action_pressed(&"walk"):
-		speed *= config.walk_modifier
-	return speed
-
-
-func _process(delta: float) -> void:
-	if camera == null:
-		return
-
-	# Interpolate between the last two simulation positions so the view is
-	# smooth at any framerate rather than stepping at 128 Hz.
-	var alpha := clampf(
-		float(Time.get_ticks_usec() - _tick_start_usec) / float(_tick_length_usec),
-		0.0, 1.0
-	)
-	var interpolated := previous_position.lerp(global_position, alpha)
-
-	camera.global_position = interpolated + Vector3.UP * eye_height()
-	var yaw := deg_to_rad(input.yaw_degrees)
-	for body in [body_model, body_shadow]:
-		if body != null:
-			body.global_position = interpolated + Vector3(sin(yaw), 0.0, cos(yaw)) * BODY_SETBACK
-	# The recoil punch is added here rather than to the player's own look
-	# angles, so the view kicks while the angles the player is actually
-	# holding stay untouched. It is also deliberately smaller than the spray:
-	# the crosshair suggests the recoil, it does not report it.
-	var punch := weapon.aim_punch if weapon != null else Vector2.ZERO
-	camera.global_rotation = Vector3(
-		deg_to_rad(input.pitch_degrees + punch.y),
-		deg_to_rad(input.yaw_degrees - punch.x),
-		0.0
-	)
-
-	_update_viewmodel(delta)
-	# The arms from where the eyes are, the body from its middle.
-	if view_model != null:
-		view_model.light_from(camera.global_position)
-	if body_model != null:
-		body_model.light_from(interpolated + Vector3.UP * 40.0)
-
-
-## Rides the weapon model on the same punch, scaled by viewmodel_recoil.
-##
-## The model is a child of the camera, so it already follows the view kick.
-## This is the extra movement on top: the gun climbing in the hands relative
-## to the screen, which is most of what reads as recoil.
-func _update_viewmodel(delta: float) -> void:
-	if viewmodel == null or weapon == null:
-		return
-	if not _viewmodel_rest_captured:
-		_viewmodel_rest = viewmodel.transform
-		_viewmodel_rest_captured = true
-
-	# The bob and sway move the model in the camera's frame, the kick in the
-	# model's own.
-	var motion := viewmodel_motion.update(
-		delta, velocity, on_ground, Vector2(input.yaw_degrees, input.pitch_degrees)
-	)
-	var kick := weapon.viewmodel_punch()
-	viewmodel.transform = Transform3D(
-		motion.basis * _viewmodel_rest.basis
-			* Basis.from_euler(Vector3(deg_to_rad(kick.y), deg_to_rad(-kick.x), 0.0)),
-		_viewmodel_rest.origin + motion.origin
-	)
+	run_command(input.build_command(SimClock.current_tick()), delta)

@@ -749,7 +749,7 @@ func _test_player_composes_kick_and_bob() -> void:
 				and shadow_rig.get_bone_pose_scale(shadow_rig.find_bone("arm_upper_R")).is_equal_approx(Vector3.ONE * RigModel.FOLDED),
 			"and its shadow is cast by a twin drawn only into the shadow maps, with its head and without its arms"
 		)
-		player._process(1.0 / 60.0)
+		player.view._process(1.0 / 60.0)
 		_check(
 			player.body_shadow != null and player.body_shadow.global_position.is_equal_approx(player.body_model.global_position)
 				and player.body_shadow.animation_player.current_animation == player.body_model.animation_player.current_animation,
@@ -759,13 +759,13 @@ func _test_player_composes_kick_and_bob() -> void:
 	# Frame one captures the rest pose; then a kick from a real shot.
 	player.velocity = Vector3.ZERO
 	player.on_ground = true
-	player._update_viewmodel(1.0 / 60.0)
+	player.view._update_viewmodel(1.0 / 60.0)
 	var rest := player.view_model.transform
 	var now := Time.get_ticks_usec()
 	player.weapon.fire(now, 0.5, Vector3.ZERO, 0.0, 0.0, Weapon.ShooterState.new())
 	player.weapon.update(1.0 / 128.0, now + 7813)
 	var kick := player.weapon.viewmodel_punch()
-	player._update_viewmodel(1.0 / 60.0)
+	player.view._update_viewmodel(1.0 / 60.0)
 	var expected := rest.basis * Basis.from_euler(Vector3(deg_to_rad(kick.y), deg_to_rad(-kick.x), 0.0))
 	_check(
 		kick.length() > 0.01 and player.view_model.transform.basis.is_equal_approx(expected)
@@ -776,10 +776,10 @@ func _test_player_composes_kick_and_bob() -> void:
 	# Running: the same kick, on top of the bob's offset.
 	player.velocity = Vector3(0.0, 0.0, -250.0)
 	for frame in 20:
-		player._update_viewmodel(1.0 / 60.0)
+		player.view._update_viewmodel(1.0 / 60.0)
 	kick = player.weapon.viewmodel_punch()
 	var moved := player.view_model.transform
-	var motion_only := player.viewmodel_motion.update(0.0, Vector3(0.0, 0.0, -250.0), true, Vector2.ZERO)
+	var motion_only := player.view.viewmodel_motion.update(0.0, Vector3(0.0, 0.0, -250.0), true, Vector2.ZERO)
 	_check(
 		not moved.origin.is_equal_approx(rest.origin)
 			and moved.basis.is_equal_approx(

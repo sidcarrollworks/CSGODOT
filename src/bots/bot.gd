@@ -1,19 +1,26 @@
 class_name Bot
-extends PlayerBody
+extends PlayerSim
 
-## A player that is not you. The same body, hull and movement solver as the
-## local player, pushed by a route rather than by keys, and wearing the
-## third-person model. It walks its route round and round, facing the way it
-## goes, and can be shot: it wears the model's own hitboxes on its bones,
-## goes limp and falls the way the last round pushed it (a ragdoll), and
-## comes back at the start of its route. It shoots back: when a player is in its sight, in the open and
-## within its cone for long enough to react, it stops, turns, and fires its
-## weapon at them in bursts with the weapon's own spread and recoil, and
-## reloads when it runs dry. It does not flinch, take cover or think.
+## A player that is not you. The same simulation as the local player
+## (PlayerSim: body, hull, movement solver, weapon), run by the same kind of
+## command, except that the command comes from what the bot decides rather
+## than from keys. It wears the third-person model. It walks its route round
+## and round, facing the way it goes, and can be shot: it wears the model's
+## own hitboxes on its bones, goes limp and falls the way the last round
+## pushed it (a ragdoll), and comes back at the start of its route. It shoots
+## back: when a player of the other side is in its sight, in the open and
+## within its cone for long enough to react, it stops, turns, and holds the
+## trigger in bursts, so its rounds go through the weapon's own rate, spread
+## and recoil exactly as yours do, and it reloads when it runs dry. It does
+## not flinch, take cover or think.
 ##
-## The point of it being the same body is that it moves like a player. A bot
-## that walked on rails would be a different thing to shoot at than the
-## players it stands in for.
+## The point of it being the same simulation is that it moves and shoots
+## like a player. A bot that walked on rails and fired by its own rules
+## would be a different thing to shoot at than the players it stands in for.
+##
+## Its model is part of what it is, not just how it looks: the hitboxes ride
+## the model's bones, so the model animates whether anyone sees it or not,
+## as CS2's server animates everyone for their hitboxes.
 
 ## Where the bot goes, in order, in world units. It turns for the first
 ## point on arriving at the last.
@@ -25,9 +32,7 @@ extends PlayerBody
 ## How fast the bot turns to face its way, in degrees per second.
 @export var turn_rate: float = 540.0
 
-## The bot's side, for its model, and what it holds: the model to draw and
-## the numbers to shoot with.
-@export_enum("T", "CT") var team: String = "T"
+## What it holds: the model to draw and the numbers to shoot with.
 @export var weapon_model: String = ""
 @export var weapon_data: WeaponData
 
@@ -43,50 +48,41 @@ const PAUSE_SECONDS := 0.45
 const AIM_ERROR_DEGREES := 1.2
 const FIRE_WITHIN_DEGREES := 6.0
 
-## How long a dead bot lies there before it is back on its route.
-@export var respawn_seconds: float = 5.0
-
-## The way it faces, in the game's degrees (PlayerInput's).
-var yaw_degrees: float = 0.0
-
 var model: PlayerModel
-## Its health and armour; what a hit is applied to.
-var hit_target: HitTarget
 ## The model's hitboxes, on its bones.
 var hitboxes: SkinnedHitboxes
 ## Its body falling, while it is dead; null otherwise.
 var ragdoll: Ragdoll
-var alive: bool = true
 
-## What it shoots with, and what it hears of it, in the world.
-var weapon: Weapon
+## What it hears of its weapon, in the world.
 var weapon_sounds: WeaponSounds
-## The player it is engaging, or null; and how it is going.
+## The player it is engaging, or null.
 var target: Node3D
-var pitch_degrees: float = 0.0
-var rounds_fired: int = 0
 
 signal died(zone: StringName)
-signal respawned
-signal fired(shot: Weapon.Shot, result: Hitscan.Result)
 
 var _next: int = 0
 var _capsules: Array[Dictionary] = []
 var _deaths: int = 0
-var _respawn_at_usec: int = 0
 var _seen_for: float = 0.0
 var _burst_clock: float = 0.0
 var _aim_error: Vector2 = Vector2.ZERO
+## The error in the angles it last sent, so the next command turns from where
+## it meant to face rather than from where the error put it.
+var _sent_error: Vector2 = Vector2.ZERO
 var _rng := RandomNumberGenerator.new()
+
+
+func _init() -> void:
+	# A dead bot lies there this long before it is back on its route.
+	respawn_seconds = 5.0
 
 
 func _ready() -> void:
 	super._ready()
-	hit_target = HitTarget.new()
-	hit_target.name = "HitTarget"
-	hit_target.build_own_hitboxes = false
-	add_child(hit_target)
-	hit_target.died.connect(_on_died)
+	killed.connect(_on_killed)
+	shot_traced.connect(_on_shot_traced)
+	reload_started.connect(_on_reload_started)
 
 	model = PlayerModel.new()
 	model.name = "Model"
@@ -94,10 +90,11 @@ func _ready() -> void:
 	if not model.setup(team, weapon_model):
 		model.queue_free()
 		model = null
-		return
-	var footsteps := Footsteps.new()
-	footsteps.name = "Footsteps"
-	add_child(footsteps)
+	else:
+		var footsteps := Footsteps.new()
+		footsteps.name = "Footsteps"
+		add_child(footsteps)
+	# What it shoots with is the simulation's, model or no model.
 	if weapon_data != null:
 		weapon = Weapon.new(weapon_data)
 		weapon.trigger_held = false
@@ -106,23 +103,49 @@ func _ready() -> void:
 		weapon_sounds.spatial = true
 		add_child(weapon_sounds)
 		weapon_sounds.equip(weapon_data)
-	hitboxes = SkinnedHitboxes.new()
-	hitboxes.name = "Hitboxes"
-	add_child(hitboxes)
-	_capsules = HitboxSet.load_for(PlayerModel.AGENTS.get(team, PlayerModel.AGENTS["T"]))
-	hitboxes.build(model.character_rig, _capsules, hit_target, MapImporter.SOURCE2_VIEWER_SCALE)
+	if model != null:
+		hitboxes = SkinnedHitboxes.new()
+		hitboxes.name = "Hitboxes"
+		add_child(hitboxes)
+		_capsules = HitboxSet.load_for(PlayerModel.AGENTS.get(team, PlayerModel.AGENTS["T"]))
+		hitboxes.build(model.character_rig, _capsules, hit_target, MapImporter.SOURCE2_VIEWER_SCALE)
+	# Without the model's capsules (not extracted, or a broken extraction),
+	# the four standard boxes, and a grey body to see them by when there is
+	# no model either: a bot has to be something that can be shot.
+	if hit_target.hitboxes().is_empty():
+		hit_target.build_standard_body(model == null)
+
+
+## The model's capsules, on its bones, carry its hitboxes; HitTarget builds
+## none of its own.
+func _build_hit_target() -> HitTarget:
+	var target_node := HitTarget.new()
+	target_node.build_own_hitboxes = false
+	return target_node
 
 
 func _physics_process(delta: float) -> void:
-	wants_jump = false
-	wants_duck = false
-	wish_dir = Vector3.ZERO
-	wish_speed = 0.0
+	run_command(_think(delta), delta)
+	if alive and model != null:
+		model.update_motion(velocity, yaw_degrees, is_ducked, on_ground)
+		model.light_from(global_position + Vector3.UP * 40.0)
+
+
+## What it does this tick, as a command: the way it faces, the way it walks,
+## and whether the trigger is down.
+func _think(delta: float) -> UserCmd:
+	var cmd := UserCmd.new()
+	cmd.tick = SimClock.current_tick()
+	# Where it meant to face last tick, the aim error taken back out.
+	var yaw := yaw_degrees - _sent_error.x
+	var pitch := pitch_degrees - _sent_error.y
+	var error := Vector2.ZERO
 
 	if not alive:
-		if Time.get_ticks_usec() >= _respawn_at_usec:
-			respawn()
-		return
+		cmd.yaw_degrees = yaw
+		cmd.pitch_degrees = pitch
+		_sent_error = Vector2.ZERO
+		return cmd
 
 	# Nothing to shoot with, nothing to stop for: an unarmed bot just walks.
 	target = _look_for_target() if weapon != null else null
@@ -131,8 +154,29 @@ func _physics_process(delta: float) -> void:
 	else:
 		_seen_for = 0.0
 		_burst_clock = 0.0
+
 	if target != null and _seen_for >= REACTION_SECONDS:
-		_engage(target, delta)
+		# Stops, turns to face the target, and fires in bursts once facing it.
+		var eyes := global_position + Vector3.UP * eye_height()
+		var aim: Vector3 = target.global_position + Vector3.UP * 48.0
+		var angles := PlayerInput.angles_from_direction(aim - eyes)
+		yaw = rad_to_deg(rotate_toward(deg_to_rad(yaw), deg_to_rad(angles.x), deg_to_rad(turn_rate) * delta))
+		pitch = angles.y
+		var facing := absf(angle_difference(deg_to_rad(yaw), deg_to_rad(angles.x))) < deg_to_rad(FIRE_WITHIN_DEGREES)
+		if facing:
+			if weapon.ammo <= 0:
+				cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.RELOAD, true, 0.0, yaw, pitch))
+				_burst_clock = 0.0
+			# A burst, a pause, a burst: the clock runs round both.
+			_burst_clock = fmod(_burst_clock + delta, BURST_SECONDS + PAUSE_SECONDS)
+			if _burst_clock < delta:
+				_aim_error = Vector2(
+					_rng.randf_range(-AIM_ERROR_DEGREES, AIM_ERROR_DEGREES),
+					_rng.randf_range(-AIM_ERROR_DEGREES, AIM_ERROR_DEGREES)
+				)
+			error = _aim_error
+			if _burst_clock < BURST_SECONDS:
+				cmd.buttons |= UserCmd.ATTACK
 	elif not route.is_empty():
 		var waypoint := route[_next]
 		var to_waypoint := waypoint - global_position
@@ -140,28 +184,26 @@ func _physics_process(delta: float) -> void:
 		if to_waypoint.length() < arrive_distance:
 			_next = (_next + 1) % route.size()
 		elif to_waypoint.length_squared() > 0.0:
-			wish_dir = to_waypoint.normalized()
-			wish_speed = config.max_speed
+			var way := to_waypoint.normalized()
 			# The game's yaw 0 looks down -Z, and yaw grows towards -X.
-			var wanted := rad_to_deg(atan2(-wish_dir.x, -wish_dir.z))
-			yaw_degrees = rad_to_deg(rotate_toward(
-				deg_to_rad(yaw_degrees), deg_to_rad(wanted), deg_to_rad(turn_rate) * delta
-			))
+			var wanted := rad_to_deg(atan2(-way.x, -way.z))
+			yaw = rad_to_deg(rotate_toward(deg_to_rad(yaw), deg_to_rad(wanted), deg_to_rad(turn_rate) * delta))
+			cmd.move = UserCmd.move_toward(way, yaw)
 
-	simulate(delta)
-	if model != null:
-		model.update_motion(velocity, yaw_degrees, is_ducked, on_ground)
-		model.light_from(global_position + Vector3.UP * 40.0)
+	cmd.yaw_degrees = yaw + error.x
+	cmd.pitch_degrees = pitch + error.y
+	_sent_error = error
+	return cmd
 
 
-## The nearest living player in sight: within range, within the cone, and
-## in the open between its eyes and theirs.
+## The nearest living player of the other side in sight: within range,
+## within the cone, and in the open between its eyes and theirs.
 func _look_for_target() -> Node3D:
 	var best: Node3D = null
 	var best_distance := SIGHT_RANGE
 	for node in get_tree().get_nodes_in_group(&"players"):
-		var candidate := node as Node3D
-		if candidate == null or candidate == self or not bool(candidate.get("alive")):
+		var candidate := node as PlayerSim
+		if candidate == null or candidate == self or not candidate.alive or candidate.team == team:
 			continue
 		var distance := global_position.distance_to(candidate.global_position)
 		if distance >= best_distance:
@@ -191,67 +233,28 @@ func can_see(other: Node3D) -> bool:
 	return get_world_3d().direct_space_state.intersect_ray(query).is_empty()
 
 
-## Stops, turns to face the target, and fires in bursts once facing it.
-func _engage(enemy: Node3D, delta: float) -> void:
-	var eyes := global_position + Vector3.UP * eye_height()
-	var aim: Vector3 = enemy.global_position + Vector3.UP * 48.0
-	var angles := PlayerInput.angles_from_direction(aim - eyes)
-	yaw_degrees = rad_to_deg(rotate_toward(
-		deg_to_rad(yaw_degrees), deg_to_rad(angles.x), deg_to_rad(turn_rate) * delta
-	))
-	pitch_degrees = angles.y
-	var facing := absf(angle_difference(deg_to_rad(yaw_degrees), deg_to_rad(angles.x))) < deg_to_rad(FIRE_WITHIN_DEGREES)
-	if weapon == null or not facing:
-		return
-	var now := Time.get_ticks_usec()
-	weapon.finish_reload_if_due(now)
-	if weapon.ammo <= 0:
-		if weapon.start_reload(now) and model != null:
-			model.play(&"reload", 0.1)
-		_burst_clock = 0.0
-	# A burst, a pause, a burst: the clock runs round both.
-	_burst_clock = fmod(_burst_clock + delta, BURST_SECONDS + PAUSE_SECONDS)
-	var bursting := _burst_clock < BURST_SECONDS
-	if _burst_clock < delta:
-		_aim_error = Vector2(_rng.randf_range(-AIM_ERROR_DEGREES, AIM_ERROR_DEGREES), _rng.randf_range(-AIM_ERROR_DEGREES, AIM_ERROR_DEGREES))
-	weapon.trigger_held = bursting
-	var state := Weapon.ShooterState.new(Vector2(velocity.x, velocity.z).length(), on_ground, is_ducked)
-	weapon.update(delta, now, state)
-	# The round goes when the weapon is ready, not on the tick after, so a
-	# bot's rifle fires at its own rate as the player's does.
-	now = clampi(weapon.next_shot_usec(), now - int(delta * 1_000_000.0), now)
-	if not bursting or not weapon.can_fire(now):
-		return
-	var shot := weapon.fire(now, 0.0, eyes, yaw_degrees + _aim_error.x, pitch_degrees + _aim_error.y, state)
-	if shot == null:
-		return
-	rounds_fired += 1
-	var exclude: Array[RID] = [get_rid()]
-	if hit_target != null:
-		exclude.append_array(hit_target.rids())
-	var result := Hitscan.fire_at(get_world_3d().direct_space_state, shot, weapon.data, exclude)
+func _on_shot_traced(_shot: Weapon.Shot, result: Hitscan.Result) -> void:
 	BulletImpacts.mark_in(get_tree(), result)
 	if weapon_sounds != null:
 		weapon_sounds.shot()
 	if model != null:
 		model.play(&"shoot", 0.03, 1.0, true)
-	fired.emit(shot, result)
+
+
+func _on_reload_started() -> void:
+	if model != null:
+		model.play(&"reload", 0.1)
 
 
 ## Dies where the last round landed: the body goes limp and falls, pushed
 ## the way the round was going, and stays down; the hull and the hitboxes
 ## go, and the route waits. Without the hitbox set to build a ragdoll from,
 ## the model plays the game's death clip for where the round landed instead.
-func _on_died() -> void:
-	alive = false
+func _on_killed(zone: StringName) -> void:
 	_deaths += 1
-	var zone: StringName = hit_target.last_hitbox.zone if hit_target.last_hitbox != null else &"chest"
 	if model != null and not _ragdoll():
 		model.play(PlayerModel.death_for(zone, _deaths), 0.05)
-	velocity = Vector3.ZERO
-	hit_target.set_active(false)
 	collision_layer = 0
-	_respawn_at_usec = Time.get_ticks_usec() + int(respawn_seconds * 1_000_000.0)
 	died.emit(zone)
 
 
@@ -277,10 +280,6 @@ func _ragdoll() -> bool:
 	# The animation would pose the bones over the bodies' every frame.
 	model.animation_player.active = false
 	return true
-
-
-func seconds_to_respawn() -> float:
-	return maxf(0.0, float(_respawn_at_usec - Time.get_ticks_usec()) / 1_000_000.0)
 
 
 ## Back at the start of the route, whole; without a route, where it fell.

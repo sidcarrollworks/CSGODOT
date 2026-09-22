@@ -25,6 +25,7 @@ func _process(_delta: float) -> bool:
 		_test_fire_rate()
 		_test_ammo_and_reload()
 		_test_deterministic_spread()
+		_test_first_rounds_go_anywhere_in_the_cone()
 		_test_recoil_follows_the_pattern()
 		_test_recoil_recovers()
 		_test_held_trigger_walks_the_whole_pattern()
@@ -129,9 +130,8 @@ func _test_ammo_and_reload() -> void:
 	)
 
 
-## Same seed, same shot, same bullet. This is what makes the first shot
-## trustworthy and the pattern worth learning, and later it is what lets a
-## server and a client agree on where a bullet went without sending it.
+## Same seed, same instant, same bullet. That is what lets a server and a
+## client agree on where a bullet went without sending it.
 func _test_deterministic_spread() -> void:
 	var moving := Weapon.ShooterState.new(200.0, true, false)
 
@@ -147,7 +147,7 @@ func _test_deterministic_spread() -> void:
 		return
 	_check(
 		a.direction.distance_to(b.direction) < 0.000001,
-		"the same seed and shot index give the same direction"
+		"the same seed and firing time give the same direction"
 	)
 	_check(
 		a.inaccuracy > 0.5,
@@ -160,6 +160,38 @@ func _test_deterministic_spread() -> void:
 	_check(
 		a.direction.distance_to(c.direction) > 0.000001,
 		"a different seed gives a different direction"
+	)
+
+
+## A first round goes anywhere in the cone, not to one place in it. Seeded by
+## its place in the pattern, every first round landed on the same spot a
+## tenth of the way out, so a round fired at a run hit what it was aimed at
+## every time. Sid, 2026-09-22: "It still is perfection acurate for the first
+## shot while running."
+func _test_first_rounds_go_anywhere_in_the_cone() -> void:
+	var running := Weapon.ShooterState.new(215.0, true, false)
+	var shares: Array[float] = []
+	var total := 0.0
+	var outside := 0
+	for i in 64:
+		var weapon := Weapon.new(WeaponLibrary.ak47())
+		# Taps on different ticks, at different points in them.
+		var shot := weapon.fire(i * 2 * SECOND + (i * 1777) % 7812, 0.0, Vector3.ZERO, 0.0, 0.0, running)
+		var off := rad_to_deg(PlayerInput.aim_direction(0.0, 0.0).angle_to(shot.direction))
+		if off > shot.inaccuracy + 0.0001:
+			outside += 1
+		shares.append(off / shot.inaccuracy)
+		total += off / shot.inaccuracy
+	shares.sort()
+	_check_equal(outside, 0, "no first round lands outside the running cone")
+	_check(
+		shares[0] < 0.1 and shares[-1] > 0.9,
+		"first rounds at a run land from the middle of the cone to its edge (%.2f to %.2f of the way out)"
+			% [shares[0], shares[-1]]
+	)
+	_check(
+		absf(total / 64.0 - 0.5) < 0.1,
+		"half way out on average, as a uniform share of the cone puts them (%.2f)" % (total / 64.0)
 	)
 
 

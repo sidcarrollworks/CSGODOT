@@ -71,6 +71,22 @@ by guessing.
 
 ---
 
+## First-shot accuracy while running (Sid, 2026-09-22)
+
+The first shot while running must be as inaccurate as the running cone says.
+Sid playtested it perfectly accurate. The cone was open, but spread was seeded
+by the round's place in the pattern, so every first round landed on the same
+spot, 0.9 degrees off the aim (a tenth of the AK's 10.3-degree running cone).
+PR #24 seeds each round by the moment it was fired instead, so first rounds
+land anywhere in the cone. It applies to every gun:
+
+- Remote: R1's test fires each weapon's first round at a run and checks it
+  lands anywhere in that weapon's running cone, not on one spot. The AK's
+  version is `_test_first_rounds_go_anywhere_in_the_cone` in
+  `tests/run_weapon_tests.gd`.
+- Local: L8 checks it by feel. Run at the dummy and tap: most first rounds
+  should miss the head at range, and they should not land in the same place.
+
 ## Local (Sid's machine)
 
 Roughly in order; L1 to L3 can start at once.
@@ -108,7 +124,8 @@ Roughly in order; L1 to L3 can start at once.
   `viewmodel_fov`, the weapon in the third-person hand, the muzzle point for
   effects. Needs the models on screen.
 - [ ] **L8. Playtest each weapon at the range** against the sheet: fatal
-  headshot ranges with K and N on the dummy, accurate range, tapping, spray.
+  headshot ranges with K and N on the dummy, accurate range, tapping, spray,
+  and the first shot while running (see below).
 
 ## Remote (a project thread)
 
@@ -117,7 +134,8 @@ Roughly in order; L1 to L3 can start at once.
   (pistol/primary), pattern file, reload and draw time, all read from files
   (`cs2_weapon_sheet.csv`, and `models.md`, `sounds.md`, `measured.csv` as
   they land). `WeaponLibrary` builds any of the 34 from it; a test builds
-  every row and checks it against the sheet. Missing assets fall back to no
+  every row and checks it against the sheet, and that its first round at a
+  run lands anywhere in its running cone. Missing assets fall back to no
   model, as now.
 - [ ] **R2. Semi-automatic fire.** "Hold to Shoot: No" fires once a click
   (`WeaponData.automatic` is already read).
