@@ -29,6 +29,7 @@ const SIMULATION_HZ := 128.0
 const RELEASE_DAMPING_RATIO := 0.95
 
 var _solved_kick_up: float = -1.0
+var _solved_model_hold_time: float = -1.0
 
 ## A punch angle with its own velocity, damped, with a spring pulling it back
 ## to zero. Source's DecayPunchAngle.
@@ -256,6 +257,32 @@ class Punch:
 ## halves are wanted and neither should have all of it.
 @export_range(0.0, 1.0) var view_kick_snap_share: float = 0.4
 
+## How long the WEAPON MODEL's fast half takes to settle after a round, in
+## seconds.
+##
+## The gun needs the same two-spring treatment the camera got, for the same
+## reason and then one more. CS2 does not run a spring on the weapon model at
+## all: it replays the firing clip from the start on every round, so the gun
+## drops back towards rest between rounds however fast they come. A single
+## spring long enough to last the measured animation reaches its own peak
+## about 78 ms in, and the next round lands at 100 ms, so it never gets to
+## fall: the gun climbed to a height and jittered there for the rest of the
+## magazine.
+##
+## Sid, 2026-09-22: "the animation doesn't continually fall. It pushes up till
+## you stop holding the mouse button. The animation needs to fall a little
+## between shots."
+##
+## Short enough that a round's own shove is most of the way home before the
+## next one lands.
+@export var model_punch_snap_time: float = 0.1
+
+## How much of a round's kick goes to the weapon model's fast half.
+##
+## Higher than the camera's share: the gun is meant to drop back between
+## rounds, where the crosshair is meant to climb with the spray.
+@export_range(0.0, 1.0) var model_kick_snap_share: float = 0.75
+
 ## How the kick is shaped, against how long it lasts.
 ##
 ## Source's DecayPunchAngle is an angle with its own velocity, a viscous
@@ -397,17 +424,92 @@ func snap_punch_impulse_scale() -> float:
 	return punch_impulse_scale_for(view_punch_snap_time) * view_kick_snap_share
 
 
-## The weapon model's own spring, which settles far sooner than the camera's.
-func model_punch_damping() -> float:
-	return punch_damping_for(recoil_animation_time)
+## The weapon model's fast half: what drops the gun back between rounds.
+func model_snap_punch_damping() -> float:
+	return punch_damping_for(model_punch_snap_time)
 
 
-func model_punch_spring() -> float:
-	return punch_spring_for(recoil_animation_time)
+func model_snap_punch_spring() -> float:
+	return punch_spring_for(model_punch_snap_time)
 
 
-func model_punch_impulse_scale() -> float:
-	return punch_impulse_scale_for(recoil_animation_time)
+func model_snap_punch_impulse_scale() -> float:
+	return punch_impulse_scale_for(model_punch_snap_time) * model_kick_snap_share
+
+
+## The weapon model's slow half: the tail that carries a single shot's
+## animation out to the length Sid measured.
+func model_hold_punch_damping() -> float:
+	return punch_damping_for(model_hold_time())
+
+
+func model_hold_punch_spring() -> float:
+	return punch_spring_for(model_hold_time())
+
+
+func model_hold_punch_impulse_scale() -> float:
+	return punch_impulse_scale_for(model_hold_time()) * (
+		1.0 - model_kick_snap_share
+	)
+
+
+## How long the weapon model's slow half takes to settle, SOLVED rather than
+## picked, so that the two springs added together still settle after exactly
+## recoil_animation_time.
+##
+## recoil_animation_time is the measurement and stays the specification: it is
+## what a single shot's animation looks like on screen, and splitting the
+## spring in two to get a fall between rounds must not quietly change it. The
+## slow half on its own has to run somewhat longer than the measured number,
+## because the fast half raises the peak the settle threshold is taken
+## against. There is no closed form for where a sum of two springs crosses a
+## fraction of its own peak, so this bisects for it once and remembers.
+func model_hold_time() -> float:
+	if _solved_model_hold_time >= 0.0:
+		return _solved_model_hold_time
+	var wanted := maxf(recoil_animation_time, 0.0001)
+	var low := model_punch_snap_time
+	var high := maxf(wanted * 4.0, low * 2.0)
+	# A longer slow half can only settle later, so the answer is bracketed as
+	# soon as the top of the range overshoots.
+	for _widen in 8:
+		if _model_settle_for(high) >= wanted:
+			break
+		high *= 2.0
+	for _step in 40:
+		var middle := (low + high) * 0.5
+		if _model_settle_for(middle) < wanted:
+			low = middle
+		else:
+			high = middle
+	_solved_model_hold_time = (low + high) * 0.5
+	return _solved_model_hold_time
+
+
+## When one shot's weapon model punch is last above SETTLE_FRACTION of its own
+## peak, with the slow half given the recovery time passed in.
+func _model_settle_for(hold_time: float) -> float:
+	var tick := 1.0 / SIMULATION_HZ
+	var snap := Punch.new()
+	var hold := Punch.new()
+	snap.kick(Vector2(0.0, punch_impulse_scale_for(model_punch_snap_time) * model_kick_snap_share))
+	hold.kick(Vector2(0.0, punch_impulse_scale_for(hold_time) * (1.0 - model_kick_snap_share)))
+	var snap_damping := punch_damping_for(model_punch_snap_time)
+	var snap_spring := punch_spring_for(model_punch_snap_time)
+	var hold_damping := punch_damping_for(hold_time)
+	var hold_spring := punch_spring_for(hold_time)
+	var peak := 0.0
+	var samples := PackedFloat32Array()
+	for _tick in int(SIMULATION_HZ * 8.0):
+		snap.advance(tick, snap_damping, snap_spring, tick)
+		hold.advance(tick, hold_damping, hold_spring, tick)
+		var size := absf(snap.value.y + hold.value.y)
+		peak = maxf(peak, size)
+		samples.append(size)
+	for i in range(samples.size() - 1, -1, -1):
+		if samples[i] >= peak * SETTLE_FRACTION:
+			return float(i + 1) * tick
+	return 0.0
 
 
 func _damping_ratio(ratio: float = -1.0) -> float:

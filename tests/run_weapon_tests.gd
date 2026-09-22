@@ -37,6 +37,7 @@ func _process(_delta: float) -> bool:
 		_test_the_view_leans_without_swinging()
 		_test_the_spray_peaks_where_it_was_asked_to()
 		_test_each_round_shoves_the_crosshair()
+		_test_the_weapon_model_falls_between_rounds()
 		_test_the_solver_agrees_with_the_weapon()
 		_test_view_rises_rather_than_teleporting()
 		_test_viewmodel_follows_the_view()
@@ -44,6 +45,7 @@ func _process(_delta: float) -> bool:
 		_test_the_model_moves_less_than_the_view()
 		_test_a_single_tap_kicks_the_view()
 		_test_animation_lasts_as_long_as_measured()
+		_test_the_model_springs_add_up_to_the_measurement()
 		_test_accuracy_resets_as_slowly_as_measured()
 		_test_the_gun_looks_ready_before_it_is()
 		_test_spray_peak_survives_a_faster_camera()
@@ -968,6 +970,90 @@ func _test_each_round_shoves_the_crosshair() -> void:
 			falls == rises.size(),
 			"%s falls back between every round rather than ramping (%d of %d)"
 				% [data.display_name, falls, rises.size()]
+		)
+
+
+## The gun has to drop back towards rest between rounds, not climb to a height
+## and jitter there for the rest of the magazine.
+##
+## CS2 does not run a spring on the weapon model: it replays the firing clip
+## from its start on every round, so the gun falls back however fast the
+## rounds come. A single spring long enough to last the measured animation
+## reaches its own peak about 78 ms in and the next AK round lands at 100 ms,
+## so it barely fell at all: 25 per cent of the height it was sitting at.
+##
+## Sid, 2026-09-22: "the animation doesn't continually fall. It pushes up till
+## you stop holding the mouse button. The animation needs to fall a little
+## between shots."
+func _test_the_weapon_model_falls_between_rounds() -> void:
+	for data in [WeaponLibrary.ak47(), WeaponLibrary.m4a1s()]:
+		var weapon := Weapon.new(data)
+		var state := _standing()
+		var now := 0
+		var fired := 0
+		var peak := 0.0
+		var low := 0.0
+		var high := 0.0
+		var rises: Array[float] = []
+		var falls := 0
+
+		while fired < data.magazine_size:
+			now += int(DT * SECOND)
+			weapon.update(DT, now)
+			if weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, state) != null:
+				fired += 1
+				# The first few rounds are still building, so the drop is
+				# measured once the gun has something to fall back from.
+				if fired > 3:
+					rises.append(high - low)
+					if high > low:
+						falls += 1
+				low = weapon.viewmodel_punch().y
+				high = low
+			var y := weapon.viewmodel_punch().y
+			low = minf(low, y)
+			high = maxf(high, y)
+			peak = maxf(peak, y)
+
+		var swing := 0.0
+		for rise in rises:
+			swing += rise
+		swing /= maxf(float(rises.size()), 1.0)
+
+		_check(
+			swing > peak * 0.5,
+			"%s weapon model swings %.2f degrees a round against a %.2f degree height, so most of each round's kick is gone before the next lands"
+				% [data.display_name, swing, peak]
+		)
+		_check(
+			falls == rises.size(),
+			"%s weapon model falls back between every round (%d of %d)"
+				% [data.display_name, falls, rises.size()]
+		)
+
+
+## Splitting the weapon model's spring in two must not move the measurement it
+## was derived from, which is why the slow half's recovery time is solved
+## rather than picked.
+func _test_the_model_springs_add_up_to_the_measurement() -> void:
+	for data in [WeaponLibrary.ak47(), WeaponLibrary.m4a1s()]:
+		_check(
+			data.model_hold_time() > data.recoil_animation_time,
+			"%s slow half runs %.0f ms on its own, longer than the measured %.0f, because the fast half raises the peak the settle is taken against"
+				% [
+					data.display_name,
+					data.model_hold_time() * 1000.0,
+					data.recoil_animation_time * 1000.0
+				]
+		)
+		_check(
+			data.model_punch_snap_time < data.cycle_time * 2.0,
+			"%s fast half settles in %.0f ms, inside two rounds at %.0f ms apart"
+				% [
+					data.display_name,
+					data.model_punch_snap_time * 1000.0,
+					data.cycle_time * 1000.0
+				]
 		)
 
 

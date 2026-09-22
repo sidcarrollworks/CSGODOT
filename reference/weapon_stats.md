@@ -110,6 +110,8 @@ The knobs, all on `WeaponData`:
 | `view_kick_snap_share` | 0.4 | How much of a round's kick goes to the fast half |
 | `view_kick_side_ratio` | 0.2 | Sideways kick per round, against the climb |
 | `recoil_animation_time` | measured | How long the WEAPON MODEL takes to settle, in seconds |
+| `model_punch_snap_time` | 0.1 | How long the weapon model's FAST half takes to settle, in seconds |
+| `model_kick_snap_share` | 0.75 | How much of a round's kick goes to the model's fast half |
 | `punch_damping_ratio` | 0.558 | Shape of the kick: rise and settle, no visible bounce |
 | `viewmodel_recoil` | 0.35 | How much the weapon model climbs on top of the camera |
 | `viewmodel_sway` | 0.2 | How much of that it gets sideways, against the climb |
@@ -214,7 +216,38 @@ halfway up the spray while the bullets do, and a single tap is under two
 degrees. The M4's is a degree, lighter than the AK's as it should be, which is
 not something that came out when the two springs were one.
 
-### The weapon model
+### The weapon model falls back between rounds
+
+The gun got the same two-spring treatment the camera did, for the same reason
+and then one more. CS2 does not run a spring on the weapon model at all: it
+replays the firing clip from its start on every round, so the gun drops back
+towards rest however fast the rounds come.
+
+A single spring long enough to last the measured animation reaches its own
+peak about 78 ms in, and the next AK round lands at 100 ms. It never got to
+fall. The gun climbed over the first few rounds to a height and jittered there
+for the rest of the magazine: 25 per cent of that height was all it gave back
+between rounds. Sid, 2026-09-22: "the animation doesn't continually fall. It
+pushes up till you stop holding the mouse button. After you stop and the
+animation finished rising then it starts returning back to place. The
+animation needs to fall a little between shots."
+
+`model_punch_snap_time` is short enough to be most of the way home before the
+next round lands, and `model_kick_snap_share` sends three quarters of the kick
+to it. The AK's gun now swings 66 per cent of its height on every round and the
+M4's 79, both falling back on every single one.
+
+**`model_hold_time()` is solved, not picked.** `recoil_animation_time` is the
+measurement and stays the specification, so splitting the spring must not
+quietly change it. The slow half raises nothing but the tail while the fast
+half raises the peak that the settle threshold is taken against, so the slow
+half has to run somewhat longer than the measured number for the two together
+to settle on it. There is no closed form for where a sum of two springs crosses
+a hundredth of its own peak, so `WeaponData` bisects for it once and remembers.
+The AK still settles in 648 ms against the measured 644, the M4 in 352 against
+353, whatever either of the two knobs above is set to.
+
+### How much the model moves
 
 It hangs off the camera, so it already carries the whole view kick;
 `viewmodel_recoil` is only the gun moving relative to the screen. That rotation

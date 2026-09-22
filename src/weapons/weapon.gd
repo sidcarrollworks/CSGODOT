@@ -68,7 +68,8 @@ var spray_seed: int = 1
 
 var _snap := WeaponData.Punch.new()
 var _hold := WeaponData.Punch.new()
-var _model := WeaponData.Punch.new()
+var _model_snap := WeaponData.Punch.new()
+var _model_hold := WeaponData.Punch.new()
 
 ## Where the recoil has pushed the VIEW, in degrees, as (right, up).
 ##
@@ -162,8 +163,17 @@ func _decay_punch(dt: float, firing: bool) -> void:
 		data.hold_punch_spring(firing),
 		PUNCH_MAX_STEP
 	)
-	_model.advance(
-		dt, data.model_punch_damping(), data.model_punch_spring(), PUNCH_MAX_STEP
+	_model_snap.advance(
+		dt,
+		data.model_snap_punch_damping(),
+		data.model_snap_punch_spring(),
+		PUNCH_MAX_STEP
+	)
+	_model_hold.advance(
+		dt,
+		data.model_hold_punch_damping(),
+		data.model_hold_punch_spring(),
+		PUNCH_MAX_STEP
 	)
 
 
@@ -193,10 +203,12 @@ func is_accuracy_reset() -> bool:
 
 
 ## Where the recoil has pushed the WEAPON MODEL, in degrees, before
-## viewmodel_recoil scales it. Its own spring, settling in the few hundred
-## milliseconds measured off CS2 rather than the camera's couple of seconds.
+## viewmodel_recoil scales it. Two springs of its own, settling together in
+## the few hundred milliseconds measured off CS2 rather than the camera's
+## couple of seconds, and falling back towards rest between rounds the way
+## CS2's firing clip does by being replayed from the start.
 var model_punch: Vector2:
-	get: return _model.value
+	get: return _model_snap.value + _model_hold.value
 
 
 ## Where the weapon model should be pushed to, in degrees, over and above the
@@ -206,9 +218,10 @@ var model_punch: Vector2:
 ## Sideways is scaled down against the climb, so the gun sways without
 ## wandering off the middle of the screen.
 func viewmodel_punch() -> Vector2:
+	var model := model_punch
 	return Vector2(
-		_model.value.x * data.viewmodel_recoil * data.viewmodel_sway,
-		_model.value.y * data.viewmodel_recoil
+		model.x * data.viewmodel_recoil * data.viewmodel_sway,
+		model.y * data.viewmodel_recoil
 	)
 
 
@@ -305,7 +318,8 @@ func fire(
 
 	_snap.kick(punch * data.snap_punch_impulse_scale())
 	_hold.kick(punch * data.hold_punch_impulse_scale())
-	_model.kick(punch * data.model_punch_impulse_scale())
+	_model_snap.kick(punch * data.model_snap_punch_impulse_scale())
+	_model_hold.kick(punch * data.model_hold_punch_impulse_scale())
 	_inaccuracy += data.inaccuracy_per_shot
 	_shot_index += 1
 	_last_shot_usec = now_usec
