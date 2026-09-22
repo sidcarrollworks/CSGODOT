@@ -25,10 +25,6 @@ var _bot_started_frame: int = 0
 var _bot_phase: int = 0
 var _bot_died_usec: int = 0
 var _bot_events: Array[String] = []
-var _victim: PlayerController
-var _victim_events: Array[String] = []
-var _victim_at_respawn: Dictionary = {}
-var _combat_started_usec: int = 0
 
 
 func _init() -> void:
@@ -60,12 +56,6 @@ func _init() -> void:
 	_test_view_model_motion()
 	_test_hitbox_set_parsing()
 	_test_sound_sets()
-	_check(
-		BulletImpacts.surface_for("physics_group_sand") == "sand" and BulletImpacts.surface_for("physics_group_wood_crate") == "wood"
-			and BulletImpacts.surface_for("physics_group_metalvent") == "metal" and BulletImpacts.surface_for("physics_group") == "concrete"
-			and BulletImpacts.surface_for("") == "concrete" and BulletImpacts.surface_for("physics_group_glass") == "default",
-		"a hull part's name says which impact a round makes on it: sand, wood, metal, concrete, or the general one"
-	)
 
 	var weapons := _find(WEAPONS_DIR, "weapon_rif_")
 	var agents := _find(CHARACTERS_DIR.path_join("agents"), "")
@@ -316,13 +306,6 @@ func _test_sound_sets() -> void:
 	)
 	for part: Array in WeaponSounds.SETS["ak47"]["reload"] + WeaponSounds.SETS["m4a1_silencer"]["reload"]:
 		_check(not SoundBank.variants(part[1]).is_empty(), "the reload part %s is there" % part[1])
-	var impact_sets := 0
-	for surface in BulletImpacts.SOUND_SETS:
-		impact_sets += 1 if not SoundBank.variants(BulletImpacts.SOUND_SETS[surface]).is_empty() else 0
-	_check(
-		impact_sets == BulletImpacts.SOUND_SETS.size() and SoundBank.variants("physics/concrete/concrete_impact_bullet").size() == 7,
-		"every impact set is there, seven for concrete (%d of %d)" % [impact_sets, BulletImpacts.SOUND_SETS.size()]
-	)
 
 
 ## A bot on a floor, to be shot. The hitboxes are areas, so the physics
@@ -339,10 +322,7 @@ func _start_bot() -> void:
 	_bot_world.add_child(floor)
 	_bot = (load("res://src/bots/bot.tscn") as PackedScene).instantiate() as Bot
 	_bot.team = "CT"
-	_bot.weapon_data = WeaponLibrary.ak47()
-	_bot.weapon_data.inaccuracy_standing = 0.0
-	_bot.weapon_data.inaccuracy_per_shot = 0.0
-	_bot.weapon_model = _bot.weapon_data.model_path
+	_bot.weapon_model = WeaponLibrary.m4a1s().model_path
 	_bot.respawn_seconds = 0.05
 	_bot.position = Vector3(0, 0, -200)
 	_bot.route = PackedVector3Array([Vector3(0, 0, -200)])
@@ -352,53 +332,6 @@ func _start_bot() -> void:
 		_bot_died_usec = Time.get_ticks_usec())
 	_bot.respawned.connect(func() -> void: _bot_events.append("respawned"))
 	_bot_started_frame = _frames
-	var impacts := BulletImpacts.new()
-	impacts.max_holes = 2
-	_bot_world.add_child(impacts)
-
-
-## A round into the floor leaves a hole and a sound there; the holes are
-## recycled past the limit; a round into a person leaves nothing.
-func _test_bullet_impacts() -> void:
-	var impacts := _bot_world.get_node("BulletImpacts") as BulletImpacts
-	if impacts == null:
-		impacts = _bot_world.get_child(_bot_world.get_child_count() - 1) as BulletImpacts
-	var data := WeaponLibrary.ak47()
-	data.inaccuracy_standing = 0.0
-	data.inaccuracy_per_shot = 0.0
-	var weapon := Weapon.new(data)
-	var origin := Vector3(100.0, 64.0, 0.0)
-	var space := _bot_world.get_world_3d().direct_space_state
-	var angles := PlayerInput.angles_from_direction(Vector3(100.0, 0.0, -100.0) - origin)
-	var shot := weapon.fire(0, 0.0, origin, angles.x, angles.y, Weapon.ShooterState.new(0.0, true, false))
-	var result := Hitscan.trace(space, shot, data)
-	_check(
-		result.hit and result.hitbox == null and result.surface == "CollisionShape3D",
-		"a round into the floor reports the hull part it met (%s)" % result.surface
-	)
-	if not DirAccess.dir_exists_absolute(BulletImpacts.DECALS_ROOT):
-		print("decals not extracted; skipping the holes (scripts/extract_assets.sh sounds)")
-		return
-	impacts.mark(result)
-	var decals := impacts.find_children("*", "Decal", false, false)
-	_check(
-		impacts.holes == 1 and decals.size() == 1 and (decals[0] as Decal).texture_albedo != null
-			and (decals[0] as Decal).global_position.distance_to(result.position) < BulletImpacts.new().hole_size
-			and ((decals[0] as Decal).global_transform.basis.y).dot(result.normal) > 0.99,
-		"and gets a hole there, a texture of the game's, its face along the surface's normal"
-	)
-	for i in 3:
-		shot = weapon.fire((i + 1) * 200_000, 0.0, origin, angles.x + i, angles.y, Weapon.ShooterState.new(0.0, true, false))
-		impacts.mark(Hitscan.trace(space, shot, data))
-	_check(
-		impacts.holes == 4 and impacts.find_children("*", "Decal", false, false).size() == 2,
-		"past the limit the oldest holes are reused (%d holes, %d decals)" % [impacts.holes, impacts.find_children("*", "Decal", false, false).size()]
-	)
-	var person := Hitscan.Result.new()
-	person.hit = true
-	person.hitbox = _bot.hitboxes.hitboxes[0]
-	impacts.mark(person)
-	_check(impacts.holes == 4, "a round into a person leaves no hole")
 
 
 ## Returns true when the bot's checks are done. Each step waits for the
@@ -413,7 +346,6 @@ func _bot_step() -> bool:
 		0:
 			if since >= 3:
 				_test_bot_sounds()
-				_test_bullet_impacts()
 				_test_bot_wears_hitboxes()
 				_test_bot_is_hit_where_aimed()
 				_bot_phase = 1
@@ -424,74 +356,10 @@ func _bot_step() -> bool:
 		2:
 			if Time.get_ticks_usec() >= _bot_died_usec + 400_000 or since > 8000:
 				_test_bot_comes_back()
-				_start_combat()
-				_bot_phase = 3
-		3:
-			# Reaction time, then a burst; on the clock, with a limit.
-			if _bot.rounds_fired >= 3 or Time.get_ticks_usec() >= _combat_started_usec + 4_000_000:
-				_test_bot_shoots_back()
-				_bot_phase = 4
-		4:
-			if _victim_events.has("respawned") or Time.get_ticks_usec() >= _combat_started_usec + 12_000_000:
-				_test_victim_dies_and_returns()
 				_bot_world.free()
 				_report()
 				return true
 	return false
-
-
-## A player in front of the bot, in its sight, doing nothing.
-func _start_combat() -> void:
-	_victim = (load("res://src/player/player.tscn") as PackedScene).instantiate() as PlayerController
-	_victim.respawn_seconds = 0.3
-	_bot_world.add_child(_victim)
-	_victim.place(Vector3(0, 0, 0), 180.0)
-	_victim.died.connect(func() -> void: _victim_events.append("died"))
-	_victim.respawned.connect(func() -> void:
-		# Its state the instant it is back, before the bot's next burst.
-		_victim_events.append("respawned")
-		_victim_at_respawn = {
-			"alive": _victim.alive, "health": _victim.hit_target.health, "position": _victim.global_position,
-			"layer": _victim.hit_target.hitboxes()[0].collision_layer, "ammo": _victim.weapon.ammo,
-		})
-	_bot.yaw_degrees = 180.0
-	_combat_started_usec = Time.get_ticks_usec()
-	_check(
-		_bot.weapon != null and _bot.weapon_sounds != null and _bot.weapon_sounds.spatial
-			and _bot.can_see(_victim) and _victim.hit_target != null and _victim.hit_target.hitboxes().size() == 4,
-		"the bot has a weapon that sounds from where it stands, sees the player in front of it, and the player can be hit"
-	)
-
-
-func _test_bot_shoots_back() -> void:
-	_check(
-		_bot.target == _victim and _bot.rounds_fired > 0 and _bot.weapon.ammo < _bot.weapon.data.magazine_size,
-		"after its reaction time the bot turns on the player and fires (%d rounds)" % _bot.rounds_fired
-	)
-	_check(
-		_victim.hit_target.health < 100.0 or _victim_events.has("died"),
-		"and its rounds land: the player's health is %.0f" % _victim.hit_target.health
-	)
-	_check(
-		absf(angle_difference(deg_to_rad(_bot.yaw_degrees), deg_to_rad(180.0))) < deg_to_rad(Bot.FIRE_WITHIN_DEGREES + 1.0),
-		"facing the player (yaw %.0f)" % _bot.yaw_degrees
-	)
-
-
-func _test_victim_dies_and_returns() -> void:
-	_check(
-		_victim_events.has("died"),
-		"the player dies to the bot's fire"
-	)
-	var back := _victim_at_respawn
-	_check(
-		_victim_events.has("respawned") and bool(back.get("alive", false))
-			and is_equal_approx(float(back.get("health", 0.0)), 100.0)
-			and (back.get("position", Vector3.ONE * 99.0) as Vector3).distance_to(Vector3.ZERO) < 4.0
-			and int(back.get("layer", 0)) == Hitbox.LAYER
-			and int(back.get("ammo", 0)) == _victim.weapon.data.magazine_size,
-		"and is back where the map put it, whole and reloaded, to be shot again (%s)" % back
-	)
 
 
 func _test_bot_sounds() -> void:

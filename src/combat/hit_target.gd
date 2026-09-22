@@ -15,10 +15,8 @@ signal died
 @export var armor: float = 100.0
 
 ## Off for a target whose hitboxes come from elsewhere; the crude body that
-## goes with them stays away too, or on its own for a target that has a
-## body already.
+## goes with them stays away too.
 @export var build_own_hitboxes: bool = true
-@export var build_visual: bool = true
 
 ## Standing player proportions, in Source units. The hull is 32 wide and 72
 ## tall; these split that vertically the way CS does.
@@ -43,8 +41,7 @@ func _ready() -> void:
 	health = max_health
 	if build_own_hitboxes:
 		_build_hitboxes()
-		if build_visual:
-			_build_visual()
+		_build_visual()
 
 
 ## Takes a hitbox built elsewhere as one of this target's.
@@ -95,20 +92,6 @@ func _build_visual() -> void:
 
 func hitboxes() -> Array[Hitbox]:
 	return _hitboxes
-
-
-## The hitboxes' physics ids, for a shooter to leave its own out of a trace.
-func rids() -> Array[RID]:
-	var out: Array[RID] = []
-	for hitbox in _hitboxes:
-		out.append(hitbox.get_rid())
-	return out
-
-
-## Turns the hitboxes on or off together: off, the target cannot be shot.
-func set_active(active: bool) -> void:
-	for hitbox in _hitboxes:
-		hitbox.collision_layer = Hitbox.LAYER if active else 0
 
 
 ## Applies damage already reduced for range and hitbox. Armour absorbs a share
