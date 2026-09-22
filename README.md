@@ -400,7 +400,9 @@ src/combat/      hitboxes, hit targets, hitscan
 src/ui/          the tuning readout and the crosshair
 maps/            generated test courses, and the dust2 scene
 tests/           headless test suite
-reference/       measured constants and how they were measured
+reference/       measured constants and how they were measured; the roadmap
+                 (roadmap.md), CS2's systems (cs2-systems.md), the guns' todo
+                 list (weapons/TODO.md)
 scripts/         tooling (asset extraction and inspection, test runner)
 assets/          extracted CS2 content. GITIGNORED. Never commit Valve assets.
 ```
