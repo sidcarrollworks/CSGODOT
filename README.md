@@ -202,8 +202,14 @@ for the model, riding its bones (`src/combat/skinned_hitboxes.gd`), so a
 bullet lands on the head, chest, stomach, an arm or a leg and is priced
 accordingly, ahead of the movement hull, which bullets pass. A kill plays
 one of the game's death clips for where the last round landed, and the bot
-is back at the start of its route a few seconds later. It does not aim,
-fire or think yet.
+is back at the start of its route a few seconds later. And it shoots back:
+a player in its sight (in the open, within its cone, for half a second)
+stops it in its tracks; it turns, and fires its weapon in bursts with the
+weapon's own spread and recoil, reloading when it runs dry. You have the
+same health and armour a bot has, zones a round can land on, a HUD with a
+crosshair, health and ammunition, and three seconds dead before you are
+back at your spawn with a full magazine. Bots do not take cover, flinch or
+think beyond that.
 
 The sounds are the game's own too (`src/audio/`): the weapon's shots,
 reload in its parts and draw, flat in your ears the way the game plays your

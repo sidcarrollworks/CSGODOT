@@ -60,6 +60,21 @@ const FOLDED_BONES: Array[String] = ["head_0", "neck_0", "arm_upper_L", "arm_upp
 const BODY_SETBACK := 8.0
 
 signal shot_traced(shot: Weapon.Shot, result: Hitscan.Result)
+signal died
+signal respawned
+
+## Health and armour, and the zones a bot's round can land on: the standing
+## proportions of HitTarget, with no body of its own since the player has
+## one. A round to the head kills as it kills a bot.
+var hit_target: HitTarget
+var alive: bool = true
+
+## How long death lasts before the respawn, at the last place the map put
+## you (place), whole and reloaded.
+@export var respawn_seconds: float = 3.0
+var _spawn_position: Vector3 = Vector3.ZERO
+var _spawn_yaw: float = 0.0
+var _respawn_at_usec: int = 0
 
 var _tick_start_usec: int = 0
 var _tick_length_usec: int = 0
@@ -81,6 +96,12 @@ func _ready() -> void:
 		# The view model is drawn by the overlay's camera, not this one.
 		camera.cull_mask &= ~(1 << (ViewModelOverlay.LAYER - 1))
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	add_to_group(&"players")
+	hit_target = HitTarget.new()
+	hit_target.name = "HitTarget"
+	hit_target.build_visual = false
+	add_child(hit_target)
+	hit_target.died.connect(_on_died)
 	_show_body()
 	weapon_sounds = WeaponSounds.new()
 	weapon_sounds.name = "WeaponSounds"
@@ -166,8 +187,56 @@ func _unhandled_input(event: InputEvent) -> void:
 		input.handle_event(event)
 
 
+## Where the map put you, to come back to.
+func place(spawn_position: Vector3, yaw_degrees: float) -> void:
+	_spawn_position = spawn_position
+	_spawn_yaw = yaw_degrees
+	global_position = spawn_position
+	previous_position = spawn_position
+	input.yaw_degrees = yaw_degrees
+	input.pitch_degrees = 0.0
+
+
+func seconds_to_respawn() -> float:
+	return maxf(0.0, float(_respawn_at_usec - Time.get_ticks_usec()) / 1_000_000.0)
+
+
+## Dead: still, out of reach of rounds, the arms and body gone, until the
+## respawn.
+func _on_died() -> void:
+	alive = false
+	velocity = Vector3.ZERO
+	hit_target.set_active(false)
+	if view_model_overlay != null:
+		view_model_overlay.visible = false
+	if body_model != null:
+		body_model.visible = false
+	_respawn_at_usec = Time.get_ticks_usec() + int(respawn_seconds * 1_000_000.0)
+	died.emit()
+
+
+func respawn() -> void:
+	alive = true
+	hit_target.reset()
+	hit_target.set_active(true)
+	place(_spawn_position, _spawn_yaw)
+	velocity = Vector3.ZERO
+	if view_model_overlay != null:
+		view_model_overlay.visible = true
+	if body_model != null:
+		body_model.visible = true
+	if weapon != null:
+		equip(weapon.data)
+	respawned.emit()
+
+
 func _physics_process(delta: float) -> void:
 	_tick_start_usec = Time.get_ticks_usec()
+	if not alive:
+		input.take_events()
+		if Time.get_ticks_usec() >= _respawn_at_usec:
+			respawn()
+		return
 
 	# Button transitions that happened during the frames since the last tick.
 	# A tap shorter than one tick still has to register, so a press event in
@@ -282,7 +351,10 @@ func _try_shoot(
 		weapon_sounds.shot()
 
 	var space := get_world_3d().direct_space_state
-	var result := Hitscan.fire_at(space, shot, weapon.data, [get_rid()])
+	# Your own hull and hitboxes are not targets.
+	var exclude: Array[RID] = [get_rid()]
+	exclude.append_array(hit_target.rids())
+	var result := Hitscan.fire_at(space, shot, weapon.data, exclude)
 	if weapon_sounds != null and result.hitbox != null and result.hitbox.target != null:
 		weapon_sounds.hit(result.zone, result.hitbox.target, not result.hitbox.target.alive)
 	shot_traced.emit(shot, result)
