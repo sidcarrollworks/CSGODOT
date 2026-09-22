@@ -217,6 +217,10 @@ The lighting is the map's own numbers, translated (`src/map/map_lighting.gd`):
 the sun's colour, brightness and size from `light_environment`, the sky
 panorama from `env_sky`, distance haze from `env_cubemap_fog`, exposure from
 the `post_processing_volume`, plus screen-space occlusion and a little bloom.
+The sun's shadows reach across the whole map, and the world casts them with
+both faces of every surface: its walls are one-sided, so a shadow pass that
+only sees front faces lets the sun into every room whose wall faces the
+other way. The 3D skybox casts none, as in the game.
 The bounce light is the game's own too: CS2 bakes it into lightmaps, and the
 walls, ground and most props read those (`src/map/lightmap_materials.gd`,
 the `lightmapped*.gdshader`s) in place of Godot's flat sky ambient, so the

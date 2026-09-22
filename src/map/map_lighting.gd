@@ -52,7 +52,12 @@ static func build(
 	light.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
 	light.directional_shadow_blend_splits = true
 	# The default is 100, which is metres to Godot and eight feet to us.
-	light.directional_shadow_max_distance = 4096.0
+	# dust2 is about 5,000 units across, so from anywhere on it this reaches
+	# the far side; the far buildings beyond that are the skybox's. The
+	# shadow map is 8192 square (project settings) to keep the near split
+	# sharp over that range, and the soft filter at its highest, or the
+	# penumbra of the sun's quarter degree comes out as dither.
+	light.directional_shadow_max_distance = 8192.0
 	parent.add_child(light)
 
 	var environment := Environment.new()
