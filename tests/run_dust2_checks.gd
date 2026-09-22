@@ -181,6 +181,12 @@ func _test_bots_walk() -> void:
 				and bot.hit_target != null and bot.alive,
 			"and wears the game's hitboxes on its bones as it walks, the head %.0f up" % head_height
 		)
+		var footsteps := bot.get_node_or_null("Footsteps") as Footsteps
+		_check(
+			footsteps != null and (not SoundBank.available() or (footsteps.steps > 0 and footsteps.surface != "")),
+			"and its steps have sounded on the map's own surfaces (%d steps, last on %s)"
+				% [footsteps.steps if footsteps else 0, footsteps.surface if footsteps else "-"]
+		)
 
 
 func _test_every_spawn_is_on_floor() -> void:

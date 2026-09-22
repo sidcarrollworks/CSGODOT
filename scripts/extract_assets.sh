@@ -19,7 +19,8 @@
 #   scripts/extract_assets.sh lightmaps       # just the baked bounce light
 #   scripts/extract_assets.sh weapons         # extract the two weapons
 #   scripts/extract_assets.sh characters      # two player models and the first-person animations
-#   scripts/extract_assets.sh all             # map + weapons + characters
+#   scripts/extract_assets.sh sounds          # the two weapons' sounds, footsteps by surface, hits
+#   scripts/extract_assets.sh all             # map + weapons + characters + sounds
 #
 # Requires Source2Viewer-CLI: https://github.com/ValveResourceFormat/ValveResourceFormat
 # Point at it with S2V=/path/to/Source2Viewer-CLI if it is not on PATH.
@@ -148,7 +149,7 @@ find_cs2() {
 
 COMMAND="${1:-}"
 case "$COMMAND" in
-	list-map|list-weapons|map|physics|entities|layers|sky|skybox|lightmaps|weapons|characters|all) ;;
+	list-map|list-weapons|map|physics|entities|layers|sky|skybox|lightmaps|weapons|characters|sounds|all) ;;
 	*)
 		# The header comment, down to the first line that is not one.
 		awk 'NR > 2 && /^#/ { sub(/^# ?/, ""); print; next } NR > 2 { exit }' "${BASH_SOURCE[0]}"
@@ -460,6 +461,31 @@ extract_weapons() {
 		--gltf_textures_adapt
 }
 
+## The sounds: the two weapons firing, reloading and being drawn; footsteps
+## and landings by the surface types the map's hull names; and what the
+## shooter hears on a hit. CS2 keeps sounds as one file each (.vsnd_c), a
+## few variants to a set, which the decompile writes out as the audio they
+## hold. The sound event definitions that pair them with volumes and
+## distances are not fetched; the numbers are set by ear.
+SOUND_FILTER='^sounds/(weapons/ak47/ak47_(0[1-4]|distant|clipout_01|boltpull_0[14]|addammo_02|draw)|weapons/m4a1/m4a1_(silencer_01|us_distant|clipout|clipin|silencer_boltback|silencer_boltforward|draw)|player/footsteps/(concrete_ct|dirt|sand|wood|metal_solid|metal_vent|metal_chainlink|metal_grate|tile|gravel|grass|carpet|glass|rubber|plastic_barrel|mud)_[0-9]+|player/footsteps/land_(concrete|dirt|sand|metal_solid|metal_vent|metal_grate|tile|gravel|grass|carpet|glass|rubber|mud|auto)(_[0-9]+)?|player/(kevlar[0-9]|headshot_armor_01|headshot_noarmor_0[1-5]|bodyshot_kill_01))\.vsnd_c$'
+
+extract_sounds() {
+	require_file "$PAK_VPK"
+	local dest="$OUT_DIR/sounds"
+	mkdir -p "$dest"
+	local listing sounds
+	if ! listing="$(list_paths "$PAK_VPK")"; then
+		echo "Source2Viewer-CLI failed while listing $PAK_VPK." >&2
+		exit 1
+	fi
+	sounds="$(grep -E "$SOUND_FILTER" <<<"$listing" | paste -sd, - || true)"
+	require_filter "$sounds" "the sounds"
+	echo "Extracting $(tr ',' '\n' <<<"$sounds" | wc -l | tr -d ' ') sounds: the weapons, footsteps by surface, hits"
+	echo "        -> $dest"
+	"$S2V_BIN" -i "$PAK_VPK" -f "$sounds" -o "$dest" -d \
+		| grep -vE '^(Preloading|Added folder|--- )' || true
+}
+
 ## The player models, and the animations the first-person view is made of.
 ##
 ## The models under characters/ are stubs; the meshes are the "agents" under
@@ -554,5 +580,6 @@ case "$COMMAND" in
 	lightmaps) extract_lightmaps; finish ;;
 	characters) extract_characters; finish ;;
 	weapons) extract_weapons; finish ;;
-	all) extract_map; echo; extract_weapons; echo; extract_characters; finish ;;
+	sounds) extract_sounds; finish ;;
+	all) extract_map; echo; extract_weapons; echo; extract_characters; echo; extract_sounds; finish ;;
 esac

@@ -55,6 +55,7 @@ func _init() -> void:
 
 	_test_view_model_motion()
 	_test_hitbox_set_parsing()
+	_test_sound_sets()
 
 	var weapons := _find(WEAPONS_DIR, "weapon_rif_")
 	var agents := _find(CHARACTERS_DIR.path_join("agents"), "")
@@ -269,6 +270,44 @@ func _test_hitbox_set_parsing() -> void:
 	)
 
 
+## The sound bank and the surface mapping; the bank's checks need the
+## sounds extracted, the mapping's do not.
+func _test_sound_sets() -> void:
+	_check(
+		Footsteps.set_for("physics_group_sand") == "sand" and Footsteps.set_for("physics_group_wood_plank") == "wood"
+			and Footsteps.set_for("physics_group_metalvent") == "metal_vent"
+			and Footsteps.set_for("physics_group_solidmetal") == "metal_solid"
+			and Footsteps.set_for("physics_group_metal_dumpster") == "metal_solid"
+			and Footsteps.set_for("physics_group") == "concrete_ct" and Footsteps.set_for("CollisionShape3D") == "concrete_ct",
+		"the hull's material names map to the game's footstep sets, concrete when unknown"
+	)
+	_check(
+		WeaponSounds.set_name_for(WeaponLibrary.ak47().model_path) == "ak47"
+			and WeaponSounds.set_name_for(WeaponLibrary.m4a1s().model_path) == "m4a1_silencer"
+			and WeaponSounds.SETS.has("ak47") and WeaponSounds.SETS.has("m4a1_silencer"),
+		"each weapon's model names its sound set, and both sets are known"
+	)
+	if not SoundBank.available():
+		print("sounds not extracted; skipping the bank's checks (scripts/extract_assets.sh sounds)")
+		return
+	_check(
+		SoundBank.variants("weapons/ak47/ak47_0").size() == 4
+			and SoundBank.variants("player/footsteps/sand_").size() == 12
+			and SoundBank.variants("player/footsteps/land_concrete").size() == 1
+			and SoundBank.variants("player/kevlar").size() >= 5
+			and SoundBank.variants("nothing/here_").is_empty(),
+		"the bank finds a set's variants by their shared stem: four AK shots, twelve sand steps, one concrete landing"
+	)
+	var random := SoundBank.randomizer("weapons/ak47/ak47_0")
+	_check(
+		random != null and random.streams_count == 4 and SoundBank.randomizer("weapons/ak47/ak47_0") == random
+			and SoundBank.randomizer("nothing/here_") == null,
+		"a set plays through one randomizer, made once, and an empty set has none"
+	)
+	for part: Array in WeaponSounds.SETS["ak47"]["reload"] + WeaponSounds.SETS["m4a1_silencer"]["reload"]:
+		_check(not SoundBank.variants(part[1]).is_empty(), "the reload part %s is there" % part[1])
+
+
 ## A bot on a floor, to be shot. The hitboxes are areas, so the physics
 ## space has to see a frame before a trace finds them.
 func _start_bot() -> void:
@@ -306,6 +345,7 @@ func _bot_step() -> bool:
 	match _bot_phase:
 		0:
 			if since >= 3:
+				_test_bot_sounds()
 				_test_bot_wears_hitboxes()
 				_test_bot_is_hit_where_aimed()
 				_bot_phase = 1
@@ -320,6 +360,29 @@ func _bot_step() -> bool:
 				_report()
 				return true
 	return false
+
+
+func _test_bot_sounds() -> void:
+	var footsteps := _bot.get_node_or_null("Footsteps") as Footsteps
+	_check(footsteps != null and footsteps.body == _bot, "the bot has feet that sound")
+	if footsteps == null or not SoundBank.available():
+		return
+	var on_floor := footsteps.surface_below()
+	var floor_shape := _bot_world.get_child(0).get_child(0) as CollisionShape3D
+	floor_shape.name = "physics_group_sand"
+	var on_sand := footsteps.surface_below()
+	floor_shape.name = "CollisionShape3D"
+	_check(
+		on_floor == "concrete_ct" and on_sand == "sand",
+		"the surface under its feet is read off the hull part's name (%s, then %s)" % [on_floor, on_sand]
+	)
+	footsteps.step()
+	footsteps.land()
+	_check(
+		footsteps.steps == 1 and footsteps.landings == 1
+			and (footsteps.get_child(0) as AudioStreamPlayer3D).playing,
+		"a step and a landing play from the feet"
+	)
 
 
 func _test_bot_wears_hitboxes() -> void:
@@ -438,6 +501,18 @@ func _test_player_composes_kick_and_bob() -> void:
 		player.free()
 		return
 	_check(player.body_model != null and player.body_model.character_rig != null, "the player builds its own body")
+	_check(
+		player.weapon_sounds != null and player.footsteps != null
+			and (not SoundBank.available() or player.weapon_sounds.weapon_set.has("fire")),
+		"and its weapon and footstep sounds, the AK's set taken up on equip"
+	)
+	if SoundBank.available():
+		player.weapon_sounds.shot()
+		_check(
+			(player.weapon_sounds.get_child(0) as AudioStreamPlayer).playing
+				and (player.weapon_sounds.get_child(0) as AudioStreamPlayer).stream is AudioStreamRandomizer,
+			"a shot plays one of the AK's four through the randomizer"
+		)
 	if player.body_model != null:
 		var rig: Skeleton3D = player.body_model.character_rig
 		_check(
