@@ -15,6 +15,10 @@ extends PlayerBody
 ##
 ## Where the local player's keys become commands is PlayerInput; where a
 ## bot's decisions do is Bot.
+##
+## Being hit is part of the simulation too, since it changes how the player
+## moves and where their rounds go: a hit slows the player down (tagging)
+## and throws their aim (hit_punch), as CS2's server does to whoever it hits.
 
 ## The side the player is on.
 @export_enum("T", "CT") var team: String = "T"
@@ -39,6 +43,33 @@ var alive: bool = true
 ## The last command run, for whatever draws the player.
 var last_command := UserCmd.new()
 
+## The body the other players see, animated here whether anyone draws it or
+## not, as CS2's server animates every player for their hitboxes: the
+## third-person model with the game's own capsules on its bones. A bot's is
+## drawn; yours is not, since your view draws a body of its own (without
+## the head the camera sits in, set back from the eyes), but it is the one
+## that bots' rounds hit. Null where the character has not been extracted,
+## and then HitTarget's four standard boxes stand in (hitbox_source says so).
+var model: PlayerModel
+## The model's hitboxes, on its bones.
+var hitboxes: SkinnedHitboxes
+
+## Tagging: the share of their speed a player has, 1 being all of it. A
+## hit drops it to what the shooter's weapon leaves them (the weapon
+## sheet's tagging power: an AK-47 round leaves 40%, an SMG's none), and it
+## climbs back from there at TAG_RECOVERY_PER_SECOND.
+var velocity_modifier: float = 1.0
+
+## Where being hit has knocked the aim, in degrees, as (right, up). Unlike
+## the recoil's view kick this is the aim itself: rounds fired while it is
+## there go where it points, and the view shows exactly that. It is CS's
+## aim punch, pushed by the hit and recovering the way a spray's does.
+var hit_punch := RecoilState.new()
+
+## A hit, after the damage: for whatever draws the player to say where it
+## came from.
+signal hurt(amount: float, zone: StringName, from: Vector3)
+
 
 ## A round left the weapon and was traced to where it landed.
 signal shot_traced(shot: Weapon.Shot, result: Hitscan.Result)
@@ -50,6 +81,37 @@ signal equipped(data: WeaponData)
 signal killed(zone: StringName)
 signal respawned
 
+## CS2 holds off the slowdown for a couple of its 64 Hz ticks after the hit
+## (sv_predictable_damage_tag_ticks 2), so a client predicting its own
+## movement is not corrected for a hit it has not heard of yet.
+const TAG_DELAY_SECONDS := 2.0 / 64.0
+## How fast the speed comes back after a hit, as a share of full speed per
+## second: from an AK-47's 40% to all of it in 1.5 s. CS:GO's rate as it
+## is usually given; CS2 does not publish its own (roadmap item 4a measures
+## it).
+const TAG_RECOVERY_PER_SECOND := 0.4
+## CS2's mp_tagging_scale: what every weapon's tag is multiplied by. Lower is
+## harder tagging.
+const TAGGING_SCALE := 1.0
+
+## The push a hit gives the aim punch, in degrees a second, upwards: an
+## unarmoured hit throws the aim about 2 degrees up within a tenth of a
+## second, and 0.375 s on it is back within a twentieth of a degree; one
+## that armour took a share of (kevlar on the body, a helmet on the head)
+## about half a degree. CS2 runs
+## its flinch at three times CS:GO's (mp_flinch_punch_scale 3) but publishes
+## neither's base, so both sizes are estimates for Sid to judge against CS2.
+const HIT_PUNCH_PUSH := 82.0
+const HIT_PUNCH_PUSH_ARMORED := 52.0
+## How far it leans to one side or the other, against the climb.
+const HIT_PUNCH_SIDE := 0.3
+
+## The slowdown a hit has in store, and how long until it lands; negative
+## when none is coming.
+var _tag_to: float = 1.0
+var _tag_in: float = -1.0
+var _hits_taken: int = 0
+var _capsules: Array[Dictionary] = []
 var _respawn_at_usec: int = 0
 var _spawn_position: Vector3 = Vector3.ZERO
 var _spawn_yaw: float = 0.0
@@ -62,14 +124,82 @@ func _ready() -> void:
 	hit_target.name = "HitTarget"
 	add_child(hit_target)
 	hit_target.died.connect(_on_hit_target_died)
+	hit_target.damaged.connect(_on_hit)
+	wear_body(_body_weapon_model(), _body_drawn())
 
 
-## The player's hitboxes. The stand-in: HitTarget's own boxes, with no body
-## drawn. A bot wears the model's capsules instead.
+## What takes the damage. Its hitboxes come from the body (wear_body).
 func _build_hit_target() -> HitTarget:
 	var target := HitTarget.new()
+	target.build_own_hitboxes = false
 	target.build_visual = false
 	return target
+
+
+## What the body holds, and whether anyone sees it: nothing and no for a
+## player whose view draws its own (PlayerView), a bot's weapon and yes for
+## a bot.
+func _body_weapon_model() -> String:
+	return ""
+
+
+func _body_drawn() -> bool:
+	return false
+
+
+## Puts the body on: the third-person model holding weapon_model, with the
+## game's capsules on its bones, and HitTarget's four standard boxes where
+## either has not been extracted, with a grey body to see them by when the
+## body is drawn and there is no model to draw.
+func wear_body(weapon_model: String, drawn: bool) -> void:
+	model = PlayerModel.new()
+	model.name = "Model"
+	# A model nobody sees needs no lighting.
+	model.probe_lit = drawn
+	add_child(model)
+	if not model.setup(team, weapon_model):
+		model.queue_free()
+		model = null
+	elif not drawn:
+		# Hidden mesh by mesh rather than as a whole, so the skeleton the
+		# hitboxes ride keeps posing.
+		for mesh in model.find_children("*", "MeshInstance3D", true, false):
+			(mesh as MeshInstance3D).visible = false
+	if model != null:
+		hitboxes = SkinnedHitboxes.new()
+		hitboxes.name = "Hitboxes"
+		add_child(hitboxes)
+		_capsules = HitboxSet.load_for(PlayerModel.AGENTS.get(team, PlayerModel.AGENTS["T"]))
+		hitboxes.build(model.character_rig, _capsules, hit_target, MapImporter.SOURCE2_VIEWER_SCALE)
+	if hit_target.hitboxes().is_empty():
+		hit_target.build_standard_body(drawn and model == null)
+
+
+## Which hitboxes the player wears, and when they are the stand-in boxes,
+## why: the game's capsules come from the character's model description,
+## and each way of not getting them has its own fix.
+func hitbox_source() -> String:
+	var built := hitboxes.hitboxes.size() if hitboxes != null else 0
+	if built > 0:
+		return "%d CS2 capsules on the skeleton" % built
+	var model_path: String = PlayerModel.AGENTS.get(team, PlayerModel.AGENTS["T"])
+	if model == null:
+		return "4 stand-in boxes: the character has not been extracted (scripts/extract_assets.sh characters)"
+	var description := model_path.get_basename() + ".vmdl"
+	if not FileAccess.file_exists(description):
+		return "4 stand-in boxes, NOT the game's: no hitbox set at %s (rerun scripts/extract_assets.sh characters)" % description
+	var capsules := HitboxSet.load_for(model_path)
+	if capsules.is_empty():
+		return "4 stand-in boxes, NOT the game's: %s has no HitboxCapsule in it" % description.get_file()
+	return "4 stand-in boxes, NOT the game's: none of %d capsules' bones (%s...) are on the skeleton" % [
+		capsules.size(), capsules[0]["bone"],
+	]
+
+
+## Whether the model is there but its capsules are not: a broken
+## extraction rather than a fresh clone, worth saying where it will be seen.
+func hitboxes_missing() -> bool:
+	return model != null and (hitboxes == null or hitboxes.hitboxes.is_empty())
 
 
 ## Swaps to a weapon, which also changes how fast you can run.
@@ -105,8 +235,15 @@ func seconds_to_respawn() -> float:
 	return maxf(0.0, float(_respawn_at_usec - SimClock.now_usec()) / 1_000_000.0)
 
 
-## Runs the player forward one tick.
+## Runs the player forward one tick, and poses the body for it: the
+## hitboxes stand where the body did this tick.
 func run_command(cmd: UserCmd, dt: float) -> void:
+	_run(cmd, dt)
+	if alive and model != null:
+		model.update_motion(velocity, yaw_degrees, is_ducked, on_ground)
+
+
+func _run(cmd: UserCmd, dt: float) -> void:
 	last_command = cmd
 	wants_jump = false
 	wants_duck = false
@@ -129,6 +266,7 @@ func run_command(cmd: UserCmd, dt: float) -> void:
 
 	yaw_degrees = cmd.yaw_degrees
 	pitch_degrees = cmd.pitch_degrees
+	_recover_from_hits(dt)
 
 	var reload := cmd.first_press(UserCmd.RELOAD)
 	if reload != null and weapon != null:
@@ -204,7 +342,11 @@ func _try_shoot(at_usec: int, tick_fraction: float, yaw: float, pitch: float) ->
 	# arguments are made of.
 	var at := previous_position.lerp(global_position, clampf(tick_fraction, 0.0, 1.0))
 	var origin := at + Vector3.UP * eye_height()
-	var shot := weapon.fire(at_usec, tick_fraction, origin, yaw, pitch, shooter_state)
+	# A hit's flinch throws the round as far as it throws the view.
+	var thrown := hit_punch.value
+	var shot := weapon.fire(
+		at_usec, tick_fraction, origin, yaw - thrown.x, pitch + thrown.y, shooter_state
+	)
 	if shot == null:
 		return
 	rounds_fired += 1
@@ -234,13 +376,56 @@ func _noclip_direction(cmd: UserCmd) -> Vector3:
 	return direction.normalized()
 
 
+## How fast the player may go this tick. Tagging takes its share off the
+## top, and friction brings a running player down to it: the slowdown is in
+## what the player can reach, not a kick to the velocity.
 func _max_speed(cmd: UserCmd) -> float:
-	var speed := config.max_speed
+	var speed := config.max_speed * velocity_modifier
 	if is_ducked:
 		speed *= config.duck_modifier
 	elif cmd.held(UserCmd.WALK):
 		speed *= config.walk_modifier
 	return speed
+
+
+## A round, or anything else, did damage: the tag is set to land shortly and
+## the aim is thrown. The weapon that fired decides the tag; what armour
+## took a share of it decides how far the aim goes.
+func _on_hit(amount: float, zone: StringName, _remaining: float) -> void:
+	_hits_taken += 1
+	var data := hit_target.last_hit_weapon
+	if data != null:
+		_tag_to = minf(_tag_to, clampf((1.0 - data.tagging_power) * TAGGING_SCALE, 0.0, 1.0))
+		if _tag_in < 0.0:
+			_tag_in = TAG_DELAY_SECONDS
+	var push := HIT_PUNCH_PUSH_ARMORED if hit_target.last_hit_armored else HIT_PUNCH_PUSH
+	# Which way it leans is the one random part, seeded from the hit rather
+	# than a live generator so a server and a client agree on it.
+	var lean := 1.0 if hash([_hits_taken, hit_target.last_hit_from]) % 2 == 0 else -1.0
+	hit_punch.velocity += Vector2(lean * HIT_PUNCH_SIDE, 1.0) * push
+	hurt.emit(amount, zone, hit_target.last_hit_from)
+
+
+## A tick's worth of getting over being hit: the speed comes back, and a
+## tag that was waiting lands; the thrown aim recovers.
+func _recover_from_hits(dt: float) -> void:
+	velocity_modifier = minf(velocity_modifier + TAG_RECOVERY_PER_SECOND * dt, 1.0)
+	if _tag_in >= 0.0:
+		_tag_in -= dt
+		# A hair under zero is zero: the delay is a whole number of ticks.
+		if _tag_in <= 1e-6:
+			velocity_modifier = minf(velocity_modifier, _tag_to)
+			_tag_to = 1.0
+			_tag_in = -1.0
+	hit_punch.advance(dt)
+
+
+## Over being hit altogether: full speed, the aim where it is held.
+func _forget_hits() -> void:
+	velocity_modifier = 1.0
+	_tag_to = 1.0
+	_tag_in = -1.0
+	hit_punch.reset()
 
 
 ## Dead: still, out of reach of rounds, until the respawn. Whatever answers
@@ -253,6 +438,7 @@ func _on_hit_target_died() -> void:
 	var zone: StringName = hit_target.last_hitbox.zone if hit_target.last_hitbox != null else &"chest"
 	killed.emit(zone)
 	velocity = Vector3.ZERO
+	_forget_hits()
 
 
 ## Back where the map put the player, whole and reloaded.
@@ -262,6 +448,7 @@ func respawn() -> void:
 	hit_target.set_active(true)
 	place(_spawn_position, _spawn_yaw)
 	velocity = Vector3.ZERO
+	_forget_hits()
 	if weapon != null:
 		equip(weapon.data)
 	respawned.emit()

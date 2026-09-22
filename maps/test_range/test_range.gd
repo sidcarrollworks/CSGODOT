@@ -559,36 +559,15 @@ func _build_dummy() -> void:
 	dummy.position = dummy_position()
 	dummy.yaw_degrees = 180.0
 	add_child(dummy)
-	hitbox_source = _hitbox_source()
-	# Without the capsules the bot wears the four standard boxes (Bot).
-	if dummy.model != null and (dummy.hitboxes == null or dummy.hitboxes.hitboxes.is_empty()):
+	hitbox_source = dummy.hitbox_source()
+	# Without the capsules the bot wears the four standard boxes (PlayerSim).
+	if dummy.hitboxes_missing():
 		# A model without its hitboxes is a broken extraction, not a fresh
 		# clone: say so where it will be seen.
 		push_warning("Test range dummy: %s" % hitbox_source)
 	_wear_armour()
 	dummy.hit_target.set_hitboxes_drawn(true)
 	dummy.respawned.connect(_on_dummy_respawned)
-
-
-## Which hitboxes the dummy wears, and when they are the stand-in boxes,
-## why: the game's capsules come from the character's model description,
-## and each way of not getting them has its own fix.
-func _hitbox_source() -> String:
-	var built := dummy.hitboxes.hitboxes.size() if dummy.hitboxes != null else 0
-	if built > 0:
-		return "%d CS2 capsules on the skeleton" % built
-	var model_path: String = PlayerModel.AGENTS.get(dummy.team, PlayerModel.AGENTS["T"])
-	if dummy.model == null:
-		return "4 stand-in boxes: the character has not been extracted (scripts/extract_assets.sh characters)"
-	var description := model_path.get_basename() + ".vmdl"
-	if not FileAccess.file_exists(description):
-		return "4 stand-in boxes, NOT the game's: no hitbox set at %s (rerun scripts/extract_assets.sh characters)" % description
-	var capsules := HitboxSet.load_for(model_path)
-	if capsules.is_empty():
-		return "4 stand-in boxes, NOT the game's: %s has no HitboxCapsule in it" % description.get_file()
-	return "4 stand-in boxes, NOT the game's: none of %d capsules' bones (%s...) are on the skeleton" % [
-		capsules.size(), capsules[0]["bone"],
-	]
 
 
 func _build_player() -> void:

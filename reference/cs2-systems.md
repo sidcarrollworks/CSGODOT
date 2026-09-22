@@ -185,8 +185,9 @@ figure doubled (AK 1.55, sheet 77.5%).
 **Built:** `HitTarget` already takes armour, helmet, the zones it covers and
 the half-point-per-damage wear, and the range dummy switches it with K.
 
-**Remote:** armour on the HUD, bought through the buy menu, lost with the
-round when you die. Whether armour softens tagging is open (**measure**, A1).
+**Remote:** bought through the buy menu, lost with the round when you die.
+Armour is on the HUD (PR #NN). Whether armour softens tagging is open
+(**measure**, A1); here it does not, while it does soften the flinch.
 
 **Local**
 - **A1.** In CS2, compare the slowdown from a body shot with and without

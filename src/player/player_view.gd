@@ -202,6 +202,9 @@ func _process(delta: float) -> void:
 	# holding stay untouched. It is also deliberately smaller than the spray:
 	# the crosshair suggests the recoil, it does not report it.
 	var punch := player.weapon.aim_punch if player.weapon != null else Vector2.ZERO
+	# And where a hit has thrown the aim, all of it: that one is where the
+	# rounds go, so the crosshair tells the truth about it.
+	punch += player.hit_punch.value
 	camera.global_rotation = Vector3(
 		deg_to_rad(player.input.pitch_degrees + punch.y),
 		deg_to_rad(player.input.yaw_degrees - punch.x),

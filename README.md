@@ -249,10 +249,20 @@ them, the game's death clip for where the round landed plays instead.) And it sh
 a player in its sight (in the open, within its cone, for half a second)
 stops it in its tracks; it turns, and fires its weapon in bursts with the
 weapon's own spread and recoil, reloading when it runs dry. You have the
-same health and armour a bot has, zones a round can land on, a HUD with a
-crosshair, health and ammunition, and three seconds dead before you are
-back at your spawn with a full magazine. Bots do not take cover, flinch or
-think beyond that. In the top left the HUD says where you stand and look,
+same health and armour a bot has, and the same nineteen capsules: your
+simulation carries the third-person body nobody sees, posed each tick for
+how you move, crouch and jump, so a bot's round meets your head where your
+head is (without the character extracted, HitTarget's four standard boxes
+stand in, and the console says so). Being hit works as in CS2, for you and
+the bots alike: a round tags you, leaving you the share of your speed its
+weapon's tagging power spares (40% after an AK-47 round) a couple of ticks
+later and giving it back over 1.5 s, and it throws your aim up about 2
+degrees, half a degree through armour, taking your next rounds with it
+(`src/player/player_sim.gd`). The HUD has a crosshair, health, armour (the
+shield gets a helmet's dome when you have one), ammunition, a red arc round
+the crosshair on the side each hit came from (`src/ui/damage_indicator.gd`),
+and three seconds dead before you are back at your spawn with a full
+magazine. Bots do not take cover or think beyond that. In the top left the HUD says where you stand and look,
 like CS2's `getpos`: the feet's position and the view's yaw and pitch,
 which is everything needed to put a render where a screenshot was taken.
 F3 hides it.
@@ -339,7 +349,7 @@ appear when the editor loads a script. They do not show up in a headless run,
 so if the Godot console shows any, paste them over and they will get fixed.
 
 Seven files: movement, map import, dust2, models, weapons, the test range
-and the simulation. Without the extracted assets 482 checks run and pass;
+and the simulation. Without the extracted assets 499 checks run and pass;
 the dust2 and model files skip what needs files that have not been
 extracted.
 
@@ -414,10 +424,9 @@ original assets later is a content change rather than a git history problem.
 
 ## What is deliberately not here yet
 
-No bots that do anything but walk their spawn, no nav mesh, no firing
-animation on the third-person model, no per-bone hitboxes: a bullet hits a
-bot's hull, not its head. Shooting fires from a gun you can see at a dummy
-that does not move.
+No bots that do anything but walk their spawn and shoot what they see, no
+nav mesh, no firing animation on the third-person model. `reference/roadmap.md`
+has the rest, in order.
 
 Movement and shooting are tuned in flat grey rooms first, because tuning them
 on a real map is much harder and everything built on top of bad movement is
