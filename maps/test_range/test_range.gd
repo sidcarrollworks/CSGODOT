@@ -211,13 +211,11 @@ func _build_hud() -> void:
 	_label.add_theme_constant_override("outline_size", 6)
 	layer.add_child(_label)
 
-	# A crosshair, since aiming at a wall without one is guesswork.
-	var crosshair := Label.new()
-	crosshair.text = "+"
-	crosshair.add_theme_font_size_override("font_size", 28)
-	crosshair.add_theme_color_override("font_outline_color", Color.BLACK)
-	crosshair.add_theme_constant_override("outline_size", 4)
-	crosshair.set_anchors_preset(Control.PRESET_CENTER)
+	# A crosshair, since aiming at a wall without one is guesswork. The centre
+	# dot is on here because this is the range where the question being asked
+	# is whether a bullet went exactly where it was aimed.
+	var crosshair := Crosshair.new()
+	crosshair.centre_dot = true
 	layer.add_child(crosshair)
 
 	add_child(layer)

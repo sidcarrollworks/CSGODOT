@@ -108,11 +108,17 @@ func update(dt: float, now_usec: int) -> void:
 		var length := accumulated_punch.length()
 		if length > 0.0:
 			accumulated_punch *= maxf(length - recovery, 0.0) / length
-
-		# Back to the start of the pattern once the view has settled.
 		if accumulated_punch.length() < 0.01:
 			accumulated_punch = Vector2.ZERO
-			_shot_index = 0
+
+	# Back to the top of the pattern once the trigger has been off long enough.
+	#
+	# Keyed on time, not on how far the view has recovered. Every pattern's
+	# first entry is (0, 0), so the punch after shot one is zero and a
+	# recovery test would reset the spray before it had begun: every shot came
+	# out as shot one and the gun had no pattern at all.
+	if since_shot > data.recoil_reset_time:
+		_shot_index = 0
 
 	_inaccuracy = maxf(
 		_inaccuracy - data.inaccuracy_recovery_rate * dt, 0.0
@@ -157,8 +163,8 @@ func fire(
 
 	var previous := Vector2.ZERO
 	if _shot_index > 0:
-		previous = RecoilPattern.offset_for(data.recoil_pattern, _shot_index - 1)
-	var current := RecoilPattern.offset_for(data.recoil_pattern, _shot_index)
+		previous = data.recoil_offset(_shot_index - 1)
+	var current := data.recoil_offset(_shot_index)
 	var punch := (current - previous) * data.recoil_view_fraction
 
 	# The bullet goes where the crosshair will be after this shot's kick, so
