@@ -8,22 +8,32 @@ extends SceneTree
 ## where scripts/extract_assets.sh has not been run. Where it has, it is the
 ## test that what Godot made of the exports is what the game will need: a
 ## skeleton to animate, the first-person arm meshes to draw, the weapon's own
-## animations, and the first-person clips as animations of their own.
+## animations, and the first-person clips as animations of their own; and
+## that the view model puts them together, with the weapon in the hands.
 
 const WEAPONS_DIR := "res://assets/weapons"
 const CHARACTERS_DIR := "res://assets/characters"
 
 var _failures: int = 0
 var _checks: int = 0
+var _frames: int = 0
+var _view_model: ViewModel
 
 
 func _init() -> void:
+	# CS2's field of view numbers are horizontal at 4:3; Godot's are vertical.
+	_check(
+		absf(ViewModelOverlay.vertical_fov(90.0) - 73.74) < 0.05
+			and absf(ViewModelOverlay.vertical_fov(68.0) - 53.64) < 0.05,
+		"CS2's fov 90 and viewmodel_fov 68 convert to 73.7 and 53.6 vertical"
+	)
+
 	var weapons := _find(WEAPONS_DIR, "weapon_rif_")
 	var agents := _find(CHARACTERS_DIR.path_join("agents"), "")
 	var clips := _find(CHARACTERS_DIR.path_join("animation/anims"), "")
 	if weapons.is_empty() and agents.is_empty():
-		print("no weapons or characters have been extracted; nothing to check.")
-		quit(0)
+		print("no weapons or characters have been extracted; only the arithmetic was checked.")
+		_report()
 		return
 
 	_check(weapons.size() >= 2, "both weapons are there (%d found; scripts/extract_assets.sh weapons)" % weapons.size())
@@ -85,7 +95,75 @@ func _init() -> void:
 		if checked >= 4:
 			break
 
+	# The rest needs frames: the rigs only pose once the tree has processed.
+	_view_model = ViewModel.new()
+	root.add_child(_view_model)
+	var data := WeaponLibrary.ak47()
+	_check(_view_model.setup("T", data.model_path, data.clip_set), "the view model builds for the AK-47 and a T")
+	ViewModelOverlay.claim(_view_model)
+
+
+func _process(_delta: float) -> bool:
+	_frames += 1
+	if _view_model == null:
+		return _frames > 1
+	if _frames < 3:
+		return false
+
+	var player := _view_model._player
+	_check(
+		player != null and player.has_animation(&"draw") and player.has_animation(&"idle")
+			and player.has_animation(&"shoot1") and player.has_animation(&"reload"),
+		"draw, idle, shoot1 and reload are there under their short names"
+	)
+	_check(
+		player != null and player.get_animation(&"idle").loop_mode == Animation.LOOP_LINEAR
+			and player.current_animation == &"draw",
+		"idle loops, and the draw is what plays first"
+	)
+	var meshes := _view_model.find_children("*", "MeshInstance3D", true, false)
+	var arms := 0
+	var weapon := 0
+	var on_layer := 0
+	for mesh in meshes:
+		if mesh.name.contains("firstperson"):
+			arms += 1
+		if mesh.name.contains("weapon_rif"):
+			weapon += 1
+		if (mesh as MeshInstance3D).layers == 1 << (ViewModelOverlay.LAYER - 1) \
+				and (mesh as MeshInstance3D).cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+			on_layer += 1
+	_check(arms == 2 and weapon >= 1, "the arm meshes and the weapon are on the rigs (%d arms, %d weapon)" % [arms, weapon])
+	_check(on_layer == meshes.size(), "and every mesh is on the overlay's layer, casting no shadow")
+
+	var arm_rig := _view_model._arm_rig
+	var weapon_rig := _view_model._weapon_rig
+	_check(
+		arm_rig != null and arm_rig.find_bone("arm_lower_L_TWIST") >= 0
+			and arm_rig.get_bone_parent(arm_rig.find_bone("arm_lower_L_TWIST")) == arm_rig.find_bone("arm_lower_L"),
+		"a twist bone the rig lacked was added under its parent"
+	)
+	if arm_rig != null and weapon_rig != null:
+		var wpn := (arm_rig.global_transform * arm_rig.get_bone_global_pose(arm_rig.find_bone("wpn"))).origin
+		var weapon_root := (weapon_rig.global_transform * weapon_rig.get_bone_global_pose(0)).origin
+		_check(
+			wpn.distance_to(weapon_root) < 0.01,
+			"the weapon's root sits on the wpn bone (%.3f apart)" % wpn.distance_to(weapon_root)
+		)
+		var muzzle := (weapon_rig.global_transform * weapon_rig.get_bone_global_pose(weapon_rig.find_bone("muzzle"))).origin
+		_check(
+			muzzle.z < wpn.z - 10.0,
+			"and the muzzle is well ahead of it, down the camera's -Z (%.1f)" % (muzzle.z - wpn.z)
+		)
+
+	_view_model.play(&"shoot1")
+	_check(player.current_animation == &"shoot1", "a shot plays the shoot clip")
+	_view_model.play(&"not_a_clip")
+	_check(player.current_animation == &"idle", "an unknown clip falls back to idle")
+	_view_model.free()
+	_view_model = null
 	_report()
+	return true
 
 
 func _find(dir_path: String, prefix: String) -> PackedStringArray:

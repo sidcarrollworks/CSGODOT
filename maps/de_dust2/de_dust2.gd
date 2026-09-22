@@ -111,6 +111,7 @@ func _build_skybox() -> void:
 
 func _place_player(map_file: String) -> void:
 	player = (load("res://src/player/player.tscn") as PackedScene).instantiate()
+	(player as PlayerController).team = spawn_team
 	add_child(player)
 
 	var spawns: Array = SourceEntities.player_spawns(entities)[spawn_team]

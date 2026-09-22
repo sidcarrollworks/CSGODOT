@@ -27,6 +27,13 @@ It means Godot's default gravity is turned off in project settings and the
 camera near plane is set to one unit. If a number here looks enormous,
 that is why.
 
+One more unit to know about: CS2's field of view numbers (`fov 90`,
+`viewmodel_fov 68`) are the horizontal angle at 4:3, as Source games have
+always meant them; Godot's `Camera3D.fov` is vertical. They are converted
+(`ViewModelOverlay.vertical_fov`): 90 is 73.7 vertical, 68 is 53.6. Setting
+Godot's fov to 90 gives a 121 degree horizontal view at 16:9, which is what
+this project did until it was noticed.
+
 ## Running it
 
 Open the project in Godot 4.7 and press play. The main scene is the movement
@@ -161,6 +168,15 @@ map, a small map of their own. `physics`, `entities`, `layers`, `sky` and
 fetches one player model per side (Phoenix and SAS) with their skeletons and
 first-person arm meshes, and the first-person rifle animations, which in CS2
 are files of their own. `all` does the lot.
+
+With those in place the player has arms and a weapon on screen, animated by
+the game's own clips: draw on equip, shoot and reload from the firing model,
+idle between. `src/player/view_model.gd` puts the agent's arm meshes and the
+weapon's meshes on the rigs the clips animate, and
+`src/player/view_model_overlay.gd` draws them through a camera of their own
+at CS2's `viewmodel_fov`, over the world, so they neither stretch at the
+edges nor poke through walls. Without the models extracted there are simply
+no arms, and everything else works.
 
 `assets/` can live on another drive: make it a junction (`mklink /J`) and
 every script and Godot itself read straight through it.
