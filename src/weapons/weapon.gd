@@ -230,24 +230,24 @@ func current_inaccuracy(state: ShooterState) -> float:
 	return base + _inaccuracy
 
 
-## The recoil of one shot, in degrees, read off the pattern.
+## The view kick of one round, in degrees.
 ##
-## A pattern entry is where the muzzle has ALREADY been carried to by the
-## shots before it, so the recoil of shot i is the step from entry i to entry
-## i + 1: the climb this shot is about to cause. Reading it as the step into
-## the entry instead is off by one, and it leaves a single tap with no view
-## kick at all, because every pattern's first entry is (0, 0) and nothing has
-## happened yet when you fire shot one.
+## The same climb every round, with a small sideways lean whose DIRECTION
+## comes from the pattern and whose size does not.
 ##
-## Past the end of the pattern there is no next entry, so the last real step
-## is held rather than dropping the kick to nothing mid-magazine.
+## Reading the size off the pattern too is the obvious thing to do and it is
+## wrong. A pattern's vertical steps are front-loaded and its sideways steps
+## are not: the AK climbs about two degrees a round for seven rounds and then
+## goes flat, while its sideways steps grow to three degrees. Scale the kick
+## by those and the view punches twice and then only sways, which is not what
+## a gun does and is not what CS2 does either.
 func _view_kick_for(shot_index: int) -> Vector2:
 	var here := data.recoil_offset(shot_index)
-	var ahead := data.recoil_offset(shot_index + 1)
-	var kick := ahead - here
-	if kick.length_squared() > 0.0 or shot_index <= 0:
-		return kick
-	return here - data.recoil_offset(shot_index - 1)
+	var sideways := data.recoil_offset(shot_index + 1).x - here.x
+	if is_zero_approx(sideways) and shot_index > 0:
+		# Past the end of the pattern, lean the way the last round did.
+		sideways = here.x - data.recoil_offset(shot_index - 1).x
+	return Vector2(signf(sideways) * data.view_kick_side, data.view_kick_up)
 
 
 ## Fires one round. Returns null if the weapon could not fire.
@@ -288,7 +288,7 @@ func fire(
 	# The view gets kicked by this shot's own recoil, scaled down, and as a
 	# push on the punch velocity rather than a jump in the angle, so it rises
 	# into the kick over the next few ticks.
-	var punch := _view_kick_for(_shot_index) * data.recoil_view_fraction
+	var punch := _view_kick_for(_shot_index)
 
 	var shot := Shot.new()
 	shot.origin = origin

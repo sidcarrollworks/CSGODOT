@@ -79,13 +79,12 @@ Measured in our build, holding the trigger for a full magazine:
 
 | | Bullets climb | View peaks at | View as a share |
 |---|---|---|---|
-| AK-47 | 16.00° | 3.47° | 22% |
-| M4A1-S | 9.57° | 1.61° | 17% |
+| AK-47 | 16.00° | 1.81° | 11% |
+| M4A1-S | 9.57° | 1.00° | 10% |
 
-Each shot kicks the view by a full shot's worth of recoil, and the view still
-moves a fifth of what the spray does. That is not a scale factor: the spring
-pulls the view back between rounds while the muzzle keeps every degree it has
-climbed. The bullets accumulate and the view does not.
+The view moves a tenth of what the spray does, and that is not a scale factor:
+the spring pulls the view back between rounds while the muzzle keeps every
+degree it has climbed. The bullets accumulate and the view does not.
 
 The view also stops climbing about a third of the way through and settles back
 toward centre while the spray carries on, because the later part of both
@@ -98,44 +97,74 @@ crosshair kicks up but only so much" means.
 pulling it back to zero. This is Source's `DecayPunchAngle`. A shot pushes the
 **velocity**, not the angle, which is why the view rises into a kick over
 several ticks instead of teleporting to it: the largest single-tick movement
-during an AK spray is 0.73°, against 3.44° for the steepest single bullet step.
+during an AK spray is 0.26°, against 3.44° for the steepest single bullet step.
 
 The knobs, all on `WeaponData`:
 
 | | Default | |
 |---|---|---|
 | `recoil_animation_time` | measured | How long the kick lasts, in seconds |
-| `recoil_view_fraction` | 1.0 | How far one shot throws the view, against how far it throws the muzzle |
+| `view_kick_up` | 1.2 / 1.0 | Degrees the view is kicked up, per round |
+| `view_kick_side` | 0.25 / 0.2 | Degrees sideways, per round |
 | `punch_damping_ratio` | 0.558 | Shape of the kick: rise and settle, no visible bounce |
 | `viewmodel_recoil` | 0.35 | How much the weapon model climbs on top of the camera |
-| `viewmodel_sway` | 0.35 | How much of that it gets sideways, against the climb |
+| `viewmodel_sway` | 0.2 | How much of that it gets sideways, against the climb |
 
-The spring frequency, the damping and the impulse are all derived from those,
-which is why they are not on the list. Two properties fall out of the
-derivation and are worth keeping:
+The spring frequency, the damping and the impulse are derived from those. One
+property falls out of the derivation and is worth keeping: re-measuring
+`recoil_animation_time` changes how long the view moves and **not how far**,
+because the impulse is normalised against the spring.
 
-- Re-measuring `recoil_animation_time` changes how long the view moves and
-  **not how far**. The impulse is normalised against the spring, so the punch
-  peaks at `recoil_view_fraction` times the shot's own pattern step whatever
-  the spring is doing.
-- `recoil_view_fraction` is the only knob for the size of the kick, and it is
-  still by eye rather than measured. It is the first thing to change if the
-  kick feels wrong, and the only thing.
+### Every round kicks the same
 
-The weapon model hangs off the camera, so it already carries the whole view
-kick; `viewmodel_recoil` is only the gun moving relative to the screen. That
-rotation happens about the eye, so a degree of it throws the gun a long way
-sideways, and anything but a small number reads as the weapon teleporting from
-shot to shot (Sid, 2026-09-22). The view kick should be most of what moves.
+`view_kick_up` is per round and does not vary across the magazine. That is the
+correction to the obvious mistake, which this made on 2026-09-22 and which Sid
+caught immediately: scaling the kick by the round's own step through the spray
+pattern.
 
-Firing replays the `shoot1` clip from the top on every round, cross-faded over
-30 ms. Both halves matter: hard-cutting to frame zero snaps the model, and not
-replaying while the last clip runs meant the second round of a spray moved the
-gun less than the first.
+A pattern's vertical steps are front-loaded and its sideways steps are not.
+The AK climbs about two degrees a round for its first seven rounds and then
+goes nearly flat, while its sideways steps grow past three degrees a round in
+the second half. Scale the kick by those and the view punches hard twice and
+then does nothing but sway, which is neither what a gun does nor what CS2
+does. Sid's words were "the aimpunch happens with 1 or 2 shots. And the gun
+moves left and right too much".
 
-Setting `recoil_view_fraction` to 0 removes the view kick entirely and **every
-bullet still lands in exactly the same place**. There is a test that asserts
-precisely that, because it is the property that makes a spray learnable.
+The pattern still decides which WAY the view leans each round, so the view
+goes with the gun. It does not decide how far.
+
+### What the numbers do
+
+| | Per round | Held trigger settles at | Single tap |
+|---|---|---|---|
+| AK-47 | 1.2° up, 0.25° sideways | 1.2° | 1.23° |
+| M4A1-S | 1.0° up, 0.2° sideways | 0.26° | 1.02° |
+
+The M4's kicks stack up far less because its spring settles in 353 ms against
+the AK's 644 ms, which is most of why it is the easier gun to hold down.
+
+Both are by eye, not measured. They are the first thing to change if the kick
+feels wrong.
+
+### The weapon model
+
+It hangs off the camera, so it already carries the whole view kick;
+`viewmodel_recoil` is only the gun moving relative to the screen. That rotation
+happens about the eye, so a degree of it throws the gun a long way sideways,
+and anything but a small number reads as the weapon teleporting from shot to
+shot (Sid, 2026-09-22). The view kick should be most of what moves.
+
+Firing cross-fades into the `shoot1` clip over 30 ms rather than stopping the
+player dead and cutting to frame zero. It does not replay the clip per round:
+that was tried on 2026-09-22 and looked worse, because the clip is longer than
+the gap between rounds at 600 RPM, so every round cut across the last one.
+
+### Bullets do not care about any of this
+
+Setting `view_kick_up` and `view_kick_side` to 0 removes the view kick
+entirely and **every bullet still lands in exactly the same place**. There is a
+test that asserts precisely that, because it is the property that makes a spray
+learnable.
 
 ## Recovery timings, measured
 

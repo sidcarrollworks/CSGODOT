@@ -33,6 +33,8 @@ func _process(_delta: float) -> bool:
 		_test_recoil_scale()
 		_test_bullets_ignore_the_view_kick()
 		_test_view_kicks_less_than_the_spray()
+		_test_every_round_kicks_the_view()
+		_test_the_view_leans_without_swinging()
 		_test_view_rises_rather_than_teleporting()
 		_test_viewmodel_follows_the_view()
 		_test_the_model_moves_less_than_the_view()
@@ -383,9 +385,10 @@ func _test_recoil_scale() -> void:
 ## broken the thing that makes a spray learnable.
 func _test_bullets_ignore_the_view_kick() -> void:
 	var runs: Array[Array] = []
-	for fraction in [0.0, 0.45, 1.0]:
+	for size in [0.0, 0.3, 3.0]:
 		var data := WeaponLibrary.ak47()
-		data.recoil_view_fraction = fraction
+		data.view_kick_up = size
+		data.view_kick_side = size * 0.2
 		var weapon := Weapon.new(data)
 		var state := _standing()
 		var now := 0
@@ -414,16 +417,15 @@ func _test_bullets_ignore_the_view_kick() -> void:
 		)
 
 
-## The view kick is a suggestion, not a readout. It has to move noticeably
-## less than the bullets, and it has to stop climbing while the spray carries
-## on, which is what "the crosshair kicks up but only so much" means.
+## The view kick is a suggestion, not a readout: it has to move noticeably
+## less than the bullets, and letting go of the trigger has to put the view
+## back exactly where the player was pointing.
 func _test_view_kicks_less_than_the_spray() -> void:
 	for data in [WeaponLibrary.ak47(), WeaponLibrary.m4a1s()]:
 		var weapon := Weapon.new(data)
 		var state := _standing()
 		var now := 0
 		var peak_view := 0.0
-		var view_at_end := 0.0
 		var fired := 0
 
 		while fired < data.magazine_size:
@@ -432,11 +434,15 @@ func _test_view_kicks_less_than_the_spray() -> void:
 			if weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, state) != null:
 				fired += 1
 			peak_view = maxf(peak_view, weapon.aim_punch.y)
-			view_at_end = weapon.aim_punch.y
 
 		var spray_climb := 0.0
 		for entry in data.recoil_pattern:
 			spray_climb = maxf(spray_climb, entry.y)
+
+		# Then let go of the trigger and let the spring do its work.
+		for tick in 256:
+			now += int(DT * SECOND)
+			weapon.update(DT, now)
 
 		_check(
 			peak_view > 0.5,
@@ -449,9 +455,9 @@ func _test_view_kicks_less_than_the_spray() -> void:
 				% [data.display_name, peak_view, spray_climb]
 		)
 		_check(
-			absf(view_at_end) < peak_view * 0.5,
-			"%s view has settled back by the end of the magazine while the spray is still high (%.2f, peaked at %.2f)"
-				% [data.display_name, view_at_end, peak_view]
+			absf(weapon.aim_punch.y) < peak_view * 0.02,
+			"%s view comes back to where the player is pointing once the trigger is off (%.3f degrees left)"
+				% [data.display_name, weapon.aim_punch.y]
 		)
 
 
@@ -708,6 +714,79 @@ func _test_punch_is_the_same_at_any_frame_length() -> void:
 		(fine.aim_punch - coarse.aim_punch).length() < 0.001,
 		"a quarter-second frame lands where thirty-two ticks do (%.4f against %.4f degrees)"
 			% [fine.aim_punch.length(), coarse.aim_punch.length()]
+	)
+
+
+## Sid, 2026-09-22: "the aimpunch happens with 1 or 2 shots". It did. The kick
+## was a fraction of each round's step through the pattern, and a pattern's
+## vertical steps are front-loaded: the AK climbs about two degrees a round
+## for seven rounds and then goes flat. So the view punched hard early and
+## then only swayed. Every round kicks the same now.
+func _test_every_round_kicks_the_view() -> void:
+	for data in [WeaponLibrary.ak47(), WeaponLibrary.m4a1s()]:
+		var weapon := Weapon.new(data)
+		var state := _standing()
+		var now := 0
+		var kicks: Array[float] = []
+
+		while kicks.size() < data.magazine_size:
+			now += int(DT * SECOND)
+			weapon.update(DT, now)
+			var before := weapon.aim_punch_velocity.y
+			if weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, state) != null:
+				kicks.append(weapon.aim_punch_velocity.y - before)
+
+		var smallest: float = kicks[0]
+		var largest: float = kicks[0]
+		for kick in kicks:
+			smallest = minf(smallest, kick)
+			largest = maxf(largest, kick)
+
+		_check(
+			smallest > 0.0 and is_equal_approx(smallest, largest),
+			"%s kicks the view upward by the same amount on all %d rounds"
+				% [data.display_name, kicks.size()]
+		)
+
+
+## The sideways lean takes its direction from the pattern and its size from
+## the weapon, so it stays small where the pattern does not: the AK's sideways
+## steps reach three degrees a round in the second half of a spray.
+func _test_the_view_leans_without_swinging() -> void:
+	var data := WeaponLibrary.ak47()
+	var weapon := Weapon.new(data)
+	var state := _standing()
+	var now := 0
+	var leans: Array[float] = []
+
+	while leans.size() < data.magazine_size:
+		now += int(DT * SECOND)
+		weapon.update(DT, now)
+		var shot := weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, state)
+		if shot != null:
+			leans.append(shot.view_punch.x)
+
+	var went_left := false
+	var went_right := false
+	var biggest := 0.0
+	for lean in leans:
+		went_left = went_left or lean < 0.0
+		went_right = went_right or lean > 0.0
+		biggest = maxf(biggest, absf(lean))
+
+	_check(
+		went_left and went_right,
+		"the view leans both ways through an AK spray"
+	)
+	_check(
+		is_equal_approx(biggest, data.view_kick_side),
+		"and never further than view_kick_side, whatever the pattern does (%.3f degrees)"
+			% biggest
+	)
+	_check(
+		biggest < data.view_kick_up,
+		"which is less than it climbs (%.3f against %.3f degrees)"
+			% [biggest, data.view_kick_up]
 	)
 
 

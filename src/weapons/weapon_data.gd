@@ -109,23 +109,24 @@ const SETTLE_FRACTION := 0.01
 # that snaps to each bullet and sags between shots. That is not what CS looks
 # like and it is not what CS plays like.
 
-## How far ONE shot throws the view, as a fraction of how far that same shot
-## throws the muzzle. The default of 1.0 means the view is kicked by a full
-## shot's worth of recoil.
+## Degrees the view is kicked UP by each round.
 ##
-## A full shot's worth, and the crosshair still moves a small fraction of what
-## the spray does, because the spring pulls the view back between rounds while
-## the muzzle keeps every degree it has climbed. The bullets accumulate and
-## the view does not. That, rather than any scale factor, is why you cannot
-## read your own recoil off the screen.
+## The same for every round in the magazine, which is the whole point. This
+## used to be a fraction of the round's own step through the spray pattern,
+## and that was wrong: the AK's pattern climbs 2 degrees a shot for the first
+## seven rounds and then goes almost flat and almost entirely sideways, so the
+## view punched hard twice and then did nothing but sway. A gun does not stop
+## recoiling halfway through a magazine.
+@export var view_kick_up: float = 0.30
+
+## Degrees the view is kicked SIDEWAYS by each round.
 ##
-## This is the one knob for the SIZE of the kick, and it is exact: the impulse
-## is normalised against the spring, so the punch peaks at this fraction of
-## the shot's own pattern step whatever the spring is doing. Changing how long
-## the kick lasts leaves how far it throws the view alone.
-##
-## Still by eye rather than measured, unlike the two timings.
-@export_range(0.0, 2.0) var recoil_view_fraction: float = 1.0
+## Small, and deliberately not read off the pattern's own sideways step, which
+## reaches three degrees a round in the second half of an AK spray. The
+## pattern decides the DIRECTION so the view leans the way the gun is actually
+## going; this decides how far, so it stays small however far the pattern
+## wanders.
+@export var view_kick_side: float = 0.06
 
 ## How long the visual recoil takes to settle after a shot, in seconds.
 ##
@@ -164,7 +165,7 @@ const SETTLE_FRACTION := 0.01
 ## How much of that the model gets sideways, against how much it gets
 ## vertically. Side to side should be visible and clearly less than the climb,
 ## which is also how the patterns themselves are shaped.
-@export_range(0.0, 1.0) var viewmodel_sway: float = 0.35
+@export_range(0.0, 1.0) var viewmodel_sway: float = 0.2
 
 # --- Inaccuracy -----------------------------------------------------------
 
