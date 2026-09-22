@@ -246,7 +246,7 @@ class Punch:
 ##
 ## Sid, 2026-09-22: "let's also make the decay when you stop shooting a little
 ## short. It feels a bit too floating at the moment."
-@export var view_punch_release_time: float = 0.35
+@export var view_punch_release_time: float = 0.7
 
 ## How long after the last round the trigger counts as still down, in rounds.
 ##

@@ -105,7 +105,7 @@ The knobs, all on `WeaponData`:
 |---|---|---|
 | `view_kick_spray_peak` | 0.5 | Where the crosshair peaks over a spray, against the spray's own climb |
 | `view_punch_recovery_time` | 1.9 | How long the camera's SLOW half takes to settle, in seconds |
-| `view_punch_release_time` | 0.35 | How long the slow half takes once the trigger is UP, in seconds |
+| `view_punch_release_time` | 0.7 | How long the slow half takes once the trigger is UP, in seconds |
 | `trigger_release_cycles` | 1.25 | Rounds' worth of silence that also counts as the trigger being up |
 | `view_punch_snap_time` | 0.18 | How long the camera's FAST half takes to settle, in seconds |
 | `view_kick_snap_share` | 0.4 | How much of a round's kick goes to the fast half |
@@ -210,11 +210,18 @@ crosshair is where it was, it has simply stopped climbing and started falling.
 `release_frequency()` is `-log(SETTLE_FRACTION) / view_punch_release_time`,
 with no peak term, because an exponential has no rise to peak past.
 
-After a full AK magazine the crosshair is halfway home in 62 ms against 273,
-within a quarter degree in 242 ms against 420, and never dips below centre. A
-single tap comes out at 1.46° rather than 1.67°, and no longer depends on how
-long the button is held past about 40 ms. The spray's height and the per-round
-shove are untouched.
+`view_punch_release_time` is the whole travel, end of fire to recentred, and
+it is the one knob for how long the return takes: the shape above is scale
+free, so doubling it doubles every milestone and changes nothing else. It went
+from 0.35 to 0.7 on 2026-09-22 — Sid, "the total travel time of the crosshair
+from end of fire to recenter should be twice as long."
+
+After a full AK magazine the crosshair is halfway home in 109 ms and within a
+quarter degree in 484 ms, against 273 and 420 before any of this, and never
+dips below centre. The M4 is within a quarter degree in 406 ms. A single tap
+comes out at 1.46° rather than 1.67°, and no longer depends on how long the
+button is held past about 40 ms. The spray's height and the per-round shove are
+untouched.
 
 ### The camera and the weapon model are separate springs
 

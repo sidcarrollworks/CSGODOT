@@ -556,10 +556,17 @@ func _test_viewmodel_follows_the_view() -> void:
 ## "the decay when you stop shooting... feels a bit too floating."
 func _test_the_camera_holds_while_firing_and_lets_go_after() -> void:
 	for data in [WeaponLibrary.ak47(), WeaponLibrary.m4a1s()]:
+		# The two springs are derived differently — the firing half from an
+		# impulse response, the release from a plain exponential — so their
+		# spring constants are not comparable. Their recovery times are.
 		_check(
-			data.hold_punch_spring(false) > data.hold_punch_spring(true) * 4.0,
-			"%s pulls the view back far harder off the trigger than on it"
-				% data.display_name
+			data.view_punch_release_time < data.view_punch_recovery_time * 0.5,
+			"%s comes home in %.0f ms off the trigger against %.0f ms on it"
+				% [
+					data.display_name,
+					data.view_punch_release_time * 1000.0,
+					data.view_punch_recovery_time * 1000.0
+				]
 		)
 
 		# Empty a magazine, then let go and watch it come home.
@@ -584,10 +591,17 @@ func _test_the_camera_holds_while_firing_and_lets_go_after() -> void:
 				halfway = float(tick + 1) * DT
 			lowest = minf(lowest, weapon.aim_punch.y)
 
+		# An exponential is halfway down after ln(2)/ln(100) of the time it
+		# takes to settle, so this tracks view_punch_release_time rather than
+		# being a number of its own.
 		_check(
-			halfway > 0.0 and halfway < 0.1,
-			"%s crosshair is halfway home %.0f ms after the trigger comes up"
-				% [data.display_name, halfway * 1000.0]
+			halfway > 0.0 and halfway < data.view_punch_release_time * 0.25,
+			"%s crosshair is halfway home %.0f ms after the trigger comes up, against a %.0f ms return"
+				% [
+					data.display_name,
+					halfway * 1000.0,
+					data.view_punch_release_time * 1000.0
+				]
 		)
 		# A return should not swing past the thing it is returning to. Under
 		# damped, this passed most of a degree BELOW where the player was
@@ -637,8 +651,11 @@ func _test_the_crosshair_drops_sharply_and_eases_out() -> void:
 				break
 			left = weapon.aim_punch.y
 
-		# How far it falls in each of eight windows of thirty milliseconds.
-		var window := int(0.03 / DT)
+		# How far it falls in each of eight windows, the eight together being
+		# the whole return. Windows of the return's own length rather than a
+		# fixed number of milliseconds, so the shape is what is measured and
+		# not how long the return was set to take.
+		var window := int(data.view_punch_release_time / 8.0 / DT)
 		var falls: Array[float] = []
 		var was := left
 		for step in 8:
@@ -658,12 +675,12 @@ func _test_the_crosshair_drops_sharply_and_eases_out() -> void:
 
 		_check(
 			steepest_first and easing,
-			"%s crosshair falls hardest the moment the trigger comes up and eases out from there (%.2f, %.2f, %.2f, %.2f degrees over the first four windows)"
+			"%s crosshair falls hardest the moment the trigger comes up and eases out from there (%.2f, %.2f, %.2f, %.2f degrees over the first four eighths)"
 				% [data.display_name, falls[0], falls[1], falls[2], falls[3]]
 		)
 		_check(
 			falls[0] > left * 0.25,
-			"%s crosshair gives up %.0f per cent of its height in the thirty milliseconds after it tops out rather than hanging there"
+			"%s crosshair gives up %.0f per cent of its height in the first eighth of its return rather than hanging there"
 				% [data.display_name, 100.0 * falls[0] / maxf(left, 0.0001)]
 		)
 
