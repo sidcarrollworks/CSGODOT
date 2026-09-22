@@ -70,6 +70,8 @@ func _process(_delta: float) -> bool:
 		_test_file_picking()
 		_test_entities()
 		_test_export_offset_fix()
+		_test_paint_channel()
+		_test_blend_materials()
 		_spawn_player()
 		_spawned_at_tick = Engine.get_physics_frames()
 		return false
@@ -488,6 +490,134 @@ func _test_export_offset_fix() -> void:
 		JSON.parse_string(FileAccess.get_file_as_string(gltf_path)) is Dictionary,
 		"the glTF is still JSON after being touched to force a reimport"
 	)
+
+
+## Godot's glTF import drops the attribute the blend paint arrives in, so it
+## is renamed to one it keeps. On the text, which is why this checks the text.
+func _test_paint_channel() -> void:
+	var dir := "user://export_fixture/paint"
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir))
+	var painted := dir.path_join("painted.gltf")
+	var text := '{"asset":{"version":"2.0"},"meshes":[{"primitives":['
+	text += '{"attributes":{"POSITION":0,"_TEXCOORD_4":1},"indices":2},'
+	text += '{"attributes":{"POSITION":3,"_TEXCOORD_4":4},"indices":5},'
+	text += '{"attributes":{"POSITION":6,"COLOR_0":7},"indices":8}]}],"accessors":[{"count":26639}]}'
+	_write_text(painted, text)
+
+	_check_equal(ExportPaintChannel.fix_file(painted), 2, "both painted primitives are renamed")
+	var after := FileAccess.get_file_as_string(painted)
+	_check(
+		after.count('"COLOR_0":') == 3 and not after.contains("_TEXCOORD_4"),
+		"the paint is COLOR_0 now, next to the vertex colour that was already there"
+	)
+	_check(
+		after.contains('"count":26639'),
+		"integers are still integers: the file was edited, not parsed and rewritten"
+	)
+	_check_equal(ExportPaintChannel.fix_file(painted), 0, "a second run has nothing to do")
+
+	var both := dir.path_join("both.gltf")
+	var clash := '{"meshes":[{"primitives":[{"attributes":{"COLOR_0":1,"_TEXCOORD_4":2}}]}]}'
+	_write_text(both, clash)
+	_check_equal(
+		ExportPaintChannel.fix_file(both), -1,
+		"a primitive with paint and a vertex colour of its own is refused"
+	)
+	_check_equal(FileAccess.get_file_as_string(both), clash, "and its file is left as it was")
+
+
+## The second layer comes from the material's own description plus textures
+## fetched by the paths in it. Tiny stand-in textures, laid out as the
+## extraction lays them out.
+func _test_blend_materials() -> void:
+	var dir := "user://export_fixture/layers"
+	for texture: String in ["wall_smooth_color", "wall_smooth_normal", "wall_blend"]:
+		var path := dir.path_join("materials/test/%s.png" % texture)
+		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(path.get_base_dir()))
+		Image.create(4, 4, false, Image.FORMAT_RGBA8).save_png(path)
+
+	var description := {
+		"Name": "materials/test/wall.vmat",
+		"IntParams": {"F_LAYERS": 1.0, "F_FANCY_BLENDING": 1.0},
+		"FloatParams": {"g_flBlendSoftness": 0.25},
+		"VectorParams": {
+			"g_vLayer2Tint": [0.5, 0.25, 1.0, 0.0],
+			"g_vBlendModulateTexCoordScale": [0.65, 0.65, 0.0, 0.0],
+		},
+		"TextureParams": {
+			"g_tLayer2Color": "materials/test/wall_smooth_color.vtex",
+			"g_tLayer2NormalRoughness": "materials/test/wall_smooth_normal.vtex",
+			"g_tBlendModulation": "materials/test/wall_blend.vtex",
+		},
+	}
+	var layered := StandardMaterial3D.new()
+	layered.resource_name = "wall"
+	layered.set_meta("extras", {"vmat": description})
+	var plain := StandardMaterial3D.new()
+	plain.set_meta("extras", {"vmat": {"IntParams": {"F_ALPHA_TEST": 1.0}}})
+
+	_check(
+		BlendMaterials.is_layered(description) and not BlendMaterials.is_layered(BlendMaterials.vmat(plain)),
+		"a material is layered if its vmat says F_LAYERS, and not otherwise"
+	)
+	_check(
+		BlendMaterials.build(layered, "user://export_fixture/nowhere") == null,
+		"no second layer on disk, no blend material"
+	)
+
+	var blend := BlendMaterials.build(layered, dir)
+	_check(blend != null, "with its textures extracted, a layered material gets the blend shader")
+	if blend != null:
+		_check_equal(blend.get_shader_parameter("fancy_blending"), 1, "F_FANCY_BLENDING is carried over")
+		_check(
+			is_equal_approx(blend.get_shader_parameter("blend_softness"), 0.25)
+				and (blend.get_shader_parameter("layer2_tint") as Color).is_equal_approx(Color(0.5, 0.25, 1.0))
+				and (blend.get_shader_parameter("mask_uv_scale") as Vector2).is_equal_approx(Vector2(0.65, 0.65)),
+			"so are the softness, the tints and the texture scales"
+		)
+		_check(
+			blend.get_shader_parameter("layer2_albedo") is Texture2D
+				and blend.get_shader_parameter("blend_modulation") is Texture2D,
+			"and the second layer's textures are found by the vmat's own paths"
+		)
+		_check(
+			BlendMaterials.is_layered(BlendMaterials.vmat(blend)),
+			"the vmat stays readable on the new material"
+		)
+
+	# On a mesh: the layered surface is switched over and the other is not.
+	var mesh := ArrayMesh.new()
+	for material: Material in [layered, plain]:
+		var box := BoxMesh.new()
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, box.get_mesh_arrays())
+		mesh.surface_set_material(mesh.get_surface_count() - 1, material)
+	var instance := MeshInstance3D.new()
+	instance.mesh = mesh
+	var meshes: Array[MeshInstance3D] = [instance]
+	var result := BlendMaterials.apply(meshes, dir)
+	_check_equal(result["blended"], 1, "one surface is blended")
+	_check(
+		instance.get_surface_override_material(0) is ShaderMaterial
+			and instance.get_surface_override_material(1) == null,
+		"the layered one, and not its neighbour"
+	)
+
+	# The same mesh as it would be without the extraction having fetched layers.
+	instance.set_surface_override_material(0, null)
+	layered.vertex_color_use_as_albedo = true
+	var without := BlendMaterials.apply(meshes, "user://export_fixture/nowhere")
+	_check_equal((without["missing"] as PackedStringArray).size(), 1, "a material it could not build is reported")
+	_check(
+		not layered.vertex_color_use_as_albedo,
+		"and is not left tinted by its paint, which is a weight and not a colour"
+	)
+	instance.free()
+
+
+func _write_text(path: String, text: String) -> void:
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	file.store_string(text)
+	file.close()
 
 
 func _put_vector(bytes: PackedByteArray, at: int, value: Vector3) -> void:

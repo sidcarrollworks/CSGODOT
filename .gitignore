@@ -11,6 +11,8 @@ assets/
 
 # Generated reports, for pasting rather than committing
 map-report.txt
+# Source2Viewer-CLI leaves this wherever it was run from when a file trips it up
+exceptions.txt
 inspect-output.txt
 
 # OS / editor

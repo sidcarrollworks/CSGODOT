@@ -50,7 +50,7 @@ import_assets() {
 	# Both of these put the extraction right before Godot sees it, and both
 	# leave alone what they have already done.
 	local prepare
-	for prepare in fix_export_offsets write_import_settings; do
+	for prepare in prepare_export write_import_settings; do
 		"$godot" --headless --path "$project" --script "res://scripts/$prepare.gd" 2>&1 \
 			| grep -v '^Godot Engine' | grep -v '^[[:space:]]*$' || true
 	done

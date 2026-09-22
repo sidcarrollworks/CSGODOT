@@ -33,6 +33,12 @@ const SOURCE2_VIEWER_SCALE := 1.0 / 0.0254
 ## brushes, which are in the hull and nowhere in the visible world.
 @export_file("*.gltf", "*.glb") var collision_path: String = ""
 
+## Optional: the directory scripts/extract_assets.sh put the map's materials/
+## under, which is where the second layers of its blend materials are. With
+## it, walls and ground that mix two textures do; without it they show their
+## first layer only. See BlendMaterials.
+@export_dir var layer_textures_dir: String = ""
+
 ## What to multiply the export by. SOURCE2_VIEWER_SCALE for anything that came
 ## out of Source 2 Viewer; 1 for geometry already in Source units. If the
 ## reported bounding box is wrong by a constant factor, this is the knob.
@@ -215,6 +221,8 @@ func import_map() -> Dictionary:
 				visible_meshes.append(mesh_instance)
 				solid_meshes.append(mesh_instance)
 
+	var blend := BlendMaterials.apply(visible_meshes, layer_textures_dir)
+
 	var collision_from := "the collision hull"
 	var targets := _hull_meshes()
 	if targets.is_empty():
@@ -233,6 +241,7 @@ func import_map() -> Dictionary:
 		"collision_triangles": triangles,
 		"collision_from": collision_from,
 		"loaded_from": loaded_from,
+		"blend": blend,
 		"materials": materials,
 		"bounds": _bounds(meshes),
 	}
@@ -508,6 +517,14 @@ func _report_text() -> String:
 		"    (dust2 should be about 7000 units across. If it is 180, the export",
 		"     is still in metres: set scale_factor to SOURCE2_VIEWER_SCALE.)",
 	]
+	var blend: Dictionary = stats["blend"]
+	lines.append("    blend materials: %d, on %d surfaces" % [blend["materials"], blend["blended"]])
+	if not (blend["missing"] as PackedStringArray).is_empty():
+		lines.append(
+			"    %d more are showing their first layer only, their second not being on disk."
+			% (blend["missing"] as PackedStringArray).size()
+		)
+		lines.append("    Run 'scripts/extract_assets.sh layers' to fetch them.")
 	if stats.has("sun"):
 		var towards_sun: Vector3 = (stats["sun"]["basis"] as Basis).z
 		lines.append(

@@ -13,6 +13,7 @@
 #   scripts/extract_assets.sh map             # dust2: world, collision hull, entities
 #   scripts/extract_assets.sh physics         # just the collision hull (seconds)
 #   scripts/extract_assets.sh entities        # just the entity lump (seconds)
+#   scripts/extract_assets.sh layers          # just the blend materials' second layers
 #   scripts/extract_assets.sh weapons         # extract the two weapons
 #   scripts/extract_assets.sh all             # map + weapons
 #
@@ -143,7 +144,7 @@ find_cs2() {
 
 COMMAND="${1:-}"
 case "$COMMAND" in
-	list-map|list-weapons|map|physics|entities|weapons|all) ;;
+	list-map|list-weapons|map|physics|entities|layers|weapons|all) ;;
 	*)
 		# The header comment, down to the first line that is not one.
 		awk 'NR > 2 && /^#/ { sub(/^# ?/, ""); print; next } NR > 2 { exit }' "${BASH_SOURCE[0]}"
@@ -280,12 +281,43 @@ extract_entities() {
 	"$S2V_BIN" -i "$MAP_VPK" -f "$entities" -o "$MAP_DEST" -d
 }
 
+## Most of dust2's walls and ground are two texture layers painted together,
+## and a glTF material has room for one. The export keeps each material's full
+## description in its extras, second layer and blend mask included, so the
+## textures it left behind can be read off the glTF and fetched by name. They
+## land under materials/, by the same path the material refers to them by.
+extract_layers() {
+	require_file "$PAK_VPK"
+	local world
+	world="$(find "$MAP_DEST" -name 'world.gltf' 2>/dev/null | head -n 1)"
+	if [[ -z "$world" ]]; then
+		echo "No world.gltf under $MAP_DEST to read the materials from." >&2
+		echo "Run 'scripts/extract_assets.sh map' first." >&2
+		exit 1
+	fi
+
+	local textures
+	textures="$(grep -oE '"g_t(Layer2Color|Layer2NormalRoughness|BlendModulation)" *: *"[^"]+"' "$world" \
+		| sed -E 's/^"[^"]+" *: *"//; s/"$//; s/\.vtex$/.vtex_c/' | sort -u || true)"
+	if [[ -z "$textures" ]]; then
+		echo "No layered materials in $world; nothing to fetch."
+		return
+	fi
+
+	echo "Extracting $(echo "$textures" | wc -l | tr -d ' ') second-layer and blend-mask textures"
+	echo "        -> $MAP_DEST/materials"
+	"$S2V_BIN" -i "$PAK_VPK" -f "$(echo "$textures" | paste -sd, -)" -o "$MAP_DEST" -d \
+		| grep -vE '^(Preloading|Added folder|--- \[)' || true
+}
+
 extract_map() {
 	extract_world
 	echo
 	extract_physics
 	echo
 	extract_entities
+	echo
+	extract_layers
 }
 
 extract_weapons() {
@@ -347,6 +379,7 @@ case "$COMMAND" in
 	map) extract_map; finish ;;
 	physics) extract_physics; finish ;;
 	entities) extract_entities ;;
+	layers) extract_layers; finish ;;
 	weapons) extract_weapons; finish ;;
 	all) extract_map; echo; extract_weapons; finish ;;
 esac
