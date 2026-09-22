@@ -54,6 +54,7 @@ func _process(_delta: float) -> bool:
 		_test_spray_peak_survives_a_faster_camera()
 		_test_punch_is_the_same_at_any_frame_length()
 		_test_inaccuracy_by_state()
+		_test_the_drawn_cone_is_where_rounds_land()
 		_test_damage_falloff()
 		_test_hitbox_multipliers()
 		_test_fatal_headshot_ranges()
@@ -1304,6 +1305,26 @@ func _test_inaccuracy_by_state() -> void:
 	_check_near(standing, WeaponLibrary.cs_inaccuracy(7.01), "the AK stands at the sheet's 7.01")
 	_check_near(running, WeaponLibrary.cs_inaccuracy(182.07), "and runs at its 182.07")
 	_check_near(jumping, WeaponLibrary.cs_inaccuracy(147.77), "and tops a standing jump at its 147.77")
+
+
+## The range draws the cone round the crosshair. A perspective camera puts a
+## direction at angle a off the view axis tan(a) / tan(fov / 2) of the way
+## from the centre to the top edge, so that is the circle's radius.
+func _test_the_drawn_cone_is_where_rounds_land() -> void:
+	_check_near(Crosshair.spread_radius(0.0, 75.0, 1080.0), 0.0, "no cone, no circle")
+	_check_near(
+		Crosshair.spread_radius(37.5, 75.0, 1080.0), 540.0,
+		"a round half the field of view off lands on the screen's edge"
+	)
+	# What Camera3D uses with its default of keeping the height: fov is the
+	# vertical angle.
+	var projection := Projection.create_perspective(75.0, 16.0 / 9.0, 1.0, 10000.0)
+	var up := Vector3(0.0, sin(deg_to_rad(10.32)), -cos(deg_to_rad(10.32)))
+	var clip: Vector4 = projection * Vector4(up.x, up.y, up.z, 1.0)
+	_check_near(
+		Crosshair.spread_radius(10.32, 75.0, 1080.0), clip.y / clip.w * 540.0,
+		"the AK's running cone is drawn where the camera's own projection puts a round"
+	)
 
 
 func _test_damage_falloff() -> void:

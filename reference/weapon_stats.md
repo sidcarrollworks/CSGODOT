@@ -97,6 +97,16 @@ fourth root, steeply: the AK is already at 5 degrees at 80 u/s. With the walk
 key down it rises in proportion instead (0.9 degrees at 80 u/s). This is the
 counter-strafe: the cone is only tight once you are nearly stopped.
 
+The movement code gets you there. From a full run, pressing the opposite key
+adds its acceleration to friction, and the rifles reach their standing cone
+in 78 ms (10 ticks); letting go of every key takes 203 ms for the AK and 211
+ms for the M4A1-S. Held on, the opposite key stops you and starts you the
+other way, and the cone opens again after 133 ms more, so the key has to come
+up again within that window. `tests/run_tests.gd` measures all of this
+through the real body and prints it. At the range the cone is drawn round
+the crosshair, the way CS2's `weapon_debug_spread_show` draws it, with the
+speed beside it.
+
 A round's offset within the cone is a uniform share of the cone's radius, as
 CS draws it, so rounds bunch towards the centre: half land within half the
 cone.

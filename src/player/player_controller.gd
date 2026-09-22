@@ -31,6 +31,10 @@ var input := PlayerInput.new()
 ## The weapon currently held. Swapped with the number keys.
 var weapon: Weapon
 
+## How the player was moving on the last tick, as the weapon was told: what
+## its cone is judged by. HUDs read it rather than building their own.
+var shooter_state := Weapon.ShooterState.new()
+
 ## Which side's arms are on screen. Set by the map from the spawn.
 @export_enum("T", "CT") var team: String = "T"
 
@@ -320,11 +324,11 @@ func _update_weapon(
 	weapon.trigger_held = (
 		Input.is_action_pressed(&"attack") or not fire_events.is_empty()
 	)
-	var state := Weapon.ShooterState.new(
+	shooter_state = Weapon.ShooterState.new(
 		Vector2(velocity.x, velocity.z).length(), on_ground, is_ducked,
 		Input.is_action_pressed(&"walk")
 	)
-	weapon.update(delta, now, state)
+	weapon.update(delta, now, shooter_state)
 
 	for event in fire_events:
 		_try_shoot(
@@ -334,7 +338,7 @@ func _update_weapon(
 			),
 			event.yaw_degrees,
 			event.pitch_degrees,
-			state
+			shooter_state
 		)
 
 	# Held down, the next round goes the moment the weapon is ready, not on
@@ -348,7 +352,7 @@ func _update_weapon(
 			PlayerInput.tick_fraction(at, tick_began, _tick_length_usec),
 			input.yaw_degrees,
 			input.pitch_degrees,
-			state
+			shooter_state
 		)
 
 
