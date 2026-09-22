@@ -357,6 +357,7 @@ func _try_shoot(
 	var result := Hitscan.fire_at(space, shot, weapon.data, exclude)
 	if weapon_sounds != null and result.hitbox != null and result.hitbox.target != null:
 		weapon_sounds.hit(result.zone, result.hitbox.target, not result.hitbox.target.alive)
+	BulletImpacts.mark_in(get_tree(), result)
 	shot_traced.emit(shot, result)
 
 

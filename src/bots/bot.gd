@@ -225,6 +225,7 @@ func _engage(enemy: Node3D, delta: float) -> void:
 	if hit_target != null:
 		exclude.append_array(hit_target.rids())
 	var result := Hitscan.fire_at(get_world_3d().direct_space_state, shot, weapon.data, exclude)
+	BulletImpacts.mark_in(get_tree(), result)
 	if weapon_sounds != null:
 		weapon_sounds.shot()
 	if model != null:

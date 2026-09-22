@@ -88,6 +88,9 @@ func _ready() -> void:
 	hud.name = "Hud"
 	hud.player = player as PlayerController
 	add_child(hud)
+	var impacts := BulletImpacts.new()
+	impacts.name = "BulletImpacts"
+	add_child(impacts)
 
 
 ## Bots on the other side, each walking that side's spawn points in a loop,

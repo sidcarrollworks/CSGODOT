@@ -60,6 +60,12 @@ func _init() -> void:
 	_test_view_model_motion()
 	_test_hitbox_set_parsing()
 	_test_sound_sets()
+	_check(
+		BulletImpacts.surface_for("physics_group_sand") == "sand" and BulletImpacts.surface_for("physics_group_wood_crate") == "wood"
+			and BulletImpacts.surface_for("physics_group_metalvent") == "metal" and BulletImpacts.surface_for("physics_group") == "concrete"
+			and BulletImpacts.surface_for("") == "concrete" and BulletImpacts.surface_for("physics_group_glass") == "default",
+		"a hull part's name says which impact a round makes on it: sand, wood, metal, concrete, or the general one"
+	)
 
 	var weapons := _find(WEAPONS_DIR, "weapon_rif_")
 	var agents := _find(CHARACTERS_DIR.path_join("agents"), "")
@@ -310,6 +316,13 @@ func _test_sound_sets() -> void:
 	)
 	for part: Array in WeaponSounds.SETS["ak47"]["reload"] + WeaponSounds.SETS["m4a1_silencer"]["reload"]:
 		_check(not SoundBank.variants(part[1]).is_empty(), "the reload part %s is there" % part[1])
+	var impact_sets := 0
+	for surface in BulletImpacts.SOUND_SETS:
+		impact_sets += 1 if not SoundBank.variants(BulletImpacts.SOUND_SETS[surface]).is_empty() else 0
+	_check(
+		impact_sets == BulletImpacts.SOUND_SETS.size() and SoundBank.variants("physics/concrete/concrete_impact_bullet").size() == 7,
+		"every impact set is there, seven for concrete (%d of %d)" % [impact_sets, BulletImpacts.SOUND_SETS.size()]
+	)
 
 
 ## A bot on a floor, to be shot. The hitboxes are areas, so the physics
@@ -339,6 +352,53 @@ func _start_bot() -> void:
 		_bot_died_usec = Time.get_ticks_usec())
 	_bot.respawned.connect(func() -> void: _bot_events.append("respawned"))
 	_bot_started_frame = _frames
+	var impacts := BulletImpacts.new()
+	impacts.max_holes = 2
+	_bot_world.add_child(impacts)
+
+
+## A round into the floor leaves a hole and a sound there; the holes are
+## recycled past the limit; a round into a person leaves nothing.
+func _test_bullet_impacts() -> void:
+	var impacts := _bot_world.get_node("BulletImpacts") as BulletImpacts
+	if impacts == null:
+		impacts = _bot_world.get_child(_bot_world.get_child_count() - 1) as BulletImpacts
+	var data := WeaponLibrary.ak47()
+	data.inaccuracy_standing = 0.0
+	data.inaccuracy_per_shot = 0.0
+	var weapon := Weapon.new(data)
+	var origin := Vector3(100.0, 64.0, 0.0)
+	var space := _bot_world.get_world_3d().direct_space_state
+	var angles := PlayerInput.angles_from_direction(Vector3(100.0, 0.0, -100.0) - origin)
+	var shot := weapon.fire(0, 0.0, origin, angles.x, angles.y, Weapon.ShooterState.new(0.0, true, false))
+	var result := Hitscan.trace(space, shot, data)
+	_check(
+		result.hit and result.hitbox == null and result.surface == "CollisionShape3D",
+		"a round into the floor reports the hull part it met (%s)" % result.surface
+	)
+	if not DirAccess.dir_exists_absolute(BulletImpacts.DECALS_ROOT):
+		print("decals not extracted; skipping the holes (scripts/extract_assets.sh sounds)")
+		return
+	impacts.mark(result)
+	var decals := impacts.find_children("*", "Decal", false, false)
+	_check(
+		impacts.holes == 1 and decals.size() == 1 and (decals[0] as Decal).texture_albedo != null
+			and (decals[0] as Decal).global_position.distance_to(result.position) < BulletImpacts.new().hole_size
+			and ((decals[0] as Decal).global_transform.basis.y).dot(result.normal) > 0.99,
+		"and gets a hole there, a texture of the game's, its face along the surface's normal"
+	)
+	for i in 3:
+		shot = weapon.fire((i + 1) * 200_000, 0.0, origin, angles.x + i, angles.y, Weapon.ShooterState.new(0.0, true, false))
+		impacts.mark(Hitscan.trace(space, shot, data))
+	_check(
+		impacts.holes == 4 and impacts.find_children("*", "Decal", false, false).size() == 2,
+		"past the limit the oldest holes are reused (%d holes, %d decals)" % [impacts.holes, impacts.find_children("*", "Decal", false, false).size()]
+	)
+	var person := Hitscan.Result.new()
+	person.hit = true
+	person.hitbox = _bot.hitboxes.hitboxes[0]
+	impacts.mark(person)
+	_check(impacts.holes == 4, "a round into a person leaves no hole")
 
 
 ## Returns true when the bot's checks are done. Each step waits for the
@@ -353,6 +413,7 @@ func _bot_step() -> bool:
 		0:
 			if since >= 3:
 				_test_bot_sounds()
+				_test_bullet_impacts()
 				_test_bot_wears_hitboxes()
 				_test_bot_is_hit_where_aimed()
 				_bot_phase = 1

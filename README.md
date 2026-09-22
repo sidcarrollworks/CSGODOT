@@ -216,8 +216,10 @@ reload in its parts and draw, flat in your ears the way the game plays your
 own gun; your hits, kevlar, headshot or kill; and footsteps and landings
 from everyone's feet, in the world, on the surface they stand on, which the
 collision hull names part by part (sand, dirt, wood, metal, tile). Running
-sounds, walking does not, as in CS. Without `sounds` extracted the game is
-silent and everything else works.
+sounds, walking does not, as in CS. A round that meets the world leaves one
+of the game's bullet holes there and the sound of that surface taking it
+(`src/combat/bullet_impacts.gd`). Without `sounds` extracted the game is
+silent, the walls unmarked, and everything else works.
 
 `assets/` can live on another drive: make it a junction (`mklink /J`) and
 every script and Godot itself read straight through it.
