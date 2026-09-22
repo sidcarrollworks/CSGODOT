@@ -43,7 +43,21 @@ class ButtonEvent:
 		pitch_degrees = p_pitch
 
 
+## The actions that are buttons in a command, and their bits.
+const BUTTONS := {
+	&"attack": UserCmd.ATTACK,
+	&"jump": UserCmd.JUMP,
+	&"duck": UserCmd.DUCK,
+	&"walk": UserCmd.WALK,
+	&"reload": UserCmd.RELOAD,
+}
+
 var _pending: Array[ButtonEvent] = []
+var _weapon_select: int = UserCmd.SELECT_NONE
+var _toggle_noclip: bool = false
+## When the last command was sampled, on the wall clock: the start of the
+## stretch the next one covers.
+var _last_sample_usec: int = -1
 
 ## Look angles accumulate at render rate, not tick rate. Mouse movement must
 ## never be quantised to the simulation tick or aiming feels heavy.
@@ -66,11 +80,18 @@ func handle_event(event: InputEvent) -> void:
 		pitch_degrees = clampf(pitch_degrees, -PITCH_LIMIT, PITCH_LIMIT)
 		return
 
-	for action in [&"jump", &"duck", &"walk", &"attack"]:
+	for action: StringName in BUTTONS:
 		if event.is_action_pressed(action, false):
 			_pending.append(_event(action, true))
 		elif event.is_action_released(action):
 			_pending.append(_event(action, false))
+
+	if event.is_action_pressed(&"slot1"):
+		_weapon_select = 1
+	elif event.is_action_pressed(&"slot2"):
+		_weapon_select = 2
+	elif event.is_action_pressed(&"noclip"):
+		_toggle_noclip = not _toggle_noclip
 
 
 func _event(action: StringName, pressed: bool) -> ButtonEvent:
@@ -121,19 +142,45 @@ static func angles_from_direction(direction: Vector3) -> Vector2:
 	)
 
 
-## The movement direction the player is asking for, in world space, from the
-## currently held keys and the current yaw.
-func wish_direction() -> Vector3:
-	var input := Vector2(
+## The command for one tick, from everything that happened since the last
+## one was sampled.
+##
+## The key and mouse events arrive between ticks, while frames are drawn, and
+## the tick that runs them comes after. So a command covers the wall-clock
+## stretch from the last sample to this one, and each press is placed at its
+## fraction of that stretch: the same share of the tick the simulation runs
+## it at. Measuring it from when the tick itself began, as this code once
+## did, put every press before the start and so at fraction 0, and the
+## sub-tick timing never reached the game.
+func build_command(tick: int, now_usec: int = -1) -> UserCmd:
+	if now_usec < 0:
+		now_usec = Time.get_ticks_usec()
+	var tick_length := SimClock.tick_usec()
+	if _last_sample_usec < 0 or now_usec - _last_sample_usec > 4 * tick_length:
+		# The first command, or after a stall: a tick's worth, not a second's.
+		_last_sample_usec = now_usec - tick_length
+	var window := maxi(now_usec - _last_sample_usec, 1)
+
+	var cmd := UserCmd.new()
+	cmd.tick = tick
+	for action: StringName in BUTTONS:
+		if Input.is_action_pressed(action):
+			cmd.buttons |= BUTTONS[action]
+	cmd.move = Vector2(
 		Input.get_axis(&"move_left", &"move_right"),
 		Input.get_axis(&"move_back", &"move_forward")
 	)
-	if input.length_squared() > 1.0:
-		input = input.normalized()
-	var yaw := deg_to_rad(yaw_degrees)
-	var forward := Vector3(-sin(yaw), 0.0, -cos(yaw))
-	var right := Vector3(cos(yaw), 0.0, -sin(yaw))
-	var dir := right * input.x + forward * input.y
-	if dir.length_squared() > 0.0:
-		dir = dir.normalized()
-	return dir
+	cmd.yaw_degrees = yaw_degrees
+	cmd.pitch_degrees = pitch_degrees
+	for event in take_events():
+		cmd.steps.append(UserCmd.SubtickStep.new(
+			BUTTONS[event.action], event.pressed,
+			tick_fraction(event.timestamp_usec, _last_sample_usec, window),
+			event.yaw_degrees, event.pitch_degrees
+		))
+	cmd.weapon_select = _weapon_select
+	cmd.toggle_noclip = _toggle_noclip
+	_weapon_select = UserCmd.SELECT_NONE
+	_toggle_noclip = false
+	_last_sample_usec = now_usec
+	return cmd

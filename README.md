@@ -234,8 +234,8 @@ the body on the third-person rig, the weapon in its hand, and the locomotion
 clip that fits how the body is moving relative to where it faces, cross-faded
 and scaled to its speed. dust2 puts two bots of the other side in
 (`bots` on the scene root), walking their spawn points on a loop. A bot
-(`src/bots/bot.gd`) is the player's own body and movement solver pushed by a
-route instead of keys, so it moves the way a player does, and it can be
+(`src/bots/bot.gd`) is the player's own simulation run by commands its
+brain writes instead of keys, so it moves and fires the way a player does, and it can be
 shot: it wears the game's own hitboxes, the nineteen capsules CS2 defines
 for the model, riding its bones (`src/combat/skinned_hitboxes.gd`), so a
 bullet lands on the head, chest, stomach, an arm or a leg and is priced
@@ -335,8 +335,9 @@ Note that GDScript's analyser warnings (shadowed variables, unused locals) only
 appear when the editor loads a script. They do not show up in a headless run,
 so if the Godot console shows any, paste them over and they will get fixed.
 
-Two hundred and twenty-seven checks, in four files: movement, map import,
-dust2 and weapons. The dust2 file skips itself where the map has not been
+Seven files: movement, map import, dust2, models, weapons, the test range
+and the simulation. Without the extracted assets 476 checks run and pass;
+the dust2 and model files skip what needs files that have not been
 extracted.
 
 Half of the movement ones are the acceleration model against hand-computed
@@ -367,11 +368,29 @@ dropped at every one of the map's thirty spawn points and has to land on the
 floor just below. Scale, axis conversion, the hull and the entity coordinates
 are four separate things, and that only passes when all four agree.
 
+## Simulation and view
+
+The game is built the way a server runs it, so going online later is not a
+rewrite. Every player, you and the bots alike, is a `PlayerSim`
+(`src/player/player_sim.gd`) that moves forward one tick at a time by
+running a `UserCmd` (`src/sim/user_cmd.gd`), shaped like CS2's user command:
+the buttons held, the move keys, the look angles, and each press or release
+inside the tick with the fraction of the tick it happened at. Your keys
+become one command a tick (`PlayerInput.build_command`); a bot's brain
+writes its own. The simulation never reads the keys or the wall clock: its
+time is the tick number (`src/sim/sim_clock.gd`), so the same commands give
+the same game however fast they are run, which `tests/run_sim_checks.gd`
+holds it to. What you see and hear, the camera, the arms, your body and
+shadow, sounds and bullet holes, is `PlayerView`
+(`src/player/player_view.gd`), which reads the simulation and never changes
+it.
+
 ## Layout
 
 ```
+src/sim/         user commands and simulation time
 src/movement/    the acceleration model and collide-and-slide
-src/player/      input (timestamped), camera, the local player
+src/player/      the player simulation, input to commands, the first-person view
 src/map/         glTF map import, and the map's entity data (spawn points)
 src/weapons/     weapon data, recoil patterns, the firing model
 src/combat/      hitboxes, hit targets, hitscan
