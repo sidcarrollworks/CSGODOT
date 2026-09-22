@@ -91,6 +91,7 @@ against.
 | `H` | draw or hide the dummy's hitboxes |
 | `K` | the dummy's armour: kevlar and helmet, kevlar, none |
 | `N` | the dummy's distance: 256, 512, 1024, 2048 units |
+| `G` | the dummy never dies: a kill is logged and it is refilled, so a whole spray registers |
 
 Every bullet leaves a mark: dark on the wall, red on the dummy. The readout
 shows the current shot index in the pattern and the size of the inaccuracy cone
@@ -111,7 +112,9 @@ coloured by zone, and the one a round goes into lights up. Each round shows
 the damage it did beside where it landed (red for the head), and the readout
 at the top right keeps a log: what each round did, to which part, from how
 far, what it carried before the armour, and the health left; and for a kill,
-the damage in how many hits and the time from the first to the last. It starts
+the damage in how many hits and the time from the first to the last. The readout also says which
+hitboxes it wears, and when they are the stand-in boxes on an extracted
+character, why the game's are missing. It starts
 in kevlar and a helmet, as an opponent in a rifle round would be. Killed, it
 goes down, and two and a half seconds later stands up again where it was,
 whole.

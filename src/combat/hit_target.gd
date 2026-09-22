@@ -16,6 +16,9 @@ signal died
 ## Whether the armour includes a helmet. Kevlar covers the chest, stomach
 ## and arms; only a helmet covers the head, and nothing covers the legs.
 @export var helmet: bool = true
+## Takes every round but never dies: a round that would kill leaves it at
+## no health, alive, for whoever is counting to refill.
+@export var immortal: bool = false
 
 ## Off for a target whose hitboxes come from elsewhere; the crude body that
 ## goes with them stays away too, or on its own for a target that has a
@@ -164,6 +167,8 @@ func apply_damage(amount: float, zone: StringName, armor_penetration: float, hit
 
 	if health <= 0.0:
 		health = 0.0
+		if immortal:
+			return dealt
 		alive = false
 		died.emit()
 	return dealt

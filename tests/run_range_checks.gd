@@ -130,6 +130,25 @@ func _run() -> void:
 	_range.toggle_hitboxes()
 	_check(hitboxes.all(func(hitbox: Hitbox) -> bool: return hitbox.is_drawn()), "and H again draws them")
 
+	# Never dies: a whole spray registers, a kill is still counted.
+	_range.toggle_immortal()
+	var spray_hits := 0
+	for i in 8:
+		if _shoot(_zone_point(dummy, &"head")).hitbox != null:
+			spray_hits += 1
+	lines = _range.log_lines()
+	_check(
+		spray_hits == 8 and dummy.alive and dummy.hit_target.health > 0.0
+			and lines.size() >= 2 and lines[0].begins_with("KILLED  100 damage in 1 hit"),
+		"G keeps it standing: eight rounds to the head all register, each one counted as a kill (%d, %s)" % [spray_hits, lines[0] if lines.size() > 0 else ""]
+	)
+	_range.toggle_immortal()
+	_check(not dummy.hit_target.immortal, "and G again lets it die")
+	_check(
+		_range.hitbox_source.contains("19 CS2 capsules") or _range.hitbox_source.contains("stand-in"),
+		"the readout says which hitboxes it wears (%s)" % _range.hitbox_source
+	)
+
 	# The armour rules themselves, on a target of their own.
 	var target := HitTarget.new()
 	target.build_own_hitboxes = false

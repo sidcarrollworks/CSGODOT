@@ -65,6 +65,10 @@ var _numbers: Node3D
 var _label: Label
 var _dummy_label: Label
 
+## What the dummy's hitboxes are, for the readout: the game's capsules, or
+## the stand-in boxes and why.
+var hitbox_source: String = ""
+
 var _distance_index: int = DUMMY_DISTANCE_START
 var _armour_index: int = 0
 ## The dummy's current life: its hits, in order, as dictionaries of what the
@@ -102,6 +106,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		next_armour()
 	elif event.is_action_pressed(&"dummy_distance"):
 		next_distance()
+	elif event.is_action_pressed(&"dummy_immortal"):
+		toggle_immortal()
 
 
 func _process(_delta: float) -> void:
@@ -134,7 +140,7 @@ func _process(_delta: float) -> void:
 		"1 / 2  weapon      R  reload",
 		"P      export      O  clear",
 		"H      hitboxes    K  armour",
-		"N      dummy distance",
+		"N      dummy distance   G  dummy never dies",
 	])
 	_dummy_label.text = dummy_readout()
 
@@ -175,8 +181,13 @@ func _on_dummy_hit(shot: Weapon.Shot, result: Hitscan.Result) -> void:
 	result.hitbox.flash()
 	_add_number(result.position, result.damage, result.zone)
 	_push_log(_hit_line(hit))
-	if not target.alive:
+	if target.health <= 0.0:
 		_push_log(_kill_line())
+		if target.immortal:
+			# Would have died: counted, and whole again for the rest of the
+			# spray.
+			target.reset()
+			_life.clear()
 
 
 ## The dummy's state and the log, for the readout.
@@ -192,7 +203,8 @@ func dummy_readout() -> String:
 		],
 		("health  %d    armour  %d" % [roundi(target.health), roundi(target.armor)]) if dummy.alive
 			else "down, up again in %.1f s" % dummy.seconds_to_respawn(),
-		"hitboxes %s" % ("drawn" if target.hitboxes_drawn() else "hidden"),
+		"%s, %s" % [hitbox_source, "drawn" if target.hitboxes_drawn() else "hidden"],
+		"never dies: a kill refills it" if target.immortal else "dies, and is back in %.1f s" % DUMMY_RESPAWN_SECONDS,
 		"",
 	])
 	lines.append_array(_log)
@@ -271,6 +283,13 @@ func _add_number(at: Vector3, amount: float, zone: StringName) -> void:
 func toggle_hitboxes() -> void:
 	if dummy != null:
 		dummy.hit_target.set_hitboxes_drawn(not dummy.hit_target.hitboxes_drawn())
+
+
+## Whether the dummy dies or takes a whole spray: a kill still shows in
+## the log either way.
+func toggle_immortal() -> void:
+	dummy.hit_target.immortal = not dummy.hit_target.immortal
+	_push_log("-- %s" % ("never dies" if dummy.hit_target.immortal else "dies again"))
 
 
 func next_armour() -> void:
@@ -530,11 +549,37 @@ func _build_dummy() -> void:
 	dummy.position = dummy_position()
 	dummy.yaw_degrees = 180.0
 	add_child(dummy)
+	hitbox_source = _hitbox_source()
 	if dummy.hitboxes == null or dummy.hitboxes.hitboxes.is_empty():
 		dummy.hit_target.build_standard_body(dummy.model == null)
+		if dummy.model != null:
+			# A model without its hitboxes is a broken extraction, not a
+			# fresh clone: say so where it will be seen.
+			push_warning("Test range dummy: %s" % hitbox_source)
 	_wear_armour()
 	dummy.hit_target.set_hitboxes_drawn(true)
 	dummy.respawned.connect(_on_dummy_respawned)
+
+
+## Which hitboxes the dummy wears, and when they are the stand-in boxes,
+## why: the game's capsules come from the character's model description,
+## and each way of not getting them has its own fix.
+func _hitbox_source() -> String:
+	var built := dummy.hitboxes.hitboxes.size() if dummy.hitboxes != null else 0
+	if built > 0:
+		return "%d CS2 capsules on the skeleton" % built
+	var model_path: String = PlayerModel.AGENTS.get(dummy.team, PlayerModel.AGENTS["T"])
+	if dummy.model == null:
+		return "4 stand-in boxes: the character has not been extracted (scripts/extract_assets.sh characters)"
+	var description := model_path.get_basename() + ".vmdl"
+	if not FileAccess.file_exists(description):
+		return "4 stand-in boxes, NOT the game's: no hitbox set at %s (rerun scripts/extract_assets.sh characters)" % description
+	var capsules := HitboxSet.load_for(model_path)
+	if capsules.is_empty():
+		return "4 stand-in boxes, NOT the game's: %s has no HitboxCapsule in it" % description.get_file()
+	return "4 stand-in boxes, NOT the game's: none of %d capsules' bones (%s...) are on the skeleton" % [
+		capsules.size(), capsules[0]["bone"],
+	]
 
 
 func _build_player() -> void:
