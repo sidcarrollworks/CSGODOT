@@ -490,12 +490,32 @@ extract_characters() {
 		--gltf_export_animations --gltf_animation_list "idle_default_stand" \
 		| grep -vE '^(Preloading|Added folder|--- \[|--- Creating|--- Loading)' || true
 
+	# The hitboxes: each model's cstrike hitbox set, in the decompiled model
+	# description. The decompile writes the meshes and a few animations out
+	# beside it as well, so it goes through a scratch directory and only the
+	# description is kept, next to the model's glTF.
+	local scratch
+	scratch="$(mktemp -d)"
+	echo
+	echo "Extracting the hitbox sets"
+	"$S2V_BIN" -i "$PAK_VPK" -f "$agents" -o "$scratch" -d \
+		| grep -vE '^(Preloading|Added folder|--- )' || true
+	find "$scratch" -name '*.vmdl' | while IFS= read -r description; do
+		local relative="${description#"$scratch"/}"
+		mkdir -p "$CHARACTERS_DEST/$(dirname "$relative")"
+		cp "$description" "$CHARACTERS_DEST/$relative"
+		echo "        -> $CHARACTERS_DEST/$relative"
+	done
+	rm -rf "$scratch"
+
 	local clips
 	# First person: the AK's clips and the shared rifle set, which is the
 	# M4A1-S's. Third person: the shared set's locomotion (idle, walk, run,
-	# crouch, in the eight directions, plus in-air, jump and shoot), and each
-	# weapon's own draw, reload and shoot.
-	clips="$(grep -E '^animation/(anims/viewmodel/rifle/(_default_rifle|rifle_ak)/|anims/world/rifle/(_default_rifle/(idle|run|walk|crouch|inair|jump_stand|shoot)_[a-z_]*|rifle_ak/|rifle_m4a1_silencer/)|skeletons/characters/(viewmodel|worldmodel)\.vnmskel_c$|skeletons/weapons/(ak47|m4a1)[a-z_]*\.vnmskel_c$)' <<<"$listing" \
+	# crouch, in the eight directions, plus in-air, jump and shoot), each
+	# weapon's own draw, reload and shoot, and the shared deaths by where the
+	# last round landed. (The flinches beside them are additive layers, not
+	# poses, and wait for an animation tree to add them.)
+	clips="$(grep -E '^animation/(anims/viewmodel/rifle/(_default_rifle|rifle_ak)/|anims/world/rifle/(_default_rifle/(idle|run|walk|crouch|inair|jump_stand|shoot)_[a-z_]*|rifle_ak/|rifle_m4a1_silencer/)|anims/world/shared/death_(chest|gut|rknee|rshoulder)[a-z_]*\.vnmclip_c$|skeletons/characters/(viewmodel|worldmodel)\.vnmskel_c$|skeletons/weapons/(ak47|m4a1)[a-z_]*\.vnmskel_c$)' <<<"$listing" \
 		| paste -sd, - || true)"
 	require_filter "$clips" "the animations"
 	echo

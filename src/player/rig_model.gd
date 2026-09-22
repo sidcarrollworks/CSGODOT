@@ -30,6 +30,9 @@ var weapon_rig: Skeleton3D
 var idle: StringName = &""
 ## Clips that play once; everything else loops.
 var one_shots: PackedStringArray = PackedStringArray()
+## Prefixes of the one-shot clips that hold their last frame when they end
+## rather than going back to idle: a death.
+var held: PackedStringArray = PackedStringArray()
 
 var _pins: Array[Dictionary] = []
 
@@ -173,8 +176,22 @@ func clips_named(prefix: String) -> PackedStringArray:
 
 
 func _on_finished(finished: StringName) -> void:
+	if _is_held(finished):
+		return
 	if _is_one_shot(finished) and idle != &"" and animation_player.has_animation(idle):
 		animation_player.play(idle)
+
+
+## Whether a one-shot clip is running now and should be left to finish.
+func playing_one_shot() -> bool:
+	return animation_player != null and animation_player.is_playing() 		and _is_one_shot(animation_player.current_animation)
+
+
+func _is_held(name: StringName) -> bool:
+	for prefix in held:
+		if String(name).begins_with(prefix):
+			return true
+	return false
 
 
 func _is_one_shot(name: StringName) -> bool:

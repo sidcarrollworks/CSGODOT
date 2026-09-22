@@ -195,7 +195,13 @@ clip that fits how the body is moving relative to where it faces, cross-faded
 and scaled to its speed. dust2 puts two bots of the other side in
 (`bots` on the scene root), walking their spawn points on a loop. A bot
 (`src/bots/bot.gd`) is the player's own body and movement solver pushed by a
-route instead of keys, so it moves the way a player does; it does not aim,
+route instead of keys, so it moves the way a player does, and it can be
+shot: it wears the game's own hitboxes, the nineteen capsules CS2 defines
+for the model, riding its bones (`src/combat/skinned_hitboxes.gd`), so a
+bullet lands on the head, chest, stomach, an arm or a leg and is priced
+accordingly, ahead of the movement hull, which bullets pass. A kill plays
+one of the game's death clips for where the last round landed, and the bot
+is back at the start of its route a few seconds later. It does not aim,
 fire or think yet.
 
 `assets/` can live on another drive: make it a junction (`mklink /J`) and

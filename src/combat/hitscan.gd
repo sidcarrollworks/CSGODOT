@@ -71,6 +71,6 @@ static func fire_at(
 	var result := trace(space, shot, data, exclude)
 	if result.hitbox != null and result.hitbox.target != null:
 		result.damage = result.hitbox.target.apply_damage(
-			result.damage, result.zone, data.armor_penetration
+			result.damage, result.zone, data.armor_penetration, result.hitbox
 		)
 	return result
