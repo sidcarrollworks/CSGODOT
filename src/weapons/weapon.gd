@@ -17,10 +17,14 @@ extends RefCounted
 ## gives a view that snaps to each bullet and sags between them, which is
 ## neither what CS looks like nor how it plays.
 ##
-## Spread is deterministic, seeded per shot. Same shot index, same offset,
-## every time. That is what makes the first bullet reliable and the pattern
-## worth learning, and it is also what lets a server and a client agree on
-## where a bullet went without sending the bullet.
+## Spread is deterministic, seeded per round from the instant it was fired
+## (simulation time, which the server and a client agree on), the way CS2
+## seeds it from the command that fired it. That lets a server and a client
+## agree on where a bullet went without sending the bullet. It is NOT seeded
+## by the round's place in the pattern: every first round would then land on
+## the same spot in the cone, a tenth of the way out, and a running first
+## shot would never miss. The first round is reliable because the standing
+## cone is small, not because it always goes to the same place.
 
 ## The state of whoever is firing, which decides inaccuracy.
 class ShooterState:
@@ -81,7 +85,7 @@ var data: WeaponData
 var ammo: int = 0
 var reserve: int = 0
 
-## Seeds the per-shot spread. Same seed and shot index give the same offset.
+## Seeds the per-round spread. Same seed and firing time give the same offset.
 var spray_seed: int = 1
 
 var _snap := WeaponData.Punch.new()
@@ -410,7 +414,7 @@ func fire(
 		yaw_degrees - current.x,
 		pitch_degrees + current.y,
 		spread,
-		round_index
+		now_usec
 	)
 
 	# The view gets kicked by this shot's own recoil, scaled down, and as a
@@ -470,14 +474,14 @@ func finish_reload_if_due(now_usec: int) -> bool:
 ## centre: half of them land within half the cone, where spreading them evenly
 ## over the disc would put only a quarter there.
 func _spread_direction(
-	yaw_degrees: float, pitch_degrees: float, spread_degrees: float, shot: int
+	yaw_degrees: float, pitch_degrees: float, spread_degrees: float, fired_usec: int
 ) -> Vector3:
 	var direction := PlayerInput.aim_direction(yaw_degrees, pitch_degrees)
 	if spread_degrees <= 0.0:
 		return direction
 
 	var rng := RandomNumberGenerator.new()
-	rng.seed = _shot_seed(shot)
+	rng.seed = _shot_seed(fired_usec)
 
 	var angle := rng.randf() * TAU
 	var radius := rng.randf() * spread_degrees
@@ -493,7 +497,9 @@ func _spread_direction(
 	return (direction + offset).normalized()
 
 
-func _shot_seed(shot: int) -> int:
-	# Mixed rather than concatenated so nearby shot indices do not produce
-	# visibly related offsets.
-	return hash(Vector2i(spray_seed, shot))
+## A weapon never fires twice in the same microsecond, so no two of its
+## rounds share a seed.
+func _shot_seed(fired_usec: int) -> int:
+	# Hashed rather than used as is so rounds fired close together do not
+	# produce visibly related offsets.
+	return hash([spray_seed, fired_usec])

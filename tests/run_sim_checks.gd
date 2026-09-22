@@ -51,6 +51,7 @@ func _run() -> void:
 	await _test_the_same_commands_give_the_same_game()
 	await _test_a_held_trigger_fires_on_simulation_time()
 	await _test_a_press_fires_from_where_the_player_was()
+	await _test_a_running_tap_misses()
 	await _test_a_bot_plays_through_commands()
 	_report()
 
@@ -242,6 +243,43 @@ func _test_a_press_fires_from_where_the_player_was() -> void:
 		origins.size() == 1 and origins[0].is_equal_approx(halfway)
 			and player.previous_position.distance_to(player.global_position) > 1.0,
 		"a click half way through a strafing tick fires from half way along it"
+	)
+	player.queue_free()
+	await physics_frame
+
+
+## Taps at a run, through the real body: every one is fired into the
+## running cone, and they land all over it rather than on one spot. Sid,
+## 2026-09-22: the first shot while running was still perfectly accurate.
+func _test_a_running_tap_misses() -> void:
+	var player := _new_player(Vector3(512.0, 0.0, 0.0), "T")
+	player.equip(WeaponLibrary.ak47())
+	await physics_frame
+	var shots: Array[Weapon.Shot] = []
+	player.shot_traced.connect(func(shot: Weapon.Shot, _result: Hitscan.Result) -> void:
+		shots.append(shot))
+	# Run flat out, then tap once every 1.5 s at a different point of the
+	# tick, still running, so each round is the first of its own spray.
+	for i in 128 + 12 * 192:
+		var cmd := UserCmd.new()
+		cmd.tick = 70_000 + i
+		cmd.move = Vector2(0.0, 1.0)
+		if i >= 128 and (i - 128) % 192 == 0:
+			cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.ATTACK, true, fmod(0.13 * i, 1.0), 0.0, 0.0))
+		player.run_command(cmd, DT)
+
+	var running_cone := WeaponLibrary.ak47().inaccuracy_moving
+	var offsets: Array[float] = []
+	var at_a_run := shots.size() == 12
+	for shot in shots:
+		at_a_run = at_a_run and shot.shot_index == 0 and shot.inaccuracy >= running_cone - 0.01
+		offsets.append(rad_to_deg(PlayerInput.aim_direction(shot.base_yaw, shot.base_pitch).angle_to(shot.direction)))
+	offsets.sort()
+	_check(at_a_run, "twelve taps at a run are each a first round, fired into the %.1f degree running cone" % running_cone)
+	_check(
+		not offsets.is_empty() and offsets[-1] > running_cone * 0.5 and offsets[-1] - offsets[0] > running_cone * 0.3,
+		"and they land all over it, not on one spot (%.2f to %.2f degrees off the aim)"
+			% [offsets[0] if not offsets.is_empty() else 0.0, offsets[-1] if not offsets.is_empty() else 0.0]
 	)
 	player.queue_free()
 	await physics_frame
