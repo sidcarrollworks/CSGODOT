@@ -88,7 +88,10 @@ static func shader_for(blended: bool, two_sided: bool) -> Shader:
 	var key := "%s/%s" % [blended, two_sided]
 	if _variants.has(key):
 		return _variants[key]
-	var code := SHADER.code
+	# Whatever line endings the checkout gave the file.
+	var code := SHADER.code.replace("
+", "
+")
 	if two_sided:
 		code = code.replace("cull_back", "cull_disabled")
 	if blended:
