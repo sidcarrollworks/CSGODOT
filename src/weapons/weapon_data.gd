@@ -60,14 +60,32 @@ extends Resource
 ## Per-shot aim offsets in degrees, indexed by shot number. This is the spray
 ## pattern, and it is the single most recognisable thing about a CS weapon.
 ##
-## Loaded from reference/spray_patterns/<name>.csv. The file shipped with the
-## project is a placeholder generated from a crude model, NOT the real
-## pattern. See that directory's README.
+## Loaded from reference/spray_patterns/<name>.csv, which is read off a CS2
+## spray plot. The shape is measured; the overall size is an estimate, and
+## recoil_scale below is the one knob for correcting it.
 @export var recoil_pattern: PackedVector2Array = PackedVector2Array()
 
-## How fast accumulated recoil decays once you stop firing, in pattern indices
-## per second. CS returns your aim over a short window rather than instantly.
+## Multiplies every entry in the pattern.
+##
+## The plots the patterns were read from carry no angular scale, so the size
+## of the spray is the one part of it that was not measured. This exists so
+## that correcting it is one number against a reference spray, rather than
+## thirty rows edited by hand. See reference/spray_patterns/README.md.
+@export var recoil_scale: float = 1.0
+
+## How fast accumulated view punch eases back once you stop firing, in degrees
+## per second. This returns the camera; it does not rewind the pattern.
 @export var recoil_recovery_rate: float = 10.0
+
+## How long the trigger has to be off before the spray starts from the top
+## again, in seconds.
+##
+## This is deliberately a time and not a test on how far the view has
+## recovered. The first entry of a pattern is (0, 0) by definition, so the
+## accumulated punch after shot one is zero, and a recovery test would decide
+## the spray had finished before it had started. That bug made every shot
+## shot number one and flattened the pattern entirely.
+@export var recoil_reset_time: float = 0.4
 
 ## How much of the recoil offset is applied to the view rather than only to
 ## where the bullets go. At 1.0 the crosshair climbs with the spray, which is
@@ -92,6 +110,13 @@ extends Resource
 ## Speed below which movement inaccuracy does not apply. CS lets you walk
 ## slowly without penalty, which is why counter-strafing matters.
 @export var inaccuracy_speed_threshold: float = 55.0
+
+
+## The pattern offset for a shot, scaled, holding the last entry once the
+## pattern runs out. CS patterns cover the magazine; anything past the end
+## should not move.
+func recoil_offset(shot_index: int) -> Vector2:
+	return RecoilPattern.offset_for(recoil_pattern, shot_index) * recoil_scale
 
 
 ## Damage at a given distance, before armour.

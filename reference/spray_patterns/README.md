@@ -15,18 +15,32 @@ The file is read by `RecoilPattern.load_pattern()` at startup, and a shot index
 past the end of the pattern reuses the last row, which is what CS2 does once a
 magazine runs longer than the pattern.
 
-## Both files here are placeholders
+## Where these came from
 
-They were generated from a crude model of the right general shape: up first,
-then a left sweep, then a right sweep. They are not measurements, and the guns
-will not spray like CS2 until they are replaced. Both files say so in their
-header, so a real pattern is obvious by the absence of that warning.
+Both were read off CS2 spray plots on 2026-09-21: 30 shots for the AK-47 and
+25 for the M4A1-S. The plots encode firing order as saturation, with the last
+round the most saturated, so the order is recovered by sorting the dots by
+saturation. Where two neighbouring dots are within the encoding's noise, the
+order that keeps the path of the spray continuous wins, because a spray is a
+path and cannot jump about.
 
-This is not a shortcut that can be skipped. The spray pattern is most of what
-makes a rifle feel like itself, and no amount of tuning elsewhere compensates
-for a wrong one.
+The shape is measured. **The size is not.** The plots carry no angular scale,
+so both patterns were scaled together by assuming the AK-47 climbs 16 degrees
+from its first shot to the top of its pattern. Scaling them together preserves
+the relationship between the two guns, which is the part that decides whether
+the M4A1-S feels easier to control than the AK, and it does.
 
-## Measuring a real one
+## Correcting the scale
+
+Do not edit the rows. Set `recoil_scale` on the weapon in
+`src/weapons/weapon_library.gd`; it multiplies the whole pattern.
+
+To find the right value, spray a wall in CS2 from a measured distance and
+measure the height of the pattern on it. The climb in degrees is
+`atan(height / distance)`. Then `recoil_scale = measured / 16.0` for the AK,
+and the same number goes on both weapons, since they share the scale.
+
+## Measuring one from scratch
 
 The pattern is deterministic in CS2, so a single clean spray is enough.
 

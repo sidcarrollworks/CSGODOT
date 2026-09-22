@@ -7,6 +7,9 @@ extends RefCounted
 ## the sources disagree in places. They are a starting point for tuning and
 ## should not be trusted until someone has checked them in game. See
 ## reference/weapon_stats.md for where each one came from.
+##
+## The two exceptions are the spray patterns and the M4A1-S magazine size,
+## which come from CS2 spray plots Sid supplied on 2026-09-21.
 
 static func ak47() -> WeaponData:
 	var data := WeaponData.new()
@@ -51,8 +54,10 @@ static func m4a1s() -> WeaponData:
 	data.range_modifier = 0.94
 
 	data.cycle_time = 0.1  # 600 RPM
-	data.magazine_size = 20
-	data.reserve_ammo = 80
+	# 25, not the 20 this used to say. The CS2 spray plot for this weapon has
+	# 25 dots on it, which settles it.
+	data.magazine_size = 25
+	data.reserve_ammo = 75
 	data.reload_time = 3.1
 
 	data.max_player_speed = 225.0

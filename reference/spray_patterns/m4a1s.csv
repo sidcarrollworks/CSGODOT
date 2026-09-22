@@ -1,24 +1,35 @@
-# PLACEHOLDER PATTERN - NOT MEASURED FROM CS2.
-# Generated from the crude model documented in this directory's README.
-# Replace with real measurements before judging how the weapon feels.
+# Measured from a CS2 spray plot supplied by Sid on 2026-09-21.
+# Dot positions read off the plot; shot order from the plot's
+# saturation ramp, where the last round is the most saturated.
+#
+# SCALE IS THE ONE ESTIMATED NUMBER HERE. The plot carries no
+# angular scale, so both patterns are scaled together by assuming
+# the AK-47 climbs 16.0 degrees from first shot to the top of the
+# pattern. The SHAPE is measured; the SIZE is not. To correct it,
+# set recoil_scale on the weapon rather than editing these rows.
 # shot,x_degrees,y_degrees
 0,0.0000,0.0000
-1,0.0548,1.1000
-2,0.1363,2.2000
-3,0.0897,3.3000
-4,-0.1239,3.9500
-5,-0.3421,4.6000
-6,-0.2705,5.2500
-7,0.0059,5.9000
-8,0.2778,6.5500
-9,0.3395,7.2000
-10,0.1442,7.8500
-11,-0.1601,7.9300
-12,-0.3433,8.0100
-13,-0.2667,8.0900
-14,0.0118,8.1700
-15,0.2813,8.2500
-16,0.3380,8.3300
-17,0.1389,8.4100
-18,-0.1653,8.4900
-19,-0.3444,8.5700
+1,-0.0019,0.3340
+2,-0.0046,0.6615
+3,0.1641,1.5998
+4,-0.0822,2.7874
+5,0.3307,4.2231
+6,0.4938,5.5850
+7,-0.6019,7.2751
+8,-0.9330,7.4497
+9,-2.2160,7.6146
+10,-1.6996,7.9518
+11,-0.6036,8.3800
+12,1.0101,8.4651
+13,2.3567,8.1262
+14,3.3798,8.0379
+15,4.3090,8.1257
+16,3.7296,8.2926
+17,2.8739,8.4642
+18,3.5500,8.5458
+19,4.0522,8.3772
+20,1.8601,8.3791
+21,1.4235,8.6289
+22,-0.0033,8.7921
+23,-0.5101,9.3894
+24,-0.6923,9.5695

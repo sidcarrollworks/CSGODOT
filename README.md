@@ -116,12 +116,18 @@ your aim by exactly what you pulled, the same as CS. The player's angles and
 the punch are added at the last moment, in `PlayerController`, and stored
 separately everywhere else.
 
-The stats themselves are the weak part. CS2 keeps weapon tuning in
+The spray patterns are the real ones, read off CS2 spray plots: 30 shots for
+the AK-47 and 25 for the M4A1-S, with firing order recovered from the plots'
+saturation ramp. Their shape is measured; their overall size is an estimate,
+because the plots carry no angular scale, and `recoil_scale` on the weapon is
+the one number that corrects it.
+
+The rest of the stats are the weak part. CS2 keeps weapon tuning in
 `scripts/weapons.vdata_c`, which does not decode into usable values, so none of
-it could be extracted the way the map and models were. Everything in
-`src/weapons/weapon_library.gd` is a published community figure, and the spray
-patterns are outright placeholders. `reference/weapon_stats.md` lists every
-number, where it came from, and how to measure the real one.
+it could be extracted the way the map and models were. Everything else in
+`src/weapons/weapon_library.gd` is a published community figure.
+`reference/weapon_stats.md` lists every number, where it came from, and how to
+measure the real one.
 
 ## dust2
 
@@ -189,7 +195,7 @@ Note that GDScript's analyser warnings (shadowed variables, unused locals) only
 appear when the editor loads a script. They do not show up in a headless run,
 so if the Godot console shows any, paste them over and they will get fixed.
 
-A hundred and twenty-eight checks, in four files: movement, map import, dust2
+A hundred and ninety checks, in four files: movement, map import, dust2
 and weapons. The dust2 file skips itself where the map has not been
 extracted.
 
@@ -229,7 +235,7 @@ src/player/      input (timestamped), camera, the local player
 src/map/         glTF map import, and the map's entity data (spawn points)
 src/weapons/     weapon data, recoil patterns, the firing model
 src/combat/      hitboxes, hit targets, hitscan
-src/ui/          the tuning readout
+src/ui/          the tuning readout and the crosshair
 maps/            generated test courses, and the dust2 scene
 tests/           headless test suite
 reference/       measured constants and how they were measured

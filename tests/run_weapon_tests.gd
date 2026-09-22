@@ -27,6 +27,10 @@ func _process(_delta: float) -> bool:
 		_test_deterministic_spread()
 		_test_recoil_follows_the_pattern()
 		_test_recoil_recovers()
+		_test_held_trigger_walks_the_whole_pattern()
+		_test_spray_resets_on_time()
+		_test_patterns_are_the_measured_ones()
+		_test_recoil_scale()
 		_test_inaccuracy_by_state()
 		_test_damage_falloff()
 		_test_hitbox_multipliers()
@@ -41,6 +45,7 @@ func _process(_delta: float) -> bool:
 
 	_test_headshot_registers()
 	_test_wall_blocks_the_shot()
+	_test_crosshair_is_centred()
 	_report()
 	return true
 
@@ -192,6 +197,159 @@ func _test_recoil_recovers() -> void:
 	)
 
 
+## Drives update() and fire() together, the way PlayerController does.
+##
+## This is the shape the bug hid in: every earlier recoil test called fire()
+## in a loop and never called update(), so nothing exercised the reset that
+## runs between shots. In the game the spray never got past shot one and the
+## gun had no pattern at all.
+func _test_held_trigger_walks_the_whole_pattern() -> void:
+	for data in [WeaponLibrary.ak47(), WeaponLibrary.m4a1s()]:
+		var weapon := Weapon.new(data)
+		var state := _standing()
+		var now := 0
+		var indices: Array[int] = []
+		var climb: Array[float] = []
+
+		# Two magazines' worth of ticks, trigger held the whole time.
+		for tick in int(data.magazine_size * data.cycle_time * 2.0 / DT):
+			now += int(DT * SECOND)
+			weapon.update(DT, now)
+			var shot := weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, state)
+			if shot != null:
+				indices.append(shot.shot_index)
+				climb.append(weapon.accumulated_punch.y)
+
+		_check_equal(
+			indices.size(), data.magazine_size,
+			"%s empties its magazine on a held trigger" % data.display_name
+		)
+		var walked := true
+		for i in indices.size():
+			if indices[i] != i:
+				walked = false
+				break
+		_check(
+			walked,
+			"%s walks the pattern 0..%d rather than repeating a shot (%s)"
+				% [data.display_name, data.magazine_size - 1, indices.slice(0, 6)]
+		)
+		if climb.size() > 8:
+			_check(
+				climb[7] > 3.0,
+				"%s view has climbed by the eighth shot (%.2f degrees)"
+					% [data.display_name, climb[7]]
+			)
+
+
+## The spray restarts on time off the trigger, not on how far the view has
+## recovered. A pattern's first entry is (0, 0), so punch after shot one is
+## zero and a recovery test resets a spray that has not started.
+func _test_spray_resets_on_time() -> void:
+	var data := WeaponLibrary.ak47()
+	var weapon := Weapon.new(data)
+	var state := _standing()
+	var now := 0
+
+	# One shot, then wait less than the reset time.
+	now += int(DT * SECOND)
+	weapon.update(DT, now)
+	var first := weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, state)
+	_check(first != null and first.shot_index == 0, "the first shot is shot zero")
+	_check_near(
+		weapon.accumulated_punch.length(), 0.0,
+		"the first shot applies no punch, because the pattern starts at zero"
+	)
+
+	var short_wait := int(data.recoil_reset_time * 0.5 * SECOND)
+	var target := now + short_wait
+	while now < target:
+		now += int(DT * SECOND)
+		weapon.update(DT, now)
+	_check_equal(
+		weapon.shot_index(), 1,
+		"a pause shorter than the reset time keeps the place in the pattern"
+	)
+
+	var long_wait := int(data.recoil_reset_time * 1.5 * SECOND)
+	target = now + long_wait
+	while now < target:
+		now += int(DT * SECOND)
+		weapon.update(DT, now)
+	_check_equal(
+		weapon.shot_index(), 0,
+		"a pause longer than the reset time starts the pattern again"
+	)
+
+
+## The patterns are the ones read off the CS2 spray plots, not placeholders.
+func _test_patterns_are_the_measured_ones() -> void:
+	var ak := WeaponLibrary.ak47()
+	var m4 := WeaponLibrary.m4a1s()
+
+	_check_equal(ak.recoil_pattern.size(), 30, "the AK pattern covers 30 rounds")
+	_check_equal(m4.recoil_pattern.size(), 25, "the M4A1-S pattern covers 25 rounds")
+	_check_equal(
+		ak.magazine_size, ak.recoil_pattern.size(),
+		"the AK magazine and its pattern are the same length"
+	)
+	_check_equal(
+		m4.magazine_size, m4.recoil_pattern.size(),
+		"the M4A1-S magazine and its pattern are the same length"
+	)
+
+	for data in [ak, m4]:
+		_check(
+			data.recoil_pattern[0] == Vector2.ZERO,
+			"%s puts its first bullet exactly on the crosshair" % data.display_name
+		)
+
+	# The opening of both patterns is a near-vertical climb, which is the part
+	# a player learns first and the part most obviously wrong if the shot
+	# order came out backwards.
+	for data in [ak, m4]:
+		var rising := true
+		for i in range(1, 8):
+			if data.recoil_pattern[i].y <= data.recoil_pattern[i - 1].y:
+				rising = false
+				break
+		_check(
+			rising,
+			"%s climbs on every one of its first eight shots" % data.display_name
+		)
+		var drift: float = absf(data.recoil_pattern[4].x)
+		_check(
+			drift < absf(data.recoil_pattern[4].y),
+			"%s climbs further than it drifts early on (%.2f across, %.2f up)"
+				% [data.display_name, drift, data.recoil_pattern[4].y]
+		)
+
+	_check(
+		ak.recoil_pattern[29].y > m4.recoil_pattern[24].y,
+		"the AK ends up higher than the M4A1-S (%.1f vs %.1f degrees)"
+			% [ak.recoil_pattern[29].y, m4.recoil_pattern[24].y]
+	)
+
+
+## The size of the spray is the one part of the pattern that was estimated
+## rather than measured, so it has to be correctable without editing the rows.
+func _test_recoil_scale() -> void:
+	var data := WeaponLibrary.ak47()
+	data.inaccuracy_standing = 0.0
+	data.inaccuracy_per_shot = 0.0
+	data.recoil_scale = 0.5
+
+	var weapon := Weapon.new(data)
+	var cycle := int(data.cycle_time * SECOND)
+	for shot in 5:
+		weapon.fire(shot * cycle, 0.0, Vector3.ZERO, 0.0, 0.0, _standing())
+
+	_check_near(
+		weapon.accumulated_punch.y, data.recoil_pattern[4].y * 0.5,
+		"recoil_scale halves how far the view climbs"
+	)
+
+
 func _test_inaccuracy_by_state() -> void:
 	var weapon := Weapon.new(WeaponLibrary.ak47())
 
@@ -339,6 +497,38 @@ func _test_wall_blocks_the_shot() -> void:
 
 
 # --- Harness --------------------------------------------------------------
+
+## The crosshair has to sit exactly on the point a bullet with no spread
+## passes through, because it is the only reference anyone has for judging
+## whether aiming is right.
+##
+## The bug this guards: the crosshair was a Label anchored to the centre. A
+## Control's anchors place its top-left corner, so the glyph was drawn down
+## and right of centre by half its own box, and the first bullet looked like
+## it landed up and to the left. The gun was fine; the crosshair was not.
+func _test_crosshair_is_centred() -> void:
+	var crosshair := Crosshair.new()
+	root.add_child(crosshair)
+	var viewport: Vector2 = root.get_visible_rect().size
+
+	_check(
+		crosshair.position.is_equal_approx(Vector2.ZERO),
+		"the crosshair starts at the origin rather than at the centre (%s)"
+			% crosshair.position
+	)
+	_check(
+		crosshair.size.is_equal_approx(viewport),
+		"the crosshair covers the whole viewport (%s of %s)"
+			% [crosshair.size, viewport]
+	)
+	# Which is what makes its own centre the centre of the screen, and that
+	# is the point it draws itself around.
+	_check(
+		(crosshair.position + crosshair.size * 0.5).is_equal_approx(viewport * 0.5),
+		"so what it draws around is the centre of the screen"
+	)
+	crosshair.queue_free()
+
 
 func _check(condition: bool, description: String) -> void:
 	_checks += 1

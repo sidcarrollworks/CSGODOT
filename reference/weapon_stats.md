@@ -38,8 +38,8 @@ arithmetic.
 | | AK-47 | M4A1-S |
 |---|---|---|
 | Cycle time | 0.1 s (600 RPM) | 0.1 s (600 RPM) |
-| Magazine | 30 | 20 |
-| Reserve | 90 | 80 |
+| Magazine | 30 | 25 |
+| Reserve | 90 | 75 |
 | Reload | 2.5 s | 3.1 s |
 | Move speed | 215 u/s | 225 u/s |
 
@@ -65,12 +65,17 @@ jumping is worse than any of them.
 ## Spray patterns
 
 `reference/spray_patterns/*.csv`, one row per shot, in degrees from the point
-of aim. **Both files are placeholders and say so in their header.** They come
-from a crude model of the shape, not from measurement, so the guns currently
-spray in roughly the right direction and nothing more.
+of aim. **These are read off real CS2 spray plots** (2026-09-21), not
+generated: 30 shots for the AK, 25 for the M4A1-S, with firing order recovered
+from the plots' saturation ramp.
 
-`reference/spray_patterns/README.md` has the procedure for replacing them with
-real measurements, which the test range exports in the same format.
+The shape is measured. The overall size is not, because the plots carry no
+angular scale, so both were scaled together by assuming the AK climbs 16
+degrees. `recoil_scale` on the weapon corrects that in one number.
+`reference/spray_patterns/README.md` has the arithmetic.
+
+The M4A1-S magazine is 25 rather than the 20 this file used to claim. Its
+spray plot has 25 dots on it, which settles it.
 
 ## How to measure each kind
 
