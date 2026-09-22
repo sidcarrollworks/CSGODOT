@@ -118,12 +118,15 @@ var _solved_kick_up: float = -1.0
 ## Where the crosshair peaks during a held spray, as a fraction of how far
 ## the bullets climb over that same spray.
 ##
-## Sid, 2026-09-22: "during spraying the crosshair should peak at around half
-## of the height of the overall spray." This is that, as a number the build
-## has to hit rather than a knob to turn towards it. view_kick_up below is
-## solved from it, so changing the spring, the fire rate or the pattern moves
-## the per-round kick and leaves the thing that was actually observed alone.
-@export_range(0.0, 1.0) var view_kick_spray_peak: float = 0.5
+## This is the one knob for how hard the view kicks, and it is expressed as
+## the thing you can actually see rather than as a per-round amount: the
+## per-round kick is solved from it. Changing the spring, the fire rate or the
+## pattern therefore moves the kick and leaves this alone.
+##
+## Sid read half the spray's height off CS2 on 2026-09-22, tried it, and said
+## it was far too high. This is a fifth, which is where it sat in the build he
+## preferred. His reading and his eye disagree, and his eye wins.
+@export_range(0.0, 1.0) var view_kick_spray_peak: float = 0.2
 
 ## How far the view is kicked sideways each round, against how far up.
 ##
