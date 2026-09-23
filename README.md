@@ -449,7 +449,7 @@ appear when the editor loads a script. They do not show up in a headless run,
 so if the Godot console shows any, paste them over and they will get fixed.
 
 Nine files: movement, map import, dust2, models, weapons, penetration, the
-test range, the simulation and the match. Without the extracted assets 693
+test range, the simulation and the match. Without the extracted assets 695
 checks run and pass; the dust2 and model files skip what needs files that
 have not been extracted.
 
@@ -497,6 +497,17 @@ holds it to. What you see and hear, the camera, the arms, your body and
 shadow, sounds and bullet holes, is `PlayerView`
 (`src/player/player_view.gd`), which reads the simulation and never changes
 it.
+
+A tick at 128 Hz is 7.8 ms, and every player's share of it has to fit with
+room left to draw the frame. When it does not, each frame runs more ticks to
+catch up, which makes the frame longer still, and the game crawls. Ten
+players on dust2 take about 4 ms a tick (headless, 2026-09-23), most of it
+their movement: a trace of the hull through dust2's collision costs 20 to 50
+us, and a player makes 2 of them a tick standing still and 5 running in the
+open, more against a wall or a slope. So nothing that reads the disk runs in
+a tick (the footsteps' check for the sound folder, every tick for everyone,
+was a quarter of it), and what is only seen, like the probe light on a bot's
+body, follows the frames drawn rather than the ticks.
 
 ## Layout
 

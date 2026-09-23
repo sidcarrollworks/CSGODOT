@@ -217,3 +217,23 @@ table in `surfaceproperties.vsurf` (`SurfaceProperties.player_friction`,
 the surface's friction times 1.25 at most 1, as Source's
 `CategorizeGroundSurface` makes it), which is read but not yet fed to
 `MovementSolver`; on dust2 only glass and pottery are below 1.
+
+## What WalkMove skips (2026-09-23)
+
+The port traced the hull 9 to 11 times a tick for someone walking and 9 for
+someone standing still. At 20 to 50 us a trace on dust2's hull, ten players'
+movement took more than half of every 128 Hz tick. Source's `WalkMove` traces
+less, and the port now does what it does:
+
+- Slower than a unit a second, `WalkMove` stops the player dead and returns
+  (`spd < 1.0f`): no move and no `StayOnGround`. Friction takes anything under
+  3.25 u/s to nothing on the next tick anyway, so the difference is one
+  tick's drift of under a hundredth of a unit.
+- It traces the flat move to the destination first and, if that meets
+  nothing, takes it and runs `StayOnGround`; `StepMove` only runs against
+  something in the way. A stepped move can go no further than one that met
+  nothing, so the result is the same, for two to five traces fewer.
+- The snap onto the floor after the ground check (HL1's, kept) moves by the
+  check's own trace rather than tracing the same move again.
+
+Running in the open is now 5 traces a tick, and standing 2.

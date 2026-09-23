@@ -115,6 +115,7 @@ func _process(_delta: float) -> bool:
 		# scripted without a keyboard. This still exercises the real
 		# simulate() path, collision and all.
 		_player.set_physics_process(false)
+		_test_creep_stops()
 		return false
 
 	_phase_tick += 1
@@ -802,6 +803,30 @@ func _test_player_lands() -> void:
 		absf(_player.velocity.y) < 1.0,
 		"player is at rest vertically (vy = %.3f)" % _player.velocity.y
 	)
+
+
+## Source's WalkMove stops a player slower than a unit a second dead, where
+## they stand. Friction takes 4 u/s to 0.75, which stops; 6 u/s to 2.75,
+## which still moves, so the stop is what makes the difference.
+func _test_creep_stops() -> void:
+	var start := _player.global_position
+	_player.velocity = Vector3(4.0, 0.0, 0.0)
+	_step()
+	var crept := Vector2(_player.global_position.x - start.x, _player.global_position.z - start.z).length()
+	_check(
+		_player.velocity == Vector3.ZERO and crept == 0.0,
+		"a player left under a unit a second by friction stops dead (%.2f u/s, moved %.4f)"
+			% [_player.velocity.length(), crept]
+	)
+	start = _player.global_position
+	_player.velocity = Vector3(6.0, 0.0, 0.0)
+	_step()
+	var moved := Vector2(_player.global_position.x - start.x, _player.global_position.z - start.z).length()
+	_check(
+		is_equal_approx(_player.velocity.x, 2.75) and is_equal_approx(moved, 2.75 * DT),
+		"and one left at 2.75 u/s moves on (%.2f u/s, moved %.4f)" % [_player.velocity.length(), moved]
+	)
+	_player.velocity = Vector3.ZERO
 
 
 func _test_jump_height() -> void:
