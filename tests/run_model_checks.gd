@@ -57,6 +57,30 @@ func _init() -> void:
 		"walking, crouching, standing and being in the air each have their own"
 	)
 
+	# The suffix a set's clips share, which comes off their names, and the
+	# spare body a weapon's export carries. No assets needed.
+	_check(
+		RigModel.common_suffix(PackedStringArray(["draw_ak.gltf", "idle_ak.gltf", "reload_ak.gltf"])) == "ak"
+			and RigModel.common_suffix(PackedStringArray(["a/draw_glock.vnmclip_c", "a/shoot1_glock.vnmclip_c", "a/idle_glock18.vnmclip_c"])) == "glock"
+			and RigModel.common_suffix(PackedStringArray(["draw_default_t.gltf", "light_miss1_default_t.gltf", "idle_default_t.gltf"])) == "default_t"
+			and RigModel.common_suffix(PackedStringArray([
+				"draw_revolver.gltf", "prepare_shoot_revolver.gltf", "prepare_shoot_revolver.vnmclip+non_additive.gltf",
+				"chamber_revolver_0.vnmclip+non_additive.gltf", "chamber_revolver_1.vnmclip+non_additive.gltf",
+			])) == "revolver",
+		"a set's clips lose the suffix most share: a word (_ak), or more where all share more (the T knife's _default_t), the clips' non-additive copies not counted"
+	)
+	var legacy := Node.new()
+	legacy.name = "weapon_body_legacy"
+	var hd := Node.new()
+	hd.name = "weapon_body_hd"
+	_check(
+		RigModel.is_spare_body(legacy, [legacy, hd]) and not RigModel.is_spare_body(hd, [legacy, hd])
+			and not RigModel.is_spare_body(legacy, [legacy]),
+		"a weapon's old-hardware body is spare beside another, and is the weapon where it is the only one (the default knives)"
+	)
+	legacy.free()
+	hd.free()
+
 	_test_view_model_motion()
 	_test_hitbox_set_parsing()
 	_test_sound_sets()
@@ -146,6 +170,7 @@ func _init() -> void:
 	_check(_view_model.setup("T", data.model_path, data.clip_set), "the view model builds for the AK-47 and a T")
 	ViewModelProjection.claim(_view_model)
 	_test_every_gun_builds()
+	_test_every_equipment_builds()
 
 	_player_model = PlayerModel.new()
 	root.add_child(_player_model)
@@ -344,13 +369,13 @@ func _start_bot() -> void:
 	# Ground, which a round does not go through: 2 units of it did, once
 	# rounds went through walls (PR #31), and the round meant to leave a hole
 	# in it went on into nothing. Its top is still at 0.
-	var floor := StaticBody3D.new()
+	var ground := StaticBody3D.new()
 	var shape := CollisionShape3D.new()
 	shape.shape = BoxShape3D.new()
 	(shape.shape as BoxShape3D).size = Vector3(1000, 128, 1000)
-	floor.add_child(shape)
-	floor.position.y = -64.0
-	_bot_world.add_child(floor)
+	ground.add_child(shape)
+	ground.position.y = -64.0
+	_bot_world.add_child(ground)
 	_bot = (load("res://src/bots/bot.tscn") as PackedScene).instantiate() as Bot
 	_bot.team = "CT"
 	_bot.weapon_data = WeaponLibrary.ak47()
@@ -860,6 +885,61 @@ func _test_every_gun_builds() -> void:
 	)
 
 
+## And every piece of equipment in reference/weapons/equipment.md, the same
+## way: its model on its own clip set, a draw, an idle and what it is for (the
+## plant, a stab, the Zeus's shot, a throw), with a mesh on the weapon's rig.
+## The default knives' one mesh is the body the guns carry a spare of; they
+## keep it, in the third-person model's hand too. The kit, which no one holds,
+## has only to load.
+func _test_every_equipment_builds() -> void:
+	var items: Array = (load("res://scripts/weapon_tables.gd") as GDScript).get_script_constant_map()["EQUIPMENT"]
+	var actions := {"weapon_c4": &"plant", "weapon_knife": &"light_miss1", "weapon_knife_t": &"light_miss1", "weapon_taser": &"shoot1"}
+	var built := 0
+	var failures := PackedStringArray()
+	var knife := ""
+	for item in items:
+		var model := "res://assets/weapons/weapons/models".path_join(String(item[2]) + ".gltf")
+		if not ResourceLoader.exists(model):
+			continue
+		built += 1
+		if String(item[3]).is_empty():
+			var scene := _instantiate(model)
+			if scene == null or scene.find_children("*", "MeshInstance3D", true, false).is_empty():
+				failures.append("%s (%s has no mesh)" % [item[0], model.get_file()])
+			if scene != null:
+				scene.free()
+			continue
+		var view_model := ViewModel.new()
+		root.add_child(view_model)
+		var ok := view_model.setup("CT", model, item[3])
+		var clips := view_model.animation_player.get_animation_list() if view_model.animation_player != null else PackedStringArray()
+		var action: StringName = actions.get(item[0], &"throw_overhand")
+		var meshes: Array = view_model.weapon_rig.get_parent().find_children("*", "MeshInstance3D", true, false) if view_model.weapon_rig != null else []
+		if not ok or meshes.is_empty() or not clips.has(&"draw") or not clips.has(view_model.idle) or not clips.has(action):
+			failures.append("%s (%s: %d meshes; %s)" % [item[0], item[3], meshes.size(), ", ".join(clips)])
+		if item[0] == "weapon_knife":
+			knife = model
+		view_model.free()
+	if built == 0:
+		print("no equipment extracted; skipping the every-equipment build (scripts/extract_assets.sh equipment)")
+		return
+	_check(
+		built == items.size() and failures.is_empty(),
+		"every piece of equipment builds in first person on its own clips, %d of %d (%s)" % [built - failures.size(), items.size(), "; ".join(failures)]
+	)
+	if knife.is_empty():
+		return
+	var body := PlayerModel.new()
+	root.add_child(body)
+	var held := body.setup("CT", knife)
+	var shown := 0
+	for mesh in body.find_children("*", "MeshInstance3D", true, false):
+		if mesh.name.contains("knife") and (mesh as MeshInstance3D).visible:
+			shown += 1
+	_check(held and shown == 1, "the third-person model holds the knife, its one mesh shown (%d)" % shown)
+	body.free()
+
+
 func _test_view_model_motion() -> void:
 	_check(
 		ViewModelMotion.bob_at(0.37, 0.0) == Vector2.ZERO
@@ -940,8 +1020,8 @@ func _test_player_model() -> void:
 	var skeleton: Skeleton3D = weapon_root.find_children("*", "Skeleton3D", true, false)[0] if weapon_root != null else null
 	if rig != null and skeleton != null:
 		var wpn: Vector3 = (rig.global_transform * rig.get_bone_global_pose(rig.find_bone("wpn"))).origin
-		var root: Vector3 = (skeleton.global_transform * skeleton.get_bone_global_pose(0)).origin
-		_check(wpn.distance_to(root) < 0.01, "the weapon's root bone sits on the hand's wpn bone (%.3f apart)" % wpn.distance_to(root))
+		var weapon_at: Vector3 = (skeleton.global_transform * skeleton.get_bone_global_pose(0)).origin
+		_check(wpn.distance_to(weapon_at) < 0.01, "the weapon's root bone sits on the hand's wpn bone (%.3f apart)" % wpn.distance_to(weapon_at))
 	var head: Vector3 = (rig.global_transform * rig.get_bone_global_pose(rig.find_bone("head_0"))).origin
 	_check(
 		head.y > 60.0 and head.y < 72.0 and (rig.global_transform * rig.get_bone_global_pose(rig.find_bone("root_motion"))).origin.y < 0.5,
