@@ -391,6 +391,10 @@ func _test_the_range() -> void:
 	_check(game.entities.of_class("hegrenade_projectile").is_empty(), "and is gone")
 	_lane.clear()
 	_events.clear()
+	game.command(you, "throw weapon_ak47")
+	await physics_frame
+	await physics_frame
+	_check(_named(&"grenade_thrown").is_empty(), "the throw command takes only a grenade")
 
 	# An HE at the dummy's feet: it is hurt, by you, through its armour.
 	var target := _range.dummy.hit_target as HitTarget

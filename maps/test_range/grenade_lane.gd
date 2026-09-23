@@ -10,9 +10,10 @@ extends Node3D
 ##      both buttons
 ##
 ## Throwing a grenade from your hand is the player's to do, through the
-## inventory and a command (player_sim.gd, the GameWorld's), so here it is
-## thrown from your eyes on the tick after the key, as that command would
-## throw it. There is no limit to how many.
+## inventory and the attack buttons (player_sim.gd), so here a key sends the
+## game the throw command ("throw weapon_hegrenade 1"), and the grenade
+## leaves your eyes on the next tick, as your hand would throw it. There is
+## no limit to how many.
 ##
 ## The readout at the bottom says which grenade is in hand and what the
 ## last ones did: the damage an HE or a fire did and to whom, how long a
@@ -24,8 +25,6 @@ const NEXT_KEY := KEY_4
 const THROW_KEY := KEY_Q
 const LOB_KEY := KEY_Z
 const BOTH_KEY := KEY_X
-## After the players have run the tick, before the match and the bomb.
-const PHYSICS_PRIORITY := 80
 const LOG_LINES := 6
 
 var range_node: Node3D
@@ -36,29 +35,18 @@ var overlay: FlashOverlay
 
 ## Which grenade is in hand, as an index into GrenadeRules.ALL.
 var kind_index: int = 0
-## A throw asked for since the last tick, at a strength; -1 for none.
-var _throw_strength: float = -1.0
 var _log := PackedStringArray()
 var _label: Label
-## Whether this lane steps the game itself: when the range had none to
-## give it.
-var _steps_game: bool = false
 var _player_id: int = GameEvents.NOBODY
 var _dummy_id: int = GameEvents.NOBODY
 
 
-## Sets up on a range: its game (made here if the range has none), the
-## grenade system in it, what draws the grenades, the readout and the
-## white-out, which covers the HUD as CS2's does.
+## Sets up on a range: the grenade system in its game (its world's, which
+## steps it), what draws the grenades, the readout and the white-out, which
+## covers the HUD as CS2's does.
 func build(p_range: Node3D) -> void:
 	range_node = p_range
-	game = range_node.get(&"game") as GameSystems
-	if game == null:
-		game = GameSystems.new()
-		_steps_game = true
-		for body: Node3D in [range_node.player, range_node.dummy, range_node.shooter]:
-			if body != null:
-				game.add_player(body, body.hit_target)
+	game = range_node.game
 	_player_id = game.roster.userid_of(range_node.player)
 	_dummy_id = game.roster.userid_of(range_node.dummy)
 	system = GrenadeSystem.new()
@@ -68,7 +56,6 @@ func build(p_range: Node3D) -> void:
 	add_child(view)
 	view.watch(game)
 	game.events.listen_all(_on_event)
-	process_physics_priority = PHYSICS_PRIORITY
 
 	var canvas := CanvasLayer.new()
 	canvas.layer = 2
@@ -99,7 +86,7 @@ func next_kind() -> void:
 
 ## A throw at a strength (GrenadeRules.strength_for), on the next tick.
 func ask_throw(strength: float) -> void:
-	_throw_strength = strength
+	game.command(_player_id, "throw %s %s" % [kind(), strength])
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -117,17 +104,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			ask_throw(GrenadeRules.strength_for(false, true))
 		BOTH_KEY:
 			ask_throw(GrenadeRules.strength_for(true, true))
-
-
-func _physics_process(_delta: float) -> void:
-	if game == null:
-		return
-	var space := get_world_3d().direct_space_state
-	if _throw_strength >= 0.0 and range_node.player.alive:
-		system.throw(_player_id, kind(), _throw_strength, space)
-	_throw_strength = -1.0
-	if _steps_game:
-		game.step(SimClock.current_tick(), space)
 
 
 ## Every grenade gone and nobody blind: O, the range's reset.

@@ -25,11 +25,11 @@ All in `src/grenades/`, checked by `tests/run_grenade_checks.gd`.
 | `grenade_view.gd`, `flash_overlay.gd` | What is drawn: the grenades (the game's world models where extracted), the cloud, the flames, a light where one goes off, the white-out. They only read |
 
 On the range, `maps/test_range/grenade_lane.gd`: 4 picks the next grenade,
-Q throws it as a left click, Z as a right click (a lob), X as both. Thrown
-from your eyes on the next tick; no limit. The readout at the bottom says
-what the last ones did. O clears them. The lane makes and steps its own
-`GameSystems` until the range has one (the contract thread adds it); then it
-uses that.
+Q throws it as a left click, Z as a right click (a lob), X as both. Each key
+sends the game the command `throw <class> <strength>` (`GrenadeSystem`
+takes it), and the grenade leaves your eyes on the next tick; no limit. The readout at the bottom says
+what the last ones did. O clears them. The system is in the range's game,
+its `GameWorld`'s, which steps it after the players each tick.
 
 ## What each does
 
@@ -112,16 +112,17 @@ Counted in the checks, for the performance rules:
 For the GameWorld (`src/sim/game_world.gd`, PR #50) and whoever owns the
 files named:
 
-1. **The GameWorld's `GameSystems`** adds the system:
-   `game.add_system(GrenadeSystem.new())`. At a round's start the entities
+1. **dust2's `GameWorld`** adds the system to its game, as the range does:
+   `world.game.add_system(GrenadeSystem.new())`, and a `GrenadeView` that
+   `watch`es the game. At a round's start the entities
    are cleared (`entities.clear()`, as the contract says) and the system's
    blinding with them (`GrenadeSystem.clear()`). In a match,
    `team_damage_scale = GrenadeRules.TEAM_DAMAGE_IN_MATCH`.
 2. **`player_sim.gd`: the throw from the hand.** With a grenade in hand
    (`Inventory.in_hand_class()`), the attack buttons pull the pin and the
    release throws: the strength is from the buttons held at the release
-   (`GrenadeRules.strength_for(left, right)`), which needs a second attack
-   button in `UserCmd` (it has only `ATTACK`). The pin can be pulled once
+   (`GrenadeRules.strength_for(left, right)`, from `UserCmd.ATTACK` and
+   `UserCmd.ATTACK2`). The pin can be pulled once
    the draw (1 s) is over. At the release: `inventory.take_one(class)`,
    `system.throw(userid, class, strength, space)` (it sends
    `grenade_thrown`), then back to the last weapon. The throw clip's own

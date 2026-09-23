@@ -42,6 +42,10 @@ func attach(p_game: GameSystems) -> void:
 	game.provide(&"smoke_length_between", smoke_length_between)
 	game.provide(&"blindness", blindness)
 	game.provide(&"blind_share", blind_share)
+	# A throw asked for by name: "throw weapon_hegrenade 1" (the class and
+	# the strength), for whatever throws without a hand to throw from yet:
+	# the range, a bot's lineup, a console.
+	game.on_command(&"throw", _on_throw_command)
 
 
 func tick(_t: SimTick) -> void:
@@ -65,6 +69,19 @@ func throw(userid: int, weapon_class: String, strength: float, space: PhysicsDir
 	return throw_from(userid, weapon_class, eye, player.yaw_degrees, player.pitch_degrees, player.velocity, strength, space)
 
 
+## The throw command: a grenade by class name, at a strength (1 if not
+## given), from the player's eyes as the tick finds them. Taken only for a
+## grenade and a living player.
+func _on_throw_command(userid: int, args: PackedStringArray, t: SimTick) -> bool:
+	if args.is_empty() or not GrenadeRules.is_grenade(args[0]):
+		return false
+	var player := game.roster.player(userid) as PlayerSim
+	if player == null or not player.alive:
+		return false
+	var strength := clampf(args[1].to_float(), 0.0, 1.0) if args.size() > 1 and args[1].is_valid_float() else 1.0
+	return throw(userid, args[0], strength, t.space) != null
+
+
 ## A throw from anywhere: what throw does once it knows where the player
 ## stands. The range throws from the camera with it.
 func throw_from(
@@ -77,7 +94,7 @@ func throw_from(
 	grenade.weapon_class = weapon_class
 	grenade.owner_id = userid
 	grenade.team = game.roster.team_of(userid) if userid >= 0 else ""
-	grenade.thrown_usec = SimClock.now_usec()
+	grenade.thrown_usec = game.now_usec()
 	grenade.flight = GrenadeFlight.throw_from(space, weapon_class, eye, yaw, pitch, velocity, strength, exclude_for(userid))
 	grenade.position = grenade.flight.position
 	grenade.previous_position = grenade.position
