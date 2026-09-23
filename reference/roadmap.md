@@ -393,8 +393,12 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
 
 ### Phase 5: the bomb
 
-16. **Plant, timer, defuse, explosion.** *(Local measures, then Remote; the
-    bomb and the kit are extracted)* One T carries it; plant in a site; 40 s
+16. **Plant, timer, defuse, explosion.** *(Remote part built 2026-09-23 in
+    `src/bomb/`, on the test range (5 plants, E defuses, L the kit); wiring
+    it into the match, dust2 and the HUD waits on the GameWorld and the
+    shared contracts, as `reference/systems/bomb.md` sets out; the plant
+    time, defuse reach and beeps are guesses until C1)* *(Local measures,
+    then Remote; the bomb and the kit are extracted)* One T carries it; plant in a site; 40 s
     with beeps; defuse 10 s or 5 with a kit; the explosion (CS2 reworked it
     in July 2026 into a shockwave with damage baked per map: dust2's is
     `baked_bomb_damage.vdata`, extracted, its damage values not yet worked
