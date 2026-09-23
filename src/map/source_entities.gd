@@ -116,6 +116,15 @@ static func player_spawns(entities: Array[Dictionary]) -> Dictionary:
 	return spawns
 
 
+## How far the bomb's blast reaches as the map sets it (info_map_parameters'
+## bombradius: 700 on dust2), or -1 where it sets none.
+static func bomb_radius(entities: Array[Dictionary]) -> float:
+	for entity in entities:
+		if entity.get("classname", "") == "info_map_parameters" and entity.has("bombradius"):
+			return float(entity["bombradius"])
+	return -1.0
+
+
 ## The map's named places, the callouts the radar shows ("BombsiteA",
 ## "LongDoors"): each name to the game-space origins of the brushes that carry
 ## it (env_cs_place, 43 on dust2 over 24 names). A brush's origin is its

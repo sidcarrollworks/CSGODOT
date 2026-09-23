@@ -137,14 +137,17 @@ the game's weapons.vdata (`reference/weapons/vdata.csv`); nothing loads them.
 - Buy zones and buying time; the buy menu (CS2's wheel and grid, keyboard
   shortcuts); undoing a purchase; the loadout as a settings page with CS2's
   defaults; buying armour, the kit, grenades and the Zeus.
-- Reading the buy zones out of the map (see Local B1).
+- Buying only inside your side's buy zone: `BrushVolume.buy_zones` gives
+  them, with shapes for an `Area3D` (B1).
 
 **Local**
-- **B1. Buy zone and bomb site volumes.** They are brush entities: the entity
-  lump names them (`func_buyzone` with `TeamNum`, `func_bomb_target`) and their
-  shapes are in the `world_physics.gltf` the world export writes (see
-  `reference/asset-pipeline.md`). Confirm that file survives `extract_assets.sh
-  map`, keep it, and list which mesh belongs to which entity.
+- **B1. Buy zone and bomb site volumes.** *(done 2026-09-22: each brush
+  entity is a model of its own, named by the entity, which
+  `scripts/extract_assets.sh volumes` exports and `BrushVolume` reads; one
+  buy zone a side holding that side's 15 spawns, sites A and B, and the 43
+  callouts; `reference/asset-pipeline.md` lists which model is which)* They
+  are brush entities: the entity lump names them (`func_buyzone` with
+  `TeamNum`, `func_bomb_target`).
 - **B2. Buy menu art.** *(icons done with L4:
   `panorama/images/icons/equipment/`, fetched by `scripts/extract_assets.sh
   hud`)* The weapon icons and the buy menu's sounds; the sounds are still to
@@ -211,22 +214,29 @@ Armour is on the HUD (PR #27). Whether armour softens tagging is open
 | Explosion | since the 8 July 2026 update, a shockwave that walls block and corners weaken, with damage worked out ahead of time for each official map, and the health bar shows the damage you would take. Before it: damage and reach from `info_map_parameters` `bombradius` (default 500 damage, reaching 3.5 times that) |
 | Round | a plant turns the round timer into the bomb timer; explosion wins for T, defuse for CT |
 
-**Built:** nothing. The entity lump is parsed and names the sites.
+**Built:** nothing yet. The sites' volumes are read (`BrushVolume.bomb_sites`,
+with each site's `bomb_damage_power`: A 1929, B 3234) and the map's
+`bombradius` (700, `SourceEntities.bomb_radius`).
 
 **Remote**
 - The bomb as an item: carry, drop, pick up, plant with its animation lock,
   the timer and beeps, defuse and the kit, the round-end rules, the rewards.
-- The explosion. Start with the old radius rule; if C2 finds the baked
-  per-map damage, read that instead; if not, approximate the shockwave by
-  tracing from the bomb to each player.
+- The explosion. C2 found the baked per-map damage, but its damage values
+  are not worked out, so start with the old radius rule, or approximate the
+  shockwave by tracing from the bomb to each player, scaled by the site's
+  `bomb_damage_power`; read the bake once it is understood.
 - HUD: the carrier's icon, the planted and defusing states, the defuse bar.
 
 **Local**
 - **C1.** Measure plant time, the beep cadence against the timer, and the
   explosion's damage at a few spots on each site (with and without armour).
-- **C2.** Look for the baked bomb damage in dust2's VPK (next to the entity
-  lump, the lightmaps and the nav mesh) and extract it if it is a file; read
-  dust2's `bombradius` from the entity lump.
+- **C2.** *(done as far as it goes, 2026-09-22: it is
+  `maps/de_dust2/baked_bomb_damage.vdata`, extracted by `volumes`; its site
+  boxes and 85,697-point grid are read and checked, its 8 bytes of damage a
+  point are not worked out; `bombradius` is 700)* Look for the baked bomb
+  damage in dust2's VPK and extract it if it is a file; read dust2's
+  `bombradius` from the entity lump. Still open: decode the damage values,
+  against the damage C1 measures at known spots.
 - **C3.** Extract the bomb (world and first-person), the defuse kit, their
   animations (plant, defuse), the sounds (beeps, plant, defuse, explosion,
   "bomb has been planted") and the explosion's particle textures.
@@ -345,11 +355,12 @@ with its settings.
 direction arcs (PR #27), the death countdown.
 
 **Remote:** every element above, one at a time as its system lands. The
-radar needs B3.
+radar has B3 (`MapOverview`).
 
 **Local**
-- **B3.** dust2's radar: the overview image and its position and scale (in
-  CS2 an overview text beside it; list the VPK to find them).
+- **B3.** *(done 2026-09-22: `scripts/extract_assets.sh radar`,
+  `MapOverview`; the spawns and sites fall where the overview marks them)*
+  dust2's radar: the overview image and its position and scale.
 - **B4.** The HUD's icons (weapons, kill feed, bomb) and fonts, for looks.
   Optional: the HUD can be drawn with Godot's own shapes.
 

@@ -35,6 +35,7 @@ var _bots: Array[Bot] = []
 var _bot_starts: Array[Vector3] = []
 var _spawns: Dictionary = {}
 var _places: Dictionary = {}
+var _entities: Array[Dictionary] = []
 
 
 func _process(_delta: float) -> bool:
@@ -55,6 +56,7 @@ func _process(_delta: float) -> bool:
 	_test_every_spawn_is_on_floor()
 	_test_bots_walk()
 	_test_nav_mesh()
+	_test_volumes_and_radar()
 	_importer.free()
 	_report()
 	return true
@@ -141,6 +143,7 @@ func _import() -> bool:
 	var spawns := SourceEntities.player_spawns(entities)
 	_spawns = spawns
 	_places = SourceEntities.places(entities)
+	_entities = entities
 	_check(
 		spawns["T"].size() >= 5 and spawns["CT"].size() >= 5,
 		"both teams have spawn points (%d T, %d CT; scripts/extract_assets.sh entities)"
@@ -354,6 +357,138 @@ func _test_nav_mesh() -> void:
 			"the mesh leads from %s to %s: %.0f units against %.0f in a straight line, %d legs, %d of them through something at waist height (none should be)"
 				% [route[0], route[2], length, straight, path.size() - 1, blocked]
 		)
+
+
+## The brush entities that are volumes (scripts/extract_assets.sh volumes):
+## the buy zones hold their side's spawns, the bomb sites are the boxes the
+## game baked its bomb damage for, and every callout has its volume. And the
+## radar (scripts/extract_assets.sh radar), which puts the spawns and sites
+## where the overview's own markers do.
+func _test_volumes_and_radar() -> void:
+	var zones := BrushVolume.buy_zones(_entities, MAP_DIR)
+	var misplaced := PackedStringArray()
+	for team: String in ["T", "CT"]:
+		for spawn: Dictionary in _spawns[team]:
+			var in_own: bool = zones[team].any(func(zone: BrushVolume) -> bool: return zone.contains(spawn["position"]))
+			var in_other: bool = zones["CT" if team == "T" else "T"].any(func(zone: BrushVolume) -> bool: return zone.contains(spawn["position"]))
+			if not in_own or in_other:
+				misplaced.append("%s %s" % [team, spawn["position"]])
+	_check(
+		zones["T"].size() == 1 and zones["CT"].size() == 1 and misplaced.is_empty(),
+		"one buy zone a side, and each of the %d spawns stands in its own side's and not the other's (misplaced: %s)"
+			% [_spawns["T"].size() + _spawns["CT"].size(), ", ".join(misplaced)]
+	)
+
+	var sites := BrushVolume.bomb_sites(_entities, MAP_DIR)
+	var baked := _baked_bomb_damage(MAP_DIR.path_join("maps/de_dust2/baked_bomb_damage.vdata"))
+	var boxes: PackedFloat32Array = baked.get("sites", PackedFloat32Array())
+	var matches := boxes.size() == 14
+	for i in 2:
+		var site: BrushVolume = sites.get("AB"[i])
+		if site == null or boxes.size() != 14:
+			matches = false
+			continue
+		# The file keeps each site as Source mins, maxs and its damage power.
+		var low := SourceEntities.to_game(Vector3(boxes[i * 7], boxes[i * 7 + 1], boxes[i * 7 + 2]))
+		var high := SourceEntities.to_game(Vector3(boxes[i * 7 + 3], boxes[i * 7 + 4], boxes[i * 7 + 5]))
+		matches = matches and site.bounds.is_equal_approx(AABB(low, high - low))
+		matches = matches and is_equal_approx(float(site.entity.get("bomb_damage_power", "0")), boxes[i * 7 + 6])
+	_check(
+		sites.size() == 2 and matches,
+		"bomb sites A and B are the boxes the game baked its bomb damage for, with the same damage power (%s; %s)"
+			% [", ".join(sites.keys()), boxes]
+	)
+	_check(
+		int(baked.get("positions", 0)) > 50000 and baked.get("on_grid", false) and int(baked.get("damage_bytes", 0)) == int(baked.get("positions", 0)) * 8,
+		"the baked bomb damage samples %d points on a 10-unit grid, 8 bytes of damage each"
+			% baked.get("positions", 0)
+	)
+	_check(
+		is_equal_approx(SourceEntities.bomb_radius(_entities), 700.0),
+		"dust2's bomb reaches %.0f units (info_map_parameters' bombradius)" % SourceEntities.bomb_radius(_entities)
+	)
+
+	var callouts := BrushVolume.of_class(_entities, "env_cs_place", MAP_DIR)
+	var holding := {}
+	var not_convex := 0
+	for volume in callouts + zones["T"] + zones["CT"] + sites.values():
+		for piece in volume.pieces:
+			for corner in piece:
+				if not volume.contains(corner, 0.1):
+					not_convex += 1
+	for letter: String in sites:
+		for callout in callouts:
+			if callout.contains((sites[letter] as BrushVolume).bounds.get_center()):
+				holding[letter] = callout.entity.get("place_name", "")
+	var spawn_callouts := {}
+	for team: String in ["T", "CT"]:
+		for spawn: Dictionary in _spawns[team]:
+			for callout in callouts:
+				if callout.contains(spawn["position"]):
+					spawn_callouts[callout.entity.get("place_name", "")] = true
+	_check(
+		callouts.size() == 43 and holding.get("A") == "BombsiteA" and holding.get("B") == "BombsiteB" and not_convex == 0,
+		"every one of the 43 callouts has its volume, each site's middle is in BombsiteA's or BombsiteB's (%s), and every solid is convex with its faces out (%d corners outside)"
+			% [holding, not_convex]
+	)
+	_check(
+		spawn_callouts.keys().all(func(place: String) -> bool: return place in ["TSpawn", "CTSpawn"]) and spawn_callouts.size() == 2,
+		"the spawns stand in the TSpawn and CTSpawn callouts and no other (%s)" % ", ".join(spawn_callouts.keys())
+	)
+
+	var overview := MapOverview.load_file(MAP_DIR.path_join("resource/overviews/de_dust2.txt"))
+	var radar := load(MAP_DIR.path_join("panorama/images/overheadmaps/de_dust2_radar_psd.png")) as Texture2D
+	var off := PackedStringArray()
+	# A side's spawns spread a tenth of the image; the marker is their middle.
+	var points := {
+		"TSpawn": _middle_of(_spawns["T"]), "CTSpawn": _middle_of(_spawns["CT"]),
+		"bombA": (sites["A"] as BrushVolume).bounds.get_center() if sites.has("A") else Vector3.ZERO,
+		"bombB": (sites["B"] as BrushVolume).bounds.get_center() if sites.has("B") else Vector3.ZERO,
+	}
+	for marker: String in points:
+		var on_image := overview.to_image(points[marker])
+		if not overview.markers.has(marker) or on_image.distance_to(overview.markers[marker]) > 0.03:
+			off.append("%s at %s, marked %s" % [marker, on_image, overview.markers.get(marker)])
+	_check(
+		overview.error.is_empty() and radar != null and radar.get_size() == Vector2(1024, 1024) and off.is_empty(),
+		"the radar is a 1024 square, and the middle of each side's spawns and each site fall on it within 3%% of where the overview marks them (%s)"
+			% (", ".join(off) if not off.is_empty() else overview.error)
+	)
+
+
+func _middle_of(spawns: Array) -> Vector3:
+	var sum := Vector3.ZERO
+	for spawn: Dictionary in spawns:
+		sum += spawn["position"]
+	return sum / maxf(spawns.size(), 1)
+
+
+## What can be read of the game's baked bomb damage (KV3 text): the sites'
+## boxes and powers as 14 floats, how many points it samples, whether they
+## lie on its 10-unit grid, and how many bytes of damage it keeps. The damage
+## itself is in a form not worked out yet.
+func _baked_bomb_damage(path: String) -> Dictionary:
+	if not FileAccess.file_exists(path):
+		return {}
+	var text := FileAccess.get_file_as_string(path)
+	var blobs := {}
+	var hex_space := RegEx.create_from_string("\\s+")
+	for found in RegEx.create_from_string("(\\w+) = \\s*#\\[([0-9A-F\\s]*)\\]").search_all(text):
+		blobs[found.get_string(1)] = hex_space.sub(found.get_string(2), "", true).hex_decode()
+	var positions: PackedByteArray = blobs.get("positions", PackedByteArray())
+	var on_grid := positions.size() > 0 and positions.size() % 6 == 0
+	for i in range(0, positions.size(), 6):
+		for axis in 3:
+			if posmod(positions.decode_s16(i + axis * 2), 10) != 5:
+				on_grid = false
+	var sites: PackedByteArray = blobs.get("bombsites", PackedByteArray())
+	return {
+		"sites": sites.to_float32_array(),
+		"positions": floori(positions.size() / 6.0),
+		"on_grid": on_grid,
+		"damage_bytes": (blobs.get("damage_values", PackedByteArray()) as PackedByteArray).size(),
+	}
+
 
 func _test_every_spawn_is_on_floor() -> void:
 	for player: PlayerBody in _players:

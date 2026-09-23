@@ -113,7 +113,7 @@ Updated 2026-09-22: weapon numbers from Sid's spreadsheet and tapping (PR #23), 
 ### Tooling
 - `scripts/extract_assets.sh` (map, physics, weapons, characters, sounds and
   more), `inspect_assets`, and `run_tests.sh` with seven headless test files
-  (movement, map, dust2, model, weapon, range, simulation): 530 checks pass
+  (movement, map, dust2, model, weapon, range, simulation): 536 checks pass
   without the assets.
 
 ---
@@ -247,20 +247,22 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
 13. **Economy.** *(Remote)* $800 start, $16,000 cap, round rewards, the loss
     ladder that a win steps down by one, plant and defuse rewards, kill
     awards from the sheet.
-14. **Buying.** *(Remote; Local extracts the buy zones and icons)* Buy zones
-    and 20 s of buy time, the buy menu, undoing a purchase, the loadout,
-    armour, the kit, grenades, the Zeus, team-only weapons.
-15. **HUD for rounds.** *(Remote; Local extracts the radar)* Money, armour,
-    timer, score and players alive, kill feed, radar, scoreboard, round-end
-    panel.
+14. **Buying.** *(Remote; the buy zones and icons are extracted and read,
+    `BrushVolume.buy_zones`)* Buy zones and 20 s of buy time, the buy menu,
+    undoing a purchase, the loadout, armour, the kit, grenades, the Zeus,
+    team-only weapons.
+15. **HUD for rounds.** *(Remote; the radar is extracted, `MapOverview`)*
+    Money, armour, timer, score and players alive, kill feed, radar,
+    scoreboard, round-end panel.
 
 ### Phase 5: the bomb
 
 16. **Plant, timer, defuse, explosion.** *(Local measures and extracts,
     then Remote)* One T carries it; plant in a site; 40 s with beeps; defuse
     10 s or 5 with a kit; the explosion (CS2 reworked it in July 2026 into a
-    shockwave with damage baked per map, which the local agent looks for in
-    dust2's files). The site volumes come out of the map with the buy zones.
+    shockwave with damage baked per map: dust2's is
+    `baked_bomb_damage.vdata`, extracted, its damage values not yet worked
+    out). The site volumes are read (`BrushVolume.bomb_sites`).
 
 ### Phase 6: grenades
 
@@ -353,10 +355,11 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 | Hands | Play being shot on the test range (B, U, Y, J, T) and dust2: your capsules' fit, the tag, the flinch, the hit arcs (PR #27) | Items 1 to 4 |
 | Hands | Measure a tag's length and the flinch's size in CS2 | Item 4a |
 | Done | The every-gun extraction (weapons TODO L1 to L3), and reload, draw and zoom figures from the game's own data (L5) | Every gun: `reference/weapons/models.md`, `sounds.md`, `timings.md`, `vdata.md` |
+| Done | dust2's buy zones, bomb sites and callout volumes, its radar, and its baked bomb damage file (cs2-systems B1, B3, C2) | Phases 4 and 5 |
 | Done | dust2's nav mesh, extracted and read (`SourceNavMesh`), checked against the hull, the spawns and the callouts | Phase 8 |
 | Hands | The systems' Local list for bots in `reference/cs2-systems.md`: read the nav mesh's analysis (N3), record grenade lineups (N2) | Phase 8 |
 | Decided | The game's own numbers win over the sheet's wherever the game has them (Sid, 2026-09-22), the Desert Eagle's jump inaccuracy included (46.75, not 378.30) | `WeaponVData`, every gun |
-| Hands | The systems' Local list in `reference/cs2-systems.md`: buy zones and bomb sites (B1), radar (B3), bomb (C1 to C3), grenades (G1 to G6), knife and Zeus (K1, K2), sounds (S1, S2) | Phases 4 to 7 |
+| Hands | The systems' Local list in `reference/cs2-systems.md`: bomb (C1, C3, and decoding C2's damage), grenades (G1 to G6), knife and Zeus (K1, K2), sounds (S1, S2) | Phases 4 to 7 |
 
 ---
 
