@@ -13,6 +13,7 @@
 #   scripts/extract_assets.sh map             # dust2: world, collision hull, entities
 #   scripts/extract_assets.sh physics         # just the collision hull (seconds)
 #   scripts/extract_assets.sh entities        # just the entity lump (seconds)
+#   scripts/extract_assets.sh nav             # just the nav mesh the bots walk (seconds)
 #   scripts/extract_assets.sh layers          # just the blend materials' second layers
 #   scripts/extract_assets.sh sky             # just the sky panorama
 #   scripts/extract_assets.sh skybox          # just the 3D skybox: the far buildings
@@ -152,7 +153,7 @@ find_cs2() {
 
 COMMAND="${1:-}"
 case "$COMMAND" in
-	list-map|list-weapons|map|physics|entities|layers|sky|skybox|lightmaps|weapons|weapon-animations|weapon-data|hud|characters|sounds|all) ;;
+	list-map|list-weapons|map|physics|entities|nav|layers|sky|skybox|lightmaps|weapons|weapon-animations|weapon-data|hud|characters|sounds|all) ;;
 	*)
 		# The header comment, down to the first line that is not one.
 		awk 'NR > 2 && /^#/ { sub(/^# ?/, ""); print; next } NR > 2 { exit }' "${BASH_SOURCE[0]}"
@@ -332,6 +333,19 @@ extract_entities() {
 	"$S2V_BIN" -i "$MAP_VPK" -f "$entities" -o "$MAP_DEST" -d
 }
 
+## The nav mesh the game's bots walk: maps/de_dust2.nav, half a megabyte,
+## stored in the map's VPK as it is (not a compiled resource), so it comes
+## out byte for byte. SourceNavMesh reads it.
+extract_nav() {
+	local nav
+	nav="$(find_map_resource '^maps/[^/]+\.nav$' "nav mesh (.nav)")" || exit 1
+	mkdir -p "$MAP_DEST"
+
+	echo "Extracting $nav"
+	echo "        -> $MAP_DEST"
+	"$S2V_BIN" -i "$MAP_VPK" -f "$nav" -o "$MAP_DEST"
+}
+
 ## Most of dust2's walls and ground are two texture layers painted together,
 ## and a glTF material has room for one. The export keeps each material's full
 ## description in its extras, second layer and blend mask included, so the
@@ -463,6 +477,8 @@ extract_map() {
 	extract_physics
 	echo
 	extract_entities
+	echo
+	extract_nav
 	echo
 	extract_layers
 	echo
@@ -734,6 +750,7 @@ case "$COMMAND" in
 	map) extract_map; finish ;;
 	physics) extract_physics; finish ;;
 	entities) extract_entities ;;
+	nav) extract_nav ;;
 	layers) extract_layers; finish ;;
 	sky) extract_sky; finish ;;
 	skybox) extract_skybox; finish ;;

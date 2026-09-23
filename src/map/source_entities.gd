@@ -114,3 +114,19 @@ static func player_spawns(entities: Array[Dictionary]) -> Dictionary:
 		spawns[team].sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 			return a["priority"] < b["priority"])
 	return spawns
+
+
+## The map's named places, the callouts the radar shows ("BombsiteA",
+## "LongDoors"): each name to the game-space origins of the brushes that carry
+## it (env_cs_place, 43 on dust2 over 24 names). A brush's origin is its
+## middle, which can stand a little off the floor.
+static func places(entities: Array[Dictionary]) -> Dictionary:
+	var out := {}
+	for entity in entities:
+		if entity.get("classname", "") != "env_cs_place" or not entity.has("place_name") or not entity.has("origin"):
+			continue
+		var place: String = entity["place_name"]
+		if not out.has(place):
+			out[place] = []
+		(out[place] as Array).append(to_game(vector(entity["origin"])))
+	return out
