@@ -322,13 +322,35 @@ ground from a player: buying uses it for the gun a purchase replaced.
 `ItemDrops`, the items contract's own system (GameSystems adds it first):
 - hears `player_death` and drops what `drops_on_death()` gives
   (`defuser_dropped` for the kit);
-- takes the `drop` command for what is in hand, never the knife and never
-  the C4 (`item_remove`);
+- takes the `drop` command for what is in hand, grenades too, never the
+  knife and never the C4 (`item_remove`);
 - picks an item up for a living player standing on it (32 units across,
-  72 up, both guesses) whose slot is free (`item_pickup`, or
-  `defuser_pickup`, and only CTs take the kit). Whoever dropped it waits 1 s
-  (a guess). Swapping with the gun in hand (E) waits for a use-key handler.
+  72 up) whose slot is free (`item_pickup`, or `defuser_pickup`, and only
+  CTs take the kit). Swapping with the gun in hand (E) waits for a use-key
+  handler;
+- clears what lies on the ground at `round_prestart`.
 The C4 on the ground is the bomb's own entity, not a `DroppedItem`.
+
+CS2's values, from its convar dump (SteamDatabase's `DumpSource2/convars.txt`)
+and `game/csgo/cfg/gamemode_competitive.cfg`, sent by Sid's local agent
+on 2026-09-23 and checked against both files:
+
+| Convar | CS2 | Here |
+|---|---|---|
+| `mp_weapon_prev_owner_touch_time` | 1.5 | whoever dropped it waits 1.5 s |
+| `mp_weapon_next_owner_touch_time` | 1.3 | anyone else waits 1.3 s; no description, read from its name (measure) |
+| `pickup_check_period` | 0.25 | an item looks for players every 0.25 s, first when anyone may take it |
+| `mp_drop_grenade_enable`, `mp_drop_knife_enable` | true, false | `drop` takes grenades, never the knife |
+| `mp_death_drop_gun` | 1 (best) | the best gun |
+| `mp_death_drop_grenade` | 2 (current or best) | the grenade in hand, or else the best; one |
+| `mp_death_drop_taser`, `_defuser`, `_c4` | true | the Zeus and the kit; the C4 is the bomb's |
+| `weapon_auto_cleanup_time`, `weapon_max_before_cleanup` | 0, 0 | nothing is cleaned up before the round ends |
+| `mp_shoot_dropped_grenades` | false | bullets pass through items on the ground |
+
+In no file (measure): the drop's throw speed (200 forward, 100 up), the
+pickup reach, which grenade counts as best, a gun's mass and bounce on the
+ground, and how blasts and bullets push it. The bomb's dropped C4 takes
+the same two waits if it follows CS2.
 
 ## 4. The tick, and how systems join it
 

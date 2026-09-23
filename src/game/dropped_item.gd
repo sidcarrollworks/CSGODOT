@@ -8,19 +8,31 @@ extends SimEntity
 ##
 ## It falls under gravity until it meets the world, then lies there until a
 ## player picks it up (ItemDrops) or a round's start clears the map. A fall
-## is one trace a tick while it moves, none once it lies still.
+## is one trace a tick while it moves, none once it lies still. Nothing
+## cleans it up sooner: CS2's weapon_auto_cleanup_time and
+## weapon_max_before_cleanup are both 0. Bullets pass through it, as
+## mp_shoot_dropped_grenades is false; what blasts and bullets do to a gun
+## on the ground, its mass and how it bounces are in no file (measure).
 
 ## sv_gravity, as MovementConfig has it.
 const GRAVITY := 800.0
-## Who dropped it cannot take it straight back: a gun thrown forward would
-## otherwise be picked up again as it leaves the hand. How long is a guess.
-const OWNER_PICKUP_DELAY_USEC := 1_000_000
+## Who dropped it cannot take it straight back, so a gun thrown forward is
+## not picked up again as it leaves the hand: CS2's
+## mp_weapon_prev_owner_touch_time, 1.5 s.
+const PREV_OWNER_TOUCH_USEC := 1_500_000
+## Anyone else waits too: CS2's mp_weapon_next_owner_touch_time, 1.3 s. The
+## convar has no description; that it is anyone else's wait, for every
+## drop and a death's too, is read from its name (measure).
+const NEXT_OWNER_TOUCH_USEC := 1_300_000
 
 var entry: Inventory.Entry
 var velocity := Vector3.ZERO
 var resting: bool = false
 ## Simulation time it was dropped at.
 var dropped_usec: int = 0
+## When ItemDrops next looks for someone standing on it: first when anyone
+## may take it, then every pickup check period.
+var next_pickup_check_usec: int = 0
 
 
 func _init(p_entry: Inventory.Entry = null, p_owner_id: int = GameEvents.NOBODY, p_position := Vector3.ZERO, p_velocity := Vector3.ZERO) -> void:
@@ -38,13 +50,15 @@ static func drop(game: GameSystems, userid: int, p_entry: Inventory.Entry, p_vel
 	var from := node.global_position + Vector3.UP * 36.0 if node != null else Vector3.ZERO
 	var item := DroppedItem.new(p_entry, userid, from, p_velocity)
 	item.dropped_usec = game.now_usec()
+	item.next_pickup_check_usec = item.dropped_usec + mini(PREV_OWNER_TOUCH_USEC, NEXT_OWNER_TOUCH_USEC)
 	game.entities.spawn(item)
 	return item
 
 
 ## Whether userid may pick it up at now_usec.
 func can_be_taken_by(userid: int, now_usec: int) -> bool:
-	return userid != owner_id or now_usec >= dropped_usec + OWNER_PICKUP_DELAY_USEC
+	var wait := PREV_OWNER_TOUCH_USEC if userid == owner_id else NEXT_OWNER_TOUCH_USEC
+	return now_usec >= dropped_usec + wait
 
 
 func tick(t: SimTick) -> void:
@@ -76,6 +90,7 @@ func save_state() -> Dictionary:
 	state["velocity"] = velocity
 	state["resting"] = resting
 	state["dropped_usec"] = dropped_usec
+	state["next_pickup_check_usec"] = next_pickup_check_usec
 	return state
 
 
@@ -84,6 +99,7 @@ func load_state(state: Dictionary) -> void:
 	velocity = state.get("velocity", velocity)
 	resting = state.get("resting", resting)
 	dropped_usec = state.get("dropped_usec", dropped_usec)
+	next_pickup_check_usec = state.get("next_pickup_check_usec", next_pickup_check_usec)
 	var def := ItemRegistry.item(state.get("item", ""))
 	if def == null:
 		return
