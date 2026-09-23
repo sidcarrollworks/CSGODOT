@@ -452,8 +452,17 @@ None of these are changed by the contract threads; this branch changes
   gives `Inventory.give_starting_items` in place of `starting_weapon`; the
   round's clock listens for `bomb_planted`, `bomb_exploded`,
   `bomb_defused`. The bomb system hands out the C4 itself on `round_start`.
+- `player_spawn` {userid, teamnum} goes out on every spawn, from wherever
+  the spawn happens (PlayerSim, the GameWorld or the match). The schema has
+  it but nothing sends it yet, and buying clears a player's "dead" mark on
+  it, so until it is sent a player who died stays marked dead.
 - `PlayerInput`: G sends `drop`, the buy menu sends `buy`, E and the right
-  button set `USE` and `ATTACK2`.
+  button set `USE` and `ATTACK2`. Two range keys move when G is `drop` and
+  Q is the last weapon: the range's never-die (`dummy_immortal` on G in
+  `project.godot`, read in `test_range.gd`) and the grenade lane's throw on
+  Q (`grenade_lane.gd`). `player_controller.gd`'s `_unhandled_input` never
+  marks an event handled, so a key bound twice does both things on one
+  press.
 - `de_dust2.gd`: the presenters (kill feed, grenade and bomb drawing)
   listening to `world.game.events`, and the systems added to `world.game`.
 
