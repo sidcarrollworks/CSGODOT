@@ -1,6 +1,6 @@
 # Every gun's timings
 
-Written by `scripts/weapon_tables.gd` on 2026-09-22 from the first-person clips of CS2 1.41.8.1, as `scripts/extract_assets.sh weapon-animations` reads them. Do not edit by hand. `timings.csv` beside this has every clip's length and every event in it, sounds included, one row each.
+Written by `scripts/weapon_tables.gd` on 2026-09-23 from the first-person clips of CS2 1.41.8.2, as `scripts/extract_assets.sh weapon-animations` reads them. Do not edit by hand. `timings.csv` beside this has every clip's length and every event in it, sounds included, one row each.
 
 These are the game's own animation data, not measurements. Each clip is authored at 30 frames a second and carries events at points through it; the ones that matter here:
 

@@ -1,6 +1,6 @@
 # Every gun's files
 
-Written by `scripts/weapon_tables.gd` on 2026-09-22 from what `scripts/extract_assets.sh weapons` extracted out of CS2 1.41.8.1. Do not edit by hand: re-run the extraction, or the script on its own. Paths are relative to the roots below; a dash is something the extraction did not produce.
+Written by `scripts/weapon_tables.gd` on 2026-09-23 from what `scripts/extract_assets.sh weapons` extracted out of CS2 1.41.8.2. Do not edit by hand: re-run the extraction, or the script on its own. Paths are relative to the roots below; a dash is something the extraction did not produce.
 
 - Models: `res://assets/weapons/weapons/models/<folder>/`, one glTF for the gun and one for its magazine.
 - First person: `res://assets/characters/animation/anims/viewmodel/<set>/`, one glTF per clip, each carrying the arms' and the gun's skeletons. The shared `_default_` sets are the M4A1-S's (`rifle/_default_rifle`) and the USP-S's (`pistol/_default_pistol`); SMGs, shotguns, snipers and machine guns are all `rifle/` sets.

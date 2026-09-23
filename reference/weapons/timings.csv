@@ -13,7 +13,7 @@ weapon_glock,lookat01,6.4333,ID,inspect_loop_window,3.0000,0.0667
 weapon_glock,lookat01,6.4333,ID,WPN_INSPECT_OUTRO,3.0333,3.4000
 weapon_glock,lookat01,6.4333,Sound,Weapon.WeaponMove3,5.8333,0.0000
 weapon_glock,reload,2.2667,,,,
-weapon_glock,reload,2.2667,ID,WPN_RELOAD_SILENT,0.0000,0.9667
+weapon_glock,reload,2.2667,ID,WPN_RELOAD_SILENT,0.0000,1.7334
 weapon_glock,reload,2.2667,Sound,Weapon_Glock.Clipout,0.4667,0.0000
 weapon_glock,reload,2.2667,ID,WPN_DROP_MAG,0.5333,0.0000
 weapon_glock,reload,2.2667,Sound,Weapon_Glock.Clipin,0.8333,0.0000
@@ -21,7 +21,7 @@ weapon_glock,reload,2.2667,ID,WPN_RELOAD_ADD_AMMO,0.9333,0.0000
 weapon_glock,reload,2.2667,Sound,Weapon_Glock.Slideback,1.4667,0.0000
 weapon_glock,reload,2.2667,Sound,Weapon_Glock.Sliderelease,1.6667,0.0000
 weapon_glock,reload_empty,2.2667,,,,
-weapon_glock,reload_empty,2.2667,ID,WPN_RELOAD_SILENT,0.0000,1.2334
+weapon_glock,reload_empty,2.2667,ID,WPN_RELOAD_SILENT,0.0000,1.6334
 weapon_glock,reload_empty,2.2667,Sound,Weapon_Glock.Clipout,0.4667,0.0000
 weapon_glock,reload_empty,2.2667,ID,WPN_DROP_MAG,0.6000,0.0000
 weapon_glock,reload_empty,2.2667,Sound,Weapon_Glock.Clipin,1.1334,0.0000
@@ -48,7 +48,7 @@ weapon_hkp2000,lookat01,6.4333,ID,WPN_INSPECT_LOOP,1.5333,1.5000
 weapon_hkp2000,lookat01,6.4333,ID,WPN_INSPECT_OUTRO,3.0333,3.4000
 weapon_hkp2000,lookat01,6.4333,Sound,Weapon.WeaponMove3,5.8333,0.0000
 weapon_hkp2000,reload,2.2667,,,,
-weapon_hkp2000,reload,2.2667,ID,WPN_RELOAD_SILENT,0.0000,1.4000
+weapon_hkp2000,reload,2.2667,ID,WPN_RELOAD_SILENT,0.0000,1.7000
 weapon_hkp2000,reload,2.2667,Sound,Weapon_hkp2000.Clipout,0.3667,0.0000
 weapon_hkp2000,reload,2.2667,ID,WPN_DROP_MAG,0.4333,0.0000
 weapon_hkp2000,reload,2.2667,Sound,Weapon_hkp2000.Clipin,0.8333,0.0000
@@ -57,7 +57,7 @@ weapon_hkp2000,reload,2.2667,ID,WPN_RELOAD_ADD_AMMO,0.9333,0.0000
 weapon_hkp2000,reload,2.2667,Sound,Weapon_hkp2000.Slideback,1.4334,0.0000
 weapon_hkp2000,reload,2.2667,Sound,Weapon_hkp2000.Sliderelease,1.6334,0.0000
 weapon_hkp2000,reload_empty,2.2667,,,,
-weapon_hkp2000,reload_empty,2.2667,ID,WPN_RELOAD_SILENT,0.0000,1.5667
+weapon_hkp2000,reload_empty,2.2667,ID,WPN_RELOAD_SILENT,0.0000,1.6667
 weapon_hkp2000,reload_empty,2.2667,Sound,Weapon_hkp2000.Clipout,0.4333,0.0000
 weapon_hkp2000,reload_empty,2.2667,ID,WPN_DROP_MAG,0.5000,0.0000
 weapon_hkp2000,reload_empty,2.2667,Sound,Weapon_hkp2000.Clipin,1.1334,0.0000
@@ -89,7 +89,7 @@ weapon_usp_silencer,lookat01,6.4333,ID,WPN_INSPECT_LOOP,1.5333,1.5000
 weapon_usp_silencer,lookat01,6.4333,ID,WPN_INSPECT_OUTRO,3.0333,3.4000
 weapon_usp_silencer,lookat01,6.4333,Sound,Weapon.WeaponMove3,5.8333,0.0000
 weapon_usp_silencer,reload,2.1667,,,,
-weapon_usp_silencer,reload,2.1667,ID,WPN_RELOAD_SILENT,0.0000,0.9667
+weapon_usp_silencer,reload,2.1667,ID,WPN_RELOAD_SILENT,0.0000,1.6334
 weapon_usp_silencer,reload,2.1667,Sound,Weapon_USP.Clipout,0.2333,0.0000
 weapon_usp_silencer,reload,2.1667,ID,WPN_DROP_MAG,0.3000,0.0000
 weapon_usp_silencer,reload,2.1667,Sound,Weapon_USP.Clipin,0.7000,0.0000
@@ -98,7 +98,7 @@ weapon_usp_silencer,reload,2.1667,ID,WPN_RELOAD_ADD_AMMO,0.9000,0.0000
 weapon_usp_silencer,reload,2.1667,Sound,Weapon_USP.Slideback,1.3667,0.0000
 weapon_usp_silencer,reload,2.1667,Sound,Weapon_USP.Sliderelease,1.5334,0.0000
 weapon_usp_silencer,reload_empty,2.1667,,,,
-weapon_usp_silencer,reload_empty,2.1667,ID,WPN_RELOAD_SILENT,0.0000,1.4000
+weapon_usp_silencer,reload_empty,2.1667,ID,WPN_RELOAD_SILENT,0.0000,1.5334
 weapon_usp_silencer,reload_empty,2.1667,Sound,Weapon_USP.Clipout,0.2333,0.0000
 weapon_usp_silencer,reload_empty,2.1667,ID,WPN_DROP_MAG,0.3000,0.0000
 weapon_usp_silencer,reload_empty,2.1667,Sound,Weapon_USP.Clipin,0.8000,0.0000
@@ -155,7 +155,7 @@ weapon_elite,lookat01,4.6000,Sound,Weapon_ELITE.TauntTap1,2.9333,0.0000
 weapon_elite,lookat01,4.6000,Sound,Weapon_ELITE.TauntTap2,3.1000,0.0000
 weapon_elite,lookat01,4.6000,Sound,Weapon_ELITE.TauntTwirl,3.7667,0.0000
 weapon_elite,reload,3.7667,,,,
-weapon_elite,reload,3.7667,ID,WPN_RELOAD_SILENT,0.0000,3.3000
+weapon_elite,reload,3.7667,ID,WPN_RELOAD_SILENT,0.0000,3.7334
 weapon_elite,reload,3.7667,Sound,Weapon_ELITE.Clipout,0.2667,0.0000
 weapon_elite,reload,3.7667,Sound,Weapon_ELITE.Clipout,0.3333,0.0000
 weapon_elite,reload,3.7667,ID,WPN_DROP_MAG,0.4333,0.0000
@@ -197,7 +197,7 @@ weapon_p250,lookat01,6.4333,ID,WPN_INSPECT_INTRO,0.0000,1.5333
 weapon_p250,lookat01,6.4333,ID,WPN_INSPECT_LOOP,1.5333,1.5000
 weapon_p250,lookat01,6.4333,ID,WPN_INSPECT_OUTRO,3.0333,3.4000
 weapon_p250,reload,2.2667,,,,
-weapon_p250,reload,2.2667,ID,WPN_RELOAD_SILENT,0.0000,1.4667
+weapon_p250,reload,2.2667,ID,WPN_RELOAD_SILENT,0.0000,1.7667
 weapon_p250,reload,2.2667,Sound,Weapon_p250.Clipout,0.4000,0.0000
 weapon_p250,reload,2.2667,ID,WPN_DROP_MAG,0.4333,0.0000
 weapon_p250,reload,2.2667,Sound,Weapon_p250.Clipin,0.8333,0.0000
@@ -206,7 +206,7 @@ weapon_p250,reload,2.2667,ID,WPN_RELOAD_ADD_AMMO,0.9333,0.0000
 weapon_p250,reload,2.2667,Sound,Weapon_p250.Slideback,1.5000,0.0000
 weapon_p250,reload,2.2667,Sound,Weapon_p250.Sliderelease,1.6667,0.0000
 weapon_p250,reload_empty,2.2667,,,,
-weapon_p250,reload_empty,2.2667,ID,WPN_RELOAD_SILENT,0.0000,1.5000
+weapon_p250,reload_empty,2.2667,ID,WPN_RELOAD_SILENT,0.0000,1.6334
 weapon_p250,reload_empty,2.2667,Sound,Weapon_p250.Clipout,0.4667,0.0000
 weapon_p250,reload_empty,2.2667,ID,WPN_DROP_MAG,0.5000,0.0000
 weapon_p250,reload_empty,2.2667,Sound,Weapon_p250.Clipin,1.1000,0.0000
@@ -234,7 +234,7 @@ weapon_tec9,lookat01,4.8333,ID,WPN_INSPECT_LOOP,2.7666,1.3333
 weapon_tec9,lookat01,4.8333,Sound,Weapon.WeaponMove3,3.8666,0.0000
 weapon_tec9,lookat01,4.8333,ID,WPN_INSPECT_OUTRO,4.1000,0.7333
 weapon_tec9,reload,2.5667,,,,
-weapon_tec9,reload,2.5667,ID,WPN_RELOAD_SILENT,0.0000,1.6667
+weapon_tec9,reload,2.5667,ID,WPN_RELOAD_SILENT,0.0000,2.1334
 weapon_tec9,reload,2.5667,Sound,Weapon_tec9.Clipout,0.4667,0.0000
 weapon_tec9,reload,2.5667,ID,WPN_DROP_MAG,0.5333,0.0000
 weapon_tec9,reload,2.5667,Sound,Weapon_tec9.Clipin,1.3000,0.0000
@@ -263,7 +263,7 @@ weapon_fiveseven,lookat01,6.4333,ID,WPN_INSPECT_LOOP,1.5333,1.5000
 weapon_fiveseven,lookat01,6.4333,ID,WPN_INSPECT_OUTRO,3.0333,3.4000
 weapon_fiveseven,lookat01,6.4333,Sound,Weapon.WeaponMove3,5.8333,0.0000
 weapon_fiveseven,reload,2.2667,,,,
-weapon_fiveseven,reload,2.2667,ID,WPN_RELOAD_SILENT,0.0000,1.4667
+weapon_fiveseven,reload,2.2667,ID,WPN_RELOAD_SILENT,0.0000,1.7334
 weapon_fiveseven,reload,2.2667,ID,WPN_DROP_MAG,0.4333,0.0000
 weapon_fiveseven,reload,2.2667,Sound,Weapon_FiveSeven.Clipout,0.4667,0.0000
 weapon_fiveseven,reload,2.2667,Sound,Weapon_FiveSeven.Clipin,0.9000,0.0000
@@ -272,7 +272,7 @@ weapon_fiveseven,reload,2.2667,ID,WPN_RELOAD_ADD_AMMO,0.9667,0.0000
 weapon_fiveseven,reload,2.2667,Sound,Weapon_FiveSeven.Slideback,1.5000,0.0000
 weapon_fiveseven,reload,2.2667,Sound,Weapon_FiveSeven.Sliderelease,1.6667,0.0000
 weapon_fiveseven,reload_empty,2.2667,,,,
-weapon_fiveseven,reload_empty,2.2667,ID,WPN_RELOAD_SILENT,0.0000,1.6000
+weapon_fiveseven,reload_empty,2.2667,ID,WPN_RELOAD_SILENT,0.0000,1.7000
 weapon_fiveseven,reload_empty,2.2667,Sound,Weapon_FiveSeven.Clipout,0.4667,0.0000
 weapon_fiveseven,reload_empty,2.2667,ID,WPN_DROP_MAG,0.5000,0.0000
 weapon_fiveseven,reload_empty,2.2667,Sound,Weapon_FiveSeven.Clipin,1.1334,0.0000
@@ -306,7 +306,7 @@ weapon_cz75a,lookat01,6.4333,ID,WPN_INSPECT_INTRO,0.0000,1.5333
 weapon_cz75a,lookat01,6.4333,ID,WPN_INSPECT_LOOP,1.5333,1.5000
 weapon_cz75a,lookat01,6.4333,ID,WPN_INSPECT_OUTRO,3.0333,3.4000
 weapon_cz75a,reload,2.7333,,,,
-weapon_cz75a,reload,2.7333,ID,WPN_RELOAD_SILENT,0.0000,1.7333
+weapon_cz75a,reload,2.7333,ID,WPN_RELOAD_SILENT,0.0000,2.2666
 weapon_cz75a,reload,2.7333,ID,WPN_DROP_MAG,0.3000,0.0000
 weapon_cz75a,reload,2.7333,Sound,Weapon_CZ.Clipout,0.3667,0.0000
 weapon_cz75a,reload,2.7333,Sound,Weapon_CZ.Clipout2,0.7333,0.0000
@@ -317,7 +317,7 @@ weapon_cz75a,reload,2.7333,ID,WPN_RELOAD_ADD_AMMO,1.5666,0.0000
 weapon_cz75a,reload,2.7333,Sound,Weapon_CZ.Slideback,2.0000,0.0000
 weapon_cz75a,reload,2.7333,Sound,Weapon_CZ.Sliderelease,2.1666,0.0000
 weapon_cz75a,reload2,2.7333,,,,
-weapon_cz75a,reload2,2.7333,ID,WPN_RELOAD_SILENT,0.0000,1.4000
+weapon_cz75a,reload2,2.7333,ID,WPN_RELOAD_SILENT,0.0000,2.1000
 weapon_cz75a,reload2,2.7333,Sound,Weapon_CZ.Clipout,0.3667,0.0000
 weapon_cz75a,reload2,2.7333,ID,WPN_DROP_MAG,0.4333,0.0000
 weapon_cz75a,reload2,2.7333,Sound,Weapon_CZ.Clipin,0.9667,0.0000
@@ -327,7 +327,7 @@ weapon_cz75a,reload2,2.7333,ID,WPN_RELOAD_ADD_AMMO,1.2333,0.0000
 weapon_cz75a,reload2,2.7333,Sound,Weapon_CZ.Slideback,1.8666,0.0000
 weapon_cz75a,reload2,2.7333,Sound,Weapon_CZ.Sliderelease,2.0333,0.0000
 weapon_cz75a,reload2_empty,2.7333,,,,
-weapon_cz75a,reload2_empty,2.7333,ID,WPN_RELOAD_SILENT,0.0000,1.9666
+weapon_cz75a,reload2_empty,2.7333,ID,WPN_RELOAD_SILENT,0.0000,2.0666
 weapon_cz75a,reload2_empty,2.7333,ID,WPN_DROP_MAG,0.4667,0.0000
 weapon_cz75a,reload2_empty,2.7333,Sound,Weapon_CZ.Clipout,0.5000,0.0000
 weapon_cz75a,reload2_empty,2.7333,Sound,Weapon_CZ.Clipin,1.2000,0.0000
@@ -336,7 +336,7 @@ weapon_cz75a,reload2_empty,2.7333,Sound,Weapon_CZ.AddAmmo,1.7000,0.0000
 weapon_cz75a,reload2_empty,2.7333,ID,WPN_RELOAD_ADD_AMMO,1.7000,0.0000
 weapon_cz75a,reload2_empty,2.7333,Sound,Weapon_CZ.Sliderelease,2.0000,0.0000
 weapon_cz75a,reload_empty,2.7333,,,,
-weapon_cz75a,reload_empty,2.7333,ID,WPN_RELOAD_SILENT,0.0000,1.8666
+weapon_cz75a,reload_empty,2.7333,ID,WPN_RELOAD_SILENT,0.0000,2.0333
 weapon_cz75a,reload_empty,2.7333,ID,WPN_DROP_MAG,0.3333,0.0000
 weapon_cz75a,reload_empty,2.7333,Sound,Weapon_CZ.Clipout,0.4000,0.0000
 weapon_cz75a,reload_empty,2.7333,Sound,Weapon_CZ.Clipout2,0.8667,0.0000
@@ -370,7 +370,7 @@ weapon_deagle,lookat01,5.6667,ID,WPN_INSPECT_OUTRO,4.2667,1.4000
 weapon_deagle,lookat01,5.6667,Sound,Weapon_DEagle.WeaponMove2,4.3667,0.0000
 weapon_deagle,lookat01,5.6667,Sound,Weapon_DEagle.WeaponMove4,4.5667,0.0000
 weapon_deagle,lookat02,8.5000,,,,
-weapon_deagle,lookat02,8.5000,ID,WPN_INSPECT_INTRO,0.0333,2.7333
+weapon_deagle,lookat02,8.5000,ID,WPN_INSPECT_INTRO,0.0000,2.7667
 weapon_deagle,lookat02,8.5000,ID,WPN_DISABLE_LEFT_HAND_IK,0.2667,4.8333
 weapon_deagle,lookat02,8.5000,Sound,Weapon_DEagle.LookAt009,0.3000,0.0000
 weapon_deagle,lookat02,8.5000,Sound,Weapon_DEagle.LookAt036,1.2000,0.0000
@@ -384,7 +384,7 @@ weapon_deagle,lookat02,8.5000,Sound,Weapon_DEagle.LookAt166,5.5333,0.0000
 weapon_deagle,lookat02,8.5000,Sound,Weapon_DEagle.LookAt193,6.4333,0.0000
 weapon_deagle,lookat02,8.5000,Sound,Weapon_DEagle.LookAt228,7.6000,0.0000
 weapon_deagle,reload,2.2000,,,,
-weapon_deagle,reload,2.2000,ID,WPN_RELOAD_SILENT,0.0000,0.9333
+weapon_deagle,reload,2.2000,ID,WPN_RELOAD_SILENT,0.0000,1.6333
 weapon_deagle,reload,2.2000,Sound,Weapon_DEagle.Clipout,0.1333,0.0000
 weapon_deagle,reload,2.2000,ID,WPN_DROP_MAG,0.4000,0.0000
 weapon_deagle,reload,2.2000,Sound,Weapon_DEagle.Clipin,0.7000,0.0000
@@ -393,7 +393,7 @@ weapon_deagle,reload,2.2000,ID,WPN_RELOAD_ADD_AMMO,0.7667,0.0000
 weapon_deagle,reload,2.2000,Sound,Weapon_DEagle.Slideback,1.3667,0.0000
 weapon_deagle,reload,2.2000,Sound,Weapon_DEagle.Slideforward,1.5667,0.0000
 weapon_deagle,reload_empty,2.2000,,,,
-weapon_deagle,reload_empty,2.2000,ID,WPN_RELOAD_SILENT,0.0000,1.4667
+weapon_deagle,reload_empty,2.2000,ID,WPN_RELOAD_SILENT,0.0000,1.6333
 weapon_deagle,reload_empty,2.2000,Sound,Weapon_DEagle.Clipout,0.2000,0.0000
 weapon_deagle,reload_empty,2.2000,ID,WPN_DROP_MAG,0.5000,0.0000
 weapon_deagle,reload_empty,2.2000,Sound,Weapon_DEagle.Clipin,0.9333,0.0000
@@ -446,7 +446,7 @@ weapon_revolver,prepare_shoot,0.9667,ID,WPN_BLOCK_INSPECT,0.0000,0.9667
 weapon_revolver,prepare_shoot,0.9667,Sound,Weapon_Revolver.Prepare,0.0000,0.0000
 weapon_revolver,prepare_shoot,0.9667,Legacy,,0.0000,0.0000
 weapon_revolver,reload,2.2667,,,,
-weapon_revolver,reload,2.2667,ID,WPN_RELOAD_SILENT,0.0000,1.8334
+weapon_revolver,reload,2.2667,ID,WPN_RELOAD_SILENT,0.0000,2.1667
 weapon_revolver,reload,2.2667,Sound,Weapon_Revolver.BarrelRoll,0.1000,0.0000
 weapon_revolver,reload,2.2667,Sound,Weapon_Revolver.Siderelease,0.1000,0.0000
 weapon_revolver,reload,2.2667,ID,WPN_DROP_MAG,0.6333,0.0000
@@ -475,7 +475,7 @@ weapon_nova,lookat01,5.6000,Sound,Weapon_Nova.WeaponMove3,3.9000,0.0000
 weapon_nova,lookat01,5.6000,ID,WPN_INSPECT_OUTRO,4.7667,0.8333
 weapon_nova,reload,1.6333,,,,
 weapon_nova,reload,1.6333,ID,WPN_RELOAD_INTRO,0.0000,0.3667
-weapon_nova,reload,1.6333,ID,WPN_RELOAD_SILENT,0.0000,1.1333
+weapon_nova,reload,1.6333,ID,WPN_RELOAD_SILENT,0.0000,1.5000
 weapon_nova,reload,1.6333,ID,WPN_RELOAD_LOOP,0.3667,0.4333
 weapon_nova,reload,1.6333,Sound,Weapon_Nova.Insertshell,0.3667,0.0000
 weapon_nova,reload,1.6333,Sound,Weapon_Nova.AddAmmo,0.6333,0.0000
@@ -502,7 +502,7 @@ weapon_xm1014,lookat01,4.6000,Sound,Weapon_XM1014.WeaponMove1,2.2000,0.0000
 weapon_xm1014,lookat01,4.6000,Sound,Weapon_XM1014.WeaponMove2,3.4667,0.0000
 weapon_xm1014,reload,1.7333,,,,
 weapon_xm1014,reload,1.7333,ID,WPN_RELOAD_INTRO,0.0000,0.7000
-weapon_xm1014,reload,1.7333,ID,WPN_RELOAD_SILENT,0.0000,1.7333
+weapon_xm1014,reload,1.7333,ID,WPN_RELOAD_SILENT,0.0000,1.3666
 weapon_xm1014,reload,1.7333,Sound,Weapon_XM1014.WeaponMove1,0.0333,0.0000
 weapon_xm1014,reload,1.7333,ID,WPN_RELOAD_LOOP,0.7000,0.6000
 weapon_xm1014,reload,1.7333,Sound,Weapon_XM1014.InsertShell,0.7333,0.0000
@@ -527,7 +527,7 @@ weapon_sawedoff,lookat01,5.7667,Sound,Weapon_Sawedoff.WeaponMove2,3.1667,0.0000
 weapon_sawedoff,lookat01,5.7667,Sound,Weapon_Sawedoff.WeaponMove3,4.8334,0.0000
 weapon_sawedoff,reload,1.7333,,,,
 weapon_sawedoff,reload,1.7333,ID,WPN_RELOAD_INTRO,0.0000,0.4000
-weapon_sawedoff,reload,1.7333,ID,WPN_RELOAD_SILENT,0.0000,0.8000
+weapon_sawedoff,reload,1.7333,ID,WPN_RELOAD_SILENT,0.0000,1.4333
 weapon_sawedoff,reload,1.7333,ID,WPN_RELOAD_LOOP,0.4000,0.5333
 weapon_sawedoff,reload,1.7333,Sound,Weapon_Sawedoff.InsertShell,0.4333,0.0000
 weapon_sawedoff,reload,1.7333,Sound,Weapon_Sawedoff.AddAmmo,0.6667,0.0000
@@ -553,7 +553,7 @@ weapon_mag7,lookat01,4.2333,Sound,Weapon_sg556.WeaponMove2,1.7333,0.0000
 weapon_mag7,lookat01,4.2333,ID,WPN_INSPECT_OUTRO,1.7667,2.4666
 weapon_mag7,lookat01,4.2333,Sound,Weapon_sg556.WeaponMove3,2.6333,0.0000
 weapon_mag7,reload,2.4667,,,,
-weapon_mag7,reload,2.4667,ID,WPN_RELOAD_SILENT,0.0000,1.2000
+weapon_mag7,reload,2.4667,ID,WPN_RELOAD_SILENT,0.0000,1.9667
 weapon_mag7,reload,2.4667,Sound,Weapon_MAG7.Clipout,0.3000,0.0000
 weapon_mag7,reload,2.4667,ID,WPN_DROP_MAG,0.6333,0.0000
 weapon_mag7,reload,2.4667,Sound,Weapon_Mag7.WeaponMove,0.7000,0.0000
@@ -581,7 +581,7 @@ weapon_mac10,lookat01,5.2667,ID,WPN_INSPECT_LOOP,3.1000,1.3333
 weapon_mac10,lookat01,5.2667,ID,WPN_INSPECT_OUTRO,4.4334,0.8333
 weapon_mac10,lookat01,5.2667,Sound,Weapon_MAC10.WeaponMove3,4.5000,0.0000
 weapon_mac10,reload,2.5667,,,,
-weapon_mac10,reload,2.5667,ID,WPN_RELOAD_SILENT,0.0000,1.3334
+weapon_mac10,reload,2.5667,ID,WPN_RELOAD_SILENT,0.0000,2.1334
 weapon_mac10,reload,2.5667,Sound,Weapon_MAC10.Clipout,0.4333,0.0000
 weapon_mac10,reload,2.5667,ID,WPN_DROP_MAG,0.6667,0.0000
 weapon_mac10,reload,2.5667,Sound,Weapon_MAC10.Clipin,1.0333,0.0000
@@ -609,7 +609,7 @@ weapon_mp9,lookat01,7.3333,Sound,Weapon_MP9.WeaponMove2,4.3333,0.0000
 weapon_mp9,lookat01,7.3333,Sound,Weapon_MP9.WeaponMove1,5.3333,0.0000
 weapon_mp9,lookat01,7.3333,Sound,Weapon_MP9.WeaponMove3,6.1000,0.0000
 weapon_mp9,reload,2.1333,,,,
-weapon_mp9,reload,2.1333,ID,WPN_RELOAD_SILENT,0.0000,1.0000
+weapon_mp9,reload,2.1333,ID,WPN_RELOAD_SILENT,0.0000,1.6666
 weapon_mp9,reload,2.1333,Sound,Weapon_MP9.Clipout,0.2333,0.0000
 weapon_mp9,reload,2.1333,ID,WPN_DROP_MAG,0.4333,0.0000
 weapon_mp9,reload,2.1333,Sound,Weapon_MP9.Clipin,0.7667,0.0000
@@ -636,6 +636,7 @@ weapon_mp7,lookat01,6.6667,Sound,Weapon_MP7.WeaponMove1,4.1667,0.0000
 weapon_mp7,lookat01,6.6667,Sound,Weapon_MP7.WeaponMove2,4.3334,0.0000
 weapon_mp7,lookat01,6.6667,Sound,Weapon_MP7.WeaponMove3,5.4334,0.0000
 weapon_mp7,reload,3.1333,,,,
+weapon_mp7,reload,3.1333,ID,WPN_RELOAD_SILENT,0.0000,2.4333
 weapon_mp7,reload,3.1333,Sound,Weapon_MP7.Clipout,0.3000,0.0000
 weapon_mp7,reload,3.1333,ID,WPN_DROP_MAG,0.5333,0.0000
 weapon_mp7,reload,3.1333,Sound,Weapon_MP7.Clipin,1.3000,0.0000
@@ -667,7 +668,7 @@ weapon_mp5sd,lookat01,7.6667,ID,WPN_INSPECT_OUTRO,4.6667,3.0000
 weapon_mp5sd,lookat01,7.6667,Sound,Weapon_MP5.WeaponMove3,5.4334,0.0000
 weapon_mp5sd,lookat01,7.6667,Sound,Weapon_MP5.Grab,7.0000,0.0000
 weapon_mp5sd,reload,2.9667,,,,
-weapon_mp5sd,reload,2.9667,ID,WPN_RELOAD_SILENT,0.0000,2.0667
+weapon_mp5sd,reload,2.9667,ID,WPN_RELOAD_SILENT,0.0000,2.5334
 weapon_mp5sd,reload,2.9667,Sound,Weapon_MP5.Slideback,0.2000,0.0000
 weapon_mp5sd,reload,2.9667,Sound,Weapon_MP5.Handle,0.4667,0.0000
 weapon_mp5sd,reload,2.9667,Sound,Weapon_MP5.Clipout,0.7000,0.0000
@@ -694,7 +695,7 @@ weapon_ump45,lookat01,6.8333,Sound,Weapon_UMP45.WeaponMove2,3.2667,0.0000
 weapon_ump45,lookat01,6.8333,Sound,Weapon_UMP45.WeaponMove1,5.3666,0.0000
 weapon_ump45,lookat01,6.8333,Sound,Weapon_UMP45.WeaponMove3,5.7000,0.0000
 weapon_ump45,reload,3.4333,,,,
-weapon_ump45,reload,3.4333,ID,WPN_RELOAD_SILENT,0.0000,1.7666
+weapon_ump45,reload,3.4333,ID,WPN_RELOAD_SILENT,0.0000,2.5000
 weapon_ump45,reload,3.4333,Sound,Weapon_UMP45.Clipout,0.4667,0.0000
 weapon_ump45,reload,3.4333,ID,WPN_DROP_MAG,0.7000,0.0000
 weapon_ump45,reload,3.4333,Sound,Weapon_UMP45.Clipin,1.4333,0.0000
@@ -720,7 +721,7 @@ weapon_p90,lookat01,5.3333,ID,WPN_INSPECT_OUTRO,2.9333,2.4000
 weapon_p90,lookat01,5.3333,Sound,Weapon_P90.WeaponMove1,3.1333,0.0000
 weapon_p90,lookat01,5.3333,Sound,Weapon_P90.WeaponMove3,4.3333,0.0000
 weapon_p90,reload,3.3667,,,,
-weapon_p90,reload,3.3667,ID,WPN_RELOAD_SILENT,0.0000,1.7667
+weapon_p90,reload,3.3667,ID,WPN_RELOAD_SILENT,0.0000,3.0667
 weapon_p90,reload,3.3667,Sound,Weapon_P90.Cliprelease,0.3667,0.0000
 weapon_p90,reload,3.3667,Sound,Weapon_P90.Clipout,0.4667,0.0000
 weapon_p90,reload,3.3667,ID,WPN_DROP_MAG,0.7667,0.0000
@@ -763,7 +764,7 @@ weapon_bizon,lookat01_transfix,4.3333,Sound,Weapon_bizon.WeaponMove2,2.5666,0.00
 weapon_bizon,lookat01_transfix,4.3333,ID,WPN_INSPECT_OUTRO,2.6000,1.7333
 weapon_bizon,lookat01_transfix,4.3333,Sound,Weapon_bizon.WeaponMove3,3.7333,0.0000
 weapon_bizon,reload,2.4333,,,,
-weapon_bizon,reload,2.4333,ID,WPN_RELOAD_SILENT,0.0000,1.3666
+weapon_bizon,reload,2.4333,ID,WPN_RELOAD_SILENT,0.0000,1.9666
 weapon_bizon,reload,2.4333,Sound,Weapon_bizon.Clipout,0.4000,0.0000
 weapon_bizon,reload,2.4333,ID,WPN_DROP_MAG,0.7333,0.0000
 weapon_bizon,reload,2.4333,Sound,Weapon_bizon.Clipin,1.1000,0.0000
@@ -796,7 +797,7 @@ weapon_galilar,lookat01_transfix,4.5667,ID,WPN_INSPECT_OUTRO,2.1667,2.4000
 weapon_galilar,lookat01_transfix,4.5667,Sound,Weapon_GalilAR.WeaponMove1,2.2000,0.0000
 weapon_galilar,lookat01_transfix,4.5667,Sound,Weapon_GalilAR.WeaponMove2,3.4667,0.0000
 weapon_galilar,reload,3.0333,,,,
-weapon_galilar,reload,3.0333,ID,WPN_RELOAD_SILENT,0.0000,1.1000
+weapon_galilar,reload,3.0333,ID,WPN_RELOAD_SILENT,0.0000,2.2000
 weapon_galilar,reload,3.0333,Sound,Weapon_GalilAR.Clipout,0.4667,0.0000
 weapon_galilar,reload,3.0333,ID,WPN_DROP_MAG,0.7333,0.0000
 weapon_galilar,reload,3.0333,Sound,Weapon_GalilAR.AddAmmo,1.1333,0.0000
@@ -821,7 +822,7 @@ weapon_famas,lookat01,4.3333,Sound,Weapon_FAMAS.WeaponMove2,2.4000,0.0000
 weapon_famas,lookat01,4.3333,ID,WPN_INSPECT_OUTRO,2.4333,1.9000
 weapon_famas,lookat01,4.3333,Sound,Weapon_FAMAS.WeaponMove3,3.5000,0.0000
 weapon_famas,reload,3.3000,,,,
-weapon_famas,reload,3.3000,ID,WPN_RELOAD_SILENT,0.0000,1.4000
+weapon_famas,reload,3.3000,ID,WPN_RELOAD_SILENT,0.0000,2.7333
 weapon_famas,reload,3.3000,Sound,Weapon_FAMAS.Clipout,0.6000,0.0000
 weapon_famas,reload,3.3000,ID,WPN_DROP_MAG,0.7667,0.0000
 weapon_famas,reload,3.3000,Sound,Weapon_FAMAS.Clipin,1.5667,0.0000
@@ -886,7 +887,7 @@ weapon_ak47,lookat03_transfix,7.6000,Sound,Weapon_AK47.WeaponMove2,3.3333,0.0000
 weapon_ak47,lookat03_transfix,7.6000,ID,WPN_INSPECT_OUTRO,4.9333,2.6667
 weapon_ak47,lookat_draw,0.2667,,,,
 weapon_ak47,reload,2.4333,,,,
-weapon_ak47,reload,2.4333,ID,WPN_RELOAD_SILENT,0.0000,1.1667
+weapon_ak47,reload,2.4333,ID,WPN_RELOAD_SILENT,0.0000,1.9000
 weapon_ak47,reload,2.4333,Sound,Weapon_AK47.Inspect_F245,0.1333,0.0000
 weapon_ak47,reload,2.4333,Sound,Weapon_AK47.Clipout,0.3667,0.0000
 weapon_ak47,reload,2.4333,ID,WPN_DROP_MAG,0.6000,0.0000
@@ -913,7 +914,7 @@ weapon_m4a1,lookat01,5.3000,ID,WPN_INSPECT_OUTRO,3.0333,2.2667
 weapon_m4a1,lookat01,5.3000,Sound,Weapon_M4A1.WeaponMove2,3.0667,0.0000
 weapon_m4a1,lookat01,5.3000,Sound,Weapon_M4A1.WeaponMove3,3.8667,0.0000
 weapon_m4a1,reload,3.0667,,,,
-weapon_m4a1,reload,3.0667,ID,WPN_RELOAD_SILENT,0.0000,1.3333
+weapon_m4a1,reload,3.0667,ID,WPN_RELOAD_SILENT,0.0000,2.0667
 weapon_m4a1,reload,3.0667,Sound,Weapon_M4A1.Clipout,0.4333,0.0000
 weapon_m4a1,reload,3.0667,ID,WPN_DROP_MAG,0.6333,0.0000
 weapon_m4a1,reload,3.0667,Sound,Weapon_M4A1.Clipin,1.1667,0.0000
@@ -937,7 +938,7 @@ weapon_m4a1_silencer,lookat01,5.3000,ID,WPN_INSPECT_OUTRO,3.0333,2.2667
 weapon_m4a1_silencer,lookat01,5.3000,Sound,Weapon_M4A1.WeaponMove2,3.0667,0.0000
 weapon_m4a1_silencer,lookat01,5.3000,Sound,Weapon_M4A1.WeaponMove3,3.8667,0.0000
 weapon_m4a1_silencer,reload,3.0667,,,,
-weapon_m4a1_silencer,reload,3.0667,ID,WPN_RELOAD_SILENT,0.0000,1.7000
+weapon_m4a1_silencer,reload,3.0667,ID,WPN_RELOAD_SILENT,0.0000,2.0667
 weapon_m4a1_silencer,reload,3.0667,Sound,Weapon_M4A1.Clipout,0.4333,0.0000
 weapon_m4a1_silencer,reload,3.0667,ID,WPN_DROP_MAG,0.6333,0.0000
 weapon_m4a1_silencer,reload,3.0667,Sound,Weapon_M4A1.Clipin,1.1667,0.0000
@@ -989,7 +990,7 @@ weapon_sg556,lookat01,4.3333,Sound,Weapon_sg556.WeaponMove2,2.5666,0.0000
 weapon_sg556,lookat01,4.3333,ID,WPN_INSPECT_OUTRO,2.6000,1.7333
 weapon_sg556,lookat01,4.3333,Sound,Weapon_sg556.WeaponMove3,3.7333,0.0000
 weapon_sg556,reload,2.7667,,,,
-weapon_sg556,reload,2.7667,ID,WPN_RELOAD_SILENT,0.0000,1.5334
+weapon_sg556,reload,2.7667,ID,WPN_RELOAD_SILENT,0.0000,2.2334
 weapon_sg556,reload,2.7667,Sound,Weapon_sg556.Clipout,0.3000,0.0000
 weapon_sg556,reload,2.7667,ID,WPN_DROP_MAG,0.6000,0.0000
 weapon_sg556,reload,2.7667,Sound,Weapon_sg556.Clipin,0.9667,0.0000
@@ -1026,7 +1027,7 @@ weapon_aug,lookat01_draw,4.3333,ID,WPN_INSPECT_LOOP,1.0667,1.5333
 weapon_aug,lookat01_draw,4.3333,ID,WPN_INSPECT_OUTRO,2.6000,1.7333
 weapon_aug,lookat01_draw,4.3333,Sound,Weapon_AUG.WeaponMove3,3.0333,0.0000
 weapon_aug,reload,3.7667,,,,
-weapon_aug,reload,3.7667,ID,WPN_RELOAD_SILENT,0.0000,1.5000
+weapon_aug,reload,3.7667,ID,WPN_RELOAD_SILENT,0.0000,2.9667
 weapon_aug,reload,3.7667,Sound,Weapon_AUG.Clipout,0.5000,0.0000
 weapon_aug,reload,3.7667,ID,WPN_DROP_MAG,0.6667,0.0000
 weapon_aug,reload,3.7667,Sound,Weapon_AUG.Clipin,1.4667,0.0000
@@ -1051,7 +1052,7 @@ weapon_m249,lookat01,6.8667,ID,WPN_INSPECT_INTRO,0.0000,1.8667
 weapon_m249,lookat01,6.8667,ID,WPN_INSPECT_LOOP,1.8667,2.1333
 weapon_m249,lookat01,6.8667,ID,WPN_INSPECT_OUTRO,4.0000,2.8667
 weapon_m249,reload,5.7000,,,,
-weapon_m249,reload,5.7000,ID,WPN_RELOAD_SILENT,0.0000,3.8167
+weapon_m249,reload,5.7000,ID,WPN_RELOAD_SILENT,0.0000,4.7167
 weapon_m249,reload,5.7000,Sound,Weapon_M249.Coverup,0.5667,0.0000
 weapon_m249,reload,5.7000,Sound,Weapon_M249.Chain,0.7833,0.0000
 weapon_m249,reload,5.7000,Sound,Weapon_M249.Boxout,1.3333,0.0000
@@ -1088,7 +1089,7 @@ weapon_negev,lookat01,6.8667,Legacy,,0.0000,0.0000
 weapon_negev,lookat01,6.8667,ID,WPN_INSPECT_LOOP,1.8667,2.1333
 weapon_negev,lookat01,6.8667,ID,WPN_INSPECT_OUTRO,4.0000,2.8667
 weapon_negev,reload,5.7000,,,,
-weapon_negev,reload,5.7000,ID,WPN_RELOAD_SILENT,0.0000,4.0667
+weapon_negev,reload,5.7000,ID,WPN_RELOAD_SILENT,0.0000,4.8667
 weapon_negev,reload,5.7000,Sound,Weapon_Negev.Coverup,0.6000,0.0000
 weapon_negev,reload,5.7000,Sound,Weapon_Negev.Boxout,1.3667,0.0000
 weapon_negev,reload,5.7000,ID,WPN_DROP_MAG,1.7000,0.0000
@@ -1131,7 +1132,7 @@ weapon_ssg08,lookat01_ssg08_lgcy,5.3000,ID,WPN_INSPECT_OUTRO,2.9000,2.4000
 weapon_ssg08,lookat01_ssg08_lgcy,5.3000,Sound,Weapon_SSG08.WeaponMove2,3.1333,0.0000
 weapon_ssg08,lookat01_ssg08_lgcy,5.3000,Sound,Weapon_SSG08.WeaponMove3,4.2667,0.0000
 weapon_ssg08,reload,3.7000,,,,
-weapon_ssg08,reload,3.7000,ID,WPN_RELOAD_SILENT,0.0000,1.9000
+weapon_ssg08,reload,3.7000,ID,WPN_RELOAD_SILENT,0.0000,3.1667
 weapon_ssg08,reload,3.7000,Sound,Weapon_SSG08.Clipout,0.3000,0.0000
 weapon_ssg08,reload,3.7000,ID,WPN_DROP_MAG,0.6000,0.0000
 weapon_ssg08,reload,3.7000,Sound,Weapon_SSG08.Clipin.Slide,1.5000,0.0000
@@ -1142,7 +1143,7 @@ weapon_ssg08,reload,3.7000,ID,WPN_RELOAD_ADD_AMMO,2.0000,0.0000
 weapon_ssg08,reload,3.7000,Sound,Weapon_SSG08.BoltBack,2.7333,0.0000
 weapon_ssg08,reload,3.7000,Sound,Weapon_SSG08.BoltForward,2.9667,0.0000
 weapon_ssg08,reload_ssg08_lgcy,3.7000,,,,
-weapon_ssg08,reload_ssg08_lgcy,3.7000,ID,WPN_RELOAD_SILENT,0.0000,1.6333
+weapon_ssg08,reload_ssg08_lgcy,3.7000,ID,WPN_RELOAD_SILENT,0.0000,3.1333
 weapon_ssg08,reload_ssg08_lgcy,3.7000,Sound,Weapon_SSG08.Clipout,0.3000,0.0000
 weapon_ssg08,reload_ssg08_lgcy,3.7000,ID,WPN_DROP_MAG,0.6000,0.0000
 weapon_ssg08,reload_ssg08_lgcy,3.7000,Sound,Weapon_SSG08.Clipin.Slide,1.5000,0.0000
@@ -1177,7 +1178,7 @@ weapon_awp,lookat01,5.0000,ID,WPN_INSPECT_OUTRO,2.9000,2.1000
 weapon_awp,lookat01,5.0000,Sound,Weapon_AWP.WeaponMove2,3.0333,0.0000
 weapon_awp,lookat01,5.0000,Sound,Weapon_AWP.WeaponMove3,3.8667,0.0000
 weapon_awp,reload,3.6667,,,,
-weapon_awp,reload,3.6667,ID,WPN_RELOAD_SILENT,0.0000,1.5667
+weapon_awp,reload,3.6667,ID,WPN_RELOAD_SILENT,0.0000,3.1334
 weapon_awp,reload,3.6667,Sound,Weapon_AWP.Clipout,0.2667,0.0000
 weapon_awp,reload,3.6667,ID,WPN_DROP_MAG,0.6667,0.0000
 weapon_awp,reload,3.6667,Sound,Weapon_AWP.Clipin,1.5333,0.0000
@@ -1205,7 +1206,7 @@ weapon_g3sg1,lookat01,4.4000,ID,WPN_INSPECT_OUTRO,2.4000,2.0000
 weapon_g3sg1,lookat01,4.4000,Sound,Weapon_G3SG1.WeaponMove2,2.4667,0.0000
 weapon_g3sg1,lookat01,4.4000,Sound,Weapon_G3SG1.WeaponMove3,3.7000,0.0000
 weapon_g3sg1,reload,4.6667,,,,
-weapon_g3sg1,reload,4.6667,ID,WPN_RELOAD_SILENT,0.0000,4.6667
+weapon_g3sg1,reload,4.6667,ID,WPN_RELOAD_SILENT,0.0000,3.9667
 weapon_g3sg1,reload,4.6667,Sound,Weapon_G3SG1.Draw,0.2000,0.0000
 weapon_g3sg1,reload,4.6667,Sound,Weapon_G3SG1.SlideBack,0.5333,0.0000
 weapon_g3sg1,reload,4.6667,Sound,Weapon_G3SG1.Clipout,1.3667,0.0000
@@ -1234,7 +1235,7 @@ weapon_scar20,lookat01,5.3000,ID,WPN_INSPECT_OUTRO,2.9000,2.4000
 weapon_scar20,lookat01,5.3000,Sound,Weapon_SCAR20.WeaponMove2,3.1333,0.0000
 weapon_scar20,lookat01,5.3000,Sound,Weapon_SCAR20.WeaponMove3,4.2667,0.0000
 weapon_scar20,reload,3.0667,,,,
-weapon_scar20,reload,3.0667,ID,WPN_RELOAD_SILENT,0.0000,1.6667
+weapon_scar20,reload,3.0667,ID,WPN_RELOAD_SILENT,0.0000,2.6667
 weapon_scar20,reload,3.0667,Sound,Weapon_scar20.Clipout,0.3333,0.0000
 weapon_scar20,reload,3.0667,ID,WPN_DROP_MAG,0.5667,0.0000
 weapon_scar20,reload,3.0667,Sound,Weapon_scar20.Clipin,1.2667,0.0000
@@ -1243,6 +1244,7 @@ weapon_scar20,reload,3.0667,ID,WPN_RELOAD_ADD_AMMO,1.5334,0.0000
 weapon_scar20,reload,3.0667,Sound,Weapon_SCAR20.Hit,2.0000,0.0000
 weapon_scar20,reload,3.0667,Sound,Weapon_SCAR20.Handles,2.1000,0.0000
 weapon_scar20,reload_empty,3.0667,,,,
+weapon_scar20,reload_empty,3.0667,ID,WPN_RELOAD_SILENT,0.0000,2.1000
 weapon_scar20,reload_empty,3.0667,Sound,Weapon_scar20.BoltForward,0.0000,0.0000
 weapon_scar20,reload_empty,3.0667,Sound,Weapon_scar20.Clipout,0.5000,0.0000
 weapon_scar20,reload_empty,3.0667,ID,WPN_DROP_MAG,0.5667,0.0000
