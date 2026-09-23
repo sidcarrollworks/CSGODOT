@@ -11,12 +11,15 @@ extends SceneTree
 ## Team size 5 is ten players (you and nine bots); windows are five seconds
 ## each. It runs every node's callbacks itself, with a clock round each, so
 ## the time is by system rather than by the engine's phases: every node's
-## _physics_process and _process, taken over as the node arrives, and every
+## _physics_process and _process, taken over as the node arrives and run in
+## the order the engine would run them (by priority, then the tree's), and every
 ## AnimationTree, switched to manual and stepped here, the skeleton posed
-## straight after so the hitboxes and pins that follow it are counted too. A
-## node after all the tree's physics callbacks marks where they end; the
-## step from there to the next tick in the same frame is the physics server.
-## Headless there is no drawing, so a frame here is its script alone.
+## straight after so the hitboxes and pins that follow it are counted too.
+## The world's tick it runs in the world's own order and parts (begin_tick,
+## each player's command_for and run_command, end_tick), timing each. A node
+## after all the tree's physics callbacks marks where they end; the step from
+## there to the next tick in the same frame is the physics server. Headless
+## there is no drawing, so a frame here is its script alone.
 
 const WINDOW_USEC := 5_000_000
 
@@ -35,6 +38,7 @@ var _process_nodes: Array[Node] = []
 var _trees: Array[AnimationTree] = []
 var _skeletons := {}  # AnimationTree -> the skeleton it poses
 var _arrived: Array[Node] = []
+var _taken := {}  # node -> the order it was taken over in
 var _last_frame := -1
 var _nodes_done := 0
 var _start_usec := 0
@@ -133,16 +137,8 @@ func _physics_process(delta: float) -> bool:
 		if not is_instance_valid(node) or not node.is_inside_tree():
 			_physics_nodes.erase(node)
 			continue
-		if node is Bot:
-			var bot := node as Bot
-			if bot.alive:
-				_count("bots alive, over the ticks")
-			var a := Time.get_ticks_usec()
-			var cmd: UserCmd = bot.call("_think", delta)
-			var b := Time.get_ticks_usec()
-			bot.run_command(cmd, delta)
-			_add("tick: bots thinking", b - a)
-			_add("tick: bots' run_command", Time.get_ticks_usec() - b)
+		if node is GameWorld:
+			_run_world(node as GameWorld, delta)
 			continue
 		var e := Time.get_ticks_usec()
 		node.call("_physics_process", delta)
@@ -152,15 +148,41 @@ func _physics_process(delta: float) -> bool:
 	return false
 
 
+## The world's tick, as GameWorld.step runs it, with a clock round each part.
+func _run_world(world: GameWorld, delta: float) -> void:
+	world.begin_tick()
+	for player: PlayerSim in world.players.duplicate():
+		if not player.is_inside_tree():
+			continue
+		var bot := player as Bot
+		if bot != null and bot.alive:
+			_count("bots alive, over the ticks")
+		var a := Time.get_ticks_usec()
+		var cmd := player.command_for(world.tick, delta)
+		var b := Time.get_ticks_usec()
+		player.run_command(cmd, delta)
+		var c := Time.get_ticks_usec()
+		if bot != null:
+			_add("tick: bots thinking", b - a)
+			_add("tick: bots' run_command", c - b)
+		else:
+			_add("tick: your command and run_command", c - a)
+	var d := Time.get_ticks_usec()
+	world.end_tick()
+	_add("tick: the match", Time.get_ticks_usec() - d)
+
+
 func _begin() -> void:
 	print("dust2: first frame %.1f s after starting, playing at %.1f s; %d players" % [
 		(_first_frame_usec - _start_usec) / 1e6, (Time.get_ticks_usec() - _start_usec) / 1e6, _players().size(),
 	])
+	# In the tree's order, which is the engine's among nodes of one priority.
 	var stack: Array[Node] = [root]
 	while not stack.is_empty():
 		var node: Node = stack.pop_back()
-		for child in node.get_children():
-			stack.append(child)
+		var children := node.get_children()
+		children.reverse()
+		stack.append_array(children)
 		_take_over(node)
 	_arrived.clear()
 	for player in _players():
@@ -172,7 +194,9 @@ func _begin() -> void:
 	_window_start = Time.get_ticks_usec()
 
 
-## Runs a node's callbacks from here from now on, if it has any.
+## Runs a node's callbacks from here from now on, if it has any, in the
+## order the engine would: by priority (the world before everything, so
+## what is drawn reads the tick just run), then in the order taken over.
 func _take_over(node: Node) -> void:
 	if not is_instance_valid(node) or not node.is_inside_tree() or node == _marker:
 		return
@@ -182,12 +206,30 @@ func _take_over(node: Node) -> void:
 			tree.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 			_trees.append(tree)
 		return
+	if not _taken.has(node):
+		_taken[node] = _taken.size()
 	if node.is_physics_processing() and not _physics_nodes.has(node):
 		node.set_physics_process(false)
 		_physics_nodes.append(node)
+		_in_order(_physics_nodes, true)
 	if node.is_processing() and not _process_nodes.has(node):
 		node.set_process(false)
 		_process_nodes.append(node)
+		_in_order(_process_nodes, false)
+
+
+## Sorts the nodes by their priority, then by when they were taken over,
+## leaving out any that have gone.
+func _in_order(nodes: Array[Node], physics: bool) -> void:
+	for i in range(nodes.size() - 1, -1, -1):
+		if not is_instance_valid(nodes[i]):
+			nodes.remove_at(i)
+	nodes.sort_custom(func(a: Node, b: Node) -> bool:
+		var first := a.process_physics_priority if physics else a.process_priority
+		var second := b.process_physics_priority if physics else b.process_priority
+		if first != second:
+			return first < second
+		return _taken[a] < _taken[b])
 
 
 func _skeleton_of(tree: AnimationTree) -> Skeleton3D:
@@ -351,5 +393,7 @@ func _kind(node: Node) -> String:
 	return script.resource_path.get_file() if script != null and script.resource_path != "" else node.get_class()
 
 
-func _players() -> Array[Node]:
-	return get_nodes_in_group(&"players")
+func _players() -> Array[PlayerSim]:
+	if GameWorld.current == null:
+		return []
+	return GameWorld.current.players

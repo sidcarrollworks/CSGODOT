@@ -4,10 +4,11 @@ extends PlayerSim
 ## You: a player in the simulation (PlayerSim), driven by your keys and
 ## mouse, and drawn for you in first person (PlayerView).
 ##
-## Every tick your input becomes one UserCmd (PlayerInput.build_command) and
-## the simulation runs it, exactly as it runs a bot's, and as a server will
-## run the commands a client sends. Nothing here decides anything about the
-## game; it only turns keys into commands and hands the drawing to the view.
+## Every tick the world asks for your command, your input since the last
+## one (PlayerInput.build_command), and runs it, exactly as it runs a bot's,
+## and as a server will run the commands a client sends. Nothing here decides
+## anything about the game; it only turns keys into commands and hands the
+## drawing to the view.
 
 @export var camera: Camera3D
 
@@ -81,5 +82,5 @@ func place(spawn_position: Vector3, yaw: float) -> void:
 	input.pitch_degrees = 0.0
 
 
-func _physics_process(delta: float) -> void:
-	run_command(input.build_command(SimClock.current_tick()), delta)
+func command_for(tick: int, _dt: float) -> UserCmd:
+	return input.build_command(tick)

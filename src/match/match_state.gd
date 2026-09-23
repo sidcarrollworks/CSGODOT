@@ -5,8 +5,8 @@ extends Node
 ## time, play and a pause after, the score, the side swap at half time,
 ## overtime at 12-12, and the end of the match.
 ##
-## It is simulation, not drawing. It advances on the simulation's clock
-## (SimClock), one tick after the players have run theirs, and it changes
+## It is simulation, not drawing. The world runs it on every tick, after
+## the players have run theirs (GameWorld.end_tick), and it changes
 ## the game only through the players themselves: where they spawn, whether
 ## they come back when they die (only in warmup), whether they may move and
 ## fire (not in freeze time), and which side they are on. What is on screen
@@ -100,11 +100,6 @@ var _swap_next := false
 var _fielded := {"T": false, "CT": false}
 
 
-func _init() -> void:
-	# After the players: a round is judged on the tick they have just run.
-	process_physics_priority = 100
-
-
 func _ready() -> void:
 	if rules == null:
 		rules = MatchRules.new()
@@ -117,6 +112,11 @@ func add_player(player: PlayerSim) -> void:
 	players.append(player)
 	player.team_damage_scale = rules.friendly_fire_bullets if rules != null else 1.0
 	player.freeze_cam_seconds = rules.freeze_cam_seconds if rules != null else 2.0
+
+
+## Someone leaves the match: out of the game altogether (GameWorld).
+func remove_player(player: PlayerSim) -> void:
+	players.erase(player)
 
 
 ## Starts the match: warmup, where there is one, or the first round.
@@ -148,11 +148,8 @@ func end_warmup(now_usec: int = SimClock.now_usec()) -> void:
 		_start_round(now_usec, true)
 
 
-func _physics_process(_delta: float) -> void:
-	tick(SimClock.now_usec())
-
-
-## Moves the match on to where it stands at this moment of simulation time.
+## Moves the match on to where it stands at this moment of simulation time:
+## the end of the tick the players have just run, when the world runs it.
 func tick(now_usec: int) -> void:
 	match phase:
 		Phase.WARMUP:

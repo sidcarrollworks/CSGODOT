@@ -342,14 +342,14 @@ func _test_a_purchase() -> void:
 	var inv := _game.inventory(t)
 	inv.give_starting_items("T")
 	_economy.set_money(t, 5000)
-	var dropped := []
-	_economy.drop = func(userid: int, entry: Inventory.Entry) -> void: dropped.append([userid, entry.item_class()])
 	_buy(t, "weapon_galilar")
 	_sent.clear()
 	_buy(t, "weapon_ak47")
 	_check(inv.has("weapon_ak47") and not inv.has("weapon_galilar"), "the AK-47 takes the Galil AR's place")
 	_check_equal(_economy.money(t), 5000 - 1800 - 2700, "and both were paid for")
-	_check_equal(dropped, [[t, "weapon_galilar"], ], "the Galil AR is handed over to be dropped")
+	_step()
+	var dropped := _game.entities.of_class("weapon_galilar")
+	_check(dropped.size() == 1 and dropped[0].owner_id == t, "the Galil AR falls at the buyer's feet")
 	var purchases := _sent_named(&"item_purchase")
 	_check(purchases.size() == 1 and purchases[0].fields["weapon"] == "weapon_ak47"
 		and purchases[0].fields["team"] == "T" and purchases[0].fields["loadout"] == 11 and purchases[0].fields["userid"] == t,
@@ -357,6 +357,12 @@ func _test_a_purchase() -> void:
 	_economy.buy(t, "weapon_awp")
 	_step()
 	_check_equal(_economy.money(t), 500, "a purchase that cannot be paid for is refused")
+	_economy.set_money(t, 5000)
+	_game.command(t, "buy vesthelm")
+	_game.command(t, "buy deagle")
+	_step()
+	_check(_game.inventory(t).helmet and _game.inventory(t).has("weapon_deagle") and _economy.money(t) == 5000 - 1000 - 700,
+		"CS2's own buy command names work: buy vesthelm, buy deagle")
 
 
 func _test_undoing_a_purchase() -> void:

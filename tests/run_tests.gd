@@ -106,7 +106,8 @@ func _process(_delta: float) -> bool:
 
 	_frames += 1
 
-	# Phase 1: let the controller run and the player fall onto the floor.
+	# Phase 1: let the course's world run the player, and it falls onto the
+	# floor.
 	if _frames < FALL_FRAMES:
 		return false
 	if _frames == FALL_FRAMES:
@@ -114,7 +115,7 @@ func _process(_delta: float) -> bool:
 		# From here the body is driven directly, so jumps and walks can be
 		# scripted without a keyboard. This still exercises the real
 		# simulate() path, collision and all.
-		_player.set_physics_process(false)
+		(_course.get("world") as GameWorld).remove_player(_player as PlayerSim)
 		_test_creep_stops()
 		_test_traces_a_tick()
 		return false

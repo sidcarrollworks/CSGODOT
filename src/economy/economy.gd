@@ -10,10 +10,11 @@ extends RefCounted
 ## (reference/systems/contracts.md). It learns what happened from game
 ## events (round_start, round_end, player_death, bomb_planted and the rest),
 ## and never calls the round code; a purchase goes into the buyer's
-## Inventory and is announced with item_purchase. What is drawn (the buy
-## menu, the money on the HUD) only reads it, and asks for a purchase with
-## buy(), which the next tick carries out, as a server would carry out a
-## client's buy command.
+## Inventory and is announced with item_purchase. A purchase is CS2's own
+## console command, "buy ak47", sent through GameSystems.command and carried
+## out at the start of the next tick, as CS2's server carries out a
+## client's; "sellback ak47" undoes one. What is drawn (the buy menu, the
+## money on the HUD) only reads the economy and sends those commands.
 ##
 ## Every number is MoneyRules', and every one of those is CS2's.
 ## reference/systems/economy.md says where each comes from and which are
@@ -55,11 +56,6 @@ var match_rules: MatchRules
 var zones: BuyZones
 var game: GameSystems
 
-## Hands a gun a purchase replaced to whatever puts dropped guns on the
-## ground: func(userid: int, entry: Inventory.Entry). Until dropped guns are
-## in (roadmap item 12), nobody is set and the replaced gun is gone.
-var drop: Callable
-
 ## Money by userid.
 var _accounts := {}
 ## Each side's place on the loss ladder, and for loss_aversion 2 whether its
@@ -81,8 +77,6 @@ var _in_zone := {}
 ## armor, helmet}], oldest first; and the purchases of each weapon type.
 var _bought := {}
 var _type_counts := {}
-## Purchases and undos asked for, carried out on the next tick in order.
-var _requests: Array[Dictionary] = []
 
 
 func _init(money_rules: MoneyRules = null, zones_by_side: BuyZones = null) -> void:
@@ -104,6 +98,8 @@ func attach(game_systems: GameSystems) -> void:
 	events.listen(&"player_death", _on_player_death)
 	events.listen(&"bomb_planted", _on_bomb_planted)
 	events.listen(&"bomb_defused", _on_bomb_defused)
+	game.on_command(&"buy", _on_buy_command)
+	game.on_command(&"sellback", _on_sellback_command)
 
 
 func tick(t: SimTick) -> void:
@@ -111,13 +107,6 @@ func tick(t: SimTick) -> void:
 		_buy_open = false
 		game.events.send(&"buytime_ended", {})
 	_update_zones()
-	var requests := _requests
-	_requests = []
-	for request in requests:
-		if request["undo"]:
-			_undo(request["userid"], request["item"])
-		else:
-			_buy(request["userid"], request["item"])
 
 
 # --- What the menu and the HUD read -----------------------------------------
@@ -134,7 +123,7 @@ func set_money(userid: int, amount: int) -> void:
 
 ## Whether it is a time buying is open at all (the buy zone aside).
 func buying_open() -> bool:
-	return _buy_open
+	return _buy_open and (_buy_ends_usec < 0 or game == null or game.now_usec() < _buy_ends_usec)
 
 
 ## Seconds of buying left, or INF while it has no end yet (freeze time,
@@ -187,7 +176,7 @@ func shop_refusal(userid: int) -> StringName:
 		return NOT_PLAYING
 	if not _alive(userid):
 		return DEAD
-	if not _buy_open:
+	if not buying_open():
 		return BUY_TIME_OVER
 	if not in_buy_zone(userid):
 		return NOT_IN_BUY_ZONE
@@ -227,17 +216,50 @@ func can_undo(userid: int, item_class: String) -> bool:
 	return _undo_refusal(userid, item_class) == OK
 
 
-## Asks to buy an item; the next tick buys it or refuses.
+## Sends a player's buy command for an item; the next tick buys it or
+## refuses.
 func buy(userid: int, item_class: String) -> void:
-	_requests.append({"userid": userid, "item": item_class, "undo": false})
+	game.command(userid, "buy " + item_class)
 
 
-## Asks to undo this round's purchase of an item and have its price back.
+## Sends a player's command to undo this round's purchase of an item.
 func undo(userid: int, item_class: String) -> void:
-	_requests.append({"userid": userid, "item": item_class, "undo": true})
+	game.command(userid, "sellback " + item_class)
+
+
+## The class an item is named by in a buy command: its class name, or the
+## name CS2's own buy command takes ("ak47", "vesthelm", "defuser"); "" for
+## nothing sold by that name.
+static func item_named(name: String) -> String:
+	var lower := name.to_lower()
+	if ItemRegistry.has(lower):
+		return lower
+	match lower:
+		"vest":
+			return "item_kevlar"
+		"vesthelm":
+			return "item_assaultsuit"
+	for prefix in ["weapon_", "item_"]:
+		if ItemRegistry.has(prefix + lower):
+			return prefix + lower
+	return ""
 
 
 # --- Buying ------------------------------------------------------------------
+
+func _on_buy_command(userid: int, args: PackedStringArray, _t: SimTick) -> bool:
+	if args.is_empty():
+		return false
+	_buy(userid, item_named(args[0]))
+	return true
+
+
+func _on_sellback_command(userid: int, args: PackedStringArray, _t: SimTick) -> bool:
+	if args.is_empty():
+		return false
+	_undo(userid, item_named(args[0]))
+	return true
+
 
 func _buy(userid: int, item_class: String) -> void:
 	if refusal(userid, item_class) != OK:
@@ -258,13 +280,14 @@ func _buy(userid: int, item_class: String) -> void:
 		"userid": userid, "team": side,
 		"loadout": Loadout.index_of(side, item_class), "weapon": item_class,
 	})
+	# A gun it replaced falls at the buyer's feet.
 	for entry in replaced:
-		if drop.is_valid():
-			drop.call(userid, entry)
+		DroppedItem.drop(game, userid, entry)
+		game.events.send(&"item_remove", {"userid": userid, "item": entry.item.item_class})
 
 
 func _undo_refusal(userid: int, item_class: String) -> StringName:
-	if not rules.sellback or not _buy_open or not _alive(userid) or not in_buy_zone(userid):
+	if not rules.sellback or not buying_open() or not _alive(userid) or not in_buy_zone(userid):
 		return NOTHING_TO_UNDO
 	if _last_purchase(userid, item_class) < 0:
 		return NOTHING_TO_UNDO
@@ -326,7 +349,7 @@ func _update_zones() -> void:
 			continue
 		_in_zone[userid] = inside
 		game.events.send(&"enter_buyzone" if inside else &"exit_buyzone",
-			{"userid": userid, "canbuy": inside and _buy_open})
+			{"userid": userid, "canbuy": inside and buying_open()})
 
 
 # --- Money -------------------------------------------------------------------
