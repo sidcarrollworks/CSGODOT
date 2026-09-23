@@ -553,6 +553,15 @@ func _test_nav_mesh() -> void:
 		"a route drops off the ledge, from the middle of its edge to the floor below, crosses the shared edge at its middle, and no route climbs back (%s, %s)"
 			% [ids, path]
 	)
+	var walk := mesh.walk_path(over_ledge, over_first)
+	_check(
+		walk.points.size() == 4 and walk.points[0] == over_ledge and walk.points[3] == over_first
+			and walk.points[1].is_equal_approx(SourceEntities.to_game(Vector3(220, 50, 40)))
+			and walk.points[2].is_equal_approx(SourceEntities.to_game(Vector3(188, 50, 0)))
+			and walk.jumps == PackedByteArray([0, 0, 0, 0]) and walk.areas.size() == 3,
+		"pulled taut, the same walk goes straight to the take-off, lands 12 units onto the floor below, and goes straight on through the shared edge with no corner; a drop is not a jump (%s, %s)"
+			% [walk.points, walk.jumps]
+	)
 
 	# Every version the reader takes, each with the generator version of its
 	# day: up to generation 11 three hull records are written for one hull,

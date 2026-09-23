@@ -406,14 +406,13 @@ radar has B3 (`MapOverview`).
 
 ## 11. Bots that play CS
 
-**Today:** bots see and shoot the local player, walking straight lines.
-dust2's own nav mesh is read (`SourceNavMesh`, N1), so everything below can
-start.
+**Today:** bots see and shoot the local player, and walk dust2's own nav
+mesh (`SourceNavMesh.walk_path`: pulled taut, crouching where an area is
+marked crouch-only, jumping where a link rises past a step; roadmap item
+22), from their spawn to a bomb site and back.
 
 **Remote**
-- Paths on dust2's nav mesh (`SourceNavMesh.find_path`, pulled taut; crouch
-  where an area is marked crouch-only, jump where a link rises past a step),
-  teams of bots fighting each other.
+- Teams of bots fighting each other.
 - Buying: an economy plan per round (full buy, force, eco, save), dropping
   for teammates.
 - The objective: carry and plant (T), rotate, retake and defuse (CT), save

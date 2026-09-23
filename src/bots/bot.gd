@@ -5,8 +5,11 @@ extends PlayerSim
 ## (PlayerSim: body, hull, movement solver, weapon), run by the same kind of
 ## command, except that the command comes from what the bot decides rather
 ## than from keys. It wears the third-person model. It walks its route round
-## and round, facing the way it goes, and can be shot: it wears the model's
-## own hitboxes on its bones, goes limp and falls the way the last round
+## and round, facing the way it goes: over the map's nav mesh where it has
+## one, the way pulled taut round corners, crouching where the floor is under
+## a low ceiling and jumping up where it rises past a step; in straight lines
+## between the route's points where it has none. It can be shot: it wears
+## the model's own hitboxes on its bones, goes limp and falls the way the last round
 ## pushed it (a ragdoll), and comes back at the start of its route (in a
 ## match, not until the next round, at the spawn point it is given). It shoots
 ## back: when a player of the other side is in its sight, in the open and
@@ -26,6 +29,10 @@ extends PlayerSim
 ## Where the bot goes, in order, in world units. It turns for the first
 ## point on arriving at the last.
 @export var route: PackedVector3Array = PackedVector3Array()
+
+## The floor it finds its way over (SourceNavMesh.walk_path), shared by
+## every bot on the map; null walks the route in straight lines.
+var nav_mesh: SourceNavMesh
 
 ## Close enough to a point to head for the next, in units.
 @export var arrive_distance: float = 24.0
@@ -49,6 +56,23 @@ const PAUSE_SECONDS := 0.45
 const AIM_ERROR_DEGREES := 1.2
 const FIRE_WITHIN_DEGREES := 6.0
 
+## Walking a path: close enough to a corner to turn for the next, in units.
+## Tighter than arrive_distance, since cutting a corner early walks the hull
+## into the wall the corner is there for.
+const CORNER_REACHED := 8.0
+## Crouches this far, in plan, before an area whose ceiling is too low to
+## stand under, so it is down by the time it gets there.
+const CROUCH_AHEAD := 100.0
+## Held up this long without getting anywhere, it finds its way again from
+## where it is, and jumps, in case what holds it is a lip the mesh steps over.
+const STUCK_SECONDS := 0.75
+const STUCK_SPEED := 20.0
+## A landing counts as reached when the feet are this close to its height.
+const STEP_UP_OR_DOWN := 18.0
+## It jumps for a landing only this close to the take-off, in plan, so it
+## does not hop again on arriving.
+const TAKE_OFF_REACH := 24.0
+
 ## Its body falling, while it is dead; null otherwise.
 
 ## Armed but not shooting: it sees nobody, so it stands or walks its route.
@@ -63,6 +87,14 @@ var target: Node3D
 signal died(zone: StringName)
 
 var _next: int = 0
+## The way to route[_next] over the nav mesh, and the corner of it it is
+## heading for; null to find it again.
+var _path: SourceNavMesh.WalkPath
+var _corner: int = 0
+var _stuck_for: float = 0.0
+## The point of the route it found no way to over the mesh, so the way is
+## not asked for again every tick; -1 when there is none.
+var _no_way_to: int = -1
 var _deaths: int = 0
 var _seen_for: float = 0.0
 var _burst_clock: float = 0.0
@@ -174,13 +206,8 @@ func _think(delta: float) -> UserCmd:
 			if _burst_clock < BURST_SECONDS:
 				cmd.buttons |= UserCmd.ATTACK
 	elif not route.is_empty():
-		var waypoint := route[_next]
-		var to_waypoint := waypoint - global_position
-		to_waypoint.y = 0.0
-		if to_waypoint.length() < arrive_distance:
-			_next = (_next + 1) % route.size()
-		elif to_waypoint.length_squared() > 0.0:
-			var way := to_waypoint.normalized()
+		var way := _way_on(cmd, delta)
+		if way.length_squared() > 0.0:
 			# The game's yaw 0 looks down -Z, and yaw grows towards -X.
 			var wanted := rad_to_deg(atan2(-way.x, -way.z))
 			yaw = rad_to_deg(rotate_toward(deg_to_rad(yaw), deg_to_rad(wanted), deg_to_rad(turn_rate) * delta))
@@ -190,6 +217,102 @@ func _think(delta: float) -> UserCmd:
 	cmd.pitch_degrees = pitch + error.y
 	_sent_error = error
 	return cmd
+
+
+## Which way it walks this tick, flat, towards route[_next]: along the path
+## over the nav mesh where there is one, straight at it where there is not.
+## Sets the command's crouch and jump as the floor asks. Zero when it has
+## arrived, and it heads for the next point of the route from the next tick.
+func _way_on(cmd: UserCmd, delta: float) -> Vector3:
+	var goal := route[_next]
+	if nav_mesh != null and _path == null and _no_way_to != _next:
+		_path = nav_mesh.walk_path(global_position, goal)
+		_corner = 1
+		if _path.is_empty():
+			_path = null
+			_no_way_to = _next
+			push_warning("%s: no way over the nav mesh from %s to %s; walking straight at it" % [name, global_position, goal])
+
+	if _path == null:
+		var to_goal := Vector3(goal.x - global_position.x, 0.0, goal.z - global_position.z)
+		if to_goal.length() < arrive_distance:
+			_arrive()
+			return Vector3.ZERO
+		return to_goal.normalized()
+
+	# The corners it has passed: reached, or gone by (the leg from the corner
+	# before now points back at it). The last is the goal, reached as before.
+	while _corner < _path.points.size():
+		var corner := _path.points[_corner]
+		var to_corner := Vector3(corner.x - global_position.x, 0.0, corner.z - global_position.z)
+		var last := _corner == _path.points.size() - 1
+		var landing := _path.jumps_from(_corner - 1)
+		var height_ok := not landing or (on_ground and absf(corner.y - global_position.y) < STEP_UP_OR_DOWN)
+		var from := _path.points[_corner - 1]
+		var leg := Vector3(corner.x - from.x, 0.0, corner.z - from.z)
+		var passed := not last and leg.length_squared() > 1.0 and leg.dot(to_corner) <= 0.0
+		if height_ok and (to_corner.length() < (arrive_distance if last else CORNER_REACHED) or passed):
+			_corner += 1
+			continue
+		break
+	if _corner >= _path.points.size():
+		_arrive()
+		return Vector3.ZERO
+
+	var corner := _path.points[_corner]
+	var way := Vector3(corner.x - global_position.x, 0.0, corner.z - global_position.z)
+	if _path.jumps_from(_corner - 1):
+		# Heading for a landing up a ledge or across a gap: it jumps from the
+		# take-off, and crouches in the air, which lifts the feet (the crouch
+		# jump) for the ledges a standing jump does not clear.
+		var take_off := _path.points[_corner - 1]
+		var near_take_off := Vector2(take_off.x - global_position.x, take_off.z - global_position.z).length() < TAKE_OFF_REACH
+		var at_take_off := near_take_off and absf(global_position.y - take_off.y) < STEP_UP_OR_DOWN
+		if on_ground and at_take_off:
+			cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.JUMP, true, 0.0, yaw_degrees, pitch_degrees))
+		elif not on_ground:
+			cmd.buttons |= UserCmd.DUCK
+	if _under_low_ceiling():
+		cmd.buttons |= UserCmd.DUCK
+	if _note_progress(delta):
+		cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.JUMP, true, 0.0, yaw_degrees, pitch_degrees))
+	return way.normalized() if way.length_squared() > 0.0 else Vector3.ZERO
+
+
+
+## On to the next point of the route, to find the way there afresh.
+func _arrive() -> void:
+	_next = (_next + 1) % route.size()
+	_path = null
+	_no_way_to = -1
+	_stuck_for = 0.0
+
+
+## Whether it has been walking for STUCK_SECONDS without getting anywhere;
+## if so it finds its way again from where it is from the next tick.
+func _note_progress(delta: float) -> bool:
+	if Vector2(velocity.x, velocity.z).length() >= STUCK_SPEED or not on_ground:
+		_stuck_for = 0.0
+		return false
+	_stuck_for += delta
+	if _stuck_for < STUCK_SECONDS:
+		return false
+	_stuck_for = 0.0
+	_path = null
+	_no_way_to = -1
+	return true
+
+
+## Whether an area whose ceiling is too low to stand under is on its path
+## and within CROUCH_AHEAD of it, about as high as its feet.
+func _under_low_ceiling() -> bool:
+	for area in _path.areas:
+		if (area.flags & SourceNavMesh.FLAG_CROUCH) == 0:
+			continue
+		if absf(area.floor_at(global_position) - global_position.y) < 36.0 \
+				and area.distance_in_plan(global_position) < CROUCH_AHEAD:
+			return true
+	return false
 
 
 ## The nearest living player of the other side in sight: within range,
@@ -269,6 +392,9 @@ func respawn() -> void:
 	elif not route.is_empty():
 		global_position = route[0]
 		_next = 1 % route.size()
+	_path = null
+	_no_way_to = -1
+	_stuck_for = 0.0
 	velocity = Vector3.ZERO
 	_forget_hits()
 	_get_up()
@@ -282,6 +408,10 @@ func spawn_at(spawn_position: Vector3, yaw: float, fresh: bool = false) -> void:
 	_sent_error = Vector2.ZERO
 	_seen_for = 0.0
 	target = null
+	# The way it was finding over the nav mesh is from where it was.
+	_path = null
+	_no_way_to = -1
+	_stuck_for = 0.0
 	if route.is_empty():
 		return
 	var nearest := 0

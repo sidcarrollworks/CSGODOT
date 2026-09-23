@@ -19,6 +19,9 @@ const SKYBOX_DIR := "res://assets/maps/de_dust2_skybox"
 const ENTITIES_FILE := "entities/default_ents.vents"
 const SKY_FILE := "../../materials/skybox/sky_de_dust2.exr"
 
+## The floor the game's bots walk (scripts/extract_assets.sh nav).
+const NAV_FILE := "res://assets/maps/de_dust2/maps/de_dust2.nav"
+
 ## Which side's spawn points to start at. They come from the map's entity
 ## lump; the glTF does not carry them.
 @export_enum("T", "CT") var spawn_team: String = "T"
@@ -30,14 +33,20 @@ const SKY_FILE := "../../materials/skybox/sky_de_dust2.exr"
 ## rather than at spawn_position. Noclip (V) from there.
 @export var use_bounds_centre_as_spawn: bool = true
 
-## Players on each side, you among them; bots fill every other place. They
-## walk their side's spawn points on a loop, which is the one part of the map
-## they can be sure of, and shoot whoever of the other side they see.
+## Players on each side, you among them; bots fill every other place. Over
+## the map's nav mesh each walks from a spawn point to a bomb site and back,
+## A and B in turn; without it, round its side's spawn points, the one part
+## of the map it can be sure of. Each shoots whoever of the other side it sees.
 @export var team_size: int = 5
 
 ## How long warmup lasts before the first round; CS2's is 120 s, and F5
 ## ends it early, as mp_warmup_end does. 0 goes straight to the first round.
 @export var warmup_seconds: float = 120.0
+
+## Whether the bots walk to the bomb sites and back, or round their own
+## spawn points as they did before they had the nav mesh. Without the nav
+## mesh they keep to their spawn points, where a straight line is safe.
+@export var bots_walk_to_sites: bool = true
 
 var importer: MapImporter
 var skybox: MapImporter
@@ -47,6 +56,12 @@ var match_state: MatchState
 
 ## The map's entity lump, parsed once for whoever needs it.
 var entities: Array[Dictionary] = []
+
+## The map's nav mesh, read once for every bot; its `error` says why not.
+var nav_mesh: SourceNavMesh
+## The bomb sites' floors the bots walk to, A then B; empty when they walk
+## their side's spawn points instead.
+var _sites := PackedVector3Array()
 
 
 func _ready() -> void:
@@ -103,9 +118,21 @@ func _ready() -> void:
 
 
 ## Bots in every place you do not take, on both sides, each walking its
-## side's spawn points in a loop from wherever the match spawns it.
+## route (bot_route) from wherever the match spawns it. The nav mesh is read
+## once for all of them; without it they walk straight lines between their
+## side's spawn points.
 func _place_bots() -> void:
 	var spawns := SourceEntities.player_spawns(entities)
+	nav_mesh = SourceNavMesh.load_file(NAV_FILE)
+	if not nav_mesh.error.is_empty():
+		push_warning("Bots walk straight lines between their spawn points: %s" % nav_mesh.error)
+		_show_note("Bots walk straight lines between their spawn points:
+%s" % nav_mesh.error)
+		nav_mesh = null
+	else:
+		print("--- nav mesh: %s" % nav_mesh.summary())
+	if nav_mesh != null and bots_walk_to_sites:
+		_sites = _bomb_site_floors()
 	var scene := load("res://src/bots/bot.tscn") as PackedScene
 	var number := 0
 	for team: String in ["T", "CT"]:
@@ -118,9 +145,21 @@ func _place_bots() -> void:
 			bot.team = team
 			bot.weapon_data = MatchState.starting_weapon(team)
 			bot.weapon_model = bot.weapon_data.model_path
-			bot.route = side_route(spawns, team)
+			bot.nav_mesh = nav_mesh
+			bot.route = bot_route(spawns, team, i, _sites)
 			add_child(bot)
 			bot.global_position = spawns[team][i % spawns[team].size()]["position"]
+
+
+## The route of a side's nth bot: from one of its side's spawn points to a
+## bomb site and back, A and B in turn, when there are sites to go to (the
+## nav mesh, and bots_walk_to_sites); round its side's spawn points when
+## not. Where on it a bot sets off from is the match's (Bot.spawn_at).
+static func bot_route(spawns: Dictionary, team: String, nth: int, sites: PackedVector3Array) -> PackedVector3Array:
+	if sites.is_empty():
+		return side_route(spawns, team)
+	var points: Array = spawns[team]
+	return PackedVector3Array([points[nth % points.size()]["position"], sites[nth % sites.size()]])
 
 
 ## A side's spawn points, in order, as a loop to walk.
@@ -132,7 +171,7 @@ static func side_route(spawns: Dictionary, team: String) -> PackedVector3Array:
 
 
 ## The match: everyone in it, spawned for warmup, which counts down to the
-## first round. After a side swap each bot walks its new side's spawns.
+## first round. After a side swap each bot takes a route of its new side.
 func _start_match() -> void:
 	var spawns := SourceEntities.player_spawns(entities)
 	if (spawns["T"] as Array).is_empty() or (spawns["CT"] as Array).is_empty():
@@ -147,9 +186,11 @@ func _start_match() -> void:
 		if node is PlayerSim:
 			match_state.add_player(node)
 	match_state.sides_swapped.connect(func() -> void:
+		var counts := {"T": 0, "CT": 0}
 		for sim in match_state.players:
 			if sim is Bot:
-				(sim as Bot).route = side_route(spawns, sim.team))
+				(sim as Bot).route = bot_route(spawns, sim.team, counts[sim.team], _sites)
+				counts[sim.team] += 1)
 	match_state.start()
 
 
@@ -158,6 +199,41 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	if key != null and key.pressed and not key.echo and key.keycode == KEY_F5 and match_state != null:
 		match_state.end_warmup()
+
+
+## The floor at the middle of each bomb site, A then B, from the callouts
+## (env_cs_place): a callout's origin is its brush's middle, over the floor,
+## so it is taken down onto the nav mesh. Empty where either is missing.
+func _bomb_site_floors() -> PackedVector3Array:
+	var places := SourceEntities.places(entities)
+	var floors := PackedVector3Array()
+	for place in ["BombsiteA", "BombsiteB"]:
+		if not places.has(place):
+			return PackedVector3Array()
+		var origin: Vector3 = places[place][0]
+		var area := nav_mesh.area_at(origin, 300.0, 24.0, 0)
+		if area == null:
+			area = nav_mesh.nearest_area(origin, 256.0, 0)
+		if area == null:
+			return PackedVector3Array()
+		var on := origin if area.covers(origin) else area.centre
+		floors.append(Vector3(on.x, area.floor_at(on), on.z))
+	return floors
+
+
+## A line in the top left, under the position readout, for something that
+## is missing but leaves the map playable.
+func _show_note(text: String) -> void:
+	var layer := CanvasLayer.new()
+	var label := Label.new()
+	label.text = text
+	label.position = Vector2(12, 36)
+	label.add_theme_font_size_override("font_size", 16)
+	label.add_theme_color_override("font_color", Color(1.0, 0.8, 0.4))
+	label.add_theme_color_override("font_outline_color", Color.BLACK)
+	label.add_theme_constant_override("outline_size", 4)
+	layer.add_child(label)
+	add_child(layer)
 
 
 ## The buildings and horizon beyond the playable map. Source builds them as
