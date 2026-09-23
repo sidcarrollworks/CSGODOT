@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/check_suite.gd"
 
 ## Checks wall penetration: that CS2's surface numbers are read the way the
 ## game's file gives them, that a round goes through a thin wall of the
@@ -19,8 +19,6 @@ const RANGE_SCENE := "res://maps/test_range/test_range.tscn"
 const TARGET_Z := -256.0
 const ORIGIN := Vector3(0.0, 64.0, 0.0)
 
-var _failures: int = 0
-var _checks: int = 0
 var _world: Node3D
 var _target: HitTarget
 var _walls: Array[Node] = []
@@ -370,19 +368,9 @@ func _fire(data: WeaponData, zone: StringName) -> Hitscan.Result:
 	return Hitscan.fire_at(_world.get_world_3d().direct_space_state, shot, data)
 
 
-func _check(condition: bool, description: String) -> void:
-	_checks += 1
-	if condition:
-		print("  ok   %s" % description)
-	else:
-		_failures += 1
-		print("  FAIL %s" % description)
-
-
 func _report() -> void:
-	if _failures == 0:
-		print("%d penetration checks passed." % _checks)
-		quit(0)
-	else:
-		print("%d of %d penetration checks failed." % [_failures, _checks])
-		quit(1)
+	_finish("penetration")
+
+
+func _print_passes() -> bool:
+	return true

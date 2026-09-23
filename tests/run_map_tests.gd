@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/check_suite.gd"
 
 ## Headless tests for the map importer.
 ##
@@ -39,8 +39,6 @@ const EXPORT_OFFSET := Vector3(4096.0, 0.0, 0.0)
 ## Two and a half seconds of ticks, whatever the tick rate.
 var SETTLE_TICKS := SimClock.ticks_in(2.5)
 
-var _failures: int = 0
-var _checks: int = 0
 var _frames: int = 0
 var _spawned_at_tick: int = 0
 
@@ -1746,26 +1744,6 @@ func _test_player_stands_on_the_hull() -> void:
 
 # --- Harness --------------------------------------------------------------
 
-func _check(condition: bool, description: String) -> void:
-	_checks += 1
-	if condition:
-		return
-	_failures += 1
-	printerr("FAIL: %s" % description)
-
-
-func _check_equal(actual: Variant, expected: Variant, description: String) -> void:
-	_checks += 1
-	if actual == expected:
-		return
-	_failures += 1
-	printerr("FAIL: %s (expected %s, got %s)" % [description, expected, actual])
-
 
 func _report() -> void:
-	if _failures == 0:
-		print("%d map checks passed." % _checks)
-		quit(0)
-	else:
-		printerr("%d of %d map checks failed." % [_failures, _checks])
-		quit(1)
+	_finish("map")

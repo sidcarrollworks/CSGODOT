@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/check_suite.gd"
 
 ## Checks the test range's dummy: that it stands in its lane wearing drawn
 ## hitboxes, that a round into it says what it did, that armour and the
@@ -13,8 +13,6 @@ extends SceneTree
 
 const RANGE_SCENE := "res://maps/test_range/test_range.tscn"
 
-var _failures: int = 0
-var _checks: int = 0
 var _range: Node3D
 var _clock_usec: int = 0
 
@@ -660,19 +658,9 @@ func _find_drawn(hitbox: Hitbox) -> MeshInstance3D:
 	return null
 
 
-func _check(condition: bool, description: String) -> void:
-	_checks += 1
-	if condition:
-		print("  ok   %s" % description)
-	else:
-		_failures += 1
-		print("  FAIL %s" % description)
-
-
 func _report() -> void:
-	if _failures == 0:
-		print("%d range checks passed." % _checks)
-		quit(0)
-	else:
-		print("%d of %d range checks failed." % [_failures, _checks])
-		quit(1)
+	_finish("range")
+
+
+func _print_passes() -> bool:
+	return true
