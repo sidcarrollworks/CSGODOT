@@ -16,6 +16,14 @@ extends Node3D
 ## scaled up from metres and physics bodies do not take a scale. They live
 ## on their own layer and touch only the world, so a corpse is not in the
 ## way of rounds or of the living.
+##
+## A spine bone that starts close to the body below it gets no body of its
+## own: its capsules join that body and it rides it. The spine is four bones
+## over the pelvis, a hand's width apart, and a chain of short bodies jointed
+## that close together throws the physics solver into a fit (the body tangles
+## and flies off), so the torso falls as two or three stiff pieces instead.
+## The joints also pull their bodies back together gently (JOINT_BIAS), for
+## the same reason.
 
 ## The physics layer the bodies are on (the fifth), and what they touch.
 const LAYER := 16
@@ -42,13 +50,26 @@ const JOINTS := [
 	["ankle", 25.0, 10.0, 0.0, &""],
 ]
 const DEFAULT_JOINT := ["", 30.0, 15.0, 0.0, &""]
+## How much of the way back together a joint pulls its two bodies each step,
+## when they drift apart. Godot's default is 0.3; at that, one fall in twelve
+## of a stand-in body exploded, and from 0.2 down none did, the joints still
+## holding within half a unit.
+const JOINT_BIAS := 0.15
+
+## How close, in units, a spine bone can start to the bone its body stands
+## on and still have a body of its own. Closer and it joins that body. Only
+## the spine folds: the hips and shoulders also start close to the torso, but
+## a leg or an arm has to swing.
+const FOLD_DISTANCE := 8.0
+const FOLDS := "spine"
 
 ## What the round that killed does to the body: the part it went into takes
 ## the most of it, the whole body a little.
 const HIT_SPEED := 180.0
 const BODY_SPEED := 40.0
 
-## The bodies by bone index.
+## The bodies by the index of the bone each stands on. A bone folded into
+## another's body is not a key; body_for finds its body.
 var bodies: Dictionary = {}
 
 var _skeleton: Skeleton3D
@@ -56,6 +77,9 @@ var _skeleton: Skeleton3D
 ## can be put back from where the body is.
 var _offsets: Dictionary = {}
 var _order: Array[int] = []
+## For every bone with capsules, the bone whose body carries it: itself, or
+## the one above it that it was folded into.
+var _host: Dictionary = {}
 
 
 func _init() -> void:
@@ -93,26 +117,47 @@ func build(
 	if parts.is_empty():
 		return 0
 
+	# Bones in index order, so every bone's parents come before it: a spine
+	# bone too close to the body below it gives that body its capsules.
+	_order.assign(parts.keys())
+	_order.sort()
+	var held := {}
+	for bone in _order:
+		var above := _parent_with(bone, parts)
+		var host: int = _host[above] if above >= 0 else bone
+		if (
+			above >= 0 and skeleton.get_bone_name(bone).to_lower().contains(FOLDS)
+			and _bone_world(bone).origin.distance_to(_bone_world(host).origin) < FOLD_DISTANCE
+		):
+			_host[bone] = host
+			held[host].append_array(parts[bone])
+		else:
+			_host[bone] = bone
+			held[bone] = parts[bone].duplicate()
+
 	var volumes := {}
 	var total_volume := 0.0
-	for bone: int in parts:
+	for bone: int in held:
 		var volume := 0.0
-		for part: Dictionary in parts[bone]:
+		for part: Dictionary in held[bone]:
 			var r: float = part["radius"]
 			volume += PI * r * r * ((part["a"] as Vector3).distance_to(part["b"]) + 4.0 / 3.0 * r)
 		volumes[bone] = volume
 		total_volume += volume
 
-	_order.assign(parts.keys())
-	_order.sort()
+	var hit_host: int = _host.get(hit_bone, -1)
 	for bone in _order:
-		var body := _make_body(bone, parts[bone], TOTAL_MASS * volumes[bone] / total_volume)
+		if _host[bone] != bone:
+			continue
+		var body := _make_body(bone, held[bone], TOTAL_MASS * volumes[bone] / total_volume)
 		body.linear_velocity = velocity + hit_direction * BODY_SPEED
-		if bone == hit_bone:
+		if bone == hit_host:
 			body.linear_velocity += hit_direction * HIT_SPEED
 		bodies[bone] = body
-
 	for bone in _order:
+		_offsets[bone] = bodies[_host[bone]].global_transform.affine_inverse() * _bone_world(bone)
+
+	for bone: int in bodies:
 		var parent := _body_parent(bone)
 		if parent >= 0:
 			_join(parent, bone, forward)
@@ -129,6 +174,7 @@ func clear() -> void:
 	bodies.clear()
 	_offsets.clear()
 	_order.clear()
+	_host.clear()
 	_skeleton = null
 
 
@@ -143,7 +189,7 @@ func pose_skeleton() -> void:
 		return
 	var world_to_skeleton := _skeleton.global_transform.affine_inverse()
 	for bone in _order:
-		var body: RigidBody3D = bodies[bone]
+		var body: RigidBody3D = bodies[_host[bone]]
 		_skeleton.set_bone_global_pose(bone, world_to_skeleton * body.global_transform * _offsets[bone])
 
 
@@ -183,14 +229,23 @@ func _make_body(bone: int, parts: Array, mass: float) -> RigidBody3D:
 		body.add_child(collision)
 		collision.global_transform = SkinnedHitboxes.capsule_transform(part["a"], part["b"])
 	body.add_constant_central_force(Vector3.DOWN * GRAVITY * body.mass)
-	_offsets[bone] = body.global_transform.affine_inverse() * _bone_world(bone)
 	return body
+
+
+## The body a bone rides, its own or the one it was folded into, or null.
+func body_for(bone: int) -> RigidBody3D:
+	return bodies.get(_host.get(bone, -1))
 
 
 ## The nearest bone above this one that has a body, or -1.
 func _body_parent(bone: int) -> int:
+	return _parent_with(bone, bodies)
+
+
+## The nearest bone above this one that is a key of `has`, or -1.
+func _parent_with(bone: int, has: Dictionary) -> int:
 	var parent := _skeleton.get_bone_parent(bone)
-	while parent >= 0 and not bodies.has(parent):
+	while parent >= 0 and not has.has(parent):
 		parent = _skeleton.get_bone_parent(parent)
 	return parent
 
@@ -241,6 +296,7 @@ func _join(parent_bone: int, child_bone: int, forward: Vector3) -> void:
 	joint.transform = Transform3D(Basis(x, y, x.cross(y)), pivot)
 	joint.set_param(ConeTwistJoint3D.PARAM_SWING_SPAN, deg_to_rad(spec[1]))
 	joint.set_param(ConeTwistJoint3D.PARAM_TWIST_SPAN, deg_to_rad(spec[2]))
+	joint.set_param(ConeTwistJoint3D.PARAM_BIAS, JOINT_BIAS)
 	joint.set_param(ConeTwistJoint3D.PARAM_SOFTNESS, 0.8)
 	joint.set_param(ConeTwistJoint3D.PARAM_RELAXATION, 1.0)
 	add_child(joint)

@@ -541,6 +541,11 @@ func _start_combat() -> void:
 			and _bot.can_see(_victim) and _victim.hit_target != null and _victim.hit_target.hitboxes().size() > 0,
 		"the bot has a weapon that sounds from where it stands, sees the player in front of it, and the player can be hit"
 	)
+	_check(
+		_bot.model != null and not _bot.model.animation_player.has_animation(&"shoot")
+			and (_bot.weapon_sounds.get_child(0) as Node3D).global_position.distance_to(_bot.global_position) < 1.0,
+		"its body has no whole-body firing clip to fold over with, and its shots sound from the bot itself"
+	)
 	# The player wears the capsules the bot does, on a body their own camera
 	# does not see: the view draws its own.
 	var hidden := _victim.model != null and (_victim.camera.cull_mask & PlayerSim.UNSEEN_LAYER) == 0

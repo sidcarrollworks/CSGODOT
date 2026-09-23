@@ -1,10 +1,12 @@
 class_name WeaponSounds
-extends Node
+extends Node3D
 
 ## What is heard of a weapon: the shot, the reload in its parts, the draw;
 ## and, for the shooter, of a hit: kevlar, a headshot, a kill. The player's
 ## own plays flat, not in the world, the way the game plays your own gun;
-## a bot's plays from where the bot stands (spatial).
+## a bot's plays from where the bot stands (spatial). It is a Node3D so that
+## its 3D players go where it is: under a plain Node they would sit at the
+## world's origin, and a bot's shots would sound from there.
 ##
 ## The sounds are the game's, by the weapon's model name (weapon_rif_ak47
 ## has the ak47 set). The reload's parts are spaced by ear to the game's

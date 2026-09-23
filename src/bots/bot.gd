@@ -233,8 +233,10 @@ func _on_shot_traced(_shot: Weapon.Shot, result: Hitscan.Result) -> void:
 	BulletImpacts.mark_in(get_tree(), result)
 	if weapon_sounds != null:
 		weapon_sounds.shot()
-	if model != null:
-		model.play(&"shoot", 0.03, 1.0, true)
+	# No firing animation on the body yet. CS2's third-person shoot clips are
+	# layers added over the pose; played whole they fold the body over, and
+	# a firing bot fell as if dead with every round. They come with the
+	# animation layers of roadmap item 6.
 
 
 func _on_reload_started() -> void:

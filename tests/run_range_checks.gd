@@ -151,6 +151,7 @@ func _run() -> void:
 	)
 
 	await _test_ragdoll()
+	await _test_whole_ragdoll()
 	await _test_being_shot()
 
 	# The armour rules themselves, on a target of their own.
@@ -215,8 +216,14 @@ func _test_ragdoll() -> void:
 	var ragdoll := Ragdoll.new()
 	_range.add_child(ragdoll)
 	var made := ragdoll.build(skeleton, capsules, scale, Vector3.ZERO, Vector3.FORWARD, Vector3.BACK, head)
-	_check(made == 8 and ragdoll.get_children().filter(func(n: Node) -> bool: return n is Joint3D).size() == 7,
+	var pelvis := skeleton.find_bone("pelvis")
+	_check(made == 7 and ragdoll.get_children().filter(func(n: Node) -> bool: return n is Joint3D).size() == 6,
 		"a body for every bone with a capsule and a joint to each one's parent (%d bodies)" % made)
+	_check(
+		ragdoll.body_for(skeleton.find_bone("spine_0")) == ragdoll.body_for(pelvis)
+			and ragdoll.body_for(skeleton.find_bone("spine_2")) != ragdoll.body_for(pelvis),
+		"a spine bone close over the pelvis rides the pelvis's body; the chest has its own"
+	)
 	var body_head: RigidBody3D = ragdoll.bodies.get(head)
 	_check(
 		body_head != null and body_head.collision_layer == Ragdoll.LAYER and body_head.collision_mask == Hitscan.WORLD_LAYER,
@@ -272,6 +279,106 @@ func _test_ragdoll() -> void:
 	holder.queue_free()
 
 
+## The whole body the way CS2's hitboxes cover it, nineteen capsules on a
+## spine of four short bones, arms up holding a rifle: killed standing, and
+## killed running with a longer spine. With a body on every spine bone and
+## Godot's own joint strength, this one tangled and flew off into the sky.
+func _test_whole_ragdoll() -> void:
+	for case: Array in [[1.0, Vector3.ZERO], [1.3, Vector3.ZERO], [1.5, Vector3(0.0, 0.0, 250.0)]]:
+		var scale := MapImporter.SOURCE2_VIEWER_SCALE
+		var holder := Node3D.new()
+		holder.scale = Vector3.ONE * scale
+		holder.position = Vector3(-512.0, 0.0, -256.0)
+		_range.add_child(holder)
+		var skeleton := Skeleton3D.new()
+		holder.add_child(skeleton)
+		var spine: float = case[0]
+		# name, parent, where from the parent in metres, turned by (degrees)
+		for bone: Array in [
+			["pelvis", "", Vector3(0, 0.95, 0), Vector3.ZERO],
+			["spine_0", "pelvis", Vector3(0, 0.08, 0) * spine, Vector3.ZERO],
+			["spine_1", "spine_0", Vector3(0, 0.1, 0) * spine, Vector3.ZERO],
+			["spine_2", "spine_1", Vector3(0, 0.12, 0) * spine, Vector3.ZERO],
+			["spine_3", "spine_2", Vector3(0, 0.12, 0) * spine, Vector3.ZERO],
+			["neck_0", "spine_3", Vector3(0, 0.12, 0) * spine, Vector3.ZERO],
+			["head_0", "neck_0", Vector3(0, 0.1, 0), Vector3.ZERO],
+			["clavicle_l", "spine_3", Vector3(0.03, 0.08, 0.02), Vector3.ZERO],
+			["arm_upper_l", "clavicle_l", Vector3(0.17, 0, 0), Vector3(0, 0, -70)],
+			["arm_lower_l", "arm_upper_l", Vector3(0, -0.28, 0), Vector3(-100, 0, 0)],
+			["hand_l", "arm_lower_l", Vector3(0, -0.26, 0), Vector3.ZERO],
+			["clavicle_r", "spine_3", Vector3(-0.03, 0.08, 0.02), Vector3.ZERO],
+			["arm_upper_r", "clavicle_r", Vector3(-0.17, 0, 0), Vector3(0, 0, 70)],
+			["arm_lower_r", "arm_upper_r", Vector3(0, -0.28, 0), Vector3(-100, 0, 0)],
+			["hand_r", "arm_lower_r", Vector3(0, -0.26, 0), Vector3.ZERO],
+			["leg_upper_l", "pelvis", Vector3(0.1, -0.05, 0), Vector3.ZERO],
+			["leg_lower_l", "leg_upper_l", Vector3(0, -0.43, 0), Vector3(10, 0, 0)],
+			["ankle_l", "leg_lower_l", Vector3(0, -0.42, 0), Vector3(-10, 0, 0)],
+			["leg_upper_r", "pelvis", Vector3(-0.1, -0.05, 0), Vector3.ZERO],
+			["leg_lower_r", "leg_upper_r", Vector3(0, -0.43, 0), Vector3(10, 0, 0)],
+			["ankle_r", "leg_lower_r", Vector3(0, -0.42, 0), Vector3(-10, 0, 0)],
+		]:
+			var index := skeleton.add_bone(bone[0])
+			if bone[1] != "":
+				skeleton.set_bone_parent(index, skeleton.find_bone(bone[1]))
+			skeleton.set_bone_rest(index, Transform3D(Basis.from_euler(bone[3] * PI / 180.0), bone[2]))
+		skeleton.reset_bone_poses()
+		var capsules: Array[Dictionary] = []
+		for spec: Array in [
+			["head_0", 4.5, Vector3(0, 1, 0), Vector3(0, 6, 0)],
+			["neck_0", 3.0, Vector3(0, 0, 0), Vector3(0, 3.5, 0)],
+			["pelvis", 6.0, Vector3(-3, 0, 0), Vector3(3, 0, 0)],
+			["spine_0", 6.0, Vector3(0, 0, 0), Vector3(0, 3, 0)],
+			["spine_1", 6.5, Vector3(0, 0, 0), Vector3(0, 4, 0)],
+			["spine_2", 7.0, Vector3(0, 0, 0), Vector3(0, 4, 0)],
+			["spine_3", 7.0, Vector3(-2, 0, 0), Vector3(2, 3, 0)],
+			["arm_upper_l", 2.5, Vector3(0, 0, 0), Vector3(0, -10, 0)],
+			["arm_lower_l", 2.2, Vector3(0, 0, 0), Vector3(0, -9, 0)],
+			["hand_l", 1.8, Vector3(0, 0, 0), Vector3(0, -3, 0)],
+			["arm_upper_r", 2.5, Vector3(0, 0, 0), Vector3(0, -10, 0)],
+			["arm_lower_r", 2.2, Vector3(0, 0, 0), Vector3(0, -9, 0)],
+			["hand_r", 1.8, Vector3(0, 0, 0), Vector3(0, -3, 0)],
+			["leg_upper_l", 3.5, Vector3(0, 0, 0), Vector3(0, -15, 0)],
+			["leg_lower_l", 3.0, Vector3(0, 0, 0), Vector3(0, -15, 0)],
+			["ankle_l", 2.0, Vector3(0, -1, 2), Vector3(0, -2, 6)],
+			["leg_upper_r", 3.5, Vector3(0, 0, 0), Vector3(0, -15, 0)],
+			["leg_lower_r", 3.0, Vector3(0, 0, 0), Vector3(0, -15, 0)],
+			["ankle_r", 2.0, Vector3(0, -1, 2), Vector3(0, -2, 6)],
+		]:
+			capsules.append({"bone": spec[0], "radius": spec[1], "point0": spec[2], "point1": spec[3]})
+		await physics_frame
+
+		var ragdoll := Ragdoll.new()
+		_range.add_child(ragdoll)
+		var made := ragdoll.build(skeleton, capsules, scale, case[1], Vector3.FORWARD, Vector3.BACK, skeleton.find_bone("head_0"))
+		# Each joint's pivot as each of its two bodies holds it.
+		var pivots := []
+		for joint in ragdoll.get_children():
+			if joint is ConeTwistJoint3D:
+				var a := joint.get_node(joint.node_a) as RigidBody3D
+				var b := joint.get_node(joint.node_b) as RigidBody3D
+				pivots.append([a, b, a.to_local(joint.global_position), b.to_local(joint.global_position)])
+		for i in 128 * 4:
+			await physics_frame
+
+		var highest := -INF
+		var lowest := INF
+		var fastest := 0.0
+		for body: RigidBody3D in ragdoll.bodies.values():
+			highest = maxf(highest, body.global_position.y)
+			lowest = minf(lowest, body.global_position.y)
+			fastest = maxf(fastest, body.linear_velocity.length())
+		var widest := 0.0
+		for pivot: Array in pivots:
+			widest = maxf(widest, (pivot[0] as RigidBody3D).to_global(pivot[2]).distance_to((pivot[1] as RigidBody3D).to_global(pivot[3])))
+		_check(
+			highest < 16.0 and lowest > -2.0 and fastest < 20.0 and widest < 2.0,
+			"a whole body killed %s, spine x%.1f, lies still on the floor in one piece (%d bodies; parts between %.1f and %.1f, %.1f u/s at most, joints apart by %.1f at most)"
+				% ["running" if case[1] != Vector3.ZERO else "standing", spine, made, lowest, highest, fastest, widest]
+		)
+		ragdoll.queue_free()
+		holder.queue_free()
+
+
 ## The shooter holds its fire until B; then its rounds find you from where
 ## it stands, tag you and throw your aim, an arc says where from and the
 ## readout says what each did. The switches change its weapon, your armour
@@ -286,6 +393,11 @@ func _test_being_shot() -> void:
 	)
 	if shooter == null:
 		return
+	var gunfire := shooter.weapon_sounds.get_child(0) as AudioStreamPlayer3D
+	_check(
+		gunfire != null and gunfire.global_position.distance_to(shooter.global_position) < 1.0,
+		"its gunfire sounds from where it stands, not from the middle of the map"
+	)
 	var hurt: Array[float] = []
 	var lowest_tag := [1.0]
 	player.hurt.connect(func(amount: float, _zone: StringName, _from: Vector3) -> void: hurt.append(amount))
