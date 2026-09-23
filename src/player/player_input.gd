@@ -163,8 +163,12 @@ func build_command(tick: int, now_usec: int = -1) -> UserCmd:
 
 	var cmd := UserCmd.new()
 	cmd.tick = tick
+	# The mouse's buttons count only while the game has the mouse, as the
+	# look does: a click in a menu (the buy menu, Escape's free cursor) is
+	# not a shot.
+	var has_mouse := Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED
 	for action: StringName in BUTTONS:
-		if Input.is_action_pressed(action):
+		if Input.is_action_pressed(action) and (has_mouse or action != &"attack"):
 			cmd.buttons |= BUTTONS[action]
 	cmd.move = Vector2(
 		Input.get_axis(&"move_left", &"move_right"),
