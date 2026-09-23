@@ -40,6 +40,12 @@ var footsteps: Footsteps:
 
 func _ready() -> void:
 	super._ready()
+	# Which hitboxes the bots' rounds meet, said once, as the range says it
+	# for its dummy: the game's capsules on your body, or the stand-in boxes
+	# and why.
+	print("--- your hitboxes: %s" % hitbox_source())
+	if hitboxes_missing():
+		push_warning("Your hitboxes: %s" % hitbox_source())
 	if camera == null:
 		camera = _find_camera()
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)

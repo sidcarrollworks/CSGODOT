@@ -160,7 +160,9 @@ Roughly in order; L1 to L3 can start at once.
   `reference/cs2-systems.md` (sections 2 and 3).
 - [ ] **R10. Tracers.** Every round, every third, or none, per the sheet.
 - [ ] **R11. Penetration and tagging** for every weapon, off the sheet's
-  penetration and tagging power (roadmap items 2 and 7).
+  penetration and tagging power (roadmap items 2 and 7). Tagging is done
+  (PR #27): every weapon the sheet loads tags with its own figure.
+  Penetration is not.
 - [ ] **R12. HUD per weapon.** Ammo and reserve, the mode, the weapon's icon
   once extracted.
 - [ ] **R13. Cross-check the sheet against CS2's own weapons.vdata**, which

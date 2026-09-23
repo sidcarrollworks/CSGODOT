@@ -537,8 +537,21 @@ func _start_combat() -> void:
 	_combat_started_usec = Time.get_ticks_usec()
 	_check(
 		_bot.weapon != null and _bot.weapon_sounds != null and _bot.weapon_sounds.spatial
-			and _bot.can_see(_victim) and _victim.hit_target != null and _victim.hit_target.hitboxes().size() == 4,
+			and _bot.can_see(_victim) and _victim.hit_target != null and _victim.hit_target.hitboxes().size() > 0,
 		"the bot has a weapon that sounds from where it stands, sees the player in front of it, and the player can be hit"
+	)
+	# The player wears the capsules the bot does, on a body their own camera
+	# does not see: the view draws its own.
+	var hidden := _victim.model != null and (_victim.camera.cull_mask & PlayerSim.UNSEEN_LAYER) == 0
+	if hidden:
+		for mesh in _victim.model.find_children("*", "MeshInstance3D", true, false):
+			hidden = hidden and (mesh as MeshInstance3D).layers == PlayerSim.UNSEEN_LAYER
+	var head_height: float = _victim.hitboxes.hitboxes[0].global_position.y - _victim.global_position.y \
+		if _victim.hitboxes != null and not _victim.hitboxes.hitboxes.is_empty() else 0.0
+	_check(
+		_victim.hit_target.hitboxes().size() == 19 and hidden and head_height > 50.0 and head_height < 72.0,
+		"the player wears CS2's nineteen capsules too (%d), on a body their camera leaves out, the head %.0f up (%s)"
+			% [_victim.hit_target.hitboxes().size(), head_height, _victim.hitbox_source()]
 	)
 
 

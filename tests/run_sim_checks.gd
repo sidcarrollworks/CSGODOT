@@ -3,7 +3,8 @@ extends SceneTree
 ## Checks the split between the simulation and everything around it: that
 ## the simulation reads nothing but commands, that keys become commands at
 ## the right instants, that the same commands give the same game however
-## fast they are run, and that a bot plays through the same commands as you.
+## fast they are run, that a bot plays through the same commands as you,
+## and that being hit slows a player and throws their aim.
 ##
 ##   godot --headless --path . --script tests/run_sim_checks.gd
 ##
@@ -53,6 +54,11 @@ func _run() -> void:
 	await _test_a_press_fires_from_where_the_player_was()
 	await _test_a_running_tap_misses()
 	await _test_a_bot_plays_through_commands()
+	await _test_a_player_wears_hitboxes()
+	await _test_a_hit_tags_the_player()
+	await _test_a_hit_throws_the_aim()
+	_test_the_hit_direction_on_screen()
+	await _test_the_hud_shows_hits()
 	_report()
 
 
@@ -322,6 +328,230 @@ func _test_a_bot_plays_through_commands() -> void:
 	bot.queue_free()
 	enemy.queue_free()
 	friend.queue_free()
+	await physics_frame
+
+
+# --- Being shot -------------------------------------------------------------
+
+## Without the character extracted, a player wears the four standard boxes
+## and says so; with it (tests/run_model_checks.gd), the game's capsules.
+func _test_a_player_wears_hitboxes() -> void:
+	var player := _new_player(Vector3(1024.0, 0.0, 1024.0), "T")
+	await physics_frame
+	var extracted := player.model != null
+	_check(
+		player.hit_target.hitboxes().size() == (19 if extracted else 4)
+			and player.hitbox_source().begins_with("19 CS2 capsules" if extracted else "4 stand-in boxes")
+			and not player.hitboxes_missing(),
+		"a player wears %s, and says which (%s)" % [
+			"the game's capsules" if extracted else "the stand-in boxes", player.hitbox_source(),
+		]
+	)
+	player.queue_free()
+	await physics_frame
+
+
+## One round of `data` into the chest of `victim`, fired from `from_side`
+## units to its right, square on. Returns what it hit.
+func _hit(victim: PlayerSim, data: WeaponData, from_side: float = 300.0) -> Hitscan.Result:
+	var shot := Weapon.Shot.new()
+	shot.origin = victim.global_position + Vector3(from_side, 50.0, 0.0)
+	shot.direction = Vector3.LEFT
+	return Hitscan.fire_at(victim.get_world_3d().direct_space_state, shot, data)
+
+
+## A player running forward (-Z) for `ticks` ticks from `tick`.
+func _run_forward(player: PlayerSim, tick: int, ticks: int) -> int:
+	for i in ticks:
+		var cmd := UserCmd.new()
+		cmd.tick = tick + i
+		cmd.move = Vector2(0.0, 1.0)
+		player.run_command(cmd, DT)
+	return tick + ticks
+
+
+## Running flat out, a hit from an AK-47 leaves the player 40% of their
+## speed (the sheet's 60% tagging power), two CS2 ticks after it landed,
+## and it comes back over 1.5 s. A second hit takes it back to 40%, not
+## lower. An SMG's round (100%) stops them.
+func _test_a_hit_tags_the_player() -> void:
+	var player := _new_player(Vector3(2048.0, 0.0, 0.0), "T")
+	player.equip(WeaponLibrary.ak47())
+	var tick := _run_forward(player, 80_000, 128)
+	var top := Vector2(player.velocity.x, player.velocity.z).length()
+	await physics_frame
+	await physics_frame
+	var heard: Array[Vector3] = []
+	player.hurt.connect(func(_amount: float, _zone: StringName, from: Vector3) -> void: heard.append(from))
+	var ak := WeaponLibrary.ak47()
+	var result := _hit(player, ak)
+	_check(
+		result.hitbox != null and result.hitbox.target == player.hit_target and player.hit_target.health < 100.0,
+		"a round from the side lands in the running player (%s, health %.0f)" % [result.zone, player.hit_target.health]
+	)
+	_check(
+		heard.size() == 1 and heard[0].is_equal_approx(player.global_position + Vector3(300.0, 50.0, 0.0)),
+		"and the player hears where it was fired from"
+	)
+	tick = _run_forward(player, tick, 3)
+	var before := player.velocity_modifier
+	tick = _run_forward(player, tick, 1)
+	_check(
+		is_equal_approx(before, 1.0) and is_equal_approx(player.velocity_modifier, 1.0 - ak.tagging_power),
+		"the tag lands two CS2 ticks (four of ours) after the hit: %.2f, then %.2f of full speed" % [before, player.velocity_modifier]
+	)
+	tick = _run_forward(player, tick, 32)
+	var slowed := Vector2(player.velocity.x, player.velocity.z).length()
+	_check(
+		top > 210.0 and slowed < top * 0.6,
+		"a quarter of a second on, running flat out has slowed from %.0f to %.0f u/s" % [top, slowed]
+	)
+	tick = _run_forward(player, tick, 64)
+	var second_hit_from := player.velocity_modifier
+	await physics_frame
+	await physics_frame
+	_hit(player, ak)
+	tick = _run_forward(player, tick, 4)
+	_check(
+		second_hit_from > 0.55 and is_equal_approx(player.velocity_modifier, 1.0 - ak.tagging_power),
+		"a second hit takes it back to %.2f from %.2f, no lower" % [player.velocity_modifier, second_hit_from]
+	)
+	var back_at := -1
+	for i in 256:
+		tick = _run_forward(player, tick, 1)
+		if player.velocity_modifier >= 1.0:
+			back_at = i + 1
+			break
+	_check(
+		absi(back_at - 192) <= 1,
+		"and it is all back 1.5 s later (%d ticks)" % back_at
+	)
+	var smg := WeaponLibrary.ak47()
+	smg.tagging_power = 1.0
+	await physics_frame
+	await physics_frame
+	_hit(player, smg)
+	tick = _run_forward(player, tick, 4)
+	_check(is_zero_approx(player.velocity_modifier), "a round tagging at 100%, as an SMG's does, stops the player")
+	player.queue_free()
+	await physics_frame
+
+
+## Unarmoured, a hit throws the aim about 2 degrees up and it is back
+## within a third of a second; armour that takes a share keeps it to about
+## half a degree. A round fired while it is thrown goes where it points.
+func _test_a_hit_throws_the_aim() -> void:
+	var player := _new_player(Vector3(-2048.0, 0.0, 0.0), "T")
+	player.equip(WeaponLibrary.ak47())
+	await physics_frame
+	await physics_frame
+	var peaks := {}
+	var settled := {}
+	var tick := 90_000
+	for armored in [false, true]:
+		player.hit_target.wear(100.0 if armored else 0.0, armored)
+		player.hit_target.reset()
+		_hit(player, WeaponLibrary.ak47())
+		var peak := Vector2.ZERO
+		for i in 48:
+			var cmd := UserCmd.new()
+			cmd.tick = tick
+			tick += 1
+			player.run_command(cmd, DT)
+			if player.hit_punch.value.y > peak.y:
+				peak = player.hit_punch.value
+		peaks[armored] = peak
+		settled[armored] = player.hit_punch.value.length()
+		for i in 64:
+			var cmd := UserCmd.new()
+			cmd.tick = tick
+			tick += 1
+			player.run_command(cmd, DT)
+	_check(
+		peaks[false].y > 1.5 and peaks[false].y < 2.5 and absf(peaks[false].x) > 0.1 and settled[false] < 0.05,
+		"unarmoured, a chest hit throws the aim %.2f degrees up and %.2f aside, and 0.375 s on it is back to within %.3f" % [peaks[false].y, peaks[false].x, settled[false]]
+	)
+	_check(
+		peaks[true].y > 0.2 and peaks[true].y < 0.8,
+		"with kevlar, %.2f degrees" % peaks[true].y
+	)
+
+	player.hit_target.wear(0.0, false)
+	player.hit_target.reset()
+	_hit(player, WeaponLibrary.ak47())
+	for i in 12:
+		var cmd := UserCmd.new()
+		cmd.tick = tick
+		tick += 1
+		player.run_command(cmd, DT)
+	var thrown := player.hit_punch.value
+	var shots: Array[Weapon.Shot] = []
+	player.shot_traced.connect(func(shot: Weapon.Shot, _result: Hitscan.Result) -> void: shots.append(shot))
+	var fire := UserCmd.new()
+	fire.tick = tick
+	fire.steps.append(UserCmd.SubtickStep.new(UserCmd.ATTACK, true, 0.0, 0.0, 0.0))
+	player.run_command(fire, DT)
+	_check(
+		shots.size() == 1 and thrown.y > 1.0
+			and absf(shots[0].base_pitch - player.hit_punch.value.y) < 0.2 and absf(shots[0].base_yaw + player.hit_punch.value.x) < 0.2,
+		"a round fired with the aim thrown %.2f degrees up leaves %.2f degrees up" % [
+			thrown.y, shots[0].base_pitch if not shots.is_empty() else 0.0,
+		]
+	)
+	player.queue_free()
+	await physics_frame
+
+
+## Where the arc round the crosshair goes for a round fired from ahead, the
+## right, behind and the left, looking the game's yaw 0 (down -Z) and then
+## turned a quarter to the left.
+func _test_the_hit_direction_on_screen() -> void:
+	var at := Vector3(100.0, 0.0, 100.0)
+	var ahead := DamageIndicator.screen_angle(at, 0.0, at + Vector3(0.0, 40.0, -500.0))
+	var right := DamageIndicator.screen_angle(at, 0.0, at + Vector3(500.0, 0.0, 0.0))
+	var behind := DamageIndicator.screen_angle(at, 0.0, at + Vector3(0.0, 0.0, 500.0))
+	var left := DamageIndicator.screen_angle(at, 0.0, at + Vector3(-500.0, 0.0, 0.0))
+	var turned := DamageIndicator.screen_angle(at, 90.0, at + Vector3(-500.0, 0.0, 0.0))
+	_check(
+		absf(ahead) < 0.001 and absf(right - PI * 0.5) < 0.001 and absf(absf(behind) - PI) < 0.001
+			and absf(left + PI * 0.5) < 0.001,
+		"a hit's arc sits ahead, right, behind or left of the crosshair as the round came"
+	)
+	_check(absf(turned) < 0.001, "and a round from the left is ahead once you turn to face it")
+
+
+## The HUD you play with shows your armour, and an arc for a hit that
+## fades out.
+func _test_the_hud_shows_hits() -> void:
+	var player := (load("res://src/player/player.tscn") as PackedScene).instantiate() as PlayerController
+	_world.add_child(player)
+	player.place(Vector3(0.0, 0.0, 2048.0), 0.0)
+	var hud := GameHud.new()
+	hud.player = player
+	_world.add_child(hud)
+	await process_frame
+	await process_frame
+	_check(
+		hud._armor.visible and hud._armor.text == "100" and hud._shield.visible and not hud.damage_indicator.showing(),
+		"the HUD shows 100 armour and no hits (%s)" % hud._armor.text
+	)
+	await physics_frame
+	await physics_frame
+	var result := _hit(player, WeaponLibrary.ak47())
+	await process_frame
+	await process_frame
+	_check(
+		result.hitbox != null and hud.damage_indicator.showing() == 1 and hud._armor.text != "100",
+		"a hit puts an arc round the crosshair, and the armour it wore down shows (%s, %d arcs)" % [hud._armor.text, hud.damage_indicator.showing()]
+	)
+	hud.damage_indicator._process(DamageIndicator.SHOW_SECONDS + 0.1)
+	_check(hud.damage_indicator.showing() == 0, "and the arc is gone %.1f s later" % DamageIndicator.SHOW_SECONDS)
+	player.hit_target.wear(0.0, false)
+	await process_frame
+	await process_frame
+	_check(not hud._armor.visible and not hud._shield.visible, "with no armour, no armour is shown")
+	hud.queue_free()
+	player.queue_free()
 	await physics_frame
 
 

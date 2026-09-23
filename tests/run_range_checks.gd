@@ -3,7 +3,8 @@ extends SceneTree
 ## Checks the test range's dummy: that it stands in its lane wearing drawn
 ## hitboxes, that a round into it says what it did, that armour and the
 ## helmet change that the way CS does, and that a killed dummy comes back
-## whole where it stood.
+## whole where it stood. And the shooter: that it holds its fire until
+## told, then shoots you, and what that does to you shows.
 ##
 ##   godot --headless --path . --script tests/run_range_checks.gd
 ##
@@ -150,6 +151,7 @@ func _run() -> void:
 	)
 
 	await _test_ragdoll()
+	await _test_being_shot()
 
 	# The armour rules themselves, on a target of their own.
 	var target := HitTarget.new()
@@ -268,6 +270,99 @@ func _test_ragdoll() -> void:
 
 	ragdoll.queue_free()
 	holder.queue_free()
+
+
+## The shooter holds its fire until B; then its rounds find you from where
+## it stands, tag you and throw your aim, an arc says where from and the
+## readout says what each did. The switches change its weapon, your armour
+## and whether you can die; T shows your hitboxes in a window of their own.
+func _test_being_shot() -> void:
+	var shooter: Bot = _range.shooter
+	var player: PlayerController = _range.player
+	_check(
+		shooter != null and shooter.holds_fire and shooter.weapon != null and shooter.team != player.team
+			and shooter.weapon_data.display_name == "AK-47",
+		"the shooter stands armed with an AK-47, on the other side, holding its fire"
+	)
+	if shooter == null:
+		return
+	var hurt: Array[float] = []
+	var lowest_tag := [1.0]
+	player.hurt.connect(func(amount: float, _zone: StringName, _from: Vector3) -> void: hurt.append(amount))
+	for i in 128:
+		await physics_frame
+	_check(hurt.is_empty() and shooter.target == null, "held, it leaves you alone for a second")
+
+	_range.toggle_player_immortal()
+	_range.toggle_shooter()
+	for i in 640:
+		await physics_frame
+		lowest_tag[0] = minf(lowest_tag[0], player.velocity_modifier)
+		if hurt.size() >= 3 and i > 256:
+			break
+	await process_frame
+	_check(
+		not shooter.holds_fire and shooter.target == player and hurt.size() >= 1,
+		"B and it turns on you and its rounds land (%d hits)" % hurt.size()
+	)
+	_check(is_equal_approx(lowest_tag[0], 0.4), "an AK-47 hit tags you to 40%% of your speed (%.2f)" % lowest_tag[0])
+	_check(player.alive and player.hit_target.health > 0.0, "J keeps you alive through it (health %.0f)" % player.hit_target.health)
+	_check(_range.damage_indicator.showing() >= 1, "arcs round the crosshair say where the hits came from")
+	var readout: String = _range.you_readout()
+	_check(
+		"tagged to 40%" in readout and "AK-47" in readout,
+		"the readout lists each hit and what it tagged you to"
+	)
+	_range.toggle_shooter()
+	await physics_frame
+	_check(shooter.holds_fire and shooter.target == null, "B again and it holds its fire")
+
+	_range.next_shooter_weapon()
+	_range.next_shooter_weapon()
+	_check(
+		shooter.weapon_data.display_name == "MP9" and is_equal_approx(shooter.weapon.data.tagging_power, 1.0)
+			and is_equal_approx(shooter.weapon.data.base_damage, WeaponSheet.number("MP9", "Damage")),
+		"U round to the MP9, with the sheet's damage and 100%% tagging (%.0f)" % shooter.weapon.data.base_damage
+	)
+	_range.next_shooter_weapon()
+	_check(shooter.weapon_data.display_name == "AK-47", "and round again to the AK-47")
+
+	_range.next_player_armour()
+	_check(player.hit_target.armor == 100.0 and not player.hit_target.helmet, "Y takes your helmet off")
+	_range.next_player_armour()
+	_check(player.hit_target.armor == 0.0, "and Y again your kevlar")
+	_range.next_player_armour()
+	_range.toggle_player_immortal()
+	_check(player.hit_target.helmet and not player.hit_target.immortal, "and both back on, and J lets you die again")
+
+	var main_camera := player.camera
+	var drawn := player.hit_target.hitboxes().all(func(hitbox: Hitbox) -> bool:
+		var mesh := _find_drawn(hitbox)
+		return mesh != null and mesh.layers == PlayerSim.UNSEEN_LAYER)
+	_check(
+		drawn and (main_camera.cull_mask & PlayerSim.UNSEEN_LAYER) == 0,
+		"your hitboxes are drawn where your own camera does not see them"
+	)
+	_range.next_hitbox_view()
+	await process_frame
+	var camera: Camera3D = _range.hitbox_camera
+	var ahead := Vector3(-sin(deg_to_rad(player.yaw_degrees)), 0.0, -cos(deg_to_rad(player.yaw_degrees)))
+	var offset := camera.global_position - player.global_position
+	_check(
+		_range.hitbox_view() == "front" and _range.get("_hitbox_window").visible
+			and (camera.cull_mask & PlayerSim.UNSEEN_LAYER) != 0 and (camera.cull_mask & RigModel.LAYER) == 0
+			and absf(Vector2(offset.x, offset.z).length() - 110.0) < 1.0 and Vector2(offset.x, offset.z).normalized().dot(Vector2(ahead.x, ahead.z)) > 0.99,
+		"T opens a window on them from 110 units in front of you, seeing your body and not the bots' or the view's"
+	)
+	_range.next_hitbox_view()
+	await process_frame
+	offset = camera.global_position - player.global_position
+	_check(
+		_range.hitbox_view() == "side" and absf(Vector2(offset.x, offset.z).normalized().dot(Vector2(ahead.x, ahead.z))) < 0.01,
+		"T again from your side"
+	)
+	_range.next_hitbox_view()
+	_check(not _range.get("_hitbox_window").visible, "and T again shuts it")
 
 
 ## Where to aim for a zone: the middle of that zone's first hitbox.

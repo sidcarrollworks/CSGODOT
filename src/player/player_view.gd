@@ -82,6 +82,8 @@ func _ready() -> void:
 		camera.far = 16384.0
 		# CS2's 90, which is horizontal at 4:3; Godot's number is vertical.
 		camera.fov = ViewModelProjection.vertical_fov(ViewModelProjection.WORLD_FOV)
+		# Not the body your hitboxes ride: that one is for everyone else.
+		camera.cull_mask &= ~PlayerSim.UNSEEN_LAYER
 	_show_body()
 	weapon_sounds = WeaponSounds.new()
 	weapon_sounds.name = "WeaponSounds"
@@ -202,6 +204,9 @@ func _process(delta: float) -> void:
 	# holding stay untouched. It is also deliberately smaller than the spray:
 	# the crosshair suggests the recoil, it does not report it.
 	var punch := player.weapon.aim_punch if player.weapon != null else Vector2.ZERO
+	# And where a hit has thrown the aim, all of it: that one is where the
+	# rounds go, so the crosshair tells the truth about it.
+	punch += player.hit_punch.value
 	camera.global_rotation = Vector3(
 		deg_to_rad(player.input.pitch_degrees + punch.y),
 		deg_to_rad(player.input.yaw_degrees - punch.x),
