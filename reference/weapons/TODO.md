@@ -161,10 +161,11 @@ Roughly in order; L1 to L3 can start at once.
   In scope (Sid, 2026-09-22): CS2's economy and buy menu, detailed in
   `reference/cs2-systems.md` (sections 2 and 3).
 - [ ] **R10. Tracers.** Every round, every third, or none, per the sheet.
-- [ ] **R11. Penetration and tagging** for every weapon, off the game's
+- [x] **R11. Penetration and tagging** for every weapon, off the game's
   penetration and tagging power (roadmap items 2 and 7). Tagging is done
   (PR #27): every weapon tags with its own figure, which `WeaponVData` reads
-  from the game (PR #28; the sheet agrees). Penetration is not.
+  from the game (PR #28; the sheet agrees). Penetration is done (roadmap
+  item 7): every weapon goes through walls by its own `m_flPenetration`.
 - [ ] **R12. HUD per weapon.** Ammo and reserve, the mode, the weapon's icon
   once extracted.
 - [ ] **R13. Cross-check the sheet against CS2's own weapons.vdata** *(the check is done, locally, 2026-09-22: `vdata.md` has it, 914 values agree, and the one real difference, the Desert Eagle's jump inaccuracy, is flagged to Sid; what is left is bringing the fields in)*, which

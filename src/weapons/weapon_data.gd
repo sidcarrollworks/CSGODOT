@@ -107,9 +107,9 @@ class Punch:
 ## Rounds a trigger pull puts out: 1, or a shotgun's pellets. Not used yet.
 @export var pellets: int = 1
 
-## How well a round carries through walls and props, as the weapon sheet
-## gives it (2.0 for rifles, 1.0 for SMGs). Not used yet: penetration is on
-## the roadmap.
+## How well a round carries through walls and props, as the game gives it
+## (m_flPenetration: 2.0 for rifles, 1.0 for SMGs): how far through each
+## surface it gets, and how little damage it loses (Penetration).
 @export var penetration_power: float = 2.0
 
 ## How much of a victim's speed a hit takes away (0.6 for rifles): an AK-47

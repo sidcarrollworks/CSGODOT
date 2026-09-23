@@ -100,9 +100,15 @@ static func mark_in(tree: SceneTree, result: Hitscan.Result) -> void:
 		impacts.mark(result)
 
 
-## A hole and a sound where a round met the world. A round that met a
-## person leaves nothing here, and nor does one into the sky.
+## A hole and a sound where a round met the world, and a hole in and out
+## of every wall it went through on the way. A round that met a person
+## leaves nothing where it met them, and nor does one into the sky.
 func mark(result: Hitscan.Result) -> void:
+	for wall in result.walls:
+		var went_in := surface_for(wall.surface)
+		_sound(went_in, wall.entry)
+		_hole(went_in, wall.entry, wall.entry_normal)
+		_hole(surface_for(wall.exit_surface), wall.exit, wall.exit_normal)
 	if not result.hit or result.hitbox != null or result.surface.contains("sky"):
 		return
 	var surface := surface_for(result.surface)

@@ -84,6 +84,7 @@ func _import() -> bool:
 		stats.get("collision_from", ""), "the collision hull",
 		"collision comes from the hull (scripts/extract_assets.sh physics)"
 	)
+	_check_penetration_surfaces()
 	_check(stats.has("sun"), "the map's sun came through")
 	var blend: Dictionary = stats.get("blend", {})
 	_check(
@@ -203,6 +204,32 @@ func _import() -> bool:
 			player.global_position = spawn["position"]
 			_players[player] = spawn
 	return true
+
+
+## Which of CS2's surfaces each part of the hull is taken as for wall
+## penetration (Penetration.surface_for), listed so a part taken as
+## default by mistake shows, and checked to be more than one or two.
+func _check_penetration_surfaces() -> void:
+	var hull := _importer.find_child("Collision", true, false)
+	var surfaces := {}
+	print("Wall penetration takes the hull's parts as:")
+	var seen := {}
+	for shape in (hull.get_children() if hull != null else []):
+		var hull_name := String(shape.name).rstrip("0123456789").rstrip("_")
+		if seen.has(hull_name):
+			continue
+		seen[hull_name] = true
+		var surface := Penetration.surface_for(hull_name)
+		surfaces[surface] = true
+		var modifiers := Penetration.modifiers(surface)
+		print("  %-40s %-14s reach %.2f  damage %.2f%s" % [
+			hull_name, Penetration.display_name(surface), modifiers.x, modifiers.y,
+			"  (no CS2 surface by that name: default)" if surface == "default" and hull_name != "physics_group" else "",
+		])
+	_check(
+		surfaces.size() >= 3,
+		"the hull's parts are %d of CS2's surfaces for wall penetration (%s)" % [surfaces.size(), ", ".join(surfaces.keys())]
+	)
 
 
 func _test_bots_walk() -> void:

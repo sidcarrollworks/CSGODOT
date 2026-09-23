@@ -55,7 +55,7 @@ takes.
 | Damage Falloff @ 500U | Share lost every 500 units, compounding | `range_modifier` = 1 - this |
 | Headshot Multiplier | Not always x4: M4A1-S x3.475, Desert Eagle x3.9 | `head_multiplier` |
 | Fire Rate (RPM) | Rounds a minute | `cycle_time` = 60 / this |
-| Penetration Power | How well a round goes through walls: 100% SMGs, shotguns and most pistols; 200% rifles, LMGs, the Deagle and the R8; 250% snipers | `penetration_power`, not used yet |
+| Penetration Power | How well a round goes through walls: 100% SMGs, shotguns and most pistols; 200% rifles, LMGs, the Deagle and the R8; 250% snipers | `penetration_power`: how far through a wall a round gets (`Penetration`) |
 | Magazine Size, Reserve, Total Ammo | Reserve is counted in magazines, or in rounds for the tube-fed shotguns | `magazine_size`, `reserve_ammo` = total - magazine |
 | Mobility | Top running speed holding it, u/s | `max_player_speed` |
 | Tagging Power | How much of a victim's speed a hit takes | `tagging_power`, tags the victim in `PlayerSim` (1 minus CS2's `m_flFlinchVelocityModifierLarge`) |

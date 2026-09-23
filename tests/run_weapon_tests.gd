@@ -1588,9 +1588,11 @@ func _test_headshot_registers() -> void:
 	)
 
 
-## A wall in the way stops the bullet. A shot that clips a corner must not
-## register on whoever is behind it, which is the kind of thing that reads as
-## broken hit registration when it goes wrong.
+## A wall in the way, too thick for the round to go through (16 units of a
+## surface with no name, which is CS2's default), stops the bullet. A shot
+## that clips a corner must not register on whoever is behind it, which is
+## the kind of thing that reads as broken hit registration when it goes
+## wrong. Walls it does go through: run_penetration_checks.gd.
 func _test_wall_blocks_the_shot() -> void:
 	_target.reset()
 

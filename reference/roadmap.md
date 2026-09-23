@@ -89,6 +89,9 @@ Updated 2026-09-22: weapon numbers from Sid's spreadsheet and tapping (PR #23), 
   after 5 s.
 - Bullet holes from the game's own decal materials, per surface, with impact
   sounds.
+- Wall penetration (item 7): a round goes through thin walls by what they
+  are made of, with CS2's own per-surface numbers, and loses damage doing it.
+  A hole on both sides of every wall.
 
 ### Bots
 - Two bots of the other side, on the player's own body and movement solver.
@@ -183,11 +186,33 @@ This was the unfinished half of hit registration. Items 1 to 4 are in (PR
 
 ### Phase 2: finish the shooting model
 
-7. **Wall penetration.** *(Remote)* `Hitscan` is one ray and stops at the first thing it
-   hits. CS2 shoots through wood, thin metal and dust2's doors and boxes, and
-   players do it on purpose. The spreadsheet gives both rifles 200%
-   penetration power. The collision hull already names each surface,
-   so a per-surface penetration table can hang off that.
+7. **Wall penetration.** *(done, Remote)* `Hitscan.trace` now finds the far
+   side of each wall it meets and carries on through it when the round has
+   the power, up to four walls, never into the sky. Each weapon's power is
+   the game's `m_flPenetration` (rifles 2, SMGs 1). Each surface's two
+   numbers are CS2's own, from `scripts/surfaceproperties_game.txt` in
+   SteamDatabase's GameTracking-CS2 (78 surfaces, in `src/combat/penetration.gd`),
+   taken by the name the hull gives each part. How thickness and those
+   numbers become reach and damage is this project's own routine, since
+   CS2's is not published, and its four constants are estimates. On the
+   test range, M stands a wall of one of seven surfaces in front of the
+   dummy and the log says what each wall let through. A round stops at the
+   first person it hits: going on through them (collaterals) is not in yet.
+7a. **Measure penetration in CS2 (Sid).** *(Local)* Set the four estimates
+   in `Penetration` (`REACH_PER_POWER`, `FLAT_LOSS`, `DAMAGE_DEPTH`,
+   `MOST_WALLS`) from the game: with `sv_showimpacts 1` and
+   `sv_showimpacts_penetration 1`, shoot a bot through a few dust2 walls of
+   known surface (mid doors, a wooden crate, a thin concrete wall, a car)
+   with the AK-47 and an SMG, and note the damage each did, the thickness
+   the game shows, and where a round stopped getting through. Then shoot
+   the same walls on our dust2 and compare.
+7b. **Surface parents (Sid).** *(Local)* The game's file leaves out a
+   surface's damage or reach where it takes its parent's, and the parents
+   are in `surfaceproperties.vsurf`, which is not in the public dump.
+   `Penetration.PARENTS` guesses them from the names for now (a wood plank
+   takes wood's damage). Extract that file and put it in `reference/` to
+   settle them. Also run `tests/run_dust2_checks.gd`, which lists which
+   CS2 surface each part of our dust2 hull is taken as.
 8. **Set `recoil_scale` from a measurement (Sid).** *(Local)* The spray's overall size
    is the one estimate left in the recoil model (it assumes the AK climbs 16
    degrees). Spray a wall in CS2 from 496 units and compare it with the
@@ -346,6 +371,9 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 | Hands | Check that first shots at a run now miss (PR #24) | Item 9 |
 | Hands | Play being shot on the test range (B, U, Y, J, T) and dust2: your capsules' fit, the tag, the flinch, the hit arcs (PR #27) | Items 1 to 4 |
 | Hands | Measure a tag's length and the flinch's size in CS2 | Item 4a |
+| Hands | Shoot through dust2's walls in CS2 with `sv_showimpacts_penetration 1` and note the damage | Item 7a |
+| Hands | Extract `surfaceproperties.vsurf`; run the dust2 checks for the hull's surfaces | Item 7b |
+| Hands | Play wall penetration on the test range (M) and dust2 | Item 7 |
 | Done | The every-gun extraction (weapons TODO L1 to L3), and reload, draw and zoom figures from the game's own data (L5) | Every gun: `reference/weapons/models.md`, `sounds.md`, `timings.md`, `vdata.md` |
 | Decided | The game's own numbers win over the sheet's wherever the game has them (Sid, 2026-09-22), the Desert Eagle's jump inaccuracy included (46.75, not 378.30) | `WeaponVData`, every gun |
 | Hands | The systems' Local list in `reference/cs2-systems.md`: buy zones and bomb sites (B1), radar (B3), bomb (C1 to C3), grenades (G1 to G6), knife and Zeus (K1, K2), sounds (S1, S2) | Phases 4 to 7 |
@@ -371,5 +399,5 @@ shooting model is finished; then a match of rounds with money and
 buying, the bomb, grenades, the knife and Zeus, bots that play the round,
 multiplayer, and menus with a build. Every gun runs alongside all of it.
 The split is done (PR #24) and being shot is in apart from blood and the
-third-person firing layer (PR #27), so finishing the shooting model is
-next; the housekeeping can start today; phase 8 waits on the nav mesh.
+third-person firing layer (PR #27), and wall penetration is in (item 7),
+so what is left of the shooting model is measuring (7a, 7b, 8); the housekeeping can start today; phase 8 waits on the nav mesh.

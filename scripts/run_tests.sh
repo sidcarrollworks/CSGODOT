@@ -27,5 +27,6 @@ fi
 "$GODOT" --headless --path "$PROJECT_DIR" --script tests/run_dust2_checks.gd
 "$GODOT" --headless --path "$PROJECT_DIR" --script tests/run_model_checks.gd
 "$GODOT" --headless --path "$PROJECT_DIR" --script tests/run_weapon_tests.gd
+"$GODOT" --headless --path "$PROJECT_DIR" --script tests/run_penetration_checks.gd
 "$GODOT" --headless --path "$PROJECT_DIR" --script tests/run_range_checks.gd
 "$GODOT" --headless --path "$PROJECT_DIR" --script tests/run_sim_checks.gd
