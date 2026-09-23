@@ -24,6 +24,11 @@ const JUMP := 2
 const DUCK := 4
 const WALK := 8
 const RELOAD := 16
+## E, Source's IN_USE: plant and defuse the bomb, pick up the gun looked at.
+const USE := 32
+## The right button: a grenade's underhand throw, a scope, a silencer, the
+## knife's heavy swing.
+const ATTACK2 := 64
 
 ## Weapon slots a command can ask to switch to (`weapon_select`), until
 ## there is an inventory; 0 asks for nothing.
@@ -50,7 +55,7 @@ class SubtickStep:
 		pitch_degrees = p_pitch
 
 
-## The simulation tick this command runs (Engine.get_physics_frames()).
+## The simulation tick this command runs (GameWorld.tick).
 var tick: int = 0
 ## Buttons held at the end of the tick.
 var buttons: int = 0

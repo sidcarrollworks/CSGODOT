@@ -26,6 +26,7 @@ Updated 2026-09-22: weapon numbers from Sid's spreadsheet and tapping (PR #23), 
 Updated 2026-09-23 (later): match and round flow done (item 11).
 Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurements added (7a, 7b); dust2's nav mesh extracted and read (PR #32), so bots can start walking it (item 22); the range fixes and your own ragdoll in (PR #30), so items 6 and 6a can start; dust2's buy zones, bomb sites and radar read (PR #34); the blood extraction and what can start now added to "Waiting on Sid" and the last section.
 Updated 2026-09-23 later: bots walk the nav mesh (item 22), to the bomb sites and back.
+Updated 2026-09-23 evening: one world runs the tick (`GameWorld`, the first part of `reference/systemization.md`'s step 1).
 
 ## Part 1: what exists
 
@@ -53,6 +54,9 @@ Updated 2026-09-23 later: bots walk the nav mesh (item 22), to the bomb sites an
 - Scroll up jumps, noclip on V.
 - The match is simulation too (`src/match/match_state.gd`, item 11): it
   moves on with the tick and changes the game only through the players.
+- One world runs the tick (`src/sim/game_world.gd`, 2026-09-23): every
+  player's command in the order they joined, then the match. Nothing runs
+  itself, and its tick count is simulation time.
 - A movement test course: strafe lane, stairs, ramps at 20/35/44/50 degrees,
   surf lane, jump gauges.
 
@@ -340,8 +344,10 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
     commands (the sub-tick ones already exist) and a view that draws it.
     Single player becomes that simulation running inside the game with bots,
     the way CS2's offline mode is a listen server. Done: see "Simulation and
-    view" in part 1. Still to come on it, with the systems that need them: a
-    server that owns the players (phase 9), and the match state (phase 4).
+    view" in part 1. The match state came with phase 4 (item 11), and the
+    world that owns the tick and the players (`GameWorld`,
+    `reference/systemization.md` finding 1) on 2026-09-23; still to come is
+    the server around it (phase 9).
 
 ### Phase 4: a match of rounds
 
@@ -368,6 +374,12 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
     and half time's 15 s replaces the 7 s pause rather than following it.
 12. **Inventory.** *(Remote; Local extracts world models)* Slots, switching
     with draw times, dropping (G), picking up and swapping, drops on death.
+    *(Partly done 2026-09-23, `reference/systems/contracts.md`: `Inventory`
+    with CS2's carrying rules, slots, Q and cycling grenades, each gun its
+    own `Weapon`; `DroppedItem` and `ItemDrops` for dropping, picking up
+    and drops on death. Left: wiring it into `player_sim.gd` in place of the
+    one weapon, draw times on a switch, G in `PlayerInput`, E to swap, and
+    the dropped guns drawn.)*
 13. **Economy.** *(Remote)* $800 start, $16,000 cap, round rewards, the loss
     ladder that a win steps down by one, plant and defuse rewards, kill
     awards from the sheet.
@@ -537,10 +549,11 @@ third-person firing layer (PR #27), and wall penetration is in (PR #31),
 so what is left of the shooting model is measuring (7a, 8).
 
 `reference/systemization.md` (2026-09-23) plans the shared systems these
-items should be built on, in five steps: an item registry, damage that
-records its attacker and game events come before items 12 and 13, and the
-world that owns the tick, bots as brains and a third-person presenter come
-before the bomb and grenades.
+items should be built on, in five steps: the world that owns the tick
+(done, 2026-09-23), an item registry, damage that records its attacker and
+game events come before items 12 and 13, and a third-person presenter,
+hitboxes posed by the tick and bots as brains come before the bomb and
+grenades.
 
 What a thread can start now: the inventory and economy (items 12 and 13),
 on the match (item 11, done); from the weapons todo, the

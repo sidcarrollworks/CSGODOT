@@ -319,9 +319,10 @@ func select_last() -> bool:
 
 
 ## Takes out and hands back what a death leaves on the ground, as CS2 does
-## (mp_death_drop_gun, _grenade, _taser, _defuser, _c4): the best gun, the
-## grenade in hand or else the best one, the Zeus, the kit and the C4. The
-## rest goes with strip().
+## (mp_death_drop_gun, _grenade, _taser, _defuser): the best gun, the grenade
+## in hand or else the best one, the Zeus and the kit. Not the C4, which the
+## bomb takes and drops itself when its carrier dies (mp_death_drop_c4). The
+## rest goes with strip(), when the player next spawns.
 func drops_on_death() -> Array[Entry]:
 	var out: Array[Entry] = []
 	var gun := best_gun()
@@ -338,7 +339,7 @@ func drops_on_death() -> Array[Entry]:
 				break
 	if not grenade.is_empty():
 		out.append(remove(grenade))
-	for item_class in ["weapon_taser", "item_defuser", "weapon_c4"]:
+	for item_class in ["weapon_taser", "item_defuser"]:
 		if has(item_class):
 			out.append(remove(item_class))
 	return out

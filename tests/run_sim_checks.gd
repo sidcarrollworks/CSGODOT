@@ -23,6 +23,7 @@ var QUARTER_TICK := TICK / 4
 const SIMULATION_FILES := [
 	"res://src/sim/user_cmd.gd",
 	"res://src/sim/sim_clock.gd",
+	"res://src/sim/game_world.gd",
 	"res://src/player/player_sim.gd",
 	"res://src/bots/bot.gd",
 	"res://src/movement/player_body.gd",
@@ -34,6 +35,28 @@ const SIMULATION_FILES := [
 ]
 
 var _world: Node3D
+
+
+## A player that notes when the world asks it for its command, and walks
+## forward when told to.
+class Scripted extends PlayerSim:
+	var said: Array = []
+	var walks := false
+
+	func command_for(tick: int, dt: float) -> UserCmd:
+		said.append("%s %d" % [name, tick])
+		var cmd := super.command_for(tick, dt)
+		if walks:
+			cmd.move = Vector2(0.0, 1.0)
+		return cmd
+
+
+## A match that notes when the world runs it, and at what time.
+class NotedMatch extends MatchState:
+	var said: Array = []
+
+	func tick(now_usec: int) -> void:
+		said.append("match %d" % now_usec)
 
 
 func _initialize() -> void:
@@ -50,6 +73,11 @@ func _run() -> void:
 	await physics_frame
 	await physics_frame
 
+	await _test_the_world_runs_the_tick()
+	await _test_a_world_stepped_by_hand()
+	_test_the_world_gives_out_path_searches()
+	await _test_nothing_runs_itself()
+	await _test_joining_and_leaving()
 	await _test_the_same_commands_give_the_same_game()
 	await _test_a_held_trigger_fires_on_simulation_time()
 	await _test_a_press_fires_from_where_the_player_was()
@@ -120,6 +148,177 @@ func _test_presses_land_at_their_instant() -> void:
 	# put every press at 0.
 	var stale := PlayerInput.tick_fraction(start + HALF_TICK, start + TICK + 100, TICK)
 	_check(is_zero_approx(stale), "measured from the tick's own start, the same click would have been at 0")
+
+
+# --- The world that runs the tick -------------------------------------------
+
+## Each tick the world asks each player for one command, in the order they
+## joined, runs it, and then runs the match on the tick they have just run.
+## It counts its ticks from its start, and that count is simulation time.
+func _test_the_world_runs_the_tick() -> void:
+	var world := GameWorld.new()
+	_world.add_child(world)
+	# Stepped here rather than by the engine's ticks. (Once in the tree: a
+	# node with a _physics_process has it turned on when it is ready.)
+	world.set_physics_process(false)
+	var said: Array = []
+	var players: Array[PlayerSim] = []
+	for i in 3:
+		var player := Scripted.new()
+		player.name = ["A", "B", "C"][i]
+		player.said = said
+		_new_player(Vector3(1536.0 + 100.0 * i, 0.0, 1536.0), "T", player)
+		world.add_player(player)
+		players.append(player)
+	var game := NotedMatch.new()
+	game.said = said
+	_world.add_child(game)
+	world.match_state = game
+	world.step()
+	world.step()
+
+	var expected := [
+		"A 1", "B 1", "C 1", "match %d" % SimClock.tick_end_usec(1),
+		"A 2", "B 2", "C 2", "match %d" % SimClock.tick_end_usec(2),
+	]
+	_check(
+		said == expected,
+		"each tick the world asks each player for one command, in the order they joined, then runs the match at the end of the tick they have just run (%s)" % [said]
+	)
+	_check(
+		players.all(func(player: PlayerSim) -> bool: return player.last_command.tick == 2),
+		"every player has run the command for the tick"
+	)
+	_check(game.players.size() == 3, "everyone in the world plays in its match")
+	_check(
+		world.tick == 2 and SimClock.current_tick() == 2 and SimClock.now_usec() == 2 * TICK,
+		"the world counts its ticks from its start, and simulation time is its count (tick %d, %d us)" % [SimClock.current_tick(), SimClock.now_usec()]
+	)
+	await physics_frame
+	await physics_frame
+	_check(
+		world.tick == 2 and said.size() == expected.size(),
+		"the engine's ticks run none of it while the world is stepped by hand (%d asked)" % said.size()
+	)
+	var gone: Array[Node] = [game, world]
+	gone.append_array(players)
+	for node in gone:
+		node.queue_free()
+	await physics_frame
+	_check(GameWorld.current == null, "and once the world is gone there is no world to run")
+
+
+## A check can hold the world and step it itself: a second of the game in
+## one frame, and the player goes as far as a second of running takes it.
+func _test_a_world_stepped_by_hand() -> void:
+	var world := GameWorld.new()
+	_world.add_child(world)
+	world.set_physics_process(false)
+	var runner := Scripted.new()
+	runner.walks = true
+	_new_player(Vector3(1536.0, 0.0, -1536.0), "T", runner)
+	world.add_player(runner)
+	var from := runner.global_position
+	var frame := Engine.get_process_frames()
+	for i in SimClock.ticks_in(1.0):
+		world.step()
+	var moved := Vector2(runner.global_position.x - from.x, runner.global_position.z - from.z).length()
+	_check(
+		Engine.get_process_frames() == frame and world.tick == SimClock.ticks_in(1.0) and moved > 200.0 and moved < 250.0,
+		"a second of the game stepped in one frame: %d ticks, and the player ran %.0f units from a standstill" % [world.tick, moved]
+	)
+	runner.queue_free()
+	world.queue_free()
+	await physics_frame
+
+
+## Bots find their way over the nav mesh a few a tick, and the rest on the
+## next, rather than every bot on the tick a round starts: the world gives
+## out the searches, afresh each tick.
+func _test_the_world_gives_out_path_searches() -> void:
+	var world := GameWorld.new()
+	world.begin_tick()
+	var granted := []
+	for i in GameWorld.PATH_SEARCHES_PER_TICK + 1:
+		granted.append(world.may_search_path())
+	var expected := []
+	for i in GameWorld.PATH_SEARCHES_PER_TICK:
+		expected.append(true)
+	expected.append(false)
+	world.begin_tick()
+	_check(
+		granted == expected and world.may_search_path(),
+		"%d bots a tick may search the nav mesh, and the next waits for the next tick (%s)" % [GameWorld.PATH_SEARCHES_PER_TICK, granted]
+	)
+	world.free()
+
+
+## Out of a world nothing runs: a bot and your own player stay where they
+## are through the engine's ticks, and a match stays where it is. Only a
+## world runs the game.
+func _test_nothing_runs_itself() -> void:
+	var bot := (load("res://src/bots/bot.tscn") as PackedScene).instantiate() as Bot
+	bot.team = "CT"
+	bot.route = PackedVector3Array([Vector3(2500.0, 0.0, 2500.0), Vector3(2500.0, 0.0, 2000.0)])
+	bot.position = Vector3(2500.0, 0.0, 2500.0)
+	_world.add_child(bot)
+	var you := (load("res://src/player/player.tscn") as PackedScene).instantiate() as PlayerController
+	_world.add_child(you)
+	# In the air, where anything that ran it would drop it.
+	you.place(Vector3(2700.0, 100.0, 2500.0), 0.0)
+	var game := MatchState.new()
+	game.rules = MatchRules.new()
+	game.rules.warmup_seconds = 0.01
+	_world.add_child(game)
+	game.add_player(bot)
+	game.start(0)
+	for i in 8:
+		await physics_frame
+	_check(
+		bot.last_command.tick == 0 and bot.global_position.is_equal_approx(Vector3(2500.0, 0.0, 2500.0)),
+		"a bot in no world stands where it was put, having run no command (%s)" % bot.global_position
+	)
+	_check(
+		you.last_command.tick == 0 and is_equal_approx(you.global_position.y, 100.0),
+		"nor does your own player run, even in the air (%.1f up)" % you.global_position.y
+	)
+	_check(game.phase == MatchState.Phase.WARMUP, "and a match nobody runs stays in its warmup past its end")
+	for node: Node in [bot, you, game]:
+		node.queue_free()
+	await physics_frame
+
+
+## Joining puts a player in the world and in its match, once; a player out
+## of the scene is out of the game.
+func _test_joining_and_leaving() -> void:
+	var world := GameWorld.new()
+	_world.add_child(world)
+	world.set_physics_process(false)
+	var game := MatchState.new()
+	_world.add_child(game)
+	world.match_state = game
+	var a := _new_player(Vector3(-1536.0, 0.0, 1536.0), "T")
+	var b := _new_player(Vector3(-1536.0, 0.0, 1636.0), "CT")
+	world.add_player(a)
+	world.add_player(b)
+	world.add_player(a)
+	_check(
+		world.players.size() == 2 and game.players.size() == 2 and a.world == world and b.world == world,
+		"joining puts a player in the world and in its match, once however often it is asked"
+	)
+	a.queue_free()
+	await physics_frame
+	_check(
+		world.players.size() == 1 and world.players[0] == b and game.players.size() == 1,
+		"a player freed leaves the world, and its match, by itself"
+	)
+	world.step()
+	_check(b.last_command.tick == 1, "and the world runs on with those still in it")
+	world.remove_player(b)
+	_check(world.players.is_empty() and b.world == null, "one taken out is out")
+	for node: Node in [b, game, world]:
+		node.queue_free()
+	await physics_frame
 
 
 # --- Same commands, same game -----------------------------------------------
@@ -384,6 +583,11 @@ func _test_a_bot_plays_through_commands() -> void:
 	bot.position = Vector3(0.0, 0.0, -1600.0)
 	bot.yaw_degrees = 180.0
 	_world.add_child(bot)
+	# Run by a world on the engine's ticks, as on a map.
+	var world := GameWorld.new()
+	_world.add_child(world)
+	for player: PlayerSim in [enemy, friend, bot]:
+		world.add_player(player)
 	var times: Array[int] = []
 	bot.shot_traced.connect(func(shot: Weapon.Shot, _result: Hitscan.Result) -> void:
 		times.append(shot.timestamp_usec))
@@ -408,6 +612,7 @@ func _test_a_bot_plays_through_commands() -> void:
 	bot.queue_free()
 	enemy.queue_free()
 	friend.queue_free()
+	world.queue_free()
 	await physics_frame
 
 
@@ -450,6 +655,9 @@ func _test_a_bot_finds_its_way() -> void:
 	bot.nav_mesh = mesh
 	bot.position = start
 	_world.add_child(bot)
+	var world := GameWorld.new()
+	_world.add_child(world)
+	world.add_player(bot)
 	bot.place(start, 0.0)
 	bot.set("_next", 1)
 	var arrived := []
@@ -500,6 +708,7 @@ func _test_a_bot_finds_its_way() -> void:
 			% [ducked_under, standing_under]
 	)
 	bot.queue_free()
+	world.queue_free()
 	await physics_frame
 
 
@@ -794,9 +1003,11 @@ func _build_floor() -> void:
 	_world.add_child(floor_body)
 
 
-## A player in the simulation with nothing drawing it, standing on the floor.
-func _new_player(at: Vector3, team: String) -> PlayerSim:
-	var player := PlayerSim.new()
+## A player in the simulation with nothing drawing it, standing on the floor:
+## a plain one, or the one given.
+func _new_player(at: Vector3, team: String, player: PlayerSim = null) -> PlayerSim:
+	if player == null:
+		player = PlayerSim.new()
 	player.team = team
 	player.collision_layer = 2
 	var hull := CollisionShape3D.new()

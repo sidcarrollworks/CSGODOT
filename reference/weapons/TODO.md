@@ -131,7 +131,14 @@ Roughly in order; L1 to L3 can start at once.
 
 ## Remote (a project thread)
 
-- [ ] **R1. A weapon registry off the sheet.** *(2026-09-22: numbers now come from the game, not the sheet: `WeaponVData.apply(data, class, alternate)` puts any of the 34 guns' figures on a `WeaponData` from the committed `vdata.csv`; read the sheet first only for landing and ladder, as `WeaponLibrary` does. The files are in `models.md`, `sounds.md`, `timings.csv`.)* One entry per class above:
+- [x] **R1. A weapon registry off the sheet.** *(done 2026-09-23:
+  `WeaponLibrary.build(class)` makes any of the 34 from `vdata.csv`, the
+  sheet's landing and ladder, and `models.md`'s model and clips;
+  `WeaponLibrary.all()` is all 34 and `ItemRegistry` names each by class;
+  `run_contract_checks.gd` builds every one against the game's damage and
+  magazine and fires its first round at a run inside its running cone. No
+  spray pattern but the AK-47's and M4A1-S's (L6), and the AK's recoil
+  settling time on the rest.)* *(2026-09-22: numbers now come from the game, not the sheet: `WeaponVData.apply(data, class, alternate)` puts any of the 34 guns' figures on a `WeaponData` from the committed `vdata.csv`; read the sheet first only for landing and ladder, as `WeaponLibrary` does. The files are in `models.md`, `sounds.md`, `timings.csv`.)* One entry per class above:
   sheet row and mode rows, model path, clip set, sound set, slot
   (pistol/primary), pattern file, reload and draw time, all read from files
   (`cs2_weapon_sheet.csv`, and `models.md`, `sounds.md`, `measured.csv` as

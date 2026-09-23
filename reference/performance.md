@@ -32,6 +32,15 @@ Headless, so a frame is its script alone: drawing comes on top.
 | Footsteps | 0.04 ms | 0.08 ms | |
 | **The tick** | **2.9 to 3.5 ms** | **7.6 to 8.4 ms** | |
 
+The profiler ran the nodes in the tree's order backwards then, without
+their priorities, so the match went first and you last, right after the
+bots. Run in the engine's own order (since the evening of 2026-09-23), you
+are the first thing in the tick, with the map's collision not yet in the
+cache: your command and its run are 0.11 to 0.13 ms, and footsteps 0.02 with
+ten players. The tick is the same either way: ten players 2.6 to 3.1 ms,
+twenty 6.7 to 7.8, timed that evening by a node first and a node last in
+every tick, with nothing taken over.
+
 The physics server's own step was about 0.2 ms a tick with ten players and
 0.3 with twenty (measured at 128; at 64 a tick seldom shares a frame with
 another, which is how it is seen).
@@ -84,7 +93,8 @@ nodes, and no orphan nodes after fifteen seconds of fighting.
 | Sound sets loaded with the map | PR #45 | the first step on a surface hitched up to 47 ms |
 | Two path searches a tick | PR #45 | a round's start took 5 to 10 ms in one tick |
 | The ground looked for once a tick (Source's sv_optimizedmovement) | PR #45 | a trace a tick fewer; twenty players' tick at 128, 6.4 to 7.3 ms down to 5.6 to 6.2 |
-| 64 ticks a second, and everything drawn between ticks | feature/64-tick | a second of simulation 0.36 s to 0.21 with ten players, 0.76 to 0.52 with twenty; twenty players headless from 57 to 81 frames a second to 117 to 128 |
+| 64 ticks a second, and everything drawn between ticks | PR #46 | a second of simulation 0.36 s to 0.21 with ten players, 0.76 to 0.52 with twenty; twenty players headless from 57 to 81 frames a second to 117 to 128 |
+| One world runs the tick (`GameWorld`), the two path searches a tick its to give out | feature/game-world | nothing, as it should: every tick's callbacks in the engine's order, main against it, 3.04, 2.97 and 2.63 ms against 3.00, 2.93 and 2.59 with ten players, window for window; with twenty, 6.75, 7.60 and 7.42 against 6.70, 7.82 and 7.65 |
 
 A tick at 64 costs a little more than one at 128 did: it moves everyone
 twice as far, with more to meet on the way, and holds twice the rounds and
@@ -183,10 +193,13 @@ air strafing most), and run_tests.gd holds it at any tick rate.
 Team size 5 is ten players, and 3 is the number of five-second windows.
 Three things to know when reading it:
 
-- It runs every node's callbacks itself, so the figures are by system. The
-  step from the last node's callback to the next tick in the same frame is
-  the physics server's; with more frames than ticks few ticks share a frame
-  and that line can be missing.
+- It runs every node's callbacks itself, so the figures are by system: the
+  world's tick (`GameWorld`) in the world's own parts, each player's
+  command and its run, then the match, and everything else node by node,
+  all in the order the engine would run them (by priority, then the tree's).
+  The step from the last node's callback to the next tick in the same frame
+  is the physics server's; with more frames than ticks few ticks share a
+  frame and that line can be missing.
 - Godot's own `Performance.TIME_PHYSICS_PROCESS` and `TIME_PROCESS` are the
   worst tick and frame of the last second, not averages.
 - The single operations put the bot back where it was after every call,
