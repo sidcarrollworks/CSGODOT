@@ -21,8 +21,10 @@ extends Node
 ## just run.
 ##
 ## It also holds what a tick gives out, so each tick starts afresh: the nav
-## mesh's path searches now, and the tick's events when there are events
-## (reference/systemization.md, finding 4).
+## mesh's path searches, and the game's shared state (game): its events,
+## its simulated things (grenades, the bomb, dropped guns), who is playing
+## and what each carries, and the systems that run after the match
+## (reference/systems/contracts.md).
 
 ## How many paths over the nav mesh may be searched for in one tick. A search
 ## takes half a millisecond, and at a round's start every bot wants one on the
@@ -50,6 +52,10 @@ var match_state: MatchState:
 ## The tick being run, or between ticks the last one run. The first is 1.
 var tick: int = 0
 
+## The game's events, entities, roster, inventories and systems, stepped at
+## the end of every tick, after the match (GameSystems.step).
+var game := GameSystems.new()
+
 var _path_searches_left: int = PATH_SEARCHES_PER_TICK
 
 
@@ -74,6 +80,7 @@ func add_player(player: PlayerSim) -> void:
 		return
 	players.append(player)
 	player.world = self
+	game.add_player(player, player.hit_target)
 	if match_state != null:
 		match_state.add_player(player)
 
@@ -82,6 +89,7 @@ func add_player(player: PlayerSim) -> void:
 ## leaves by itself.
 func remove_player(player: PlayerSim) -> void:
 	players.erase(player)
+	game.roster.remove(game.roster.userid_of(player))
 	if player.world == self:
 		player.world = null
 	if is_instance_valid(match_state):
@@ -108,10 +116,13 @@ func begin_tick() -> void:
 	_path_searches_left = PATH_SEARCHES_PER_TICK
 
 
-## The tick ends, every player having run it: the match judges it.
+## The tick ends, every player having run it: the match judges it, then the
+## game's own systems run and the tick's events are handed out.
 func end_tick() -> void:
 	if is_instance_valid(match_state):
 		match_state.tick(SimClock.tick_end_usec(tick))
+	var viewport := get_viewport() if is_inside_tree() else null
+	game.step(tick, viewport.find_world_3d().direct_space_state if viewport != null else null)
 
 
 ## Whether a path over the nav mesh may be searched for this tick, counting
