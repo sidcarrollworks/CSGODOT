@@ -116,8 +116,12 @@ static func player_spawns(entities: Array[Dictionary]) -> Dictionary:
 	return spawns
 
 
-## How far the bomb's blast reaches as the map sets it (info_map_parameters'
-## bombradius: 700 on dust2), or -1 where it sets none.
+## The map's bombradius (info_map_parameters: 700 on dust2; the game's
+## default is 500), or -1 where it sets none. Despite its name it is the old
+## bomb's damage, not its reach: before the July 2026 shockwave the blast did
+## this much at its middle and reached 3.5 times as far (2,450 units on
+## dust2), falling off as a Gaussian a third of that reach wide (CS:GO's
+## CPlantedC4::Explode and CCSGameRules::RadiusDamage).
 static func bomb_radius(entities: Array[Dictionary]) -> float:
 	for entity in entities:
 		if entity.get("classname", "") == "info_map_parameters" and entity.has("bombradius"):

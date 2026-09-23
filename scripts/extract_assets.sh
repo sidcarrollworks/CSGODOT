@@ -350,17 +350,24 @@ extract_nav() {
 
 ## The brush entities' own models, maps/de_dust2/entities/*.vmdl: the buy
 ## zones, the bomb sites and the callouts' places, which the entity lump
-## names by model and which exist nowhere else. Each exports as an empty glTF
-## and a _physics.gltf holding the volume, in inches about the entity's
-## origin; BrushVolume reads them. With them, the game's baked bomb damage
+## names by model (the world export's world_physics.gltf holds them too, but
+## named only by class). Each exports as a glTF, empty but for the two
+## func_brush, and a _physics.gltf holding the volume, in inches about the
+## entity's origin; BrushVolume reads them. With them, the game's baked bomb damage
 ## (maps/de_dust2/baked_bomb_damage.vdata), as KV3 text.
 extract_volumes() {
 	require_file "$MAP_VPK"
 	mkdir -p "$MAP_DEST"
 	echo "Extracting the brush entities' models and the baked bomb damage"
 	echo "        -> $MAP_DEST"
-	"$S2V_BIN" -i "$MAP_VPK" -f "maps/de_dust2/entities/" -e vmdl_c -o "$MAP_DEST" -d --gltf_export_format gltf \
-		| grep -c '^--- Dump' | sed 's/$/ models/'
+	local count
+	count="$("$S2V_BIN" -i "$MAP_VPK" -f "maps/de_dust2/entities/" -e vmdl_c -o "$MAP_DEST" -d --gltf_export_format gltf \
+		| { grep -c '^--- Dump written' || true; })"
+	if [[ "$count" -eq 0 ]]; then
+		echo "No brush entity models under maps/de_dust2/entities/ in $MAP_VPK." >&2
+		exit 1
+	fi
+	echo "$count models"
 	local damage
 	damage="$(find_map_resource '/baked_bomb_damage\.vdata_c$' "baked bomb damage (baked_bomb_damage.vdata_c)")" || exit 1
 	mkdir -p "$(dirname "$MAP_DEST/$damage")"

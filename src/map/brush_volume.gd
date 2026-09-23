@@ -8,7 +8,10 @@ extends RefCounted
 ## (scripts/extract_assets.sh volumes), is the volume: the brushes it was
 ## built from, each a closed convex solid, in Source's axes and inches about
 ## the entity's origin. The world's glTF and its collision hull leave brush
-## entities out, so these are the only place they are.
+## entities out. The world export's world_physics.gltf does hold them, one
+## node per entity, but names them only by class, without the model or the
+## keys (teamnum, bomb_site_designation) that say which is which, so each is
+## read from its own model.
 ##
 ## Everything here is in game space (SourceEntities.to_game).
 
@@ -117,9 +120,10 @@ static func from_entity(source_entity: Dictionary, root: String) -> BrushVolume:
 
 
 ## The model an entity names, as the path of its .vmdl: the lump writes it
-## as resource_name:"maps/de_dust2/entities/unnamed_2_23316.vmdl".
+## as resource_name:"maps/de_dust2/entities/unnamed_2_23316.vmdl". Names can
+## have spaces in them (de_mirage's sites are "a site_2_60263.vmdl").
 static func model_path(source_entity: Dictionary) -> String:
-	var found := RegEx.create_from_string("[\\w./-]+\\.vmdl").search(String(source_entity.get("model", "")))
+	var found := RegEx.create_from_string("[^\":]+\\.vmdl").search(String(source_entity.get("model", "")))
 	return found.get_string() if found != null else ""
 
 

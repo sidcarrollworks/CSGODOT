@@ -395,7 +395,7 @@ func _test_volumes_and_radar() -> void:
 		matches = matches and is_equal_approx(float(site.entity.get("bomb_damage_power", "0")), boxes[i * 7 + 6])
 	_check(
 		sites.size() == 2 and matches,
-		"bomb sites A and B are the boxes the game baked its bomb damage for, with the same damage power (%s; %s)"
+		"bomb sites A and B span the boxes the game baked its bomb damage for (A's is its L's bounds), with the same damage power (%s; %s)"
 			% [", ".join(sites.keys()), boxes]
 	)
 	_check(
@@ -405,7 +405,7 @@ func _test_volumes_and_radar() -> void:
 	)
 	_check(
 		is_equal_approx(SourceEntities.bomb_radius(_entities), 700.0),
-		"dust2's bomb reaches %.0f units (info_map_parameters' bombradius)" % SourceEntities.bomb_radius(_entities)
+		"dust2's bombradius is %.0f (info_map_parameters): the old bomb's damage, reaching 3.5 times that" % SourceEntities.bomb_radius(_entities)
 	)
 
 	var callouts := BrushVolume.of_class(_entities, "env_cs_place", MAP_DIR)
@@ -420,26 +420,34 @@ func _test_volumes_and_radar() -> void:
 		for callout in callouts:
 			if callout.contains((sites[letter] as BrushVolume).bounds.get_center()):
 				holding[letter] = callout.entity.get("place_name", "")
-	var spawn_callouts := {}
+	var off_callout := PackedStringArray()
 	for team: String in ["T", "CT"]:
 		for spawn: Dictionary in _spawns[team]:
+			var places := PackedStringArray()
 			for callout in callouts:
 				if callout.contains(spawn["position"]):
-					spawn_callouts[callout.entity.get("place_name", "")] = true
+					places.append(callout.entity.get("place_name", ""))
+			var wrong := places.is_empty()
+			for place in places:
+				wrong = wrong or place != team + "Spawn"
+			if wrong:
+				off_callout.append("%s %s in %s" % [team, spawn["position"], places])
 	_check(
 		callouts.size() == 43 and holding.get("A") == "BombsiteA" and holding.get("B") == "BombsiteB" and not_convex == 0,
 		"every one of the 43 callouts has its volume, each site's middle is in BombsiteA's or BombsiteB's (%s), and every solid is convex with its faces out (%d corners outside)"
 			% [holding, not_convex]
 	)
 	_check(
-		spawn_callouts.keys().all(func(place: String) -> bool: return place in ["TSpawn", "CTSpawn"]) and spawn_callouts.size() == 2,
-		"the spawns stand in the TSpawn and CTSpawn callouts and no other (%s)" % ", ".join(spawn_callouts.keys())
+		_spawns["T"].size() + _spawns["CT"].size() == 30 and off_callout.is_empty(),
+		"each of the %d spawns stands in its own side's spawn callout (TSpawn or CTSpawn) and in no other (off: %s)"
+			% [_spawns["T"].size() + _spawns["CT"].size(), ", ".join(off_callout)]
 	)
 
 	var overview := MapOverview.load_file(MAP_DIR.path_join("resource/overviews/de_dust2.txt"))
 	var radar := load(MAP_DIR.path_join("panorama/images/overheadmaps/de_dust2_radar_psd.png")) as Texture2D
 	var off := PackedStringArray()
-	# A side's spawns spread a tenth of the image; the marker is their middle.
+	# A side's spawns spread up to a fifth of the image; the marker is their
+	# middle.
 	var points := {
 		"TSpawn": _middle_of(_spawns["T"]), "CTSpawn": _middle_of(_spawns["CT"]),
 		"bombA": (sites["A"] as BrushVolume).bounds.get_center() if sites.has("A") else Vector3.ZERO,

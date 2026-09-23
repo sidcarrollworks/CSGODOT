@@ -238,11 +238,13 @@ bots do not walk it yet. The file ends in the game's analysis of the mesh
 can reach each area), which is compressed KV3 and not read yet.
 
 The buy zones, bomb sites and callouts are brush entities, which the world's
-export leaves out: each is a small model of its own in the map's archive,
-named by its entity. `src/map/brush_volume.gd` (`BrushVolume`) reads them as
+glTF and collision hull leave out (the world export's world_physics.gltf has
+them, but named only by class): each is a small model of its own in the
+map's archive, named by its entity. `src/map/brush_volume.gd` (`BrushVolume`) reads them as
 convex solids, with a point test and shapes for an `Area3D`: one buy zone a
 side, holding its side's 15 spawns, and the two sites, A an L of two boxes,
-whose boxes are the ones the game baked its bomb damage for. That bake
+spanning the boxes the game baked its bomb damage for (A's baked box is its
+L's bounds, notch and all, so a plant is tested against the volume). That bake
 (`baked_bomb_damage.vdata`) samples 85,697 points on a 10-unit grid; its
 boxes and grid are read, its damage values not yet. The radar is the game's
 overview image and the text that places it over the map; `MapOverview` goes

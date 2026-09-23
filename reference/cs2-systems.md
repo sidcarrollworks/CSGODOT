@@ -216,7 +216,9 @@ Armour is on the HUD (PR #27). Whether armour softens tagging is open
 
 **Built:** nothing yet. The sites' volumes are read (`BrushVolume.bomb_sites`,
 with each site's `bomb_damage_power`: A 1929, B 3234) and the map's
-`bombradius` (700, `SourceEntities.bomb_radius`).
+`bombradius` (700 damage, reaching 2,450 under the old rule;
+`SourceEntities.bomb_radius`). A plant is tested against the site's volume
+(`contains`), not the baked box, which for A takes in its L's notch.
 
 **Remote**
 - The bomb as an item: carry, drop, pick up, plant with its animation lock,

@@ -630,11 +630,13 @@ func _test_brush_volumes() -> void:
 		AABB(Vector3(0, 0, 0), Vector3(100, 100, 50)),
 		AABB(Vector3(100, 0, 0), Vector3(100, 50, 50)),
 	])
+	# A model name can have a space in it, as de_mirage's sites do.
+	_write_physics_gltf(volumes_root.path_join("maps/fixture/entities/b site_physics.gltf"), [AABB(Vector3.ZERO, Vector3(10, 10, 10))])
 	var zone_model := 'resource_name:"maps/fixture/entities/zone.vmdl"'
 	var entities: Array[Dictionary] = [
 		{"classname": "func_buyzone", "teamnum": "2", "model": zone_model, "origin": "[ 1000.0, 0.0, 0.0 ]", "angles": "[ 0.0, 90.0, 0.0 ]"},
 		{"classname": "func_buyzone", "teamnum": "3", "model": 'resource_name:"maps/fixture/entities/not_there.vmdl"'},
-		{"classname": "func_bomb_target", "bomb_site_designation": "1", "bomb_damage_power": "3234.0", "model": zone_model},
+		{"classname": "func_bomb_target", "bomb_site_designation": "1", "bomb_damage_power": "3234.0", "model": 'resource_name:"maps/fixture/entities/b site.vmdl"'},
 		{"classname": "info_map_parameters", "bombradius": "700.0"},
 	]
 	var zones := BrushVolume.buy_zones(entities, volumes_root)
@@ -642,7 +644,7 @@ func _test_brush_volumes() -> void:
 	_check(
 		zones["T"].size() == 1 and zones["CT"].is_empty() and sites.keys() == ["B"]
 			and (sites["B"] as BrushVolume).entity.get("bomb_damage_power") == "3234.0",
-		"buy zones come by team and bomb sites by letter, the ones whose model is not there left out"
+		"buy zones come by team and bomb sites by letter (a model named with a space found), the ones whose model is not there left out"
 	)
 	if zones["T"].is_empty():
 		return
