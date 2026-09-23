@@ -64,6 +64,7 @@ twenty, all 64 ticks a second in both.
 | A path over the nav mesh | 0.45 to 0.57 ms, two a tick at most |
 | A side swap, one player's new body | 2.6 ms |
 | A spawn | 2 us |
+| A gun drawn: its weapon and view model built again | 0.64 ms |
 
 | Once | Cost |
 |---|---|
@@ -94,7 +95,8 @@ nodes, and no orphan nodes after fifteen seconds of fighting.
 | Two path searches a tick | PR #45 | a round's start took 5 to 10 ms in one tick |
 | The ground looked for once a tick (Source's sv_optimizedmovement) | PR #45 | a trace a tick fewer; twenty players' tick at 128, 6.4 to 7.3 ms down to 5.6 to 6.2 |
 | 64 ticks a second, and everything drawn between ticks | PR #46 | a second of simulation 0.36 s to 0.21 with ten players, 0.76 to 0.52 with twenty; twenty players headless from 57 to 81 frames a second to 117 to 128 |
-| One world runs the tick (`GameWorld`), the two path searches a tick its to give out | feature/game-world | nothing, as it should: every tick's callbacks in the engine's order, main against it, 3.04, 2.97 and 2.63 ms against 3.00, 2.93 and 2.59 with ten players, window for window; with twenty, 6.75, 7.60 and 7.42 against 6.70, 7.82 and 7.65 |
+| One world runs the tick (`GameWorld`), the two path searches a tick its to give out | PR #50 | nothing, as it should: every tick's callbacks in the engine's order, main against it, 3.04, 2.97 and 2.63 ms against 3.00, 2.93 and 2.59 with ten players, window for window; with twenty, 6.75, 7.60 and 7.42 against 6.70, 7.82 and 7.65 |
+| A weapon's recoil solved once for each pattern, and the pattern read once | fix/equip-hitch | every weapon built (a gun drawn, any respawn) solved its pushes again: 15 ms, a frozen frame each time a gun was drawn, and 15 ms a player respawned at a fresh round's start; now 0.01 ms, and a draw 18 ms to 0.64 |
 
 A tick at 64 costs a little more than one at 128 did: it moves everyone
 twice as far, with more to meet on the way, and holds twice the rounds and

@@ -511,9 +511,13 @@ func _test_weapons_are_built_from_what_was_worked_out() -> void:
 		"and a gun firing half as fast has pushes of its own"
 	)
 
-	first._impulses[0] = Vector2(99.0, 99.0)
+	# Built from the pushes kept now, and changed.
+	var changed := Weapon.new(WeaponLibrary.ak47())
+	changed._impulses[0] = Vector2(99.0, 99.0)
+	changed._impulses.append(Vector2(99.0, 99.0))
+	var next := Weapon.new(WeaponLibrary.ak47())
 	_check(
-		Weapon.new(WeaponLibrary.ak47())._impulses[0] != Vector2(99.0, 99.0),
+		next._impulses[0] != Vector2(99.0, 99.0) and next._impulses.size() == 29,
 		"a weapon's pushes are its own copy: changing one leaves the next weapon's as solved"
 	)
 	var read := RecoilPattern.load_pattern("ak47")
