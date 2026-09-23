@@ -284,6 +284,221 @@ func find_path(from: Vector3, to: Vector3, hull: int = 0) -> PackedVector3Array:
 	return points
 
 
+## A path pulled taut, for a player to walk: `points` are the corners it
+## turns at, the start first and the end last. Across a jump or a drop it
+## keeps both the take-off and the landing, and `jumps` marks the take-offs
+## whose landing is too high to step up to (1 at the take-off's index), which
+## is where a walker jumps. `areas` are the areas it crosses, in order, for
+## whoever needs to know what the floor asks of them (FLAG_CROUCH).
+class WalkPath:
+	var points := PackedVector3Array()
+	var jumps := PackedByteArray()
+	var areas: Array[Area] = []
+
+	func is_empty() -> bool:
+		return points.is_empty()
+
+	## Whether the leg from point i is a jump up.
+	func jumps_from(i: int) -> bool:
+		return i >= 0 and i < jumps.size() and jumps[i] != 0
+
+
+## How far in from the ends of the edge it crosses a taut path keeps its
+## corners, in units. The mesh is already the floor the middle of a player's
+## hull can reach (it was built eroded by the hull's 16-unit radius), so a
+## path through a corner of it has the hull touching the wall; this is the
+## room left for the hull's square corners and for a walker who turns late.
+const CORNER_CLEARANCE := 10.0
+
+## A landing more than this over the take-off is a jump, not a step: the
+## movement's step_height.
+const STEP_UP := 18.0
+
+## How far onto the floor across a jump or a drop its landing is.
+const LANDING_IN := 12.0
+
+## A gap wider than this in plan, to floor no lower than a step down, is
+## jumped rather than walked over.
+const JUMP_ACROSS := 32.0
+
+
+## The way from one point to another over one hull's areas, pulled taut: the
+## same route as find_path(), but turning only where a wall makes it turn,
+## at the corners of the edges it crosses (kept CORNER_CLEARANCE in from
+## them), the way the game's own bots cut across a room rather than walking
+## through the middle of every piece of floor. The pulling is the funnel
+## algorithm (Mononen's "simple stupid funnel") in plan, run between the
+## start, each jump or drop, and the end, since those points have to be
+## walked through as they are. Empty where route() is.
+func walk_path(from: Vector3, to: Vector3, hull: int = 0) -> WalkPath:
+	var path := WalkPath.new()
+	path.areas = route(from, to, hull)
+	if path.areas.is_empty():
+		return path
+	# Stretches of floor walked without leaving it, each a list of portals
+	# (the edge crossed, as its left and right ends seen walking), joined at
+	# the take-offs and landings of the jumps and drops between them.
+	var start := from
+	var portals: Array[PackedVector3Array] = []
+	for i in path.areas.size() - 1:
+		var here := path.areas[i]
+		var next := path.areas[i + 1]
+		var crossing := _crossing(here, next)
+		if crossing.is_empty():
+			continue
+		var near: PackedVector3Array = crossing[0]
+		var far: PackedVector3Array = crossing[1]
+		var take_off := _portal(near, far)
+		var landing := Geometry3D.get_closest_point_to_segment(take_off, far[0], far[1])
+		if landing.distance_to(take_off) > TOUCHING:
+			_pull_taut(start, take_off, portals, path)
+			# Landed a little way onto the floor across, not on its lip: up a
+			# ledge the lip is straight over the take-off, which gives the jump
+			# no way to go.
+			landing += Vector3(next.centre.x - landing.x, 0.0, next.centre.z - landing.z).limit_length(LANDING_IN)
+			landing.y = next.floor_at(landing)
+			var gap := Vector2(landing.x - take_off.x, landing.z - take_off.z).length()
+			var rise := landing.y - take_off.y
+			_end_at(path, take_off, rise > STEP_UP or (gap > JUMP_ACROSS and rise > -STEP_UP))
+			start = landing
+			portals.clear()
+			continue
+		portals.append(_portal_ends(near, far, here.centre, next.centre))
+	_pull_taut(start, to, portals, path)
+	_end_at(path, to, false)
+	return path
+
+
+## The end of a stretch, where the funnel may already have put it as its
+## last corner.
+static func _end_at(path: WalkPath, point: Vector3, jump: bool) -> void:
+	if not _same(path.points[-1], point) or path.points.size() == 1:
+		path.points.append(point)
+		path.jumps.append(0)
+	path.jumps[-1] = 1 if jump else 0
+
+
+## The edge of `here` a walk into `next` crosses and the edge of `next` it
+## arrives at, or empty where no link leads there.
+func _crossing(here: Area, next: Area) -> Array:
+	for edge in here.edges.size():
+		for link: Link in here.edges[edge]:
+			if link.area == next.id and link.gap < INF:
+				return [here.edge_ends(edge), next.edge_ends(link.edge)]
+	return []
+
+
+## The stretch of `near` that `far` shares, seen along `near`, drawn in by
+## CORNER_CLEARANCE at each end (to its middle where it is narrower than
+## that), as [left, right] for someone walking from `from` towards `to`.
+static func _portal_ends(near: PackedVector3Array, far: PackedVector3Array, from: Vector3, to: Vector3) -> PackedVector3Array:
+	var along := Vector2(near[1].x - near[0].x, near[1].z - near[0].z)
+	var length_squared := along.length_squared()
+	if length_squared < 1e-6:
+		return PackedVector3Array([near[0], near[0]])
+	var t0 := Vector2(far[0].x - near[0].x, far[0].z - near[0].z).dot(along) / length_squared
+	var t1 := Vector2(far[1].x - near[0].x, far[1].z - near[0].z).dot(along) / length_squared
+	var low := clampf(minf(t0, t1), 0.0, 1.0)
+	var high := clampf(maxf(t0, t1), 0.0, 1.0)
+	var inset := minf(CORNER_CLEARANCE / sqrt(length_squared), (high - low) * 0.5)
+	var a := near[0].lerp(near[1], low + inset)
+	var b := near[0].lerp(near[1], high - inset)
+	# Left of the way walked is where the cross product of the way and the
+	# point (in plan, x and z) is positive.
+	var way := Vector2(to.x - from.x, to.z - from.z)
+	var middle := (a + b) * 0.5
+	if _cross(way, Vector2(a.x - middle.x, a.z - middle.z)) >= 0.0:
+		return PackedVector3Array([a, b])
+	return PackedVector3Array([b, a])
+
+
+## The corners of a taut walk from `from` to `to` through `portals` (each
+## [left, right]), appended to `path` from `from` on; `to` is left for the
+## caller. The funnel: an apex, and the left and right edges of the view
+## through the portals from it. Each portal narrows one side or the other;
+## when a side would cross over the other, the other's end is a corner, and
+## it becomes the apex.
+static func _pull_taut(from: Vector3, to: Vector3, portals: Array[PackedVector3Array], path: WalkPath) -> void:
+	path.points.append(from)
+	path.jumps.append(0)
+	var ends: Array[PackedVector3Array] = portals.duplicate()
+	ends.append(PackedVector3Array([to, to]))
+	var apex := from
+	var left := from
+	var right := from
+	var left_at := -1
+	var right_at := -1
+	var i := 0
+	while i < ends.size():
+		var new_left: Vector3 = ends[i][0]
+		var new_right: Vector3 = ends[i][1]
+		# The right side narrows...
+		if _cross(_plan(right - apex), _plan(new_right - apex)) >= 0.0:
+			if _same(apex, right) or _cross(_plan(left - apex), _plan(new_right - apex)) < 0.0:
+				right = new_right
+				right_at = i
+			else:
+				# ...past the left: the left's end is a corner.
+				apex = left
+				_corner(path, apex)
+				right = apex
+				right_at = left_at
+				i = left_at + 1
+				continue
+		# The left side narrows...
+		if _cross(_plan(left - apex), _plan(new_left - apex)) <= 0.0:
+			if _same(apex, left) or _cross(_plan(right - apex), _plan(new_left - apex)) > 0.0:
+				left = new_left
+				left_at = i
+			else:
+				# ...past the right: the right's end is a corner.
+				apex = right
+				_corner(path, apex)
+				left = apex
+				left_at = right_at
+				i = right_at + 1
+				continue
+		i += 1
+
+
+## A corner of the path, unless it is where the path already is (two edges
+## that end at the same point can make the same corner twice).
+static func _corner(path: WalkPath, point: Vector3) -> void:
+	if not _same(path.points[-1], point):
+		path.points.append(point)
+		path.jumps.append(0)
+
+
+static func _plan(v: Vector3) -> Vector2:
+	return Vector2(v.x, v.z)
+
+
+static func _cross(a: Vector2, b: Vector2) -> float:
+	return a.x * b.y - a.y * b.x
+
+
+static func _same(a: Vector3, b: Vector3) -> bool:
+	return _plan(a - b).length_squared() < 1e-6
+
+
+## A mesh made of areas built by hand, linked as each area's edges say, for
+## a test to walk without a .nav file.
+static func from_areas(list: Array[Area]) -> SourceNavMesh:
+	var mesh := SourceNavMesh.new()
+	mesh.hulls = [{"radius": 16.0, "height": 71.0}]
+	for area in list:
+		var sum := Vector3.ZERO
+		for corner in area.corners:
+			sum += corner
+		area.centre = sum / maxf(area.corners.size(), 1)
+		while area.edges.size() < area.corners.size():
+			area.edges.append([])
+		mesh.areas[area.id] = area
+	mesh._measure_links()
+	mesh._index()
+	return mesh
+
+
 ## One line of what the mesh is, for reports.
 func summary() -> String:
 	if not error.is_empty():

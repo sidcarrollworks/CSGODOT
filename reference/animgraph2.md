@@ -161,9 +161,20 @@ The steps, smallest first:
    clips being mixed. Still to come from `locomotion.md`: the starts, the
    plant and turn, turning on the spot, the jump's takeoff (its directional
    clips are not extracted) and ladders.
-2. **The layers.** The weapon's actions, the shooting and the flinches over
-   the locomotion, as the third-person graph stacks them, with its bone masks
-   and its flinch types; item 6, and 6a after it.
+2. **The layers.** *(Done but for the flinches: `PlayerModel.add_weapon_layers`.)*
+   The weapon's actions, the shooting and the flinches over the locomotion,
+   as the third-person graph stacks them, with its bone masks and its flinch
+   types; item 6, and 6a after it. The gun's hold, reload, draw and shots go
+   in through CS2's UpperBody mask (`spine_0` and every bone under it, and
+   the gun's), which the skeleton's data lists by root bones, the rest
+   inheriting their weight. CS2's additive clips hold bare differences,
+   composed in the bone's own space (`base * delta`, and `base + delta`
+   for translation, as Esoterica's `AdditiveBlendFunction` has it); Godot
+   adds a clip's difference from the bone's rest, composed the same way, so
+   each key is re-expressed from the rest as the clip loads
+   (`PlayerModel.rest_relative`). An additive clip is told by the
+   `+non_additive` copy beside it. The weapon layer is blended in each
+   bone's own space where CS2 blends it in model space.
 3. **More of the graphs by conversion.** Most node types have a Godot
    counterpart (state machines, 1D and 2D blends, additive and masked layers,
    time scaling); Valve's three nodes and the IK would be ours to write.

@@ -64,17 +64,23 @@ A round ends when one side is dead, the bomb explodes (T), the bomb is
 defused (CT), or time runs out with no bomb down (CT).
 
 **Built:** spawn points by team and priority (`SourceEntities.player_spawns`),
-a player who dies and respawns after 3 s, two bots of one side.
+and the match (`src/match/`, roadmap item 11): warmup, freeze time, rounds
+ended by eliminations or the clock, the side swap and half time, the clinch,
+one overtime and the draw, no respawn, spectating your own team after the
+freeze cam, friendly fire for bullets, solid players, five a side on dust2
+with bots filling the places. The list below says what is left of it.
 
 **Remote**
-- A match state machine: warmup, freeze, live, round end, half time,
-  overtime, match end, with the timers above and the score.
-- Spawning ten players on dust2's priority spawns each round; survivors keep
-  their gear and health resets.
-- Friendly fire with the reductions above; solid teammates in the movement
-  solver.
-- Death: body stays (ragdoll), spectating teammates, the freeze cam.
-- Bots fill empty slots on either side.
+- ~~A match state machine: warmup, freeze, live, round end, half time,
+  overtime, match end, with the timers above and the score.~~ Done.
+- ~~Spawning ten players on dust2's priority spawns each round; survivors keep
+  their gear and health resets.~~ Done.
+- Friendly fire with the reductions above: bullets done; grenades and the
+  rest come with them. ~~Solid teammates in the movement solver.~~ Done.
+- ~~Death: body stays (ragdoll), spectating teammates, the freeze cam.~~ Done.
+- ~~Bots fill empty slots on either side.~~ Done.
+- The bomb's round ends (section 4) and money at half time and in overtime
+  (section 2) plug into the match when they are built.
 
 **Local:** none.
 
@@ -400,14 +406,13 @@ radar has B3 (`MapOverview`).
 
 ## 11. Bots that play CS
 
-**Today:** bots see and shoot the local player, walking straight lines.
-dust2's own nav mesh is read (`SourceNavMesh`, N1), so everything below can
-start.
+**Today:** bots see and shoot the local player, and walk dust2's own nav
+mesh (`SourceNavMesh.walk_path`: pulled taut, crouching where an area is
+marked crouch-only, jumping where a link rises past a step; roadmap item
+22), from their spawn to a bomb site and back.
 
 **Remote**
-- Paths on dust2's nav mesh (`SourceNavMesh.find_path`, pulled taut; crouch
-  where an area is marked crouch-only, jump where a link rises past a step),
-  teams of bots fighting each other.
+- Teams of bots fighting each other.
 - Buying: an economy plan per round (full buy, force, eco, save), dropping
   for teammates.
 - The objective: carry and plant (T), rotate, retake and defuse (CT), save

@@ -52,6 +52,8 @@ which is where shooting gets tuned.
 | `Mouse 1` | fire |
 | `R` | reload |
 | `1` / `2` | AK-47 / M4A1-S |
+| `F5` | end warmup and start the match (dust2) |
+| `Mouse 1` / `Space`, dead | watch the next teammate / from their eyes or behind them |
 
 The readout in the top left is the tuning instrument: current speed, vertical
 speed, peak speed, and speed gained over the last jump. Speed gained per jump
@@ -244,8 +246,11 @@ The nav mesh is the game's own, `maps/de_dust2.nav`: the floor cut into
 jumps and drops among them. `src/map/source_nav_mesh.gd` (`SourceNavMesh`)
 reads it, after Source 2 Viewer's reader of the undocumented format, and
 answers which area is under a point and how to get from one place to
-another (`route` for the areas, `find_path` for points to walk through). The
-bots do not walk it yet. The file ends in the game's analysis of the mesh
+another (`route` for the areas, `find_path` for points to walk through,
+`walk_path` for the same pulled taut, which is what the bots walk: from their
+spawn to a bomb site and back, jumping and crouching where the mesh says).
+Without it they walk straight lines between their spawn points, and the map
+says so in the top left. The file ends in the game's analysis of the mesh
 (hiding spots, where the two sides meet on each route, how early each team
 can reach each area), which is compressed KV3 and not read yet.
 
@@ -307,8 +312,13 @@ CS2's blend spaces, each at the speed the game authored it for (runs at
 225 units a second, walks at 136, crouching at 96), and the body's speed
 along and across where it faces mixes the ones around it, kept in step as
 CS2 keeps them; the air is blended the same way, with the game's cross-fades
-into it and back (`reference/animgraph2.md`). dust2 puts two bots of the other side in
-(`bots` on the scene root), walking their spawn points on a loop. A bot
+into it and back (`reference/animgraph2.md`). Over that the upper body
+holds, fires and reloads the gun with the gun's own clips, as CS2's graph
+lays them over the legs: every round a bot fires kicks its arms and
+shoulders, and its reload plays while its legs keep moving. dust2 plays a
+match of five a side, bots in every place but yours (`team_size` on the
+scene root), each walking from a spawn point to a bomb site and back over
+the map's nav mesh, or its side's spawn points on a loop without it. A bot
 (`src/bots/bot.gd`) is the player's own simulation run by commands its
 brain writes instead of keys, so it moves and fires the way a player does, and it can be
 shot: it wears the game's own hitboxes, the nineteen capsules CS2 defines
@@ -337,10 +347,25 @@ degrees, half a degree through armour, taking your next rounds with it
 shield gets a helmet's dome when you have one), ammunition, a red arc round
 the crosshair on the side each hit came from (`src/ui/damage_indicator.gd`),
 and three seconds dead before you are back at your spawn with a full
-magazine. Bots do not take cover or think beyond that. In the top left the HUD says where you stand and look,
+magazine, on the range and in warmup. Bots do not take cover or think beyond that. In the top left the HUD says where you stand and look,
 like CS2's `getpos`: the feet's position and the view's yaw and pitch,
 which is everything needed to put a render where a screenshot was taken.
 F3 hides it.
+
+dust2 is a match, run the way CS2's server runs one (`src/match/`), with
+CS2's competitive numbers (`MatchRules`): two minutes of warmup, where you
+come back when you die (F5 ends it), then rounds of 15 s of freeze time,
+where you can look round but not move or fire, and 1:55 of play. A round
+ends when a side is all dead, or when time runs out, which the
+counter-terrorists win; the next starts 7 s later, everyone back at a spawn,
+the survivors healed with the armour and weapon they had. Nobody comes back
+during a round: dead, you see your body for 2 s, then a living teammate's
+eyes (fire moves to the next, jump puts the camera behind them). After 12
+rounds the sides swap and the score goes with the team; 13 wins it, 12-12
+goes to one overtime of six rounds, and 15-15 is a draw. A teammate's round
+does a third of its damage, and nobody walks through anybody. The score,
+each side's players alive and the clock are at the top of the screen. Until
+there is buying, each side starts with its rifle.
 
 The sounds are the game's own too (`src/audio/`): the weapon's shots,
 reload in its parts and draw, flat in your ears the way the game plays your
@@ -423,10 +448,10 @@ Note that GDScript's analyser warnings (shadowed variables, unused locals) only
 appear when the editor loads a script. They do not show up in a headless run,
 so if the Godot console shows any, paste them over and they will get fixed.
 
-Eight files: movement, map import, dust2, models, weapons, penetration, the
-test range and the simulation. Without the extracted assets 621 checks run
-and pass; the dust2 and model files skip what needs files that have not been
-extracted.
+Nine files: movement, map import, dust2, models, weapons, penetration, the
+test range, the simulation and the match. Without the extracted assets 693
+checks run and pass; the dust2 and model files skip what needs files that
+have not been extracted.
 
 Half of the movement ones are the acceleration model against hand-computed
 values, which is the part that decides feel and the part most likely to be
@@ -500,8 +525,8 @@ original assets later is a content change rather than a git history problem.
 ## What is deliberately not here yet
 
 No bots that do anything but walk their spawn and shoot what they see (the
-nav mesh is read, but nothing walks it yet), no firing animation on the
-third-person model. `reference/roadmap.md`
+nav mesh is read, but nothing walks it yet), and no flinch on a body that
+is hit. `reference/roadmap.md`
 has the rest, in order.
 
 Movement and shooting are tuned in flat grey rooms first, because tuning them

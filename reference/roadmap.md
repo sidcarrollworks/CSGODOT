@@ -23,7 +23,9 @@ or Sid takes it; **Remote** is code and headless tests a cloud thread can do.
 ---
 
 Updated 2026-09-22: weapon numbers from Sid's spreadsheet and tapping (PR #23), every gun added, items marked Local or Remote; at 21:55, every CS2 system added (phases 3 to 10) from `reference/cs2-systems.md`; at 23:00, phase 3 done (PR #24) and the first shot while running fixed.
+Updated 2026-09-23 (later): match and round flow done (item 11).
 Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurements added (7a, 7b); dust2's nav mesh extracted and read (PR #32), so bots can start walking it (item 22); the range fixes and your own ragdoll in (PR #30), so items 6 and 6a can start; dust2's buy zones, bomb sites and radar read (PR #34); the blood extraction and what can start now added to "Waiting on Sid" and the last section.
+Updated 2026-09-23 later: bots walk the nav mesh (item 22), to the bomb sites and back.
 
 ## Part 1: what exists
 
@@ -48,6 +50,8 @@ Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurem
   brain writes its own. What you see and hear is a view that only reads the
   simulation (`src/player/player_view.gd`).
 - Scroll up jumps, noclip on V.
+- The match is simulation too (`src/match/match_state.gd`, item 11): it
+  moves on with the tick and changes the game only through the players.
 - A movement test course: strafe lane, stairs, ramps at 20/35/44/50 degrees,
   surf lane, jump gauges.
 
@@ -84,7 +88,8 @@ Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurem
   `reference/weapons/`. Only the AK-47 and M4A1-S are in your hands so far;
   the range's shooter also carries an MP9.
 - dust2's own nav mesh (PR #32), read by `SourceNavMesh`: 2,242 areas and
-  their links, with paths between any two points. Nothing walks it yet.
+  their links, with paths between any two points. Bots walk it, the paths
+  pulled taut, jumping and crouching where it says (item 22).
 - dust2's buy zones, bomb sites and callout volumes (`BrushVolume`), its
   radar (`MapOverview`) and its baked bomb damage file, extracted and read
   (PR #34).
@@ -113,7 +118,12 @@ Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurem
 - Every player, you included, dies into a ragdoll built from their
   capsules, with hinged knees and elbows and friction in every joint (PR
   #30). While you are dead the camera leaves your head and looks at your
-  body; you are back at spawn after 3 s, a bot back on its route after 5 s.
+  body. On the range and in warmup you are back at spawn after 3 s, a bot
+  after 5 s; in a round nobody comes back, and after 2 s you watch a
+  living teammate (item 11).
+- Friendly fire in a match: a teammate's round does 33% (item 11). Every
+  player's hull is solid to every other's, teammates included; a dead
+  one's is not.
 - Bullet holes from the game's own decal materials, per surface, with impact
   sounds.
 - Wall penetration (item 7, PR #31): a round goes through thin walls by what they
@@ -121,17 +131,23 @@ Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurem
   A hole on both sides of every wall.
 
 ### Bots
-- Two bots of the other side, on the player's own body and movement solver.
-- They walk their spawn points in a loop, see the player (3000 units,
+- dust2 fills both sides to five with bots, on the player's own body and
+  movement solver (item 11).
+- They walk their side's spawn points in a loop, see the player (3000 units,
   75-degree half cone, line of sight, 0.5 s reaction), turn, and fire bursts
   through the same simulation and trigger path as the player, with 1.2
   degrees of extra aim error. They target only the other side.
+- Their bodies hold, fire and reload their guns with the guns' own
+  third-person clips, over the upper body (item 6).
 
 ### Sound
 - The game's own sounds: weapon shots, reload and draw, hit sounds (kevlar,
   headshot, kill), footsteps and landings per surface, impact sounds.
 
 ### HUD
+- In a match, the score, each side's players alive, the round's clock and
+  a line saying which part of the match it is; dead in a round, whose eyes
+  you are in (item 11).
 - Crosshair, health, armour, ammo, death countdown, the movement tuning
   readout, and where you stand and look in the top left (PR #25, F3 hides
   it).
@@ -144,7 +160,7 @@ Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurem
 - `scripts/extract_assets.sh` (map, physics, weapons, characters, sounds and
   more, the nav mesh with `nav`), `inspect_assets`, and `run_tests.sh` with
   eight headless test files (movement, map, dust2, model, weapon,
-  penetration, range, simulation): 621 checks pass without the assets.
+  penetration, range, simulation): 622 checks pass without the assets.
 
 ---
 
@@ -206,16 +222,19 @@ item 6 is built.
    hit, to size the flinch (2 degrees here).
 5. **Blood on hit.** *(Local extracts the effects, then Remote)* A round into a body leaves no mark, so a hit is only
    heard, not seen. CS2's blood impact and decal behind the target.
-6. **Firing on the third-person model.** *(Remote, can start now; Sid checks it)* `PlayerModel` still says "Nothing is
-   layered, so firing does not show yet": a bot kills you without its arms
-   moving. Needs the upper-body layer over the locomotion. CS2's own
-   graph says how it stacks them (`reference/animgraph/worldmodel.md`): the
-   weapon's actions over the locomotion in model space, the shooting and the
-   flinches additive on top. The locomotion is now an animation tree of
-   CS2's blend spaces (`PlayerModel.animation_tree`), so the layers go into
-   that tree, above its `action` and under its `death`.
+6. **Firing on the third-person model.** *(Done 2026-09-23 but for the flinches; Sid checks it)* A bot's body holds, fires and
+   reloads its own gun: the gun's third-person clips (`WeaponData.world_clip_set`)
+   in `PlayerModel.animation_tree`, over the locomotion as CS2's graph
+   stacks them (`reference/animgraph/worldmodel.md`), through its UpperBody
+   mask: the gun's hold added, its reload or draw in place of the upper
+   body, each round's shot added on top. CS2's additive clips are re-expressed
+   from the rest pose for Godot's additive blend (`PlayerModel.rest_relative`).
+   Left: CS2 blends the weapon layer in model space, Godot in each bone's
+   own, so the upper body follows the hips here; and the flinches, additive
+   too and ready to go in the same way, are not extracted yet (the
+   characters step takes only the deaths from `world/shared/`).
 
-6a. **Your shadow has no arms.** *(Remote, after item 6; Sid checks it)* Sid noticed
+6a. **Your shadow has no arms.** *(Remote, can start now; Sid checks it)* Sid noticed
    2026-09-22 22:06. The shadow twin (commit f42114e) put the head back but folds the
    arms on purpose (`SHADOW_FOLDED_BONES` in `player_view.gd`), because
    arms in the locomotion pose would fall across the view model's. It is also
@@ -325,10 +344,27 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
 
 ### Phase 4: a match of rounds
 
-11. **Match and round flow.** *(Remote)* Warmup, freeze time 15 s, round time
+11. **Match and round flow.** *(done, PR #40)* Warmup, freeze time 15 s, round time
     1:55, MR12 with the side swap, overtime, no respawn, spectating
     teammates, friendly fire at CS2's reductions, solid teammates. Replaces
-    the 3 s respawn.
+    the 3 s respawn. Done: `MatchState` (`src/match/`) runs it as server
+    state on the tick, with CS2's numbers in `MatchRules`: 120 s of warmup
+    with respawns (F5 ends it, as `mp_warmup_end` does), 15 s of freeze time
+    (look, duck, reload; no moving, jumping or firing), 1:55 rounds won on
+    eliminations or by the CTs on time, 7 s between rounds, the side swap
+    with 15 s of half time and the score kept by the team, the clinch at
+    13, one MR3 overtime at 12-12 without a swap into it, and 15-15 a draw.
+    Survivors keep their armour and weapon and are healed; the dead and
+    everyone after a swap start fresh. Dead in a round, after 2 s you watch
+    a living teammate, from their eyes or behind them (fire: next, jump:
+    switch). A teammate's round does 33%. Hulls are solid to each other.
+    dust2 plays five a side, bots in every place but yours. Left for the
+    items that bring them: the bomb's round ends and its stop on the clock
+    (item 16, through `end_round`), money at half time and in overtime
+    (13), the loadout a side really starts with, a pistol (12 and 14),
+    grenades' friendly fire (17 to 20), and the round's full HUD (15).
+    Guessed, not from CS2: both sides wiped out on one tick goes to the Ts,
+    and half time's 15 s replaces the 7 s pause rather than following it.
 12. **Inventory.** *(Remote; Local extracts world models)* Slots, switching
     with draw times, dropping (G), picking up and swapping, drops on death.
 13. **Economy.** *(Remote)* $800 start, $16,000 cap, round rewards, the loss
@@ -371,17 +407,22 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
 
 ### Phase 8: bots that play CS
 
-22. **Navigation.** *(Local: the mesh extracted and read, PR #32; its
-    analysis still to read. Remote can start now)* Bots walk straight lines between
-    spawn points. dust2's own nav mesh is extracted (`scripts/extract_assets.sh
-    nav`) and read (`SourceNavMesh`): 2,242 areas and their links, jumps and
-    drops marked, with `route` and `find_path` between any two points; the
-    dust2 checks walk both spawns to both sites on it, through no walls.
-    Remote: bots follow `find_path`, pulled taut (it runs through edge
-    middles), crouching where an area says so and jumping where a link rises
-    past a step. Still unread: the file's analysis of the mesh (hiding spots,
-    where the sides meet, how early each team reaches each area;
-    `reference/cs2-systems.md` N3).
+22. **Navigation.** *(done 2026-09-23, Remote; Sid checks it on dust2.
+    Local: the mesh's analysis still to read)* Bots walk dust2's own nav
+    mesh (`scripts/extract_assets.sh nav`, read by `SourceNavMesh`, PR #32).
+    `SourceNavMesh.walk_path` takes `find_path`'s route and pulls it taut
+    (the funnel algorithm, turning 10 units in from the corners of the edges
+    it crosses), keeping each jump's take-off and landing; a bot walks it
+    through its commands, as a player would, jumping (with a crouch in the
+    air) where a link rises past a step, crouching before an area marked
+    for a low ceiling, and finding its way again when it is held up. On
+    dust2 each bot walks from its spawn to a bomb site and back, A and B in
+    turn (`bots_walk_to_sites`; off, they walk their spawn points as
+    before). Without the mesh they walk straight lines between their spawn
+    points, and the map says so in the top left. Still unread: the file's
+    analysis of the mesh (hiding spots, where the sides meet, how early
+    each team reaches each area; `reference/cs2-systems.md` N3), which
+    item 23 wants.
 23. **Behaviour beyond "see and shoot".** *(Remote)* Cover, holding angles,
     counter-strafing, reacting to sound, flinching. The two difficulty knobs
     (reaction time and aim error) stay the honest way to set difficulty.
@@ -485,8 +526,8 @@ The split is done (PR #24) and being shot is in apart from blood and the
 third-person firing layer (PR #27), and wall penetration is in (PR #31),
 so what is left of the shooting model is measuring (7a, 8).
 
-What a thread can start now: bots walking the nav mesh (item 22); the
-match, inventory and economy (items 11 to 13); from the weapons todo, the
+What a thread can start now: the inventory and economy (items 12 and 13),
+on the match (item 11, done); from the weapons todo, the
 registry of all 34 guns (R1), semi-automatic fire (R2), tracers (R10) and
 the game's recovery fields (R13), with shotguns (R5) after it; the
 third-person firing layer (item 6), then the shadow's arms (6a); and the

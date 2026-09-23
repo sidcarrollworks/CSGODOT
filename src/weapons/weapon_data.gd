@@ -82,6 +82,9 @@ class Punch:
 ## missing there are no arms on screen, and nothing else changes.
 @export var model_path: String = ""
 @export var clip_set: String = ""
+## Its own third-person set, under animation/anims/world (rifle/rifle_ak):
+## the hold, draw, reload and shot the body plays over its locomotion.
+@export var world_clip_set: String = ""
 
 # --- Damage ---------------------------------------------------------------
 

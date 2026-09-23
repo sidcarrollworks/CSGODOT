@@ -80,6 +80,11 @@ var _viewmodel_rest_captured := false
 var _dead_for := -1.0
 var _died_at := Transform3D.IDENTITY
 
+## The teammate whose eyes the camera is in, while dead in a round
+## (PlayerSim.observing): their body is kept from the camera, as your own
+## is, while it is looked out of.
+var _watched: PlayerSim
+
 
 func _init(p_player: PlayerController) -> void:
 	player = p_player
@@ -111,6 +116,7 @@ func _ready() -> void:
 	player.shot_traced.connect(_on_shot_traced)
 	player.killed.connect(_on_killed)
 	player.respawned.connect(_on_respawned)
+	player.team_changed.connect(_on_team_changed)
 
 
 func _on_equipped(data: WeaponData) -> void:
@@ -145,9 +151,23 @@ func _on_killed(_zone: StringName) -> void:
 
 
 func _on_respawned() -> void:
+	_watch(null)
 	_show_player(true)
 	_show_corpse(false)
 	_dead_for = -1.0
+
+
+## On the other side: that side's body to look down at and its arms.
+func _on_team_changed(_team: String) -> void:
+	for body in [body_model, body_shadow]:
+		if body != null:
+			body.queue_free()
+	body_model = null
+	body_shadow = null
+	_show_body()
+	_show_player(player.alive)
+	if player.weapon != null:
+		_show_view_model(player.weapon.data)
 
 
 ## Your body as everyone else sees it, shown to your own camera or put back
@@ -179,6 +199,39 @@ func death_cam_position(centre: Vector3, yaw_degrees: float, pitch_degrees: floa
 			var reach := maxf(centre.distance_to(hit["position"]) - DEATH_CAM_WALL_GAP, 0.0)
 			wanted = centre - looking * reach
 	return wanted
+
+
+## Dead in a round, watching a teammate: from their eyes, where they look,
+## or, in chase, from behind and above them the way the death camera
+## watches your own body, turned by the mouse.
+func _spectate(watched: PlayerSim) -> void:
+	var alpha := clampf(Engine.get_physics_interpolation_fraction(), 0.0, 1.0)
+	var at := watched.previous_position.lerp(watched.global_position, alpha)
+	if player.observing_chase:
+		_watch(null)
+		var centre := at + Vector3.UP * 48.0
+		camera.global_position = death_cam_position(centre, player.input.yaw_degrees, player.input.pitch_degrees)
+		if camera.global_position.distance_to(centre) > 1.0:
+			camera.look_at(centre, Vector3.UP)
+		return
+	_watch(watched)
+	camera.global_position = at + Vector3.UP * watched.eye_height()
+	camera.global_rotation = Vector3(
+		deg_to_rad(watched.pitch_degrees), deg_to_rad(watched.yaw_degrees), 0.0
+	)
+
+
+## Keeps a body out of the camera while the camera is in its head, and
+## gives the last one back.
+func _watch(watched: PlayerSim) -> void:
+	if watched == _watched:
+		return
+	for other: PlayerSim in [_watched, watched]:
+		if other == null or not is_instance_valid(other) or other.model == null:
+			continue
+		for mesh in other.model.find_children("*", "MeshInstance3D", true, false):
+			(mesh as MeshInstance3D).layers = PlayerSim.UNSEEN_LAYER if other == watched else 1
+	_watched = watched
 
 
 func _death_cam(delta: float) -> void:
@@ -259,7 +312,12 @@ func _process(delta: float) -> void:
 	if camera == null:
 		return
 	if _dead_for >= 0.0:
-		_death_cam(delta)
+		var watched := player.observing
+		if watched != null and is_instance_valid(watched) and watched.alive:
+			_spectate(watched)
+		else:
+			_watch(null)
+			_death_cam(delta)
 		return
 
 	# Between the last two simulation positions, by how far this frame falls
