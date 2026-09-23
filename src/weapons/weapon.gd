@@ -105,7 +105,19 @@ var _was_firing: bool = true
 ## the AK where the crosshair has stopped climbing and has not started falling.
 ## Sid felt the 200 ms version of it. Left true by default so a caller that
 ## never sets it still behaves, falling back on the gap alone.
-var trigger_held: bool = true
+##
+## Letting go is also what lets a semi-automatic weapon fire again: see
+## press_trigger().
+var trigger_held: bool = true:
+	set(value):
+		trigger_held = value
+		if not value:
+			_trigger_reset = true
+## Whether the trigger has come up, or gone down afresh, since the last
+## round. A semi-automatic weapon ("Hold to Shoot: No", the game's
+## m_bIsFullAuto false) fires only when it has: one round a click, however
+## long the button is held. An automatic one ignores it.
+var _trigger_reset: bool = true
 var _model_hold := WeaponData.Punch.new()
 
 ## Where the recoil has pushed the VIEW, in degrees, as (right, up).
@@ -180,8 +192,27 @@ func is_reloading(now_usec: int) -> bool:
 	return now_usec < _reloading_until_usec
 
 
+## The trigger went down afresh. Call it for every press, before firing the
+## round it asks for.
+##
+## Letting go (trigger_held going false) already re-arms a semi-automatic
+## weapon, and on its own that serves every click with a whole tick of the
+## button up between it and the one before. This covers the rest: a click
+## that comes up and goes down again inside one tick, or a release and a
+## press in two ticks in a row, where the trigger never reads false.
+##
+## A click is not saved up. Pressed before the weapon is ready and held, it
+## fires the moment the weapon is; let go before then, it fires nothing
+## (PlayerSim fires only while the trigger is down), and the next click
+## starts again.
+func press_trigger() -> void:
+	_trigger_reset = true
+
+
 func can_fire(now_usec: int) -> bool:
 	if ammo <= 0 or is_reloading(now_usec):
+		return false
+	if not data.automatic and not _trigger_reset:
 		return false
 	var elapsed := float(now_usec - _last_shot_usec) / 1_000_000.0
 	return elapsed >= data.cycle_time
@@ -443,6 +474,7 @@ func fire(
 	_recoil_index = index + 1.0
 	_last_shot_usec = now_usec
 	_clock_usec = maxi(_clock_usec, now_usec)
+	_trigger_reset = false
 	ammo -= 1
 
 	return shot

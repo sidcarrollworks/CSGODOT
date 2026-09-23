@@ -26,6 +26,8 @@ var _world: Node3D
 func _process(_delta: float) -> bool:
 	if _frames == 0:
 		_test_fire_rate()
+		_test_semi_automatic_fires_once_a_click()
+		_test_only_the_game_s_semi_automatics_wait_for_a_click()
 		_test_ammo_and_reload()
 		_test_deterministic_spread()
 		_test_first_rounds_go_anywhere_in_the_cone()
@@ -104,6 +106,91 @@ func _test_fire_rate() -> void:
 		_fire(weapon, cycle) != null,
 		"a second shot after the cycle time fires"
 	)
+
+
+## A gun the game calls semi-automatic (m_bIsFullAuto false): one round a
+## click, however long the button is held, and a click held from before the
+## gun is ready fires the moment it is. Driven the way PlayerSim drives a
+## weapon, a tick at a time: tell it about the trigger, update it, then try
+## to fire.
+func _test_semi_automatic_fires_once_a_click() -> void:
+	var deagle := WeaponData.new()
+	WeaponVData.apply(deagle, "weapon_deagle")
+	var cycle := int(deagle.cycle_time * SECOND)
+	var tick := SimClock.tick_usec()
+	var try_tick := func(weapon: Weapon, now: int, held: bool) -> Weapon.Shot:
+		weapon.trigger_held = held
+		weapon.update(float(tick) / SECOND, now, _standing())
+		return _fire(weapon, now) if held else null
+
+	var weapon := Weapon.new(deagle)
+	var rounds := 0
+	var now := 0
+	for i in SimClock.ticks_in(1.0):
+		now = i * tick
+		if try_tick.call(weapon, now, true) != null:
+			rounds += 1
+	_check_equal(rounds, 1, "a Desert Eagle held down for a second fires once")
+
+	now += tick
+	try_tick.call(weapon, now, false)
+	now += tick
+	_check(try_tick.call(weapon, now, true) != null, "let go for a tick and pressed again, it fires again")
+
+	# Clicked again before it is ready, and held: nothing until the cycle is
+	# up, then the round, then nothing again.
+	var fired_at := now
+	try_tick.call(weapon, fired_at + tick, false)
+	var times: Array[int] = []
+	for i in range(2, SimClock.ticks_in(1.0)):
+		now = fired_at + i * tick
+		if try_tick.call(weapon, now, true) != null:
+			times.append(now)
+	_check(
+		times.size() == 1 and times[0] >= fired_at + cycle and times[0] < fired_at + cycle + tick,
+		"a click held from before the gun is ready fires on the tick it is ready, and only once (%s)" % [times]
+	)
+
+	# Pressed afresh without a tick of the trigger up in between (a click
+	# that came up and went down again inside one tick): press_trigger says so.
+	weapon = Weapon.new(deagle)
+	_check(_fire(weapon, 0) != null, "a fresh Desert Eagle fires its first round")
+	_check(_fire(weapon, cycle) == null, "held, it does not fire a second")
+	weapon.press_trigger()
+	_check(_fire(weapon, cycle) != null, "a press it is told about fires it, with the trigger never read as up")
+	weapon.press_trigger()
+	_check(_fire(weapon, cycle + cycle / 2) == null, "but a press does not beat the cycle time")
+	_check(_fire(weapon, 2 * cycle) != null, "and held on until the gun is ready, it fires then")
+
+	# The AK ignores all of it.
+	var ak := Weapon.new(WeaponLibrary.ak47())
+	var ak_cycle := int(ak.data.cycle_time * SECOND)
+	var held_rounds := 0
+	for i in 10:
+		if _fire(ak, i * ak_cycle) != null:
+			held_rounds += 1
+	_check_equal(held_rounds, 10, "an automatic keeps firing on a held trigger")
+
+
+## Which guns wait for a click is the game's m_bIsFullAuto, read through
+## WeaponVData: every pistol but the CZ75-Auto and the R8, the pump shotguns
+## and the two bolt-action snipers.
+func _test_only_the_game_s_semi_automatics_wait_for_a_click() -> void:
+	var guns: Array = (load("res://scripts/weapon_tables.gd") as GDScript).get_script_constant_map()["GUNS"]
+	var semi := PackedStringArray()
+	for gun in guns:
+		var data := WeaponData.new()
+		WeaponVData.apply(data, gun[0])
+		if not data.automatic:
+			semi.append(gun[0])
+	semi.sort()
+	var expected := PackedStringArray([
+		"weapon_awp", "weapon_deagle", "weapon_elite", "weapon_fiveseven", "weapon_glock", "weapon_hkp2000",
+		"weapon_mag7", "weapon_nova", "weapon_p250", "weapon_sawedoff", "weapon_ssg08", "weapon_tec9",
+		"weapon_usp_silencer",
+	])
+	expected.sort()
+	_check_equal(semi, expected, "the game's semi-automatic guns are the thirteen that wait for a click")
 
 
 func _test_ammo_and_reload() -> void:

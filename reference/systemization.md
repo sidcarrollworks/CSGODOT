@@ -433,7 +433,7 @@ files after it never report. `SimClock` reads
 to await the engine's physics frames rather than step a clock it controls.
 There is no CI, with agents on two sides pushing to
 main. *(The runner, the check base and CI are done: step 0. CI runs what
-needs no extracted assets, 722 of the 929 checks; the other 207 run only
+needs no extracted assets, 736 of the 943 checks; the other 207 run only
 on Sid's machine. `SimClock` now reads the `GameWorld`'s count, and a
 check can hold a world and step it: `tests/run_sim_checks.gd` runs a
 second of it in one frame.)*
