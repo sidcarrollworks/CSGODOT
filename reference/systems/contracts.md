@@ -452,7 +452,7 @@ None of these are changed by the contract threads; this branch changes
   gives `Inventory.give_starting_items` in place of `starting_weapon`; the
   round's clock listens for `bomb_planted`, `bomb_exploded`,
   `bomb_defused`. The bomb system hands out the C4 itself on `round_start`.
-- `player_spawn` {userid, teamnum} goes out on every spawn, from wherever
+- `player_spawn` {userid} goes out on every spawn, from wherever
   the spawn happens (PlayerSim, the GameWorld or the match). The schema has
   it but nothing sends it yet, and buying clears a player's "dead" mark on
   it, so until it is sent a player who died stays marked dead.
