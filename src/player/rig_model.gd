@@ -90,26 +90,37 @@ func load_clips(clips: PackedStringArray, suffix: String) -> bool:
 	var library := animation_player.get_animation_library(&"").duplicate() as AnimationLibrary
 	animation_player.remove_animation_library(&"")
 	animation_player.add_animation_library(&"", library)
-	for clip in clips:
-		var short := short_name(clip, suffix)
-		if clip == clips[0]:
-			library.rename_animation(animation_player.get_animation_list()[0], short)
-		else:
-			var scene := instantiate(clip)
-			if scene == null:
-				continue
-			var donor := scene.find_children("*", "AnimationPlayer", true, false)
-			if not donor.is_empty():
-				var names := (donor[0] as AnimationPlayer).get_animation_list()
-				if not names.is_empty():
-					library.add_animation(short, (donor[0] as AnimationPlayer).get_animation(names[0]))
-			scene.free()
+	library.rename_animation(animation_player.get_animation_list()[0], short_name(clips[0], suffix))
+	add_clips(clips.slice(1), suffix)
 	for clip in library.get_animation_list():
 		if not _is_one_shot(clip):
 			library.get_animation(clip).loop_mode = Animation.LOOP_LINEAR
 	if not animation_player.animation_finished.is_connected(_on_finished):
 		animation_player.animation_finished.connect(_on_finished)
 	return true
+
+
+## Adds more clips to the loaded ones, each under its short name with prefix
+## in front (a gun's own set beside the locomotion: weapon_reload). Returns the
+## names given, in order.
+func add_clips(clips: PackedStringArray, suffix: String, prefix: String = "") -> PackedStringArray:
+	var added := PackedStringArray()
+	if animation_player == null:
+		return added
+	var library := animation_player.get_animation_library(&"")
+	for clip in clips:
+		var scene := instantiate(clip)
+		if scene == null:
+			continue
+		var donor := scene.find_children("*", "AnimationPlayer", true, false)
+		if not donor.is_empty():
+			var names := (donor[0] as AnimationPlayer).get_animation_list()
+			if not names.is_empty():
+				var clip_name := prefix + String(short_name(clip, suffix))
+				library.add_animation(clip_name, (donor[0] as AnimationPlayer).get_animation(names[0]))
+				added.append(clip_name)
+		scene.free()
+	return added
 
 
 ## Folds bones away to nothing, for the parts of a body the camera must

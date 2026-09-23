@@ -158,6 +158,12 @@ func _body_drawn() -> bool:
 	return false
 
 
+## The held weapon's own third-person clips (WeaponData.world_clip_set), for
+## the body to hold, reload and fire it with: none for a body nobody sees.
+func _body_weapon_set() -> String:
+	return ""
+
+
 ## Puts the body on: the third-person model holding weapon_model, with the
 ## game's capsules on its bones, and HitTarget's four standard boxes where
 ## either has not been extracted, with a grey body to see them by when the
@@ -168,7 +174,7 @@ func wear_body(weapon_model: String, drawn: bool) -> void:
 	# A model nobody sees needs no lighting.
 	model.probe_lit = drawn
 	add_child(model)
-	if not model.setup(team, weapon_model):
+	if not model.setup(team, weapon_model, _body_weapon_set()):
 		model.queue_free()
 		model = null
 	elif not drawn:

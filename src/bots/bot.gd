@@ -120,6 +120,10 @@ func _body_drawn() -> bool:
 	return true
 
 
+func _body_weapon_set() -> String:
+	return weapon_data.world_clip_set if weapon_data != null else ""
+
+
 func _physics_process(delta: float) -> void:
 	run_command(_think(delta), delta)
 	if alive and model != null:
@@ -232,10 +236,11 @@ func _on_shot_traced(_shot: Weapon.Shot, result: Hitscan.Result) -> void:
 	BulletImpacts.mark_in(get_tree(), result)
 	if weapon_sounds != null:
 		weapon_sounds.shot()
-	# No firing animation on the body yet. CS2's third-person shoot clips are
-	# layers added over the pose; played whole they fold the body over, and
-	# a firing bot fell as if dead with every round. They come with the
-	# animation layers of roadmap item 6.
+	# The gun's shot, added over the upper body. (CS2's third-person shoot
+	# clips are additive; played whole, as they once were, they folded the
+	# body over, and a firing bot fell as if dead with every round.)
+	if model != null:
+		model.fire()
 
 
 func _on_reload_started() -> void:
