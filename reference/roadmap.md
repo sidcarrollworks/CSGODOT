@@ -380,13 +380,21 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
     and drops on death. Left: wiring it into `player_sim.gd` in place of the
     one weapon, draw times on a switch, G in `PlayerInput`, E to swap, and
     the dropped guns drawn.)*
-13. **Economy.** *(Remote)* $800 start, $16,000 cap, round rewards, the loss
-    ladder that a win steps down by one, plant and defuse rewards, kill
-    awards from the sheet.
-14. **Buying.** *(Remote; the buy zones and icons are extracted and read,
-    `BrushVolume.buy_zones`)* Buy zones and 20 s of buy time, the buy menu,
-    undoing a purchase, the loadout, armour, the kit, grenades, the Zeus,
-    team-only weapons.
+13. **Economy.** *(done 2026-09-23, Remote; wired into dust2 with the
+    GameWorld; Local E1 checks three guesses)* $800 start, $16,000 cap, round
+    rewards, the loss ladder that a win steps down by one, plant and defuse
+    rewards, kill awards from the game's own `m_nKillAward`, half time and
+    overtime money. `Economy` (`src/economy/`) is a system on the shared
+    contracts, paid by game events; every number and guess is in
+    `reference/systems/economy.md`.
+14. **Buying.** *(done 2026-09-23 but for choosing a loadout, Remote; on the
+    test range now, on dust2 with the GameWorld; Local E2 measures the
+    guesses)* Buy zones and 20 s of buy time, CS2's buy menu (B, then a
+    column and an item by number, or the mouse), undoing a purchase, the
+    default loadout, armour and the helmet, the kit, grenades, the Zeus,
+    team-only weapons. Still to do: choosing another loadout (a settings
+    page), and wiring it into dust2 (the steps are in
+    `reference/systems/economy.md`).
 15. **HUD for rounds.** *(Remote; the radar is extracted, `MapOverview`)*
     Money, armour, timer, score and players alive, kill feed, radar,
     scoreboard, round-end panel.

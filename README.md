@@ -145,7 +145,7 @@ at the face. dust2's walls work the same way, by the surface the hull names
 for each part.
 
 **The shooter** is a dust2 bot on the red spot left of the wall, armed and
-facing the spawn, holding its fire. B sets it on you: it turns, and fires
+facing the spawn, holding its fire. I sets it on you: it turns, and fires
 in bursts with its weapon's own spread and recoil and a bot's aim error.
 Each hit tags you (the readout in the bottom left gives the share of your
 top speed you have left and how fast you are going, so run while it fires),

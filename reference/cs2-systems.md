@@ -98,11 +98,15 @@ with bots filling the places. The list below says what is left of it.
 | Planting | $300 to the planter; Ts who planted and lost get $600 each on top of the loss bonus |
 | Defusing | $300 to the defuser |
 | Kill award | from the weapon sheet's Kill Award column: knife $1,500, SMGs $600 (P90 $300), pump shotguns $900, XM1014 $600, AWP and Zeus $100, grenades, pistols and rifles $300 |
-| Team kill | -$300; suicides are penalised (amount: **measure**, E1) |
+| Team kill | -$300; a suicide costs score, not money (`mp_suicide_penalty`, `contributionscore_suicide -2`, no `cash_` convar) |
 | Short-handed | $1,000 bonus to a team down a player (`cash_team_bonus_shorthanded`; when it pays: **measure**, E1) |
 
-**Built:** nothing yet. Price and Kill Award are in the weapon sheet and in
-the game's weapons.vdata (`reference/weapons/vdata.csv`); nothing loads them.
+**Built** (2026-09-23): every rule above, in `Economy` (`src/economy/`),
+paid by game events, with half time and overtime ($10,000,
+`mp_overtime_startmoney`), the ladder starting one step up
+(`mp_starting_losses 1`, capped at `mp_consecutive_loss_max 4`) and kill
+awards from vdata's `m_nKillAward`. Not built: the short-handed bonus.
+The numbers, their sources and the guesses: `reference/systems/economy.md`.
 
 **Remote**
 - A money ledger per player with every rule above, driven by the match state
@@ -111,8 +115,11 @@ the game's weapons.vdata (`reference/weapons/vdata.csv`); nothing loads them.
   the rules, the loss ladder above all.
 
 **Local**
-- **E1.** Check the two open amounts on a local server: a suicide's penalty,
-  and when the short-handed bonus pays.
+- **E1.** Check the open amounts on a local server (`mp_logmoney 1`): that
+  a suicide and a death in the bomb's blast move no money; when the short-handed bonus pays; that Ts alive when
+  time runs out get no loss bonus; what a pistol-round winner that loses
+  round 2 is paid ($1,400 expected); what `cash_team_per_dead_enemy 50`
+  pays.
 
 ## 3. Buying
 
@@ -137,7 +144,12 @@ the game's weapons.vdata (`reference/weapons/vdata.csv`); nothing loads them.
   only the starting pistol is fixed (Glock-18 for T, P2000 or USP-S for CT).
 - Buying for a teammate is done by dropping.
 
-**Built:** nothing. The number keys give the AK and the M4 for testing.
+**Built** (2026-09-23): buy zones, buy time, CS2's buy menu with the
+default loadout (items_game's `flexible_loadout_slot`), undoing a purchase,
+armour, the helmet, the kit, grenades, the Zeus, team-only weapons, five
+purchases of a type a round (`mp_weapons_allow_typecount`), all in
+`src/economy/`, on the test range until the GameWorld wires it into dust2.
+Not built: choosing another loadout.
 
 **Remote**
 - Buy zones and buying time; the buy menu (CS2's wheel and grid, keyboard
@@ -158,7 +170,9 @@ the game's weapons.vdata (`reference/weapons/vdata.csv`); nothing loads them.
   `panorama/images/icons/equipment/`, fetched by `scripts/extract_assets.sh
   hud`)* The weapon icons and the buy menu's sounds; the sounds are still to
   find.
-- **E2.** Measure when buy time ends and the helmet-only price.
+- **E2.** Measure when buy time ends (the guess: 20 s after freeze time),
+  the helmet-only price (the guess: $350), warmup's money, and the buy
+  menu's key order.
 
 ## 4. Inventory: slots, switching, dropping, picking up
 

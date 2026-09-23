@@ -20,7 +20,7 @@ extends Node3D
 ## through: the log says what the wall let through.
 ##
 ## And a shooter, to feel being shot: a bot off to the left of the wall
-## that holds its fire until B, then fires at you in bursts like a dust2
+## that holds its fire until I, then fires at you in bursts like a dust2
 ## bot. U changes its weapon, among them an MP9 for a tag that stops you
 ## dead; Y changes your armour, J keeps you alive. The readout in the
 ## bottom left says what a hit did to you (your speed, the tag, the
@@ -95,6 +95,8 @@ var shooter: Bot
 var damage_indicator: DamageIndicator
 var hitbox_camera: Camera3D
 var cover: CoverPanel
+## A buy zone round the spawn, $16,000 and the buy menu (B).
+var shop: RangeShop
 
 var _impacts: Array = []
 var _markers: Node3D
@@ -155,6 +157,10 @@ func _ready() -> void:
 	_build_shooter()
 	_build_bomb()
 	_build_hud()
+	shop = RangeShop.new()
+	shop.name = "Shop"
+	add_child(shop)
+	shop.setup(game, player)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -227,15 +233,17 @@ func _process(_delta: float) -> void:
 			"still" if weapon.aim_punch.length() < 0.01 else "moving",
 		],
 		"impacts    %d" % _impacts.size(),
+		"\n".join(shop.readout()),
 		"",
 		"1 / 2  weapon      R  reload",
 		"P      export      O  clear",
 		"H      hitboxes    K  armour",
 		"N      dummy distance   G  dummy never dies",
 		"M      a wall in front of the dummy",
-		"B      shooter fires    U  its weapon",
+		"I      shooter fires    U  its weapon",
 		"Y      your armour      J  you never die",
 		"T      your hitboxes: front, side, off",
+		"B      buy menu, in the green zone round the spawn",
 		"5      hold on site A behind you: plant",
 		"E      hold looking at it: defuse   L  kit (%s)" % ("on" if has_kit() else "off"),
 		"",
@@ -616,7 +624,7 @@ func _build_shooter() -> void:
 	shooter.place(SHOOTER_POSITION, shooter.yaw_degrees)
 	var colour := Color(0.9, 0.3, 0.25)
 	_mark(Vector3(48.0, 0.2, 48.0), SHOOTER_POSITION + Vector3(0.0, 0.1, 0.0), colour)
-	_text("shooter: B to fire, U its weapon", SHOOTER_POSITION + Vector3(0.0, 96.0, 0.0), colour)
+	_text("shooter: I to fire, U its weapon", SHOOTER_POSITION + Vector3(0.0, 96.0, 0.0), colour)
 
 
 func toggle_shooter() -> void:
@@ -809,6 +817,8 @@ func _reset() -> void:
 	_log.clear()
 	if dummy != null:
 		dummy.respawn()
+	if shop != null:
+		shop.reset()
 	if bomb_system != null:
 		bomb_system.give_to(you_id())
 	print("Range cleared.")
