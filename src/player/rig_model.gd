@@ -345,11 +345,16 @@ static func list_clips(dir_path: String, prefixes: PackedStringArray = PackedStr
 ## end in _glock, and the revolver's also carry _0 to _7). It can run to more
 ## than one word, the T knife's clips all ending in _default_t: words before
 ## the last are added while every clip ending in the suffix shares them and
-## still has a name of its own before them.
+## still has a name of its own before them. A clip's non-additive copy
+## (prepare_shoot_revolver.vnmclip+non_additive, new in CS2 1.41.8.2) is not
+## counted: it ends in the copy's name, not the set's, and the revolver has as
+## many of them as clips.
 static func common_suffix(paths: PackedStringArray) -> String:
 	var counts := {}
 	for path in paths:
 		var stem := path.get_file().get_basename()
+		if stem.contains(".vnmclip+"):
+			continue
 		var last := stem.get_slice("_", stem.get_slice_count("_") - 1)
 		counts[last] = counts.get(last, 0) + 1
 	var best := ""
