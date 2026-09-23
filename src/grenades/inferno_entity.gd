@@ -7,8 +7,9 @@ extends SimEntity
 ## events. Stepped on the tick with the game's other entities.
 ##
 ## The burn is a DamageInfo each step (DMG_BURN, no zone), credited to the
-## thrower for GrenadeRules.FIRE_THROWER_SECONDS and to nobody after, and
-## armour does not soften it.
+## thrower for as long as it burns, except on the thrower's teammates after
+## GrenadeRules.FIRE_TEAM_CREDIT_SECONDS, which is nobody's. Armour does not
+## soften it.
 
 const ENTITY_CLASS := "inferno"
 
@@ -51,7 +52,7 @@ func tick(t: SimTick) -> void:
 ## One step of burning, at a simulation time, for everyone standing in it.
 func _burn(t: SimTick, at_usec: int) -> void:
 	var per_step := GrenadeRules.damage(weapon_class) * GrenadeRules.FIRE_DAMAGE_STEP
-	var credited := at_usec - fire.started_usec < int(GrenadeRules.FIRE_THROWER_SECONDS * 1_000_000.0)
+	var team_credited := at_usec - fire.started_usec < int(GrenadeRules.FIRE_TEAM_CREDIT_SECONDS * 1_000_000.0)
 	for userid in t.roster.ids():
 		var player := t.roster.player(userid) as PlayerSim
 		if player == null or not player.alive or not fire.burns(player.global_position + Vector3.UP * 1.0):
@@ -62,7 +63,9 @@ func _burn(t: SimTick, at_usec: int) -> void:
 		var standing := float(at_usec - int(_burning_since[userid])) / 1_000_000.0
 		var ramp := lerpf(GrenadeRules.FIRE_RAMP_FROM, 1.0, clampf(standing / GrenadeRules.FIRE_RAMP_SECONDS, 0.0, 1.0))
 		var amount := per_step * ramp
-		if credited and userid != owner_id and not team.is_empty() and t.roster.team_of(userid) == team:
+		var teammate := userid != owner_id and not team.is_empty() and t.roster.team_of(userid) == team
+		var credited := team_credited or not teammate
+		if credited and teammate:
 			amount *= system.team_damage_scale
 		var info := DamageInfo.new()
 		info.attacker = owner_id if credited else GameEvents.NOBODY

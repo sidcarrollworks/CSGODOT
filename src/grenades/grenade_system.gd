@@ -60,11 +60,13 @@ func data(weapon_class: String) -> WeaponData:
 
 ## A player throws a grenade, from where they are looking, moving as they
 ## are: the throw a command asks for, at a strength from
-## GrenadeRules.strength_for. Returns the grenade, now in the world; its
-## first flight is on the next tick.
+## GrenadeRules.strength_for. It takes the grenade out of their inventory,
+## and is refused (null) when they carry none. Returns the grenade, now in
+## the world; its first flight is on the next tick.
 func throw(userid: int, weapon_class: String, strength: float, space: PhysicsDirectSpaceState3D) -> GrenadeEntity:
 	var player := game.roster.player(userid) as PlayerSim
-	if player == null:
+	var inventory := game.inventory(userid) if userid >= 0 else null
+	if player == null or inventory == null or not inventory.take_one(weapon_class):
 		return null
 	var eye := player.global_position + Vector3.UP * player.eye_height()
 	return throw_from(userid, weapon_class, eye, player.yaw_degrees, player.pitch_degrees, player.velocity, strength, space)
@@ -72,7 +74,7 @@ func throw(userid: int, weapon_class: String, strength: float, space: PhysicsDir
 
 ## The throw command: a grenade by class name, at a strength (1 if not
 ## given), from the player's eyes as the tick finds them. Taken only for a
-## grenade and a living player.
+## grenade a living player carries.
 func _on_throw_command(userid: int, args: PackedStringArray, t: SimTick) -> bool:
 	if args.is_empty() or not GrenadeRules.is_grenade(args[0]):
 		return false
@@ -84,7 +86,8 @@ func _on_throw_command(userid: int, args: PackedStringArray, t: SimTick) -> bool
 
 
 ## A throw from anywhere: what throw does once it knows where the player
-## stands. The range throws from the camera with it.
+## stands and has taken the grenade. It takes nothing from anyone's
+## inventory; the checks set grenades off with it.
 func throw_from(
 	userid: int, weapon_class: String, eye: Vector3, yaw: float, pitch: float,
 	velocity: Vector3, strength: float, space: PhysicsDirectSpaceState3D

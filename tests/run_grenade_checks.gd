@@ -389,12 +389,26 @@ func _test_the_range() -> void:
 		await physics_frame
 	_check_equal(_named(&"hegrenade_detonate").size(), 1, "it goes off 1.5 s later")
 	_check(game.entities.of_class("hegrenade_projectile").is_empty(), "and is gone")
+	_check(not game.inventory(you).has(GrenadeRules.HE), "the throw took the HE the range handed you")
 	_lane.clear()
 	_events.clear()
 	game.command(you, "throw weapon_ak47")
 	await physics_frame
 	await physics_frame
 	_check(_named(&"grenade_thrown").is_empty(), "the throw command takes only a grenade")
+	game.command(you, "throw %s" % GrenadeRules.SMOKE)
+	await physics_frame
+	await physics_frame
+	_check(_named(&"grenade_thrown").is_empty(), "and only one you carry")
+	game.inventory(you).add(GrenadeRules.HE)
+	game.command(you, "throw %s" % GrenadeRules.HE)
+	game.command(you, "throw %s" % GrenadeRules.HE)
+	await physics_frame
+	await physics_frame
+	_check_equal(_named(&"grenade_thrown").size(), 1, "one HE carried throws once")
+	_check_equal(game.inventory(you).count(GrenadeRules.HE), 0, "and is gone from your inventory")
+	_lane.clear()
+	_events.clear()
 
 	# An HE at the dummy's feet: it is hurt, by you, through its armour.
 	var target := _range.dummy.hit_target as HitTarget
@@ -478,6 +492,31 @@ func _test_the_range() -> void:
 		await physics_frame
 	_check_equal(_named(&"inferno_extinguish").size(), 1, "a smoke on it puts it out")
 	_check(game.entities.of_class(InfernoEntity.ENTITY_CLASS).is_empty(), "and the fire is gone")
+	_lane.clear()
+	_events.clear()
+
+	# Late in a fire: still yours on the other side, nobody's on your own.
+	target.reset()
+	await _set_off(GrenadeRules.MOLOTOV, feet + Vector3(0.0, GrenadeRules.RADIUS, 0.0))
+	var infernos := game.entities.of_class(InfernoEntity.ENTITY_CLASS)
+	_check_equal(infernos.size(), 1, "another fire at the dummy's feet")
+	if infernos.size() == 1:
+		var late := infernos[0] as InfernoEntity
+		late.fire.started_usec -= int((GrenadeRules.FIRE_TEAM_CREDIT_SECONDS - 0.5) * 1_000_000.0)
+		for i in SimClock.ticks_in(0.6):
+			await physics_frame
+		burns = _hurt_of(dummy)
+		_check(burns.size() > 0 and int(burns[-1].fields["attacker"]) == you and burns[-1].fields["weapon"] == GrenadeRules.MOLOTOV,
+			"past 6 s the fire still burns the other side as yours")
+		var dummy_team: String = _range.dummy.team
+		_range.dummy.team = game.roster.team_of(you)
+		_events.clear()
+		for i in SimClock.ticks_in(0.3):
+			await physics_frame
+		burns = _hurt_of(dummy)
+		_check(burns.size() > 0 and int(burns[-1].fields["attacker"]) == GameEvents.NOBODY and burns[-1].fields["weapon"] == "",
+			"and your own side as nobody's")
+		_range.dummy.team = dummy_team
 	_lane.clear()
 	_events.clear()
 

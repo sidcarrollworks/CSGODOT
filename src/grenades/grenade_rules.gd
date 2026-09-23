@@ -164,9 +164,11 @@ const FIRE_FLAME_HEIGHT := 72.0
 const FIRE_DAMAGE_STEP := 0.2
 const FIRE_RAMP_FROM := 0.5
 const FIRE_RAMP_SECONDS := 1.0
-## Fire is the thrower's this long: after it, it hurts nobody's side in
-## particular.
-const FIRE_THROWER_SECONDS := 6.0
+## Fire is always the thrower's against the other side and themselves; its
+## burns on their teammates are the thrower's only this long, and after it
+## nobody's (inferno_friendly_fire_duration 6: the thrower answers for team
+## damage only early on).
+const FIRE_TEAM_CREDIT_SECONDS := 6.0
 
 # --- Decoy (G5) -----------------------------------------------------------
 

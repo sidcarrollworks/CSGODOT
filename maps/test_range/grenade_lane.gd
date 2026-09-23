@@ -12,8 +12,9 @@ extends Node3D
 ## Throwing a grenade from your hand is the player's to do, through the
 ## inventory and the attack buttons (player_sim.gd), so here a key sends the
 ## game the throw command ("throw weapon_hegrenade 1"), and the grenade
-## leaves your eyes on the next tick, as your hand would throw it. There is
-## no limit to how many.
+## leaves your eyes on the next tick, as your hand would throw it. The throw
+## takes the grenade from your inventory, so the lane hands you one first:
+## there is no limit to how many.
 ##
 ## The readout at the bottom says which grenade is in hand and what the
 ## last ones did: the damage an HE or a fire did and to whom, how long a
@@ -85,7 +86,16 @@ func next_kind() -> void:
 
 
 ## A throw at a strength (GrenadeRules.strength_for), on the next tick.
+## The range hands you the grenade first, so it throws without buying; the
+## throw takes it back out. Refused when you carry four other grenades
+## already (or the other of the molotov and incendiary).
 func ask_throw(strength: float) -> void:
+	var inventory := game.inventory(_player_id)
+	if inventory != null and not inventory.has(kind()):
+		if inventory.can_add(kind()) != Inventory.Can.OK:
+			_note("no room for a %s: you carry too many grenades" % GrenadeRules.display_name(kind()))
+			return
+		inventory.add(kind())
 	game.command(_player_id, "throw %s %s" % [kind(), strength])
 
 
@@ -152,6 +162,10 @@ func _on_event(event: GameEvent) -> void:
 			line = "%s blinded for %.1f s" % [_who(int(fields["userid"])), float(fields["blind_duration"])]
 		_:
 			return
+	_note(line)
+
+
+func _note(line: String) -> void:
 	_log.insert(0, line)
 	if _log.size() > LOG_LINES:
 		_log.resize(LOG_LINES)

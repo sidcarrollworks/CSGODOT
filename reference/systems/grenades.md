@@ -26,8 +26,13 @@ All in `src/grenades/`, checked by `tests/run_grenade_checks.gd`.
 
 On the range, `maps/test_range/grenade_lane.gd`: 4 picks the next grenade,
 Q throws it as a left click, Z as a right click (a lob), X as both. Each key
-sends the game the command `throw <class> <strength>` (`GrenadeSystem`
-takes it), and the grenade leaves your eyes on the next tick; no limit. The readout at the bottom says
+hands you the grenade and sends the game the command
+`throw <class> <strength>` (`GrenadeSystem` takes it, and the grenade out of
+your inventory), and it leaves your eyes on the next tick; no limit. The
+keys stand in for the mouse until the throw from the hand (item 2 below) is
+wired, and then go: Q is CS2's last-weapon key (`Inventory.select_last`).
+They read `_unhandled_input`, so a buy menu that handles every key press
+while it is open keeps them from throwing. The readout at the bottom says
 what the last ones did. O clears them. The system is in the range's game,
 its `GameWorld`'s, which steps it after the players each tick.
 
@@ -56,8 +61,9 @@ its `GameWorld`'s, which steps it after the players each tick.
   (the incendiary every 0.02 s), burns 7 s (5.5 s), and hurts anyone
   standing within 30 units of a flame: 40 a second in 0.2 s steps, ramping
   from half to all of it over the first second in it. `DMG_BURN`, armour
-  neither softens it nor wears. Credited to the thrower for 6 s, then to
-  nobody.
+  neither softens it nor wears. Credited to the thrower for as long as it
+  burns, except that burns on the thrower's teammates are the thrower's only
+  for the first 6 s and nobody's after (`inferno_friendly_fire_duration`).
 - **Decoy.** Once still, fires its thrower's primary (else pistol) in bursts
   of 1 to 5 at the gun's own rate with 0.5 to 2 s between, for 15 s
   (`decoy_firing`, at the moment in the tick each round falls), then pops
@@ -75,7 +81,7 @@ The game's own: damage 99 (HE), 40 (fire, per second), reach 350, armour
 ratios, throw speed 750, prices, 245 u/s holding one, 1 s draw. From CS2's
 convars (`reference/cs2-systems.md`): the molotov's 2 s air time and 30
 degree slope, 16 flames 42 apart, 150 and 110 reach, 7 s and 5.5 s, the
-incendiary ten times faster, 6 s of credit, `bot_max_visible_smoke_length`
+incendiary ten times faster, 6 s of team-damage credit, `bot_max_visible_smoke_length`
 200, `sv_flashed_amount_for_blind_kill` 0.7, grenades' 85% team damage.
 
 CS:GO behaviour as documented by the community, for G1 to check: the throw
@@ -123,9 +129,11 @@ files named:
    release throws: the strength is from the buttons held at the release
    (`GrenadeRules.strength_for(left, right)`, from `UserCmd.ATTACK` and
    `UserCmd.ATTACK2`). The pin can be pulled once
-   the draw (1 s) is over. At the release: `inventory.take_one(class)`,
-   `system.throw(userid, class, strength, space)` (it sends
-   `grenade_thrown`), then back to the last weapon. The throw clip's own
+   the draw (1 s) is over. At the release:
+   `system.throw(userid, class, strength, space)`, or the command
+   `throw <class> <strength>`; it takes the grenade from the inventory
+   (`take_one`), refuses with none, and sends `grenade_thrown`. Then back to
+   the last weapon. The throw clip's own
    timing (`reference/weapons/equipment.md`: the overhand throw's sound at
    0.07 s) says when after the release it leaves the hand; the throw here is
    at the tick of the command. Holding one caps the speed at 245
