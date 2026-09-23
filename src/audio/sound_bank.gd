@@ -11,10 +11,17 @@ const ROOT := "res://assets/sounds/sounds"
 
 static var _sets := {}
 static var _randomizers := {}
+## Whether the extraction is there, looked for once: 1 yes, 0 no, -1 not
+## looked yet. Every footstep node asks on every tick, and every shot twice,
+## and a look at the disk takes a fifth of a millisecond (through the assets
+## junction), which on dust2 with ten players was a quarter of the tick.
+static var _available := -1
 
 
 static func available() -> bool:
-	return DirAccess.dir_exists_absolute(ROOT)
+	if _available < 0:
+		_available = 1 if DirAccess.dir_exists_absolute(ROOT) else 0
+	return _available == 1
 
 
 ## Every variant of a set: the audio files in the set's directory whose

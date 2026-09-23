@@ -299,6 +299,12 @@ func _walk_move(surface_friction: float, dt: float) -> void:
 		velocity, dir, wish_speed, config.accelerate, surface_friction, dt
 	)
 	velocity.y = 0.0
+	# Source's WalkMove stops anyone slower than a unit a second dead where
+	# they stand (gamemovement.cpp, WalkMove: spd < 1.0f), and traces nothing
+	# for them: a player standing still costs no trace here.
+	if velocity.length() < 1.0:
+		velocity = Vector3.ZERO
+		return
 	_step_move(dt)
 	_stay_on_ground()
 
@@ -358,7 +364,11 @@ func _step_move(dt: float) -> void:
 	var start_position := global_position
 	var start_velocity := velocity
 
-	_try_player_move(dt)
+	# A flat move that met nothing is taken as it is, as Source's WalkMove
+	# takes it before ever trying the step: the stepped one could go no
+	# further, so it is only tried against something in the way.
+	if not _try_player_move(dt):
+		return
 	var flat_position := global_position
 	var flat_velocity := velocity
 
@@ -412,13 +422,14 @@ func _trace_move(motion: Vector3) -> void:
 
 ## Source's TryPlayerMove: up to four collide-and-slide iterations, clipping
 ## velocity against every plane accumulated so far, and sliding along the
-## crease when two planes both block.
-func _try_player_move(dt: float) -> void:
+## crease when two planes both block. Returns whether anything was in the way.
+func _try_player_move(dt: float) -> bool:
 	var primal_velocity := velocity
 	var original_velocity := velocity
 	var planes: Array[Vector3] = []
 	var time_left := dt
 	var all_fraction := 0.0
+	var met_something := false
 
 	for bump in MAX_BUMPS:
 		if velocity.length_squared() == 0.0:
@@ -430,6 +441,7 @@ func _try_player_move(dt: float) -> void:
 		if collision == null:
 			all_fraction += 1.0
 			break
+		met_something = true
 
 		var motion_length := motion.length()
 		var fraction := 0.0
@@ -499,6 +511,7 @@ func _try_player_move(dt: float) -> void:
 
 	if all_fraction == 0.0:
 		velocity = Vector3.ZERO
+	return met_something
 
 
 ## Determines whether we are standing on something, and on what.
@@ -515,8 +528,11 @@ func _categorize_position() -> void:
 		Vector3.DOWN * GROUND_TRACE_DISTANCE, true
 	)
 	var normal := Vector3.ZERO
+	# Where the trace stopped, which is where moving down would stop.
+	var travel := Vector3.ZERO
 	if collision != null:
 		normal = collision.get_normal()
+		travel = collision.get_travel()
 
 	if normal == Vector3.ZERO or not MovementSolver.is_walkable(normal, config):
 		# The centre of the hull found nothing walkable. Source retries with
@@ -530,8 +546,13 @@ func _categorize_position() -> void:
 
 	on_ground = true
 	ground_normal = normal
-	# Snap down onto the surface so we do not hover a fraction above it.
-	move_and_collide(Vector3.DOWN * GROUND_TRACE_DISTANCE)
+	# Snap down onto the surface so we do not hover a fraction above it: by
+	# the trace's own travel when the centre met something, rather than
+	# tracing the same move again; moved when only a corner found the ground.
+	if collision != null:
+		global_position += travel
+	else:
+		move_and_collide(Vector3.DOWN * GROUND_TRACE_DISTANCE)
 
 
 ## Source's TryTouchGroundInQuadrants (gamemovement.cpp:3731): when the centre

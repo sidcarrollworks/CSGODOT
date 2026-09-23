@@ -159,6 +159,11 @@ func _body_weapon_set() -> String:
 
 func _physics_process(delta: float) -> void:
 	run_command(_think(delta), delta)
+
+
+## The light on the body is only seen, so it follows the frames drawn
+## rather than the simulation's ticks.
+func _process(_delta: float) -> void:
 	if alive and model != null:
 		model.light_from(global_position + Vector3.UP * 40.0)
 
