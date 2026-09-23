@@ -222,6 +222,7 @@ func _import() -> bool:
 func _check_penetration_surfaces() -> void:
 	var hull := _importer.find_child("Collision", true, false)
 	var surfaces := {}
+	var not_own := PackedStringArray()
 	print("Wall penetration takes the hull's parts as:")
 	var seen := {}
 	for shape in (hull.get_children() if hull != null else []):
@@ -231,6 +232,9 @@ func _check_penetration_surfaces() -> void:
 		seen[hull_name] = true
 		var surface := Penetration.surface_for(hull_name)
 		surfaces[surface] = true
+		var own := hull_name.to_lower().trim_prefix("physics_group").trim_prefix("_")
+		if surface != own and not own.is_empty() and hull_name != "physics_sky" and not Penetration.UNNAMED_IN_EXPORT.has(own):
+			not_own.append("%s as %s" % [hull_name, surface])
 		var modifiers := Penetration.modifiers(surface)
 		print("  %-40s %-14s reach %.2f  damage %.2f%s" % [
 			hull_name, Penetration.display_name(surface), modifiers.x, modifiers.y,
@@ -239,6 +243,11 @@ func _check_penetration_surfaces() -> void:
 	_check(
 		surfaces.size() >= 3,
 		"the hull's parts are %d of CS2's surfaces for wall penetration (%s)" % [surfaces.size(), ", ".join(surfaces.keys())]
+	)
+	_check(
+		not_own.is_empty() and surfaces.has("metalrailing"),
+		"every part of the hull is the CS2 surface of its own name, the railings the export cannot name being metalrailing (not so: %s)"
+			% ", ".join(not_own)
 	)
 
 

@@ -307,6 +307,9 @@ from the pop (`ff_damage_decoy_explosion false`). Timing and burst lengths:
 - Smoke: the voxel fill (a flood fill from the landing point through the
   hull, capped by volume), drawn with Godot's volumetric fog or a ray-marched
   volume, holes from HE and bullets, blocking sight for players and bots.
+  The fill passes through the two surfaces the game marks
+  `allowsmokethrough`, chain-link and metal railings
+  (`SurfaceProperties.text(surface, "smoke_through")`).
   The biggest single item here.
 - Decoy: fake gunfire through the weapon sounds.
 - Grenade HUD: the slot row, the lineup crosshair.

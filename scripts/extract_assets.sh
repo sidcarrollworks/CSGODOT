@@ -16,6 +16,7 @@
 #   scripts/extract_assets.sh nav             # just the nav mesh the bots walk (seconds)
 #   scripts/extract_assets.sh volumes         # just the buy zones, bomb sites and callouts' volumes, and the baked bomb damage
 #   scripts/extract_assets.sh radar           # just the radar image and where it lies
+#   scripts/extract_assets.sh surfaces        # just CS2's surfaces: parents, friction, penetration (seconds)
 #   scripts/extract_assets.sh layers          # just the blend materials' second layers
 #   scripts/extract_assets.sh sky             # just the sky panorama
 #   scripts/extract_assets.sh skybox          # just the 3D skybox: the far buildings
@@ -155,7 +156,7 @@ find_cs2() {
 
 COMMAND="${1:-}"
 case "$COMMAND" in
-	list-map|list-weapons|map|physics|entities|nav|volumes|radar|layers|sky|skybox|lightmaps|weapons|weapon-animations|weapon-data|hud|characters|sounds|all) ;;
+	list-map|list-weapons|map|physics|entities|nav|volumes|radar|surfaces|layers|sky|skybox|lightmaps|weapons|weapon-animations|weapon-data|hud|characters|sounds|all) ;;
 	*)
 		# The header comment, down to the first line that is not one.
 		awk 'NR > 2 && /^#/ { sub(/^# ?/, ""); print; next } NR > 2 { exit }' "${BASH_SOURCE[0]}"
@@ -374,6 +375,31 @@ extract_volumes() {
 	"$S2V_BIN" -i "$MAP_VPK" -f "$damage" -o "$MAP_DEST/${damage%_c}" -d | grep -E '^--- Dump' || true
 }
 
+## CS2's surfaces: surfaceproperties.vsurf, every surface with its parent and
+## physics (friction among them), and surfaceproperties_game.txt, the game's
+## values (the two a round going through it uses among them), from the main
+## archive. scripts/surface_tables.gd then writes reference/surfaces/ from
+## them, which is what SurfaceProperties reads.
+extract_surfaces() {
+	require_file "$PAK_VPK"
+	local dest="$OUT_DIR/surfaces"
+	mkdir -p "$dest"
+	echo "Extracting CS2's surfaces"
+	echo "        -> $dest"
+	"$S2V_BIN" -i "$PAK_VPK" -f "surfaceproperties/surfaceproperties.vsurf_c,scripts/surfaceproperties_game.txt" \
+		-o "$dest" -d | grep -E '^--- Dump written' || true
+	local godot
+	godot="$(find_godot)"
+	if [[ -z "$godot" ]]; then
+		echo "No Godot binary found; the surface tables in reference/surfaces/ were not rewritten."
+		return
+	fi
+	local version
+	version="$(sed -n 's/^PatchVersion=//p' "$CS2_DIR/game/csgo/steam.inf" 2>/dev/null | tr -d '\r' || true)"
+	CS2_VERSION="$version" "$godot" --headless --path "$PROJECT_DIR" --script scripts/surface_tables.gd 2>&1 \
+		| grep -E '^(surface tables|  )' || true
+}
+
 ## dust2's radar: the overview image (a 1024 square) and the text that says
 ## where it lies over the map, in the main archive rather than the map's.
 ## MapOverview reads the text.
@@ -523,6 +549,8 @@ extract_map() {
 	extract_volumes
 	echo
 	extract_radar
+	echo
+	extract_surfaces
 	echo
 	extract_layers
 	echo
@@ -797,6 +825,7 @@ case "$COMMAND" in
 	nav) extract_nav ;;
 	volumes) extract_volumes ;;
 	radar) extract_radar ;;
+	surfaces) extract_surfaces ;;
 	layers) extract_layers; finish ;;
 	sky) extract_sky; finish ;;
 	skybox) extract_skybox; finish ;;
