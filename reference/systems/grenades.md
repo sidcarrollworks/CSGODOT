@@ -21,7 +21,7 @@ All in `src/grenades/`, checked by `tests/run_grenade_checks.gd`.
 | `decoy_bursts.gd` | When a decoy fires, from its seed |
 | `grenade_entity.gd` | A grenade in the world (`SimEntity`): flies, then goes off by what it is, sending CS2's events and dealing damage through `DamageInfo` |
 | `inferno_entity.gd` | A fire (`SimEntity`, CS2's `inferno`): spreads, burns in 0.2 s steps, goes out |
-| `grenade_system.gd` | The system (`GameSystems.add_system`): the throw, and the queries `smoke_length_between`, `blindness`, `blind_share` |
+| `grenade_system.gd` | The system (`GameSystems.add_system`): the throw, and the queries `smoke_length_between`, `blindness`, `blind_share`, `burning_at` |
 | `grenade_view.gd`, `flash_overlay.gd` | What is drawn: the grenades (the game's world models where extracted), the cloud, the flames, a light where one goes off, the white-out. They only read |
 
 On the range, `maps/test_range/grenade_lane.gd`: 4 picks the next grenade,
@@ -137,9 +137,8 @@ files named:
    is over `GrenadeRules.BOT_MAX_VISIBLE_SMOKE_LENGTH`, and none (or firing
    wide) while `game.query(&"blind_share", [userid], 0.0)` is over a share
    (0.7 is where CS2 counts a blind kill; the bots' own threshold is a
-   choice). Keeping out of fire needs a query the contract does not have
-   yet: `burning_at(point) -> bool` (`GrenadeSystem.burning_at` is ready to
-   provide it; asked through the coordinator).
+   choice). Keeping out of fire asks
+   `game.query(&"burning_at", [point], false)`.
 5. **The kill feed's marks:** whatever fills `player_death.thrusmoke` asks
    `smoke_length_between` from the attacker's eyes to the victim (more than
    zero is through smoke), and `attackerblind` asks `blind_share` for the

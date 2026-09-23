@@ -468,6 +468,8 @@ func _test_the_range() -> void:
 		total += int(event.fields["dmg_health"])
 	_check(burns.size() >= 5 and int(burns[0].fields["attacker"]) == you and burns[0].fields["weapon"] == GrenadeRules.MOLOTOV,
 		"and burns it in steps, credited to you (%d steps)" % burns.size())
+	_check(bool(game.query(&"burning_at", [feet + Vector3.UP], false)), "the burning_at query says the dummy stands in fire")
+	_check(not bool(game.query(&"burning_at", [feet + Vector3(0.0, 1.0, 600.0)], false)), "and nowhere near it does not")
 	_check(total > 30 and total < 60, "about 40 a second, ramping up (%d in 1.5 s)" % total)
 	_check(burns.size() > 0 and int(burns[0].fields["dmg_armor"]) == 0, "armour takes none of it")
 	# A smoke on it puts it out.

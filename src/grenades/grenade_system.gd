@@ -42,6 +42,7 @@ func attach(p_game: GameSystems) -> void:
 	game.provide(&"smoke_length_between", smoke_length_between)
 	game.provide(&"blindness", blindness)
 	game.provide(&"blind_share", blind_share)
+	game.provide(&"burning_at", burning_at)
 	# A throw asked for by name: "throw weapon_hegrenade 1" (the class and
 	# the strength), for whatever throws without a hand to throw from yet:
 	# the range, a bot's lineup, a console.
