@@ -19,6 +19,8 @@ var _view_model: ViewModel
 var _player_model: PlayerModel
 var _bot: Bot
 var _bot_world: Node3D
+## What runs the bot, and later the player it fights.
+var _bot_game: GameWorld
 var _bot_started_frame: int = 0
 var _bot_phase: int = 0
 var _bot_died_usec: int = 0
@@ -520,6 +522,9 @@ func _start_bot() -> void:
 	_bot.position = Vector3(0, 0, -200)
 	_bot.route = PackedVector3Array([Vector3(0, 0, -200)])
 	_bot_world.add_child(_bot)
+	_bot_game = GameWorld.new()
+	_bot_world.add_child(_bot_game)
+	_bot_game.add_player(_bot)
 	_bot.died.connect(func(zone: StringName) -> void:
 		_bot_events.append("died:" + zone)
 		_bot_died_usec = Time.get_ticks_usec())
@@ -687,6 +692,7 @@ func _start_combat() -> void:
 	_victim = (load("res://src/player/player.tscn") as PackedScene).instantiate() as PlayerController
 	_victim.respawn_seconds = 0.3
 	_bot_world.add_child(_victim)
+	_bot_game.add_player(_victim)
 	_victim.place(Vector3(0, 0, 0), 180.0)
 	_victim.died.connect(func() -> void:
 		_victim_events.append("died")

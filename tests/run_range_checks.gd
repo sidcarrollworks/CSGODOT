@@ -151,7 +151,7 @@ func _run() -> void:
 	await _test_ragdoll()
 	await _test_whole_ragdoll()
 	await _test_fall_speed()
-	_test_path_budget()
+	_test_the_world_runs_the_range()
 	_test_bodies_drawn_between_ticks()
 	await _test_being_shot()
 	await _test_death_cam()
@@ -348,20 +348,18 @@ func _test_bodies_drawn_between_ticks() -> void:
 	body.free()
 
 
-## Bots find their way over the nav mesh a few a tick, and the rest on the
-## next, rather than every bot on the tick a round starts.
-func _test_path_budget() -> void:
-	var tick := 1 << 40
-	var granted := []
-	for i in Bot.PATH_SEARCHES_PER_TICK + 1:
-		granted.append(Bot._may_search(tick))
-	var expected := []
-	for i in Bot.PATH_SEARCHES_PER_TICK:
-		expected.append(true)
-	expected.append(false)
+## The range's world runs its three players, in the order they were built,
+## and has been running them: every one has run this tick's command.
+func _test_the_world_runs_the_range() -> void:
+	var world: GameWorld = _range.world
+	var order: Array = world.players.map(func(player: PlayerSim) -> String: return String(player.name)) if world != null else []
 	_check(
-		granted == expected and Bot._may_search(tick + 1),
-		"%d bots a tick may search the nav mesh, and the next waits for the next tick (%s)" % [Bot.PATH_SEARCHES_PER_TICK, granted]
+		order == ["Dummy", "Player", "Shooter"] and GameWorld.current == world,
+		"the range's world runs the dummy, you and the shooter, in that order (%s)" % [order]
+	)
+	_check(
+		world != null and world.tick > 0 and world.players.all(func(player: PlayerSim) -> bool: return player.last_command.tick == world.tick),
+		"and every one of them has run the world's last tick, %d" % (world.tick if world != null else 0)
 	)
 
 

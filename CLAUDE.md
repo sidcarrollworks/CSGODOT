@@ -48,6 +48,22 @@ have done it already.
   simulation on the tick, takes its input from `UserCmd`s, keeps time with
   `SimClock` (never the wall clock or Godot's `Input`), and what is drawn or
   heard only reads it.
+- One `GameWorld` (`src/sim/game_world.gd`) runs the tick: each player's
+  command in the order they joined, then the match. Nothing that decides
+  the game runs itself in a `_physics_process` of its own; a new system
+  joins the world's tick, and what it gives out a tick (path searches, and
+  later events) lives on the world.
+- A server's cost comes first, since Sid chose 64 Hz to leave room for
+  more players: nothing reads the disk during a tick; what is only seen or
+  heard runs per frame, not per tick; a change to the movement counts the
+  hull traces it adds per tick (`PlayerBody.traces`; `scripts/profile_dust2.gd`
+  measures the rest); and a cache hands out copies, since an array,
+  dictionary or packed array handed back is shared and a caller's append
+  changes the cache.
+- CS2 is the starting point, not the limit (Sid, 2026-09-23): take its rules
+  and numbers by default, and where it has a known weakness (the
+  interpolation delay at 64 Hz, the peeker's advantage) propose a measured
+  improvement as an option rather than rule it out as unfaithful.
 - CS2's own numbers win wherever the game has them
   (`reference/weapons/vdata.csv`, generated from the game's files); anything
   measured by hand goes in `reference/` with how it was measured.
