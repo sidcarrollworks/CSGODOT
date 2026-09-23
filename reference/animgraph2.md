@@ -147,18 +147,20 @@ the M249's and Negev's belts as they empty (`bullet_hide_*`).
 
 ## What it means here
 
-`PlayerModel` picks one locomotion clip at a time and cross-fades to it in
-0.15 s, scaling it from 250, 130 and 85 units a second. CS2 blends the
-nearest of seventeen clips in a blend space, at the speeds above, mixes the
-standing and crouched spaces by how far the player has crouched, and
-cross-fades in 0.1 to 0.35 s between what the legs are doing. The steps,
-smallest first:
+The steps, smallest first:
 
-1. **Build the locomotion from the game's numbers.** A Godot `AnimationTree`
-   with `locomotion.json`'s blend spaces (Godot's `AnimationNodeBlendSpace2D`
-   takes the points and the triangles as they are), the stand-to-crouch
-   blend, and the states and cross-fades of `locomotion.md`, fed the body's
-   speed along and across its facing. The tree is what item 6 needs anyway.
+1. **Build the locomotion from the game's numbers.** *(Done: `PlayerModel`,
+   which used to pick one clip at a time and scale it from 250, 130 and 85
+   units a second.)* A Godot `AnimationTree` with `locomotion.json`'s blend
+   spaces (Godot's `AnimationNodeBlendSpace2D` takes the points and the
+   triangles as they are), standing and crouched mixed by `duck_progress`,
+   the air's spaces with CS2's cross-fades into it (0.1 s) and back (0.2 s),
+   fed the body's speed along and across its facing. CS2 syncs the clips by
+   their whole cycle; Godot's spaces do not, so each moving clip is stretched
+   to one cycle and a time scale over them sets the cycle's length from the
+   clips being mixed. Still to come from `locomotion.md`: the starts, the
+   plant and turn, turning on the spot, the jump's takeoff (its directional
+   clips are not extracted) and ladders.
 2. **The layers.** The weapon's actions, the shooting and the flinches over
    the locomotion, as the third-person graph stacks them, with its bone masks
    and its flinch types; item 6, and 6a after it.
