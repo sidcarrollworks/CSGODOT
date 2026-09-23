@@ -450,6 +450,9 @@ func _test_being_shot() -> void:
 	)
 	var hurt: Array[float] = []
 	var lowest_tag := [1.0]
+	# The most arcs up at once while the rounds land: they fade in a second
+	# or so, and the wait below can run on for seconds after the last hit.
+	var most_arcs := [0]
 	player.hurt.connect(func(amount: float, _zone: StringName, _from: Vector3) -> void: hurt.append(amount))
 	for i in 128:
 		await physics_frame
@@ -460,6 +463,7 @@ func _test_being_shot() -> void:
 	for i in 640:
 		await physics_frame
 		lowest_tag[0] = minf(lowest_tag[0], player.velocity_modifier)
+		most_arcs[0] = maxi(most_arcs[0], _range.damage_indicator.showing())
 		if hurt.size() >= 3 and i > 256:
 			break
 	await process_frame
@@ -469,7 +473,7 @@ func _test_being_shot() -> void:
 	)
 	_check(is_equal_approx(lowest_tag[0], 0.4), "an AK-47 hit tags you to 40%% of your speed (%.2f)" % lowest_tag[0])
 	_check(player.alive and player.hit_target.health > 0.0, "J keeps you alive through it (health %.0f)" % player.hit_target.health)
-	_check(_range.damage_indicator.showing() >= 1, "arcs round the crosshair say where the hits came from")
+	_check(most_arcs[0] >= 1, "arcs round the crosshair say where the hits came from (%d at most)" % most_arcs[0])
 	var readout: String = _range.you_readout()
 	_check(
 		"tagged to 40%" in readout and "AK-47" in readout,
