@@ -22,8 +22,10 @@ const MAGIC := 0xFEEDFACE
 const OLDEST_VERSION := 30
 const NEWEST_VERSION := 36
 
-## An area's attributes (NavAttributeFlags). dust2 marks only CROUCH, on the
-## 14 areas under a ceiling too low to stand.
+## An area's attributes (NavAttributeFlags), as version 35 and later store
+## them; older files use other bits, which Source 2 Viewer does not map, so on
+## those these mean nothing. dust2 (version 36) marks only CROUCH, on the 14
+## areas under a ceiling too low to stand.
 const FLAG_JUMP := 0x2
 const FLAG_NO_JUMP := 0x8
 const FLAG_STOP := 0x10
@@ -146,11 +148,11 @@ var analyzed: bool = false
 ## Area id to Area.
 var areas: Dictionary = {}
 var ladders: Array[Ladder] = []
-## What the mesh was built for, one entry per hull, the player's first:
-## {"radius", "height", "crouch_height", "max_climb", "max_slope",
-## "jump_up", "jump_down", "jump_across"}, in units and degrees. dust2 has
-## one, CS2's player: 16 by 71, 35.5 crouched, 16 to step up, 68 to jump
-## up, 157 to drop.
+## What the mesh was built for, one entry per hull: {"radius", "height",
+## "crouch_height", "max_climb", "max_slope", "jump_up", "jump_down",
+## "jump_across"}, in units and degrees. CS2's maps have one, the player's
+## (dust2's: 16 by 71, 35.5 crouched, 16 to step up, 68 to jump up, 157 to
+## drop); older files kept several, the smallest first.
 var hulls: Array[Dictionary] = []
 ## How the mesh was generated: {"version", "tile_size", "cell_size",
 ## "cell_height", "verts_per_poly"}.
@@ -164,7 +166,8 @@ var unread_bytes: int = 0
 var error: String = ""
 
 var _grid: Dictionary = {}
-var _astar: AStar3D
+## Hull to its path graph, built the first time it is asked for.
+var _graphs: Dictionary = {}
 
 
 ## Reads a .nav file. Check `error` on what comes back.
@@ -186,14 +189,14 @@ static func parse(bytes: PackedByteArray) -> SourceNavMesh:
 
 
 ## The area under a point: the highest whose floor there is no more than
-## `above` over the point and no more than `below` under it. Null over no
-## area.
-func area_at(point: Vector3, below: float = 120.0, above: float = 24.0) -> Area:
+## `above` over the point and no more than `below` under it, of one hull's
+## areas or, with `hull` -1, any. Null over no area.
+func area_at(point: Vector3, below: float = 120.0, above: float = 24.0, hull: int = -1) -> Area:
 	var best: Area = null
 	var best_floor := -INF
 	for id: int in _grid.get(_cell(point), PackedInt32Array()):
 		var area: Area = areas[id]
-		if not area.covers(point):
+		if (hull >= 0 and area.hull != hull) or not area.covers(point):
 			continue
 		var floor_height := area.floor_at(point)
 		if floor_height <= point.y + above and floor_height >= point.y - below and floor_height > best_floor:
@@ -203,9 +206,10 @@ func area_at(point: Vector3, below: float = 120.0, above: float = 24.0) -> Area:
 
 
 ## The area nearest a point within `radius`, in plan with the height
-## difference added: the area under it where there is one.
-func nearest_area(point: Vector3, radius: float = 256.0) -> Area:
-	var under := area_at(point)
+## difference added: the area under it where there is one. `hull` as for
+## area_at().
+func nearest_area(point: Vector3, radius: float = 256.0, hull: int = -1) -> Area:
+	var under := area_at(point, 120.0, 24.0, hull)
 	if under != null:
 		return under
 	var best: Area = null
@@ -220,6 +224,8 @@ func nearest_area(point: Vector3, radius: float = 256.0) -> Area:
 					continue
 				seen[id] = true
 				var area: Area = areas[id]
+				if hull >= 0 and area.hull != hull:
+					continue
 				var across := area.distance_in_plan(point)
 				var distance := across + absf(point.y - area.floor_at(point) if across == 0.0 else point.y - area.centre.y)
 				if distance < best_distance and across <= radius:
@@ -229,16 +235,16 @@ func nearest_area(point: Vector3, radius: float = 256.0) -> Area:
 
 
 ## The areas a walk from one point to another passes through, in order, the
-## start's first: empty when either point is off the mesh or no links lead
-## from one to the other. The areas are the ones for hull 0, the player's.
-func route(from: Vector3, to: Vector3) -> Array[Area]:
+## start's first, over one hull's areas (0, the only one on CS2's maps). A
+## point off the mesh starts or ends at the nearest area within 256 units;
+## empty when there is none, or when no links lead from one to the other.
+func route(from: Vector3, to: Vector3, hull: int = 0) -> Array[Area]:
 	var out: Array[Area] = []
-	var start := nearest_area(from)
-	var end := nearest_area(to)
+	var start := nearest_area(from, 256.0, hull)
+	var end := nearest_area(to, 256.0, hull)
 	if start == null or end == null:
 		return out
-	var astar := _graph()
-	for id in astar.get_id_path(start.id, end.id):
+	for id in _graph(hull).get_id_path(start.id, end.id):
 		out.append(areas[id])
 	return out
 
@@ -248,8 +254,8 @@ func route(from: Vector3, to: Vector3) -> Array[Area]:
 ## and the end. Where a link is a jump or a drop, the path has both the
 ## take-off and the landing. It runs through edge middles, not tight round
 ## corners: pulling it taut is for whoever walks it. Empty where route() is.
-func find_path(from: Vector3, to: Vector3) -> PackedVector3Array:
-	var areas_on_route := route(from, to)
+func find_path(from: Vector3, to: Vector3, hull: int = 0) -> PackedVector3Array:
+	var areas_on_route := route(from, to, hull)
 	var points := PackedVector3Array()
 	if areas_on_route.is_empty():
 		return points
@@ -260,15 +266,19 @@ func find_path(from: Vector3, to: Vector3) -> PackedVector3Array:
 		for edge in here.edges.size():
 			var crossing: Link = null
 			for link: Link in here.edges[edge]:
-				if link.area == next.id:
+				if link.area == next.id and link.gap < INF:
 					crossing = link
 			if crossing == null:
 				continue
-			var take_off := _portal(here.edge_ends(edge), next.edge_ends(crossing.edge))
+			var landing_edge := next.edge_ends(crossing.edge)
+			var take_off := _portal(here.edge_ends(edge), landing_edge)
 			points.append(take_off)
-			if crossing.gap > TOUCHING or absf(crossing.rise) > _max_climb():
-				var landing_edge := next.edge_ends(crossing.edge)
-				points.append(Geometry3D.get_closest_point_to_segment(take_off, landing_edge[0], landing_edge[1]))
+			# Where the floors part, across a gap or up or down a ledge, the
+			# landing too. On a slope the edges' middles can differ by more
+			# than a step while the floors meet: then it is the same point.
+			var landing := Geometry3D.get_closest_point_to_segment(take_off, landing_edge[0], landing_edge[1])
+			if landing.distance_to(take_off) > TOUCHING:
+				points.append(landing)
 			break
 	points.append(to)
 	return points
@@ -278,9 +288,11 @@ func find_path(from: Vector3, to: Vector3) -> PackedVector3Array:
 func summary() -> String:
 	if not error.is_empty():
 		return error
-	var hull := hulls[0] if not hulls.is_empty() else {}
-	return "version %d, %d areas, %d ladders, the hull %.0f by %.0f" % [
-		version, areas.size(), ladders.size(), hull.get("radius", 0.0), hull.get("height", 0.0),
+	var sizes := PackedStringArray()
+	for hull in hulls:
+		sizes.append("%.0f by %.0f" % [hull.get("radius", 0.0), hull.get("height", 0.0)])
+	return "version %d, %d areas, %d ladders, for %s %s" % [
+		version, areas.size(), ladders.size(), "the hull" if hulls.size() == 1 else "the hulls", ", ".join(sizes),
 	]
 
 
@@ -355,10 +367,11 @@ func _read(r: _Reader) -> void:
 	unread_bytes = r.bytes.size() - r.at
 
 
-## Says why the file could not be read: that it ended early, if it did,
-## since everything read after the end is zeros and fails for that reason.
+## Says why the file could not be read: that it is cut short or damaged, if
+## a read ran past its end or a size could not be right, since everything
+## read after that is zeros and fails for that reason.
 func _fail(r: _Reader, message: String) -> void:
-	error = "the file ends early: %d bytes, and it asks for more" % r.bytes.size() if r.overran else message
+	error = "the file is cut short or damaged: %d bytes, and it asks for more" % r.bytes.size() if r.overran else message
 
 
 func _read_area(r: _Reader, polygons: Array[PackedVector3Array]) -> Area:
@@ -429,7 +442,8 @@ func _read_generation(r: _Reader) -> void:
 	if gen >= 12:
 		r.string()  # hull preset name
 		r.string()  # hull definitions file
-	var hull_count := r.s32()
+	# A hull is 28 bytes at the least (seven fields before version 9).
+	var hull_count := r.count(28)
 	# Up to version 11 three hulls are written whether or not they are used.
 	for i in maxi(hull_count, 3 if gen <= 11 else 0):
 		var hull := {}
@@ -455,6 +469,8 @@ func _read_generation(r: _Reader) -> void:
 			r.s32()  # border erosion
 		if i < hull_count:
 			hulls.append(hull)
+		if r.overran:
+			break
 	if gen >= 12:
 		r.u8()  # gravity follows rotation
 
@@ -531,24 +547,23 @@ func _index() -> void:
 				_grid[key] = ids
 
 
-func _graph() -> AStar3D:
-	if _astar != null:
-		return _astar
-	_astar = AStar3D.new()
+## One hull's areas and the links between them, the ones that lead to an
+## edge there is.
+func _graph(hull: int) -> AStar3D:
+	if _graphs.has(hull):
+		return _graphs[hull]
+	var astar := AStar3D.new()
 	for area: Area in areas.values():
-		if area.hull == 0:
-			_astar.add_point(area.id, area.centre)
+		if area.hull == hull:
+			astar.add_point(area.id, area.centre)
 	for area: Area in areas.values():
-		if area.hull != 0:
+		if area.hull != hull:
 			continue
 		for link in area.links():
-			if _astar.has_point(link.area) and not _astar.are_points_connected(area.id, link.area, false):
-				_astar.connect_points(area.id, link.area, false)
-	return _astar
-
-
-func _max_climb() -> float:
-	return float(hulls[0].get("max_climb", 16.0)) if not hulls.is_empty() else 16.0
+			if link.gap < INF and astar.has_point(link.area) and not astar.are_points_connected(area.id, link.area, false):
+				astar.connect_points(area.id, link.area, false)
+	_graphs[hull] = astar
+	return astar
 
 
 static func _cell(point: Vector3) -> Vector2i:
@@ -595,7 +610,8 @@ class _Reader:
 		bytes = data
 
 	func _take(length: int) -> int:
-		if at + length > bytes.size():
+		# A negative size is a damaged one: it must not step back.
+		if length < 0 or at + length > bytes.size():
 			overran = true
 			at = bytes.size()
 			return -1

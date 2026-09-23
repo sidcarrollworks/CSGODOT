@@ -242,8 +242,8 @@ func _test_bots_walk() -> void:
 
 ## dust2's nav mesh, the one the game's bots walk (scripts/extract_assets.sh
 ## nav): read to its last byte, lying on the floor the player walks on, under
-## every spawn and callout, and leading from both spawns to both bomb sites
-## by ways a player could walk.
+## every spawn and by every callout, and leading from both spawns to both bomb
+## sites by ways a player could walk.
 func _test_nav_mesh() -> void:
 	var mesh := SourceNavMesh.load_file(NAV_FILE)
 	_check(
@@ -350,8 +350,8 @@ func _test_nav_mesh() -> void:
 				blocked += 1
 		var straight := from.distance_to(to)
 		_check(
-			path.size() > 2 and length > straight and length < straight * 2.0 and blocked * 20 <= path.size(),
-			"the mesh leads from %s to %s: %.0f units against %.0f in a straight line, %d legs, %d of them through something at waist height"
+			path.size() > 2 and length > straight and length < straight * 2.0 and blocked == 0,
+			"the mesh leads from %s to %s: %.0f units against %.0f in a straight line, %d legs, %d of them through something at waist height (none should be)"
 				% [route[0], route[2], length, straight, path.size() - 1, blocked]
 		)
 

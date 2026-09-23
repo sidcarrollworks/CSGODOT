@@ -551,41 +551,88 @@ func _test_nav_mesh() -> void:
 			% [ids, path]
 	)
 
-	var older := SourceNavMesh.parse(_nav_file(35))
-	var oldest := SourceNavMesh.parse(_nav_file(30))
+	# Every version the reader takes, each with the generator version of its
+	# day: up to generation 11 three hull records are written for one hull,
+	# and version 35 ends in a KV3 version 4 block, LZ4-compressed.
+	var read_back := PackedStringArray()
+	var all_read := true
+	for version: int in [30, 31, 32, 34, 35]:
+		var other := SourceNavMesh.parse(_nav_file(version))
+		var other_ledge: SourceNavMesh.Area = other.areas.get(3)
+		var fine := (
+			other.error.is_empty() and other.unread_bytes == 0 and other.areas.size() == 3 and other.ladders.size() == 1
+				and other.hulls.size() == 1 and is_equal_approx(other.hulls[0].get("radius", 0.0), 16.0)
+				and other.analysis_bytes == (NAV_ANALYSIS_BYTES if version >= 35 else 0)
+				and other_ledge != null and other_ledge.corners[0].is_equal_approx(SourceEntities.to_game(Vector3(220, 0, 40)))
+		)
+		all_read = all_read and fine
+		read_back.append("%d: %s" % [version, other.summary()])
 	_check(
-		older.error.is_empty() and older.unread_bytes == 0 and older.areas.size() == 3 and older.ladders.size() == 1
-			and oldest.error.is_empty() and oldest.unread_bytes == 0 and oldest.areas.size() == 3 and oldest.hulls.size() == 3
-			and oldest.areas.has(1) and (oldest.areas[1] as SourceNavMesh.Area).corners[1].is_equal_approx(Vector3(0, 0, 100)),
-		"versions 35 and 30 read too, 30 with its corners in each area and three hulls (%s; %s)" % [older.summary(), oldest.summary()]
+		all_read,
+		"versions 30 to 35 read too, generations 6 to 12, one hull kept of the three records the old ones write, and 35's KV3 version 4 end stepped over (%s)"
+			% "; ".join(read_back)
 	)
+
+	# A second hull's floor lying just over the first square.
+	var two := SourceNavMesh.parse(_nav_file(36, 2))
+	var any_hull := two.area_at(over_first)
+	var hull_zero := two.area_at(over_first, 120.0, 24.0, 0)
+	_check(
+		two.error.is_empty() and two.unread_bytes == 0 and two.hulls.size() == 2 and any_hull != null and any_hull.hull == 1
+			and hull_zero != null and hull_zero.id == 1
+			and two.route(over_ledge, over_first).map(func(area: SourceNavMesh.Area) -> int: return area.id) == [3, 2, 1],
+		"with a second hull's floor over the first, a point finds the higher, or its own hull's when asked, and a route keeps to hull 0 (%s)"
+			% two.summary()
+	)
+
 	var whole := _nav_file(36)
 	var not_nav := whole.duplicate()
 	not_nav[0] = 0
 	var future := whole.duplicate()
 	future.encode_u32(4, 99)
-	var damaged := whole.duplicate()
-	damaged.encode_u32(NAV_CORNER_COUNT_AT, 0x7FFFFFFF)
+	var too_many_corners := whole.duplicate()
+	too_many_corners.encode_u32(_nav_offsets["corner_count"], 0x7FFFFFFF)
+	var too_many_hulls := whole.duplicate()
+	too_many_hulls.encode_u32(_nav_offsets["hull_count"], 0x7FFFFFFF)
+	# The first KV3 block's second buffer, said to be -5 bytes long.
+	var backwards := whole.duplicate()
+	backwards.encode_s32(_nav_offsets["first_kv3"] + 80, -5)
 	_check(
-		SourceNavMesh.parse(whole.slice(0, whole.size() >> 1)).error.contains("ends early")
-			and SourceNavMesh.parse(damaged).error.contains("ends early")
+		SourceNavMesh.parse(whole.slice(0, whole.size() >> 1)).error.contains("cut short")
+			and SourceNavMesh.parse(too_many_corners).error.contains("cut short")
+			and SourceNavMesh.parse(too_many_hulls).error.contains("cut short")
+			and SourceNavMesh.parse(backwards).error.contains("cut short")
 			and SourceNavMesh.parse(not_nav).error.contains("not a nav mesh")
 			and SourceNavMesh.parse(future).error.contains("99")
 			and SourceNavMesh.load_file("user://export_fixture/not_there.nav").error.contains("extract_assets.sh nav"),
-		"a file cut short, a count too big for it, a file that is not a nav mesh, a version from the future and a missing file each say so"
+		"a file cut short, counts of corners or hulls too big for it, a negative size, a file that is not a nav mesh, a version from the future and a missing file each say so"
+	)
+	# A link onto an edge its area does not have: read, but no way across.
+	var bad_edge := whole.duplicate()
+	bad_edge.encode_u32(_nav_offsets["first_link_edge"], 7)
+	var misread := SourceNavMesh.parse(bad_edge)
+	_check(
+		misread.error.is_empty() and misread.route(over_first, SourceEntities.to_game(Vector3(150, 50, 10))).is_empty()
+			and misread.find_path(over_first, SourceEntities.to_game(Vector3(150, 50, 10))).is_empty(),
+		"a link onto an edge its area does not have leads nowhere, and a path through it is none rather than a crash"
 	)
 
 
-## The analysis block _nav_file() ends with, header and body.
+## The analysis block _nav_file() ends with, header and body: a version 5
+## KV3 block's 120 and 24 at version 36, a version 4 one's 72 and 72 at 35.
 const NAV_ANALYSIS_BYTES := 120 + 24
-## Where _nav_file(36) keeps its corner count: after the 16-byte header and a
-## 129-byte KV3 block, on the next four bytes.
-const NAV_CORNER_COUNT_AT := 16 + 120 + 9
+## The generator version written with each nav version.
+const NAV_GENERATIONS := {30: 6, 31: 7, 32: 9, 34: 11, 35: 12, 36: 13}
+
+## Where the last _nav_file() put what the damage checks change: the corner
+## count, the hull count, the first KV3 block and the first link's edge.
+var _nav_offsets: Dictionary = {}
 
 
-## A nav mesh as the game writes one at the given version (36, 35 or 30), with
-## the areas, links and ladder _test_nav_mesh reads back.
-func _nav_file(version: int) -> PackedByteArray:
+## A nav mesh as the game writes one at the given version (30 to 36), with
+## the areas, links and ladder _test_nav_mesh reads back. With two hulls a
+## fourth area, of hull 1, lies 4 units over the first.
+func _nav_file(version: int, hull_total: int = 1) -> PackedByteArray:
 	# Source's axes, Z up: two squares side by side, and a triangle 40 up
 	# across a 20-unit gap.
 	var polygons: Array = [
@@ -599,16 +646,27 @@ func _nav_file(version: int) -> PackedByteArray:
 		[[], [], [], [[1, 1]]],
 		[[], [], [[2, 1]]],
 	]
-	var flags: Array = [0, 0, SourceNavMesh.FLAG_CROUCH]
+	# The named flags are version 35's; older files keep other bits.
+	var flags: Array = [0, 0, SourceNavMesh.FLAG_CROUCH if version >= 35 else 0]
+	var area_hulls: Array = [0, 0, 0]
+	if hull_total > 1:
+		polygons.append([Vector3(0, 0, 4), Vector3(100, 0, 4), Vector3(100, 100, 4), Vector3(0, 100, 4)])
+		links.append([[], [], [], []])
+		flags.append(0)
+		area_hulls.append(1)
+	var gen: int = NAV_GENERATIONS[version]
 	var sub_version := 1 if version >= 35 else 0
+	_nav_offsets = {}
 	var out := StreamPeerBuffer.new()
 	out.put_u32(SourceNavMesh.MAGIC)
 	out.put_u32(version)
 	out.put_u32(sub_version)
 	out.put_u32(1)
 	if version >= 36:
+		_nav_offsets["first_kv3"] = out.get_position()
 		_put_kv3(out, 0, 9)
 	if version >= 31:
+		_nav_offsets["corner_count"] = out.get_position()
 		out.put_u32(polygons.reduce(func(total: int, polygon: Array) -> int: return total + polygon.size(), 0))
 		for polygon: Array in polygons:
 			for corner: Vector3 in polygon:
@@ -633,7 +691,7 @@ func _nav_file(version: int) -> PackedByteArray:
 	for i in polygons.size():
 		out.put_u32(i + 1)
 		out.put_64(flags[i])
-		out.put_u8(0)
+		out.put_u8(area_hulls[i])
 		if version >= 31:
 			out.put_u32(i)
 		else:
@@ -645,6 +703,8 @@ func _nav_file(version: int) -> PackedByteArray:
 			out.put_u32(edge_links.size())
 			for link: Array in edge_links:
 				out.put_u32(link[0])
+				if i == 0 and not _nav_offsets.has("first_link_edge"):
+					_nav_offsets["first_link_edge"] = out.get_position()
 				out.put_u32(link[1])
 		out.put_u8(0)
 		out.put_u32(0)
@@ -665,7 +725,6 @@ func _nav_file(version: int) -> PackedByteArray:
 		out.put_u32(area)
 	out.put_u32(0)
 
-	var gen := 13 if version >= 36 else 12 if version >= 35 else 6
 	out.put_32(gen)
 	out.put_u32(0)
 	for value: float in [128.0, 1.5, 2.0]:
@@ -682,12 +741,14 @@ func _nav_file(version: int) -> PackedByteArray:
 	if gen >= 12:
 		out.put_u8(0)
 		out.put_u8(0)
-	var hull_count := 1 if gen >= 12 else 3
-	out.put_32(hull_count)
-	for i in hull_count:
+	_nav_offsets["hull_count"] = out.get_position()
+	out.put_32(hull_total)
+	# Up to generation 11 three hull records are written whether or not they
+	# are used; the unused ones are made unlike a player to tell them apart.
+	for i in maxi(hull_total, 3 if gen <= 11 else 0):
 		if gen >= 9:
 			out.put_u8(1)
-		out.put_float(16.0)
+		out.put_float(16.0 if i == 0 else 24.0 if i < hull_total else 99.0)
 		out.put_float(71.0)
 		if gen >= 9:
 			out.put_u8(1)
@@ -706,7 +767,10 @@ func _nav_file(version: int) -> PackedByteArray:
 	if version >= 36:
 		_put_kv3(out, 0, 9)
 	if sub_version > 0:
-		_put_kv3(out, 2, NAV_ANALYSIS_BYTES - 120)
+		if version >= 36:
+			_put_kv3(out, 2, NAV_ANALYSIS_BYTES - 120)
+		else:
+			_put_kv3_v4(out, NAV_ANALYSIS_BYTES - 72)
 	return out.data_array
 
 
@@ -747,6 +811,33 @@ func _put_kv3(out: StreamPeerBuffer, compression: int, body: int) -> void:
 	out.put_32(0 if compression == 0 else body - (body >> 1))
 	for i in 8:
 		out.put_32(0)
+	for i in body:
+		out.put_u8(0xAB)
+
+
+## A version 4 KV3 block, LZ4-compressed, as version 35 nav files end with one
+## (Source 2 Viewer's lobby_mapveto.nav): a 72-byte header without version
+## 5's buffer sizes, then `body` compressed bytes, as its compressed total
+## says.
+func _put_kv3_v4(out: StreamPeerBuffer, body: int) -> void:
+	while out.get_size() % 8 != 0:
+		out.put_u8(0)
+	out.put_u32(0x4B563304)
+	for i in 16:
+		out.put_u8(i)
+	out.put_u32(1)
+	out.put_u16(0)
+	out.put_u16(16384)
+	for i in 4:
+		out.put_32(0)
+	out.put_u16(0)
+	out.put_u16(0)
+	out.put_32(body * 2)
+	out.put_32(body)
+	out.put_32(0)
+	out.put_32(0)
+	out.put_32(0)
+	out.put_32(0)
 	for i in body:
 		out.put_u8(0xAB)
 
