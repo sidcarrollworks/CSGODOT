@@ -244,8 +244,11 @@ The nav mesh is the game's own, `maps/de_dust2.nav`: the floor cut into
 jumps and drops among them. `src/map/source_nav_mesh.gd` (`SourceNavMesh`)
 reads it, after Source 2 Viewer's reader of the undocumented format, and
 answers which area is under a point and how to get from one place to
-another (`route` for the areas, `find_path` for points to walk through). The
-bots do not walk it yet. The file ends in the game's analysis of the mesh
+another (`route` for the areas, `find_path` for points to walk through,
+`walk_path` for the same pulled taut, which is what the bots walk: from their
+spawn to a bomb site and back, jumping and crouching where the mesh says).
+Without it they walk straight lines between their spawn points, and the map
+says so in the top left. The file ends in the game's analysis of the mesh
 (hiding spots, where the two sides meet on each route, how early each team
 can reach each area), which is compressed KV3 and not read yet.
 

@@ -54,6 +54,7 @@ func _run() -> void:
 	await _test_a_press_fires_from_where_the_player_was()
 	await _test_a_running_tap_misses()
 	await _test_a_bot_plays_through_commands()
+	await _test_a_bot_finds_its_way()
 	await _test_a_player_wears_hitboxes()
 	await _test_a_hit_tags_the_player()
 	await _test_a_hit_throws_the_aim()
@@ -329,6 +330,149 @@ func _test_a_bot_plays_through_commands() -> void:
 	enemy.queue_free()
 	friend.queue_free()
 	await physics_frame
+
+
+## Where the nav mesh course is, out of the way of everything else.
+const COURSE := Vector3(-3500.0, 0.0, 3500.0)
+
+
+## A bot sent round a corner, up a ledge and under a low ceiling, over a nav
+## mesh built for the course, and back: it walks the path pulled taut, not
+## the straight line through the wall, stays on the mesh, jumps the ledge,
+## crouches under the ceiling, and comes back down and round.
+func _test_a_bot_finds_its_way() -> void:
+	# A block inside the corner, the ledge 40 up, and a ceiling 60 over the
+	# ledge's far end. The mesh stops 16 short of every wall, as the game's
+	# does, eroded by the hull's radius.
+	_box(Vector3(116.0, 0.0, -784.0), Vector3(1600.0, 200.0, 200.0))
+	_box(Vector3(900.0, 0.0, -1100.0), Vector3(1600.0, 40.0, -785.0))
+	_box(Vector3(1220.0, 100.0, -1100.0), Vector3(1600.0, 140.0, -785.0))
+	var mesh := _course_mesh()
+	var start := COURSE + Vector3(0.0, 0.0, -50.0)
+	var goal := COURSE + Vector3(1400.0, 40.0, -900.0)
+
+	var path := mesh.walk_path(start, goal)
+	var expected := [
+		start, COURSE + Vector3(90.0, 0.0, -800.0), COURSE + Vector3(100.0, 0.0, -810.0),
+		COURSE + Vector3(884.0, 0.0, -900.0), COURSE + Vector3(912.0, 40.0, -900.0), goal,
+	]
+	var as_expected := path.points.size() == expected.size()
+	for i in mini(path.points.size(), expected.size()):
+		as_expected = as_expected and path.points[i].is_equal_approx(expected[i])
+	_check(
+		as_expected and path.jumps == PackedByteArray([0, 0, 0, 1, 0, 0]),
+		"pulled taut, the way turns only at the corner, kept 10 units in from each end of the edges there, and jumps once, at the ledge (%s, %s)"
+			% [path.points, path.jumps]
+	)
+
+	var bot := (load("res://src/bots/bot.tscn") as PackedScene).instantiate() as Bot
+	bot.team = "CT"
+	bot.route = PackedVector3Array([start, goal])
+	bot.nav_mesh = mesh
+	bot.position = start
+	_world.add_child(bot)
+	bot.place(start, 0.0)
+	bot.set("_next", 1)
+	var arrived := []
+	var off_mesh := 0
+	var highest := -INF
+	var ducked_under := 0
+	var standing_under := 0
+	var jumps := 0
+	var was_on_ground := true
+	for i in 128 * 40:
+		var heading: int = bot.get("_next")
+		await physics_frame
+		if bot.get("_next") != heading:
+			arrived.append(bot.global_position)
+		var at := bot.global_position - COURSE
+		if mesh.nearest_area(bot.global_position, 16.0) == null:
+			off_mesh += 1
+		highest = maxf(highest, at.y)
+		if at.x > 1240.0 and at.y > 35.0:
+			if bot.is_ducked:
+				ducked_under += 1
+			else:
+				standing_under += 1
+		# Off the ground going up; walking off the ledge on the way back is
+		# a drop.
+		if was_on_ground and not bot.on_ground and bot.velocity.y > 100.0:
+			jumps += 1
+		was_on_ground = bot.on_ground
+		if arrived.size() >= 2:
+			break
+
+	_check(
+		arrived.size() >= 1 and (arrived[0] as Vector3).distance_to(goal) < 32.0,
+		"the bot gets to the far end of the course, over the ledge and under the ceiling (%s)" % [arrived]
+	)
+	_check(
+		arrived.size() >= 2 and (arrived[1] as Vector3).distance_to(start) < 32.0,
+		"and comes back down and round to where it started (%s)" % [arrived]
+	)
+	_check(off_mesh == 0, "never leaving the mesh by more than the hull's radius (%d ticks off it)" % off_mesh)
+	_check(
+		highest > 40.0 and jumps == 1,
+		"it jumps up the ledge, once (%d jumps, its feet %.0f up at the highest)" % [jumps, highest]
+	)
+	_check(
+		ducked_under > 0 and standing_under == 0,
+		"and crouches under the low ceiling before it gets there (%d ticks crouched under it, %d standing)"
+			% [ducked_under, standing_under]
+	)
+	bot.queue_free()
+	await physics_frame
+
+
+## The course's floor as a nav mesh: a corridor going -Z, a corner, one
+## going +X to the foot of the ledge, the ledge's top, and its far end under
+## the ceiling, marked for crouching. Each area's corners run round it, and
+## edge i goes from corner i to corner i + 1.
+func _course_mesh() -> SourceNavMesh:
+	var squares := [
+		[-100.0, 100.0, 0.0, -800.0, 0.0, 0],
+		[-100.0, 100.0, -800.0, -1000.0, 0.0, 0],
+		[100.0, 884.0, -800.0, -1000.0, 0.0, 0],
+		[900.0, 1200.0, -800.0, -1000.0, 40.0, 0],
+		[1200.0, 1500.0, -800.0, -1000.0, 40.0, SourceNavMesh.FLAG_CROUCH],
+	]
+	# [area, edge, the area across, its edge]; edges 0 to 3 are the near z,
+	# the far x, the far z and the near x sides.
+	var links := [
+		[1, 2, 2, 0], [2, 0, 1, 2], [2, 1, 3, 3], [3, 3, 2, 1],
+		[3, 1, 4, 3], [4, 3, 3, 1], [4, 1, 5, 3], [5, 3, 4, 1],
+	]
+	var list: Array[SourceNavMesh.Area] = []
+	for i in squares.size():
+		var square: Array = squares[i]
+		var area := SourceNavMesh.Area.new()
+		area.id = i + 1
+		area.flags = square[5]
+		area.corners = PackedVector3Array([
+			COURSE + Vector3(square[0], square[4], square[2]), COURSE + Vector3(square[1], square[4], square[2]),
+			COURSE + Vector3(square[1], square[4], square[3]), COURSE + Vector3(square[0], square[4], square[3]),
+		])
+		area.edges = [[], [], [], []]
+		list.append(area)
+	for entry: Array in links:
+		var link := SourceNavMesh.Link.new()
+		link.area = entry[2]
+		link.edge = entry[3]
+		(list[entry[0] - 1].edges[entry[1]] as Array).append(link)
+	return SourceNavMesh.from_areas(list)
+
+
+## A solid box of the world between two corners, relative to the course.
+func _box(low: Vector3, high: Vector3) -> void:
+	var body := StaticBody3D.new()
+	body.collision_layer = 1
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = (high - low).abs()
+	shape.shape = box
+	body.add_child(shape)
+	_world.add_child(body)
+	body.global_position = COURSE + (low + high) * 0.5
 
 
 # --- Being shot -------------------------------------------------------------

@@ -24,6 +24,7 @@ or Sid takes it; **Remote** is code and headless tests a cloud thread can do.
 
 Updated 2026-09-22: weapon numbers from Sid's spreadsheet and tapping (PR #23), every gun added, items marked Local or Remote; at 21:55, every CS2 system added (phases 3 to 10) from `reference/cs2-systems.md`; at 23:00, phase 3 done (PR #24) and the first shot while running fixed.
 Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurements added (7a, 7b); dust2's nav mesh extracted and read (PR #32), so bots can start walking it (item 22); the range fixes and your own ragdoll in (PR #30), so items 6 and 6a can start; dust2's buy zones, bomb sites and radar read (PR #34); the blood extraction and what can start now added to "Waiting on Sid" and the last section.
+Updated 2026-09-23 later: bots walk the nav mesh (item 22), to the bomb sites and back.
 
 ## Part 1: what exists
 
@@ -82,7 +83,8 @@ Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurem
   `reference/weapons/`. Only the AK-47 and M4A1-S are in your hands so far;
   the range's shooter also carries an MP9.
 - dust2's own nav mesh (PR #32), read by `SourceNavMesh`: 2,242 areas and
-  their links, with paths between any two points. Nothing walks it yet.
+  their links, with paths between any two points. Bots walk it, the paths
+  pulled taut, jumping and crouching where it says (item 22).
 - dust2's buy zones, bomb sites and callout volumes (`BrushVolume`), its
   radar (`MapOverview`) and its baked bomb damage file, extracted and read
   (PR #34).
@@ -368,17 +370,22 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
 
 ### Phase 8: bots that play CS
 
-22. **Navigation.** *(Local: the mesh extracted and read, PR #32; its
-    analysis still to read. Remote can start now)* Bots walk straight lines between
-    spawn points. dust2's own nav mesh is extracted (`scripts/extract_assets.sh
-    nav`) and read (`SourceNavMesh`): 2,242 areas and their links, jumps and
-    drops marked, with `route` and `find_path` between any two points; the
-    dust2 checks walk both spawns to both sites on it, through no walls.
-    Remote: bots follow `find_path`, pulled taut (it runs through edge
-    middles), crouching where an area says so and jumping where a link rises
-    past a step. Still unread: the file's analysis of the mesh (hiding spots,
-    where the sides meet, how early each team reaches each area;
-    `reference/cs2-systems.md` N3).
+22. **Navigation.** *(done 2026-09-23, Remote; Sid checks it on dust2.
+    Local: the mesh's analysis still to read)* Bots walk dust2's own nav
+    mesh (`scripts/extract_assets.sh nav`, read by `SourceNavMesh`, PR #32).
+    `SourceNavMesh.walk_path` takes `find_path`'s route and pulls it taut
+    (the funnel algorithm, turning 10 units in from the corners of the edges
+    it crosses), keeping each jump's take-off and landing; a bot walks it
+    through its commands, as a player would, jumping (with a crouch in the
+    air) where a link rises past a step, crouching before an area marked
+    for a low ceiling, and finding its way again when it is held up. On
+    dust2 each bot walks from its spawn to a bomb site and back, A and B in
+    turn (`bots_walk_to_sites`; off, they walk their spawn points as
+    before). Without the mesh they walk straight lines between their spawn
+    points, and the map says so in the top left. Still unread: the file's
+    analysis of the mesh (hiding spots, where the sides meet, how early
+    each team reaches each area; `reference/cs2-systems.md` N3), which
+    item 23 wants.
 23. **Behaviour beyond "see and shoot".** *(Remote)* Cover, holding angles,
     counter-strafing, reacting to sound, flinching. The two difficulty knobs
     (reaction time and aim error) stay the honest way to set difficulty.
@@ -482,7 +489,7 @@ The split is done (PR #24) and being shot is in apart from blood and the
 third-person firing layer (PR #27), and wall penetration is in (PR #31),
 so what is left of the shooting model is measuring (7a, 8).
 
-What a thread can start now: bots walking the nav mesh (item 22); the
+What a thread can start now: the
 match, inventory and economy (items 11 to 13); from the weapons todo, the
 registry of all 34 guns (R1), semi-automatic fire (R2), tracers (R10) and
 the game's recovery fields (R13), with shotguns (R5) after it; the

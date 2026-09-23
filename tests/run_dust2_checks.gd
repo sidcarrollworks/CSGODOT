@@ -190,7 +190,9 @@ func _import() -> bool:
 		)
 		skybox.free()
 
-	# Bots walking the CT spawn points, the way the map places them.
+	# Bots walking the CT spawn points, over the nav mesh where it has been
+	# extracted, as the map's own bots do.
+	var nav_mesh := SourceNavMesh.load_file(NAV_FILE)
 	var bot_scene: PackedScene = load("res://src/bots/bot.tscn")
 	var route := PackedVector3Array()
 	for spawn: Dictionary in spawns["CT"]:
@@ -200,6 +202,7 @@ func _import() -> bool:
 		bot.team = "CT"
 		bot.weapon_model = WeaponLibrary.m4a1s().model_path
 		bot.route = route
+		bot.nav_mesh = nav_mesh if nav_mesh.error.is_empty() else null
 		_importer.add_child(bot)
 		bot.global_position = route[i]
 		bot.set("_next", i + 1)
@@ -394,6 +397,24 @@ func _test_nav_mesh() -> void:
 			path.size() > 2 and length > straight and length < straight * 2.0 and blocked == 0,
 			"the mesh leads from %s to %s: %.0f units against %.0f in a straight line, %d legs, %d of them through something at waist height (none should be)"
 				% [route[0], route[2], length, straight, path.size() - 1, blocked]
+		)
+		# Pulled taut, as a bot walks it: shorter, fewer legs, and still
+		# clear of the walls, though it now turns 10 units from their corners.
+		var taut := mesh.walk_path(from, to)
+		var taut_length := 0.0
+		var taut_blocked := 0
+		var jumps := 0
+		for i in range(1, taut.points.size()):
+			taut_length += taut.points[i - 1].distance_to(taut.points[i])
+			var waist := Vector3.UP * 36.0
+			if not space.intersect_ray(PhysicsRayQueryParameters3D.create(taut.points[i - 1] + waist, taut.points[i] + waist, mask)).is_empty():
+				taut_blocked += 1
+			jumps += 1 if taut.jumps_from(i - 1) else 0
+		_check(
+			taut.points.size() >= 2 and taut.points.size() <= path.size() and taut_length > straight
+				and taut_length <= length + 1.0 and taut_blocked == 0,
+			"pulled taut it is %.0f units in %d legs (%d of them jumps), %d through something at waist height (none should be)"
+				% [taut_length, taut.points.size() - 1, jumps, taut_blocked]
 		)
 
 
