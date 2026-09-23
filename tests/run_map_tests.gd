@@ -70,6 +70,8 @@ func _process(_delta: float) -> bool:
 		_test_file_picking()
 		_test_entities()
 		_test_nav_mesh()
+		_test_brush_volumes()
+		_test_overview()
 		_test_export_offset_fix()
 		_test_paint_channel()
 		_test_blend_materials()
@@ -615,6 +617,136 @@ func _test_nav_mesh() -> void:
 		misread.error.is_empty() and misread.route(over_first, SourceEntities.to_game(Vector3(150, 50, 10))).is_empty()
 			and misread.find_path(over_first, SourceEntities.to_game(Vector3(150, 50, 10))).is_empty(),
 		"a link onto an edge its area does not have leads nowhere, and a path through it is none rather than a crash"
+	)
+
+
+## Brush entities' volumes, from a physics glTF written as Source 2 Viewer
+## writes one: two boxes that touch, making an L, as one soup of triangles in
+## Source's axes about the entity's origin, on an entity turned a quarter
+## round and moved.
+func _test_brush_volumes() -> void:
+	var volumes_root := "user://export_fixture/volumes"
+	_write_physics_gltf(volumes_root.path_join("maps/fixture/entities/zone_physics.gltf"), [
+		AABB(Vector3(0, 0, 0), Vector3(100, 100, 50)),
+		AABB(Vector3(100, 0, 0), Vector3(100, 50, 50)),
+	])
+	# A model name can have a space in it, as de_mirage's sites do.
+	_write_physics_gltf(volumes_root.path_join("maps/fixture/entities/b site_physics.gltf"), [AABB(Vector3.ZERO, Vector3(10, 10, 10))])
+	var zone_model := 'resource_name:"maps/fixture/entities/zone.vmdl"'
+	var entities: Array[Dictionary] = [
+		{"classname": "func_buyzone", "teamnum": "2", "model": zone_model, "origin": "[ 1000.0, 0.0, 0.0 ]", "angles": "[ 0.0, 90.0, 0.0 ]"},
+		{"classname": "func_buyzone", "teamnum": "3", "model": 'resource_name:"maps/fixture/entities/not_there.vmdl"'},
+		{"classname": "func_bomb_target", "bomb_site_designation": "1", "bomb_damage_power": "3234.0", "model": 'resource_name:"maps/fixture/entities/b site.vmdl"'},
+		{"classname": "info_map_parameters", "bombradius": "700.0"},
+	]
+	var zones := BrushVolume.buy_zones(entities, volumes_root)
+	var sites := BrushVolume.bomb_sites(entities, volumes_root)
+	_check(
+		zones["T"].size() == 1 and zones["CT"].is_empty() and sites.keys() == ["B"]
+			and (sites["B"] as BrushVolume).entity.get("bomb_damage_power") == "3234.0",
+		"buy zones come by team and bomb sites by letter (a model named with a space found), the ones whose model is not there left out"
+	)
+	if zones["T"].is_empty():
+		return
+	var zone: BrushVolume = zones["T"][0]
+	# Turned a quarter round, the model's +X is Source's +Y: local (x, y, z)
+	# lands at Source (1000 - y, x, z), game (x, z, 1000 - y).
+	var in_first := SourceEntities.to_game(Vector3(1000 - 50, 50, 25))
+	var in_second := SourceEntities.to_game(Vector3(1000 - 25, 150, 25))
+	var in_the_notch := SourceEntities.to_game(Vector3(1000 - 75, 150, 25))
+	var above := SourceEntities.to_game(Vector3(1000 - 50, 50, 60))
+	_check(
+		zone.pieces.size() == 2 and zone.contains(in_first) and zone.contains(in_second)
+			and not zone.contains(in_the_notch) and not zone.contains(above) and zone.contains(above, 12.0)
+			and zone.bounds.is_equal_approx(AABB(Vector3(0, 0, 900), Vector3(200, 50, 100))),
+		"a volume's soup splits into its two boxes, turned and moved as the entity is: in either box is in, in the L's notch or over it is out (%s)"
+			% zone.bounds
+	)
+	_check(
+		zone.shapes().size() == 2 and (zone.shapes()[0] as ConvexPolygonShape3D).points.size() == 8,
+		"each box is a convex shape of its eight corners, for an Area3D"
+	)
+	_check(
+		is_equal_approx(SourceEntities.bomb_radius(entities), 700.0) and SourceEntities.bomb_radius([]) < 0.0,
+		"the bomb's radius is the map's bombradius, and -1 where it gives none"
+	)
+
+
+## A physics glTF as Source 2 Viewer writes a brush entity's: every solid's
+## twelve triangles in one primitive, each triangle with corners of its own.
+func _write_physics_gltf(path: String, boxes: Array) -> void:
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(path.get_base_dir()))
+	var positions := PackedVector3Array()
+	for box: AABB in boxes:
+		var corners: Array[Vector3] = []
+		for i in 8:
+			corners.append(box.position + box.size * Vector3(i & 1, (i >> 1) & 1, (i >> 2) & 1))
+		for face: Array in [[0, 1, 3, 2], [4, 6, 7, 5], [0, 4, 5, 1], [2, 3, 7, 6], [0, 2, 6, 4], [1, 5, 7, 3]]:
+			for triangle: Array in [[face[0], face[1], face[2]], [face[0], face[2], face[3]]]:
+				for corner: int in triangle:
+					positions.append(corners[corner])
+	var data := StreamPeerBuffer.new()
+	for position in positions:
+		data.put_float(position.x)
+		data.put_float(position.y)
+		data.put_float(position.z)
+	for i in positions.size():
+		data.put_u16(i)
+	var bin_name := path.get_file().get_basename() + ".bin"
+	var gltf := {
+		"asset": {"version": "2.0"},
+		"buffers": [{"uri": bin_name, "byteLength": data.get_size()}],
+		"bufferViews": [
+			{"buffer": 0, "byteOffset": 0, "byteLength": positions.size() * 12},
+			{"buffer": 0, "byteOffset": positions.size() * 12, "byteLength": positions.size() * 2},
+		],
+		"accessors": [
+			{"bufferView": 0, "componentType": 5126, "count": positions.size(), "type": "VEC3"},
+			{"bufferView": 1, "componentType": 5123, "count": positions.size(), "type": "SCALAR"},
+		],
+		"meshes": [{"name": "physics_group", "primitives": [{"attributes": {"POSITION": 0}, "indices": 1}]}],
+		"nodes": [{"name": "physics_group", "mesh": 0}],
+		"scenes": [{"nodes": [0]}],
+		"scene": 0,
+	}
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	file.store_string(JSON.stringify(gltf))
+	file.close()
+	var bin := FileAccess.open(path.get_base_dir().path_join(bin_name), FileAccess.WRITE)
+	bin.store_buffer(data.data_array)
+	bin.close()
+
+
+## The radar's overview text, as dust2's is written, comments and all.
+func _test_overview() -> void:
+	var overview := MapOverview.parse("\n".join([
+		"// HLTV overview description file for de_dust2_v2.bsp",
+		"",
+		'"de_dust2"',
+		"{",
+		'\t"material"\t"overviews/de_dust2_v2"\t// texture file',
+		'\t"pos_x"\t\t"-2476"\t// upper left world coordinate',
+		'\t"pos_y"\t\t"3239"',
+		'\t"scale"\t\t"4.4" ',
+		'\t"rotate"\t"1"',
+		'\t"bombA_x"\t"0.80"',
+		'\t"bombA_y"\t"0.16"',
+		"}",
+	]))
+	var quarter := SourceEntities.to_game(Vector3(-2476 + 4.4 * 512.0, 3239 - 4.4 * 256.0, 100.0))
+	_check(
+		overview.error.is_empty() and overview.top_left.is_equal_approx(Vector2(-2476, 3239))
+			and is_equal_approx(overview.scale, 4.4) and overview.markers.keys() == ["bombA"]
+			and (overview.markers["bombA"] as Vector2).is_equal_approx(Vector2(0.8, 0.16))
+			and overview.to_image(quarter).is_equal_approx(Vector2(0.5, 0.25))
+			and overview.to_game(Vector2(0.5, 0.25), 100.0).is_equal_approx(quarter),
+		"the overview says where the radar lies: Source X across from its top-left corner, Y down it, %.1f units a pixel (%s)"
+			% [overview.scale, overview.to_image(quarter)]
+	)
+	_check(
+		not MapOverview.parse('"de_dust2" { "material" "x" }').error.is_empty()
+			and MapOverview.load_file("user://export_fixture/not_there.txt").error.contains("extract_assets.sh radar"),
+		"an overview without a position, or none at all, says so"
 	)
 
 

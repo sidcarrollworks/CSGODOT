@@ -3,8 +3,9 @@
 Written 2026-09-22 off `main` at `173a35e` (PR #21), read from the code rather
 than from notes, brought up to date with PRs #23 to #25 at 23:00, and
 with PR #27 (phase 1's Remote items: being shot) on 2026-09-22, and with
-PRs #28 to #32 (every gun extracted, the game's own weapon numbers, wall
-penetration, dust2's nav mesh) on 2026-09-23. It
+PRs #28 to #34 (every gun extracted, the game's own weapon numbers, the
+range's fixes and ragdolls, wall penetration, dust2's nav mesh, buy zones,
+bomb sites and radar) on 2026-09-23. It
 replaces `plan-to-playable.md`, most of which has landed. This copy in the
 repo is the one to keep current: whoever lands a roadmap item marks it done
 here in the same PR.
@@ -22,7 +23,7 @@ or Sid takes it; **Remote** is code and headless tests a cloud thread can do.
 ---
 
 Updated 2026-09-22: weapon numbers from Sid's spreadsheet and tapping (PR #23), every gun added, items marked Local or Remote; at 21:55, every CS2 system added (phases 3 to 10) from `reference/cs2-systems.md`; at 23:00, phase 3 done (PR #24) and the first shot while running fixed.
-Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurements added (7a, 7b); dust2's nav mesh extracted and read (PR #32), so bots can start walking it (item 22); PR #30's range fixes, the blood extraction and what can start now added to "Waiting on Sid" and the last section.
+Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurements added (7a, 7b); dust2's nav mesh extracted and read (PR #32), so bots can start walking it (item 22); the range fixes and your own ragdoll in (PR #30), so items 6 and 6a can start; dust2's buy zones, bomb sites and radar read (PR #34); the blood extraction and what can start now added to "Waiting on Sid" and the last section.
 
 ## Part 1: what exists
 
@@ -82,6 +83,9 @@ Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurem
   the range's shooter also carries an MP9.
 - dust2's own nav mesh (PR #32), read by `SourceNavMesh`: 2,242 areas and
   their links, with paths between any two points. Nothing walks it yet.
+- dust2's buy zones, bomb sites and callout volumes (`BrushVolume`), its
+  radar (`MapOverview`) and its baked bomb damage file, extracted and read
+  (PR #34).
 
 ### Combat
 - Bots and the player share one damage path (`Hitscan.fire_at` then
@@ -93,9 +97,10 @@ Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurem
   weapons.vdata through `WeaponVData`, two CS2 ticks after the hit, back
   over 1.5 s) and throws your aim, and your next rounds with it
   (PR #27). Bots too.
-- The player has health and armour, dies, and is back at spawn after 3 s.
-- Bots die into a ragdoll built from their capsules, back on their route
-  after 5 s.
+- Every player, you included, dies into a ragdoll built from their
+  capsules, with hinged knees and elbows and friction in every joint (PR
+  #30). While you are dead the camera leaves your head and looks at your
+  body; you are back at spawn after 3 s, a bot back on its route after 5 s.
 - Bullet holes from the game's own decal materials, per surface, with impact
   sounds.
 - Wall penetration (item 7, PR #31): a round goes through thin walls by what they
@@ -126,7 +131,7 @@ Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurem
 - `scripts/extract_assets.sh` (map, physics, weapons, characters, sounds and
   more, the nav mesh with `nav`), `inspect_assets`, and `run_tests.sh` with
   eight headless test files (movement, map, dust2, model, weapon,
-  penetration, range, simulation): 584 checks pass without the assets.
+  penetration, range, simulation): 603 checks pass without the assets.
 
 ---
 
@@ -140,13 +145,13 @@ Items marked **(Sid)** need Sid's machine or a decision from him.
 This was the unfinished half of hit registration. Items 1 to 4 are in (PR
 #27); blood and the third-person firing layer are left.
 
-PR #30 (open) fixes what Sid's first playtest of #27 found: a range bot's
-gunfire playing from the middle of the map, bots folded over while firing,
-and the dummy's ragdoll blowing apart. On 2026-09-23 Sid also asked there
-for his own body to ragdoll where he can see it when he is killed, and for
-ragdoll joints that resist, so limbs stop spinning. Items 6 and 6a start
-once #30 is in, since it takes out the whole-body firing clip that folds
-the bots over.
+PR #30 fixed what Sid's first playtest of #27 found: a range bot's gunfire
+playing from the middle of the map, bots folded over while firing, and the
+dummy's ragdoll blowing apart. It also ragdolls your own body where you can
+see it when you are killed, and gives the ragdoll's joints resistance so
+limbs stop spinning (Sid, 2026-09-23). It took out the whole-body firing
+clip that folded the bots over, so bots fire with no arm movement until
+item 6 is built.
 
 1. **The player's own hitboxes.** *(done, PR #27; Sid checks the fit)* The player
    wears the same 19 capsules as the bots, on a third-person body the
@@ -188,11 +193,11 @@ the bots over.
    hit, to size the flinch (2 degrees here).
 5. **Blood on hit.** *(Local extracts the effects, then Remote)* A round into a body leaves no mark, so a hit is only
    heard, not seen. CS2's blood impact and decal behind the target.
-6. **Firing on the third-person model.** *(Remote, after PR #30; Sid checks it)* `PlayerModel` still says "Nothing is
+6. **Firing on the third-person model.** *(Remote, can start now; Sid checks it)* `PlayerModel` still says "Nothing is
    layered, so firing does not show yet": a bot kills you without its arms
    moving. Needs the upper-body layer over the locomotion clip.
 
-6a. **Your shadow has no arms.** *(Remote, after PR #30; Sid checks it)* Sid noticed
+6a. **Your shadow has no arms.** *(Remote, after item 6; Sid checks it)* Sid noticed
    2026-09-22 22:06. The shadow twin (commit f42114e) put the head back but folds the
    arms on purpose (`SHADOW_FOLDED_BONES` in `player_view.gd`), because
    arms in the locomotion pose would fall across the view model's. It is also
@@ -289,20 +294,22 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
 13. **Economy.** *(Remote)* $800 start, $16,000 cap, round rewards, the loss
     ladder that a win steps down by one, plant and defuse rewards, kill
     awards from the sheet.
-14. **Buying.** *(Remote; Local extracts the buy zones and icons)* Buy zones
-    and 20 s of buy time, the buy menu, undoing a purchase, the loadout,
-    armour, the kit, grenades, the Zeus, team-only weapons.
-15. **HUD for rounds.** *(Remote; Local extracts the radar)* Money, armour,
-    timer, score and players alive, kill feed, radar, scoreboard, round-end
-    panel.
+14. **Buying.** *(Remote; the buy zones and icons are extracted and read,
+    `BrushVolume.buy_zones`)* Buy zones and 20 s of buy time, the buy menu,
+    undoing a purchase, the loadout, armour, the kit, grenades, the Zeus,
+    team-only weapons.
+15. **HUD for rounds.** *(Remote; the radar is extracted, `MapOverview`)*
+    Money, armour, timer, score and players alive, kill feed, radar,
+    scoreboard, round-end panel.
 
 ### Phase 5: the bomb
 
 16. **Plant, timer, defuse, explosion.** *(Local measures and extracts,
     then Remote)* One T carries it; plant in a site; 40 s with beeps; defuse
     10 s or 5 with a kit; the explosion (CS2 reworked it in July 2026 into a
-    shockwave with damage baked per map, which the local agent looks for in
-    dust2's files). The site volumes come out of the map with the buy zones.
+    shockwave with damage baked per map: dust2's is
+    `baked_bomb_damage.vdata`, extracted, its damage values not yet worked
+    out). The site volumes are read (`BrushVolume.bomb_sites`).
 
 ### Phase 6: grenades
 
@@ -390,7 +397,7 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 |---|---|---|
 | Hands | Spray a wall in CS2 from 496 units | Item 8 |
 | Hands | Measure jump height, crouch-jump reach, dead-strafe feel | Movement check |
-| Hands | Merge PR #30, then check on the range that the shooting bot stays upright while firing and the dummy's ragdoll settles | Items 6 and 6a |
+| Hands | Check on the range that the shooting bot stays upright while firing, and that the dummy's ragdoll and your own settle without spinning (PR #30) | Confirms PR #30 |
 | Hands | Extract CS2's blood impact effects and decals | Item 5 |
 | Hands | Check that first shots at a run now miss (PR #24) | Item 9 |
 | Hands | Play being shot on the test range (B, U, Y, J, T) and dust2: your capsules' fit, the tag, the flinch, the hit arcs (PR #27) | Items 1 to 4 |
@@ -399,10 +406,11 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 | Hands | Extract `surfaceproperties.vsurf`; run the dust2 checks for the hull's surfaces | Item 7b |
 | Hands | Play wall penetration on the test range (M) and dust2 | Item 7 |
 | Done | The every-gun extraction (weapons TODO L1 to L3), and reload, draw and zoom figures from the game's own data (L5) | Every gun: `reference/weapons/models.md`, `sounds.md`, `timings.md`, `vdata.md` |
+| Done | dust2's buy zones, bomb sites and callout volumes, its radar, and its baked bomb damage file (cs2-systems B1, B3, C2; PR #34) | Phases 4 and 5 |
 | Done | dust2's nav mesh, extracted and read (`SourceNavMesh`), checked against the hull, the spawns and the callouts (PR #32) | Phase 8 |
 | Hands | The systems' Local list for bots in `reference/cs2-systems.md`: read the nav mesh's analysis (N3), record grenade lineups (N2) | Phase 8 |
 | Decided | The game's own numbers win over the sheet's wherever the game has them (Sid, 2026-09-22), the Desert Eagle's jump inaccuracy included (46.75, not 378.30) | `WeaponVData`, every gun |
-| Hands | The systems' Local list in `reference/cs2-systems.md`: buy zones and bomb sites (B1), radar (B3), bomb (C1 to C3), grenades (G1 to G6), knife and Zeus (K1, K2), sounds (S1, S2) | Phases 4 to 7 |
+| Hands | The systems' Local list in `reference/cs2-systems.md`: bomb (C1, C3, and decoding C2's damage), grenades (G1 to G6), knife and Zeus (K1, K2), sounds (S1, S2) | Phases 4 to 7 |
 
 ---
 
@@ -431,6 +439,6 @@ so what is left of the shooting model is measuring (7a, 7b, 8).
 What a thread can start now: bots walking the nav mesh (item 22); the
 match, inventory and economy (items 11 to 13); from the weapons todo, the
 registry of all 34 guns (R1), semi-automatic fire (R2), tracers (R10) and
-the game's recovery fields (R13), with shotguns (R5) after it; and the
-housekeeping. The third-person firing layer and the shadow's arms (6 and
-6a) wait on PR #30.
+the game's recovery fields (R13), with shotguns (R5) after it; the
+third-person firing layer (item 6), then the shadow's arms (6a); and the
+housekeeping.

@@ -14,6 +14,8 @@
 #   scripts/extract_assets.sh physics         # just the collision hull (seconds)
 #   scripts/extract_assets.sh entities        # just the entity lump (seconds)
 #   scripts/extract_assets.sh nav             # just the nav mesh the bots walk (seconds)
+#   scripts/extract_assets.sh volumes         # just the buy zones, bomb sites and callouts' volumes, and the baked bomb damage
+#   scripts/extract_assets.sh radar           # just the radar image and where it lies
 #   scripts/extract_assets.sh layers          # just the blend materials' second layers
 #   scripts/extract_assets.sh sky             # just the sky panorama
 #   scripts/extract_assets.sh skybox          # just the 3D skybox: the far buildings
@@ -153,7 +155,7 @@ find_cs2() {
 
 COMMAND="${1:-}"
 case "$COMMAND" in
-	list-map|list-weapons|map|physics|entities|nav|layers|sky|skybox|lightmaps|weapons|weapon-animations|weapon-data|hud|characters|sounds|all) ;;
+	list-map|list-weapons|map|physics|entities|nav|volumes|radar|layers|sky|skybox|lightmaps|weapons|weapon-animations|weapon-data|hud|characters|sounds|all) ;;
 	*)
 		# The header comment, down to the first line that is not one.
 		awk 'NR > 2 && /^#/ { sub(/^# ?/, ""); print; next } NR > 2 { exit }' "${BASH_SOURCE[0]}"
@@ -346,6 +348,44 @@ extract_nav() {
 	"$S2V_BIN" -i "$MAP_VPK" -f "$nav" -o "$MAP_DEST"
 }
 
+## The brush entities' own models, maps/de_dust2/entities/*.vmdl: the buy
+## zones, the bomb sites and the callouts' places, which the entity lump
+## names by model (the world export's world_physics.gltf holds them too, but
+## named only by class). Each exports as a glTF, empty but for the two
+## func_brush, and a _physics.gltf holding the volume, in inches about the
+## entity's origin; BrushVolume reads them. With them, the game's baked bomb damage
+## (maps/de_dust2/baked_bomb_damage.vdata), as KV3 text.
+extract_volumes() {
+	require_file "$MAP_VPK"
+	mkdir -p "$MAP_DEST"
+	echo "Extracting the brush entities' models and the baked bomb damage"
+	echo "        -> $MAP_DEST"
+	local count
+	count="$("$S2V_BIN" -i "$MAP_VPK" -f "maps/de_dust2/entities/" -e vmdl_c -o "$MAP_DEST" -d --gltf_export_format gltf \
+		| { grep -c '^--- Dump written' || true; })"
+	if [[ "$count" -eq 0 ]]; then
+		echo "No brush entity models under maps/de_dust2/entities/ in $MAP_VPK." >&2
+		exit 1
+	fi
+	echo "$count models"
+	local damage
+	damage="$(find_map_resource '/baked_bomb_damage\.vdata_c$' "baked bomb damage (baked_bomb_damage.vdata_c)")" || exit 1
+	mkdir -p "$(dirname "$MAP_DEST/$damage")"
+	"$S2V_BIN" -i "$MAP_VPK" -f "$damage" -o "$MAP_DEST/${damage%_c}" -d | grep -E '^--- Dump' || true
+}
+
+## dust2's radar: the overview image (a 1024 square) and the text that says
+## where it lies over the map, in the main archive rather than the map's.
+## MapOverview reads the text.
+extract_radar() {
+	require_file "$PAK_VPK"
+	mkdir -p "$MAP_DEST"
+	echo "Extracting dust2's radar"
+	echo "        -> $MAP_DEST"
+	"$S2V_BIN" -i "$PAK_VPK" -f "panorama/images/overheadmaps/de_dust2_radar_psd.vtex_c,resource/overviews/de_dust2.txt" \
+		-o "$MAP_DEST" -d | grep -E '^--- Dump' || true
+}
+
 ## Most of dust2's walls and ground are two texture layers painted together,
 ## and a glTF material has room for one. The export keeps each material's full
 ## description in its extras, second layer and blend mask included, so the
@@ -479,6 +519,10 @@ extract_map() {
 	extract_entities
 	echo
 	extract_nav
+	echo
+	extract_volumes
+	echo
+	extract_radar
 	echo
 	extract_layers
 	echo
@@ -751,6 +795,8 @@ case "$COMMAND" in
 	physics) extract_physics; finish ;;
 	entities) extract_entities ;;
 	nav) extract_nav ;;
+	volumes) extract_volumes ;;
+	radar) extract_radar ;;
 	layers) extract_layers; finish ;;
 	sky) extract_sky; finish ;;
 	skybox) extract_skybox; finish ;;
