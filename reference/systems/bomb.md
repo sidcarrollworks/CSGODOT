@@ -12,7 +12,8 @@ item 16; `reference/cs2-systems.md` section 6 has CS2's rules.
 | `src/bomb/c4_rules.gd` (`C4Rules`) | Its numbers (below). |
 | `src/bomb/bomb_site.gd` (`BombSite`) | A place it can be planted: a map's `func_bomb_target` (`BombSite.from_volumes(BrushVolume.bomb_sites(...))`) or a box. |
 | `src/bomb/c4_view.gd` (`C4View`) | What is seen and heard: the bomb on the ground, its light blinking with each beep, the beeps, the blast. Reads a `C4` per frame, never changes it. CS2's model and sounds when extracted, a tan box and silence when not. |
-| `tests/run_bomb_checks.gd` | Its checks, and a plant on the test range. |
+| `src/bomb/bomb_system.gd` (`BombSystem`) | The bomb as one of the game's systems: joins `C4` to the roster, inventories, commands, events, entities and `DamageInfo` (below). |
+| `tests/run_bomb_checks.gd`, `tests/run_bomb_system_checks.gd` | Their checks, and a plant on the test range. |
 
 The test range carries it: you hold it from the start, site A is marked on
 the floor behind the spawn, 5 held on the site plants, E held looking at it
@@ -55,60 +56,54 @@ it.
 
 ## Wiring it in
 
-Nothing here edits `player_sim.gd`, `bot.gd`, `match_state.gd` or
-`de_dust2.gd`, which the GameWorld's work owns, nor the shared `UserCmd`.
-This is what they need.
+`BombSystem` (`src/bomb/bomb_system.gd`) is the bomb's system on the shared
+contracts (`reference/systems/contracts.md`), checked in
+`tests/run_bomb_system_checks.gd`. Added to the world's game
+(`world.game.add_system(BombSystem.new(sites, rules))`), it runs on the
+GameWorld's tick after the players and the match, and:
 
-### A bomb system on the shared contracts
+- builds a `C4.Actor` for each player on the roster: plant is the command's
+  attack held with `weapon_c4` in hand (`inv.in_hand_class()`), use is
+  `UserCmd.USE`, the kit is `inv.has_defuser`;
+- takes the `drop` command when the C4 is in hand (`ItemDrops` takes it for
+  anything else, and `Inventory.drops_on_death()` leaves the C4 to the
+  bomb);
+- sends the C4's events on `game.events`, `bomb_dropped` with its entity's
+  id;
+- keeps `weapon_c4` in the carrier's inventory, out of it once dropped or
+  planted, back in on a pickup, and the bomb on the ground as a
+  `"weapon_c4"` or `"planted_c4"` `SimEntity`;
+- deals the blast as a `DamageInfo` per player: attacker the planter,
+  inflictor `"planted_c4"`, weapon `"weapon_c4"`, `DMG_BLAST`, no zone,
+  armour as a grenade's (`armor_penetration` 0.5), no team scaling;
+- hands the bomb to a random living terrorist on `round_start` (seeded from
+  the tick), allows plants from `round_freeze_end` to `round_end`, and
+  clears it on `round_prestart`. With no match (the range) plants are
+  always allowed.
 
-The contracts (`reference/systems/contracts.md`, `src/game/`, from the
-"Events, damage and items" thread) were drafted while this was built, and
-their code is not on `main` yet. `C4` is kept free of them so it runs and is
-checked on its own; a small `BombSystem` (RefCounted, `tick(t: SimTick)`,
-`attach(game)`) joins the two once `src/game/` lands:
+The test range adds one to `test_range.game`, feeding it your keys through
+`BombSystem.input_of` in place of a command.
 
-- Each tick, one `C4.Actor` per player in `game.roster`:
-  `C4.Actor.of_player(player, userid)`, then
-  - `plant_held`: the command holds `UserCmd.ATTACK` and
-    `inv.in_hand_class() == "weapon_c4"`, the draw (`m_flDeployDuration`,
-    1.23 s) finished, and the match is live;
-  - `use_held`: the command holds use (a new `UserCmd.USE` bit, E);
-  - `drop`: the command asks to drop with the bomb in hand (CS2's G);
-  - `has_kit`: `inv.has_defuser`.
-- `C4.tick(t.now_usec, actors, sites)`, then every event from
-  `take_events()` into `game.events.send(name, fields)` (the names and keys
-  are the schema's: `player_given_c4`, `bomb_pickup`, `bomb_dropped`,
-  `bomb_beginplant`, `bomb_abortplant`, `bomb_planted`, `bomb_begindefuse`,
-  `bomb_abortdefuse`, `bomb_defused`, `bomb_exploded`, `enter_bombzone`,
-  `exit_bombzone`).
-- Every record from `take_blast()` as a `DamageInfo`: attacker the planter,
-  inflictor `"planted_c4"`, weapon `"weapon_c4"`, `DMG_BLAST`, no zone, the
-  amount, origin the bomb, position the victim's middle, armour as a
-  grenade's (`armor_penetration` 0.5), dealt with `DamageInfo.deal`.
-- The inventory follows the bomb: `bomb_dropped` and `bomb_planted` take
-  `weapon_c4` out of the carrier's inventory, `bomb_pickup` puts it in.
-- The dropped and planted bomb as `SimEntity`s (`"weapon_c4"`,
-  `"planted_c4"`) for the presenters and `bomb_dropped`'s `entindex`.
+Not done yet, in files this does not edit:
 
-### `player_sim.gd`
+### `player_sim.gd` and `PlayerInput`
 
 - Held still while planting or defusing, as freeze time holds it: no
-  moving, jumping or firing, free to look and crouch. A flag beside
-  `frozen` (`held_still = bomb.holds_still(userid)`), set by the
-  GameWorld before the player runs.
+  moving, jumping or firing, free to look and crouch. The bomb answers it
+  (`BombSystem.holds_still(userid)`); the range sets `frozen` from it on each
+  event. In a match `frozen` is the match's, so the player needs a second
+  flag or to ask the game (a `holds_still` query, to be added to the
+  contract).
 - The bomb in hand fires nothing: attack with `weapon_c4` in hand is the
-  plant.
-- `UserCmd` gains `USE` (E) and a drop request (G); `PlayerInput` fills
-  them.
+  plant. The plant should wait for the draw (`m_flDeployDuration`, 1.23 s).
+- `PlayerInput` sets `UserCmd.USE` from E and sends `drop` on G; 5 selects
+  the bomb.
 
 ### `match_state.gd`
 
-- **Handing it out.** At each round's start, one random terrorist (from the
-  match's seeded numbers) gets `weapon_c4` in their inventory and
-  `bomb.give_to(userid, spawn)`, which sends `player_given_c4`. No
-  terrorist, no bomb (`bomb.reset()`). Warmup has no bomb.
-- **Planting only while live.** Freeze time holds everyone already; after
-  the round is won nobody plants.
+- **Handing it out** is the bomb system's, from the match's `round_prestart`,
+  `round_start`, `round_freeze_end` and `round_end` events, which the
+  match has to send. Warmup sends no `round_start`, so it has no bomb.
 - **The clock.** From `bomb_planted` the round's time no longer ends the
   round: the HUD shows the bomb's (`bomb.seconds_left`). Time running out
   with the bomb not down is a CT win (`TIME_RAN_OUT`, "TargetSaved"), a
@@ -135,10 +130,10 @@ a kill by the blast earns the planter the C4's $300 kill award
 
 ### `de_dust2.gd`
 
-- The sites: `BombSite.from_volumes(BrushVolume.bomb_sites(entities, root))`.
-- The blast: `C4Rules.bomb_damage = SourceEntities.bomb_radius(entities)`
-  (700).
-- A `C4View` for the bomb, as the range adds one.
+- `world.game.add_system(BombSystem.new(sites, rules))` with the sites from
+  `BombSite.from_volumes(BrushVolume.bomb_sites(entities, root))` and
+  `rules.bomb_damage = SourceEntities.bomb_radius(entities)` (700).
+- A `C4View` reading `bomb_system.bomb`, as the range adds one.
 
 ### Bots (`bot.gd`, later)
 

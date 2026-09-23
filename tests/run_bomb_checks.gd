@@ -509,7 +509,7 @@ func _test_on_the_range() -> void:
 		await physics_frame
 	var bomb: C4 = range_map.bomb
 	var player: PlayerSim = range_map.player
-	_check(bomb != null and bomb.state == C4.State.CARRIED and bomb.carrier == range_map.PLAYER_ID,
+	_check(bomb != null and bomb.state == C4.State.CARRIED and bomb.carrier == range_map.you_id(),
 		"on the range you carry the bomb")
 	_check(not range_map.bomb_view.visible, "and it is not drawn on the ground")
 
