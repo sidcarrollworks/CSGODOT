@@ -225,10 +225,17 @@ func _test_the_score_stays_with_the_team() -> void:
 	_check(a.hit_target.team == "CT", "and their hitboxes say so")
 	_check(game.score("CT") == 8 and game.score("T") == 4, "the 8 went with the team to CT: 8 to 4")
 	await physics_frame
+	# One set, whichever the new side's body wears: the game's capsules on its
+	# bones where the characters are extracted, the four stand-in boxes where
+	# they are not.
+	var worn := a.hit_target.hitboxes()
+	var in_tree := a.find_children("*", "Hitbox", true, false).size()
+	var one_set := a.hitboxes.hitboxes.size() if a.hitboxes != null and not a.hitboxes.hitboxes.is_empty() else 4
 	_check(
-		a.hit_target.hitboxes().size() == 4 and a.hit_target.get_child_count() == 4
-			and a.hit_target.hitboxes().all(func(box: Hitbox) -> bool: return box.collision_layer == Hitbox.LAYER),
-		"the old side's hitboxes are gone and the new side's are on, one set (%d)" % a.hit_target.get_child_count()
+		worn.size() == one_set and in_tree == one_set
+			and worn.all(func(box: Hitbox) -> bool: return box.collision_layer == Hitbox.LAYER),
+		"the old side's hitboxes are gone and the new side's are on, one set (%d worn, %d in the tree: %s)"
+			% [worn.size(), in_tree, a.hitbox_source()]
 	)
 	_check(a.weapon.data.display_name == "M4A1-S", "and the team now on CT has the M4A1-S")
 
