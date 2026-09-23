@@ -304,9 +304,12 @@ bursts for about 15 s, then pops for a few points of damage; no team damage
 from the pop (`ff_damage_decoy_explosion false`). Timing and burst lengths:
 **measure**, G5.
 
-**Built:** the map's grenade clip is imported and separated. The six grenades
-are extracted (G6), their numbers and clips' timings in
-`reference/weapons/equipment.md`; nothing throws them yet.
+**Built:** the six grenades are extracted (G6), their numbers and clips'
+timings in `reference/weapons/equipment.md`. All six are server-side
+systems on the shared contracts (`src/grenades/`), thrown on the range
+from your eyes; `reference/systems/grenades.md` says what each does, which
+numbers are guesses, and what the player, the bots and the importer need
+to wire them in. The importer still leaves the map's grenade clip out.
 
 **Remote**
 - The throw (three strengths, your velocity added, the release point) and a

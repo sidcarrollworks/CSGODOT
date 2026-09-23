@@ -390,17 +390,21 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
 
 ### Phase 6: grenades
 
-17. **Throwing.** *(Remote; Local measures)* Three throw strengths, your
-    velocity added, bounces off the hull and the grenade clip.
-18. **HE, flashbang, decoy.** *(Remote; Local measures and extracts the
-    particles; the grenades are extracted)*
-19. **Molotov and incendiary.** *(Remote; Local measures and extracts the
-    particles; the grenades are extracted)* Flames spreading over the
-    ground, put out by smoke.
-20. **Smoke.** *(Remote; Local measures and extracts the particles; the
-    grenade is extracted)* CS2's volumetric smoke: a voxel fill through the
-    map, HE and bullets opening holes, blocking sight for players and bots.
-    The biggest single item in the game.
+17. **Throwing.** *(done on the range, the grenades PR; the throw from the
+    hand waits on the inventory in `player_sim.gd`; Local measures, G1)*
+    Three throw strengths, your velocity added, bounces off the hull. The
+    grenade clip is still left out of the hull on import
+    (`reference/systems/grenades.md`, item 6).
+18. **HE, flashbang, decoy.** *(done on the range, the grenades PR; Local
+    measures G2, G3, G5 and extracts the particles)*
+19. **Molotov and incendiary.** *(done on the range, the grenades PR; Local
+    extracts the particles)* Flames spreading over the ground, put out by
+    smoke.
+20. **Smoke.** *(done on the range, the grenades PR; Local measures G4 and
+    extracts the particles)* CS2's volumetric smoke: a voxel fill through
+    the map, HE and bullets opening holes, blocking sight for players and
+    bots. Bots' sight asks it once `bot.gd` does
+    (`reference/systems/grenades.md`, item 4).
 
 ### Phase 7: knife and Zeus
 
