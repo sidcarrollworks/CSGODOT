@@ -39,22 +39,44 @@ func _init() -> void:
 		"CS2's fov 90 and viewmodel_fov 68 convert to 73.7 and 53.6 vertical"
 	)
 
-	# Which locomotion clip a movement gets, from the body's speed along its
-	# facing and to its right. No assets needed.
+	# The locomotion from CS2's own blend spaces (reference/animgraph/
+	# locomotion.json), which is in the repository. No assets needed.
 	_check(
-		PlayerModel.clip_for(250.0, 0.0, false, true) == &"run_n"
-			and PlayerModel.clip_for(0.0, 250.0, false, true) == &"run_e"
-			and PlayerModel.clip_for(-180.0, -180.0, false, true) == &"run_sw"
-			and PlayerModel.clip_for(0.0, -250.0, false, true) == &"run_w",
-		"running picks the compass clip for the way the body moves relative to its facing"
+		PlayerModel.body_speeds(Vector3(0, 0, -250), 0.0).is_equal_approx(Vector2(250, 0))
+			and PlayerModel.body_speeds(Vector3(250, 0, 0), 0.0).is_equal_approx(Vector2(0, -250))
+			and PlayerModel.body_speeds(Vector3(0, 0, 240), 180.0).is_equal_approx(Vector2(240, 0))
+			and PlayerModel.body_speeds(Vector3(-100, 0, 0), 180.0).is_equal_approx(Vector2(0, -100)),
+		"a velocity becomes CS2's two speeds: along where the body faces, and to its left"
 	)
+	var table := PlayerModel.read_locomotion()
+	var tree := PlayerModel.build_tree(table, PlayerModel.VARIATION)
+	var stand := tree.get_node(&"stand") as AnimationNodeBlendSpace2D if tree != null else null
+	var crouch := tree.get_node(&"crouch") as AnimationNodeBlendSpace2D if tree != null else null
+	var points := {}
+	if stand != null:
+		for i in stand.get_blend_point_count():
+			points[(stand.get_blend_point_node(i) as AnimationNodeAnimation).animation] = stand.get_blend_point_position(i)
 	_check(
-		PlayerModel.clip_for(130.0, 0.0, false, true) == &"walk_n"
-			and PlayerModel.clip_for(60.0, 60.0, true, true) == &"crouch_ne"
-			and PlayerModel.clip_for(0.0, 0.0, false, true) == &"idle"
-			and PlayerModel.clip_for(2.0, 0.0, true, true) == &"idle_crouch"
-			and PlayerModel.clip_for(250.0, 0.0, false, false) == &"inair_stand",
-		"walking, crouching, standing and being in the air each have their own"
+		stand != null and stand.get_blend_point_count() == 17 and stand.get_triangle_count() == 24
+			and points.get(&"idle", Vector2.ONE) == Vector2.ZERO and points.get(&"run_n", Vector2.ZERO) == Vector2(225, 0)
+			and points.get(&"walk_e", Vector2.ZERO) == Vector2(0, -136) and points.get(&"run_nw", Vector2.ZERO) == Vector2(159, 159)
+			and crouch != null and crouch.get_blend_point_count() == 9
+			and (tree.get_node(&"air_stand") as AnimationNodeBlendSpace2D).get_blend_point_count() == 5,
+		"the tree has CS2's blend spaces: the idle, runs at 225 and walks at 136 in its 24 triangles, the crouch's nine, the air's five"
+	)
+	var rings := {}
+	var lengths := {"run_n": 0.733, "run_ne": 0.733, "run_e": 0.733, "run_se": 0.733, "run_s": 0.733, "run_sw": 0.733, "run_w": 0.733, "run_nw": 0.733}
+	for clip in ["walk_n", "walk_ne", "walk_e", "walk_se", "walk_s", "walk_sw", "walk_w", "walk_nw"]:
+		lengths[clip] = 1.0
+	for clip in ["crouch_n", "crouch_ne", "crouch_e", "crouch_se", "crouch_s", "crouch_sw", "crouch_w", "crouch_nw"]:
+		lengths[clip] = 0.8
+	rings[&"stand"] = PlayerModel.cycle_rings(PlayerModel.find_space(table, "/Move/", &"idle", PlayerModel.VARIATION), PlayerModel.VARIATION, lengths)
+	rings[&"crouch"] = PlayerModel.cycle_rings(PlayerModel.find_space(table, "/Move/", &"idle_crouch", PlayerModel.VARIATION), PlayerModel.VARIATION, lengths)
+	_check(
+		is_equal_approx(PlayerModel.cycle_length(rings, 0.0, 0.0), 1.0) and is_equal_approx(PlayerModel.cycle_length(rings, 250.0, 0.0), 0.733)
+			and is_equal_approx(PlayerModel.cycle_length(rings, 180.0, 0.0), lerpf(1.0, 0.733, (180.0 - 135.0) / 90.0))
+			and is_equal_approx(PlayerModel.cycle_length(rings, 96.0, 1.0), 0.8),
+		"a stride lasts the idle's second standing, the walk's 1 s at 136, the run's 0.73 s from 225, between the two in between, the crouch's 0.8 s crouched (%s)" % [rings]
 	)
 
 	# The suffix a set's clips share, which comes off their names, and the
@@ -604,7 +626,7 @@ func _test_bullet_impacts() -> void:
 ## waits are on the clock and the animation, not the frame count.
 func _bot_step() -> bool:
 	var since := _frames - _bot_started_frame
-	var settled: bool = _bot.model != null and _bot.model.animation_player.current_animation == &"idle" \
+	var settled: bool = _bot.model != null and _bot.model.state() == &"idle" \
 		and not _bot.model.playing_one_shot()
 	match _bot_phase:
 		0:
@@ -795,7 +817,7 @@ func _test_bot_is_hit_where_aimed() -> void:
 	_check(
 		result.hitbox != null and result.hitbox.side == &"left"
 			and _bot.hit_target.last_hitbox == result.hitbox
-			and _bot.model.animation_player.current_animation == &"idle",
+			and _bot.model.state() == &"idle",
 		"the target remembers which capsule, on which side, and the body carries on standing"
 	)
 	# The hull is not what bullets hit: a shot at the hips passes the box and lands on a capsule.
@@ -825,7 +847,7 @@ func _test_bot_dies_where_shot() -> void:
 		"one round to the head kills through the helmet (%.0f), and it says where it landed" % result.damage
 	)
 	_check(
-		_bot.ragdoll != null and _bot.ragdoll.bodies.size() >= 10 and not _bot.model.animation_player.active
+		_bot.ragdoll != null and _bot.ragdoll.bodies.size() >= 10 and not _bot.model.is_animating()
 			and _bot.collision_layer == 0 and head.collision_layer == 0,
 		"dead, it goes limp: a body on each bone with a capsule (%d), the animation off, and neither its hull nor its hitboxes there to hit"
 			% (_bot.ragdoll.bodies.size() if _bot.ragdoll != null else 0)
@@ -839,10 +861,10 @@ func _test_bot_comes_back() -> void:
 		_bot.alive and _bot_events.has("respawned") and is_equal_approx(_bot.hit_target.health, 100.0)
 			and _bot.collision_layer == 2 and _bot.hitboxes.hitboxes[0].collision_layer == Hitbox.LAYER
 			and _bot.global_position.distance_to(Vector3(0, 0, -200)) < 2.0
-			and _bot.ragdoll == null and _bot.model.animation_player.active
-			and _bot.model.animation_player.current_animation == &"idle",
+			and _bot.ragdoll == null and _bot.model.is_animating()
+			and _bot.model.state() == &"idle",
 		"after its respawn time it is back at the start of its route, whole, standing, the ragdoll gone (%s)"
-			% [_bot.model.animation_player.current_animation]
+			% [_bot.model.state()]
 	)
 
 
@@ -897,8 +919,9 @@ func _test_player_composes_kick_and_bob() -> void:
 		player.view._process(1.0 / 60.0)
 		_check(
 			player.body_shadow != null and player.body_shadow.global_position.is_equal_approx(player.body_model.global_position)
-				and player.body_shadow.animation_player.current_animation == player.body_model.animation_player.current_animation,
-			"the twin stands where the body stands, playing the same clip"
+				and player.body_shadow.state() == player.body_model.state()
+				and player.body_shadow.animation_tree.get("parameters/stand/blend_position") == player.body_model.animation_tree.get("parameters/stand/blend_position"),
+			"the twin stands where the body stands, moving as it moves"
 		)
 
 	# Frame one captures the rest pose; then a kick from a real shot.
@@ -1118,18 +1141,63 @@ func _test_player_model() -> void:
 	)
 
 	# Facing +Z at yaw 180 (the game's forward is -Z at yaw 0), running forward.
-	model.update_motion(Vector3(0, 0, 240), 180.0, false, true)
+	var tree := model.animation_tree
+	var ankle := rig.find_bone("ankle_L")
+	model.update_motion(Vector3(0, 0, 240), 180.0, 0.0, true)
+	tree.advance(0.1)
+	var stride_start := (rig.global_transform * rig.get_bone_global_pose(ankle)).origin
+	tree.advance(0.2)
+	var stride := (rig.global_transform * rig.get_bone_global_pose(ankle)).origin.distance_to(stride_start)
 	_check(
-		animations.current_animation == &"run_n" and absf(animations.speed_scale - 0.96) < 0.01,
-		"running forward at 240 plays run_n at 0.96 of the clip's speed (%s at %.2f)" % [animations.current_animation, animations.speed_scale]
+		tree != null and tree.active and not animations.active and model.state() == &"move"
+			and (tree.get("parameters/stand/blend_position") as Vector2).is_equal_approx(Vector2(240, 0))
+			and is_zero_approx(float(tree.get("parameters/move/blend_amount")))
+			and is_equal_approx(float(tree.get("parameters/cycle/scale")), 1.0 / animations.get_animation(&"run_n").length)
+			and stride > 1.0,
+		"running forward at 240, the tree is at (240, 0) in CS2's standing space, a stride each run cycle, and the feet move (%s, %.2f, %.1f units)"
+			% [tree.get("parameters/stand/blend_position"), float(tree.get("parameters/cycle/scale")), stride]
 	)
-	model.update_motion(Vector3(-100, 0, 0), 180.0, false, true)
-	_check(animations.current_animation == &"walk_e", "sidestepping to the right at walking pace plays walk_e (%s)" % animations.current_animation)
+	model.update_motion(Vector3(0, 0, 180), 180.0, 0.0, true)
+	tree.advance(1.3)
+	var run_at := float(tree.get("parameters/stand/run_n/current_position"))
+	var walk_at := float(tree.get("parameters/stand/walk_n/current_position"))
+	_check(
+		absf(run_at - walk_at) < 0.001,
+		"between a walk and a run, the 0.73 s run and the 1 s walk stay at the same point of the stride, as CS2 syncs them (%.3f, %.3f)" % [run_at, walk_at]
+	)
+	model.update_motion(Vector3(-100, 0, 0), 180.0, 0.5, true)
+	_check(
+		(tree.get("parameters/stand/blend_position") as Vector2).is_equal_approx(Vector2(0, -100))
+			and (tree.get("parameters/crouch/blend_position") as Vector2).is_equal_approx(Vector2(0, -100))
+			and is_equal_approx(float(tree.get("parameters/move/blend_amount")), 0.5),
+		"sidestepping to the right half crouched, the standing and crouched spaces are both at (0, -100) and mixed half and half"
+	)
+	model.update_motion(Vector3(0, 0, 240), 180.0, 0.0, false)
+	model.pose_now()
+	_check(
+		model.state() == &"air" and tree.get("parameters/ground/current_state") == "air"
+			and is_equal_approx(((tree.tree_root as AnimationNodeBlendTree).get_node(&"ground") as AnimationNodeTransition).xfade_time, PlayerModel.TO_AIR),
+		"off the ground, it cross-fades to the air in CS2's 0.1 s"
+	)
+	model.play(&"death_chest_a", 0.05)
+	model.update_motion(Vector3(0, 0, 240), 180.0, 0.0, true)
+	model.pose_now()
+	_check(
+		model.state() == &"death_chest_a" and model.playing_one_shot() and tree.get("parameters/death/current_state") == "dead",
+		"a death blends in over the top and is held, whatever the body does after (%s)" % model.state()
+	)
+	model.play(model.idle)
+	model.pose_now()
+	_check(
+		not model.playing_one_shot() and tree.get("parameters/death/current_state") == "alive",
+		"and the idle ends it, as when the body gets up"
+	)
 
 	# The first-person body: the head and arms folded away, and staying so
 	# under the clips, which animate every bone's scale.
-	model.update_motion(Vector3.ZERO, 180.0, false, true)
+	model.update_motion(Vector3.ZERO, 180.0, 0.0, true)
 	model.fold_bones(PackedStringArray(["head_0", "arm_upper_L"]))
+	tree.advance(0.25)
 	var folded_head := rig.get_bone_pose_scale(rig.find_bone("head_0"))
 	var idle: Animation = animations.get_animation(&"idle")
 	var head_scale_tracks := 0
@@ -1141,7 +1209,7 @@ func _test_player_model() -> void:
 	_check(
 		folded_head.is_equal_approx(Vector3.ONE * RigModel.FOLDED)
 			and head_scale_tracks == 0 and head_tracks > 0
-			and animations.current_animation == &"idle" and animations.is_playing(),
+			and model.state() == &"idle" and model.is_animating(),
 		"folding a bone shrinks it to nothing and takes its scale track, and only that, out of the clips, which keep playing"
 	)
 	model.free()

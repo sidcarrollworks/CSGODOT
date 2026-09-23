@@ -182,8 +182,7 @@ func wear_body(weapon_model: String, drawn: bool) -> void:
 		# Posed now rather than at the next animation step, so the capsules
 		# start where the idle puts them and not on the bind pose, whose head
 		# stands seven units higher.
-		if model.animation_player != null:
-			model.animation_player.advance(0.0)
+		model.pose_now()
 		hitboxes = SkinnedHitboxes.new()
 		hitboxes.name = "Hitboxes"
 		add_child(hitboxes)
@@ -261,7 +260,7 @@ func seconds_to_respawn() -> float:
 func run_command(cmd: UserCmd, dt: float) -> void:
 	_run(cmd, dt)
 	if alive and model != null:
-		model.update_motion(velocity, yaw_degrees, is_ducked, on_ground)
+		model.update_motion(velocity, yaw_degrees, duck_progress, on_ground)
 
 
 func _run(cmd: UserCmd, dt: float) -> void:
@@ -484,7 +483,7 @@ func _fall() -> void:
 		ragdoll = null
 		return
 	# The animation would pose the bones over the bodies' every frame.
-	model.animation_player.active = false
+	model.set_animating(false)
 
 
 ## Up off the floor: the ragdoll gone and the model animated again.
@@ -494,7 +493,7 @@ func _get_up() -> void:
 		ragdoll = null
 		if model != null:
 			model.character_rig.reset_bone_poses()
-			model.animation_player.active = true
+			model.set_animating(true)
 	if model != null:
 		model.play(model.idle)
 

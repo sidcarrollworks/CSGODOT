@@ -262,8 +262,8 @@ func _test_bots_walk() -> void:
 			"bot %d has walked its route on the ground (%.0f units so far)" % [i + 1, moved]
 		)
 		_check(
-			bot.model != null and bot.model.animation_player.current_animation != &"",
-			"and is animated (%s)" % (bot.model.animation_player.current_animation if bot.model != null else "no model")
+			bot.model != null and bot.model.is_animating() and bot.model.state() != &"",
+			"and is animated (%s)" % (String(bot.model.state()) if bot.model != null else "no model")
 		)
 		var head_height: float = bot.hitboxes.hitboxes[0].global_position.y - bot.global_position.y \
 			if bot.hitboxes != null and not bot.hitboxes.hitboxes.is_empty() else 0.0
