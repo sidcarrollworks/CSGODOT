@@ -370,10 +370,13 @@ radar needs B3.
 ## 11. Bots that play CS
 
 **Today:** bots see and shoot the local player, walking straight lines.
-Everything below waits on the nav mesh (roadmap phase for bots).
+dust2's own nav mesh is read (`SourceNavMesh`, N1), so everything below can
+start.
 
 **Remote**
-- Paths on dust2's nav mesh, teams of bots fighting each other.
+- Paths on dust2's nav mesh (`SourceNavMesh.find_path`, pulled taut; crouch
+  where an area is marked crouch-only, jump where a link rises past a step),
+  teams of bots fighting each other.
 - Buying: an economy plan per round (full buy, force, eco, save), dropping
   for teammates.
 - The objective: carry and plant (T), rotate, retake and defuse (CT), save
@@ -382,7 +385,18 @@ Everything below waits on the nav mesh (roadmap phase for bots).
   plus reacting to being flashed and avoiding fire.
 
 **Local**
-- **N1.** Extract dust2's nav mesh (already on Sid's list).
+- **N1.** *(done 2026-09-22)* Extract dust2's nav mesh: `maps/de_dust2.nav`,
+  read by `SourceNavMesh` (`reference/asset-pipeline.md` has what is in it).
+- **N3.** Read the nav mesh's analysis, the last KV3 block in the file (246
+  KB of zstd, 2.3 MB unpacked). Its keys say what it holds per area: hiding
+  spots (`hidingspotdata`: `pos`, `flags`), spot encounters
+  (`spotencounterdata`: `from`, `fromdir`, `todir`, `order`), approach areas
+  (`approachdata`: `prev`, `here`, `next` and how each leads to the next) and
+  `earliestoccupytime` per team. That is what CS bots use to choose where to
+  hide, where to look on the way in, and when to expect the other side.
+  Needs a binary KV3 reader (Source 2 Viewer's `BinaryKV3.cs` is the
+  reference; Godot unpacks zstd itself); the layout is learned against
+  dust2's file, after which the reader can be tested on fixtures anywhere.
 - **N2.** Record grenade lineups for the bots' table (throw position, angle,
   button, where it lands), a few per site.
 

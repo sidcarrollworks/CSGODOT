@@ -113,7 +113,7 @@ Updated 2026-09-22: weapon numbers from Sid's spreadsheet and tapping (PR #23), 
 ### Tooling
 - `scripts/extract_assets.sh` (map, physics, weapons, characters, sounds and
   more), `inspect_assets`, and `run_tests.sh` with seven headless test files
-  (movement, map, dust2, model, weapon, range, simulation): 519 checks pass
+  (movement, map, dust2, model, weapon, range, simulation): 530 checks pass
   without the assets.
 
 ---
@@ -279,10 +279,17 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
 
 ### Phase 8: bots that play CS
 
-22. **Navigation (Sid first).** *(Local extracts, then Remote)* Bots walk
-    straight lines between spawn points. Extract dust2's nav mesh on Sid's
-    machine; it becomes the bots' path graph. Nothing else here can start
-    before that file exists.
+22. **Navigation.** *(Local: the mesh extracted and read 2026-09-22, its
+    analysis still to read; Remote next)* Bots walk straight lines between
+    spawn points. dust2's own nav mesh is extracted (`scripts/extract_assets.sh
+    nav`) and read (`SourceNavMesh`): 2,242 areas and their links, jumps and
+    drops marked, with `route` and `find_path` between any two points; the
+    dust2 checks walk both spawns to both sites on it, through no walls.
+    Remote: bots follow `find_path`, pulled taut (it runs through edge
+    middles), crouching where an area says so and jumping where a link rises
+    past a step. Still unread: the file's analysis of the mesh (hiding spots,
+    where the sides meet, how early each team reaches each area;
+    `reference/cs2-systems.md` N3).
 23. **Behaviour beyond "see and shoot".** *(Remote)* Cover, holding angles,
     counter-strafing, reacting to sound, flinching. The two difficulty knobs
     (reaction time and aim error) stay the honest way to set difficulty.
@@ -339,7 +346,6 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 
 | | What | Unblocks |
 |---|---|---|
-| Hands | Extract dust2's nav mesh | Phase 8 |
 | Hands | Spray a wall in CS2 from 496 units | Item 8 |
 | Hands | Measure jump height, crouch-jump reach, dead-strafe feel | Movement check |
 | Hands | Playtest the range dummy and ragdoll on current assets | Confirms PR #20 |
@@ -347,6 +353,8 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 | Hands | Play being shot on the test range (B, U, Y, J, T) and dust2: your capsules' fit, the tag, the flinch, the hit arcs (PR #27) | Items 1 to 4 |
 | Hands | Measure a tag's length and the flinch's size in CS2 | Item 4a |
 | Done | The every-gun extraction (weapons TODO L1 to L3), and reload, draw and zoom figures from the game's own data (L5) | Every gun: `reference/weapons/models.md`, `sounds.md`, `timings.md`, `vdata.md` |
+| Done | dust2's nav mesh, extracted and read (`SourceNavMesh`), checked against the hull, the spawns and the callouts | Phase 8 |
+| Hands | The systems' Local list for bots in `reference/cs2-systems.md`: read the nav mesh's analysis (N3), record grenade lineups (N2) | Phase 8 |
 | Decided | The game's own numbers win over the sheet's wherever the game has them (Sid, 2026-09-22), the Desert Eagle's jump inaccuracy included (46.75, not 378.30) | `WeaponVData`, every gun |
 | Hands | The systems' Local list in `reference/cs2-systems.md`: buy zones and bomb sites (B1), radar (B3), bomb (C1 to C3), grenades (G1 to G6), knife and Zeus (K1, K2), sounds (S1, S2) | Phases 4 to 7 |
 
@@ -372,4 +380,5 @@ buying, the bomb, grenades, the knife and Zeus, bots that play the round,
 multiplayer, and menus with a build. Every gun runs alongside all of it.
 The split is done (PR #24) and being shot is in apart from blood and the
 third-person firing layer (PR #27), so finishing the shooting model is
-next; the housekeeping can start today; phase 8 waits on the nav mesh.
+next; the housekeeping can start today; phase 8 can start, the nav mesh
+being read.
