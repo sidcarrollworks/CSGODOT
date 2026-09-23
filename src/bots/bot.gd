@@ -49,7 +49,6 @@ const AIM_ERROR_DEGREES := 1.2
 const FIRE_WITHIN_DEGREES := 6.0
 
 ## Its body falling, while it is dead; null otherwise.
-var ragdoll: Ragdoll
 
 ## Armed but not shooting: it sees nobody, so it stands or walks its route.
 ## The test range's shooter waits like this until it is told to fire.
@@ -233,8 +232,10 @@ func _on_shot_traced(_shot: Weapon.Shot, result: Hitscan.Result) -> void:
 	BulletImpacts.mark_in(get_tree(), result)
 	if weapon_sounds != null:
 		weapon_sounds.shot()
-	if model != null:
-		model.play(&"shoot", 0.03, 1.0, true)
+	# No firing animation on the body yet. CS2's third-person shoot clips are
+	# layers added over the pose; played whole they fold the body over, and
+	# a firing bot fell as if dead with every round. They come with the
+	# animation layers of roadmap item 6.
 
 
 func _on_reload_started() -> void:
@@ -242,40 +243,16 @@ func _on_reload_started() -> void:
 		model.play(&"reload", 0.1)
 
 
-## Dies where the last round landed: the body goes limp and falls, pushed
-## the way the round was going, and stays down; the hull and the hitboxes
-## go, and the route waits. Without the hitbox set to build a ragdoll from,
-## the model plays the game's death clip for where the round landed instead.
+## Dies where the last round landed: the body has gone limp and fallen
+## (PlayerSim._fall) and stays down; the hull and the hitboxes go, and the
+## route waits. Without the hitbox set to build a ragdoll from, the model
+## plays the game's death clip for where the round landed instead.
 func _on_killed(zone: StringName) -> void:
 	_deaths += 1
-	if model != null and not _ragdoll():
+	if model != null and ragdoll == null:
 		model.play(PlayerModel.death_for(zone, _deaths), 0.05)
 	collision_layer = 0
 	died.emit(zone)
-
-
-## Hands the skeleton to a ragdoll made from the hitbox capsules. False,
-## with nothing done, when there are none to make it from.
-func _ragdoll() -> bool:
-	if _capsules.is_empty() or model.character_rig == null:
-		return false
-	ragdoll = Ragdoll.new()
-	ragdoll.name = "Ragdoll"
-	add_child(ragdoll)
-	var forward := Vector3(-sin(deg_to_rad(yaw_degrees)), 0.0, -cos(deg_to_rad(yaw_degrees)))
-	var hit_bone := -1
-	if hit_target.last_hitbox != null:
-		hit_bone = hitboxes.bone_of(hit_target.last_hitbox)
-	if ragdoll.build(
-		model.character_rig, _capsules, MapImporter.SOURCE2_VIEWER_SCALE,
-		velocity, forward, hit_target.last_hit_direction, hit_bone
-	) == 0:
-		ragdoll.queue_free()
-		ragdoll = null
-		return false
-	# The animation would pose the bones over the bodies' every frame.
-	model.animation_player.active = false
-	return true
 
 
 ## Back at the start of the route, whole; without a route, where it fell.
@@ -294,12 +271,5 @@ func respawn() -> void:
 		_next = 1 % route.size()
 	velocity = Vector3.ZERO
 	_forget_hits()
-	if ragdoll != null:
-		ragdoll.queue_free()
-		ragdoll = null
-		if model != null:
-			model.character_rig.reset_bone_poses()
-			model.animation_player.active = true
-	if model != null:
-		model.play(model.idle)
+	_get_up()
 	respawned.emit()

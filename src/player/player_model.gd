@@ -16,8 +16,9 @@ extends RigModel
 
 const CLIPS_DIR := "res://assets/characters/animation/anims/world/rifle/_default_rifle"
 ## The deaths every weapon shares. (Its flinches are additive layers, not
-## poses; played whole they fold the body to nothing. They wait for an
-## animation tree to add them over the locomotion.)
+## poses; played whole they fold the body to nothing. So are the shoot_
+## clips beside the locomotion ones. Both wait for an animation tree to add
+## them over the locomotion, roadmap item 6.)
 const SHARED_DIR := "res://assets/characters/animation/anims/world/shared"
 const AGENTS := ViewModel.AGENTS
 
@@ -36,10 +37,10 @@ const BLEND := 0.15
 ## Builds the body and weapon. Returns false, with nothing built, when the
 ## models or clips have not been extracted.
 func setup(team: String, weapon_model: String) -> bool:
-	one_shots = PackedStringArray(["jump", "shoot", "draw", "reload", "death"])
+	one_shots = PackedStringArray(["jump", "draw", "reload", "death"])
 	held = PackedStringArray(["death"])
 	var clips := list_clips(CLIPS_DIR, PackedStringArray([
-		"idle_", "run_", "walk_", "crouch_", "inair_", "jump_stand", "shoot_",
+		"idle_", "run_", "walk_", "crouch_", "inair_", "jump_stand",
 	]))
 	clips.append_array(list_clips(SHARED_DIR, PackedStringArray(["death_"])))
 	if not load_clips(clips, "rifle"):

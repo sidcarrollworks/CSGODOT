@@ -526,7 +526,12 @@ func _start_combat() -> void:
 	_victim.respawn_seconds = 0.3
 	_bot_world.add_child(_victim)
 	_victim.place(Vector3(0, 0, 0), 180.0)
-	_victim.died.connect(func() -> void: _victim_events.append("died"))
+	_victim.died.connect(func() -> void:
+		_victim_events.append("died")
+		# Its body limp and on the floor, and shown to its own camera now.
+		var mesh := _victim.model.find_children("*", "MeshInstance3D", true, false)[0] as MeshInstance3D if _victim.model != null else null
+		if _victim.ragdoll != null and _victim.ragdoll.bodies.size() >= 10 and mesh != null and (mesh.layers & _victim.camera.cull_mask) != 0:
+			_victim_events.append("ragdoll"))
 	_victim.respawned.connect(func() -> void:
 		# Its state the instant it is back, before the bot's next burst.
 		_victim_events.append("respawned")
@@ -540,6 +545,11 @@ func _start_combat() -> void:
 		_bot.weapon != null and _bot.weapon_sounds != null and _bot.weapon_sounds.spatial
 			and _bot.can_see(_victim) and _victim.hit_target != null and _victim.hit_target.hitboxes().size() > 0,
 		"the bot has a weapon that sounds from where it stands, sees the player in front of it, and the player can be hit"
+	)
+	_check(
+		_bot.model != null and not _bot.model.animation_player.has_animation(&"shoot")
+			and (_bot.weapon_sounds.get_child(0) as Node3D).global_position.distance_to(_bot.global_position) < 1.0,
+		"its body has no whole-body firing clip to fold over with, and its shots sound from the bot itself"
 	)
 	# The player wears the capsules the bot does, on a body their own camera
 	# does not see: the view draws its own.
@@ -575,6 +585,10 @@ func _test_victim_dies_and_returns() -> void:
 	_check(
 		_victim_events.has("died"),
 		"the player dies to the bot's fire"
+	)
+	_check(
+		_victim_events.has("ragdoll") and _victim.ragdoll == null,
+		"its body falls limp as a ragdoll its own camera sees, and gets up with it"
 	)
 	var back := _victim_at_respawn
 	_check(
