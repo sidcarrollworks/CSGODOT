@@ -278,8 +278,9 @@ func _undo_refusal(userid: int, item_class: String) -> StringName:
 	return OK if inv.count(item_class) > 0 else NOTHING_TO_UNDO
 
 
-## Undoing a purchase: the item comes out of the inventory and its price back
-## into the account. A gun it replaced stays where it was dropped.
+## Undoing a purchase: the item comes out of the inventory, its price back
+## into the account, and item_remove says so. A gun it replaced stays where
+## it was dropped.
 func _undo(userid: int, item_class: String) -> void:
 	if _undo_refusal(userid, item_class) != OK:
 		return
@@ -301,6 +302,7 @@ func _undo(userid: int, item_class: String) -> void:
 	_accounts[userid] = mini(money(userid) + int(record["price"]), rules.max_money)
 	var type := ItemRegistry.item(item_class).type
 	_type_counts[userid][type] = maxi(_type_count(userid, type) - 1, 0)
+	game.events.send(&"item_remove", {"userid": userid, "item": item_class})
 
 
 func _last_purchase(userid: int, item_class: String) -> int:
