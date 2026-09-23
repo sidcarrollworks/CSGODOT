@@ -470,9 +470,11 @@ None of these are changed by the contract threads; this branch changes
 
 - The bomb (22:36): its events are in the schema as it gave them, plus
   CS2's `entindex` on `bomb_dropped`. The explosion deals one `DamageInfo`
-  per player in reach (attacker the planter, inflictor `"planted_c4"`,
-  weapon `"weapon_c4"`, `DMG_BLAST`, no zone, origin the bomb, armour as a
-  grenade's, no team scaling). `weapon_c4` and `item_defuser` are items;
+  per player in reach (no attacker, `GameEvents.NOBODY` -1, so the kill
+  feed shows the C4 and the victim and the planter gets no kill or award;
+  inflictor `"planted_c4"`, weapon `"weapon_c4"`, `DMG_BLAST`, no zone,
+  origin the bomb, armour as a grenade's, no team scaling). No attacker is
+  from playing CS2, not measured; roadmap item C1 can confirm it. `weapon_c4` and `item_defuser` are items;
   "carries the C4", "has a kit" and "C4 in hand" are `inv.has("weapon_c4")`,
   `inv.has_defuser` and `inv.in_hand_class() == "weapon_c4"`.
 
