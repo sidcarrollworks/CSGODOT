@@ -4,10 +4,22 @@
 March 2026, "Simple" tab), which Sid supplied on 2026-09-22. It has one row per
 weapon and one per mode (scoped, burst, silencer on or off, the R8's fan fire),
 45 in all, with the values copied verbatim. `src/weapons/weapon_sheet.gd`
-reads it, and every number the firing model uses comes from it.
+reads it.
 
-CS2's own tuning lives in `scripts/weapons.vdata_c`, which does not decode into
-usable values (see `reference/weapon_stats.md`), so this sheet stands in for it.
+**Since 2026-09-22 the game's own file wins.** Sid: "If we can get any of
+those numbers from the game files we should use those. The spreadsheet was
+human inputted and could have errors." Every number the firing model uses now
+comes from CS2's `scripts/weapons.vdata`, through `WeaponVData` and the
+committed `vdata.csv`, and the sheet is read first only for the two figures
+the game stores as something else: the landing penalty and the ladder. The
+tests check the two against each other for every gun and mode; they agree
+but for the Desert Eagle's jump and the SG 553's scoped firing inaccuracy,
+where the weapon takes the game's.
+
+CS2's own tuning lives in `scripts/weapons.vdata_c`. It was taken not to decode
+into usable values, so this sheet stood in for it; Source 2 Viewer 20.0 decodes
+it (2026-09-22), and `vdata.md` beside this has what the sheet leaves out and a
+check of every value the two share: 914 agree. See "Found beside the sheet".
 
 ## Why it can be trusted
 
@@ -133,10 +145,25 @@ their own terms on top of standing. So:
 
 ## Found beside the sheet
 
-CS2's decompiled `scripts/weapons.vdata` is public in SteamDatabase's
-GameTracking-CS2 repository (game-file dumps, not leaked source). It carries
-what the sheet leaves out, among them a second, slower recovery time that
-takes over after the first few rounds of a spray (AK: 0.506 standing, 0.420
-crouched, from round 2 to 5) and spread apart from inaccuracy. Not used yet:
-the sheet is the source, and this is the place to look first if a number is
-ever in doubt.
+CS2's own `scripts/weapons.vdata` decodes with Source 2 Viewer 20.0, straight
+out of the game on Sid's machine (`scripts/extract_assets.sh weapon-data`;
+SteamDatabase's GameTracking-CS2 repository publishes the same file
+decompiled). `vdata.md` and `vdata.csv` are written from it for the build
+extracted. It carries what the sheet leaves out: a second, slower recovery
+time that takes over after the first few rounds of a spray (AK: 0.506
+standing, 0.420 crouched, from round 2 to 5), spread apart from inaccuracy,
+the scopes' zoom levels and times, the deploy time, how soon a reload lets
+the gun fire again, the muzzle's position, the tracers, the burst timing,
+and Random recoil's angle and size (R6). Not used by the firing model yet:
+the sheet is still the source for what it has.
+
+Checked against the sheet, 914 values agree. Of the six that do not, five
+are scoped rows where the sheet says "-" (as unscoped) and the game gives
+scoped play its own figure: the AWP's and SSG 08's scoped recoil (25 against
+78 and 33) and the SG 553's scoped firing inaccuracy. The sixth is a real
+difference for Sid: the Desert Eagle's inaccuracy at the jump's apex, 378.30
+in the sheet (18 March 2026) and 46.75 in the game (1.41.8.1, 9 September
+2026). The sheet's running and jump figures are its own sums of the game's
+terms (standing + spread + the movement's), and its ladder and landing
+figures composites of another kind, which is why the raw fields look
+different where they are not.

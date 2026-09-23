@@ -173,6 +173,11 @@ func wear_body(weapon_model: String, drawn: bool) -> void:
 			(mesh as MeshInstance3D).layers = UNSEEN_LAYER
 			(mesh as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	if model != null:
+		# Posed now rather than at the next animation step, so the capsules
+		# start where the idle puts them and not on the bind pose, whose head
+		# stands seven units higher.
+		if model.animation_player != null:
+			model.animation_player.advance(0.0)
 		hitboxes = SkinnedHitboxes.new()
 		hitboxes.name = "Hitboxes"
 		add_child(hitboxes)

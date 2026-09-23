@@ -3,16 +3,18 @@ extends RefCounted
 
 ## The two weapons the project starts with.
 ##
-## Every number the firing model uses comes from the CS2 Weapon Spreadsheet,
-## read through WeaponSheet: damage, armour, falloff, fire rate, magazine and
-## reserve, speed, inaccuracy and recovery. What the sheet does not carry is
-## set here:
+## Every number the firing model uses comes from the game's own tuning,
+## scripts/weapons.vdata_c, read through WeaponVData: damage, armour, falloff,
+## fire rate, magazine and reserve, speed, inaccuracy and recovery, and when a
+## reload lets the gun fire again. The CS2 Weapon Spreadsheet (WeaponSheet) is
+## read first and stays only for the landing and ladder figures, which the
+## game stores as something else; everything else it has, the game overrides,
+## because the sheet was typed in by hand. What neither carries is set here:
 ##
 ## - the spray patterns, read off CS2 spray plots Sid supplied on 2026-09-21;
 ## - how long the weapon model's recoil takes to settle, from his
 ##   frame-by-frame capture of CS2 on 2026-09-22;
-## - the stomach and leg multipliers, x1.25 and x0.75 as on every rifle in CS;
-## - reload times, still community figures.
+## - the stomach and leg multipliers, x1.25 and x0.75 as on every rifle in CS.
 
 
 ## The sheet's inaccuracy in the cone's degrees. See WeaponSheet.cone_degrees.
@@ -27,12 +29,13 @@ static func ak47() -> WeaponData:
 	data.clip_set = "rifle_ak"
 
 	# 36 to an unarmoured chest, x4 head, 77.5% through armour, 2% lost every
-	# 500 units, 600 RPM, 30 and 90, 215 u/s.
+	# 500 units, 600 RPM, 30 and 90, 215 u/s, firing again 2.467 s into a
+	# reload.
 	WeaponSheet.apply(data, "AK-47")
+	WeaponVData.apply(data, "weapon_ak47")
 	data.chest_multiplier = 1.0
 	data.stomach_multiplier = 1.25
 	data.leg_multiplier = 0.75
-	data.reload_time = 2.5
 
 	data.recoil_pattern = RecoilPattern.load_pattern("ak47")
 
@@ -56,10 +59,11 @@ static func m4a1s() -> WeaponData:
 	# 25 dots, most likely from CS:GO before the magazine was cut to 20; the
 	# pattern file keeps them and the gun fires the first 20.
 	WeaponSheet.apply(data, "M4A1-S (no silencer)", "M4A1-S (silencer)")
+	# The game's second values are the silenced ones.
+	WeaponVData.apply(data, "weapon_m4a1_silencer", true)
 	data.chest_multiplier = 1.0
 	data.stomach_multiplier = 1.25
 	data.leg_multiplier = 0.75
-	data.reload_time = 3.1
 
 	data.recoil_pattern = RecoilPattern.load_pattern("m4a1s")
 

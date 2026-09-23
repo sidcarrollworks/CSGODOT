@@ -91,24 +91,24 @@ land anywhere in the cone. It applies to every gun:
 
 Roughly in order; L1 to L3 can start at once.
 
-- [ ] **L1. Extract every weapon model.** Widen `list_weapons` and
+- [x] **L1. Extract every weapon model.** *(done 2026-09-22: 78 models, the 34 guns, their magazines and the shell casings; `reference/weapons/models.md`)* Widen `list_weapons` and
   `extract_weapons` in `scripts/extract_assets.sh` from `(ak47|m4a1)` to all
   34, still anchored to `^weapons/models/` so keychain charms stay out. Keep
   the glTF, materials and animations flags the rifles use. Print the list the
   filter found, and write the class-to-model-path table it discovers to
   `reference/weapons/models.md` so the remote side can use the names.
-- [ ] **L2. Extract the animation sets per weapon class.** First person:
+- [x] **L2. Extract the animation sets per weapon class.** *(done 2026-09-22: 630 clips and skeletons, every gun's first- and third-person set, the pistols' locomotion; every gun builds in first person, checked by `run_model_checks.gd`)* First person:
   `animation/anims/viewmodel/<class>/...` for pistol, SMG, shotgun, rifle,
   sniper and machine gun sets, with the skeletons, the way the rifle sets are
   fetched today. Third person: the matching `anims/world/<class>` locomotion,
   shoot, reload and draw clips. Record which clip set each weapon uses.
-- [ ] **L3. Extract every weapon's sounds.** Fire, distant fire, the reload's
+- [x] **L3. Extract every weapon's sounds.** *(done 2026-09-22: every gun's folder, 743 sounds with the rest; `reference/weapons/sounds.md`)* Fire, distant fire, the reload's
   parts, draw, and for the modes: silencer on and off, zoom in and out, burst.
   Widen `SOUND_FILTER`; list the files per weapon in
   `reference/weapons/sounds.md` so `WeaponSounds` can be filled in remotely.
-- [ ] **L4. Scope overlays.** The scope textures and the zoom sounds for the
+- [x] **L4. Scope overlays.** *(done 2026-09-22: `scripts/extract_assets.sh hud` fetches the overlay, three images the game composes in code, and every equipment icon; the zoom sounds came with L3; `models.md` lists both)* The scope textures and the zoom sounds for the
   AWP, SSG 08, G3SG1, SCAR-20, AUG and SG 553.
-- [ ] **L5. Measure what the sheet does not have**, in CS2, per weapon, into
+- [x] **L5. Measure what the sheet does not have** *(done 2026-09-22 from the game's own data rather than by hand: `timings.md` and `timings.csv` have every gun's draw, reload to rounds in and to ready, shotgun shell loop, silencer switch and sound timing, from the clips; `vdata.md` has the zoom levels, FOVs and zoom times, the deploy times and how soon a reload lets the gun fire, from `scripts/weapons.vdata`, which Source 2 Viewer 20.0 decodes)*, in CS2, per weapon, into
   `reference/weapons/measured.csv`:
   reload time (to rounds in, and to ready), draw time, and for the snipers the
   zoom levels (FOV per level) and time to scope in. Frame-by-frame, the way
@@ -120,7 +120,7 @@ Roughly in order; L1 to L3 can start at once.
   M249, Negev, G3SG1, SCAR-20. Re-take the M4A1-S at 20 rounds while there;
   its plot has 25 (CS:GO's old magazine), and a 496-unit AK spray retires
   `recoil_scale` for both rifles.
-- [ ] **L7. Fit each model.** Viewmodel offset per weapon at CS2's
+- [ ] **L7. Fit each model.** *(partly answered 2026-09-22: in first person the clips place every gun themselves, with no offset of CS2's own to add, and all 34 render held and posed at `viewmodel_fov`; in third person all 34 sit in the hand on the `wpn` bone, but pistols are held rifle-style until the player model walks the pistols' own locomotion, now extracted (`world/pistol/_default_pistol`); the muzzle point is `m_vecMuzzlePos0` in `vdata.md`. Left for Sid: judging each on screen in play)* Viewmodel offset per weapon at CS2's
   `viewmodel_fov`, the weapon in the third-person hand, the muzzle point for
   effects. Needs the models on screen.
 - [ ] **L8. Playtest each weapon at the range** against the sheet: fatal
@@ -129,7 +129,7 @@ Roughly in order; L1 to L3 can start at once.
 
 ## Remote (a project thread)
 
-- [ ] **R1. A weapon registry off the sheet.** One entry per class above:
+- [ ] **R1. A weapon registry off the sheet.** *(2026-09-22: numbers now come from the game, not the sheet: `WeaponVData.apply(data, class, alternate)` puts any of the 34 guns' figures on a `WeaponData` from the committed `vdata.csv`; read the sheet first only for landing and ladder, as `WeaponLibrary` does. The files are in `models.md`, `sounds.md`, `timings.csv`.)* One entry per class above:
   sheet row and mode rows, model path, clip set, sound set, slot
   (pistol/primary), pattern file, reload and draw time, all read from files
   (`cs2_weapon_sheet.csv`, and `models.md`, `sounds.md`, `measured.csv` as
@@ -165,7 +165,7 @@ Roughly in order; L1 to L3 can start at once.
   Penetration is not.
 - [ ] **R12. HUD per weapon.** Ammo and reserve, the mode, the weapon's icon
   once extracted.
-- [ ] **R13. Cross-check the sheet against CS2's own weapons.vdata**, which
+- [ ] **R13. Cross-check the sheet against CS2's own weapons.vdata** *(the check is done, locally, 2026-09-22: `vdata.md` has it, 914 values agree, and the one real difference, the Desert Eagle's jump inaccuracy, is flagged to Sid; what is left is bringing the fields in)*, which
   SteamDatabase's GameTracking-CS2 repository publishes decompiled. Bring in
   what the sheet lacks: the slower recovery after the first rounds of a
   spray (`_final` recovery times and the rounds they blend over) and spread

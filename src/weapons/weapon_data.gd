@@ -121,7 +121,7 @@ class Punch:
 ## Seconds between shots. 600 RPM is 0.1.
 @export var cycle_time: float = 0.1
 
-## Whether holding the trigger keeps firing (the sheet's "hold to shoot").
+## Whether holding the trigger keeps firing (the game's m_bIsFullAuto, the sheet's "hold to shoot").
 ## Both rifles are; most pistols are not.
 @export var automatic: bool = true
 
@@ -348,7 +348,7 @@ class Punch:
 @export var inaccuracy_landing: float = 1.93
 
 ## How long the accuracy penalty takes to fall to a tenth, standing and
-## crouched, in seconds: the weapon sheet's recovery times, which are how CS
+## crouched, in seconds: the game's recovery times (as the sheet has them), which are how CS
 ## defines them.
 ##
 ## This is deliberately separate from recoil_animation_time, and longer for

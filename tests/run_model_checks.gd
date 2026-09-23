@@ -145,6 +145,7 @@ func _init() -> void:
 	var data := WeaponLibrary.ak47()
 	_check(_view_model.setup("T", data.model_path, data.clip_set), "the view model builds for the AK-47 and a T")
 	ViewModelProjection.claim(_view_model)
+	_test_every_gun_builds()
 
 	_player_model = PlayerModel.new()
 	root.add_child(_player_model)
@@ -804,6 +805,44 @@ func _test_player_composes_kick_and_bob() -> void:
 
 
 ## The bob and sway need no assets: a clock, a speed and a look.
+## Every gun in reference/weapons/models.md builds into the first-person view
+## model from what the extraction wrote: the model on its own clip set (a
+## pistol's under pistol/), a draw, a reload, a firing clip and an idle to
+## rest on, the gun on its own rig, and nothing but the gun and the arms (the
+## Dual Berettas' thigh holster is third-person only).
+func _test_every_gun_builds() -> void:
+	var guns: Array = (load("res://scripts/weapon_tables.gd") as GDScript).get_script_constant_map()["GUNS"]
+	var built := 0
+	var failures := PackedStringArray()
+	for gun in guns:
+		var dir := "res://assets/weapons/weapons/models".path_join(gun[2])
+		var model := ""
+		for file in DirAccess.get_files_at(dir):
+			var stem := file.get_basename()
+			if file.get_extension() == "gltf" and stem.begins_with("weapon_") and not stem.ends_with("_mag") and not stem.ends_with("_physics"):
+				model = dir.path_join(file)
+		if model.is_empty():
+			continue
+		var view_model := ViewModel.new()
+		root.add_child(view_model)
+		var ok := view_model.setup("T", model, gun[3])
+		var clips := view_model.animation_player.get_animation_list() if view_model.animation_player != null else PackedStringArray()
+		var fires := view_model.shoot_clips.size() > 0 or clips.has(&"shoot_right1")
+		var holstered := not view_model.find_children("*eholster", "MeshInstance3D", true, false).is_empty()
+		if not ok or view_model.weapon_rig == null or not clips.has(&"draw") or not clips.has(&"reload") \
+				or not fires or not clips.has(view_model.idle) or holstered:
+			failures.append("%s (%s: %s)" % [gun[0], gun[3], ", ".join(clips)])
+		built += 1
+		view_model.free()
+	if built == 0:
+		print("no guns extracted; skipping the every-gun build (scripts/extract_assets.sh weapons)")
+		return
+	_check(
+		built == guns.size() and failures.is_empty(),
+		"every gun builds in first person on its own clips, %d of %d (%s)" % [built - failures.size(), guns.size(), "; ".join(failures)]
+	)
+
+
 func _test_view_model_motion() -> void:
 	_check(
 		ViewModelMotion.bob_at(0.37, 0.0) == Vector2.ZERO

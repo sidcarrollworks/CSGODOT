@@ -338,12 +338,14 @@ func _add_number(at: Vector3, amount: float, zone: StringName) -> void:
 # --- Being shot ------------------------------------------------------------
 
 ## The shooter's choices: both rifles, and an MP9 for an SMG's tag. The MP9
-## is every number of its row in the weapon sheet (damage, rate, 100%
-## tagging) on the AK-47's spray, since its own pattern has not been
-## measured, in the AK-47's model.
+## is every number the game has for it (damage, rate, 100% tagging, its
+## reload), with the sheet's landing and ladder as the rifles have, on the
+## AK-47's spray, since its own pattern has not been measured, in the
+## AK-47's model.
 static func shooter_weapons() -> Array[WeaponData]:
 	var mp9 := WeaponLibrary.ak47()
 	WeaponSheet.apply(mp9, "MP9")
+	WeaponVData.apply(mp9, "weapon_mp9")
 	mp9.display_name = "MP9"
 	return [WeaponLibrary.ak47(), WeaponLibrary.m4a1s(), mp9]
 

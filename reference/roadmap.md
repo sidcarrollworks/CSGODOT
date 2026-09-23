@@ -140,9 +140,11 @@ This was the unfinished half of hit registration. Items 1 to 4 are in (PR
    1 minus the weapon's tagging power of their top speed (40% after an AK-47
    round, a stop after an SMG's), two CS2 ticks after it lands
    (`sv_predictable_damage_tag_ticks`), and friction brings them down to
-   it. The sheet's tagging power is CS2's `m_flFlinchVelocityModifierLarge`
-   taken from one. Still estimated: the speed comes back at CS:GO's 0.4 a
-   second, and weapons.vdata's `...Small` figure is not used (**measure**,
+   it. The tagging power is CS2's `m_flFlinchVelocityModifierLarge` taken
+   from one, read from the game's own file through `WeaponVData` (the sheet
+   agrees for every gun). Still estimated: the speed comes back at CS:GO's
+   0.4 a second, and weapons.vdata's `...Small` figure, in
+   `reference/weapons/vdata.csv` for every gun, is not used (**measure**,
    below).
 3. **Aim punch when hit.** *(done, PR #27; Sid checks the size)* A hit pushes the
    aim up about 2 degrees unarmoured and half a degree through kevlar or a
@@ -203,8 +205,10 @@ Sid widened the scope to every gun in the sheet.
 Sid's machine (extracting models, animations and sounds, measuring reloads,
 spray patterns, fitting, playtests) and what a cloud thread can do (a weapon
 registry off the sheet, semi-auto, modes, scopes, shotguns, slots, buy menu,
-tracers). Extraction can start on Sid's machine at once; the registry can
-start in a thread at once.
+tracers). The extraction is done (L1 to L5, 2026-09-22): every gun's model,
+animations and sounds, and the game's own tuning and timings in
+`reference/weapons/`. The registry can start in a thread at once, taking its
+numbers from `WeaponVData`.
 
 ### Every CS2 system (new, 2026-09-22 21:40)
 
@@ -342,7 +346,8 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 | Hands | Check that first shots at a run now miss (PR #24) | Item 9 |
 | Hands | Play being shot on the test range (B, U, Y, J, T) and dust2: your capsules' fit, the tag, the flinch, the hit arcs (PR #27) | Items 1 to 4 |
 | Hands | Measure a tag's length and the flinch's size in CS2 | Item 4a |
-| Hands | Start the every-gun extraction (weapons TODO L1 to L3) | Every gun |
+| Done | The every-gun extraction (weapons TODO L1 to L3), and reload, draw and zoom figures from the game's own data (L5) | Every gun: `reference/weapons/models.md`, `sounds.md`, `timings.md`, `vdata.md` |
+| Decided | The game's own numbers win over the sheet's wherever the game has them (Sid, 2026-09-22), the Desert Eagle's jump inaccuracy included (46.75, not 378.30) | `WeaponVData`, every gun |
 | Hands | The systems' Local list in `reference/cs2-systems.md`: buy zones and bomb sites (B1), radar (B3), bomb (C1 to C3), grenades (G1 to G6), knife and Zeus (K1, K2), sounds (S1, S2) | Phases 4 to 7 |
 
 ---

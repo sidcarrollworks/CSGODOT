@@ -132,7 +132,7 @@ Each hit tags you (the readout in the bottom left gives the share of your
 top speed you have left and how fast you are going, so run while it fires),
 throws your aim (the flinch, in degrees), and puts a red arc round the
 crosshair on its side. U swaps its weapon: the rifles tag to 40%, the MP9
-(its row of the weapon sheet on the AK-47's spray, which is not measured
+(the game's own numbers for it on the AK-47's spray, which is not measured
 for it) stops you. Y takes your armour off a piece at a time, for the
 flinch with and without it; J keeps you alive for as long as you want to be
 shot. T opens a window in the bottom right on your own body and hitboxes,
@@ -204,8 +204,8 @@ somewhere it can be found:
 ```sh
 scripts/extract_assets.sh list-map     # see what is inside the dust2 VPK
 scripts/extract_assets.sh map          # extract it, then import it into Godot
-scripts/extract_assets.sh weapons      # the AK-47 and M4A1-S models
-scripts/extract_assets.sh sounds       # their sounds, footsteps by surface, hits
+scripts/extract_assets.sh weapons      # every gun: models and animations
+scripts/extract_assets.sh sounds       # every gun's sounds, footsteps by surface, hits
 ```
 
 `map` takes a few minutes and a little under two gigabytes. It pulls seven
@@ -370,7 +370,7 @@ appear when the editor loads a script. They do not show up in a headless run,
 so if the Godot console shows any, paste them over and they will get fixed.
 
 Seven files: movement, map import, dust2, models, weapons, the test range
-and the simulation. Without the extracted assets 516 checks run and pass;
+and the simulation. Without the extracted assets 519 checks run and pass;
 the dust2 and model files skip what needs files that have not been
 extracted.
 

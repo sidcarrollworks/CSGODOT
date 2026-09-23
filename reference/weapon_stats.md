@@ -3,9 +3,10 @@
 Every number in `src/weapons/weapon_library.gd`, where it came from, and
 whether it has been checked against CS2.
 
-CS2 keeps its weapon tuning in `scripts/weapons.vdata_c`, which Source 2
-Viewer does not decode into usable values, so none of this can be extracted
-the way the map and the models were.
+CS2 keeps its weapon tuning in `scripts/weapons.vdata_c`. Older Source 2
+Viewers did not decode it into usable values, which is why the numbers below
+came from elsewhere; version 20.0 does (2026-09-22), and
+`reference/weapons/vdata.md` has it, checked against the sheet.
 
 Since 2026-09-22 every number the sheet has comes from the **CS2 Weapon
 Spreadsheet** (last weapon update 18 March 2026), which Sid supplied:
