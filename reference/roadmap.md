@@ -540,7 +540,7 @@ before the bomb and grenades.
 
 What a thread can start now: the inventory and economy (items 12 and 13),
 on the match (item 11, done); from the weapons todo, the
-registry of all 34 guns (R1), semi-automatic fire (R2), tracers (R10) and
+registry of all 34 guns (R1), tracers (R10) and
 the game's recovery fields (R13), with shotguns (R5) after it; the
 third-person firing layer (item 6), then the shadow's arms (6a); and the
 housekeeping.

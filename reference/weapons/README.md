@@ -60,7 +60,7 @@ takes.
 | Mobility | Top running speed holding it, u/s | `max_player_speed` |
 | Tagging Power | How much of a victim's speed a hit takes | `tagging_power`, tags the victim in `PlayerSim` (1 minus CS2's `m_flFlinchVelocityModifierLarge`) |
 | Bullet Range | Where a round stops: 8,192 rifles and snipers, 3,600 or 3,700 SMGs, 4,096 pistols, 1,400 or 3,000 shotguns | `max_range` |
-| Hold to Shoot | Automatic or not | `automatic`, not used yet |
+| Hold to Shoot | Automatic or not | `automatic`: a semi-automatic gun fires once a click (`Weapon.can_fire`) |
 | Tracers | Every round, every third, or none (silenced) | Not yet: no tracers |
 | Accurate Range Stand / Crouch | Where the cone is six inches wide, in metres | Checked, not stored |
 | Standing / Crouching Inaccuracy | The cone standing still, crouched still | `inaccuracy_standing`, `_crouching` |
@@ -113,8 +113,8 @@ their own terms on top of standing. So:
   is 2.20. Snipers need a scope state before they mean anything.
 - **Semi-automatic weapons** ("Hold to Shoot: No") fire once a click: every
   pistol but the CZ75 and R8, the pump shotguns (Mag-7, Nova, Sawed-Off),
-  the AWP and SSG 08, and the burst modes. The controller fires as long as
-  the button is held today, so this needs wiring before any of them.
+  the AWP and SSG 08, and the burst modes. `Weapon` fires one of them once
+  until the trigger comes up or a fresh press is reported (weapons TODO R2).
 - **Shotguns fire pellets** (Bullets 6 to 9), each doing the listed damage,
   with range cut to 1,400 or 3,000. The XM1014's 20 a pellet at x4 is 80, so
   it has no fatal headshot range.

@@ -139,8 +139,19 @@ Roughly in order; L1 to L3 can start at once.
   every row and checks it against the sheet, and that its first round at a
   run lands anywhere in its running cone. Missing assets fall back to no
   model, as now.
-- [ ] **R2. Semi-automatic fire.** "Hold to Shoot: No" fires once a click
-  (`WeaponData.automatic` is already read).
+- [x] **R2. Semi-automatic fire.** *(done 2026-09-23: `Weapon.can_fire`
+  holds a gun the game calls semi-automatic, `m_bIsFullAuto` false, to one
+  round until the trigger comes up or `Weapon.press_trigger()` reports a
+  fresh press; checked in `run_weapon_tests.gd` and, through commands, in
+  `run_sim_checks.gd`. Thirteen guns: every pistol but the CZ75-Auto and the
+  R8, the Nova, Mag-7 and Sawed-Off, the AWP and the SSG 08. Left to wire,
+  in `player_sim.gd` while the GameWorld owns it: a call to
+  `weapon.press_trigger()` for each press in `_update_weapon`, without which
+  a click that comes a tick or less after letting go is missed; and a
+  semi-automatic gun in hand (R1, R8). To check in CS2 (Local): a click
+  before the gun is ready fires when it is if held, and nothing if let go
+  first; that is CS:GO's behaviour, assumed here.)* "Hold to Shoot: No" fires
+  once a click.
 - [ ] **R3. Weapon modes.** Right click switches mode where the sheet has
   one: burst (FAMAS, Glock), silencer on and off with its attach time (M4A1-S,
   USP-S), fan fire (R8). A mode reads its own row over the weapon's.

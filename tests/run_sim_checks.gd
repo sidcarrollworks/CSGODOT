@@ -53,6 +53,7 @@ func _run() -> void:
 	await _test_the_same_commands_give_the_same_game()
 	await _test_a_held_trigger_fires_on_simulation_time()
 	await _test_a_press_fires_from_where_the_player_was()
+	await _test_a_semi_automatic_fires_once_a_click()
 	await _test_a_running_tap_misses()
 	await _test_a_bot_plays_through_commands()
 	await _test_a_bot_finds_its_way()
@@ -260,6 +261,73 @@ func _test_a_press_fires_from_where_the_player_was() -> void:
 			and player.previous_position.distance_to(player.global_position) > 1.0,
 		"a click half way through a strafing tick fires from half way along it"
 	)
+	player.queue_free()
+	await physics_frame
+
+
+## A semi-automatic gun through the real body and real commands: holding
+## the button fires one round, every click fires its own, a click held from
+## before the gun is ready fires when it is, and one let go before then
+## fires nothing. The gun is the AK with the Desert Eagle's numbers, the
+## game's m_bIsFullAuto false among them.
+func _test_a_semi_automatic_fires_once_a_click() -> void:
+	var player := _new_player(Vector3(-512.0, 0.0, 512.0), "T")
+	var deagle := WeaponLibrary.ak47()
+	WeaponVData.apply(deagle, "weapon_deagle")
+	player.equip(deagle)
+	await physics_frame
+	var times: Array[int] = []
+	player.shot_traced.connect(func(shot: Weapon.Shot, _result: Hitscan.Result) -> void:
+		times.append(shot.timestamp_usec))
+	# In an array so the lambda below moves it on: it captures a plain int
+	# by value.
+	var tick := [80_000]
+	# Which ticks the button is down for, as [first, last] pairs; each goes
+	# down 0.3 into its first tick.
+	# Each part starts with a full magazine: the Deagle holds seven.
+	var run := func(clicks: Array, ticks: int) -> void:
+		player.weapon.ammo = deagle.magazine_size
+		for i in ticks:
+			var cmd := UserCmd.new()
+			cmd.tick = tick[0] + i
+			for click: Array in clicks:
+				if i == click[0]:
+					cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.ATTACK, true, 0.3, 0.0, 0.0))
+				if i >= click[0] and i <= click[1]:
+					cmd.buttons |= UserCmd.ATTACK
+				if i == click[1] + 1:
+					cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.ATTACK, false, 0.1, 0.0, 0.0))
+			player.run_command(cmd, DT)
+		tick[0] += ticks
+
+	var second := SimClock.ticks_in(1.0)
+	run.call([[0, second - 1]], second + 1)
+	_check_equal(times.size(), 1, "a Desert Eagle held down for a second fires one round")
+
+	# Five clicks, each down for three ticks, a third of a second apart:
+	# slower than the gun's 0.225 s cycle, so every one of them fires.
+	times.clear()
+	var apart := SimClock.ticks_in(0.33)
+	var clicks := []
+	for n in 5:
+		clicks.append([n * apart, n * apart + 3])
+	run.call(clicks, 5 * apart)
+	_check_equal(times.size(), 5, "five clicks a third of a second apart fire five rounds")
+
+	# A click five ticks after a round, held for twenty: too soon, so it
+	# waits, and fires the instant the gun is ready rather than on a tick.
+	times.clear()
+	run.call([[0, 0], [6, 25]], 40)
+	var cycle := int(round(deagle.cycle_time * 1_000_000.0))
+	_check(
+		times.size() == 2 and times[1] - times[0] == cycle,
+		"a click held from before the gun is ready fires the moment it is, %d ms after the last round (%s)" % [cycle / 1000, times]
+	)
+
+	# The same early click let go after three ticks, before the gun is ready.
+	times.clear()
+	run.call([[0, 0], [6, 8]], 40)
+	_check_equal(times.size(), 1, "a click let go before the gun is ready fires nothing, then or later")
 	player.queue_free()
 	await physics_frame
 
