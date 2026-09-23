@@ -219,7 +219,8 @@ somewhere it can be found:
 scripts/extract_assets.sh list-map     # see what is inside the dust2 VPK
 scripts/extract_assets.sh map          # extract it, then import it into Godot
 scripts/extract_assets.sh weapons      # every gun: models and animations
-scripts/extract_assets.sh sounds       # every gun's sounds, footsteps by surface, hits
+scripts/extract_assets.sh equipment    # the bomb and kit, grenades, knives, Zeus
+scripts/extract_assets.sh sounds       # the weapons' sounds, footsteps by surface, hits
 ```
 
 `map` takes a few minutes and a little under two gigabytes. It pulls ten
@@ -262,6 +263,10 @@ from game space to the image and back.
 
 `weapons` fetches every gun with its first- and third-person animations and
 the game's weapon tuning, and `hud` the scope overlay and equipment icons.
+`equipment` fetches the rest of what a player carries the same way: the bomb
+and the defuse kit, the six grenades, the two default knives and the Zeus,
+listed with the game's numbers and their clips' timings in
+`reference/weapons/equipment.md`; `sounds` brings their sounds with the guns'.
 `characters` fetches one player model per side (Phoenix and SAS) with their
 skeletons, and the rifle animations, which in CS2 are files of their own:
 the first-person set, and the third-person locomotion (eight-way run, walk
@@ -410,7 +415,7 @@ appear when the editor loads a script. They do not show up in a headless run,
 so if the Godot console shows any, paste them over and they will get fixed.
 
 Eight files: movement, map import, dust2, models, weapons, penetration, the
-test range and the simulation. Without the extracted assets 603 checks run
+test range and the simulation. Without the extracted assets 605 checks run
 and pass; the dust2 and model files skip what needs files that have not been
 extracted.
 

@@ -218,7 +218,11 @@ Armour is on the HUD (PR #27). Whether armour softens tagging is open
 with each site's `bomb_damage_power`: A 1929, B 3234) and the map's
 `bombradius` (700 damage, reaching 2,450 under the old rule;
 `SourceEntities.bomb_radius`). A plant is tested against the site's volume
-(`contains`), not the baked box, which for A takes in its L's notch.
+(`contains`), not the baked box, which for A takes in its L's notch. The
+bomb and the kit are extracted (C3), with their clips' timings in
+`reference/weapons/equipment.md`: the first-person plant clip is 4 s, its
+seven key presses from 0.67 to 2.17 s; the third-person one 3.3 s. Neither
+says when the plant completes, which is still C1's to measure.
 
 **Remote**
 - The bomb as an item: carry, drop, pick up, plant with its animation lock,
@@ -239,9 +243,11 @@ with each site's `bomb_damage_power`: A 1929, B 3234) and the map's
   damage in dust2's VPK and extract it if it is a file; read dust2's
   `bombradius` from the entity lump. Still open: decode the damage values,
   against the damage C1 measures at known spots.
-- **C3.** Extract the bomb (world and first-person), the defuse kit, their
-  animations (plant, defuse), the sounds (beeps, plant, defuse, explosion,
-  "bomb has been planted") and the explosion's particle textures.
+- **C3.** *(done but for the particles, 2026-09-23: `scripts/extract_assets.sh
+  equipment` and `sounds`; the voice line is S1's)* Extract the bomb (world
+  and first-person), the defuse kit, their animations (plant, defuse), the
+  sounds (beeps, plant, defuse, explosion, "bomb has been planted") and the
+  explosion's particle textures.
 
 ## 7. Grenades
 
@@ -292,7 +298,9 @@ bursts for about 15 s, then pops for a few points of damage; no team damage
 from the pop (`ff_damage_decoy_explosion false`). Timing and burst lengths:
 **measure**, G5.
 
-**Built:** the map's grenade clip is imported and separated; nothing else.
+**Built:** the map's grenade clip is imported and separated. The six grenades
+are extracted (G6), their numbers and clips' timings in
+`reference/weapons/equipment.md`; nothing throws them yet.
 
 **Remote**
 - The throw (three strengths, your velocity added, the release point) and a
@@ -318,11 +326,14 @@ from the pop (`ff_damage_decoy_explosion false`). Timing and burst lengths:
 - **G3.** Flash: blind time at a few distances facing it, side-on and away.
 - **G4.** Smoke: duration, and the cloud's size in open ground.
 - **G5.** Decoy: how long, how its bursts go, the pop's damage.
-- **G6.** Extract all six grenades (first-person with their pull, throw and
-  lob animations, and the world models), their sounds (pin, throw, bounce per
-  surface, each detonation, the fire loop, "flashed" ringing) and the
-  particle and smoke textures. CS2's particle systems (`.vpcf`) do not run in
-  Godot, so the textures are rebuilt into Godot particles remotely.
+- **G6.** *(done but for the textures, 2026-09-23: `scripts/extract_assets.sh
+  equipment` and `sounds`; the sounds are each grenade's folder, so a bounce
+  per surface, if the game has one, is not among them)* Extract all six
+  grenades (first-person with their pull, throw and lob animations, and the
+  world models), their sounds (pin, throw, bounce per surface, each
+  detonation, the fire loop, "flashed" ringing) and the particle and smoke
+  textures. CS2's particle systems (`.vpcf`) do not run in Godot, so the
+  textures are rebuilt into Godot particles remotely.
 
 ## 8. Knife and Zeus
 
@@ -333,14 +344,18 @@ the right stab, backstabs 90 and 180: **measure**, K1). Holding it you run at
 recharges after 30 s (`mp_taser_recharge_time`), $200, $100 a kill; up to 5 a
 round in competitive.
 
+**Built:** the default knives and the Zeus are extracted (K2) and build in
+first person; nothing hands them to a player yet.
+
 **Remote:** melee traces (swing range and arc), backstab from behind, the
 Zeus as a short-range hitscan with its recharge.
 
 **Local**
 - **K1.** Measure knife damage (front and back, left and right, with and
   without armour) and swing range.
-- **K2.** Extract the default knives (T and CT) and the Zeus, with their
-  animations and sounds.
+- **K2.** *(done 2026-09-23: `scripts/extract_assets.sh equipment` and
+  `sounds`, listed in `reference/weapons/equipment.md`)* Extract the default
+  knives (T and CT) and the Zeus, with their animations and sounds.
 
 ## 9. HUD and UI
 
@@ -371,10 +386,10 @@ radar has B3 (`MapOverview`).
 **Built:** the weapon, footstep, hit and impact sounds.
 
 **Local**
-- **S1.** Extract the round sounds: round start and end, the bomb and grenade
-  sounds (C3, G6), radio and agent voice lines ("bomb has been planted",
-  "counter-terrorists win", "fire in the hole"), the buy sound, the
-  10-second warning.
+- **S1.** Extract the round sounds: round start and end (the bomb's and the
+  grenades' came with C3 and G6), radio and agent voice lines ("bomb has
+  been planted", "counter-terrorists win", "fire in the hole"), the buy
+  sound, the 10-second warning.
 - **S2.** The sound event files (`soundevents/*.vsndevts_c`) with the game's
   volumes and distances, which today are set by ear.
 
