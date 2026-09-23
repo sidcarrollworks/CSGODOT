@@ -49,6 +49,8 @@ class Result:
 	var walls: Array[Wall] = []
 	## The share of its damage that got through them: 1 with none.
 	var kept: float = 1.0
+	## What the round did to whoever it hit (fire_as), or null.
+	var damage_info: DamageInfo
 
 	## Whether it met anything: something it stopped at, or a wall it went
 	## through on its way into nothing.
@@ -226,7 +228,30 @@ static func _find_exit(
 	return {}
 
 
-## Traces and applies the damage in one step.
+## Who fired a round, for the damage it does to say so: their userid
+## (Roster), their side and the share a round of theirs does to it, what a
+## trace leaves out (their own hull and hitboxes), and the game's events,
+## which hear of every surface the round meets (bullet_impact) and of the
+## damage (player_hurt, player_death). Null events for none.
+class Shooter:
+	var userid: int = GameEvents.NOBODY
+	var team: String = ""
+	var team_damage_scale: float = 1.0
+	var exclude: Array[RID] = []
+	var events: GameEvents
+
+	func _init(
+		p_userid: int = GameEvents.NOBODY, p_team: String = "", p_team_damage_scale: float = 1.0,
+		p_exclude: Array[RID] = [], p_events: GameEvents = null
+	) -> void:
+		userid = p_userid
+		team = p_team
+		team_damage_scale = p_team_damage_scale
+		exclude = p_exclude
+		events = p_events
+
+
+## Traces and applies the damage in one step, from nobody in particular.
 static func fire_at(
 	space: PhysicsDirectSpaceState3D,
 	shot: Weapon.Shot,
@@ -235,15 +260,59 @@ static func fire_at(
 	shooter_team: String = "",
 	team_damage_scale: float = 1.0
 ) -> Result:
-	var result := trace(space, shot, data, exclude)
+	return fire_as(space, shot, data, Shooter.new(
+		GameEvents.NOBODY, shooter_team, team_damage_scale, exclude
+	))
+
+
+## Traces a round fired by shooter and deals its damage through a
+## DamageInfo, so the victim knows who hit them with what: the gun's CS2
+## class (WeaponData.item_class), the walls it went through, where from.
+## Each wall's way in and the round's end are bullet_impacts, as CS2 sends
+## one for every surface a round meets (whether CS2 also sends a wall's way
+## out is not checked).
+static func fire_as(
+	space: PhysicsDirectSpaceState3D,
+	shot: Weapon.Shot,
+	data: WeaponData,
+	shooter: Shooter
+) -> Result:
+	var result := trace(space, shot, data, shooter.exclude)
+	if shooter.events != null:
+		for wall in result.walls:
+			_send_impact(shooter, wall.entry, shot)
+		if result.hit:
+			_send_impact(shooter, result.position, shot)
 	if result.hitbox != null and result.hitbox.target != null:
+		var target := result.hitbox.target
+		var same_side := not shooter.team.is_empty() and target.team == shooter.team
 		# A teammate's round does its share (friendly fire), before armour.
-		if not shooter_team.is_empty() and result.hitbox.target.team == shooter_team:
-			result.damage *= team_damage_scale
-		result.hitbox.target.last_hit_direction = shot.direction
-		result.hitbox.target.last_hit_from = shot.origin
-		result.hitbox.target.last_hit_weapon = data
-		result.damage = result.hitbox.target.apply_damage(
-			result.damage, result.zone, data.armor_penetration, result.hitbox
-		)
+		if same_side:
+			result.damage *= shooter.team_damage_scale
+		target.last_hit_direction = shot.direction
+		target.last_hit_from = shot.origin
+		target.last_hit_weapon = data
+		var info := DamageInfo.new()
+		info.attacker = shooter.userid
+		info.inflictor = data.item_class
+		info.weapon = data.item_class
+		info.damage = result.damage
+		info.damage_type = DamageInfo.DMG_BULLET
+		info.zone = result.zone
+		info.side = result.hitbox.side
+		info.hitbox = result.hitbox
+		info.origin = shot.origin
+		info.position = result.position
+		info.direction = shot.direction
+		info.at_usec = shot.timestamp_usec
+		info.armor_penetration = data.armor_penetration
+		info.walls = result.walls.size()
+		result.damage = DamageInfo.deal(target, info, shooter.events)
+		result.damage_info = info
 	return result
+
+
+static func _send_impact(shooter: Shooter, at: Vector3, shot: Weapon.Shot) -> void:
+	shooter.events.send(&"bullet_impact", {
+		"userid": shooter.userid, "x": at.x, "y": at.y, "z": at.z,
+	}, shot.timestamp_usec)

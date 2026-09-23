@@ -40,6 +40,14 @@ var alive: bool = true
 ## The side whoever wears it is on, for a round from their own side to be
 ## told apart (Hitscan.fire_at); "" for a target on nobody's side.
 var team: String = ""
+## Whose it is, by userid (Roster sets it), for the damage it takes to say
+## who was hurt; GameEvents.NOBODY for a target nobody plays.
+var userid: int = GameEvents.NOBODY
+
+## Every hit's record (DamageInfo), the last one, and the one that killed:
+## who and what did it. Null before the first.
+var last_damage: DamageInfo
+var killing_damage: DamageInfo
 
 ## The hitbox the last damage came through, or null: for whoever wants to
 ## know which side was hit.
@@ -175,26 +183,58 @@ func set_active(active: bool) -> void:
 
 
 ## Applies damage already reduced for range and hitbox. Armour absorbs a share
-## and degrades as it does.
+## and degrades as it does. Damage from nobody in particular: whatever knows
+## who did it fills a DamageInfo and calls take_damage (or DamageInfo.deal).
 func apply_damage(amount: float, zone: StringName, armor_penetration: float, hitbox: Hitbox = null) -> float:
-	if not alive:
-		return 0.0
-	last_hitbox = hitbox
-	last_hit_armored = is_armored(zone)
+	var info := DamageInfo.new()
+	info.damage = amount
+	info.damage_type = DamageInfo.DMG_BULLET
+	info.zone = zone
+	info.hitbox = hitbox
+	if hitbox != null:
+		info.side = hitbox.side
+	info.armor_penetration = armor_penetration
+	return take_damage(info)
 
-	var dealt := amount
+
+## Takes one lot of damage, and fills in on info what it did: the health and
+## armour it took and left, whether armour took part, whether it killed.
+## Armour takes a share of anything but a fall, anywhere it covers (a hit
+## with no zone, a blast, is covered wherever there is armour), and wears
+## by armor_wear a point. The damage taken from health.
+func take_damage(info: DamageInfo) -> float:
+	info.victim = userid
+	if not alive:
+		info.health_left = health
+		info.armor_left = armor
+		return 0.0
+	last_damage = info
+	last_hitbox = info.hitbox
+	last_hit_armored = info.armorable and is_armored(info.zone)
+
+	var dealt := info.damage
+	var armor_before := armor
 	if last_hit_armored:
-		dealt = amount * armor_penetration
-		armor = maxf(armor - (amount - dealt) * 0.5, 0.0)
+		dealt = info.damage * info.armor_penetration
+		armor = maxf(armor - (info.damage - dealt) * info.armor_wear, 0.0)
 
 	health -= dealt
-	damaged.emit(dealt, zone, health)
-
+	info.armored = last_hit_armored
+	info.armor_taken = armor_before - armor
 	if health <= 0.0:
+		# What it took is what it had: an AWP's 459 to a body with 100.
+		info.health_taken = dealt + health
 		health = 0.0
-		if immortal:
-			return dealt
+	else:
+		info.health_taken = dealt
+	info.health_left = health
+	info.armor_left = armor
+	damaged.emit(dealt, info.zone, health)
+
+	if health <= 0.0 and not immortal:
 		alive = false
+		info.killed = true
+		killing_damage = info
 		died.emit()
 	return dealt
 
@@ -209,6 +249,8 @@ func is_armored(zone: StringName) -> bool:
 
 
 func reset() -> void:
+	last_damage = null
+	killing_damage = null
 	health = max_health
 	armor = _starting_armor
 	alive = true
