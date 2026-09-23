@@ -57,9 +57,10 @@ func setup(team: String, weapon_model: String) -> bool:
 	# skeleton and is held by it: the root bone on the hand's wpn bone.
 	var weapon := instantiate(weapon_model) as Node3D
 	if weapon != null:
-		for mesh in weapon.find_children("*", "MeshInstance3D", true, false):
+		var meshes := weapon.find_children("*", "MeshInstance3D", true, false)
+		for mesh in meshes:
 			(mesh as MeshInstance3D).layers = LAYER
-			if mesh.name.ends_with("body_legacy"):
+			if is_spare_body(mesh, meshes):
 				mesh.visible = false
 			elif probe_lit:
 				_probe_light(mesh)

@@ -23,10 +23,11 @@
 #   scripts/extract_assets.sh weapons         # every gun: models, first- and third-person animations
 #   scripts/extract_assets.sh weapon-animations  # just the guns' animations (a minute)
 #   scripts/extract_assets.sh weapon-data     # just the game's weapon tuning (seconds)
+#   scripts/extract_assets.sh equipment       # the bomb and kit, grenades, default knives, Zeus: models and animations
 #   scripts/extract_assets.sh hud             # the scope overlay and the equipment icons
 #   scripts/extract_assets.sh characters      # two player models and their locomotion
-#   scripts/extract_assets.sh sounds          # every gun's sounds, footsteps by surface, hits
-#   scripts/extract_assets.sh all             # map + weapons + hud + characters + sounds
+#   scripts/extract_assets.sh sounds          # the guns' and the equipment's sounds, footsteps by surface, hits
+#   scripts/extract_assets.sh all             # map + weapons + equipment + hud + characters + sounds
 #
 # Requires Source2Viewer-CLI: https://github.com/ValveResourceFormat/ValveResourceFormat
 # Point at it with S2V=/path/to/Source2Viewer-CLI if it is not on PATH.
@@ -155,7 +156,7 @@ find_cs2() {
 
 COMMAND="${1:-}"
 case "$COMMAND" in
-	list-map|list-weapons|map|physics|entities|nav|volumes|radar|layers|sky|skybox|lightmaps|weapons|weapon-animations|weapon-data|hud|characters|sounds|all) ;;
+	list-map|list-weapons|map|physics|entities|nav|volumes|radar|layers|sky|skybox|lightmaps|weapons|weapon-animations|weapon-data|equipment|hud|characters|sounds|all) ;;
 	*)
 		# The header comment, down to the first line that is not one.
 		awk 'NR > 2 && /^#/ { sub(/^# ?/, ""); print; next } NR > 2 { exit }' "${BASH_SOURCE[0]}"
@@ -212,6 +213,20 @@ GUN_SKELETONS="$GUN_DIRS|galil"
 ## And their sound folders under sounds/weapons/: the M4A4 and the M4A1-S
 ## share m4a1/, and the MP5-SD's is mp5/ and the USP-S's usp/.
 GUN_SOUND_DIRS="ak47|aug|awp|bizon|cz75a|deagle|elite|famas|fiveseven|g3sg1|galilar|glock18|hkp2000|m249|m4a1|mac10|mag7|mp5|mp7|mp9|negev|nova|p250|p90|revolver|sawedoff|scar20|sg556|ssg08|tec9|ump45|usp|xm1014"
+
+## The equipment: the bomb (with the multimeter a defuse shows) and the
+## defuse kit, the six grenades (with the pin and spoon they share, and the
+## molotov's glass), the two default knives, and the Zeus. By their folders
+## under weapons/models/; reference/weapons/equipment.md has the table.
+EQUIPMENT_MODELS="c4/|defuser/|grenade/|knife/knife_default_(ct|t)/|taser/"
+## Their first-person sets, their third-person ones (the knife's locomotion,
+## the bomb's and the defuse's among them), and their skeletons. The Zeus's
+## sets are pistol ones, which the guns' step takes too.
+EQUIPMENT_FIRST_PERSON="equipment/c4|grenade/[a-z_]+|knife/(_default_knife|knife_default_t)|pistol/pistol_taser"
+EQUIPMENT_THIRD_PERSON="equipment/c4|grenade/(_default_grenade|grenade_molotov)|knife/(_default_knife|default_ct|default_t)|shared/defuse|pistol/pistol_taser"
+EQUIPMENT_SKELETONS="c4|decoy|flashbang|hegrenade|incendiary|molotov|smokegrenade|knife_default_ct|knife_default_t|taser"
+## And their sound folders under sounds/weapons/, which the sounds step takes.
+EQUIPMENT_SOUND_DIRS="c4|decoy|flashbang|hegrenade|incgrenade|molotov|smokegrenade|knife|taser"
 
 list_weapons() {
 	require_file "$PAK_VPK"
@@ -572,6 +587,51 @@ extract_weapons() {
 	extract_weapon_animations
 }
 
+## The equipment's models, then its animations, first and third person, and
+## skeletons, and the first-person clips' lengths and events (and the bomb's
+## plant and the defuse's, third person), as the guns' are; the weapon tables
+## are rewritten after, with reference/weapons/equipment.md. Its sounds come
+## with the sounds step.
+extract_equipment() {
+	require_file "$PAK_VPK"
+	local listing
+	if ! listing="$(list_paths "$PAK_VPK")"; then
+		echo "Source2Viewer-CLI failed while listing $PAK_VPK." >&2
+		exit 1
+	fi
+	local models
+	models="$(grep -iE "^weapons/models/($EQUIPMENT_MODELS)[^ ]*\.vmdl_c$" <<<"$listing" | paste -sd, - || true)"
+	require_filter "$models" "the equipment models"
+	local dest="$OUT_DIR/weapons"
+	mkdir -p "$dest"
+	echo "Extracting $(tr ',' '\n' <<<"$models" | wc -l | tr -d ' ') equipment models"
+	echo "        -> $dest"
+	s2v_batched "$models" -o "$dest" -d --gltf_export_format gltf --gltf_export_materials \
+		--gltf_export_animations --gltf_textures_adapt \
+		| grep -vE '^(Preloading|Added folder|--- )' || true
+
+	local clips
+	clips="$(grep -E "^animation/(anims/viewmodel/($EQUIPMENT_FIRST_PERSON)/|anims/world/($EQUIPMENT_THIRD_PERSON)/|skeletons/weapons/($EQUIPMENT_SKELETONS)\.vnmskel_c$)" <<<"$listing" \
+		| paste -sd, - || true)"
+	require_filter "$clips" "the equipment animations"
+	echo
+	echo "Extracting $(tr ',' '\n' <<<"$clips" | wc -l | tr -d ' ') equipment animations and skeletons, first and third person"
+	echo "        -> $CHARACTERS_DEST/animation"
+	mkdir -p "$CHARACTERS_DEST"
+	s2v_batched "$clips" -o "$CHARACTERS_DEST" -d --gltf_export_format gltf \
+		| grep -vE '^(Preloading|Added folder|--- )' || true
+
+	local clip_data="$CHARACTERS_DEST/animation/anims/viewmodel/equipment_clip_data.txt"
+	echo
+	echo "Reading the equipment clips' lengths and events"
+	echo "        -> $clip_data"
+	"$S2V_BIN" -i "$PAK_VPK" \
+		-f "animation/anims/viewmodel/equipment/,animation/anims/viewmodel/grenade/,animation/anims/viewmodel/knife/_default_knife/,animation/anims/viewmodel/knife/knife_default_t/,animation/anims/viewmodel/pistol/pistol_taser/,animation/anims/world/equipment/c4/,animation/anims/world/shared/defuse/" \
+		-e vnmclip_c -b DATA > "$clip_data" 2>/dev/null || true
+
+	write_weapon_tables
+}
+
 ## What the HUD draws that comes from the game: the sniper scope's overlay,
 ## which the game composes in code from three images (the black mask with its
 ## soft round opening, the lens's tint and dirt, and the soft line the cross
@@ -643,9 +703,10 @@ extract_weapon_animations() {
 	write_weapon_tables
 }
 
-## Writes reference/weapons/models.md and sounds.md from what was
-## extracted, so the code that picks a gun's files can be written without
-## them (scripts/weapon_tables.gd).
+## Writes the tables in reference/weapons/ (the guns' files, sounds, timings
+## and tuning, and the equipment's) from what was extracted, so the code that
+## picks a weapon's files can be written without them
+## (scripts/weapon_tables.gd).
 write_weapon_tables() {
 	local godot
 	godot="$(find_godot)"
@@ -663,13 +724,13 @@ write_weapon_tables() {
 ## The sounds: every gun's whole folder (firing near and far, the reload's
 ## parts, the draw, the inspect, and the modes: silencer, zoom, burst), with
 ## the weapon sounds they share (empty clicks, the zoom, the fire-mode
-## switch); footsteps
-## and landings by the surface types the map's hull names; and what the
-## shooter hears on a hit. CS2 keeps sounds as one file each (.vsnd_c), a
-## few variants to a set, which the decompile writes out as the audio they
-## hold. The sound event definitions that pair them with volumes and
-## distances are not fetched; the numbers are set by ear.
-SOUND_FILTER="^sounds/(weapons/($GUN_SOUND_DIRS)/[a-z0-9_-]+|weapons/[a-z0-9_]+|player/footsteps/(concrete_ct|dirt|sand|wood|metal_solid|metal_vent|metal_chainlink|metal_grate|tile|gravel|grass|carpet|glass|rubber|plastic_barrel|mud)_[0-9]+|player/footsteps/land_(concrete|dirt|sand|metal_solid|metal_vent|metal_grate|tile|gravel|grass|carpet|glass|rubber|mud|auto)(_[0-9]+)?|player/(kevlar[0-9]|headshot_armor_01|headshot_noarmor_0[1-5]|bodyshot_kill_01)|physics/(concrete/concrete_impact_bullet[0-9]|surfaces/(sand|dirt|tile|default|carpet|grass)_impact_bullet[0-9_]*|metal/metal_solid_impact_bullet[0-9]|wood/wood_solid_impact_bullet[0-9]))\.vsnd_c$"
+## switch), and the equipment's (the bomb's, the grenades', the knives' and
+## the Zeus's); footsteps and landings by the surface types the map's hull
+## names; and what the shooter hears on a hit. CS2 keeps sounds as one file
+## each (.vsnd_c), a few variants to a set, which the decompile writes out as
+## the audio they hold. The sound event definitions that pair them with
+## volumes and distances are not fetched; the numbers are set by ear.
+SOUND_FILTER="^sounds/(weapons/($GUN_SOUND_DIRS|$EQUIPMENT_SOUND_DIRS)/[a-z0-9_-]+|weapons/[a-z0-9_]+|player/footsteps/(concrete_ct|dirt|sand|wood|metal_solid|metal_vent|metal_chainlink|metal_grate|tile|gravel|grass|carpet|glass|rubber|plastic_barrel|mud)_[0-9]+|player/footsteps/land_(concrete|dirt|sand|metal_solid|metal_vent|metal_grate|tile|gravel|grass|carpet|glass|rubber|mud|auto)(_[0-9]+)?|player/(kevlar[0-9]|headshot_armor_01|headshot_noarmor_0[1-5]|bodyshot_kill_01)|physics/(concrete/concrete_impact_bullet[0-9]|surfaces/(sand|dirt|tile|default|carpet|grass)_impact_bullet[0-9_]*|metal/metal_solid_impact_bullet[0-9]|wood/wood_solid_impact_bullet[0-9]))\.vsnd_c$"
 
 ## The bullet holes: the game's bullet-hole materials for concrete, plaster,
 ## metal and wood, which are what dust2 is made of, and the colour, occlusion
@@ -805,7 +866,8 @@ case "$COMMAND" in
 	weapons) extract_weapons; finish ;;
 	weapon-animations) extract_weapon_animations; finish ;;
 	weapon-data) extract_weapon_data; write_weapon_tables ;;
+	equipment) extract_equipment; finish ;;
 	hud) extract_hud; finish ;;
 	sounds) extract_sounds; finish ;;
-	all) extract_map; echo; extract_weapons; echo; extract_hud; echo; extract_characters; echo; extract_sounds; finish ;;
+	all) extract_map; echo; extract_weapons; echo; extract_equipment; echo; extract_hud; echo; extract_characters; echo; extract_sounds; finish ;;
 esac
