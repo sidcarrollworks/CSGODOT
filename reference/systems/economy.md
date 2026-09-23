@@ -103,12 +103,16 @@ Local tasks (Sid's machine), added to `reference/cs2-systems.md`'s E1 and E2:
 ## What the GameWorld needs to do to wire it in
 
 None of this is in the files the local agent owns (`player_sim.gd`,
-`bot.gd`, `match_state.gd`, `de_dust2.gd`). Once the GameWorld runs a
-`GameSystems`:
+`bot.gd`, `match_state.gd`, `de_dust2.gd`). Checked against the GameWorld
+(PR #50): the two combine without a conflict and every check passes. Once
+the world holds a `GameSystems` and steps it in `GameWorld.end_tick`, after
+the match:
 
-1. Add the economy to it after the rules that send the round's events:
-   `game.add(Economy.new(MoneyRules.new(), BuyZones.from_volumes(BrushVolume.buy_zones(entities, root))))`,
-   with `economy.match_rules` set to the match's `MatchRules`.
+1. Add the economy to it:
+   `game.add_system(Economy.new(MoneyRules.new(), BuyZones.from_volumes(BrushVolume.buy_zones(entities, root))))`,
+   with `economy.match_rules` set to the match's `MatchRules`. It reads the
+   tick's time from the `SimTick` it is handed, so it runs on the world's
+   count like everything else.
 2. `MatchState` sends, as the contract lists: `begin_new_match` when warmup
    ends, `round_start` and `round_freeze_end` each round, `round_end` with
    `GameEvents.round_end_reason`, and `announce_phase_end` at every side
