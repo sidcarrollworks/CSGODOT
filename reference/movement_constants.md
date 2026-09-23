@@ -235,8 +235,15 @@ less, and the port now does what it does:
   nothing, so the result is the same, for two to five traces fewer.
 - The snap onto the floor after the ground check (HL1's, kept) moves by the
   check's own trace rather than tracing the same move again.
+- A move no longer looks for the ground at its start when the last move's
+  check looked from where the body still is, with the same hull, and it is
+  not rising too fast to stand on anything: that check found what this one
+  would. Source leaves it out the same way (PlayerMove, sv_optimizedmovement,
+  on by default). The world does not move; a player walking out from under
+  another is noticed a tick later, as in Source.
 
-Running in the open is now 5 traces a tick, and standing 2.
+Running in the open is now 4 traces a tick, and standing 1. PlayerBody
+counts them (`traces`), and run_tests.gd holds a tick to those numbers.
 
 ## The traces on Jolt (2026-09-23)
 

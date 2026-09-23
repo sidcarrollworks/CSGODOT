@@ -456,7 +456,7 @@ appear when the editor loads a script. They do not show up in a headless run,
 so if the Godot console shows any, paste them over and they will get fixed.
 
 Nine files: movement, map import, dust2, models, weapons, penetration, the
-test range, the simulation and the match. Without the extracted assets 697
+test range, the simulation and the match. Without the extracted assets 700
 checks run and pass; the dust2 and model files skip what needs files that
 have not been extracted.
 
@@ -508,14 +508,16 @@ it.
 A tick at 128 Hz is 7.8 ms, and every player's share of it has to fit with
 room left to draw the frame. When it does not, each frame runs more ticks to
 catch up, which makes the frame longer still, and the game crawls. Ten
-players on dust2 take about 3.5 ms a tick on Jolt (4.3 on Godot Physics;
-headless, 2026-09-23), most of it their movement: a trace of the hull
-through dust2's collision costs 20 to 50 us, and a player makes 2 of them a
-tick standing still and 5 running in the open, more against a wall or a
-slope. So nothing that reads the disk runs in a tick (the footsteps' check
-for the sound folder, every tick for everyone, was a quarter of it), and
-what is only seen, like the probe light on a bot's body, follows the frames
-drawn rather than the ticks.
+players on dust2 take about 3 ms a tick on Jolt (headless, 2026-09-23),
+most of it their movement: a trace of the hull through dust2's collision
+costs 20 to 50 us, and a player makes one a tick standing still and four
+running in the open, more against a wall or a slope (PlayerBody counts
+them, and run_tests.gd holds them to that). So nothing that reads the disk
+runs in a tick, and what is only seen, like the probe light on a bot's
+body, follows the frames drawn rather than the ticks.
+`reference/performance.md` has what every system costs, with ten players
+and twenty, what going online will add, and what to do about it next;
+`scripts/profile_dust2.gd` measures it again.
 
 ## Layout
 
@@ -532,7 +534,7 @@ tests/           headless test suite
 reference/       measured constants and how they were measured; the roadmap
                  (roadmap.md), CS2's systems (cs2-systems.md), the guns' todo
                  list (weapons/TODO.md)
-scripts/         tooling (asset extraction and inspection, test runner)
+scripts/         tooling (asset extraction and inspection, test runner, profiler)
 assets/          extracted CS2 content. GITIGNORED. Never commit Valve assets.
 ```
 

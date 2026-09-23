@@ -1516,6 +1516,12 @@ func _test_light_probes() -> void:
 	)
 	var dark := probes.cube_at(Vector3(900, 0, 0))[0]
 	_check(is_zero_approx(dark.r + dark.g + dark.b), "outside every volume the cube is dark")
+	# volume_at keeps the boxes packed; new volumes are packed again.
+	probes.volumes = [probes.volumes[1]]
+	_check(
+		probes.volume_at(Vector3(150, 0, -150)) == -1 and probes.volume_at(Vector3(60, 0, 60)) == 0,
+		"given other volumes, a point finds its volume among those"
+	)
 
 	# The entity lump, and a material lit from the probes.
 	var lump := "user://export_fixture/probes.vents"

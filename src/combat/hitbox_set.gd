@@ -24,6 +24,10 @@ const ZONES := {
 	8: [&"head", &""],
 }
 
+## Each model description's capsules, read once (load_for()), for every body
+## and side swap after; load_for hands out copies.
+static var _loaded := {}
+
 
 ## The capsules in a model description's text, each as {"name", "bone",
 ## "radius", "point0", "point1", "group", "zone", "side"}: empty when it
@@ -60,9 +64,11 @@ static func parse(text: String) -> Array[Dictionary]:
 ## The capsules of the model description beside a model's glTF, or none.
 static func load_for(model_path: String) -> Array[Dictionary]:
 	var path := model_path.get_basename() + ".vmdl"
-	if not FileAccess.file_exists(path):
-		return []
-	return parse(FileAccess.get_file_as_string(path))
+	if not _loaded.has(path):
+		if not FileAccess.file_exists(path):
+			return []
+		_loaded[path] = parse(FileAccess.get_file_as_string(path))
+	return (_loaded[path] as Array[Dictionary]).duplicate(true)
 
 
 static func _unquote(value: String) -> String:

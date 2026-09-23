@@ -153,6 +153,7 @@ func _run() -> void:
 	await _test_ragdoll()
 	await _test_whole_ragdoll()
 	await _test_fall_speed()
+	_test_path_budget()
 	await _test_being_shot()
 	await _test_death_cam()
 
@@ -318,6 +319,23 @@ func _test_fall_speed() -> void:
 		"a body falling for a second goes %.0f u/s, as gravity has it, not held to a speed cap" % -body.linear_velocity.y
 	)
 	body.queue_free()
+
+
+## Bots find their way over the nav mesh a few a tick, and the rest on the
+## next, rather than every bot on the tick a round starts.
+func _test_path_budget() -> void:
+	var tick := 1 << 40
+	var granted := []
+	for i in Bot.PATH_SEARCHES_PER_TICK + 1:
+		granted.append(Bot._may_search(tick))
+	var expected := []
+	for i in Bot.PATH_SEARCHES_PER_TICK:
+		expected.append(true)
+	expected.append(false)
+	_check(
+		granted == expected and Bot._may_search(tick + 1),
+		"%d bots a tick may search the nav mesh, and the next waits for the next tick (%s)" % [Bot.PATH_SEARCHES_PER_TICK, granted]
+	)
 
 
 ## The whole body the way CS2's hitboxes cover it, nineteen capsules on a

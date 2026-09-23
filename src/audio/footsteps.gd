@@ -50,6 +50,9 @@ var surface: String = DEFAULT_SET
 var steps: int = 0
 var landings: int = 0
 
+## Whether all_sets() has been loaded, by the first of these to arrive.
+static var _loaded_sets := false
+
 
 func _ready() -> void:
 	body = get_parent() as PlayerBody
@@ -58,6 +61,25 @@ func _ready() -> void:
 	_player.max_distance = 80.0 * METRE
 	_player.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
 	add_child(_player)
+	# Every set a step or a landing can play, loaded with the first body:
+	# loaded as each first played, the first step onto sand or wood took up
+	# to fifty milliseconds with the files not yet in the disk's cache.
+	if not _loaded_sets:
+		_loaded_sets = true
+		SoundBank.load_sets(all_sets())
+
+
+## The sound sets a step or a landing can play, as stems.
+static func all_sets() -> PackedStringArray:
+	var surfaces := {DEFAULT_SET: true, "wood": true, "metal_solid": true}
+	for surface_set: String in SURFACE_SETS.values():
+		surfaces[surface_set] = true
+	var stems := PackedStringArray()
+	for surface_set: String in surfaces:
+		stems.append("player/footsteps/%s_" % surface_set)
+	for landing: String in LANDINGS + ["auto"]:
+		stems.append("player/footsteps/land_%s" % landing)
+	return stems
 
 
 func _physics_process(delta: float) -> void:

@@ -69,6 +69,9 @@ const ACTION_FADE := 0.2
 ## The gun clips as the body plays them (_load_weapon()), by the clip's path:
 ## the rig is the same in every model, and so are they.
 static var _prepared := {}
+## The locomotion table, read once (read_locomotion()), which hands out
+## copies of it.
+static var _locomotion := {}
 
 ## What animates the body: the locomotion's spaces, the air, the gun's hold,
 ## its reload and draw and its shots over the upper body, a clip played once
@@ -414,8 +417,10 @@ static func death_for(zone: StringName, variant: int) -> StringName:
 
 ## CS2's locomotion blend spaces, as scripts/animgraph_tables.gd wrote them.
 static func read_locomotion() -> Dictionary:
-	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(LOCOMOTION))
-	return parsed if parsed is Dictionary else {}
+	if _locomotion.is_empty():
+		var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(LOCOMOTION))
+		_locomotion = parsed if parsed is Dictionary else {}
+	return _locomotion.duplicate(true)
 
 
 ## The blend space in the table from a part of CS2's locomotion graph (its

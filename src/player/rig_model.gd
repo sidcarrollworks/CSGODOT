@@ -53,6 +53,19 @@ var _lit_cube := PackedColorArray()
 var _lit_at := Vector3.INF
 var _lit_by: LightProbes
 
+## What building a body reads, kept for the next one: every scene by its
+## path, every clip's animation by the clip's, and every directory's clips.
+## A body is built from the same few hundred files each time (its clips, the
+## agent, the gun), and a scene nothing holds any more drops out of Godot's
+## cache, so each body read them all from the disk again: a quarter of a
+## second a body, and at half time everyone's at once. The animations are
+## shared, as instances of one scene share them; a model changes copies of
+## them (fold_bones, PlayerModel._load_weapon); load_clips sets their loop
+## mode, the same for every body.
+static var _scenes := {}
+static var _animations := {}
+static var _listed := {}
+
 
 ## Loads clips into this node: the first as the rig, the rest as animations
 ## of its player, under names with the set's suffix taken off. Returns false,
@@ -116,18 +129,31 @@ func add_clips(clips: PackedStringArray, suffix: String, prefix: String = "") ->
 		return added
 	var library := animation_player.get_animation_library(&"")
 	for clip in clips:
-		var scene := instantiate(clip)
-		if scene == null:
+		var animation := clip_animation(clip)
+		if animation == null:
 			continue
+		var clip_name := prefix + String(short_name(clip, suffix))
+		library.add_animation(clip_name, animation)
+		added.append(clip_name)
+	return added
+
+
+## A clip's animation, the first its scene's player holds, or null: taken
+## from the scene once, and from _animations after that.
+static func clip_animation(path: String) -> Animation:
+	if _animations.has(path):
+		return _animations[path]
+	var animation: Animation = null
+	var scene := instantiate(path)
+	if scene != null:
 		var donor := scene.find_children("*", "AnimationPlayer", true, false)
 		if not donor.is_empty():
 			var names := (donor[0] as AnimationPlayer).get_animation_list()
 			if not names.is_empty():
-				var clip_name := prefix + String(short_name(clip, suffix))
-				library.add_animation(clip_name, (donor[0] as AnimationPlayer).get_animation(names[0]))
-				added.append(clip_name)
+				animation = (donor[0] as AnimationPlayer).get_animation(names[0])
 		scene.free()
-	return added
+	_animations[path] = animation
+	return animation
 
 
 ## Folds bones away to nothing, for the parts of a body the camera must
@@ -337,16 +363,27 @@ func _add_bone_from(source: Skeleton3D, bone_name: String, rig: Skeleton3D) -> v
 	rig.reset_bone_pose(added)
 
 
+## A scene by its path, read once (_scenes), or null when it is not there.
 static func instantiate(path: String) -> Node:
-	if path.is_empty() or not ResourceLoader.exists(path):
-		return null
-	var packed := load(path) as PackedScene
-	return packed.instantiate() if packed != null else null
+	var packed: PackedScene = _scenes.get(path)
+	if packed == null:
+		if path.is_empty() or not ResourceLoader.exists(path):
+			return null
+		packed = load(path) as PackedScene
+		if packed == null:
+			return null
+		_scenes[path] = packed
+	return packed.instantiate()
 
 
 ## The clip glTFs in a directory, sorted, or only those whose names start
-## with one of the prefixes given.
+## with one of the prefixes given. Looked for once (_listed), and handed out
+## as a copy: a packed array comes back from a dictionary shared, and a
+## caller appending to it would append to the one kept.
 static func list_clips(dir_path: String, prefixes: PackedStringArray = PackedStringArray()) -> PackedStringArray:
+	var key := dir_path + "|" + ",".join(prefixes)
+	if _listed.has(key):
+		return (_listed[key] as PackedStringArray).duplicate()
 	var out := PackedStringArray()
 	var dir := DirAccess.open(dir_path)
 	if dir == null:
@@ -362,6 +399,7 @@ static func list_clips(dir_path: String, prefixes: PackedStringArray = PackedStr
 				wanted = true
 		if wanted:
 			out.append(dir_path.path_join(file))
+	_listed[key] = out.duplicate()
 	return out
 
 

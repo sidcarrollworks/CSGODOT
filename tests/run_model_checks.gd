@@ -786,6 +786,19 @@ func _test_bot_sounds() -> void:
 			and (footsteps.get_child(0) as AudioStreamPlayer3D).playing,
 		"a step and a landing play from the feet"
 	)
+	# Loaded before they are first played, which hitched: every footstep and
+	# landing set, where it has walked on one surface; its gun's shot, reload
+	# and hits, and every surface's impacts.
+	var wanted := Footsteps.all_sets()
+	wanted.append_array(PackedStringArray(BulletImpacts.SOUND_SETS.values()))
+	wanted.append_array(PackedStringArray(WeaponSounds.HIT_SETS))
+	for part: Array in _bot.weapon_sounds.weapon_set.get("reload", []):
+		wanted.append(part[1])
+	var missing := PackedStringArray()
+	for stem in wanted:
+		if not SoundBank._randomizers.has(stem):
+			missing.append(stem)
+	_check(missing.is_empty(), "every sound set a body, its gun and a round can play is loaded before it is needed (not: %s)" % ", ".join(missing))
 
 
 func _test_bot_wears_hitboxes() -> void:
@@ -1219,6 +1232,7 @@ func _test_player_model() -> void:
 	)
 
 	_test_weapon_layers()
+	_test_bodies_share_what_they_read()
 
 	# The first-person body: the head and arms folded away, and staying so
 	# under the clips, which animate every bone's scale.
@@ -1241,6 +1255,42 @@ func _test_player_model() -> void:
 	)
 	model.free()
 	_player_model = null
+
+
+## A body is built from what the bodies before it read: a second one loads
+## no scene the first did not (each body read about eighty from the disk,
+## and at half time everyone's body is built again). What the caches hand
+## out are copies, so a caller changing one changes nothing for the next.
+func _test_bodies_share_what_they_read() -> void:
+	var ak := WeaponLibrary.ak47()
+	var first := PlayerModel.new()
+	root.add_child(first)
+	first.setup("T", ak.model_path, ak.world_clip_set)
+	var scenes_read: int = RigModel._scenes.size()
+	var second := PlayerModel.new()
+	root.add_child(second)
+	var built := second.setup("T", ak.model_path, ak.world_clip_set)
+	_check(
+		built and RigModel._scenes.size() == scenes_read and scenes_read > 50
+			and second.animation_player.get_animation_list().size() == first.animation_player.get_animation_list().size(),
+		"a second body loads no scene the first did not (%d read, %d after the second)" % [scenes_read, RigModel._scenes.size()]
+	)
+	var clip := RigModel.list_clips(PlayerModel.CLIPS_DIR)[0]
+	var listed := RigModel.list_clips(PlayerModel.CLIPS_DIR)
+	listed.append("not a clip")
+	var capsules := HitboxSet.load_for(PlayerModel.AGENTS["T"])
+	capsules.clear()
+	var table := PlayerModel.read_locomotion()
+	table.clear()
+	_check(
+		RigModel.list_clips(PlayerModel.CLIPS_DIR).size() == listed.size() - 1
+			and HitboxSet.load_for(PlayerModel.AGENTS["T"]).size() == 19
+			and not PlayerModel.read_locomotion().is_empty()
+			and is_same(RigModel.clip_animation(clip), RigModel.clip_animation(clip)),
+		"the clips listed, the capsules and the locomotion table are handed out as copies, and a clip's animation is the same one each time"
+	)
+	first.free()
+	second.free()
 
 
 ## A body holding the AK-47 with its own third-person clips: the gun's hold
