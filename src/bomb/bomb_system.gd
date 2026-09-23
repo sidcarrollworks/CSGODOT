@@ -159,14 +159,16 @@ func _send_events() -> void:
 
 
 ## The blast, to one player: armour takes a grenade's share, and no team
-## scaling (the contract's damage for the bomb).
+## scaling (the contract's damage for the bomb). Nobody is credited: in CS2
+## a death to the bomb shows the C4 in the kill feed with no killer, and
+## the planter gets no kill, and no kill award, for it.
 func _deal(record: Dictionary, t: SimTick) -> void:
 	var target := t.roster.hit_target(record["victim"])
 	var player := t.roster.player(record["victim"])
 	if target == null or player == null:
 		return
 	var info := DamageInfo.new()
-	info.attacker = record["attacker"]
+	info.attacker = GameEvents.NOBODY
 	info.inflictor = "planted_c4"
 	info.weapon = "weapon_c4"
 	info.damage = record["amount"]

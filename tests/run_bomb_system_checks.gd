@@ -146,7 +146,7 @@ func _test_the_blast_through_the_damage_path(t_id: int, ct_id: int, ct: PlayerSi
 			death = event
 	_check(hurt != null, "the CT 300 units off is hurt (player_hurt), the blast doing %.0f" % raw)
 	if hurt != null:
-		_check_equal(hurt.fields["attacker"], t_id, "by the planter")
+		_check_equal(hurt.fields["attacker"], GameEvents.NOBODY, "credited to nobody, not the planter, as in CS2")
 		_check_equal(hurt.fields["weapon"], "weapon_c4", "with the bomb")
 		_check_equal(hurt.fields["hitgroup"], 0, "in no one place")
 		_check(hurt.fields["dmg_armor"] > 0, "and armour took a share")

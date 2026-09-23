@@ -128,6 +128,8 @@ var bomb_system: BombSystem
 var bomb: C4
 var bomb_sites: Array[BombSite] = []
 var bomb_view: C4View
+## The bomb's keys held since a press the range was given (_follow_bomb_key).
+var _bomb_keys_down := {}
 
 
 func _ready() -> void:
@@ -156,6 +158,8 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and not event.echo:
+		_follow_bomb_key(event as InputEventKey)
 	if event.is_action_pressed(&"export_spray"):
 		_export_spray()
 	elif event.is_action_pressed(&"reset_range"):
@@ -446,10 +450,32 @@ func _bomb_keys(userid: int, _player: Node3D, _inventory: Inventory) -> Dictiona
 	if userid != you_id():
 		return {}
 	return {
-		"plant": Input.is_physical_key_pressed(BOMB_PLANT_KEY),
-		"use": Input.is_physical_key_pressed(BOMB_DEFUSE_KEY),
+		"plant": _bomb_key_held(BOMB_PLANT_KEY),
+		"use": _bomb_key_held(BOMB_DEFUSE_KEY),
 		"team": "CT" if bomb.planted() else "T",
 	}
+
+
+## 5 and E count as held from a press that reached the range to its
+## release: a press something else took first (the buy menu, while it is
+## open) never does. The key has to be down still, too, in case what took
+## the press took the release as well.
+func _follow_bomb_key(event: InputEventKey) -> void:
+	if event.physical_keycode not in [BOMB_PLANT_KEY, BOMB_DEFUSE_KEY]:
+		return
+	if event.pressed:
+		_bomb_keys_down[event.physical_keycode] = true
+	else:
+		_bomb_keys_down.erase(event.physical_keycode)
+
+
+func _bomb_key_held(key: Key) -> bool:
+	if not _bomb_keys_down.has(key):
+		return false
+	if not Input.is_physical_key_pressed(key):
+		_bomb_keys_down.erase(key)
+		return false
+	return true
 
 
 ## A new bomb once the last is spent (5), and the kit on and off (L), which

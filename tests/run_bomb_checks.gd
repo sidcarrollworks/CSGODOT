@@ -451,7 +451,7 @@ func _test_the_explosion() -> void:
 		var middle := near.feet + Vector3.UP * 36.0
 		_check_near(record["amount"], C4.blast_damage(middle.distance_to(bomb.position), 700.0),
 			"doing the blast's damage at their distance, measured to the middle of the body")
-		_check_equal(record["attacker"], T_ID, "credited to the planter")
+		_check_equal(record["attacker"], T_ID, "the record names the planter (BombSystem credits nobody)")
 		_check_equal(record["weapon"], "weapon_c4", "with the bomb")
 	_run(bomb, 5.0, everyone)
 	_check(bomb.take_blast().is_empty(), "it goes off once")
@@ -517,6 +517,27 @@ func _test_on_the_range() -> void:
 	for i in 8:
 		await physics_frame
 	_check(range_map.bomb_sites[0].contains(player.global_position), "site A is behind the spawn")
+	# Something that takes the key first, as the buy menu does while open.
+	var menu := Node.new()
+	var taker := GDScript.new()
+	taker.source_code = "extends Node\nfunc _input(event: InputEvent) -> void:\n\tif event is InputEventKey:\n\t\tget_viewport().set_input_as_handled()\n"
+	taker.reload()
+	menu.set_script(taker)
+	range_map.add_child(menu)
+	var taken := InputEventKey.new()
+	taken.physical_keycode = range_map.BOMB_PLANT_KEY
+	taken.pressed = true
+	Input.parse_input_event(taken)
+	for i in 32:
+		await physics_frame
+	_check(not bomb.planting() and not bomb.planted(), "a press of 5 the buy menu takes plants nothing")
+	var let_go := InputEventKey.new()
+	let_go.physical_keycode = range_map.BOMB_PLANT_KEY
+	let_go.pressed = false
+	Input.parse_input_event(let_go)
+	await physics_frame
+	menu.queue_free()
+	await physics_frame
 	var press := InputEventKey.new()
 	press.physical_keycode = range_map.BOMB_PLANT_KEY
 	press.pressed = true

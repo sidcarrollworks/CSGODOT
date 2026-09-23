@@ -73,8 +73,8 @@ GameWorld's tick after the players and the match, and:
 - keeps `weapon_c4` in the carrier's inventory, out of it once dropped or
   planted, back in on a pickup, and the bomb on the ground as a
   `"weapon_c4"` or `"planted_c4"` `SimEntity`;
-- deals the blast as a `DamageInfo` per player: attacker the planter,
-  inflictor `"planted_c4"`, weapon `"weapon_c4"`, `DMG_BLAST`, no zone,
+- deals the blast as a `DamageInfo` per player: no attacker (CS2 credits
+  a bomb death to nobody: the kill feed shows the C4 alone), inflictor `"planted_c4"`, weapon `"weapon_c4"`, `DMG_BLAST`, no zone,
   armour as a grenade's (`armor_penetration` 0.5), no team scaling;
 - hands the bomb to a random living terrorist on `round_start` (seeded from
   the tick), allows plants from `round_freeze_end` to `round_end`, and
@@ -124,9 +124,10 @@ Not done yet, in files this does not edit:
 
 From cs2-systems.md section 2: $300 to the planter on `bomb_planted`, $300
 to the defuser on `bomb_defused`, $3,500 a head for a round won by the bomb,
-and $600 a head on top of the loss bonus to Ts who planted and lost. Whether
-a kill by the blast earns the planter the C4's $300 kill award
-(`m_nKillAward` in vdata) is open: C1 can check it.
+and $600 a head on top of the loss bonus to Ts who planted and lost. A kill
+by the blast earns nobody anything: its `player_death` has no attacker, so
+the C4's $300 `m_nKillAward` in vdata is never paid. That is from memory of
+CS2's kill feed, not measured; C1 can confirm it.
 
 ### `de_dust2.gd`
 
