@@ -67,11 +67,11 @@ func next() -> void:
 func show_choice(at: int) -> void:
 	index = at
 	var choice: Dictionary = CHOICES[index]
-	var standing := choice.has("surface")
-	visible = standing
+	var up := choice.has("surface")
+	visible = up
 	# Off is no collision at all, so the lane is as it always was.
-	_collision.disabled = not standing
-	if not standing:
+	_collision.disabled = not up
+	if not up:
 		return
 	var thickness: float = choice["thickness"]
 	var size := Vector3(SIZE.x, SIZE.y, thickness)

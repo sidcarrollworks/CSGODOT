@@ -131,7 +131,7 @@ Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurem
 - `scripts/extract_assets.sh` (map, physics, weapons, characters, sounds and
   more, the nav mesh with `nav`), `inspect_assets`, and `run_tests.sh` with
   eight headless test files (movement, map, dust2, model, weapon,
-  penetration, range, simulation): 603 checks pass without the assets.
+  penetration, range, simulation): 614 checks pass without the assets.
 
 ---
 
@@ -212,9 +212,9 @@ item 6 is built.
    side of each wall it meets and carries on through it when the round has
    the power, up to four walls, never into the sky. Each weapon's power is
    the game's `m_flPenetration` (rifles 2, SMGs 1). Each surface's two
-   numbers are CS2's own, from `scripts/surfaceproperties_game.txt` in
-   SteamDatabase's GameTracking-CS2 (78 surfaces, in `src/combat/penetration.gd`),
-   taken by the name the hull gives each part. How thickness and those
+   numbers are CS2's own, read from the game's files through
+   `SurfaceProperties` (item 7b), taken by the name the hull gives each
+   part. How thickness and those
    numbers become reach and damage is this project's own routine, since
    CS2's is not published, and its four constants are estimates. On the
    test range, M stands a wall of one of seven surfaces in front of the
@@ -228,13 +228,35 @@ item 6 is built.
    with the AK-47 and an SMG, and note the damage each did, the thickness
    the game shows, and where a round stopped getting through. Then shoot
    the same walls on our dust2 and compare.
-7b. **Surface parents (Sid).** *(Local)* The game's file leaves out a
-   surface's damage or reach where it takes its parent's, and the parents
-   are in `surfaceproperties.vsurf`, which is not in the public dump.
-   `Penetration.PARENTS` guesses them from the names for now (a wood plank
-   takes wood's damage). Extract that file and put it in `reference/` to
-   settle them. Also run `tests/run_dust2_checks.gd`, which lists which
-   CS2 surface each part of our dust2 hull is taken as.
+7b. **Surface parents.** *(done 2026-09-23)* `scripts/extract_assets.sh
+   surfaces` extracts `surfaceproperties.vsurf` (all 164 surfaces, each with
+   its parent, physics and the hash the game names it by) and
+   `surfaceproperties_game.txt`, and writes them to `reference/surfaces/`
+   (`surfaces.csv`, and `surfaces.md` resolved); `SurfaceProperties` reads
+   them and `Penetration` takes its numbers and parents from it instead of the
+   hand-typed table and the guessed parents. The 84 copied numbers (for 78
+   surfaces) matched the game's file exactly; the parents did not. On dust2's
+   hull that moves the dumpsters (`metal_dumpster`, which takes a metal
+   barrel's 0.01 and stops a round), the trees (`Wood_Tree`, dense wood: 0.5
+   and 0.3, not 0.9 and 0.6), carpet (dirt's damage, 0.3 not 0.5) and plastic
+   (a plastic box's reach, 0.75 not 0.5); off it, chains, gravel and stucco.
+   Two parts were misnamed on the way in and are right now: the railings,
+   which Source 2 Viewer writes as `vrf_unknown_key_2838185980` because it has
+   no name for them, are `metalrailing` by that hash
+   (`SurfaceProperties.by_hash`), and the second of two parts of one surface,
+   which Godot numbers (`physics_group_wood_plank2`), is its surface and not
+   the word before (wood). The dust2 checks hold every part of the hull, by
+   the name the game passes on, to the CS2 surface of its own name.
+7c. **Surfaces per triangle.** *(Local, then Remote)* The hull's physics gives
+   a surface to each triangle as well as to each shape, and the export keeps
+   only the shape's: dust2's ground mesh comes out all `concrete`, though of
+   its 175,380 triangles 9,107 are sand, 3,501 gravel, 3,081 dirt, 1,641 tile
+   and 3,615 default; the wood mesh carries 1,326 plastic ones. Penetration
+   and footsteps take those patches as concrete and wood. The indices are in
+   the physics block (`Source2Viewer-CLI -b PHYS` on `world_physics.vmdl_c`:
+   each mesh's `m_Materials`, one a triangle, into `m_surfacePropertyHashes`);
+   extract them beside the hull and split each collision mesh by surface at
+   import.
 8. **Set `recoil_scale` from a measurement (Sid).** *(Local)* The spray's overall size
    is the one estimate left in the recoil model (it assumes the AK climbs 16
    degrees). Spray a wall in CS2 from 496 units and compare it with the
@@ -371,10 +393,14 @@ These do not block anything above; they are feel checks.
 - **Measurements in CS2 (Sid):** *(Local)* standing jump height, crouch-jump reach, and
   whether the dead-strafe zone feels right. The movement fixes that change
   them have landed, so they can be measured now.
-- **Per-surface friction.** *(Local extracts the table, then Remote)* `MovementSolver` takes a surface friction and is
-  always handed 1.0 on the ground. CS2's `surfaceproperties.vsurf` has the
-  table; extract it and feed it in. Small, and mostly felt on dust2's few
-  slick surfaces.
+- **Per-surface friction.** *(Local done 2026-09-23: the table is extracted,
+  `SurfaceProperties.player_friction`; Remote: feed it in)* `MovementSolver`
+  takes a surface friction and is always handed 1.0 on the ground. Source
+  gives a player the surface's physics friction times 1.25, at most 1
+  (`CGameMovement::CategorizeGroundSurface`), and scales ground friction and
+  acceleration by it. On dust2 that is all of it everywhere but glass (0.625)
+  and pottery (0.5); the part under the player's feet is what `Footsteps`
+  already finds, and `Penetration.surface_for` names its surface.
 - **Surf ramp ends** (parked by Sid). *(Remote)* The course cannot reproduce the
   complaint yet because its ramps have no end to launch off.
 
@@ -403,7 +429,8 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 | Hands | Play being shot on the test range (B, U, Y, J, T) and dust2: your capsules' fit, the tag, the flinch, the hit arcs (PR #27) | Items 1 to 4 |
 | Hands | Measure a tag's length and the flinch's size in CS2 | Item 4a |
 | Hands | Shoot through dust2's walls in CS2 with `sv_showimpacts_penetration 1` and note the damage | Item 7a |
-| Hands | Extract `surfaceproperties.vsurf`; run the dust2 checks for the hull's surfaces | Item 7b |
+| Done | CS2's surfaces extracted and read (`SurfaceProperties`): penetration's parents from the game, the friction table | Item 7b, per-surface friction |
+| Hands | Carry the hull's surfaces per triangle through the export (dust2's ground is not all concrete) | Item 7c |
 | Hands | Play wall penetration on the test range (M) and dust2 | Item 7 |
 | Done | The every-gun extraction (weapons TODO L1 to L3), and reload, draw and zoom figures from the game's own data (L5) | Every gun: `reference/weapons/models.md`, `sounds.md`, `timings.md`, `vdata.md` |
 | Done | dust2's buy zones, bomb sites and callout volumes, its radar, and its baked bomb damage file (cs2-systems B1, B3, C2; PR #34) | Phases 4 and 5 |
@@ -434,7 +461,7 @@ buying, the bomb, grenades, the knife and Zeus, bots that play the round,
 multiplayer, and menus with a build. Every gun runs alongside all of it.
 The split is done (PR #24) and being shot is in apart from blood and the
 third-person firing layer (PR #27), and wall penetration is in (PR #31),
-so what is left of the shooting model is measuring (7a, 7b, 8).
+so what is left of the shooting model is measuring (7a, 8).
 
 What a thread can start now: bots walking the nav mesh (item 22); the
 match, inventory and economy (items 11 to 13); from the weapons todo, the

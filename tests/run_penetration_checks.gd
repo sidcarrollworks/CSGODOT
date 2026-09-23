@@ -57,15 +57,36 @@ func _run() -> void:
 func _test_surfaces() -> void:
 	var names := {
 		"physics_group_wood_plank": "wood_plank", "physics_group_concrete": "concrete",
-		"physics_group_sand": "sand", "physics_group_metal_dumpster": "metal",
-		"physics_group_rubbertire": "rubber", "physics_group_solidmetal": "solidmetal",
+		"physics_group_sand": "sand", "physics_group_metal_dumpster": "metal_dumpster",
+		"physics_group_rubbertire": "rubbertire", "physics_group_solidmetal": "solidmetal",
+		"physics_group_metal_dumpster_lid": "metal_dumpster", "physics_group_rubbertire_worn": "rubbertire",
+		# As the hull reaches Hitscan: the export's hash for a surface it cannot
+		# name, and Godot's number on a repeated part, after a hash too; but a
+		# surface whose own name ends in a digit keeps it.
+		"physics_group_vrf_unknown_key_2838185980": "metalrailing", "physics_group_vrf_unknown_key_28381859802": "metalrailing",
+		"physics_group_wood_plank2": "wood_plank", "physics_group_wood2": "wood", "physics_group_weaponc4": "weaponc4",
 		"physics_group_Wood_Crate": "wood_crate", "physics_group": "default",
 		"CollisionShape3D": "default", "": "default",
 	}
 	for hull_name: String in names:
 		var got := Penetration.surface_for(hull_name)
 		_check(got == names[hull_name], "the hull part %s is CS2's %s (%s)" % [hull_name, names[hull_name], got])
-	_check(Penetration.SURFACES.size() == 78, "all 78 of the game's surfaces are there (%d)" % Penetration.SURFACES.size())
+	var in_game_file := 0
+	var with_modifiers := 0
+	for surface: String in SurfaceProperties.names():
+		var row: Dictionary = SurfaceProperties.rows()[surface]
+		var game_values := ""
+		for column in ["gamematerial", "jumpfactor", "maxspeedfactor", "climbable", "penetration_distance", "penetration_damage", "smoke_through"]:
+			game_values += String(row[column])
+		if not game_values.is_empty():
+			in_game_file += 1
+		if not (String(row["penetration_distance"]).is_empty() and String(row["penetration_damage"]).is_empty()):
+			with_modifiers += 1
+	_check(
+		SurfaceProperties.names().size() == 164 and in_game_file == 77 and with_modifiers == 56,
+		"all 164 of the game's surfaces are there, the 77 its game file gives values for (and chain, which it names and gives none), 56 of them a round's modifiers (%d, %d, %d)"
+			% [SurfaceProperties.names().size(), in_game_file, with_modifiers]
+	)
 
 
 func _test_the_numbers() -> void:
@@ -78,6 +99,18 @@ func _test_the_numbers() -> void:
 	_check(is_equal_approx(plank.x, 0.85) and is_equal_approx(plank.y, 0.6), "a wood plank's own reach (0.85) and wood's damage (0.6): %s" % plank)
 	var glass := Penetration.modifiers("glass")
 	_check(is_equal_approx(glass.x, 0.99) and is_equal_approx(glass.y, 0.5), "glass's reach and default's damage: %s" % glass)
+	# Parents as the game's surfaceproperties.vsurf sets them, where names
+	# alone would guess wrong.
+	var chain := Penetration.modifiers("chain")
+	var dumpster := Penetration.modifiers("metal_dumpster")
+	var tree := Penetration.modifiers("wood_tree")
+	var stucco := Penetration.modifiers("stucco")
+	_check(
+		is_equal_approx(chain.y, 0.99) and is_equal_approx(dumpster.x, 0.01) and is_equal_approx(dumpster.y, 0.01)
+			and tree == Vector2(0.5, 0.3) and stucco == Vector2(0.5, 0.25),
+		"a chain lets through what chain-link does, a dumpster stops a round as a metal barrel does, a tree is dense wood, stucco is concrete (%s, %s, %s, %s)"
+			% [chain, dumpster, tree, stucco]
+	)
 	_check(Penetration.cost(4.0, 0.0) == INF, "a surface the game gives no reach (plastic_solid) cannot be gone through")
 	_check(
 		is_equal_approx(Penetration.kept(0.0, 0.25, 2.0), 1.0 - Penetration.FLAT_LOSS),
