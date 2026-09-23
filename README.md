@@ -409,9 +409,9 @@ Note that GDScript's analyser warnings (shadowed variables, unused locals) only
 appear when the editor loads a script. They do not show up in a headless run,
 so if the Godot console shows any, paste them over and they will get fixed.
 
-Seven files: movement, map import, dust2, models, weapons, the test range
-and the simulation. Without the extracted assets 536 checks run and pass;
-the dust2 and model files skip what needs files that have not been
+Eight files: movement, map import, dust2, models, weapons, penetration, the
+test range and the simulation. Without the extracted assets 590 checks run
+and pass; the dust2 and model files skip what needs files that have not been
 extracted.
 
 Half of the movement ones are the acceleration model against hand-computed

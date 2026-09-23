@@ -115,9 +115,9 @@ Updated 2026-09-22: weapon numbers from Sid's spreadsheet and tapping (PR #23), 
 
 ### Tooling
 - `scripts/extract_assets.sh` (map, physics, weapons, characters, sounds and
-  more), `inspect_assets`, and `run_tests.sh` with seven headless test files
-  (movement, map, dust2, model, weapon, range, simulation): 536 checks pass
-  without the assets.
+  more), `inspect_assets`, and `run_tests.sh` with eight headless test files
+  (movement, map, dust2, model, weapon, penetration, range, simulation): 590
+  checks pass without the assets.
 
 ---
 
