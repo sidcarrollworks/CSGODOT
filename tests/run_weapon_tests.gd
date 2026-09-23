@@ -37,6 +37,7 @@ func _process(_delta: float) -> bool:
 		_test_tapping_recovers_gradually()
 		_test_the_rate_of_fire_is_exact()
 		_test_patterns_are_the_measured_ones()
+		_test_weapons_are_built_from_what_was_worked_out()
 		_test_recoil_scale()
 		_test_bullets_ignore_the_view_kick()
 		_test_view_kicks_less_than_the_spray()
@@ -479,6 +480,50 @@ func _test_the_rate_of_fire_is_exact() -> void:
 
 
 ## The patterns are the ones read off the CS2 spray plots, not placeholders.
+## A weapon is built on every equip and every respawn. Its recoil's pushes,
+## solved from the pattern, and the pattern itself are worked out once and
+## copied after: solving them took 15 ms, a frame frozen every time a gun was
+## drawn. The copies are what solving afresh gives, a slower gun's are its
+## own, and a weapon changing its copy leaves the next weapon's alone.
+func _test_weapons_are_built_from_what_was_worked_out() -> void:
+	var first := Weapon.new(WeaponLibrary.ak47())
+	var solved := RecoilState._solved.size()
+	var started := Time.get_ticks_usec()
+	var second := Weapon.new(WeaponLibrary.ak47())
+	var took := (Time.get_ticks_usec() - started) / 1000.0
+	_check(
+		RecoilState._solved.size() == solved and took < 5.0,
+		"a second AK-47 is built in %.2f ms, its recoil not solved again" % took
+	)
+	_check(
+		first._impulses.size() == 29 and second._impulses == first._impulses,
+		"and it has the first one's pushes, one for each round after the first"
+	)
+
+	var pattern := PackedVector2Array()
+	for i in first.data.recoil_pattern.size():
+		pattern.append(first.data.recoil_offset(i))
+	RecoilState._solved.clear()
+	var fresh := RecoilState.solve_impulses(pattern, first.data.cycle_time)
+	_check(fresh == first._impulses, "which are what solving the pattern afresh gives")
+	_check(
+		RecoilState.solve_impulses(pattern, first.data.cycle_time * 2.0) != fresh,
+		"and a gun firing half as fast has pushes of its own"
+	)
+
+	first._impulses[0] = Vector2(99.0, 99.0)
+	_check(
+		Weapon.new(WeaponLibrary.ak47())._impulses[0] != Vector2(99.0, 99.0),
+		"a weapon's pushes are its own copy: changing one leaves the next weapon's as solved"
+	)
+	var read := RecoilPattern.load_pattern("ak47")
+	read[1] = Vector2(99.0, 99.0)
+	_check(
+		RecoilPattern.load_pattern("ak47")[1] != Vector2(99.0, 99.0),
+		"and so is a pattern read from its file"
+	)
+
+
 func _test_patterns_are_the_measured_ones() -> void:
 	var ak := WeaponLibrary.ak47()
 	var m4 := WeaponLibrary.m4a1s()

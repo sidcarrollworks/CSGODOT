@@ -82,6 +82,7 @@ func _run() -> void:
 	await _test_a_held_trigger_fires_on_simulation_time()
 	await _test_a_press_fires_from_where_the_player_was()
 	await _test_a_semi_automatic_fires_once_a_click()
+	await _test_asking_for_the_weapon_in_hand()
 	await _test_a_running_tap_misses()
 	await _test_a_bot_plays_through_commands()
 	await _test_a_bot_finds_its_way()
@@ -527,6 +528,36 @@ func _test_a_semi_automatic_fires_once_a_click() -> void:
 	times.clear()
 	run.call([[0, 0], [6, 8]], 40)
 	_check_equal(times.size(), 1, "a click let go before the gun is ready fires nothing, then or later")
+	player.queue_free()
+	await physics_frame
+
+
+## Asking for the weapon already in hand leaves it as it is, as Source does:
+## no draw, and the rounds it had rather than a full magazine. Asking for
+## another draws that one.
+func _test_asking_for_the_weapon_in_hand() -> void:
+	var player := _new_player(Vector3(-1024.0, 0.0, -1536.0), "T")
+	player.equip(WeaponLibrary.ak47())
+	var drawn: Array[String] = []
+	player.equipped.connect(func(data: WeaponData) -> void: drawn.append(data.display_name))
+	var ak := player.weapon
+	ak.ammo = 12
+	var cmd := UserCmd.new()
+	cmd.tick = 90_000
+	cmd.weapon_select = 1
+	player.run_command(cmd, DT)
+	_check(
+		player.weapon == ak and player.weapon.ammo == 12 and drawn.is_empty(),
+		"asking for the AK-47 in hand leaves it as it is: no draw, and the %d rounds it had" % player.weapon.ammo
+	)
+	cmd = UserCmd.new()
+	cmd.tick = 90_001
+	cmd.weapon_select = 2
+	player.run_command(cmd, DT)
+	_check(
+		player.weapon != ak and player.weapon.data.display_name == "M4A1-S" and drawn.size() == 1 and drawn[0] == "M4A1-S",
+		"asking for the M4A1-S draws it (%s)" % [drawn]
+	)
 	player.queue_free()
 	await physics_frame
 

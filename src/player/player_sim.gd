@@ -407,8 +407,11 @@ func _run(cmd: UserCmd, dt: float) -> void:
 			respawn()
 		return
 
+	# The weapon already in hand, asked for again, stays as it is, as Source
+	# has it (CBasePlayer::Weapon_ShouldSelectItem): no draw, and not the full
+	# magazine a new one comes with, which made the key a reload with no wait.
 	var selected := weapon_for_slot(cmd.weapon_select)
-	if selected != null:
+	if selected != null and (weapon == null or weapon.data.display_name != selected.display_name):
 		equip(selected)
 
 	yaw_degrees = cmd.yaw_degrees
