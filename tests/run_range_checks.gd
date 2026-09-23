@@ -152,6 +152,7 @@ func _run() -> void:
 	await _test_whole_ragdoll()
 	await _test_fall_speed()
 	_test_the_world_runs_the_range()
+	await _test_the_shop()
 	_test_bodies_drawn_between_ticks()
 	await _test_being_shot()
 	await _test_death_cam()
@@ -361,6 +362,41 @@ func _test_the_world_runs_the_range() -> void:
 		world != null and world.tick > 0 and world.players.all(func(player: PlayerSim) -> bool: return player.last_command.tick == world.tick),
 		"and every one of them has run the world's last tick, %d" % (world.tick if world != null else 0)
 	)
+
+
+## Money and buying on the range: you start in the buy zone with $16,000,
+## a gun you buy is put in your hands, undoing it gives the money back and
+## the rifle you had, and out of the zone the menu will not open.
+func _test_the_shop() -> void:
+	var shop: RangeShop = _range.shop
+	var player: PlayerController = _range.player
+	_check(shop != null and shop.economy != null and shop.game == _range.game
+		and shop.game.systems().has(shop.economy), "the range's economy is a system in its shared game")
+	if shop == null:
+		return
+	player.place(Vector3(0.0, 8.0, 0.0), 0.0)
+	var userid := shop.userid
+	_check(shop.economy.money(userid) == 16000 and shop.economy.shop_refusal(userid) == Economy.OK,
+		"you start in the buy zone with $16,000")
+	shop.economy.buy(userid, "weapon_deagle")
+	for i in 2:
+		await physics_frame
+	_check(player.weapon.data.item_class == "weapon_deagle" and shop.economy.money(userid) == 16000 - 700,
+		"buying the Desert Eagle puts it in your hands for $700 (%s)" % player.weapon.data.item_class)
+	shop.economy.undo(userid, "weapon_deagle")
+	for i in 2:
+		await physics_frame
+	_check(player.weapon.data.item_class == "weapon_ak47" and shop.economy.money(userid) == 16000,
+		"undoing it gives the $700 back and the AK-47 you had (%s)" % player.weapon.data.item_class)
+	shop.menu.open()
+	var opened := shop.menu.is_open()
+	shop.menu.close()
+	player.place(Vector3(0.0, 8.0, -1500.0), 0.0)
+	for i in 2:
+		await physics_frame
+	shop.menu.open()
+	_check(opened and not shop.menu.is_open(), "the buy menu opens in the zone and not out of it")
+	player.place(Vector3(0.0, 8.0, 0.0), 0.0)
 
 
 ## The whole body the way CS2's hitboxes cover it, nineteen capsules on a

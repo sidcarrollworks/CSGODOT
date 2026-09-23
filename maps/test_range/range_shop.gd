@@ -28,13 +28,12 @@ var player: PlayerController
 var userid: int = GameEvents.NOBODY
 
 
-## Puts the economy into the range's game and the menu on its HUD layer.
-func setup(range_game: GameSystems, you: PlayerController, hud: CanvasLayer) -> void:
+## Puts the economy into the range's game, and the menu on a layer of its
+## own over the view.
+func setup(range_game: GameSystems, you: PlayerController) -> void:
 	game = range_game
 	player = you
 	userid = game.roster.userid_of(player)
-	if userid == GameEvents.NOBODY:
-		userid = game.add_player(player, player.hit_target)
 
 	var zones := BuyZones.new()
 	zones.add_box("T", ZONE)
@@ -53,10 +52,13 @@ func setup(range_game: GameSystems, you: PlayerController, hud: CanvasLayer) -> 
 		if player.weapon != null and not player.weapon.data.item_class.is_empty():
 			inv.add(player.weapon.data.item_class)
 
+	var layer := CanvasLayer.new()
+	layer.layer = 10
+	add_child(layer)
 	menu = BuyMenu.new()
 	menu.economy = economy
 	menu.userid = userid
-	hud.add_child(menu)
+	layer.add_child(menu)
 	_draw_zone()
 
 

@@ -16,9 +16,13 @@ bought into the buyer's `Inventory`, and never calls the round code.
 | `loadout.gd` | `Loadout`: the buy menu's five columns of five, CS2's default loadout |
 | `buy_menu.gd` | `BuyMenu`: the menu. Reads the economy, asks it for purchases; drawing only |
 
-A purchase is asked for with `Economy.buy(userid, item)` (or `undo`) and
-carried out on the next tick, as CS2's server carries out a client's `buy`
-command: the menu is a client, and would stay one over a network.
+A purchase is CS2's own console command, `buy ak47` (CS2's short names,
+`vest`, `vesthelm`, or the class name), sent with `game.command(userid,
+...)` and carried out at the start of the next tick, as CS2's server
+carries out a client's; `sellback ak47` undoes one (a command this project
+adds; CS2's menu undoes through its own UI). `Economy.buy` and `undo` send
+them. The menu is a client, and would stay one over a network. A gun a
+purchase replaces falls at the buyer's feet as a `DroppedItem`.
 
 ## CS2's numbers
 
@@ -125,6 +129,9 @@ the match:
    weapon's class), and the bomb sends `bomb_planted` and `bomb_defused`.
 5. On dust2, `BuyMenu` goes in the HUD's layer with `economy` and your
    `userid` set (see `maps/test_range/test_range.gd`), and B opens it.
-6. When dropped guns are in (item 12), set `economy.drop` to put a gun a
-   purchase replaced on the ground at the buyer's feet.
-7. Bots buying (roadmap item 24) calls the same `Economy.buy`.
+6. Bots buying (roadmap item 24) sends the same `buy` command.
+
+On the test range this is done already (`maps/test_range/range_shop.gd`):
+the economy is a system in the range's `game`, with a buy zone round the
+spawn, $16,000 (O fills it again) and buying that never closes, and until
+the player carries their inventory, a gun bought is put in their hands.

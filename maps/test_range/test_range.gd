@@ -87,6 +87,8 @@ var shooter: Bot
 var damage_indicator: DamageIndicator
 var hitbox_camera: Camera3D
 var cover: CoverPanel
+## A buy zone round the spawn, $16,000 and the buy menu (B).
+var shop: RangeShop
 
 var _impacts: Array = []
 var _markers: Node3D
@@ -137,6 +139,10 @@ func _ready() -> void:
 	_build_player()
 	_build_shooter()
 	_build_hud()
+	shop = RangeShop.new()
+	shop.name = "Shop"
+	add_child(shop)
+	shop.setup(game, player)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -201,6 +207,7 @@ func _process(_delta: float) -> void:
 			"still" if weapon.aim_punch.length() < 0.01 else "moving",
 		],
 		"impacts    %d" % _impacts.size(),
+		"\n".join(shop.readout()),
 		"",
 		"1 / 2  weapon      R  reload",
 		"P      export      O  clear",
@@ -210,6 +217,7 @@ func _process(_delta: float) -> void:
 		"I      shooter fires    U  its weapon",
 		"Y      your armour      J  you never die",
 		"T      your hitboxes: front, side, off",
+		"B      buy menu, in the green zone round the spawn",
 	])
 	_dummy_label.text = dummy_readout()
 	_you_label.text = you_readout()
@@ -628,6 +636,8 @@ func _reset() -> void:
 	_log.clear()
 	if dummy != null:
 		dummy.respawn()
+	if shop != null:
+		shop.reset()
 	print("Range cleared.")
 
 
