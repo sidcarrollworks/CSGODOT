@@ -132,7 +132,7 @@ Each hit tags you (the readout in the bottom left gives the share of your
 top speed you have left and how fast you are going, so run while it fires),
 throws your aim (the flinch, in degrees), and puts a red arc round the
 crosshair on its side. U swaps its weapon: the rifles tag to 40%, the MP9
-(its row of the weapon sheet on the AK-47's spray, which is not measured
+(the game's own numbers for it on the AK-47's spray, which is not measured
 for it) stops you. Y takes your armour off a piece at a time, for the
 flinch with and without it; J keeps you alive for as long as you want to be
 shot. T opens a window in the bottom right on your own body and hitboxes,

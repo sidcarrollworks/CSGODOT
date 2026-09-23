@@ -321,8 +321,10 @@ func _test_being_shot() -> void:
 	_range.next_shooter_weapon()
 	_check(
 		shooter.weapon_data.display_name == "MP9" and is_equal_approx(shooter.weapon.data.tagging_power, 1.0)
-			and is_equal_approx(shooter.weapon.data.base_damage, WeaponSheet.number("MP9", "Damage")),
-		"U round to the MP9, with the sheet's damage and 100%% tagging (%.0f)" % shooter.weapon.data.base_damage
+			and is_equal_approx(shooter.weapon.data.base_damage, WeaponVData.number("weapon_mp9", "m_nDamage"))
+			and is_equal_approx(shooter.weapon.data.reload_time, WeaponVData.number("weapon_mp9", "m_flDisallowAttackAfterReloadStartDuration")),
+		"U round to the MP9, with the game's damage, its own reload and 100%% tagging (%.0f, %.3f s)"
+			% [shooter.weapon.data.base_damage, shooter.weapon.data.reload_time]
 	)
 	_range.next_shooter_weapon()
 	_check(shooter.weapon_data.display_name == "AK-47", "and round again to the AK-47")
