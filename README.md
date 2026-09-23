@@ -448,8 +448,17 @@ difference between 1 GB of video memory and 4.
 ## Tests
 
 ```sh
-scripts/run_tests.sh
+scripts/run_tests.sh              # every test file
+scripts/run_tests.sh sim match    # only the files whose names contain these
 ```
+
+Every file runs, even after one fails, and a summary at the end says how
+each went; it exits 1 if any failed or ended without reporting (a script
+error). The same run happens on GitHub for every pull request and every
+push to main (`.github/workflows/tests.yml`), where the files that need
+the extracted assets skip themselves as they do on a fresh clone. A test
+file is any `tests/run_*.gd`; it extends `tests/check_suite.gd`, which
+has the checks and the one line each file ends with for the summary.
 
 Note that GDScript's analyser warnings (shadowed variables, unused locals) only
 appear when the editor loads a script. They do not show up in a headless run,

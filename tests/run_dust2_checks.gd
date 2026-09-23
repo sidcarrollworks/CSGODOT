@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/check_suite.gd"
 
 ## Checks the extracted dust2, if there is one.
 ##
@@ -24,8 +24,6 @@ const BOTS := 2
 ## Two and a half seconds of ticks, whatever the tick rate.
 var SETTLE_TICKS := SimClock.ticks_in(2.5)
 
-var _failures: int = 0
-var _checks: int = 0
 var _frames: int = 0
 var _spawned_at_tick: int = 0
 
@@ -67,8 +65,7 @@ func _process(_delta: float) -> bool:
 func _import() -> bool:
 	var map_file := MapImporter.find_map_file(MAP_DIR)
 	if map_file.is_empty():
-		print("dust2 has not been extracted; nothing to check.")
-		quit(0)
+		_skip("dust2", "dust2 has not been extracted; nothing to check.")
 		return false
 
 	_importer = MapImporter.new()
@@ -286,7 +283,6 @@ func _test_bots_walk() -> void:
 			"and its steps have sounded on the map's own surfaces (%d steps, last on %s)"
 				% [footsteps.steps if footsteps else 0, footsteps.surface if footsteps else "-"]
 		)
-
 
 
 ## dust2's nav mesh, the one the game's bots walk (scripts/extract_assets.sh
@@ -573,26 +569,5 @@ func _test_every_spawn_is_on_floor() -> void:
 		)
 
 
-func _check(condition: bool, description: String) -> void:
-	_checks += 1
-	if condition:
-		return
-	_failures += 1
-	printerr("FAIL: %s" % description)
-
-
-func _check_equal(actual: Variant, expected: Variant, description: String) -> void:
-	_checks += 1
-	if actual == expected:
-		return
-	_failures += 1
-	printerr("FAIL: %s (expected %s, got %s)" % [description, expected, actual])
-
-
 func _report() -> void:
-	if _failures == 0:
-		print("%d dust2 checks passed." % _checks)
-		quit(0)
-	else:
-		printerr("%d of %d dust2 checks failed." % [_failures, _checks])
-		quit(1)
+	_finish("dust2")

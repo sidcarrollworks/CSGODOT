@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/check_suite.gd"
 
 ## Checks the match: warmup, freeze time, a round won on eliminations or on
 ## time, nobody coming back mid-round, survivors keeping their armour, the
@@ -32,8 +32,6 @@ const CT_SPAWNS := [
 	{"position": Vector3(256.0, 0.0, -2000.0), "yaw": 180.0, "priority": 1},
 ]
 
-var _failures: int = 0
-var _checks: int = 0
 var _world: Node3D
 var _tick: int = 100_000
 
@@ -524,19 +522,9 @@ func _new_player(at: Vector3, team: String) -> PlayerSim:
 	return player
 
 
-func _check(condition: bool, description: String) -> void:
-	_checks += 1
-	if condition:
-		print("  ok   %s" % description)
-	else:
-		_failures += 1
-		print("  FAIL %s" % description)
-
-
 func _report() -> void:
-	if _failures == 0:
-		print("%d match checks passed." % _checks)
-		quit(0)
-	else:
-		print("%d of %d match checks failed." % [_failures, _checks])
-		quit(1)
+	_finish("match")
+
+
+func _print_passes() -> bool:
+	return true

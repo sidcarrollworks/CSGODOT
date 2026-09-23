@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/check_suite.gd"
 
 ## Checks the extracted weapons and player models, if there are any.
 ##
@@ -14,8 +14,6 @@ extends SceneTree
 const WEAPONS_DIR := "res://assets/weapons"
 const CHARACTERS_DIR := "res://assets/characters"
 
-var _failures: int = 0
-var _checks: int = 0
 var _frames: int = 0
 var _view_model: ViewModel
 var _player_model: PlayerModel
@@ -1398,18 +1396,5 @@ func _has(names: PackedStringArray, fragment: String) -> bool:
 	return false
 
 
-func _check(condition: bool, description: String) -> void:
-	_checks += 1
-	if condition:
-		return
-	_failures += 1
-	printerr("FAIL: %s" % description)
-
-
 func _report() -> void:
-	if _failures == 0:
-		print("%d model checks passed." % _checks)
-		quit(0)
-	else:
-		printerr("%d of %d model checks failed." % [_failures, _checks])
-		quit(1)
+	_finish("model")

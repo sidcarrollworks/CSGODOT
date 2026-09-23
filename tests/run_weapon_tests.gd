@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/check_suite.gd"
 
 ## Headless tests for shooting.
 ##
@@ -16,8 +16,6 @@ extends SceneTree
 const DT := 1.0 / 128.0
 const SECOND := 1_000_000
 
-var _failures: int = 0
-var _checks: int = 0
 var _frames: int = 0
 
 var _target: HitTarget
@@ -1669,36 +1667,7 @@ func _test_crosshair_is_centred() -> void:
 	crosshair.queue_free()
 
 
-func _check(condition: bool, description: String) -> void:
-	_checks += 1
-	if condition:
-		return
-	_failures += 1
-	printerr("FAIL: %s" % description)
-
-
-func _check_equal(actual: Variant, expected: Variant, description: String) -> void:
-	_checks += 1
-	if actual == expected:
-		return
-	_failures += 1
-	printerr("FAIL: %s (expected %s, got %s)" % [description, expected, actual])
-
-
-func _check_near(actual: float, expected: float, description: String) -> void:
-	_checks += 1
-	if absf(actual - expected) <= 0.01:
-		return
-	_failures += 1
-	printerr("FAIL: %s (expected %.4f, got %.4f)" % [description, expected, actual])
-
-
 func _report() -> void:
 	if _world != null:
 		_world.free()
-	if _failures == 0:
-		print("%d weapon checks passed." % _checks)
-		quit(0)
-	else:
-		printerr("%d of %d weapon checks failed." % [_failures, _checks])
-		quit(1)
+	_finish("weapon")

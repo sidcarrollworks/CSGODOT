@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/check_suite.gd"
 
 ## Checks the split between the simulation and everything around it: that
 ## the simulation reads nothing but commands, that keys become commands at
@@ -33,8 +33,6 @@ const SIMULATION_FILES := [
 	"res://src/combat/hitscan.gd",
 ]
 
-var _failures: int = 0
-var _checks: int = 0
 var _world: Node3D
 
 
@@ -750,19 +748,9 @@ func _new_player(at: Vector3, team: String) -> PlayerSim:
 	return player
 
 
-func _check(condition: bool, description: String) -> void:
-	_checks += 1
-	if condition:
-		print("  ok   %s" % description)
-	else:
-		_failures += 1
-		print("  FAIL %s" % description)
-
-
 func _report() -> void:
-	if _failures == 0:
-		print("%d simulation checks passed." % _checks)
-		quit(0)
-	else:
-		print("%d of %d simulation checks failed." % [_failures, _checks])
-		quit(1)
+	_finish("simulation")
+
+
+func _print_passes() -> bool:
+	return true

@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/check_suite.gd"
 
 ## Headless test run.
 ##
@@ -57,8 +57,6 @@ const SUBTICK_HOP_SPEED := 230.0
 
 const SUBTICK_SETTLE_TICKS := 24
 
-var _failures: int = 0
-var _checks: int = 0
 var _frames: int = 0
 
 var _course: Node3D
@@ -430,24 +428,6 @@ func _phase_climb() -> void:
 	_advance_phase()
 
 
-# --- Assertions -----------------------------------------------------------
-
-func _check(condition: bool, description: String) -> void:
-	_checks += 1
-	if condition:
-		return
-	_failures += 1
-	printerr("FAIL: %s" % description)
-
-
-func _check_near(actual: float, expected: float, description: String) -> void:
-	_checks += 1
-	if absf(actual - expected) <= EPS:
-		return
-	_failures += 1
-	printerr("FAIL: %s (expected %.6f, got %.6f)" % [description, expected, actual])
-
-
 func _report() -> void:
 	# Worth printing even on success: these are the numbers the whole project
 	# is tuned against, and seeing them move is how you notice a change that
@@ -471,12 +451,7 @@ func _report() -> void:
 			weapon_name, r["running"], r["counter"] * DT * 1000.0,
 			r["release"] * DT * 1000.0, r["window"] * DT * 1000.0,
 		])
-	if _failures == 0:
-		print("%d checks passed." % _checks)
-		quit(0)
-	else:
-		printerr("%d of %d checks failed." % [_failures, _checks])
-		quit(1)
+	_finish("movement")
 
 
 func _test_stay_on_ground() -> void:
@@ -932,3 +907,7 @@ func _test_climb() -> void:
 			_climb_height, _course.surf_channel_top_height
 		]
 	)
+
+
+func _near_tolerance() -> float:
+	return EPS
