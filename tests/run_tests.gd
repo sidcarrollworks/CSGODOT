@@ -116,6 +116,7 @@ func _process(_delta: float) -> bool:
 		# simulate() path, collision and all.
 		_player.set_physics_process(false)
 		_test_creep_stops()
+		_test_traces_a_tick()
 		return false
 
 	_phase_tick += 1
@@ -803,6 +804,34 @@ func _test_player_lands() -> void:
 		absf(_player.velocity.y) < 1.0,
 		"player is at rest vertically (vy = %.3f)" % _player.velocity.y
 	)
+
+
+## What a tick costs, in traces of the hull, which are tens of microseconds
+## each on dust2 and most of a tick. Standing still, one: the ground check
+## at the end of the move (Source's WalkMove moves nobody slower than a unit
+## a second, and the check at the start is the last one's while nothing has
+## moved the body, sv_optimizedmovement). Running in the open, four: the
+## move, StayOnGround's two, the check. A third and a fourth running tick
+## are counted, the first ones having started from where the body was put.
+func _test_traces_a_tick() -> void:
+	_place(Vector3(0.0, 8.0, 256.0))
+	for i in SETTLE_TICKS:
+		_step()
+	var before := _player.traces
+	_step()
+	var standing := _player.traces - before
+	var forward := Vector3(0.0, 0.0, -1.0)
+	for i in 2:
+		_step(forward)
+	before = _player.traces
+	_step(forward)
+	_step(forward)
+	var running := _player.traces - before
+	_check(
+		standing == 1 and running == 8 and _player.on_ground,
+		"a tick traces the hull once standing still and four times running in the open (%d, then %d in two)" % [standing, running]
+	)
+	_place(Vector3(0.0, 8.0, 256.0))
 
 
 ## Source's WalkMove stops a player slower than a unit a second dead, where

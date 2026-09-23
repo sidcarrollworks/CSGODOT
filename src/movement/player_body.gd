@@ -64,8 +64,18 @@ var jump_fraction: float = -1.0
 ## ticks instead of stuttering at the 128 Hz tick boundary.
 var previous_position: Vector3 = Vector3.ZERO
 
+## How many times the hull has been traced: most of what a tick costs, at
+## tens of microseconds a trace on dust2, counted so the checks can hold the
+## movement to so many a tick.
+var traces: int = 0
+
 var _collision_shape: CollisionShape3D
 var _jump_held_last_tick: bool = false
+## Where the last ground check that looked left the body, and the height of
+## the hull it looked with (_ground_known).
+var _looked_from := Vector3.INF
+var _looked_with := 0.0
+var _hull_height := 0.0
 
 
 func _ready() -> void:
@@ -143,7 +153,8 @@ func simulate(dt: float) -> void:
 
 ## One (possibly partial) simulation step. This is Source's FullWalkMove.
 func _simulate_step(dt: float) -> void:
-	_categorize_position()
+	if not _ground_known():
+		_categorize_position()
 	_update_duck(dt)
 
 	var surface_friction := MovementSolver.surface_friction_for(
@@ -176,6 +187,21 @@ func _simulate_step(dt: float) -> void:
 		velocity.y = 0.0
 
 	velocity = MovementSolver.check_velocity(velocity, config)
+
+
+## Whether the ground the last move found is still what is under the body,
+## so the check at the start of this one can be left out, as Source leaves it
+## out (PlayerMove, with sv_optimizedmovement on, its default): nothing has
+## moved the body since that check looked, nor changed its hull, and it is
+## not rising too fast to stand on anything. The world does not move; only a
+## player walking out from under it is noticed a move later, as in Source.
+## Every tick's move still ends with a check, so this is one trace a tick.
+func _ground_known() -> bool:
+	return (
+		global_position == _looked_from
+		and _hull_height == _looked_with
+		and velocity.y <= config.non_jump_velocity
+	)
 
 
 ## Ducking, as Source does it.
@@ -219,7 +245,7 @@ func _finish_duck() -> void:
 	_set_hull(config.duck_height)
 
 	if airborne:
-		move_and_collide(Vector3.UP * delta)
+		_trace(Vector3.UP * delta)
 		# Head stays where it was and the eye offset drops by the same amount,
 		# so the view does not jump. That only holds if the view snaps too.
 		duck_progress = 1.0
@@ -230,7 +256,7 @@ func _finish_duck() -> void:
 func _finish_unduck() -> void:
 	var delta := _duck_height_delta()
 	if not on_ground:
-		move_and_collide(Vector3.DOWN * delta)
+		_trace(Vector3.DOWN * delta)
 		duck_progress = 0.0
 	_set_hull(config.stand_height)
 	is_ducked = false
@@ -242,7 +268,7 @@ func _finish_unduck() -> void:
 func _can_unduck() -> bool:
 	var delta := _duck_height_delta()
 	var direction := Vector3.UP if on_ground else Vector3.DOWN
-	return move_and_collide(direction * delta, true) == null
+	return _trace(direction * delta, true) == null
 
 
 func _set_hull(height: float) -> void:
@@ -253,6 +279,7 @@ func _set_hull(height: float) -> void:
 		return
 	shape.size = Vector3(config.hull_width, height, config.hull_width)
 	_collision_shape.position.y = height * 0.5
+	_hull_height = height
 
 
 ## The eye offset above the feet for the current duck state.
@@ -323,13 +350,13 @@ func _stay_on_ground() -> void:
 
 	var start := global_position
 
-	move_and_collide(Vector3.UP * STAY_ON_GROUND_UP)
+	_trace(Vector3.UP * STAY_ON_GROUND_UP)
 	var raised := global_position
 
 	# Down to a full step height below where the move ended, from wherever the
 	# upward trace actually got to.
 	var distance := raised.y - (start.y - config.step_height)
-	var collision := move_and_collide(Vector3.DOWN * distance, true)
+	var collision := _trace(Vector3.DOWN * distance, true)
 
 	global_position = start
 
@@ -407,7 +434,7 @@ func _horizontal_distance(a: Vector3, b: Vector3) -> float:
 
 
 func _ground_below_is_walkable() -> bool:
-	var collision := move_and_collide(
+	var collision := _trace(
 		Vector3.DOWN * GROUND_TRACE_DISTANCE, true
 	)
 	if collision == null:
@@ -417,7 +444,7 @@ func _ground_below_is_walkable() -> bool:
 
 ## Moves without any slide response, stopping at the first obstruction.
 func _trace_move(motion: Vector3) -> void:
-	move_and_collide(motion)
+	_trace(motion)
 
 
 ## Source's TryPlayerMove: up to four collide-and-slide iterations, clipping
@@ -436,7 +463,7 @@ func _try_player_move(dt: float) -> bool:
 			break
 
 		var motion := velocity * time_left
-		var collision := move_and_collide(motion)
+		var collision := _trace(motion)
 
 		if collision == null:
 			all_fraction += 1.0
@@ -522,9 +549,10 @@ func _categorize_position() -> void:
 	if velocity.y > config.non_jump_velocity:
 		on_ground = false
 		ground_normal = Vector3.UP
+		_looked_from = Vector3.INF
 		return
 
-	var collision := move_and_collide(
+	var collision := _trace(
 		Vector3.DOWN * GROUND_TRACE_DISTANCE, true
 	)
 	var normal := Vector3.ZERO
@@ -542,6 +570,8 @@ func _categorize_position() -> void:
 		if normal == Vector3.ZERO:
 			on_ground = false
 			ground_normal = Vector3.UP
+			_looked_from = global_position
+			_looked_with = _hull_height
 			return
 
 	on_ground = true
@@ -552,7 +582,16 @@ func _categorize_position() -> void:
 	if collision != null:
 		global_position += travel
 	else:
-		move_and_collide(Vector3.DOWN * GROUND_TRACE_DISTANCE)
+		_trace(Vector3.DOWN * GROUND_TRACE_DISTANCE)
+	_looked_from = global_position
+	_looked_with = _hull_height
+
+
+## A trace of the hull along motion, as move_and_collide makes it, counted
+## (traces).
+func _trace(motion: Vector3, test_only: bool = false) -> KinematicCollision3D:
+	traces += 1
+	return move_and_collide(motion, test_only)
 
 
 ## Source's TryTouchGroundInQuadrants (gamemovement.cpp:3731): when the centre
