@@ -126,6 +126,8 @@ Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurem
   75-degree half cone, line of sight, 0.5 s reaction), turn, and fire bursts
   through the same simulation and trigger path as the player, with 1.2
   degrees of extra aim error. They target only the other side.
+- Their bodies hold, fire and reload their guns with the guns' own
+  third-person clips, over the upper body (item 6).
 
 ### Sound
 - The game's own sounds: weapon shots, reload and draw, hit sounds (kevlar,
@@ -144,7 +146,7 @@ Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurem
 - `scripts/extract_assets.sh` (map, physics, weapons, characters, sounds and
   more, the nav mesh with `nav`), `inspect_assets`, and `run_tests.sh` with
   eight headless test files (movement, map, dust2, model, weapon,
-  penetration, range, simulation): 621 checks pass without the assets.
+  penetration, range, simulation): 622 checks pass without the assets.
 
 ---
 
@@ -206,16 +208,19 @@ item 6 is built.
    hit, to size the flinch (2 degrees here).
 5. **Blood on hit.** *(Local extracts the effects, then Remote)* A round into a body leaves no mark, so a hit is only
    heard, not seen. CS2's blood impact and decal behind the target.
-6. **Firing on the third-person model.** *(Remote, can start now; Sid checks it)* `PlayerModel` still says "Nothing is
-   layered, so firing does not show yet": a bot kills you without its arms
-   moving. Needs the upper-body layer over the locomotion. CS2's own
-   graph says how it stacks them (`reference/animgraph/worldmodel.md`): the
-   weapon's actions over the locomotion in model space, the shooting and the
-   flinches additive on top. The locomotion is now an animation tree of
-   CS2's blend spaces (`PlayerModel.animation_tree`), so the layers go into
-   that tree, above its `action` and under its `death`.
+6. **Firing on the third-person model.** *(Done 2026-09-23 but for the flinches; Sid checks it)* A bot's body holds, fires and
+   reloads its own gun: the gun's third-person clips (`WeaponData.world_clip_set`)
+   in `PlayerModel.animation_tree`, over the locomotion as CS2's graph
+   stacks them (`reference/animgraph/worldmodel.md`), through its UpperBody
+   mask: the gun's hold added, its reload or draw in place of the upper
+   body, each round's shot added on top. CS2's additive clips are re-expressed
+   from the rest pose for Godot's additive blend (`PlayerModel.rest_relative`).
+   Left: CS2 blends the weapon layer in model space, Godot in each bone's
+   own, so the upper body follows the hips here; and the flinches, additive
+   too and ready to go in the same way, are not extracted yet (the
+   characters step takes only the deaths from `world/shared/`).
 
-6a. **Your shadow has no arms.** *(Remote, after item 6; Sid checks it)* Sid noticed
+6a. **Your shadow has no arms.** *(Remote, can start now; Sid checks it)* Sid noticed
    2026-09-22 22:06. The shadow twin (commit f42114e) put the head back but folds the
    arms on purpose (`SHADOW_FOLDED_BONES` in `player_view.gd`), because
    arms in the locomotion pose would fall across the view model's. It is also
