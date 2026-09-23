@@ -411,7 +411,7 @@ appear when the editor loads a script. They do not show up in a headless run,
 so if the Godot console shows any, paste them over and they will get fixed.
 
 Eight files: movement, map import, dust2, models, weapons, penetration, the
-test range and the simulation. Without the extracted assets 609 checks run
+test range and the simulation. Without the extracted assets 614 checks run
 and pass; the dust2 and model files skip what needs files that have not been
 extracted.
 
