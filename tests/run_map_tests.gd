@@ -72,6 +72,7 @@ func _process(_delta: float) -> bool:
 		_test_nav_mesh()
 		_test_brush_volumes()
 		_test_overview()
+		_test_surface_properties()
 		_test_export_offset_fix()
 		_test_paint_channel()
 		_test_blend_materials()
@@ -715,6 +716,35 @@ func _write_physics_gltf(path: String, boxes: Array) -> void:
 	var bin := FileAccess.open(path.get_base_dir().path_join(bin_name), FileAccess.WRITE)
 	bin.store_buffer(data.data_array)
 	bin.close()
+
+
+## CS2's surfaces as the committed table has them from the game's files
+## (reference/surfaces/surfaces.csv): parents as surfaceproperties.vsurf sets
+## them, values taken from the nearest that gives one, and the friction a
+## player gets on each.
+func _test_surface_properties() -> void:
+	_check(
+		SurfaceProperties.parent("wood_plank") == "wood_box" and SurfaceProperties.parent("wood_box") == "wood"
+			and SurfaceProperties.parent("chain") == "chainlink" and SurfaceProperties.parent("metal_dumpster") == "metal_barrel"
+			and SurfaceProperties.parent("default").is_empty() and SurfaceProperties.spelling("wood_plank") == "Wood_Plank"
+			and SurfaceProperties.by_hash(2838185980) == "metalrailing" and SurfaceProperties.by_hash(1977497166) == "default"
+			and SurfaceProperties.by_hash(1).is_empty(),
+		"surfaces have the parents the game gives them: a plank is a wooden box, which is wood; a chain is chain-link; and the hashes it names them by"
+	)
+	_check(
+		is_equal_approx(SurfaceProperties.value("wood_plank", "penetration_distance"), 0.85)
+			and is_equal_approx(SurfaceProperties.value("wood_plank", "penetration_damage"), 0.6)
+			and SurfaceProperties.text("chain", "smoke_through") == "true"
+			and SurfaceProperties.text("concrete", "gamematerial") == "C"
+			and is_equal_approx(SurfaceProperties.value("not_a_surface", "friction"), 0.8),
+		"a value is a surface's own, else its nearest parent's, else default's: a plank's damage is wood's, smoke goes through a chain as through chain-link"
+	)
+	_check(
+		is_equal_approx(SurfaceProperties.player_friction("default"), 1.0) and is_equal_approx(SurfaceProperties.player_friction("ice"), 0.125)
+			and is_equal_approx(SurfaceProperties.player_friction("glass"), 0.625) and is_equal_approx(SurfaceProperties.player_friction("rubbertire"), 1.0),
+		"a player's friction on a surface is its friction times 1.25, at most 1: the usual 0.8 is all of it, ice an eighth (%.3f), glass %.3f"
+			% [SurfaceProperties.player_friction("ice"), SurfaceProperties.player_friction("glass")]
+	)
 
 
 ## The radar's overview text, as dust2's is written, comments and all.

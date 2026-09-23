@@ -223,20 +223,21 @@ scripts/extract_assets.sh equipment    # the bomb and kit, grenades, knives, Zeu
 scripts/extract_assets.sh sounds       # the weapons' sounds, footsteps by surface, hits
 ```
 
-`map` takes a few minutes and a little under two gigabytes. It pulls ten
+`map` takes a few minutes and a little under two gigabytes. It pulls eleven
 things out of the game: the visible world as glTF with its textures, the
 collision hull as a second glTF, the entity lump as text, the nav mesh the
 game's bots walk, the volumes of the buy zones, bomb sites and callouts (with
-the game's baked bomb damage), the radar and where it lies, the second texture
-layer of every material that has one (which a glTF has no room for), the sky
-as an HDR panorama, the 3D skybox (the buildings and hills beyond the map, a
-small map of their own, drawn behind everything as the game draws it), and the
-lightmaps the game baked its bounce light into, with the light probes beside
-them. `physics`, `entities`, `nav`, `volumes`, `radar`, `layers`, `sky`,
-`skybox` and `lightmaps` fetch the last nine on their own; all but the
-lightmaps take seconds. The lightmaps are one 300 MB image, which Godot's
-first import spends a few minutes compressing to 90; the probes are 720 small
-slices that the game packs into one file the first time it runs.
+the game's baked bomb damage), the radar and where it lies, CS2's surfaces
+(each one's parent, its friction and what a round gets through), the second
+texture layer of every material that has one (which a glTF has no room for),
+the sky as an HDR panorama, the 3D skybox (the buildings and hills beyond the
+map, a small map of their own, drawn behind everything as the game draws it),
+and the lightmaps the game baked its bounce light into, with the light probes
+beside them. `physics`, `entities`, `nav`, `volumes`, `radar`, `surfaces`,
+`layers`, `sky`, `skybox` and `lightmaps` fetch the last ten on their own; all
+but the lightmaps take seconds. The lightmaps are one 300 MB image, which
+Godot's first import spends a few minutes compressing to 90; the probes are
+720 small slices that the game packs into one file the first time it runs.
 
 The nav mesh is the game's own, `maps/de_dust2.nav`: the floor cut into
 2,242 convex areas, with the links between them that CS2's bots path over,
@@ -415,7 +416,7 @@ appear when the editor loads a script. They do not show up in a headless run,
 so if the Godot console shows any, paste them over and they will get fixed.
 
 Eight files: movement, map import, dust2, models, weapons, penetration, the
-test range and the simulation. Without the extracted assets 605 checks run
+test range and the simulation. Without the extracted assets 616 checks run
 and pass; the dust2 and model files skip what needs files that have not been
 extracted.
 

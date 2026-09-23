@@ -22,7 +22,7 @@ class Wall:
 	var exit: Vector3
 	var exit_normal: Vector3
 	## The hull part's names on the way in and out, and the CS2 surface each
-	## is (Penetration.SURFACES).
+	## is (SurfaceProperties, lower-case).
 	var surface: String = ""
 	var exit_surface: String = ""
 	var material: String = "default"
