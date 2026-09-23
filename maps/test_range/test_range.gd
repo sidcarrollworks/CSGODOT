@@ -20,7 +20,7 @@ extends Node3D
 ## through: the log says what the wall let through.
 ##
 ## And a shooter, to feel being shot: a bot off to the left of the wall
-## that holds its fire until L, then fires at you in bursts like a dust2
+## that holds its fire until I, then fires at you in bursts like a dust2
 ## bot. U changes its weapon, among them an MP9 for a tag that stops you
 ## dead; Y changes your armour, J keeps you alive. The readout in the
 ## bottom left says what a hit did to you (your speed, the tag, the
@@ -198,7 +198,7 @@ func _process(_delta: float) -> void:
 		"H      hitboxes    K  armour",
 		"N      dummy distance   G  dummy never dies",
 		"M      a wall in front of the dummy",
-		"L      shooter fires    U  its weapon",
+		"I      shooter fires    U  its weapon",
 		"Y      your armour      J  you never die",
 		"T      your hitboxes: front, side, off",
 	])
@@ -425,7 +425,7 @@ func _build_shooter() -> void:
 	shooter.place(SHOOTER_POSITION, shooter.yaw_degrees)
 	var colour := Color(0.9, 0.3, 0.25)
 	_mark(Vector3(48.0, 0.2, 48.0), SHOOTER_POSITION + Vector3(0.0, 0.1, 0.0), colour)
-	_text("shooter: L to fire, U its weapon", SHOOTER_POSITION + Vector3(0.0, 96.0, 0.0), colour)
+	_text("shooter: I to fire, U its weapon", SHOOTER_POSITION + Vector3(0.0, 96.0, 0.0), colour)
 
 
 func toggle_shooter() -> void:

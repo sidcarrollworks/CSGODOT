@@ -212,7 +212,7 @@ func refusal(userid: int, item_class: String) -> StringName:
 	var inv := game.inventory(userid)
 	if inv.has(item_class) and item.is_gun:
 		return ALREADY_HAVE
-	if inv.can_add(item_class) == Inventory.FULL:
+	if inv.can_add(item_class) == Inventory.Can.FULL:
 		return CANNOT_CARRY if item.slot == ItemDef.Slot.GRENADE else ALREADY_HAVE
 	var limit := rules.zeus_purchases if item.type == "taser" else rules.type_purchases
 	if limit >= 0 and _type_count(userid, item.type) >= limit:
