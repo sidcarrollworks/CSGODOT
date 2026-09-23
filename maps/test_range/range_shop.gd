@@ -44,13 +44,9 @@ func setup(range_game: GameSystems, you: PlayerController) -> void:
 	game.events.listen(&"item_purchase", _on_purchase)
 	game.events.listen(&"item_remove", _on_remove)
 
-	# The inventory starts as what you are holding: the knife, your side's
-	# pistol, and the rifle the range hands you.
-	var inv := game.inventory(userid)
-	if inv.entries().is_empty():
-		inv.give_starting_items(player.team)
-		if player.weapon != null and not player.weapon.data.item_class.is_empty():
-			inv.add(player.weapon.data.item_class)
+	stock(game.inventory(userid), player.team,
+		player.weapon.data.item_class if player.weapon != null else "")
+	player.respawned.connect(_on_respawned)
 
 	var layer := CanvasLayer.new()
 	layer.layer = 10
@@ -60,6 +56,22 @@ func setup(range_game: GameSystems, you: PlayerController) -> void:
 	menu.userid = userid
 	layer.add_child(menu)
 	_draw_zone()
+
+
+## The inventory holds what you are holding: the knife, your side's pistol
+## and the gun in your hands, each added only if it is missing, beside
+## whatever is there already (the C4, when the bomb was set up first), and
+## the gun in your hands in hand.
+static func stock(inv: Inventory, team: String, held: String) -> void:
+	if inv.item_in(ItemDef.Slot.KNIFE) == null:
+		inv.add("weapon_knife")
+	if inv.item_in(ItemDef.Slot.PISTOL) == null and Inventory.STARTING_PISTOLS.has(team):
+		inv.add(Inventory.STARTING_PISTOLS[team])
+	if held.is_empty() or not ItemRegistry.has(held):
+		return
+	if not inv.has(held):
+		inv.add(held)
+	inv.select(held)
 
 
 ## O: the account full again.
@@ -81,6 +93,13 @@ func readout() -> PackedStringArray:
 			"B: buy menu" if why == Economy.OK else Economy.MESSAGES.get(why, "")],
 		"carrying   %s" % ", ".join(carried),
 	])
+
+
+## Back after dying: player_spawn, which the match will send for its own
+## spawns (reference/systems/contracts.md), so the economy knows you are
+## alive and can shop again.
+func _on_respawned() -> void:
+	game.events.send(&"player_spawn", {"userid": userid})
 
 
 func _on_purchase(event: GameEvent) -> void:

@@ -388,6 +388,22 @@ func _test_the_shop() -> void:
 		await physics_frame
 	_check(player.weapon.data.item_class == "weapon_ak47" and shop.economy.money(userid) == 16000,
 		"undoing it gives the $700 back and the AK-47 you had (%s)" % player.weapon.data.item_class)
+	_range.game.events.send(&"player_death", {"userid": userid, "attacker": userid, "weapon": "weapon_hegrenade"})
+	for i in 2:
+		await physics_frame
+	_check(shop.economy.shop_refusal(userid) == Economy.DEAD, "killed on the range, you cannot shop (%s)" % shop.economy.shop_refusal(userid))
+	player.respawn()
+	for i in 2:
+		await physics_frame
+	_check(shop.economy.shop_refusal(userid) == Economy.OK,
+		"respawning sends player_spawn, and you can shop again (%s)" % shop.economy.shop_refusal(userid))
+
+	var carried := Inventory.new()
+	carried.add("weapon_c4")
+	RangeShop.stock(carried, "T", "weapon_ak47")
+	_check(carried.has("weapon_knife") and carried.has("weapon_glock") and carried.has("weapon_ak47")
+		and carried.has("weapon_c4") and carried.in_hand_class() == "weapon_ak47",
+		"with a C4 already carried, the range still stocks the knife, the Glock and the AK-47 in hand (%s)" % carried.in_hand_class())
 	shop.menu.open()
 	var opened := shop.menu.is_open()
 	shop.menu.close()

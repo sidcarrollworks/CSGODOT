@@ -96,6 +96,7 @@ func attach(game_systems: GameSystems) -> void:
 	events.listen(&"round_freeze_end", _on_freeze_end)
 	events.listen(&"round_end", _on_round_end)
 	events.listen(&"player_death", _on_player_death)
+	events.listen(&"player_spawn", _on_player_spawn)
 	events.listen(&"bomb_planted", _on_bomb_planted)
 	events.listen(&"bomb_defused", _on_bomb_defused)
 	game.on_command(&"buy", _on_buy_command)
@@ -387,12 +388,22 @@ func _on_player_death(event: GameEvent) -> void:
 	_dead[victim] = true
 	if not rules.player_cash_awards:
 		return
-	if attacker < 0 or attacker == victim:
-		_pay(attacker if attacker >= 0 else victim, rules.suicide)
+	# A death credited to no one (the bomb's blast, a teammate burning in a
+	# fire after its first 6 s, the world) is not a suicide and moves no
+	# money: CS2 has no cash rule for it.
+	if attacker < 0:
+		return
+	if attacker == victim:
+		_pay(victim, rules.suicide)
 	elif _side(attacker) == _side(victim):
 		_pay(attacker, rules.team_kill)
 	else:
 		_pay(attacker, _kill_award(String(event.fields["weapon"])))
+
+
+## Alive again (a respawn, where the game has them): free to shop.
+func _on_player_spawn(event: GameEvent) -> void:
+	_dead.erase(int(event.fields["userid"]))
 
 
 func _on_bomb_planted(event: GameEvent) -> void:

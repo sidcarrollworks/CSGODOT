@@ -31,6 +31,16 @@ const MID := Vector3(0.0, 0.0, -2000.0)
 
 
 ## A player, as the roster sees one: a node with a side and a life.
+## Counts the key presses that reach the game behind a menu.
+class KeyCatcher extends Node:
+	var presses := 0
+
+	func _unhandled_input(event: InputEvent) -> void:
+		var key := event as InputEventKey
+		if key != null and key.pressed:
+			presses += 1
+
+
 class Body extends Node3D:
 	var team: String = "T"
 	var alive: bool = true
@@ -176,7 +186,15 @@ func _test_kill_awards() -> void:
 	_check_equal(_economy.money(_ts[0]) - before, -300, "a team kill costs $300")
 	before = _economy.money(_cts[1])
 	_send(&"player_death", {"userid": _cts[1], "attacker": GameEvents.NOBODY, "weapon": ""})
-	_check_equal(_economy.money(_cts[1]) - before, 0, "a death to the world costs nothing (a suicide's cost is to measure)")
+	_check_equal(_economy.money(_cts[1]) - before, 0, "a death credited to no one costs the victim nothing")
+	before = _economy.money(_cts[1])
+	_send(&"player_death", {"userid": _cts[1], "attacker": _cts[1], "weapon": "weapon_hegrenade"})
+	_check_equal(_economy.money(_cts[1]) - before, 0, "a suicide costs nothing (CS2 has no cash rule for one)")
+	var accounts := [_economy.money(_ts[0]), _economy.money(_ts[1]), _economy.money(_cts[0])]
+	for victim in [_ts[0], _ts[1], _cts[0]]:
+		_send(&"player_death", {"userid": victim, "attacker": GameEvents.NOBODY, "weapon": "weapon_c4"})
+	_check(accounts == [_economy.money(_ts[0]), _economy.money(_ts[1]), _economy.money(_cts[0])],
+		"the bomb's blast, credited to no one, moves nobody's money")
 	_economy.set_money(_ts[0], 0)
 	_send(&"player_death", {"userid": _ts[1], "attacker": _ts[0], "weapon": "weapon_ak47"})
 	_check_equal(_economy.money(_ts[0]), 0, "no account goes below nothing")
@@ -279,6 +297,10 @@ func _test_buy_zone_and_buy_time() -> void:
 	_body(t).alive = false
 	_check_equal(_economy.shop_refusal(t), Economy.DEAD, "the dead do not buy")
 	_body(t).alive = true
+	_send(&"player_death", {"userid": t, "attacker": GameEvents.NOBODY, "weapon": ""})
+	_check_equal(_economy.shop_refusal(t), Economy.DEAD, "killed, and nobody to credit: dead all the same")
+	_send(&"player_spawn", {"userid": t})
+	_check_equal(_economy.shop_refusal(t), Economy.OK, "back with player_spawn, and buying again")
 	_send(&"round_end", {"winner": "CT", "reason": "CTsWin"})
 	_check_equal(_economy.shop_refusal(t), Economy.BUY_TIME_OVER, "nor does anyone once the round is over")
 
@@ -420,6 +442,24 @@ func _test_the_menu_buys_by_keys() -> void:
 	menu._press_number(1)
 	_step()
 	_check(_game.inventory(t).has("weapon_ak47") and _economy.money(t) == 300, "3 then 2 buys the AK-47")
+	var behind := KeyCatcher.new()
+	root.add_child(behind)
+	for keycode in [KEY_Q, KEY_Z, KEY_X, KEY_G]:
+		var press := InputEventKey.new()
+		press.physical_keycode = keycode
+		press.keycode = keycode
+		press.pressed = true
+		root.push_input(press)
+	_check(menu.is_open() and behind.presses == 0, "with the menu open no key press gets past it (%d did)" % behind.presses)
+	menu.close()
+	var q := InputEventKey.new()
+	q.physical_keycode = KEY_Q
+	q.keycode = KEY_Q
+	q.pressed = true
+	root.push_input(q)
+	_check_equal(behind.presses, 1, "closed, it lets them through")
+	behind.free()
+	menu.open()
 	_place(t, MID)
 	_step()
 	menu._process(0.0)

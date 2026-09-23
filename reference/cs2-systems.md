@@ -98,7 +98,7 @@ with bots filling the places. The list below says what is left of it.
 | Planting | $300 to the planter; Ts who planted and lost get $600 each on top of the loss bonus |
 | Defusing | $300 to the defuser |
 | Kill award | from the weapon sheet's Kill Award column: knife $1,500, SMGs $600 (P90 $300), pump shotguns $900, XM1014 $600, AWP and Zeus $100, grenades, pistols and rifles $300 |
-| Team kill | -$300; suicides are penalised (amount: **measure**, E1) |
+| Team kill | -$300; a suicide costs score, not money (`mp_suicide_penalty`, `contributionscore_suicide -2`, no `cash_` convar) |
 | Short-handed | $1,000 bonus to a team down a player (`cash_team_bonus_shorthanded`; when it pays: **measure**, E1) |
 
 **Built** (2026-09-23): every rule above, in `Economy` (`src/economy/`),
@@ -115,8 +115,8 @@ The numbers, their sources and the guesses: `reference/systems/economy.md`.
   the rules, the loss ladder above all.
 
 **Local**
-- **E1.** Check the open amounts on a local server (`mp_logmoney 1`): a
-  suicide's penalty; when the short-handed bonus pays; that Ts alive when
+- **E1.** Check the open amounts on a local server (`mp_logmoney 1`): that
+  a suicide and a death in the bomb's blast move no money; when the short-handed bonus pays; that Ts alive when
   time runs out get no loss bonus; what a pistol-round winner that loses
   round 2 is paid ($1,400 expected); what `cash_team_per_dead_enemy 50`
   pays.

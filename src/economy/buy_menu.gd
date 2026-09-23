@@ -13,7 +13,8 @@ extends Control
 ## mouse is free and the view holds still; moving still works. Click an item
 ## to buy it, right-click one bought this round to undo it. The keys work
 ## as CS2's do: a number picks a column, a second number an item in it
-## (B 3 2 is the AK-47 or the M4A1-S). It closes itself when buying is over
+## (B 3 2 is the AK-47 or the M4A1-S), and no other key press gets past it
+## while it is open. It closes itself when buying is over
 ## for you: buy time ends, you leave the buy zone, or you die.
 
 const COLUMN_WIDTH := 200.0
@@ -71,12 +72,15 @@ func _input(event: InputEvent) -> void:
 		close()
 		get_viewport().set_input_as_handled()
 		return
+	# While it is open the menu owns the keyboard: every key press stops here,
+	# so nothing behind it (grenades, the range's keys) acts on it. Movement
+	# is polled, so it keeps working.
 	var key := event as InputEventKey
-	if key != null and key.pressed and not key.echo:
+	if key != null and key.pressed:
 		var number := key.physical_keycode - KEY_1
-		if number >= 0 and number < Loadout.COLUMNS.size():
+		if not key.echo and number >= 0 and number < Loadout.COLUMNS.size():
 			_press_number(number)
-			get_viewport().set_input_as_handled()
+		get_viewport().set_input_as_handled()
 
 
 func _press_number(number: int) -> void:

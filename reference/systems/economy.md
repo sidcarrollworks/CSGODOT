@@ -48,6 +48,8 @@ From SteamDatabase's GameTracking-CS2, checked 2026-09-23:
 | Kill with anything that has no award | $300 | CFG `cash_player_killed_enemy_default` |
 | Team kill | -$300 | CFG `cash_player_killed_teammate` |
 | Planting, defusing | $300 to whoever does it | CFG `cash_player_bomb_planted`, `cash_player_bomb_defused` |
+| A suicide | $0: CS2's penalty for one is score, not money | CV `mp_suicide_penalty 1` ("Punish players for suicides"), `contributionscore_suicide -2`; no `cash_` convar for it, and `cash_player_get_killed`, for any death, is 0 |
+| A death credited to no one (the bomb's blast, a teammate burning after a fire's first 6 s) | $0, and not a suicide | no `cash_` convar for it |
 | Buy time | 20 s | CFG `mp_buytime` |
 | Where | only your side's buy zone | CFG `mp_buy_anywhere 0` |
 | Undoing a purchase | yes, while buying is open | CFG `sv_sellback_enabled 1` |
@@ -78,8 +80,9 @@ The default loadout, the menu's columns (IG `flexible_loadout_slot` and
 - **Ts alive when time runs out get no loss bonus.** The community's rule,
   not in any file (`MoneyRules.no_bonus_for_time_survivors`). Their side
   still moves up the ladder.
-- **A suicide** costs money in CS2 (CV `mp_suicide_penalty 1`), but no file
-  says how much: $0 here until measured.
+- **A death credited to no one moves no money.** No convar pays or charges
+  for it, which is all the files say; the bomb thread credits a blast death
+  to no one, as CS2's kill feed shows it (#49).
 - **The helmet alone**, over full kevlar: $350, the community's figure.
   Kevlar and helmet bought with a helmet and worn kevlar costs the vest's
   $650.
@@ -97,8 +100,8 @@ The default loadout, the menu's columns (IG `flexible_loadout_slot` and
 
 Local tasks (Sid's machine), added to `reference/cs2-systems.md`'s E1 and E2:
 
-- **E1.** On a local server with `mp_logmoney 1`: a suicide's cost; that
-  Ts who survive a round lost on time get nothing; what a pistol-round
+- **E1.** On a local server with `mp_logmoney 1`: that a suicide and a
+  death in the bomb's blast move no money; that Ts who survive a round lost on time get nothing; what a pistol-round
   winner that loses round 2 is paid ($1,400 expected); and what
   `cash_team_per_dead_enemy` pays.
 - **E2.** When buy time counts from, the helmet's own price, and the
@@ -127,11 +130,18 @@ the match:
    they had, including what they bought.
 4. Deaths go through `DamageInfo.deal` (it sends `player_death` with the
    weapon's class), and the bomb sends `bomb_planted` and `bomb_defused`.
+   Every spawn sends `player_spawn` (a respawn, where the game has them):
+   the economy counts a player dead from `player_death` until then, or
+   until the next `round_start`.
 5. On dust2, `BuyMenu` goes in the HUD's layer with `economy` and your
    `userid` set (see `maps/test_range/test_range.gd`), and B opens it.
 6. Bots buying (roadmap item 24) sends the same `buy` command.
 
 On the test range this is done already (`maps/test_range/range_shop.gd`):
 the economy is a system in the range's `game`, with a buy zone round the
-spawn, $16,000 (O fills it again) and buying that never closes, and until
-the player carries their inventory, a gun bought is put in their hands.
+spawn, $16,000 (O fills it again) and buying that never closes. Until
+`PlayerSim` does these itself, the range does them for the player: a gun
+bought is put in their hands, and a respawn sends `player_spawn`
+(`RangeShop._on_respawned`, to remove once `PlayerSim` sends it). The
+range's starting items are added beside whatever is carried already, so
+the order the range sets things up in does not matter.

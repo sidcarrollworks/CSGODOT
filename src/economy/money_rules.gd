@@ -74,8 +74,10 @@ extends Resource
 ## (cash_player_bomb_planted, cash_player_bomb_defused).
 @export var bomb_planted: int = 300
 @export var bomb_defused: int = 300
-## Killing yourself costs money in CS2 (mp_suicide_penalty 1), but no file
-## says how much: 0 until it is measured (E1).
+## Killing yourself. CS2 has no cash rule for it: its mp_suicide_penalty 1
+## ("Punish players for suicides") takes score (contributionscore_suicide
+## -2). The convar dump has no cash_ rule for a suicide; the one that covers
+## every death, cash_player_get_killed, is 0. So 0.
 @export var suicide: int = 0
 
 @export_group("Buying")
