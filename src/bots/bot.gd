@@ -7,7 +7,8 @@ extends PlayerSim
 ## than from keys. It wears the third-person model. It walks its route round
 ## and round, facing the way it goes, and can be shot: it wears the model's
 ## own hitboxes on its bones, goes limp and falls the way the last round
-## pushed it (a ragdoll), and comes back at the start of its route. It shoots
+## pushed it (a ragdoll), and comes back at the start of its route (in a
+## match, not until the next round, at the spawn point it is given). It shoots
 ## back: when a player of the other side is in its sight, in the open and
 ## within its cone for long enough to react, it stops, turns, and holds the
 ## trigger in bursts, so its rounds go through the weapon's own rate, spread
@@ -251,25 +252,40 @@ func _on_killed(zone: StringName) -> void:
 	_deaths += 1
 	if model != null and ragdoll == null:
 		model.play(PlayerModel.death_for(zone, _deaths), 0.05)
-	collision_layer = 0
 	died.emit(zone)
 
 
-## Back at the start of the route, whole; without a route, where it fell.
+## Back at the spawn point a match gave it, or else at the start of the
+## route, whole; with neither, where it fell.
 func respawn() -> void:
-	alive = true
-	hit_target.reset()
+	_revive()
 	if weapon_data != null:
 		weapon = Weapon.new(weapon_data)
 		weapon.trigger_held = false
 	_seen_for = 0.0
 	target = null
-	collision_layer = 2
-	hit_target.set_active(true)
-	if not route.is_empty():
+	if _spawn_set:
+		place(_spawn_position, _spawn_yaw)
+	elif not route.is_empty():
 		global_position = route[0]
 		_next = 1 % route.size()
 	velocity = Vector3.ZERO
 	_forget_hits()
 	_get_up()
 	respawned.emit()
+
+
+## At a spawn point for a round: it sets off for the point of its route
+## after the one nearest, and forgets whoever it was facing.
+func spawn_at(spawn_position: Vector3, yaw: float, fresh: bool = false) -> void:
+	super.spawn_at(spawn_position, yaw, fresh)
+	_sent_error = Vector2.ZERO
+	_seen_for = 0.0
+	target = null
+	if route.is_empty():
+		return
+	var nearest := 0
+	for i in route.size():
+		if route[i].distance_squared_to(spawn_position) < route[nearest].distance_squared_to(spawn_position):
+			nearest = i
+	_next = (nearest + 1) % route.size()

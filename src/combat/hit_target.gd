@@ -37,6 +37,9 @@ const ZONES := {
 
 var health: float
 var alive: bool = true
+## The side whoever wears it is on, for a round from their own side to be
+## told apart (Hitscan.fire_at); "" for a target on nobody's side.
+var team: String = ""
 
 ## The hitbox the last damage came through, or null: for whoever wants to
 ## know which side was hit.
@@ -141,6 +144,16 @@ func _build_visual() -> void:
 		)
 		mesh_instance.material_override = material
 		add_child(mesh_instance)
+
+
+## Takes every hitbox off, and the crude body with the standard ones: for a
+## body changing to another model, which brings its own.
+func drop_hitboxes() -> void:
+	set_active(false)
+	for child in get_children():
+		remove_child(child)
+		child.queue_free()
+	_hitboxes.clear()
 
 
 func hitboxes() -> Array[Hitbox]:

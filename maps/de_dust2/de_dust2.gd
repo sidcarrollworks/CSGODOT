@@ -30,13 +30,20 @@ const SKY_FILE := "../../materials/skybox/sky_de_dust2.exr"
 ## rather than at spawn_position. Noclip (V) from there.
 @export var use_bounds_centre_as_spawn: bool = true
 
-## How many of the other side to put in. They walk their spawn area, which
-## is the one part of the map they can be sure of, and do nothing else yet.
-@export var bots: int = 2
+## Players on each side, you among them; bots fill every other place. They
+## walk their side's spawn points on a loop, which is the one part of the map
+## they can be sure of, and shoot whoever of the other side they see.
+@export var team_size: int = 5
+
+## How long warmup lasts before the first round; CS2's is 120 s, and F5
+## ends it early, as mp_warmup_end does. 0 goes straight to the first round.
+@export var warmup_seconds: float = 120.0
 
 var importer: MapImporter
 var skybox: MapImporter
 var player: PlayerBody
+## The match being played: warmup, the rounds and the score.
+var match_state: MatchState
 
 ## The map's entity lump, parsed once for whoever needs it.
 var entities: Array[Dictionary] = []
@@ -84,40 +91,73 @@ func _ready() -> void:
 	_build_skybox()
 	_place_player(map_file)
 	_place_bots()
+	_start_match()
 	var hud := GameHud.new()
 	hud.name = "Hud"
 	hud.player = player as PlayerController
+	hud.match_state = match_state
 	add_child(hud)
 	var impacts := BulletImpacts.new()
 	impacts.name = "BulletImpacts"
 	add_child(impacts)
 
 
-## Bots on the other side, each walking that side's spawn points in a loop,
-## starting from a different one.
+## Bots in every place you do not take, on both sides, each walking its
+## side's spawn points in a loop from wherever the match spawns it.
 func _place_bots() -> void:
-	var team := "CT" if spawn_team == "T" else "T"
-	var spawns: Array = SourceEntities.player_spawns(entities)[team]
-	if spawns.is_empty() or bots <= 0:
-		return
-	var route := PackedVector3Array()
-	for spawn: Dictionary in spawns:
-		route.append(spawn["position"])
+	var spawns := SourceEntities.player_spawns(entities)
 	var scene := load("res://src/bots/bot.tscn") as PackedScene
-	for i in mini(bots, spawns.size()):
-		var bot := scene.instantiate() as Bot
-		bot.name = "Bot%d" % (i + 1)
-		bot.team = team
-		bot.weapon_data = WeaponLibrary.m4a1s() if team == "CT" else WeaponLibrary.ak47()
-		bot.weapon_model = bot.weapon_data.model_path
-		# Each starts at a different point and heads for the next.
-		@warning_ignore("integer_division")
-		var start := (i * spawns.size()) / maxi(bots, 1)
-		bot.route = route
-		add_child(bot)
-		bot.global_position = spawns[start]["position"]
-		bot.yaw_degrees = spawns[start]["yaw"]
-		bot.set("_next", (start + 1) % route.size())
+	var number := 0
+	for team: String in ["T", "CT"]:
+		if (spawns[team] as Array).is_empty():
+			continue
+		for i in team_size - (1 if team == spawn_team else 0):
+			number += 1
+			var bot := scene.instantiate() as Bot
+			bot.name = "Bot%d" % number
+			bot.team = team
+			bot.weapon_data = MatchState.starting_weapon(team)
+			bot.weapon_model = bot.weapon_data.model_path
+			bot.route = side_route(spawns, team)
+			add_child(bot)
+			bot.global_position = spawns[team][i % spawns[team].size()]["position"]
+
+
+## A side's spawn points, in order, as a loop to walk.
+static func side_route(spawns: Dictionary, team: String) -> PackedVector3Array:
+	var route := PackedVector3Array()
+	for spawn: Dictionary in spawns[team]:
+		route.append(spawn["position"])
+	return route
+
+
+## The match: everyone in it, spawned for warmup, which counts down to the
+## first round. After a side swap each bot walks its new side's spawns.
+func _start_match() -> void:
+	var spawns := SourceEntities.player_spawns(entities)
+	if (spawns["T"] as Array).is_empty() or (spawns["CT"] as Array).is_empty():
+		return
+	match_state = MatchState.new()
+	match_state.name = "Match"
+	match_state.rules = MatchRules.new()
+	match_state.rules.warmup_seconds = warmup_seconds
+	match_state.spawns = spawns
+	add_child(match_state)
+	for node in get_tree().get_nodes_in_group(&"players"):
+		if node is PlayerSim:
+			match_state.add_player(node)
+	match_state.sides_swapped.connect(func() -> void:
+		for sim in match_state.players:
+			if sim is Bot:
+				(sim as Bot).route = side_route(spawns, sim.team))
+	match_state.start()
+
+
+## F5 ends warmup, as mp_warmup_end does.
+func _unhandled_key_input(event: InputEvent) -> void:
+	var key := event as InputEventKey
+	if key != null and key.pressed and not key.echo and key.keycode == KEY_F5 and match_state != null:
+		match_state.end_warmup()
 
 
 ## The buildings and horizon beyond the playable map. Source builds them as
