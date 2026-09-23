@@ -97,7 +97,8 @@ Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurem
   game sets, the third-person graph's layers and state machines, the
   locomotion's blend spaces with each clip's speed, and the first-person
   gun's actions, in `reference/animgraph/`; `reference/animgraph2.md` says
-  what they are and what they mean here. Nothing plays them yet.
+  what they are and what they mean here. The locomotion's blend spaces move
+  the third-person body (above); nothing else of them plays yet.
 
 ### Combat
 - Bots and the player share one damage path (`Hitscan.fire_at` then
