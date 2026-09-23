@@ -19,15 +19,23 @@ extends RefCounted
 var events := GameEvents.new()
 var entities := SimEntities.new()
 var roster := Roster.new()
+## The tick being run, or the last one run: for what happens between ticks
+## (an event handed out, a command) to know when it is. Null before the
+## first step.
+var last_tick: SimTick
 
 var _systems: Array = []
 var _inventories := {}
 var _queries := {}
+var _command_handlers := {}
+var _commands: Array[Array] = []
 
 
 func _init() -> void:
 	# Everything read from disk is read now, before play.
 	ItemRegistry.load_all()
+	# The items contract's own system: items on the ground.
+	add_system(ItemDrops.new())
 
 
 ## Adds a system, to run after those already added.
@@ -79,12 +87,52 @@ func provides(query_name: StringName) -> bool:
 	return _queries.has(query_name) and (_queries[query_name] as Callable).is_valid()
 
 
-## One tick: every entity, then every system, then the tick's events handed
-## out. space is where traces go (null with no world, in a test).
+## A player's command, as CS2's console has them: "buy ak47", "drop". Not
+## part of a UserCmd, since a command is sent once rather than held; queued,
+## and run at the start of the next step in the order they came.
+func command(userid: int, line: String) -> void:
+	var words := line.strip_edges().split(" ", false)
+	if words.is_empty():
+		return
+	_commands.append([userid, StringName(words[0]), words.slice(1)])
+
+
+## Takes a command by its name. handler(userid: int, args: PackedStringArray,
+## t: SimTick) -> bool says whether it took it. Several may take the same
+## command, each for its own case ("drop" is ItemDrops' for what is in hand,
+## the bomb's with the C4 in hand); they are asked in the order they were
+## added until one takes it, so each must take only its own case.
+func on_command(command_name: StringName, handler: Callable) -> void:
+	if not _command_handlers.has(command_name):
+		var list: Array[Callable] = []
+		_command_handlers[command_name] = list
+	(_command_handlers[command_name] as Array[Callable]).append(handler)
+
+
+## Simulation time now: the end of the tick being run or last run.
+func now_usec() -> int:
+	return last_tick.now_usec if last_tick != null else SimClock.now_usec()
+
+
+## One tick: the players' commands, every entity, then every system, then the
+## tick's events handed out. space is where traces go (null with no world,
+## in a test).
 func step(tick: int, space: PhysicsDirectSpaceState3D = null) -> SimTick:
 	var t := SimTick.new(self, tick, space)
+	last_tick = t
+	_run_commands(t)
 	entities.tick_all(t)
 	for system in _systems:
 		system.call(&"tick", t)
 	events.flush()
 	return t
+
+
+func _run_commands(t: SimTick) -> void:
+	var queued := _commands
+	_commands = []
+	for queued_command in queued:
+		var handlers: Array = _command_handlers.get(queued_command[1], [])
+		for handler: Callable in handlers:
+			if handler.is_valid() and handler.call(queued_command[0], queued_command[2], t):
+				break
