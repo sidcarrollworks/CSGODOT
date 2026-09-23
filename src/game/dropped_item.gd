@@ -31,7 +31,8 @@ func _init(p_entry: Inventory.Entry = null, p_owner_id: int = GameEvents.NOBODY,
 
 ## Puts entry on the ground from where the player userid is: thrown along
 ## velocity from their middle, as a drop or a death leaves it. The entity,
-## already spawned into game.entities.
+## already spawned into game.entities. It announces nothing: whoever took
+## the item out of the inventory sends item_remove, once.
 static func drop(game: GameSystems, userid: int, p_entry: Inventory.Entry, p_velocity := Vector3.ZERO) -> DroppedItem:
 	var node := game.roster.player(userid)
 	var from := node.global_position + Vector3.UP * 36.0 if node != null else Vector3.ZERO
