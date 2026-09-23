@@ -60,6 +60,11 @@ func _test_surfaces() -> void:
 		"physics_group_sand": "sand", "physics_group_metal_dumpster": "metal_dumpster",
 		"physics_group_rubbertire": "rubbertire", "physics_group_solidmetal": "solidmetal",
 		"physics_group_metal_dumpster_lid": "metal_dumpster", "physics_group_rubbertire_worn": "rubbertire",
+		# As the hull reaches Hitscan: the export's hash for a surface it cannot
+		# name, and Godot's number on a repeated part, after a hash too; but a
+		# surface whose own name ends in a digit keeps it.
+		"physics_group_vrf_unknown_key_2838185980": "metalrailing", "physics_group_vrf_unknown_key_28381859802": "metalrailing",
+		"physics_group_wood_plank2": "wood_plank", "physics_group_wood2": "wood", "physics_group_weaponc4": "weaponc4",
 		"physics_group_Wood_Crate": "wood_crate", "physics_group": "default",
 		"CollisionShape3D": "default", "": "default",
 	}

@@ -726,8 +726,10 @@ func _test_surface_properties() -> void:
 	_check(
 		SurfaceProperties.parent("wood_plank") == "wood_box" and SurfaceProperties.parent("wood_box") == "wood"
 			and SurfaceProperties.parent("chain") == "chainlink" and SurfaceProperties.parent("metal_dumpster") == "metal_barrel"
-			and SurfaceProperties.parent("default").is_empty() and SurfaceProperties.spelling("wood_plank") == "Wood_Plank",
-		"surfaces have the parents the game gives them: a plank is a wooden box, which is wood; a chain is chain-link"
+			and SurfaceProperties.parent("default").is_empty() and SurfaceProperties.spelling("wood_plank") == "Wood_Plank"
+			and SurfaceProperties.by_hash(2838185980) == "metalrailing" and SurfaceProperties.by_hash(1977497166) == "default"
+			and SurfaceProperties.by_hash(1).is_empty(),
+		"surfaces have the parents the game gives them: a plank is a wooden box, which is wood; a chain is chain-link; and the hashes it names them by"
 	)
 	_check(
 		is_equal_approx(SurfaceProperties.value("wood_plank", "penetration_distance"), 0.85)

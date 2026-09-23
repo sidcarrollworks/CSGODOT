@@ -224,19 +224,21 @@ func _check_penetration_surfaces() -> void:
 	var surfaces := {}
 	var not_own := PackedStringArray()
 	print("Wall penetration takes the hull's parts as:")
-	var seen := {}
 	for shape in (hull.get_children() if hull != null else []):
-		var hull_name := String(shape.name).rstrip("0123456789").rstrip("_")
-		if seen.has(hull_name):
-			continue
-		seen[hull_name] = true
+		# The name as Hitscan hands it to Penetration.surface_for: Godot's
+		# number on a repeated part, and the export's hash on one it cannot
+		# name, left on.
+		var hull_name := String(shape.name)
 		var surface := Penetration.surface_for(hull_name)
 		surfaces[surface] = true
 		var own := hull_name.to_lower().trim_prefix("physics_group").trim_prefix("_")
-		if surface != own and not own.is_empty() and hull_name != "physics_sky" and not Penetration.UNNAMED_IN_EXPORT.has(own):
+		if own.begins_with(Penetration.UNNAMED_PREFIX):
+			if surface == "default":
+				not_own.append("%s as default" % hull_name)
+		elif not own.is_empty() and hull_name != "physics_sky" and surface != own and surface != own.rstrip("0123456789"):
 			not_own.append("%s as %s" % [hull_name, surface])
 		var modifiers := Penetration.modifiers(surface)
-		print("  %-40s %-14s reach %.2f  damage %.2f%s" % [
+		print("  %-44s %-14s reach %.2f  damage %.2f%s" % [
 			hull_name, Penetration.display_name(surface), modifiers.x, modifiers.y,
 			"  (no CS2 surface by that name: default)" if surface == "default" and hull_name != "physics_group" else "",
 		])
@@ -246,7 +248,7 @@ func _check_penetration_surfaces() -> void:
 	)
 	_check(
 		not_own.is_empty() and surfaces.has("metalrailing"),
-		"every part of the hull is the CS2 surface of its own name, the railings the export cannot name being metalrailing (not so: %s)"
+		"every part of the hull, by the name the game passes on, is the CS2 surface of its own name (a repeat's number aside), the railings the export names by hash being metalrailing (not so: %s)"
 			% ", ".join(not_own)
 	)
 

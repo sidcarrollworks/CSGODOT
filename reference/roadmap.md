@@ -230,19 +230,33 @@ item 6 is built.
    the same walls on our dust2 and compare.
 7b. **Surface parents.** *(done 2026-09-23)* `scripts/extract_assets.sh
    surfaces` extracts `surfaceproperties.vsurf` (all 164 surfaces, each with
-   its parent and physics) and `surfaceproperties_game.txt`, and writes them
-   to `reference/surfaces/` (`surfaces.csv`, and `surfaces.md` resolved);
-   `SurfaceProperties` reads them and `Penetration` takes its numbers and
-   parents from it instead of the hand-typed table and the guessed parents.
-   The 78 copied numbers matched the game's file exactly; the parents did not,
-   and the fix moves dust2's hull: dumpsters are `metal_dumpster`, which takes
-   a metal barrel's 0.01 and stops a round; trees are `Wood_Tree`, dense wood
-   (0.5 and 0.3, not 0.9 and 0.6); carpet takes dirt's damage (0.3, not 0.5);
-   plastic takes a plastic box's reach (0.75, not default's 0.5); a chain lets
-   through what chain-link does, and gravel is rock, stucco concrete. The
-   railings, which Source 2 Viewer cannot name (`vrf_unknown_key`), are
-   `metalrailing`, by the hash the hull's physics gives them. The dust2 checks
-   now hold every part of the hull to the CS2 surface of its own name.
+   its parent, physics and the hash the game names it by) and
+   `surfaceproperties_game.txt`, and writes them to `reference/surfaces/`
+   (`surfaces.csv`, and `surfaces.md` resolved); `SurfaceProperties` reads
+   them and `Penetration` takes its numbers and parents from it instead of the
+   hand-typed table and the guessed parents. The 84 copied numbers (for 78
+   surfaces) matched the game's file exactly; the parents did not. On dust2's
+   hull that moves the dumpsters (`metal_dumpster`, which takes a metal
+   barrel's 0.01 and stops a round), the trees (`Wood_Tree`, dense wood: 0.5
+   and 0.3, not 0.9 and 0.6), carpet (dirt's damage, 0.3 not 0.5) and plastic
+   (a plastic box's reach, 0.75 not 0.5); off it, chains, gravel and stucco.
+   Two parts were misnamed on the way in and are right now: the railings,
+   which Source 2 Viewer writes as `vrf_unknown_key_2838185980` because it has
+   no name for them, are `metalrailing` by that hash
+   (`SurfaceProperties.by_hash`), and the second of two parts of one surface,
+   which Godot numbers (`physics_group_wood_plank2`), is its surface and not
+   the word before (wood). The dust2 checks hold every part of the hull, by
+   the name the game passes on, to the CS2 surface of its own name.
+7c. **Surfaces per triangle.** *(Local, then Remote)* The hull's physics gives
+   a surface to each triangle as well as to each shape, and the export keeps
+   only the shape's: dust2's ground mesh comes out all `concrete`, though of
+   its 175,380 triangles 9,107 are sand, 3,501 gravel, 3,081 dirt, 1,641 tile
+   and 3,615 default; the wood mesh carries 1,326 plastic ones. Penetration
+   and footsteps take those patches as concrete and wood. The indices are in
+   the physics block (`Source2Viewer-CLI -b PHYS` on `world_physics.vmdl_c`:
+   each mesh's `m_Materials`, one a triangle, into `m_surfacePropertyHashes`);
+   extract them beside the hull and split each collision mesh by surface at
+   import.
 8. **Set `recoil_scale` from a measurement (Sid).** *(Local)* The spray's overall size
    is the one estimate left in the recoil model (it assumes the AK climbs 16
    degrees). Spray a wall in CS2 from 496 units and compare it with the
@@ -416,6 +430,7 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 | Hands | Measure a tag's length and the flinch's size in CS2 | Item 4a |
 | Hands | Shoot through dust2's walls in CS2 with `sv_showimpacts_penetration 1` and note the damage | Item 7a |
 | Done | CS2's surfaces extracted and read (`SurfaceProperties`): penetration's parents from the game, the friction table | Item 7b, per-surface friction |
+| Hands | Carry the hull's surfaces per triangle through the export (dust2's ground is not all concrete) | Item 7c |
 | Hands | Play wall penetration on the test range (M) and dust2 | Item 7 |
 | Done | The every-gun extraction (weapons TODO L1 to L3), and reload, draw and zoom figures from the game's own data (L5) | Every gun: `reference/weapons/models.md`, `sounds.md`, `timings.md`, `vdata.md` |
 | Done | dust2's buy zones, bomb sites and callout volumes, its radar, and its baked bomb damage file (cs2-systems B1, B3, C2; PR #34) | Phases 4 and 5 |

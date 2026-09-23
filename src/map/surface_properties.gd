@@ -24,6 +24,7 @@ const ROOT := "default"
 const MOST_PARENTS := 16
 
 static var _rows := {}
+static var _by_hash := {}
 
 
 ## Every surface's row, by lower-case name: the columns of surfaces.csv as
@@ -47,6 +48,19 @@ static func names() -> PackedStringArray:
 ## does not have.
 static func spelling(surface: String) -> String:
 	return String((rows().get(surface.to_lower(), rows().get(ROOT, {})) as Dictionary).get("name", ROOT))
+
+
+## The surface a hash names, by lower-case name; empty for none. The game's
+## own data names surfaces by the hash of the name (the vsurf's m_nameHash,
+## and the collision hull's m_surfacePropertyHashes), and Source 2 Viewer
+## writes one it has no name for as vrf_unknown_key_ and that hash.
+static func by_hash(name_hash: int) -> String:
+	if _by_hash.is_empty():
+		for key: String in rows():
+			var own := String((rows()[key] as Dictionary).get("hash", ""))
+			if own.is_valid_int():
+				_by_hash[own.to_int()] = key
+	return _by_hash.get(name_hash, "")
 
 
 ## A surface's parent, by lower-case name; empty for one without.

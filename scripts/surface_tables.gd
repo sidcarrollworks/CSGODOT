@@ -21,8 +21,10 @@ const VSURF := "res://assets/surfaces/surfaceproperties/surfaceproperties.vsurf"
 const GAME := "res://assets/surfaces/scripts/surfaceproperties_game.txt"
 const OUT_DIR := "res://reference/surfaces"
 
-## The columns of surfaces.csv after name and parent: the physics the vsurf
-## gives, then the game file's values, under the names SurfaceProperties uses.
+## The columns of surfaces.csv after name, parent and hash (the vsurf's
+## m_nameHash, which is how the game's own data names a surface): the physics
+## the vsurf gives, then the game file's values, under the names
+## SurfaceProperties uses.
 const PHYSICS := {"friction": "friction", "elasticity": "elasticity", "density": "density"}
 const GAME_VALUES := {
 	"gamematerial": "gamematerial", "jumpfactor": "jumpfactor", "maxspeedfactor": "maxspeedfactor",
@@ -46,7 +48,7 @@ func _initialize() -> void:
 		by_hash[surface["fields"].get("m_nameHash", "")] = surface["name"]
 	var disagree := PackedStringArray()
 	var unknown := PackedStringArray()
-	var columns := ["name", "parent"] + PHYSICS.values() + GAME_VALUES.values()
+	var columns := ["name", "parent", "hash"] + PHYSICS.values() + GAME_VALUES.values()
 	var lines := PackedStringArray([",".join(columns)])
 	var rows := {}
 	for surface in surfaces:
@@ -57,7 +59,7 @@ func _initialize() -> void:
 			unknown.append(surface["name"])
 		if fields.has("base") and fields["base"] != parent:
 			disagree.append("%s (base %s, hash %s)" % [surface["name"], fields["base"], parent])
-		var row := {"name": surface["name"], "parent": parent}
+		var row := {"name": surface["name"], "parent": parent, "hash": fields.get("m_nameHash", "")}
 		var physics: Dictionary = surface["blocks"].get("physics", {})
 		for key: String in PHYSICS:
 			row[PHYSICS[key]] = physics.get(key, "")

@@ -37,28 +37,30 @@ const MOST_WALLS := 4
 ## Below this much damage a round is spent.
 const SPENT_BELOW := 1.0
 
-## Hull part names Source 2 Viewer writes for a surface it has no string
-## for, by the surface they are. Its table lacks metalrailing, so dust2's
-## railings (12 shapes) come out as physics_group_vrf_unknown_key; the hull's
-## physics names its 31 surfaces by hash, and 2838185980 is the vsurf's
-## metalrailing, the one of them the export could not name (gravel, the
-## other it does not name, no shape uses). On another map it could be
-## another surface.
-const UNNAMED_IN_EXPORT := {"vrf_unknown_key": "metalrailing"}
+## What Source 2 Viewer calls a hull part whose surface it has no name for,
+## before that surface's hash: dust2's railings (12 shapes) come out as
+## physics_group_vrf_unknown_key_2838185980, which is metalrailing
+## (SurfaceProperties.by_hash).
+const UNNAMED_PREFIX := "vrf_unknown_key_"
 
 
 ## The CS2 surface (lower-case, as SurfaceProperties keys them) for a part
 ## of the collision hull, by its name: the hull names its parts by surface
-## (physics_group_wood_plank, physics_group_metal_dumpster). A name the game
-## has no surface for takes the nearest one it does, by dropping words off
-## the end or by what it begins with, and anything else is default, as a
+## (physics_group_wood_plank, physics_group_metal_dumpster), or, where the
+## export has no name for it, by its hash. Godot numbers a name the hull
+## repeats as it imports it (dust2's second wood_plank part is
+## physics_group_wood_plank2), and that number is not the game's. A name the
+## game has no surface for takes the nearest one it does, by dropping words
+## off the end or by what it begins with, and anything else is default, as a
 ## surface with no properties is in the game.
 static func surface_for(hull_name: String) -> String:
 	var name := hull_name.to_lower().trim_prefix("physics_group").trim_prefix("physics").trim_prefix("_")
 	if name.is_empty():
 		return "default"
-	if UNNAMED_IN_EXPORT.has(name):
-		return UNNAMED_IN_EXPORT[name]
+	if name.begins_with(UNNAMED_PREFIX):
+		return _by_hash(name.trim_prefix(UNNAMED_PREFIX))
+	if not SurfaceProperties.has(name):
+		name = name.rstrip("0123456789").rstrip("_")
 	var words := name.split("_")
 	while not words.is_empty():
 		var candidate := "_".join(words)
@@ -70,6 +72,20 @@ static func surface_for(hull_name: String) -> String:
 		if name.begins_with(key) and key.length() > best.length():
 			best = key
 	return best if not best.is_empty() else "default"
+
+
+## The surface a hull part's hash names. Godot's number for a repeated part
+## would follow the hash, so up to three digits come off the end until one
+## does; default where none does.
+static func _by_hash(digits: String) -> String:
+	for dropped in 4:
+		var tried := digits.left(digits.length() - dropped)
+		if tried.is_empty() or not tried.is_valid_int():
+			break
+		var found := SurfaceProperties.by_hash(tried.to_int())
+		if not found.is_empty():
+			return found
+	return "default"
 
 
 ## A surface's distance modifier (x) and damage modifier (y), each its own
