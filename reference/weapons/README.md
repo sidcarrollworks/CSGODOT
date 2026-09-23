@@ -4,7 +4,17 @@
 March 2026, "Simple" tab), which Sid supplied on 2026-09-22. It has one row per
 weapon and one per mode (scoped, burst, silencer on or off, the R8's fan fire),
 45 in all, with the values copied verbatim. `src/weapons/weapon_sheet.gd`
-reads it, and every number the firing model uses comes from it.
+reads it.
+
+**Since 2026-09-22 the game's own file wins.** Sid: "If we can get any of
+those numbers from the game files we should use those. The spreadsheet was
+human inputted and could have errors." Every number the firing model uses now
+comes from CS2's `scripts/weapons.vdata`, through `WeaponVData` and the
+committed `vdata.csv`, and the sheet is read first only for the two figures
+the game stores as something else: the landing penalty and the ladder. The
+tests check the two against each other for every gun and mode; they agree
+but for the Desert Eagle's jump and the SG 553's scoped firing inaccuracy,
+where the weapon takes the game's.
 
 CS2's own tuning lives in `scripts/weapons.vdata_c`. It was taken not to decode
 into usable values, so this sheet stood in for it; Source 2 Viewer 20.0 decodes

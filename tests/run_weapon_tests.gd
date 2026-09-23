@@ -61,6 +61,7 @@ func _process(_delta: float) -> bool:
 		_test_fatal_headshot_ranges()
 		_test_landing_costs_accuracy()
 		_test_every_value_comes_from_the_sheet()
+		_test_the_game_s_numbers_win()
 		_build_world()
 		_frames += 1
 		return false
@@ -1433,6 +1434,60 @@ func _test_every_value_comes_from_the_sheet() -> void:
 		var inches := tan(deg_to_rad(WeaponSheet.cone_degrees(stand))) * metres / 0.0254
 		worst = maxf(worst, absf(inches - 6.0))
 	_check(worst < 0.02, "every weapon's accurate range is its six-inch cone (worst off by %.3f in)" % worst)
+
+
+## The game's own tuning (reference/weapons/vdata.csv) is the source, the
+## sheet a hand-typed copy of it: every number the firing model takes from
+## the game agrees with the sheet for every gun and its scoped or silenced
+## mode, but for the differences reference/weapons/vdata.md lists, and where
+## they differ the game's is what the weapon gets.
+func _test_the_game_s_numbers_win() -> void:
+	var guns: Array = (load("res://scripts/weapon_tables.gd") as GDScript).get_script_constant_map()["GUNS"]
+	var second_rows: Dictionary = (load("res://scripts/weapon_tables.gd") as GDScript).get_script_constant_map()["SECOND_VALUE_ROWS"]
+	var present := 0
+	for gun in guns:
+		present += 1 if WeaponVData.has(gun[0]) else 0
+	_check_equal(present, guns.size(), "the game's tuning has every gun")
+
+	var fields := [
+		"base_damage", "pellets", "armor_penetration", "range_modifier", "head_multiplier", "cycle_time",
+		"penetration_power", "magazine_size", "reserve_ammo", "max_player_speed", "tagging_power", "max_range",
+		"automatic", "inaccuracy_standing", "inaccuracy_crouching", "inaccuracy_moving", "inaccuracy_jumping",
+		"inaccuracy_per_shot", "recovery_time_crouch", "recovery_time_stand",
+	]
+	var differ := PackedStringArray()
+	for gun in guns:
+		var modes := [[false, ""]]
+		if second_rows.has(gun[1]):
+			modes.append([true, second_rows[gun[1]]])
+		for mode in modes:
+			var sheet := WeaponData.new()
+			WeaponSheet.apply(sheet, gun[1], mode[1])
+			var game := WeaponData.new()
+			WeaponVData.apply(game, gun[0], mode[0])
+			for field in fields:
+				var a = sheet.get(field)
+				var b = game.get(field)
+				# Where the sheet has no number ("see note" on the R8), the game fills it.
+				if typeof(a) == TYPE_FLOAT and is_nan(a):
+					continue
+				var same: bool = a == b if typeof(a) != TYPE_FLOAT else absf(a - b) <= maxf(0.0015, absf(a) * 0.0005)
+				if not same:
+					differ.append("%s %s" % [mode[1] if not mode[1].is_empty() else gun[1], field])
+	differ.sort()
+	_check(
+		differ == PackedStringArray(["Desert Eagle inaccuracy_jumping", "SG 553 (scoped) inaccuracy_per_shot"]),
+		"the game's numbers agree with the sheet for every gun but the Desert Eagle's jump and the SG 553's scoped firing (%s)" % ", ".join(differ)
+	)
+	var deagle := WeaponData.new()
+	WeaponSheet.apply(deagle, "Desert Eagle")
+	WeaponVData.apply(deagle, "weapon_deagle")
+	var ak := WeaponLibrary.ak47()
+	_check(
+		is_equal_approx(deagle.inaccuracy_jumping, WeaponSheet.cone_degrees(46.75)) and is_equal_approx(ak.reload_time, 2.466667)
+			and is_equal_approx(WeaponLibrary.m4a1s().reload_time, 3.066667),
+		"where they differ the game wins: the Deagle's jump is its 46.75, not the sheet's 378.30; the rifles fire again 2.467 and 3.067 s into a reload (%.3f)" % deagle.inaccuracy_jumping
+	)
 
 
 ## The sheet's fatal headshot ranges, which are the damage, the multiplier,

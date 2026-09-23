@@ -311,7 +311,7 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 | Hands | Playtest the range dummy and ragdoll on current assets | Confirms PR #20 |
 | Hands | Check that first shots at a run now miss (PR #24) | Item 9 |
 | Done | The every-gun extraction (weapons TODO L1 to L3), and reload, draw and zoom figures from the game's own data (L5) | Every gun: `reference/weapons/models.md`, `sounds.md`, `timings.md`, `vdata.md` |
-| Decide | The Desert Eagle's jump inaccuracy: the sheet says 378.30, the game 46.75 (`reference/weapons/vdata.md`) | Which the Deagle uses |
+| Decided | The game's own numbers win over the sheet's wherever the game has them (Sid, 2026-09-22), the Desert Eagle's jump inaccuracy included (46.75, not 378.30) | `WeaponVData`, every gun |
 | Hands | The systems' Local list in `reference/cs2-systems.md`: buy zones and bomb sites (B1), radar (B3), bomb (C1 to C3), grenades (G1 to G6), knife and Zeus (K1, K2), sounds (S1, S2) | Phases 4 to 7 |
 
 ---
