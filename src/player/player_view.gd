@@ -305,7 +305,7 @@ func _physics_process(_delta: float) -> void:
 		return
 	for body in [body_model, body_shadow]:
 		if body != null:
-			body.update_motion(player.velocity, player.input.yaw_degrees, player.is_ducked, player.on_ground)
+			body.update_motion(player.velocity, player.input.yaw_degrees, player.duck_progress, player.on_ground)
 
 
 func _process(delta: float) -> void:

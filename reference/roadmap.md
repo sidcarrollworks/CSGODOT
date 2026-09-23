@@ -79,7 +79,9 @@ Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurem
 - Lighting from the map's own numbers: sun, fog, exposure, the baked
   lightmaps for bounce light, light probes for props, players and arms.
 - Viewmodel arms and weapons at CS2's `viewmodel_fov`; third-person agents
-  (Phoenix and SAS) on the locomotion rig with eight-way clips.
+  (Phoenix and SAS) on the locomotion rig, moved by CS2's own blend spaces
+  (runs at 225, walks at 136, crouching at 96, kept in step) in an animation
+  tree, with the air blended the same way.
 - Every gun extracted (PR #28): the 34 guns' models, first- and third-person
   animations and sounds, the scope overlay and the equipment icons, listed in
   `reference/weapons/`. Only the AK-47 and M4A1-S are in your hands so far;
@@ -98,7 +100,8 @@ Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurem
   game sets, the third-person graph's layers and state machines, the
   locomotion's blend spaces with each clip's speed, and the first-person
   gun's actions, in `reference/animgraph/`; `reference/animgraph2.md` says
-  what they are and what they mean here. Nothing plays them yet.
+  what they are and what they mean here. The locomotion's blend spaces move
+  the third-person body (above); nothing else of them plays yet.
 
 ### Combat
 - Bots and the player share one damage path (`Hitscan.fire_at` then
@@ -153,7 +156,7 @@ Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurem
 - `scripts/extract_assets.sh` (map, physics, weapons, characters, sounds and
   more, the nav mesh with `nav`), `inspect_assets`, and `run_tests.sh` with
   eight headless test files (movement, map, dust2, model, weapon,
-  penetration, range, simulation): 620 checks pass without the assets.
+  penetration, range, simulation): 621 checks pass without the assets.
 
 ---
 
@@ -217,12 +220,12 @@ item 6 is built.
    heard, not seen. CS2's blood impact and decal behind the target.
 6. **Firing on the third-person model.** *(Remote, can start now; Sid checks it)* `PlayerModel` still says "Nothing is
    layered, so firing does not show yet": a bot kills you without its arms
-   moving. Needs the upper-body layer over the locomotion clip. CS2's own
+   moving. Needs the upper-body layer over the locomotion. CS2's own
    graph says how it stacks them (`reference/animgraph/worldmodel.md`): the
    weapon's actions over the locomotion in model space, the shooting and the
-   flinches additive on top; and its locomotion blends by speed in a blend
-   space (`locomotion.json`) where ours plays one clip at a time, which an
-   animation tree built for this layer can take in too.
+   flinches additive on top. The locomotion is now an animation tree of
+   CS2's blend spaces (`PlayerModel.animation_tree`), so the layers go into
+   that tree, above its `action` and under its `death`.
 
 6a. **Your shadow has no arms.** *(Remote, after item 6; Sid checks it)* Sid noticed
    2026-09-22 22:06. The shadow twin (commit f42114e) put the head back but folds the
