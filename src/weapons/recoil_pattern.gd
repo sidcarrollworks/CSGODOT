@@ -14,9 +14,18 @@ extends RefCounted
 
 const PATTERN_DIR := "res://reference/spray_patterns"
 
+## Every pattern read, by its file, for the next weapon of the kind: one is
+## built on every equip and every respawn, and each read the file from the
+## disk again. Handed out as copies. A pattern copied over its file while the
+## game runs is read at the next start.
+static var _loaded := {}
+
 
 static func load_pattern(weapon_name: String) -> PackedVector2Array:
-	return load_from(PATTERN_DIR.path_join("%s.csv" % weapon_name))
+	var path := PATTERN_DIR.path_join("%s.csv" % weapon_name)
+	if not _loaded.has(path):
+		_loaded[path] = load_from(path)
+	return (_loaded[path] as PackedVector2Array).duplicate()
 
 
 static func load_from(path: String) -> PackedVector2Array:
