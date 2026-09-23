@@ -23,7 +23,7 @@
 #   scripts/extract_assets.sh hud             # the scope overlay and the equipment icons
 #   scripts/extract_assets.sh characters      # two player models and their locomotion
 #   scripts/extract_assets.sh sounds          # every gun's sounds, footsteps by surface, hits
-#   scripts/extract_assets.sh all             # map + weapons + characters + sounds
+#   scripts/extract_assets.sh all             # map + weapons + hud + characters + sounds
 #
 # Requires Source2Viewer-CLI: https://github.com/ValveResourceFormat/ValveResourceFormat
 # Point at it with S2V=/path/to/Source2Viewer-CLI if it is not on PATH.
@@ -744,5 +744,5 @@ case "$COMMAND" in
 	weapon-data) extract_weapon_data; write_weapon_tables ;;
 	hud) extract_hud; finish ;;
 	sounds) extract_sounds; finish ;;
-	all) extract_map; echo; extract_weapons; echo; extract_characters; echo; extract_sounds; finish ;;
+	all) extract_map; echo; extract_weapons; echo; extract_hud; echo; extract_characters; echo; extract_sounds; finish ;;
 esac

@@ -36,8 +36,8 @@ this project did until it was noticed.
 
 ## Running it
 
-Open the project in Godot 4.7 and press play. The main scene is the movement
-test course. The other one worth opening is `maps/test_range/test_range.tscn`,
+Open the project in Godot 4.7 and press play. The main scene is dust2. The
+other one worth opening is `maps/test_range/test_range.tscn`,
 which is where shooting gets tuned.
 
 | Key | |
@@ -185,12 +185,16 @@ saturation ramp. Their shape is measured; their overall size is an estimate,
 because the plots carry no angular scale, and `recoil_scale` on the weapon is
 the one number that corrects it.
 
-CS2 keeps weapon tuning in `scripts/weapons.vdata_c`, which does not decode
-into usable values, so none of it could be extracted the way the map and
-models were. Damage, armour, falloff, speed and inaccuracy come from the CS2
-Weapon Spreadsheet instead, the spray patterns and recovery timings from
-measuring CS2 by hand. `reference/weapon_stats.md` lists every number, where
-it came from, and where the sources disagree.
+CS2 keeps weapon tuning in `scripts/weapons.vdata_c`. Source2Viewer 20.0
+decodes it, `scripts/extract_assets.sh weapon-data` writes every gun's fields
+to `reference/weapons/vdata.csv`, and `WeaponVData` reads them: damage,
+armour, falloff, fire rate, magazine and reserve, speed, inaccuracy and
+recovery, and when a reload lets the gun fire again all come from the game.
+The CS2 Weapon Spreadsheet is read first and now supplies only the landing
+and ladder figures, which the game stores another way; the spray patterns
+and recovery timings come from measuring CS2 by hand.
+`reference/weapons/vdata.md` checks the game's numbers against the sheet, and
+`reference/weapon_stats.md` lists where the rest came from.
 
 ## dust2
 
@@ -221,11 +225,12 @@ the lightmaps take seconds. The lightmaps are one 300 MB image, which
 Godot's first import spends a few minutes compressing to 90; the probes are
 720 small slices that the game packs into one file the first time it runs.
 
-`weapons` fetches the AK-47 and M4A1-S with their animations. `characters`
-fetches one player model per side (Phoenix and SAS) with their skeletons,
-and the rifle animations, which in CS2 are files of their own: the
-first-person set, and the third-person locomotion (eight-way run, walk and
-crouch, idles, in-air, jump, shoot). `all` does the lot.
+`weapons` fetches every gun with its first- and third-person animations and
+the game's weapon tuning, and `hud` the scope overlay and equipment icons.
+`characters` fetches one player model per side (Phoenix and SAS) with their
+skeletons, and the rifle animations, which in CS2 are files of their own:
+the first-person set, and the third-person locomotion (eight-way run, walk
+and crouch, idles, in-air, jump, shoot). `all` does the lot.
 
 With those in place the player has arms and a weapon on screen, animated by
 the game's own clips: draw on equip, shoot and reload from the firing model,

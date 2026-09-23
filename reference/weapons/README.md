@@ -154,8 +154,10 @@ time that takes over after the first few rounds of a spray (AK: 0.506
 standing, 0.420 crouched, from round 2 to 5), spread apart from inaccuracy,
 the scopes' zoom levels and times, the deploy time, how soon a reload lets
 the gun fire again, the muzzle's position, the tracers, the burst timing,
-and Random recoil's angle and size (R6). Not used by the firing model yet:
-the sheet is still the source for what it has.
+and Random recoil's angle and size (R6). Of these the firing model uses the
+spread (inside every inaccuracy total) and when a reload lets the gun fire
+again (`reload_time`); the rest are not used yet. For everything the two
+share, the game's file wins (see the top of this file).
 
 Checked against the sheet, 914 values agree. Of the six that do not, five
 are scoped rows where the sheet says "-" (as unscoped) and the game gives

@@ -74,8 +74,10 @@ static func apply(data: WeaponData, weapon_class: String, alternate: bool = fals
 	data.tagging_power = 1.0 - get_value.call("m_flFlinchVelocityModifierLarge")
 	data.max_range = get_value.call("m_flRange")
 	data.automatic = get_value.call("m_bIsFullAuto") == 1.0
-	# When a reloading gun may fire again. The clip itself is a frame or so
-	# shorter (reference/weapons/timings.md).
+	# When a reloading gun may fire again. For a magazine gun it is the
+	# reload clip's length or a frame longer; for the shotguns that load a
+	# shell at a time it ends near the end of the clip's intro, before the
+	# first shell goes in (reference/weapons/timings.md).
 	data.reload_time = get_value.call("m_flDisallowAttackAfterReloadStartDuration")
 
 	var spread: float = get_value.call("m_flSpread")

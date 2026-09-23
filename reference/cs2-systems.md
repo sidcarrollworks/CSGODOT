@@ -95,7 +95,8 @@ a player who dies and respawns after 3 s, two bots of one side.
 | Team kill | -$300; suicides are penalised (amount: **measure**, E1) |
 | Short-handed | $1,000 bonus to a team down a player (`cash_team_bonus_shorthanded`; when it pays: **measure**, E1) |
 
-**Built:** Price and Kill Award are in the sheet and loaded with each weapon.
+**Built:** nothing yet. Price and Kill Award are in the weapon sheet and in
+the game's weapons.vdata (`reference/weapons/vdata.csv`); nothing loads them.
 
 **Remote**
 - A money ledger per player with every rule above, driven by the match state
@@ -144,8 +145,10 @@ a player who dies and respawns after 3 s, two bots of one side.
   shapes are in the `world_physics.gltf` the world export writes (see
   `reference/asset-pipeline.md`). Confirm that file survives `extract_assets.sh
   map`, keep it, and list which mesh belongs to which entity.
-- **B2. Buy menu art.** The weapon icons (`panorama/images/icons/equipment/`
-  or wherever they live now: list, do not guess) and the buy menu's sounds.
+- **B2. Buy menu art.** *(icons done with L4:
+  `panorama/images/icons/equipment/`, fetched by `scripts/extract_assets.sh
+  hud`)* The weapon icons and the buy menu's sounds; the sounds are still to
+  find.
 - **E2.** Measure when buy time ends and the helmet-only price.
 
 ## 4. Inventory: slots, switching, dropping, picking up
@@ -173,7 +176,9 @@ a player who dies and respawns after 3 s, two bots of one side.
 **Local**
 - **I1.** Every weapon's world model (the dropped one), with L1 in
   `reference/weapons/TODO.md`.
-- **I2.** Measure draw times, with L5 there.
+- **I2.** *(done with L5: every gun's draw clip is in
+  `reference/weapons/timings.md` and its deploy time in `vdata.md`, both
+  from the game's files)* Measure draw times, with L5 there.
 
 ## 5. Armour
 
@@ -336,7 +341,8 @@ arcs, the flashbang white-out, the buy menu, the scoreboard on Tab, the
 round-end panel with the MVP, the spectator bar, chat, and the crosshair
 with its settings.
 
-**Built:** crosshair, health, ammo, the death countdown.
+**Built:** crosshair, health, armour (with the helmet), ammo, the damage
+direction arcs (PR #27), the death countdown.
 
 **Remote:** every element above, one at a time as its system lands. The
 radar needs B3.
@@ -415,8 +421,8 @@ be written from the start as server-side state that clients only draw: the
 match, money, inventory, bomb and grenades live in one simulation that takes
 players' input commands, and single player is that simulation running inside
 the game with bots. Retrofitting it later means rewriting each system. The
-player controller today mixes input, simulation and drawing in one node, so
-the first step either way is to split those.
+player's input, simulation and drawing are already split (PlayerSim and
+PlayerView, PR #24), so the next step is the server-side state.
 
 **Remote (all of it):** the simulation and presentation split; the command
 and snapshot protocol over ENet; prediction and reconciliation for movement
