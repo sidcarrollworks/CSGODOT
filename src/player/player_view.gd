@@ -300,8 +300,8 @@ func _build_body(node_name: String, folded: Array[String], casting: GeometryInst
 	return model
 
 
-## After each tick the player has run (a child ticks after its parent): the
-## body walks the clips for how it moved.
+## After each tick the player has run (the world runs the tick before any
+## other node's physics callback): the body walks the clips for how it moved.
 func _physics_process(_delta: float) -> void:
 	if not player.alive:
 		return

@@ -13,10 +13,12 @@ extends SceneTree
 ## the time is by system rather than by the engine's phases: every node's
 ## _physics_process and _process, taken over as the node arrives, and every
 ## AnimationTree, switched to manual and stepped here, the skeleton posed
-## straight after so the hitboxes and pins that follow it are counted too. A
-## node after all the tree's physics callbacks marks where they end; the
-## step from there to the next tick in the same frame is the physics server.
-## Headless there is no drawing, so a frame here is its script alone.
+## straight after so the hitboxes and pins that follow it are counted too.
+## The world's tick it runs in the world's own order and parts (begin_tick,
+## each player's command_for and run_command, end_tick), timing each. A node
+## after all the tree's physics callbacks marks where they end; the step from
+## there to the next tick in the same frame is the physics server. Headless
+## there is no drawing, so a frame here is its script alone.
 
 const WINDOW_USEC := 5_000_000
 
@@ -133,16 +135,8 @@ func _physics_process(delta: float) -> bool:
 		if not is_instance_valid(node) or not node.is_inside_tree():
 			_physics_nodes.erase(node)
 			continue
-		if node is Bot:
-			var bot := node as Bot
-			if bot.alive:
-				_count("bots alive, over the ticks")
-			var a := Time.get_ticks_usec()
-			var cmd: UserCmd = bot.call("_think", delta)
-			var b := Time.get_ticks_usec()
-			bot.run_command(cmd, delta)
-			_add("tick: bots thinking", b - a)
-			_add("tick: bots' run_command", Time.get_ticks_usec() - b)
+		if node is GameWorld:
+			_run_world(node as GameWorld, delta)
 			continue
 		var e := Time.get_ticks_usec()
 		node.call("_physics_process", delta)
@@ -150,6 +144,30 @@ func _physics_process(delta: float) -> bool:
 	_nodes_done = Time.get_ticks_usec()
 	_ticks += 1
 	return false
+
+
+## The world's tick, as GameWorld.step runs it, with a clock round each part.
+func _run_world(world: GameWorld, delta: float) -> void:
+	world.begin_tick()
+	for player: PlayerSim in world.players.duplicate():
+		if not player.is_inside_tree():
+			continue
+		var bot := player as Bot
+		if bot != null and bot.alive:
+			_count("bots alive, over the ticks")
+		var a := Time.get_ticks_usec()
+		var cmd := player.command_for(world.tick, delta)
+		var b := Time.get_ticks_usec()
+		player.run_command(cmd, delta)
+		var c := Time.get_ticks_usec()
+		if bot != null:
+			_add("tick: bots thinking", b - a)
+			_add("tick: bots' run_command", c - b)
+		else:
+			_add("tick: your command and run_command", c - a)
+	var d := Time.get_ticks_usec()
+	world.end_tick()
+	_add("tick: the match", Time.get_ticks_usec() - d)
 
 
 func _begin() -> void:
@@ -351,5 +369,7 @@ func _kind(node: Node) -> String:
 	return script.resource_path.get_file() if script != null and script.resource_path != "" else node.get_class()
 
 
-func _players() -> Array[Node]:
-	return get_nodes_in_group(&"players")
+func _players() -> Array[PlayerSim]:
+	if GameWorld.current == null:
+		return []
+	return GameWorld.current.players

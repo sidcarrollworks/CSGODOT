@@ -23,6 +23,9 @@ var surf_left_surface_point: Vector3
 var surf_channel_top_height: float
 var access_ramp_bottom: Vector3
 
+## What runs the player on the course every tick.
+var world: GameWorld
+
 var _grey: StandardMaterial3D
 var _accent: StandardMaterial3D
 var _surf: StandardMaterial3D
@@ -37,6 +40,12 @@ func _ready() -> void:
 	_build_surf_lane(Vector3(-1800.0, 0.0, -700.0))
 	_build_jump_gauges(Vector3(-1024.0, 0.0, 0.0))
 	_build_lighting()
+	world = GameWorld.new()
+	world.name = "World"
+	add_child(world)
+	var player := get_node_or_null(^"Player") as PlayerSim
+	if player != null:
+		world.add_player(player)
 
 
 func _make_materials() -> void:

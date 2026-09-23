@@ -189,7 +189,10 @@ func _import() -> bool:
 		skybox.free()
 
 	# Bots walking the CT spawn points, over the nav mesh where it has been
-	# extracted, as the map's own bots do.
+	# extracted, as the map's own bots do, and a player dropped at every spawn
+	# point: all run by a world, as the map's are.
+	var world := GameWorld.new()
+	_importer.add_child(world)
 	var nav_mesh := SourceNavMesh.load_file(NAV_FILE)
 	var bot_scene: PackedScene = load("res://src/bots/bot.tscn")
 	var route := PackedVector3Array()
@@ -202,6 +205,7 @@ func _import() -> bool:
 		bot.route = route
 		bot.nav_mesh = nav_mesh if nav_mesh.error.is_empty() else null
 		_importer.add_child(bot)
+		world.add_player(bot)
 		bot.global_position = route[i]
 		bot.set("_next", i + 1)
 		_bots.append(bot)
@@ -212,6 +216,7 @@ func _import() -> bool:
 		for spawn: Dictionary in spawns[team]:
 			var player := scene.instantiate() as PlayerBody
 			_importer.add_child(player)
+			world.add_player(player as PlayerSim)
 			player.global_position = spawn["position"]
 			# Only here to land on the floor. Players are solid to each other,
 			# as in CS2, and the bots' route is these same spawn points: off the
