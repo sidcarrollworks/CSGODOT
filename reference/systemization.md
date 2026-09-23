@@ -10,7 +10,9 @@ second). Line numbers are for the commit named beside them, or `79f6ca6`.
 This copy in the repo is the one to keep current, as with the roadmap:
 whoever lands a step marks it done here in the same pull request.
 
-Done: step 0 (the test runner and CI, 2026-09-23).
+Done: step 0 (the test runner and CI, 2026-09-23); the world that owns the
+tick, in its first form (finding 1, brought forward into step 1 by Sid,
+2026-09-23: `GameWorld`).
 
 The question asked: where does the code repeat itself, or hand-build one
 case at a time, in a way a shared system would replace, and in what order
@@ -97,6 +99,21 @@ the per-tick budgets (path searches, later sight checks), the timing the
 profiler measures, and the tick rate (64 since PR #46, set in
 `project.godot` and read through `SimClock`).
 **Size:** medium. It moves code more than it writes it.
+
+*(Done 2026-09-23, in its first form: `src/sim/game_world.gd`.)* Each map
+(dust2, the range, the movement course) starts a `GameWorld` and every
+player joins it; no player and no match runs itself any more. Each tick
+the world asks each player for its command (`PlayerSim.command_for`: your
+keys, a bot's choices), runs them in the order they joined (on dust2 you,
+then the bots), then the match at the tick's end. It counts its own ticks,
+which `SimClock` reads, holds the players that a bot's sight and a dead
+player's spectating look through instead of the scene's group, and gives
+out the two path searches a tick. The profiler runs its tick in the
+world's own parts (`begin_tick`, each player, `end_tick`) rather than a
+loop of its own. Still to come on it: the world's other things (dropped
+weapons, the bomb, grenades) as they arrive, the tick's events handed out
+at `end_tick` (step 1), sight checks as a per-tick budget, and more of the
+checks on a world they step themselves (finding 13).
 
 ### 2. A bot is a kind of player, not a player with a brain
 
@@ -289,9 +306,15 @@ the top priority is hit registration that feels the same as CS2.
 **The system.** Advance each simulated body's animation by hand inside the
 tick (Godot's manual callback mode) and keep a short ring of each tick's
 capsule end points, which the performance audit sizes at about 450 bytes a
-player a tick, 58 KB a second at 128 Hz; a rewound round is tested against
+player a tick, 29 KB a second at 64 Hz; a rewound round is tested against
 those in script, ray against capsule, rather than by moving Jolt's areas
-back and forth. The drawn bodies go on animating per frame.
+back and forth. The drawn bodies go on animating per frame. On your own
+machine that is two animation trees for every bot, the one its hitboxes
+ride stepped by the tick and the one you see stepped by the frame, as
+Source keeps a server's copy of every player and a client's even in one
+process: about 0.1 ms a bot a tick more, some 6% of a core for nine bots.
+So it needs the presenter (finding 6) first, to have a drawn body apart
+from the simulated one.
 
 PR #46 moved this further in the same direction, on purpose: a bot's body
 is now drawn between its last two ticks every frame
@@ -305,6 +328,10 @@ history above gives the same result the server's way: the hitboxes stay
 where the tick put them, and a shot is tested against the history at the
 fraction between ticks the shooter was seeing, which the command carries
 (CS2's `input_history`). `show_between` then only moves the drawn body.
+Until then one side effect is worth knowing: a bot's round at another bot
+meets it where it was last drawn, up to two ticks behind where it is
+(about 7 units at a run), while the bot aims at where it is, so bots miss
+moving bots a little more than they should, both sides alike.
 **Size:** small to medium; it needs Sid's machine to check the drawn bodies
 still look right.
 
@@ -322,7 +349,7 @@ check "the same commands give the same game" compares positions by hand
 for the same reason.
 
 The performance audit adds the other half: a client re-runs the commands
-the server has not answered yet (about eight ticks at 60 ms and 128 Hz,
+the server has not answered yet (about four ticks at 60 ms and 64 Hz,
 many times a second), and today `run_command` sounds each shot and leaves
 its holes through signals, so a re-run would do it again.
 
@@ -405,7 +432,11 @@ files after it never report. `SimClock` reads
 `Engine.get_physics_frames()`, so a check that wants the tick to move has
 to await the engine's physics frames rather than step a clock it controls.
 There is no CI, with agents on two sides pushing to
-main.
+main. *(The runner, the check base and CI are done: step 0. CI runs what
+needs no extracted assets, 736 of the 943 checks; the other 207 run only
+on Sid's machine. `SimClock` now reads the `GameWorld`'s count, and a
+check can hold a world and step it: `tests/run_sim_checks.gd` runs a
+second of it in one frame.)*
 
 **The system.** A shared check base, one runner that runs every file and
 reports them all, a simulation harness that builds a `GameWorld` with
@@ -432,57 +463,68 @@ change `player_sim.gd`, `bot.gd` and the models often, so the steps that
 rewrite those files go one pull request at a time, starting from a freshly
 pulled main.
 
-The performance audit ends with nine next steps (`performance.md`, "Next,
-in order"). Five of them are the systems below seen from the cost side,
-so this plan takes them in as they are; the other four are its own.
+The performance audit ends with eight next steps (`performance.md`, "Next,
+in order"; its first, the tick rate, was settled by PR #46 and taken out).
+All but one are the systems below seen from the cost side, so this plan
+takes them in as they are; the one left, the probe light on the GPU, is
+its own.
 
 **Step 0, now: the test runner and CI** (finding 13). *(Done 2026-09-23:
 `scripts/run_tests.sh`, `tests/check_suite.gd`,
 `.github/workflows/tests.yml`.)* One runner that
 reports every file, a shared check base, a GitHub Action. Protects every
-step after it and every agent pushing to main.
+step after it and every agent pushing to main. CI runs the checks that
+need no extracted assets; the rest (dust2, the models, the sounds) run on
+Sid's machine only, so a change to anything drawn, heard or on the map
+still needs a run there.
 
 **Step 1, first, inside or just before items 12 and 13:**
+- The world that owns the tick, in a first form (finding 1). *(Done
+  2026-09-23.)* Brought forward from step 3 by Sid: the events below are
+  handed out at the end of its tick, and there was nothing else to hand
+  them out.
 - The item registry (finding 5), which is R1.
 - `DamageInfo` with the attacker (finding 3).
-- Game events, queued per tick (finding 4), starting with the ones items 12
-  to 15 need: death, hurt, fire, impact, round start and end, pickup and
-  drop. Shots' sounds and holes move onto them, which is half of
-  performance step 5.
+- Game events, queued per tick and handed out by the world at its end
+  (finding 4), starting with the ones items 12 to 15 need: death, hurt,
+  fire, impact, round start and end, pickup and drop. Shots' sounds and
+  holes move onto them, which is half of performance step 4.
 Then inventory, economy, buying and the round HUD are built on them.
 
 **Step 2, any time, small: one surface lookup resolved at import**
 (finding 7), which feeds CS2's per-surface friction into the movement and
 frees the hull to be cut into cells for faster traces.
 
-**Step 3, the simulation's owner, before the bomb (item 16), grenades (17
-to 20) and netcode:**
-1. The `GameWorld` that owns the tick (finding 1), with the simulation
-   harness for tests on a clock they control.
-2. Hitboxes posed by the tick and their history as capsule end points,
-   tested in script (finding 8; performance steps 3 and 4). Sid checks the
+**Step 3, the rest of the simulation's owner, before the bomb (item 16),
+grenades (17 to 20) and netcode:**
+1. What is left of the world (finding 1): the world's other things as
+   they arrive, and checks that build a map's world and step it on a
+   clock they control.
+2. The third-person presenter (finding 6; performance step 5), which item
+   6a then uses. It comes before the hitboxes posed by the tick, which
+   want a drawn body apart from the one they ride (finding 8).
+3. Hitboxes posed by the tick and their history as capsule end points,
+   tested in script (finding 8; performance steps 2 and 3). Sid checks the
    drawn bodies.
-3. The third-person presenter (finding 6; performance step 6), which item
-   6a then uses.
 4. Bots as brains driving a `PlayerSim` (finding 2), with sight on a
-   schedule or shared (performance step 8), which also fixes the two known
+   schedule or shared (performance step 7), which also fixes the two known
    bot problems.
 5. The entity base with saved state (finding 9), so a command can be run
-   again without its sounds and marks (performance step 5).
+   again without its sounds and marks (performance step 4).
 
 **Step 4, before menus and netcode: game modes apart from maps** (finding
 11), including a server mode that builds nothing to be seen (performance
-step 2), and **convars and the console** (finding 10). The convar registry
+step 1), and **convars and the console** (finding 10). The convar registry
 can start earlier, as each step above adds settings.
 
 **Step 5, when the next KV3 file is read: the shared readers** (finding
 12), with one body of each kind built while the map loads (performance
-step 9) as part of the asset list.
+step 8) as part of the asset list.
 
 **Conventions** (finding 14) as files are touched.
 
 Left to the performance side, since they are not systems: the probe light
-sampled on the GPU and its atlas packed (performance step 7).
+sampled on the GPU and its atlas packed (performance step 6).
 
 Against the roadmap's current "what a thread can start now" list: step 0
 and step 1 go first, then items 12 and 13 on top of them; 6a waits for
@@ -500,7 +542,7 @@ what this one found by reading, and agrees with it in four places:
 - **Drawing inside the simulation** (findings 6 and 11). Its "server that
   builds nothing to be seen" and "your three bodies on fewer trees" need
   the presenter split first.
-- **A command run twice** (findings 4 and 9). Its step 5, prediction
+- **A command run twice** (findings 4 and 9). Its step 4, prediction
   without repeated sounds and marks, is what per-tick events and saved
   state give.
 - **Bots' sight** (finding 2). It grows as bots times enemies; a brain
@@ -509,9 +551,12 @@ what this one found by reading, and agrees with it in four places:
 
 It also found two things that sharpen findings here. Its profiler had to
 run every node's callbacks in a loop of its own to time the tick by system
-(finding 1), and its best trace speed-up was left out because footsteps
-and penetration read surfaces from node names (finding 7).
+(finding 1; it now runs the world's tick in the world's own parts), and
+its best trace speed-up was left out because footsteps and penetration
+read surfaces from node names (finding 7).
 
 Its first step, the tick rate, is settled: 64, as CS2 (PR #46). Nothing
-in this plan changes with it; everything a tick costs now costs half as
-often.
+in this plan changes with it. Everything a tick does is paid half as
+often, though a tick at 64 does a little more than one at 128 did (it
+moves everyone twice as far), so a second of play costs 32 to 42% less
+rather than half.

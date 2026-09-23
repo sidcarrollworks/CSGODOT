@@ -55,7 +55,7 @@ class SubtickStep:
 		pitch_degrees = p_pitch
 
 
-## The simulation tick this command runs (Engine.get_physics_frames()).
+## The simulation tick this command runs (GameWorld.tick).
 var tick: int = 0
 ## Buttons held at the end of the tick.
 var buttons: int = 0

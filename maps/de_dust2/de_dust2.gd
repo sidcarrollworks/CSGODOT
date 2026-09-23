@@ -50,6 +50,9 @@ const NAV_FILE := "res://assets/maps/de_dust2/maps/de_dust2.nav"
 
 var importer: MapImporter
 var skybox: MapImporter
+## What runs the game: you first, then the bots in the order they were
+## placed, then the match, every tick.
+var world: GameWorld
 var player: PlayerBody
 ## The match being played: warmup, the rounds and the score.
 var match_state: MatchState
@@ -65,6 +68,9 @@ var _sites := PackedVector3Array()
 
 
 func _ready() -> void:
+	world = GameWorld.new()
+	world.name = "World"
+	add_child(world)
 	var map_file := MapImporter.find_map_file(MAP_DIR)
 	if map_file.is_empty():
 		MapLighting.build(self, {}, entities, "")
@@ -148,6 +154,7 @@ func _place_bots() -> void:
 			bot.nav_mesh = nav_mesh
 			bot.route = bot_route(spawns, team, i, _sites)
 			add_child(bot)
+			world.add_player(bot)
 			bot.global_position = spawns[team][i % spawns[team].size()]["position"]
 
 
@@ -182,9 +189,8 @@ func _start_match() -> void:
 	match_state.rules.warmup_seconds = warmup_seconds
 	match_state.spawns = spawns
 	add_child(match_state)
-	for node in get_tree().get_nodes_in_group(&"players"):
-		if node is PlayerSim:
-			match_state.add_player(node)
+	# Everyone in the world plays in it, and the world runs it after them.
+	world.match_state = match_state
 	match_state.sides_swapped.connect(func() -> void:
 		var counts := {"T": 0, "CT": 0}
 		for sim in match_state.players:
@@ -287,6 +293,7 @@ func _place_player(map_file: String) -> void:
 	player = (load("res://src/player/player.tscn") as PackedScene).instantiate()
 	(player as PlayerController).team = spawn_team
 	add_child(player)
+	world.add_player(player as PlayerSim)
 
 	var spawns: Array = SourceEntities.player_spawns(entities)[spawn_team]
 	if not spawns.is_empty():
@@ -337,6 +344,7 @@ func _build_fallback(message: String = "") -> void:
 
 	player = (load("res://src/player/player.tscn") as PackedScene).instantiate()
 	add_child(player)
+	world.add_player(player as PlayerSim)
 	player.global_position = Vector3(0.0, 8.0, 0.0)
 
 	if not message.is_empty():

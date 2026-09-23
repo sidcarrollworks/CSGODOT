@@ -76,6 +76,8 @@ const LOG_LINES := 10
 const NUMBER_COLOUR := Color(1.0, 1.0, 1.0)
 const HEAD_NUMBER_COLOUR := Color(1.0, 0.3, 0.2)
 
+## What runs the range's players every tick: the dummy, you, the shooter.
+var world: GameWorld
 var player: PlayerController
 var dummy: Bot
 var shooter: Bot
@@ -111,6 +113,9 @@ var _taken: PackedStringArray = PackedStringArray()
 
 
 func _ready() -> void:
+	world = GameWorld.new()
+	world.name = "World"
+	add_child(world)
 	_markers = Node3D.new()
 	_markers.name = "Impacts"
 	add_child(_markers)
@@ -422,6 +427,7 @@ func _build_shooter() -> void:
 	# The game's yaw 0 looks down -Z, and yaw grows towards -X.
 	shooter.yaw_degrees = rad_to_deg(atan2(-to_spawn.x, -to_spawn.z))
 	add_child(shooter)
+	world.add_player(shooter)
 	shooter.place(SHOOTER_POSITION, shooter.yaw_degrees)
 	var colour := Color(0.9, 0.3, 0.25)
 	_mark(Vector3(48.0, 0.2, 48.0), SHOOTER_POSITION + Vector3(0.0, 0.1, 0.0), colour)
@@ -776,6 +782,7 @@ func _build_dummy() -> void:
 	dummy.position = dummy_position()
 	dummy.yaw_degrees = 180.0
 	add_child(dummy)
+	world.add_player(dummy)
 	hitbox_source = dummy.hitbox_source()
 	# Without the capsules the bot wears the four standard boxes (PlayerSim).
 	if dummy.hitboxes_missing():
@@ -790,6 +797,7 @@ func _build_dummy() -> void:
 func _build_player() -> void:
 	player = (load("res://src/player/player.tscn") as PackedScene).instantiate()
 	add_child(player)
+	world.add_player(player)
 	player.place(Vector3(0.0, 8.0, 0.0), 0.0)
 	player.shot_traced.connect(_on_shot)
 	player.hurt.connect(_on_player_hurt)

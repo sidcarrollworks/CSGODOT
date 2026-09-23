@@ -33,6 +33,10 @@ const CT_SPAWNS := [
 ]
 
 var _world: Node3D
+## The game the players are in, where a dead one finds the teammates to
+## watch. The checks run the players and the match by hand, so it is never
+## stepped.
+var _game: GameWorld
 var _tick: int = 100_000
 
 
@@ -47,6 +51,9 @@ func _run() -> void:
 
 	_world = Node3D.new()
 	root.add_child(_world)
+	_game = GameWorld.new()
+	_world.add_child(_game)
+	_game.set_physics_process(false)
 	_build_floor()
 	await physics_frame
 	await physics_frame
@@ -430,9 +437,9 @@ func _new_match(players: Array, rules: MatchRules) -> MatchState:
 	var game := MatchState.new()
 	game.rules = rules
 	game.spawns = {"T": T_SPAWNS.duplicate(), "CT": CT_SPAWNS.duplicate()}
+	# Moved on by hand, with the times the checks choose, and in no world:
+	# nothing else runs it.
 	_world.add_child(game)
-	# Moved on by hand, with the times the checks choose.
-	game.set_physics_process(false)
 	for player: PlayerSim in players:
 		game.add_player(player)
 	return game
@@ -516,6 +523,7 @@ func _new_player(at: Vector3, team: String) -> PlayerSim:
 	player.add_child(hull)
 	player.position = at
 	_world.add_child(player)
+	_game.add_player(player)
 	player.place(at, 0.0)
 	for i in 4:
 		player.run_command(_command(), DT)
