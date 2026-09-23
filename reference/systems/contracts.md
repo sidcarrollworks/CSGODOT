@@ -474,9 +474,11 @@ None of these are changed by the contract threads; this branch changes
   feed shows the C4 and the victim and the planter gets no kill or award;
   inflictor `"planted_c4"`, weapon `"weapon_c4"`, `DMG_BLAST`, no zone,
   origin the bomb, armour as a grenade's, no team scaling). No attacker is
-  from playing CS2, not measured; roadmap item C1 can confirm it. `weapon_c4` and `item_defuser` are items;
-  "carries the C4", "has a kit" and "C4 in hand" are `inv.has("weapon_c4")`,
-  `inv.has_defuser` and `inv.in_hand_class() == "weapon_c4"`.
+  from playing CS2, not measured; the bomb's Local item C1 in
+  `reference/cs2-systems.md` can confirm it. `weapon_c4` and
+  `item_defuser` are items; "carries the C4", "has a kit" and "C4 in hand"
+  are `inv.has("weapon_c4")`, `inv.has_defuser` and
+  `inv.in_hand_class() == "weapon_c4"`.
 
 - Buying and money (22:39): every event it listens to is in the schema:
   `begin_new_match`, `round_start`, `round_freeze_end`, `round_end`
