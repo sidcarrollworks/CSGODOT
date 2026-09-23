@@ -337,7 +337,7 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
 
 ### Phase 4: a match of rounds
 
-11. **Match and round flow.** *(done, PR #PRNUM)* Warmup, freeze time 15 s, round time
+11. **Match and round flow.** *(done, PR #40)* Warmup, freeze time 15 s, round time
     1:55, MR12 with the side swap, overtime, no respawn, spectating
     teammates, friendly fire at CS2's reductions, solid teammates. Replaces
     the 3 s respawn. Done: `MatchState` (`src/match/`) runs it as server
