@@ -234,7 +234,13 @@ Armour is on the HUD (PR #27). Whether armour softens tagging is open
 | Explosion | since the 8 July 2026 update, a shockwave that walls block and corners weaken, with damage worked out ahead of time for each official map, and the health bar shows the damage you would take. Before it: damage and reach from `info_map_parameters` `bombradius` (default 500 damage, reaching 3.5 times that) |
 | Round | a plant turns the round timer into the bomb timer; explosion wins for T, defuse for CT |
 
-**Built:** nothing yet. The sites' volumes are read (`BrushVolume.bomb_sites`,
+**Built** (2026-09-23, `src/bomb/`, `reference/systems/bomb.md`): the bomb
+as server-side state: carried, dropped on death and picked up by Ts,
+planted only on a site (3.0 s, a guess), the 40 s timer, the defuse (10 s,
+5 with a kit, started over when let go), the explosion by the old radius
+rule, CS2's bomb events, and a view with the beeps (cadence a guess). Tried
+on the test range; not yet wired into the match or dust2. The sites' volumes
+are read (`BrushVolume.bomb_sites`,
 with each site's `bomb_damage_power`: A 1929, B 3234) and the map's
 `bombradius` (700 damage, reaching 2,450 under the old rule;
 `SourceEntities.bomb_radius`). A plant is tested against the site's volume
@@ -245,8 +251,10 @@ seven key presses from 0.67 to 2.17 s; the third-person one 3.3 s. Neither
 says when the plant completes, which is still C1's to measure.
 
 **Remote**
-- The bomb as an item: carry, drop, pick up, plant with its animation lock,
-  the timer and beeps, defuse and the kit, the round-end rules, the rewards.
+- ~~The bomb as an item: carry, drop, pick up, plant with its animation lock,
+  the timer and beeps, defuse and the kit.~~ Built; the round-end rules and
+  the rewards are written down for the match and money
+  (`reference/systems/bomb.md`) and wait on the GameWorld.
 - The explosion. C2 found the baked per-map damage, but its damage values
   are not worked out, so start with the old radius rule, or approximate the
   shockwave by tracing from the bomb to each player, scaled by the site's
