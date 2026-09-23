@@ -92,6 +92,7 @@ against, and off to the left a bot that shoots you when you tell it to.
 | `K` | the dummy's armour: kevlar and helmet, kevlar, none |
 | `N` | the dummy's distance: 256, 512, 1024, 2048 units |
 | `G` | the dummy never dies: a kill is logged and it is refilled, so a whole spray registers |
+| `M` | a wall in front of the dummy to shoot it through: a wooden door, a crate, sheet and solid metal, plaster, thin and thick concrete, none |
 | `B` | the shooter fires at you, or holds its fire |
 | `U` | the shooter's weapon: AK-47, M4A1-S, MP9 |
 | `Y` | your armour: kevlar and helmet, kevlar, none |
@@ -124,6 +125,15 @@ in kevlar and a helmet, as an opponent in a rifle round would be. Killed, it
 falls as a ragdoll, knocked the way the round was going, and two and a half
 seconds later stands up again where it was, whole. G makes it never die
 instead.
+
+**Walls to shoot through.** M stands a wall across the dummy's lane just in
+front of it, one of CS2's surfaces at a thickness, and steps through them.
+A round goes through a wall when it has the power to (the game's
+penetration power for the weapon, against the game's own numbers for the
+surface and how thick the wall is), and comes out with less damage; the log
+says what each wall let through, and a wall too thick or too hard stops it
+at the face. dust2's walls work the same way, by the surface the hull names
+for each part.
 
 **The shooter** is a dust2 bot on the red spot left of the wall, armed and
 facing the spawn, holding its fire. B sets it on you: it turns, and fires
