@@ -474,10 +474,12 @@ These do not block anything above; they are feel checks.
 
 All Remote, except the real ragdoll data, which needs extracting locally.
 
-- `tests/probe_release.gd.uid` has no script beside it.
-- The repo has no CI. A GitHub Action running `scripts/run_tests.sh` with a
-  headless Godot would catch breakage from any of the agents pushing to
-  `main`; the asset-dependent checks already skip themselves.
+- *(done 2026-09-23)* `tests/probe_release.gd.uid` had no script beside it;
+  removed.
+- *(done 2026-09-23)* CI: `.github/workflows/tests.yml` runs
+  `scripts/run_tests.sh` with a headless Godot 4.7.2 on every pull request
+  and push to main; the runner now runs every test file and sums them up
+  (step 0 of `reference/systemization.md`).
 - CS2's own ragdoll data is not extracted; the ragdoll uses the hitbox
   capsules. Swapping in the real one is optional polish.
 
@@ -529,6 +531,12 @@ multiplayer, and menus with a build. Every gun runs alongside all of it.
 The split is done (PR #24) and being shot is in apart from blood and the
 third-person firing layer (PR #27), and wall penetration is in (PR #31),
 so what is left of the shooting model is measuring (7a, 8).
+
+`reference/systemization.md` (2026-09-23) plans the shared systems these
+items should be built on, in five steps: an item registry, damage that
+records its attacker and game events come before items 12 and 13, and the
+world that owns the tick, bots as brains and a third-person presenter come
+before the bomb and grenades.
 
 What a thread can start now: the inventory and economy (items 12 and 13),
 on the match (item 11, done); from the weapons todo, the
