@@ -153,6 +153,7 @@ func _run() -> void:
 	await _test_ragdoll()
 	await _test_whole_ragdoll()
 	await _test_being_shot()
+	await _test_death_cam()
 
 	# The armour rules themselves, on a target of their own.
 	var target := HitTarget.new()
@@ -368,8 +369,15 @@ func _test_whole_ragdoll() -> void:
 			lowest = minf(lowest, body.global_position.y)
 			fastest = maxf(fastest, body.linear_velocity.length())
 		var widest := 0.0
+		var spinning := 0.0
 		for pivot: Array in pivots:
 			widest = maxf(widest, (pivot[0] as RigidBody3D).to_global(pivot[2]).distance_to((pivot[1] as RigidBody3D).to_global(pivot[3])))
+			spinning = maxf(spinning, rad_to_deg(((pivot[1] as RigidBody3D).angular_velocity - (pivot[0] as RigidBody3D).angular_velocity).length()))
+		var hinges := ragdoll.get_children().filter(func(n: Node) -> bool: return n is HingeJoint3D).map(func(n: Node) -> String: return String(n.name))
+		_check(
+			hinges.size() == 4 and spinning < 60.0,
+			"its knees and elbows are hinges (%s), and once it lies no joint is still turning (%.0f deg/s at most)" % [", ".join(hinges), spinning]
+		)
 		_check(
 			highest < 16.0 and lowest > -2.0 and fastest < 20.0 and widest < 2.0,
 			"a whole body killed %s, spine x%.1f, lies still on the floor in one piece (%d bodies; parts between %.1f and %.1f, %.1f u/s at most, joints apart by %.1f at most)"
@@ -377,6 +385,48 @@ func _test_whole_ragdoll() -> void:
 		)
 		ragdoll.queue_free()
 		holder.queue_free()
+
+
+## Killed, your camera leaves your head and watches your body from outside,
+## back and above it, turning with the mouse; back alive, it is in your eyes
+## again. Without the extracted model there is no ragdoll to watch, and the
+## camera watches where you fell.
+func _test_death_cam() -> void:
+	var player: PlayerController = _range.player
+	var view := player.view
+	var was := player.respawn_seconds
+	player.respawn_seconds = 1.0
+	player.hit_target.immortal = false
+	player.hit_target.apply_damage(1000.0, &"head", 1.0)
+	_check(not player.alive, "a round to the head kills you")
+	for i in 60:
+		await process_frame
+	var centre := player.body_centre()
+	var camera := player.camera
+	var looking := -camera.global_basis.z
+	var to_body := (centre - camera.global_position).normalized()
+	_check(
+		camera.global_position.distance_to(centre) > 40.0 and camera.global_position.y > centre.y + 20.0
+			and looking.dot(to_body) > 0.99,
+		"dead, the camera stands back from your body and looks down at it (%.0f units off, %.0f above)"
+			% [camera.global_position.distance_to(centre), camera.global_position.y - centre.y]
+	)
+	var turned := view.death_cam_position(centre, player.input.yaw_degrees + 90.0, player.input.pitch_degrees)
+	var now := view.death_cam_position(centre, player.input.yaw_degrees, player.input.pitch_degrees)
+	_check(turned.distance_to(now) > 40.0, "and the mouse turns it round the body")
+	_check(
+		player.model == null or player.ragdoll != null,
+		"your own body falls as a ragdoll, where the model is there to fall"
+	)
+	for i in 160:
+		await physics_frame
+	await process_frame
+	var eyes := player.global_position + Vector3.UP * player.eye_height()
+	_check(
+		player.alive and camera.global_position.distance_to(eyes) < 8.0 and player.ragdoll == null,
+		"back alive, the camera is in your eyes again (%.1f units off)" % camera.global_position.distance_to(eyes)
+	)
+	player.respawn_seconds = was
 
 
 ## The shooter holds its fire until B; then its rounds find you from where

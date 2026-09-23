@@ -31,6 +31,16 @@ const SHADOW_FOLDED_BONES: Array[String] = ["arm_upper_L", "arm_upper_R"]
 ## you look down for it.
 const BODY_SETBACK := 8.0
 
+## Dead, the camera leaves your eyes for a view of your body from outside:
+## this far from its middle, looking down on it at least this steeply, turned
+## round it by the mouse, and taking this long to get there. By eye; CS2's
+## death camera has convars of its own that are not matched here.
+const DEATH_CAM_DISTANCE := 110.0
+const DEATH_CAM_DOWN_DEGREES := 20.0
+const DEATH_CAM_SECONDS := 0.6
+## How far off a wall behind it the camera stays, in units.
+const DEATH_CAM_WALL_GAP := 6.0
+
 var player: PlayerController
 var camera: Camera3D
 
@@ -65,6 +75,10 @@ var body_shadow: PlayerModel
 ## bob and sway can be applied relative to however it was posed in the scene.
 var _viewmodel_rest := Transform3D.IDENTITY
 var _viewmodel_rest_captured := false
+
+## How long you have been dead, and where the camera was when you died.
+var _dead_for := -1.0
+var _died_at := Transform3D.IDENTITY
 
 
 func _init(p_player: PlayerController) -> void:
@@ -119,13 +133,70 @@ func _on_shot_traced(_shot: Weapon.Shot, result: Hitscan.Result) -> void:
 	BulletImpacts.mark_in(get_tree(), result)
 
 
-## Dead: the arms and body gone until the respawn.
+## Dead: the arms and the body you look down at gone until the respawn,
+## and the camera out of your head to watch the body the simulation wears
+## fall (PlayerSim.ragdoll), drawn for you now.
 func _on_killed(_zone: StringName) -> void:
 	_show_player(false)
+	_show_corpse(true)
+	_dead_for = 0.0
+	if camera != null:
+		_died_at = camera.global_transform
 
 
 func _on_respawned() -> void:
 	_show_player(true)
+	_show_corpse(false)
+	_dead_for = -1.0
+
+
+## Your body as everyone else sees it, shown to your own camera or put back
+## where it cannot see it (UNSEEN_LAYER), lit and casting a shadow while
+## shown.
+func _show_corpse(shown: bool) -> void:
+	var model := player.model
+	if model == null:
+		return
+	if shown:
+		model.use_probe_lighting()
+	for mesh in model.find_children("*", "MeshInstance3D", true, false):
+		(mesh as MeshInstance3D).layers = 1 if shown else PlayerSim.UNSEEN_LAYER
+		(mesh as MeshInstance3D).cast_shadow = (
+			GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shown else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		)
+
+
+## Where the death camera sits, from the body's middle: back along where
+## the mouse looks, above the body, and in front of any wall behind it.
+func death_cam_position(centre: Vector3, yaw_degrees: float, pitch_degrees: float) -> Vector3:
+	var pitch := deg_to_rad(minf(pitch_degrees, -DEATH_CAM_DOWN_DEGREES))
+	var looking := Basis.from_euler(Vector3(pitch, deg_to_rad(yaw_degrees), 0.0)) * Vector3.FORWARD
+	var wanted := centre - looking * DEATH_CAM_DISTANCE
+	if player.is_inside_tree():
+		var query := PhysicsRayQueryParameters3D.create(centre, wanted, Hitscan.WORLD_LAYER)
+		var hit := player.get_world_3d().direct_space_state.intersect_ray(query)
+		if not hit.is_empty():
+			var reach := maxf(centre.distance_to(hit["position"]) - DEATH_CAM_WALL_GAP, 0.0)
+			wanted = centre - looking * reach
+	return wanted
+
+
+func _death_cam(delta: float) -> void:
+	_dead_for += delta
+	var centre := player.body_centre()
+	var at := death_cam_position(centre, player.input.yaw_degrees, player.input.pitch_degrees)
+	var there := Transform3D(Basis.IDENTITY, at)
+	if at.distance_to(centre) > 1.0:
+		there = there.looking_at(centre, Vector3.UP)
+	else:
+		there.basis = _died_at.basis
+	var t := smoothstep(0.0, 1.0, _dead_for / DEATH_CAM_SECONDS)
+	camera.global_transform = Transform3D(
+		_died_at.basis.get_rotation_quaternion().slerp(there.basis.get_rotation_quaternion(), t),
+		_died_at.origin.lerp(there.origin, t)
+	)
+	if player.model != null:
+		player.model.light_from(centre)
 
 
 func _show_player(shown: bool) -> void:
@@ -186,6 +257,9 @@ func _physics_process(_delta: float) -> void:
 
 func _process(delta: float) -> void:
 	if camera == null:
+		return
+	if _dead_for >= 0.0:
+		_death_cam(delta)
 		return
 
 	# Between the last two simulation positions, by how far this frame falls

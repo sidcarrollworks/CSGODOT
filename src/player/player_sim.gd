@@ -117,6 +117,11 @@ var _tag_to: float = 1.0
 var _tag_in: float = -1.0
 var _hits_taken: int = 0
 var _capsules: Array[Dictionary] = []
+
+## The body lying limp where it died, while dead; null alive, or where there
+## are no capsules to build one from. It only draws: the simulation goes on
+## without it (CS2 ragdolls its dead on each client, not on the server).
+var ragdoll: Ragdoll
 var _respawn_at_usec: int = 0
 var _spawn_position: Vector3 = Vector3.ZERO
 var _spawn_yaw: float = 0.0
@@ -451,9 +456,57 @@ func _on_hit_target_died() -> void:
 	hit_target.set_active(false)
 	_respawn_at_usec = SimClock.now_usec() + int(respawn_seconds * 1_000_000.0)
 	var zone: StringName = hit_target.last_hitbox.zone if hit_target.last_hitbox != null else &"chest"
+	_fall()
 	killed.emit(zone)
 	velocity = Vector3.ZERO
 	_forget_hits()
+
+
+## The body goes limp and falls where it died, pushed the way the killing
+## round was going, as a ragdoll made from the hitbox capsules. Nothing is
+## done without the capsules or the model.
+func _fall() -> void:
+	if model == null or _capsules.is_empty() or model.character_rig == null:
+		return
+	ragdoll = Ragdoll.new()
+	ragdoll.name = "Ragdoll"
+	add_child(ragdoll)
+	var forward := Vector3(-sin(deg_to_rad(yaw_degrees)), 0.0, -cos(deg_to_rad(yaw_degrees)))
+	var hit_bone := -1
+	if hit_target.last_hitbox != null:
+		hit_bone = hitboxes.bone_of(hit_target.last_hitbox)
+	if ragdoll.build(
+		model.character_rig, _capsules, MapImporter.SOURCE2_VIEWER_SCALE,
+		velocity, forward, hit_target.last_hit_direction, hit_bone
+	) == 0:
+		ragdoll.queue_free()
+		ragdoll = null
+		return
+	# The animation would pose the bones over the bodies' every frame.
+	model.animation_player.active = false
+
+
+## Up off the floor: the ragdoll gone and the model animated again.
+func _get_up() -> void:
+	if ragdoll != null:
+		ragdoll.queue_free()
+		ragdoll = null
+		if model != null:
+			model.character_rig.reset_bone_poses()
+			model.animation_player.active = true
+	if model != null:
+		model.play(model.idle)
+
+
+## Where the body is: the middle of the ragdoll while there is one, or
+## where the player stands.
+func body_centre() -> Vector3:
+	if ragdoll == null or ragdoll.bodies.is_empty():
+		return global_position + Vector3.UP * 36.0
+	var sum := Vector3.ZERO
+	for body: RigidBody3D in ragdoll.bodies.values():
+		sum += body.global_position
+	return sum / ragdoll.bodies.size()
 
 
 ## Back where the map put the player, whole and reloaded.
@@ -464,6 +517,7 @@ func respawn() -> void:
 	place(_spawn_position, _spawn_yaw)
 	velocity = Vector3.ZERO
 	_forget_hits()
+	_get_up()
 	if weapon != null:
 		equip(weapon.data)
 	respawned.emit()

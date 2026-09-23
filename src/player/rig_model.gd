@@ -249,6 +249,16 @@ func _probe_light(mesh: MeshInstance3D) -> void:
 			mesh.set_surface_override_material(surface, ProbeMaterials.build(material as BaseMaterial3D))
 
 
+## Puts the model on the probe shader after all, when it was built without
+## (probe_lit false): a body nobody saw that is now to be seen.
+func use_probe_lighting() -> void:
+	if probe_lit:
+		return
+	probe_lit = true
+	for mesh in find_children("*", "MeshInstance3D", true, false):
+		_probe_light(mesh as MeshInstance3D)
+
+
 ## Lights every mesh of the model from a point in the world, through the
 ## scene's light probes, if it has any. Called by whoever moves the model.
 func light_from(at: Vector3) -> void:
