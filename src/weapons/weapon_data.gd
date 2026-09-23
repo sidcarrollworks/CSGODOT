@@ -3,11 +3,13 @@ extends Resource
 
 ## Everything that decides how a weapon behaves.
 ##
-## The weapon tuning data in CS2 lives in scripts/weapons.vdata_c and no
-## published artifact carries its values, so this cannot be extracted. The
-## damage, armour, falloff, speed and inaccuracy figures come from the CS2
-## Weapon Spreadsheet (see WeaponLibrary and reference/weapon_stats.md); the
-## spray patterns and recovery timings were measured in CS2 by hand:
+## The damage, armour, falloff, fire rate, ammunition, speed, inaccuracy and
+## recovery figures, and when a reload lets the gun fire again, come from
+## CS2's own tuning, scripts/weapons.vdata_c, through WeaponVData; the CS2
+## Weapon Spreadsheet (WeaponSheet) is read first and supplies only the
+## landing and ladder figures (see WeaponLibrary and
+## reference/weapon_stats.md). The spray patterns and recovery timings were
+## measured in CS2 by hand:
 ## https://github.com/CS2OpenDev/CS2OpenDev-SchemaTracker/issues/16
 ##
 ## reference/spray_patterns/README.md says how to do the measuring.
@@ -110,10 +112,12 @@ class Punch:
 ## the roadmap.
 @export var penetration_power: float = 2.0
 
-## How much of a victim's speed a hit takes away, as the weapon sheet gives
-## it (0.6 for rifles): an AK-47 round leaves its victim 40% of their speed
-## (PlayerSim's tagging). It is CS2's m_flFlinchVelocityModifierLarge taken
-## from one; the sheet has no column for the Small figure beside it.
+## How much of a victim's speed a hit takes away (0.6 for rifles): an AK-47
+## round leaves its victim 40% of their speed (PlayerSim's tagging). It is
+## CS2's m_flFlinchVelocityModifierLarge taken from one, read from the game
+## through WeaponVData (the sheet's Tagging Power agrees). The game's
+## m_flFlinchVelocityModifierSmall, in reference/weapons/vdata.csv for every
+## gun, is not used until how CS2 applies it is measured (roadmap item 4a).
 @export var tagging_power: float = 0.6
 
 # --- Rate of fire ---------------------------------------------------------

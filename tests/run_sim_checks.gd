@@ -371,9 +371,9 @@ func _run_forward(player: PlayerSim, tick: int, ticks: int) -> int:
 
 
 ## Running flat out, a hit from an AK-47 leaves the player 40% of their
-## speed (the sheet's 60% tagging power), two CS2 ticks after it landed,
-## and it comes back over 1.5 s. A second hit takes it back to 40%, not
-## lower. An SMG's round (100%) stops them.
+## speed (its 60% tagging power, from the game's weapons.vdata), two CS2
+## ticks after it landed, and it comes back over 1.5 s. A second hit takes it
+## back to 40%, not lower. An SMG's round (100%) stops them.
 func _test_a_hit_tags_the_player() -> void:
 	var player := _new_player(Vector3(2048.0, 0.0, 0.0), "T")
 	player.equip(WeaponLibrary.ak47())

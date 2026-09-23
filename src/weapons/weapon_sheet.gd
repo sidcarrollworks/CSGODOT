@@ -3,11 +3,14 @@ extends RefCounted
 
 ## The CS2 Weapon Spreadsheet, read from reference/weapons/cs2_weapon_sheet.csv.
 ##
-## CS2's own weapon tuning (scripts/weapons.vdata_c) cannot be extracted, so
-## every weapon's numbers come from this sheet instead: one row per weapon and
-## per mode ("AUG (scoped)", "FAMAS (burst)", "M4A1-S (silencer)"), its values
-## copied verbatim. A mode row gives only what the mode changes and says "-"
-## for the rest, so a mode is read over its weapon's main row.
+## A hand-typed copy of CS2's own weapon tuning (scripts/weapons.vdata_c).
+## The game's file is extracted now, and WeaponVData applies it over this
+## sheet, so the sheet supplies only the landing and ladder figures, which the
+## game stores another way; reference/weapons/vdata.md compares the two. One
+## row per weapon and per mode ("AUG (scoped)", "FAMAS (burst)", "M4A1-S
+## (silencer)"), its values copied verbatim. A mode row gives only what the
+## mode changes and says "-" for the rest, so a mode is read over its
+## weapon's main row.
 ##
 ## The sheet checks out against itself, which is why it is trusted: its fatal
 ## headshot range is damage, head multiplier, armour and falloff worked
@@ -87,9 +90,10 @@ static func cone_degrees(value: float) -> float:
 ## Puts a weapon's numbers from the sheet on data. mode, where given, is the
 ## row the weapon is carried in ("M4A1-S (silencer)"), read over the main row.
 ##
-## Everything the firing model uses comes from here. What the sheet does not
-## have (reload time, the spray pattern, the stomach and leg multipliers,
-## models and clips) is the caller's.
+## Call WeaponVData.apply after this: the game's numbers replace every one the
+## two share, leaving the sheet's landing and ladder. What neither has (the
+## spray pattern, the stomach and leg multipliers, models and clips) is the
+## caller's.
 static func apply(data: WeaponData, weapon: String, mode: String = "") -> void:
 	assert(has(weapon), "No row for %s in %s" % [weapon, PATH])
 	var get_value := func(column: String) -> float:

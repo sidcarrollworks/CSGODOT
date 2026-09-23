@@ -8,12 +8,16 @@ Viewers did not decode it into usable values, which is why the numbers below
 came from elsewhere; version 20.0 does (2026-09-22), and
 `reference/weapons/vdata.md` has it, checked against the sheet.
 
-Since 2026-09-22 every number the sheet has comes from the **CS2 Weapon
+Since 2026-09-22 every number the game's own tuning has comes from it:
+`WeaponVData` applies `reference/weapons/vdata.csv` over the **CS2 Weapon
 Spreadsheet** (last weapon update 18 March 2026), which Sid supplied:
 `reference/weapons/cs2_weapon_sheet.csv`, read by `WeaponSheet`, with what
-every column means in `reference/weapons/README.md`. The spray patterns and
-the weapon model's recoil animation were measured in CS2 by hand. Reload
-times are not in the sheet and are still community figures.
+every column means in `reference/weapons/README.md`. Where both have a
+number the game's wins (Sid: the sheet was typed in by hand); they agree for
+the rifles, and the sheet now supplies only the landing and ladder figures.
+The spray patterns and the weapon model's recoil animation were measured in
+CS2 by hand. Reload is `m_flDisallowAttackAfterReloadStartDuration`, when a
+reloading gun may fire again (`reference/weapons/timings.md` has the clips).
 
 ## Damage
 
@@ -51,7 +55,7 @@ and never through one.
 | Cycle time | 0.1 s (600 RPM) | 0.1 s (600 RPM) |
 | Magazine | 30 | 20 |
 | Reserve | 90 | 60 |
-| Reload | 2.5 s | 3.1 s |
+| Reload (can fire again) | 2.467 s | 3.067 s |
 | Move speed | 215 u/s | 225 u/s |
 
 Both fire at 600 RPM, which is one shot every 12.8 ticks at 128 Hz. The weapon
@@ -86,11 +90,11 @@ over standing still, and a jump taken at a run is worse than either
 (`Weapon.current_inaccuracy`). Before the sheet the build had a standing cone
 twenty times too tight and a running one ten times too tight.
 
-The per-round figure is added on every round and recovers on the sheet's
-recovery time: down to a tenth after 0.368 s standing for the AK (0.305
-crouched), 0.339 s for the M4A1-S (0.242). Landing from a jump puts on the
-sheet's after-landing figure (AK 33.63, 1.93 degrees), which recovers the same
-way.
+The per-round figure is added on every round and recovers on the game's
+recovery time (the sheet's agrees): down to a tenth after 0.368 s standing
+for the AK (0.305 crouched), 0.339 s for the M4A1-S (0.242). Landing from a
+jump puts on the sheet's after-landing figure (AK 33.63, 1.93 degrees), which
+recovers the same way.
 
 Movement costs nothing under a third of the weapon's top speed (73 u/s for the
 AK) and all of it from 95% (204 u/s), as in CS:GO. In between it rises as the
@@ -405,11 +409,11 @@ firing an inaccurate round. Across the wider set of weapons the desync runs
 both ways and the Deagle is about 1250 ms out.
 
 The recoil animation lives on `WeaponData.recoil_animation_time`, and the view
-springs are derived from it. The accuracy recovery now comes from the sheet's
-recovery times instead (Sid, 2026-09-22: take all values from the sheet),
-which put the AK back to baseline at 736 ms and the M4A1-S at 678, against
-867 and 542 by eye. The gun still looks ready before it is, and a test holds
-that.
+springs are derived from it. The accuracy recovery now comes from the game's
+recovery times instead (Sid, 2026-09-22: first the sheet's, then the game's
+own file wherever it has the number; the two agree here), which put the AK
+back to baseline at 736 ms and the M4A1-S at 678, against 867 and 542 by
+eye. The gun still looks ready before it is, and a test holds that.
 
 The test range prints both states side by side, so the desync is visible
 without a capture: `cone ... ready|recovering` next to `view ... still|moving`.
@@ -443,7 +447,8 @@ then repeat at 1000 and 2000 units for the falloff curve.
 magazine size by the elapsed time. Both rifles should come out at 600 RPM; if
 they do not, the recording is wrong.
 
-**Inaccuracy.** Now the sheet's. `weapon_debug_spread_show 1` draws the cone
+**Inaccuracy.** Now the game's (`WeaponVData`), which the sheet matches for
+both rifles. `weapon_debug_spread_show 1` draws the cone
 in CS2 if a figure ever needs checking.
 
 **Spray.** See the spray pattern README.

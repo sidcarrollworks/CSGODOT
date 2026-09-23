@@ -49,7 +49,8 @@ Updated 2026-09-22: weapon numbers from Sid's spreadsheet and tapping (PR #23), 
 
 ### Shooting
 - AK-47 and M4A1-S with the real spray patterns read off CS2 plots (30 and 25
-  rounds), every number from Sid's weapon sheet (PR #23), inaccuracy by
+  rounds), every number from CS2's own weapons.vdata through `WeaponVData`
+  (PR #28; the sheet, PR #23, gives only landing and ladder), inaccuracy by
   movement state with counter-strafing, damage falloff, armour.
 - Spread is seeded per round by the moment it was fired, so a first shot at
   a run lands anywhere in the running cone (PR #24; before, every first round
@@ -79,8 +80,9 @@ Updated 2026-09-22: weapon numbers from Sid's spreadsheet and tapping (PR #23), 
 - Bots and the player wear CS2's 19 hitbox capsules on their bones; bullets
   pass the hull and only hitboxes count. The player's are on a third-person
   body the simulation poses each tick and nobody sees (PR #27).
-- Being hit tags you (the sheet's tagging power, two CS2 ticks after the
-  hit, back over 1.5 s) and throws your aim, and your next rounds with it
+- Being hit tags you (the weapon's tagging power, from the game's own
+  weapons.vdata through `WeaponVData`, two CS2 ticks after the hit, back
+  over 1.5 s) and throws your aim, and your next rounds with it
   (PR #27). Bots too.
 - The player has health and armour, dies, and is back at spawn after 3 s.
 - Bots die into a ragdoll built from their capsules, back on their route
@@ -111,7 +113,7 @@ Updated 2026-09-22: weapon numbers from Sid's spreadsheet and tapping (PR #23), 
 ### Tooling
 - `scripts/extract_assets.sh` (map, physics, weapons, characters, sounds and
   more), `inspect_assets`, and `run_tests.sh` with seven headless test files
-  (movement, map, dust2, model, weapon, range, simulation): 516 checks pass
+  (movement, map, dust2, model, weapon, range, simulation): 519 checks pass
   without the assets.
 
 ---
@@ -191,12 +193,13 @@ This was the unfinished half of hit registration. Items 1 to 4 are in (PR
    degrees). Spray a wall in CS2 from 496 units and compare it with the
    range's degree-lined wall.
 9. **Weapon numbers from the CS2 Weapon Spreadsheet.** *(done, PR #23)*
-   Every number the firing model uses is read from the sheet, now in the
+   Every number the firing model uses was read from the sheet, now in the
    repo: damage, armour, falloff, magazine (M4A1-S 20), inaccuracy, recovery
-   and landing. Taps now recover the way CS's do instead of carrying on down
-   the pattern, a held trigger fires at exactly 600 RPM, and movement
-   inaccuracy follows CS's curve. `reference/weapons/README.md` explains the
-   sheet column by column.
+   and landing. Since PR #28 the game's own weapons.vdata (`WeaponVData`)
+   replaces every one it has, which is all but landing and ladder. Taps now
+   recover the way CS's do instead of carrying on down the pattern, a held
+   trigger fires at exactly 600 RPM, and movement inaccuracy follows CS's
+   curve. `reference/weapons/README.md` explains the sheet column by column.
 
 ### Every gun (new, 2026-09-22)
 
@@ -323,9 +326,6 @@ These do not block anything above; they are feel checks.
 
 All Remote, except the real ragdoll data, which needs extracting locally.
 
-- README is stale in two places: the "not here yet" list (says bots only
-  walk and hit the hull), and the main scene (says the movement course; it is
-  dust2).
 - `tests/probe_release.gd.uid` has no script beside it.
 - The repo has no CI. A GitHub Action running `scripts/run_tests.sh` with a
   headless Godot would catch breakage from any of the agents pushing to

@@ -20,7 +20,7 @@ The zoom levels L5 of `TODO.md` asked for. A level's FOV is CS's horizontal degr
 ## What the sheet does not have
 
 - Deploy: seconds from drawing the gun to firing it (the draw clips in `timings.md` are the same lengths, or close).
-- Reload lockout: seconds after starting a reload that the gun cannot fire, which is shorter than the clip: the tail of a reload can be cut short by firing.
+- Reload lockout: seconds after starting a reload that the gun cannot fire. For the magazine guns it is the reload clip's length in `timings.md`, or a frame longer (AK-47, USP-S, MAG-7, MP7, UMP-45). For the shotguns that load a shell at a time (Nova, XM1014, Sawed-Off) it is far shorter than the clip: it ends near the end of the clip's `WPN_RELOAD_INTRO`, before the first shell goes in.
 - Spread: the gun's own cone, inside the inaccuracy; normal, alternate.
 - Recovery, final: a second, slower recovery time the firing penalty falls by from the round the transition starts at to the one it ends at, blended; stand and crouch.
 - Muzzle: where the muzzle flash and tracers start, in the model's units (x forward).

@@ -55,8 +55,9 @@ var model: PlayerModel
 var hitboxes: SkinnedHitboxes
 
 ## Tagging: the share of their speed a player has, 1 being all of it. A
-## hit drops it to what the shooter's weapon leaves them (the weapon
-## sheet's tagging power: an AK-47 round leaves 40%, an SMG's none), and it
+## hit drops it to what the shooter's weapon leaves them (its tagging
+## power, from the game's weapons.vdata through WeaponVData: an AK-47 round
+## leaves 40%, an SMG's none), and it
 ## climbs back from there at TAG_RECOVERY_PER_SECOND.
 var velocity_modifier: float = 1.0
 
