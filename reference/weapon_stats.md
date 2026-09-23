@@ -58,13 +58,14 @@ and never through one.
 | Reload (can fire again) | 2.467 s | 3.067 s |
 | Move speed | 215 u/s | 225 u/s |
 
-Both fire at 600 RPM, which is one shot every 12.8 ticks at 128 Hz. The weapon
+Both fire at 600 RPM, which is one shot every 6.4 ticks at 64 Hz. The weapon
 does not round to ticks: `Weapon.can_fire()` compares against a timestamp, so a
 click landing part-way through a tick fires at that fractional time and not at
 the tick boundary. On a held trigger the next round goes at
 `Weapon.next_shot_usec()`, the last round plus the cycle exactly, part-way
 through whatever tick that falls in. Firing on the tick instead, as the build
-did until 2026-09-22, rounds every gap up to 13 ticks: 591 rounds a minute.
+did until 2026-09-22, rounds every gap up to a whole tick: 591 rounds a minute
+at 128 Hz, where it was found, and 549 at 64.
 
 ## Inaccuracy
 

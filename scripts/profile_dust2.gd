@@ -264,7 +264,7 @@ func _single_operations() -> void:
 		return
 	var position := bot.global_position
 	var velocity := bot.velocity
-	var dt := 1.0 / 128.0
+	var dt := SimClock.tick_seconds()
 	var model := bot.model
 	if model != null and model.animation_tree != null:
 		var tree := model.animation_tree

@@ -444,7 +444,7 @@ marked crouch-only, jumping where a link rises past a step; roadmap item
   bots is a listen server (the server inside your own game).
 - 64 ticks a second, and every input carries the instant within the tick it
   happened (`CSubtickMoveStep` with a `when` fraction, PB). This project
-  already does the same, at 128 Hz.
+  does the same, at 64 Hz too (128 until 2026-09-23).
 - A shot also carries the moment the client was looking at: which two server
   ticks it drew and how far between them (`input_history` in
   `cs_usercmd.proto`), so the server checks the hit against what the shooter

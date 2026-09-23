@@ -21,7 +21,8 @@ const NAV_FILE := "res://assets/maps/de_dust2/maps/de_dust2.nav"
 const MAX_DROP := 80.0
 
 const BOTS := 2
-const SETTLE_TICKS := 320
+## Two and a half seconds of ticks, whatever the tick rate.
+var SETTLE_TICKS := SimClock.ticks_in(2.5)
 
 var _failures: int = 0
 var _checks: int = 0

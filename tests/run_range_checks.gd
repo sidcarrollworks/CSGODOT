@@ -154,6 +154,7 @@ func _run() -> void:
 	await _test_whole_ragdoll()
 	await _test_fall_speed()
 	_test_path_budget()
+	_test_bodies_drawn_between_ticks()
 	await _test_being_shot()
 	await _test_death_cam()
 
@@ -246,7 +247,7 @@ func _test_ragdoll() -> void:
 		"its joints' bias is %s (%s)" % ["left alone on Jolt, which has none" if Ragdoll.on_jolt() else "Ragdoll.JOINT_BIAS on Godot Physics", biases]
 	)
 
-	for i in 128 * 4:
+	for i in SimClock.ticks_in(4.0):
 		await physics_frame
 	await process_frame
 
@@ -267,6 +268,19 @@ func _test_ragdoll() -> void:
 	var head_now := (skeleton.global_transform * skeleton.get_bone_global_pose(head)).origin
 	var expected := (body_head.global_transform * (ragdoll.get("_offsets")[head] as Transform3D)).origin
 	_check(head_now.distance_to(expected) < 0.5, "the skeleton's head is where the head's body is")
+	# Drawn between ticks: with the head's body 10 units higher a tick ago,
+	# half way between is 5 up.
+	var before_step: Dictionary = ragdoll.get("_before_step")
+	var was: Transform3D = before_step.get(body_head, body_head.global_transform)
+	before_step[body_head] = body_head.global_transform.translated(Vector3.UP * 10.0)
+	ragdoll.pose_skeleton(0.5)
+	var halfway := (skeleton.global_transform * skeleton.get_bone_global_pose(head)).origin
+	before_step[body_head] = was
+	ragdoll.pose_skeleton()
+	_check(
+		absf(halfway.y - expected.y - 5.0) < 0.01,
+		"between two ticks the skeleton is drawn between where they left the bodies (%.2f up of 10)" % (halfway.y - expected.y)
+	)
 
 	var worst_gap := 0.0
 	var knees_ok := true
@@ -312,13 +326,28 @@ func _test_fall_speed() -> void:
 	body.position = Vector3(-512.0, 5000.0, -256.0)
 	_range.add_child(body)
 	body.add_constant_central_force(Vector3.DOWN * Ragdoll.GRAVITY * body.mass)
-	for i in 128:
+	for i in SimClock.ticks_in(1.0):
 		await physics_frame
 	_check(
 		absf(-body.linear_velocity.y - Ragdoll.GRAVITY) < 10.0,
 		"a body falling for a second goes %.0f u/s, as gravity has it, not held to a speed cap" % -body.linear_velocity.y
 	)
 	body.queue_free()
+
+
+## A body is drawn between the last two ticks as far as the frame falls
+## between them: where it stood and which way it faced.
+func _test_bodies_drawn_between_ticks() -> void:
+	var body := PlayerModel.new()
+	_range.add_child(body)
+	body.show_between(Vector3(0.0, 0.0, 0.0), Vector3(10.0, 0.0, -4.0), 350.0, 30.0, 0.5)
+	_check(
+		body.global_position.is_equal_approx(Vector3(5.0, 0.0, -2.0))
+			and is_equal_approx(wrapf(body.rotation.y, -PI, PI), wrapf(PI + deg_to_rad(10.0), -PI, PI)),
+		"a body half way between two ticks stands half way, facing half way round the short way (%s, %.1f degrees)"
+			% [body.global_position, rad_to_deg(body.rotation.y)]
+	)
+	body.free()
 
 
 ## Bots find their way over the nav mesh a few a tick, and the rest on the
@@ -416,7 +445,7 @@ func _test_whole_ragdoll() -> void:
 				var a := joint.get_node(joint.node_a) as RigidBody3D
 				var b := joint.get_node(joint.node_b) as RigidBody3D
 				pivots.append([a, b, a.to_local(joint.global_position), b.to_local(joint.global_position)])
-		for i in 128 * 4:
+		for i in SimClock.ticks_in(4.0):
 			await physics_frame
 
 		var highest := -INF
@@ -512,7 +541,7 @@ func _test_being_shot() -> void:
 	# or so, and the wait below can run on for seconds after the last hit.
 	var most_arcs := [0]
 	player.hurt.connect(func(amount: float, _zone: StringName, _from: Vector3) -> void: hurt.append(amount))
-	for i in 128:
+	for i in SimClock.ticks_in(1.0):
 		await physics_frame
 	_check(hurt.is_empty() and shooter.target == null, "held, it leaves you alone for a second")
 

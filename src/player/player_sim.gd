@@ -50,6 +50,17 @@ var freeze_cam_seconds: float = 2.0
 var yaw_degrees: float = 0.0
 var pitch_degrees: float = 0.0
 
+## How the tick before the last left the player, beside PlayerBody's
+## previous_position: where they looked, and how far their view was kicked
+## (view_punch()) and their gun (Weapon.viewmodel_punch()). A frame falls
+## between two ticks, and whatever draws the player draws it that far
+## between the two, as CS2 draws everyone: at 64 ticks a second the last
+## tick alone would step the view and the bodies on a faster screen.
+var previous_yaw_degrees: float = 0.0
+var previous_pitch_degrees: float = 0.0
+var previous_view_punch := Vector2.ZERO
+var previous_viewmodel_punch := Vector2.ZERO
+
 ## The weapon held, and how the player was moving when it was last told:
 ## what its cone is judged by.
 var weapon: Weapon
@@ -311,6 +322,8 @@ func place(spawn_position: Vector3, yaw: float) -> void:
 	previous_position = spawn_position
 	yaw_degrees = yaw
 	pitch_degrees = 0.0
+	previous_yaw_degrees = yaw
+	previous_pitch_degrees = 0.0
 
 
 ## The match puts the player at a spawn point for a round. Fresh (the
@@ -338,9 +351,19 @@ func seconds_to_respawn() -> float:
 ## Runs the player forward one tick, and poses the body for it: the
 ## hitboxes stand where the body did this tick.
 func run_command(cmd: UserCmd, dt: float) -> void:
+	previous_yaw_degrees = yaw_degrees
+	previous_pitch_degrees = pitch_degrees
+	previous_view_punch = view_punch()
+	previous_viewmodel_punch = weapon.viewmodel_punch() if weapon != null else Vector2.ZERO
 	_run(cmd, dt)
 	if alive and model != null:
 		model.update_motion(velocity, yaw_degrees, duck_progress, on_ground)
+
+
+## How far the view is kicked from where the player aims, in degrees, as
+## (right, up): the recoil's punch and a hit's.
+func view_punch() -> Vector2:
+	return (weapon.aim_punch if weapon != null else Vector2.ZERO) + hit_punch.value
 
 
 func _run(cmd: UserCmd, dt: float) -> void:

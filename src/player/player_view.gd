@@ -12,7 +12,7 @@ extends Node
 ## as the mouse has them now rather than as the last command had them.
 ##
 ## The camera is deliberately NOT a plain child of the body. The body moves on
-## the 128 Hz simulation tick; the camera has to be smooth at whatever the
+## the 64 Hz simulation tick; the camera has to be smooth at whatever the
 ## monitor runs at, and mouse look has to be sampled at render rate. So the
 ## camera is top_level and its transform is rebuilt every frame from the
 ## interpolated body position plus the render-rate look angles.
@@ -217,7 +217,9 @@ func _spectate(watched: PlayerSim) -> void:
 	_watch(watched)
 	camera.global_position = at + Vector3.UP * watched.eye_height()
 	camera.global_rotation = Vector3(
-		deg_to_rad(watched.pitch_degrees), deg_to_rad(watched.yaw_degrees), 0.0
+		deg_to_rad(lerpf(watched.previous_pitch_degrees, watched.pitch_degrees, alpha)),
+		lerp_angle(deg_to_rad(watched.previous_yaw_degrees), deg_to_rad(watched.yaw_degrees), alpha),
+		0.0
 	)
 
 
@@ -322,7 +324,7 @@ func _process(delta: float) -> void:
 
 	# Between the last two simulation positions, by how far this frame falls
 	# between their ticks, so the view is smooth at any framerate rather than
-	# stepping at 128 Hz.
+	# stepping at the 64 Hz tick.
 	var alpha := clampf(Engine.get_physics_interpolation_fraction(), 0.0, 1.0)
 	var interpolated := player.previous_position.lerp(player.global_position, alpha)
 
@@ -331,14 +333,16 @@ func _process(delta: float) -> void:
 	for body in [body_model, body_shadow]:
 		if body != null:
 			body.global_position = interpolated + Vector3(sin(yaw), 0.0, cos(yaw)) * BODY_SETBACK
+			# Turned with the view every frame, not with the ticks.
+			body.rotation.y = PI + yaw
 	# The recoil punch is added here rather than to the player's own look
 	# angles, so the view kicks while the angles the player is actually
 	# holding stay untouched. It is also deliberately smaller than the spray:
-	# the crosshair suggests the recoil, it does not report it.
-	var punch := player.weapon.aim_punch if player.weapon != null else Vector2.ZERO
-	# And where a hit has thrown the aim, all of it: that one is where the
-	# rounds go, so the crosshair tells the truth about it.
-	punch += player.hit_punch.value
+	# the crosshair suggests the recoil, it does not report it. And where a
+	# hit has thrown the aim, all of it: that one is where the rounds go, so
+	# the crosshair tells the truth about it. Both between the last two
+	# ticks, as the position is.
+	var punch := player.previous_view_punch.lerp(player.view_punch(), alpha)
 	camera.global_rotation = Vector3(
 		deg_to_rad(player.input.pitch_degrees + punch.y),
 		deg_to_rad(player.input.yaw_degrees - punch.x),
@@ -371,7 +375,8 @@ func _update_viewmodel(delta: float) -> void:
 		delta, player.velocity, player.on_ground,
 		Vector2(player.input.yaw_degrees, player.input.pitch_degrees)
 	)
-	var kick := player.weapon.viewmodel_punch()
+	var alpha := clampf(Engine.get_physics_interpolation_fraction(), 0.0, 1.0)
+	var kick := player.previous_viewmodel_punch.lerp(player.weapon.viewmodel_punch(), alpha)
 	viewmodel.transform = Transform3D(
 		motion.basis * _viewmodel_rest.basis
 			* Basis.from_euler(Vector3(deg_to_rad(kick.y), deg_to_rad(-kick.x), 0.0)),

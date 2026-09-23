@@ -17,6 +17,16 @@ static func tick_usec() -> int:
 	return int(1_000_000.0 / float(Engine.physics_ticks_per_second))
 
 
+## One tick, in seconds.
+static func tick_seconds() -> float:
+	return 1.0 / float(Engine.physics_ticks_per_second)
+
+
+## How many ticks a stretch of simulation time takes, to the nearest.
+static func ticks_in(seconds: float) -> int:
+	return roundi(seconds * float(Engine.physics_ticks_per_second))
+
+
 ## The tick being simulated now.
 static func current_tick() -> int:
 	return Engine.get_physics_frames()

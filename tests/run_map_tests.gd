@@ -36,7 +36,8 @@ const HULL_FLOOR_SIZE := Vector3(512.0, 16.0, 512.0)
 ## Well away from the first fixture, which is also at the origin.
 const EXPORT_OFFSET := Vector3(4096.0, 0.0, 0.0)
 
-const SETTLE_TICKS := 320
+## Two and a half seconds of ticks, whatever the tick rate.
+var SETTLE_TICKS := SimClock.ticks_in(2.5)
 
 var _failures: int = 0
 var _checks: int = 0

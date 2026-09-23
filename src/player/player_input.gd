@@ -5,7 +5,7 @@ extends RefCounted
 ##
 ## Why this exists before there is anything to shoot: CS2's sub-tick model
 ## evaluates a shot at the instant the button went down, not at the next
-## simulation tick. At 128 Hz a tick is 7.8 ms, so snapping shots to tick
+## simulation tick. At 64 Hz a tick is 15.6 ms, so snapping shots to tick
 ## boundaries adds up to that much error to every single bullet, which is
 ## exactly the "felt like I hit that" complaint.
 ##
@@ -19,7 +19,7 @@ extends RefCounted
 ## The look angles matter as much as the timestamp. Knowing a shot happened
 ## 3 ms into the tick is no use if the only aim direction on hand is the one
 ## from the tick boundary: you would be firing where the player was pointing
-## up to 7.8 ms ago. Recording both is what makes a sub-tick shot actually
+## up to a tick (15.6 ms) ago. Recording both is what makes a sub-tick shot actually
 ## sub-tick.
 class ButtonEvent:
 	var action: StringName

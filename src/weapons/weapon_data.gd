@@ -20,9 +20,11 @@ extends Resource
 ## the two need a shared threshold to be derived from. One place to change it.
 const SETTLE_FRACTION := 0.01
 
-## The tick the punch spring is integrated at, and the one the solver below
-## walks a spray with.
-const SIMULATION_HZ := 128.0
+## The rate the punch spring is integrated at, and the one the solver below
+## walks a spray with: finer than the game's 64 Hz tick, and what the
+## punch's numbers were solved and measured at. It is the spring's own step,
+## not the simulation's; Weapon steps it this finely whatever it is handed.
+const PUNCH_HZ := 128.0
 
 
 var _solved_kick_up: float = -1.0
@@ -536,7 +538,7 @@ func model_hold_time() -> float:
 ## When one shot's weapon model punch is last above SETTLE_FRACTION of its own
 ## peak, with the slow half given the recovery time passed in.
 func _model_settle_for(hold_time: float) -> float:
-	var tick := 1.0 / SIMULATION_HZ
+	var tick := 1.0 / PUNCH_HZ
 	var snap := Punch.new()
 	var hold := Punch.new()
 	snap.kick(Vector2(0.0, punch_impulse_scale_for(model_punch_snap_time) * model_kick_snap_share))
@@ -547,7 +549,7 @@ func _model_settle_for(hold_time: float) -> float:
 	var hold_spring := punch_spring_for(hold_time)
 	var peak := 0.0
 	var samples := PackedFloat32Array()
-	for _tick in int(SIMULATION_HZ * 8.0):
+	for _tick in int(PUNCH_HZ * 8.0):
 		snap.advance(tick, snap_damping, snap_spring, tick)
 		hold.advance(tick, hold_damping, hold_spring, tick)
 		var size := absf(snap.value.y + hold.value.y)
@@ -624,7 +626,7 @@ func view_kick_side() -> float:
 ## this agrees with what Weapon actually produces, since the two integrate the
 ## same spring in two places.
 func spray_peak_per_degree() -> float:
-	var tick := 1.0 / SIMULATION_HZ
+	var tick := 1.0 / PUNCH_HZ
 	var snap := Punch.new()
 	var hold := Punch.new()
 	var snap_damping := snap_punch_damping()
@@ -635,7 +637,7 @@ func spray_peak_per_degree() -> float:
 	var hold_impulse := hold_punch_impulse_scale()
 	var peak := 0.0
 	var until_shot := 0.0
-	for tick_index in maxi(magazine_size, 1) * maxi(int(cycle_time * SIMULATION_HZ), 1):
+	for tick_index in maxi(magazine_size, 1) * maxi(int(cycle_time * PUNCH_HZ), 1):
 		if until_shot <= 0.0:
 			snap.kick(Vector2(0.0, snap_impulse))
 			hold.kick(Vector2(0.0, hold_impulse))

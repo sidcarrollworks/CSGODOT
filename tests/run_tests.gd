@@ -14,7 +14,9 @@ extends SceneTree
 ## walk up a ramp. Those catch the things that are correct in the maths and
 ## wrong in the world, which is where the interesting bugs have been so far.
 
-const DT := 1.0 / 128.0
+## The project's tick, whatever its rate: the phases below are lengths of
+## time, counted in its ticks.
+var DT := SimClock.tick_seconds()
 const EPS := 0.001
 
 ## Frames of ordinary controller-driven simulation before the scripted phases
@@ -22,17 +24,17 @@ const EPS := 0.001
 const FALL_FRAMES := 120
 
 ## Per-phase timing, in ticks.
-const SETTLE_TICKS := 24
-const JUMP_TICKS := 110
-const SURF_TICKS := 160
-const CLIMB_TICKS := 800
+var SETTLE_TICKS := SimClock.ticks_in(0.1875)
+var JUMP_TICKS := SimClock.ticks_in(0.86)
+var SURF_TICKS := SimClock.ticks_in(1.25)
+var CLIMB_TICKS := SimClock.ticks_in(6.25)
 
 ## Ducking a few ticks after leaving the ground, which is what a crouch jump
 ## is. Immediately at the apex would be optimal; this is a realistic input.
-const CROUCH_DELAY_TICKS := 10
+var CROUCH_DELAY_TICKS := SimClock.ticks_in(0.078)
 
 ## Running down the eight-step flight, long enough to cover the whole thing.
-const STAIR_TICKS := 90
+var STAIR_TICKS := SimClock.ticks_in(0.7)
 
 ## Jump presses tested at different points inside one tick. A fraction of -1
 ## means there was no button transition to time, so the press lands on the tick
@@ -313,7 +315,7 @@ func _phase_ledge() -> void:
 ## the jump happens before friction is applied. Pressing part-way through the
 ## tick should cost the friction of the part you were still on the ground for,
 ## which is what splitting the tick buys: the hop reflects when you actually
-## pressed rather than rounding to 7.8 ms.
+## pressed rather than rounding to the tick.
 func _phase_subtick_jump() -> void:
 	var slot := _subtick_speeds.size()
 	if slot >= JUMP_PRESSES.size():
@@ -492,7 +494,7 @@ func _test_stay_on_ground() -> void:
 	# airborne for a large part of it and never gets up to speed. If this ever
 	# stops being true, the fix above has stopped doing anything.
 	_check(
-		_stair_airborne_unglued > STAIR_TICKS / 4,
+		_stair_airborne_unglued > STAIR_TICKS / 4.0,
 		"without StayOnGround the same descent goes airborne (%d of %d ticks)"
 			% [_stair_airborne_unglued, STAIR_TICKS]
 	)
@@ -532,7 +534,7 @@ func _test_counter_strafe() -> void:
 				% [weapon_name, r["running"]]
 		)
 		_check(
-			r["counter"] > 0 and r["counter"] <= 11,
+			r["counter"] > 0 and ms.call(r["counter"]) <= 86.0,
 			"a counter-strafe gives the %s its standing cone within 86 ms (%.1f ms)"
 				% [weapon_name, ms.call(r["counter"])]
 		)
@@ -542,7 +544,7 @@ func _test_counter_strafe() -> void:
 				% [ms.call(r["release"]), ms.call(r["counter"])]
 		)
 		_check(
-			r["window"] > 8,
+			ms.call(r["window"]) > 62.5,
 			"held too long, the opposite key runs the %s the other way, but only after %.1f ms of standing accuracy"
 				% [weapon_name, ms.call(r["window"])]
 		)
@@ -573,7 +575,7 @@ func _test_subtick_jump() -> void:
 	# speed there is no ground acceleration left to earn back, so pressing
 	# later in the tick costs friction for the part of the tick you were still
 	# on the ground: the hop reflects when you actually pressed instead of
-	# being rounded up to 7.8 ms earlier and handed speed you did not keep.
+	# being rounded up to a tick earlier and handed speed you did not keep.
 	var boundary: float = _subtick_speeds[0]
 	for i in range(1, 4):
 		_check(
@@ -652,19 +654,19 @@ func _test_simple_spline() -> void:
 func _test_friction() -> void:
 	var cfg := MovementConfig.new()
 
-	# Above stop_speed, drop is proportional to current speed:
-	# 250 * 5.2 / 128 = 10.15625
+	# Above stop_speed, drop is proportional to current speed: 250 * 5.2 a
+	# second, 20.3125 in a 64 Hz tick.
 	var fast := MovementSolver.apply_friction(
 		Vector3(0, 0, -250), true, 1.0, cfg, DT
 	)
-	_check_near(fast.length(), 239.84375, "friction above stop_speed")
+	_check_near(fast.length(), 250.0 - 250.0 * 5.2 * DT, "friction above stop_speed")
 
 	# Below stop_speed, stop_speed is used as the control value instead, which
-	# is what makes stopping crisp: 80 * 5.2 / 128 = 3.25
+	# is what makes stopping crisp: 80 * 5.2 a second, 6.5 in a 64 Hz tick.
 	var slow := MovementSolver.apply_friction(
 		Vector3(0, 0, -50), true, 1.0, cfg, DT
 	)
-	_check_near(slow.length(), 46.75, "friction below stop_speed uses stop_speed")
+	_check_near(slow.length(), 50.0 - 80.0 * 5.2 * DT, "friction below stop_speed uses stop_speed")
 
 	# No air drag at all.
 	var airborne := MovementSolver.apply_friction(
@@ -677,11 +679,11 @@ func _test_ground_acceleration() -> void:
 	var cfg := MovementConfig.new()
 	var forward := Vector3(0, 0, -1)
 
-	# From rest: 5.5 * (1/128) * 250 = 10.7421875
+	# From rest: 5.5 * 250 a second, 21.484375 in a 64 Hz tick.
 	var stepped := MovementSolver.accelerate(
 		Vector3.ZERO, forward, cfg.max_speed, cfg.accelerate, 1.0, DT
 	)
-	_check_near(stepped.length(), 10.7421875, "ground accel from rest")
+	_check_near(stepped.length(), 5.5 * 250.0 * DT, "ground accel from rest")
 
 	# Already at wish speed: nothing is added.
 	var capped := MovementSolver.accelerate(
@@ -704,11 +706,12 @@ func _test_air_acceleration() -> void:
 
 	# Pointing the wish direction sideways does gain speed, because current
 	# speed along that axis is zero. This is an air strafe.
-	# accel_speed = 12 * 250 * (1/128) = 23.4375, clamped by addspeed 30.
+	# accel_speed = 12 * 250 a second, 46.875 in a 64 Hz tick, clamped to the
+	# 30 addspeed allows (at 128 Hz, 23.4375, under it).
 	var strafed := MovementSolver.air_accelerate(
 		Vector3(250, 0, 0), forward, cfg.max_speed, cfg.air_accelerate, 1.0, cfg, DT
 	)
-	_check_near(strafed.z, -23.4375, "air strafe adds along the wish direction")
+	_check_near(strafed.z, -minf(12.0 * 250.0 * DT, 30.0), "air strafe adds along the wish direction")
 	_check(strafed.length() > 250.0, "air strafe increases total speed")
 
 	# The asymmetry that makes the above work: addspeed is clamped by 30 but
@@ -717,7 +720,8 @@ func _test_air_acceleration() -> void:
 	var slow_wish := MovementSolver.air_accelerate(
 		Vector3(250, 0, 0), forward, 100.0, cfg.air_accelerate, 1.0, cfg, DT
 	)
-	_check_near(slow_wish.z, -9.375, "air accel scales with unclamped wish speed")
+	_check_near(slow_wish.z, -minf(12.0 * 100.0 * DT, 30.0), "air accel scales with unclamped wish speed")
+	_check(absf(slow_wish.z) < absf(strafed.z), "and a low wish speed gains less than a full one")
 
 
 func _test_clip_velocity() -> void:
@@ -835,11 +839,14 @@ func _test_traces_a_tick() -> void:
 
 
 ## Source's WalkMove stops a player slower than a unit a second dead, where
-## they stand. Friction takes 4 u/s to 0.75, which stops; 6 u/s to 2.75,
-## which still moves, so the stop is what makes the difference.
+## they stand. Below stop_speed a tick's friction takes 80 * 5.2 u/s a second
+## off (6.5 in a 64 Hz tick): from that and 0.75 more, friction leaves 0.75,
+## which stops; from that and 2.75, it leaves 2.75, which still moves, so the
+## stop is what makes the difference.
 func _test_creep_stops() -> void:
+	var drop := 80.0 * 5.2 * DT
 	var start := _player.global_position
-	_player.velocity = Vector3(4.0, 0.0, 0.0)
+	_player.velocity = Vector3(drop + 0.75, 0.0, 0.0)
 	_step()
 	var crept := Vector2(_player.global_position.x - start.x, _player.global_position.z - start.z).length()
 	_check(
@@ -848,11 +855,11 @@ func _test_creep_stops() -> void:
 			% [_player.velocity.length(), crept]
 	)
 	start = _player.global_position
-	_player.velocity = Vector3(6.0, 0.0, 0.0)
+	_player.velocity = Vector3(drop + 2.75, 0.0, 0.0)
 	_step()
 	var moved := Vector2(_player.global_position.x - start.x, _player.global_position.z - start.z).length()
 	_check(
-		is_equal_approx(_player.velocity.x, 2.75) and is_equal_approx(moved, 2.75 * DT),
+		absf(_player.velocity.x - 2.75) < 1e-4 and absf(moved - 2.75 * DT) < 1e-5,
 		"and one left at 2.75 u/s moves on (%.2f u/s, moved %.4f)" % [_player.velocity.length(), moved]
 	)
 	_player.velocity = Vector3.ZERO
