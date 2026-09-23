@@ -16,6 +16,16 @@ extends Node3D
 ## back. Its hitboxes are drawn over it, each round says what it did where it
 ## landed, and the readout keeps a log of the hits and of each kill. Killed,
 ## it goes down, then stands up again where it was, whole.
+##
+## And a shooter, to feel being shot: a bot off to the left of the wall
+## that holds its fire until B, then fires at you in bursts like a dust2
+## bot. U changes its weapon, among them an MP9 for a tag that stops you
+## dead; Y changes your armour, J keeps you alive. The readout in the
+## bottom left says what a hit did to you (your speed, the tag, the
+## flinch), the arcs round the crosshair say where it came from, and T
+## shows your own body and its hitboxes from the front or the side, in a
+## window of their own, to check them against how you stand, crouch and
+## jump.
 
 ## Distance from the firing line to the wall. Spray references are usually
 ## drawn at a fixed distance, so this needs to match whatever you compare
@@ -49,6 +59,14 @@ const ARMOUR := [
 	{"name": "no armour", "armor": 0.0, "helmet": false},
 ]
 
+## Where the shooter stands: left of the wall and back, clear of it and of
+## the dummy's lane, about 780 units from the spawn, facing it.
+const SHOOTER_POSITION := Vector3(-640.0, 0.0, -448.0)
+
+## The hitbox window's views of you, and how far off it stands.
+const HITBOX_VIEWS := ["off", "front", "side"]
+const HITBOX_VIEW_DISTANCE := 110.0
+
 ## How many hits the readout keeps.
 const LOG_LINES := 10
 
@@ -58,6 +76,9 @@ const HEAD_NUMBER_COLOUR := Color(1.0, 0.3, 0.2)
 
 var player: PlayerController
 var dummy: Bot
+var shooter: Bot
+var damage_indicator: DamageIndicator
+var hitbox_camera: Camera3D
 
 var _impacts: Array = []
 var _markers: Node3D
@@ -77,6 +98,14 @@ var _armour_index: int = 0
 var _life: Array[Dictionary] = []
 var _log: PackedStringArray = PackedStringArray()
 
+var _shooter_weapon_index: int = 0
+var _player_armour_index: int = 0
+var _hitbox_view_index: int = 0
+var _you_label: Label
+var _hitbox_window: SubViewportContainer
+## The hits you have taken, newest first, as the readout shows them.
+var _taken: PackedStringArray = PackedStringArray()
+
 
 func _ready() -> void:
 	_markers = Node3D.new()
@@ -93,6 +122,7 @@ func _ready() -> void:
 	_build_lane()
 	_build_dummy()
 	_build_player()
+	_build_shooter()
 	_build_hud()
 
 
@@ -109,6 +139,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		next_distance()
 	elif event.is_action_pressed(&"dummy_immortal"):
 		toggle_immortal()
+	elif event.is_action_pressed(&"shooter_fire"):
+		toggle_shooter()
+	elif event.is_action_pressed(&"shooter_weapon"):
+		next_shooter_weapon()
+	elif event.is_action_pressed(&"player_armour"):
+		next_player_armour()
+	elif event.is_action_pressed(&"player_immortal"):
+		toggle_player_immortal()
+	elif event.is_action_pressed(&"hitbox_camera"):
+		next_hitbox_view()
 
 
 func _process(_delta: float) -> void:
@@ -151,8 +191,13 @@ func _process(_delta: float) -> void:
 		"P      export      O  clear",
 		"H      hitboxes    K  armour",
 		"N      dummy distance   G  dummy never dies",
+		"B      shooter fires    U  its weapon",
+		"Y      your armour      J  you never die",
+		"T      your hitboxes: front, side, off",
 	])
 	_dummy_label.text = dummy_readout()
+	_you_label.text = you_readout()
+	_place_hitbox_camera()
 
 
 ## Records every shot the player takes, and marks the ones that hit the wall.
@@ -288,6 +333,133 @@ func _add_number(at: Vector3, amount: float, zone: StringName) -> void:
 	tween.tween_property(label, "modulate:a", 0.0, 0.6).set_delay(0.6)
 	tween.tween_property(label, "outline_modulate:a", 0.0, 0.6).set_delay(0.6)
 	tween.chain().tween_callback(label.queue_free)
+
+
+# --- Being shot ------------------------------------------------------------
+
+## The shooter's choices: both rifles, and an MP9 for an SMG's tag. The MP9
+## is every number of its row in the weapon sheet (damage, rate, 100%
+## tagging) on the AK-47's spray, since its own pattern has not been
+## measured, in the AK-47's model.
+static func shooter_weapons() -> Array[WeaponData]:
+	var mp9 := WeaponLibrary.ak47()
+	WeaponSheet.apply(mp9, "MP9")
+	mp9.display_name = "MP9"
+	return [WeaponLibrary.ak47(), WeaponLibrary.m4a1s(), mp9]
+
+
+## What being hit does to you, and who is shooting.
+func you_readout() -> String:
+	if player == null:
+		return ""
+	var target := player.hit_target
+	var lines := PackedStringArray([
+		"YOU   %s   %s" % [
+			ARMOUR[_player_armour_index]["name"],
+			"never die: a kill refills you" if target.immortal else "you can die",
+		],
+		("health %d    armour %d" % [roundi(target.health), roundi(target.armor)]) if player.alive
+			else "dead, back in %.1f s" % player.seconds_to_respawn(),
+		# The tag: how much of your top speed you may have, and have.
+		"tag    %3d%% of top speed  %s   (moving %.0f of %.0f u/s)" % [
+			roundi(player.velocity_modifier * 100.0),
+			"slowed" if player.velocity_modifier < 1.0 else "free",
+			Vector2(player.velocity.x, player.velocity.z).length(), player.config.max_speed,
+		],
+		"flinch %.2f deg up, %.2f aside" % [player.hit_punch.value.y, -player.hit_punch.value.x],
+		"SHOOTER  %s, %s" % [
+			shooter.weapon_data.display_name if shooter != null else "-",
+			"holding fire" if shooter == null or shooter.holds_fire
+				else ("dead" if not shooter.alive else ("firing at you" if shooter.target == player else "looking for you")),
+		],
+		"",
+	])
+	lines.append_array(_taken)
+	return "\n".join(lines)
+
+
+## A bot in the corner, armed, facing the spawn, that holds its fire until
+## told.
+func _build_shooter() -> void:
+	shooter = (load("res://src/bots/bot.tscn") as PackedScene).instantiate() as Bot
+	shooter.name = "Shooter"
+	shooter.team = "CT" if player.team == "T" else "T"
+	shooter.holds_fire = true
+	shooter.weapon_data = shooter_weapons()[_shooter_weapon_index]
+	shooter.weapon_model = shooter.weapon_data.model_path
+	shooter.position = SHOOTER_POSITION
+	var to_spawn := -SHOOTER_POSITION
+	# The game's yaw 0 looks down -Z, and yaw grows towards -X.
+	shooter.yaw_degrees = rad_to_deg(atan2(-to_spawn.x, -to_spawn.z))
+	add_child(shooter)
+	shooter.place(SHOOTER_POSITION, shooter.yaw_degrees)
+	var colour := Color(0.9, 0.3, 0.25)
+	_mark(Vector3(48.0, 0.2, 48.0), SHOOTER_POSITION + Vector3(0.0, 0.1, 0.0), colour)
+	_text("shooter: B to fire, U its weapon", SHOOTER_POSITION + Vector3(0.0, 96.0, 0.0), colour)
+
+
+func toggle_shooter() -> void:
+	shooter.holds_fire = not shooter.holds_fire
+	if shooter.holds_fire:
+		# Stops mid-burst, and turns back to where it waits.
+		shooter.target = null
+
+
+func next_shooter_weapon() -> void:
+	_shooter_weapon_index = (_shooter_weapon_index + 1) % shooter_weapons().size()
+	shooter.arm(shooter_weapons()[_shooter_weapon_index])
+
+
+func next_player_armour() -> void:
+	_player_armour_index = (_player_armour_index + 1) % ARMOUR.size()
+	var armour: Dictionary = ARMOUR[_player_armour_index]
+	player.hit_target.wear(armour["armor"], armour["helmet"])
+
+
+func toggle_player_immortal() -> void:
+	player.hit_target.immortal = not player.hit_target.immortal
+
+
+## A hit on you: an arc on the side it came from, a line in the readout,
+## and whole again if you are not to die.
+func _on_player_hurt(amount: float, zone: StringName, from: Vector3) -> void:
+	damage_indicator.hit_from(from)
+	var data := player.hit_target.last_hit_weapon
+	_taken.insert(0, "%3d  %-8s %s %4.0f u%s  -> %d, tagged to %d%%" % [
+		roundi(amount), zone, data.display_name if data != null else "?",
+		player.global_position.distance_to(from),
+		"  through armour" if player.hit_target.last_hit_armored else "",
+		roundi(player.hit_target.health),
+		roundi(clampf(1.0 - data.tagging_power, 0.0, 1.0) * 100.0) if data != null else 100,
+	])
+	if _taken.size() > 6:
+		_taken.resize(6)
+	if player.hit_target.immortal and player.hit_target.health <= 0.0:
+		player.hit_target.reset()
+
+
+## Off, a view of you from the front, or from your side: your body and its
+## hitboxes as the bots' rounds meet them, which your own camera leaves out.
+func next_hitbox_view() -> void:
+	_hitbox_view_index = (_hitbox_view_index + 1) % HITBOX_VIEWS.size()
+	_hitbox_window.visible = _hitbox_view_index != 0
+	_place_hitbox_camera()
+
+
+func hitbox_view() -> String:
+	return HITBOX_VIEWS[_hitbox_view_index]
+
+
+func _place_hitbox_camera() -> void:
+	if hitbox_camera == null or _hitbox_view_index == 0 or player == null:
+		return
+	var yaw := deg_to_rad(player.yaw_degrees)
+	var forward := Vector3(-sin(yaw), 0.0, -cos(yaw))
+	var right := Vector3(cos(yaw), 0.0, -sin(yaw))
+	var feet := player.global_position
+	var side := forward if hitbox_view() == "front" else right
+	hitbox_camera.global_position = feet + side * HITBOX_VIEW_DISTANCE + Vector3.UP * 44.0
+	hitbox_camera.look_at(feet + Vector3.UP * 36.0, Vector3.UP)
 
 
 func toggle_hitboxes() -> void:
@@ -573,8 +745,11 @@ func _build_dummy() -> void:
 func _build_player() -> void:
 	player = (load("res://src/player/player.tscn") as PackedScene).instantiate()
 	add_child(player)
-	player.global_position = Vector3(0.0, 8.0, 0.0)
+	player.place(Vector3(0.0, 8.0, 0.0), 0.0)
 	player.shot_traced.connect(_on_shot)
+	player.hurt.connect(_on_player_hurt)
+	# Your hitboxes are drawn, on the layer only the hitbox window sees.
+	player.hit_target.set_hitboxes_drawn(true)
 
 
 func _build_hud() -> void:
@@ -603,6 +778,42 @@ func _build_hud() -> void:
 	_dummy_label.add_theme_color_override("font_outline_color", Color.BLACK)
 	_dummy_label.add_theme_constant_override("outline_size", 6)
 	layer.add_child(_dummy_label)
+
+	_you_label = Label.new()
+	_you_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	_you_label.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_you_label.offset_left = 24.0
+	_you_label.offset_bottom = -24.0
+	_you_label.add_theme_font_size_override("font_size", 18)
+	_you_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	_you_label.add_theme_constant_override("outline_size", 6)
+	layer.add_child(_you_label)
+
+	damage_indicator = DamageIndicator.new()
+	damage_indicator.player = player
+	layer.add_child(damage_indicator)
+
+	# Your body and hitboxes, from outside, in the bottom right: the world
+	# and the layer only this camera takes in, and not the bodies the view
+	# and the bots draw.
+	_hitbox_window = SubViewportContainer.new()
+	_hitbox_window.stretch = true
+	_hitbox_window.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	_hitbox_window.offset_left = -344.0
+	_hitbox_window.offset_top = -444.0
+	_hitbox_window.offset_right = -24.0
+	_hitbox_window.offset_bottom = -24.0
+	_hitbox_window.visible = false
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(320, 420)
+	_hitbox_window.add_child(viewport)
+	hitbox_camera = Camera3D.new()
+	hitbox_camera.cull_mask = 1 | PlayerSim.UNSEEN_LAYER
+	hitbox_camera.fov = 50.0
+	hitbox_camera.near = 1.0
+	hitbox_camera.far = 8192.0
+	viewport.add_child(hitbox_camera)
+	layer.add_child(_hitbox_window)
 
 	add_child(layer)
 

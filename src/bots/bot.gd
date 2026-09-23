@@ -51,6 +51,10 @@ const FIRE_WITHIN_DEGREES := 6.0
 ## Its body falling, while it is dead; null otherwise.
 var ragdoll: Ragdoll
 
+## Armed but not shooting: it sees nobody, so it stands or walks its route.
+## The test range's shooter waits like this until it is told to fire.
+@export var holds_fire: bool = false
+
 ## What it hears of its weapon, in the world.
 var weapon_sounds: WeaponSounds
 ## The player it is engaging, or null.
@@ -96,6 +100,15 @@ func _ready() -> void:
 		weapon_sounds.equip(weapon_data)
 
 
+## Hands it another weapon's numbers, loaded; it keeps the model it holds.
+func arm(data: WeaponData) -> void:
+	weapon_data = data
+	weapon = Weapon.new(data)
+	weapon.trigger_held = false
+	if weapon_sounds != null:
+		weapon_sounds.equip(data)
+
+
 ## A bot's body is seen, holding its weapon. Without the model's capsules
 ## (not extracted, or a broken extraction) it wears the four standard boxes,
 ## with a grey body to see them by when there is no model either: a bot has
@@ -131,7 +144,7 @@ func _think(delta: float) -> UserCmd:
 		return cmd
 
 	# Nothing to shoot with, nothing to stop for: an unarmed bot just walks.
-	target = _look_for_target() if weapon != null else null
+	target = _look_for_target() if weapon != null and not holds_fire else null
 	if target != null:
 		_seen_for += delta
 	else:

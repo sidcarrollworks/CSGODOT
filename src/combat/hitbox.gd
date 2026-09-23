@@ -41,6 +41,10 @@ const DRAWN_ALPHA := 0.3
 const FLASH_ALPHA := 0.85
 const FLASH_SECONDS := 0.25
 
+## The visual layers the drawing goes on: the world's, unless the hitbox
+## belongs to a body only some cameras may see (PlayerSim.UNSEEN_LAYER).
+var drawn_layers: int = 1
+
 var _drawn: MeshInstance3D
 var _flash: Tween
 
@@ -65,6 +69,7 @@ func set_drawn(on: bool) -> void:
 	_drawn.mesh = mesh
 	_drawn.transform = _collision().transform
 	_drawn.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_drawn.layers = drawn_layers
 	var material := StandardMaterial3D.new()
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA

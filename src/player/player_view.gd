@@ -82,6 +82,8 @@ func _ready() -> void:
 		camera.far = 16384.0
 		# CS2's 90, which is horizontal at 4:3; Godot's number is vertical.
 		camera.fov = ViewModelProjection.vertical_fov(ViewModelProjection.WORLD_FOV)
+		# Not the body your hitboxes ride: that one is for everyone else.
+		camera.cull_mask &= ~PlayerSim.UNSEEN_LAYER
 	_show_body()
 	weapon_sounds = WeaponSounds.new()
 	weapon_sounds.name = "WeaponSounds"

@@ -46,9 +46,9 @@ var last_command := UserCmd.new()
 ## The body the other players see, animated here whether anyone draws it or
 ## not, as CS2's server animates every player for their hitboxes: the
 ## third-person model with the game's own capsules on its bones. A bot's is
-## drawn; yours is not, since your view draws a body of its own (without
-## the head the camera sits in, set back from the eyes), but it is the one
-## that bots' rounds hit. Null where the character has not been extracted,
+## drawn; yours is on UNSEEN_LAYER, which your camera leaves out, since your
+## view draws a body of its own (without the head the camera sits in, set
+## back from the eyes), but it is the one that bots' rounds hit. Null where the character has not been extracted,
 ## and then HitTarget's four standard boxes stand in (hitbox_source says so).
 var model: PlayerModel
 ## The model's hitboxes, on its bones.
@@ -59,6 +59,11 @@ var hitboxes: SkinnedHitboxes
 ## sheet's tagging power: an AK-47 round leaves 40%, an SMG's none), and it
 ## climbs back from there at TAG_RECOVERY_PER_SECOND.
 var velocity_modifier: float = 1.0
+
+## The visual layer your own body goes on, and nothing else: the body the
+## bots' rounds hit, which your camera leaves out (your view draws its own)
+## and a camera that is there to show you your hitboxes takes in. Layer 20.
+const UNSEEN_LAYER := 1 << 19
 
 ## Where being hit has knocked the aim, in degrees, as (right, up). Unlike
 ## the recoil's view kick this is the aim itself: rounds fired while it is
@@ -161,10 +166,12 @@ func wear_body(weapon_model: String, drawn: bool) -> void:
 		model.queue_free()
 		model = null
 	elif not drawn:
-		# Hidden mesh by mesh rather than as a whole, so the skeleton the
-		# hitboxes ride keeps posing.
+		# Put where only a camera that asks for it sees it, rather than
+		# hidden: the skeleton the hitboxes ride keeps posing either way, and
+		# the test range shows it to you to check your hitboxes against.
 		for mesh in model.find_children("*", "MeshInstance3D", true, false):
-			(mesh as MeshInstance3D).visible = false
+			(mesh as MeshInstance3D).layers = UNSEEN_LAYER
+			(mesh as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	if model != null:
 		hitboxes = SkinnedHitboxes.new()
 		hitboxes.name = "Hitboxes"
@@ -173,6 +180,9 @@ func wear_body(weapon_model: String, drawn: bool) -> void:
 		hitboxes.build(model.character_rig, _capsules, hit_target, MapImporter.SOURCE2_VIEWER_SCALE)
 	if hit_target.hitboxes().is_empty():
 		hit_target.build_standard_body(drawn and model == null)
+	if not drawn:
+		for hitbox in hit_target.hitboxes():
+			hitbox.drawn_layers = UNSEEN_LAYER
 
 
 ## Which hitboxes the player wears, and when they are the stand-in boxes,

@@ -104,11 +104,14 @@ Updated 2026-09-22: weapon numbers from Sid's spreadsheet and tapping (PR #23), 
   readout, and where you stand and look in the top left (PR #25, F3 hides
   it).
 - A red arc round the crosshair on the side each hit came from (PR #27).
+- On the test range, a shooter that fires at you on B, with its weapon (U),
+  your armour (Y) and never-die (J) switched, a readout of your tag and
+  flinch, and a window on your own hitboxes (T) (PR #27).
 
 ### Tooling
 - `scripts/extract_assets.sh` (map, physics, weapons, characters, sounds and
   more), `inspect_assets`, and `run_tests.sh` with seven headless test files
-  (movement, map, dust2, model, weapon, range, simulation): 499 checks pass
+  (movement, map, dust2, model, weapon, range, simulation): 516 checks pass
   without the assets.
 
 ---
@@ -130,7 +133,8 @@ This was the unfinished half of hit registration. Items 1 to 4 are in (PR
    jumping or mid-strafe, a bot's round meets your head where your head is.
    Without the character extracted the four boxes stand in, and the console
    says so (`--- your hitboxes:`). **Sid:** play dust2 with the hitboxes
-   drawn on a bot and check a crouch and a jump on your own; the model
+   drawn on a bot, and on the test range press T to watch your own capsules
+   from outside while you crouch, strafe and jump; the model
    checks now assert 19 capsules on you with the head 50 to 72 units up.
 2. **Tagging.** *(done, PR #27; Sid checks the feel)* A hit leaves the player
    1 minus the weapon's tagging power of their top speed (40% after an AK-47
@@ -336,7 +340,7 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 | Hands | Measure jump height, crouch-jump reach, dead-strafe feel | Movement check |
 | Hands | Playtest the range dummy and ragdoll on current assets | Confirms PR #20 |
 | Hands | Check that first shots at a run now miss (PR #24) | Item 9 |
-| Hands | Play being shot on dust2: your capsules' fit, the tag, the flinch, the hit arcs (PR #27) | Items 1 to 4 |
+| Hands | Play being shot on the test range (B, U, Y, J, T) and dust2: your capsules' fit, the tag, the flinch, the hit arcs (PR #27) | Items 1 to 4 |
 | Hands | Measure a tag's length and the flinch's size in CS2 | Item 4a |
 | Hands | Start the every-gun extraction (weapons TODO L1 to L3) | Every gun |
 | Hands | The systems' Local list in `reference/cs2-systems.md`: buy zones and bomb sites (B1), radar (B3), bomb (C1 to C3), grenades (G1 to G6), knife and Zeus (K1, K2), sounds (S1, S2) | Phases 4 to 7 |
