@@ -252,13 +252,13 @@ func _way_on(cmd: UserCmd, delta: float) -> Vector3:
 	# The corners it has passed: reached, or gone by (the leg from the corner
 	# before now points back at it). The last is the goal, reached as before.
 	while _corner < _path.points.size():
-		var corner := _path.points[_corner]
-		var to_corner := Vector3(corner.x - global_position.x, 0.0, corner.z - global_position.z)
+		var point := _path.points[_corner]
+		var to_corner := Vector3(point.x - global_position.x, 0.0, point.z - global_position.z)
 		var last := _corner == _path.points.size() - 1
 		var landing := _path.jumps_from(_corner - 1)
-		var height_ok := not landing or (on_ground and absf(corner.y - global_position.y) < STEP_UP_OR_DOWN)
+		var height_ok := not landing or (on_ground and absf(point.y - global_position.y) < STEP_UP_OR_DOWN)
 		var from := _path.points[_corner - 1]
-		var leg := Vector3(corner.x - from.x, 0.0, corner.z - from.z)
+		var leg := Vector3(point.x - from.x, 0.0, point.z - from.z)
 		var passed := not last and leg.length_squared() > 1.0 and leg.dot(to_corner) <= 0.0
 		if height_ok and (to_corner.length() < (arrive_distance if last else CORNER_REACHED) or passed):
 			_corner += 1

@@ -215,6 +215,10 @@ func _import() -> bool:
 			var player := scene.instantiate() as PlayerBody
 			_importer.add_child(player)
 			player.global_position = spawn["position"]
+			# Only here to land on the floor. Players are solid to each other,
+			# as in CS2, and the bots' route is these same spawn points: off the
+			# players' layer, the bots walk through them rather than into them.
+			player.collision_layer = 0
 			_players[player] = spawn
 	return true
 
