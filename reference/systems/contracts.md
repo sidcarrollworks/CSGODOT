@@ -305,6 +305,12 @@ var saved := inv.save_state(); inv.load_state(saved)
   loadout).
 - Nothing here sends events; the system that caused the change does
   (`item_purchase`, `item_pickup`, `bomb_dropped`, `grenade_thrown`).
+- `item_remove` {userid, item} is sent once, by whoever takes the item out
+  of the inventory, and for nothing else: `ItemDrops` for `drop`, the shop
+  for `sellback` and for the gun a purchase replaces. `DroppedItem.drop`
+  only puts a thing on the ground and announces nothing, so a drop is
+  never announced twice. A death sends `player_death` and no
+  `item_remove` for what falls (the kit alone also gets `defuser_dropped`).
 
 ### Items on the ground
 
@@ -387,9 +393,17 @@ start of the next `step`, in the order sent. A system takes a command with
 PackedStringArray, t: SimTick) -> bool` returns whether it took it.
 Handlers of one command are asked in the order added until one takes it,
 so each takes only its own case: `drop` is `ItemDrops`' for what is in
-hand, and the bomb's when the C4 is in hand. Commands so far: `buy <item>`
-(buying; the item as CS2's buy command names it, `ak47`, or the class
-name, the buying thread's choice), `drop`. A new command is a line here.
+hand, and the bomb's when the C4 is in hand. Commands so far:
+- `buy <item>` (buying): CS2's short names (`ak47`, `vest`, `vesthelm`,
+  ...) or a class name.
+- `sellback <item>` (buying): undoes a purchase made this round, while
+  buying is still open.
+- `drop` (`ItemDrops`; the bomb's with the C4 in hand).
+- `throw <class> [strength]` (grenades, `GrenadeSystem`): throws that
+  grenade from the player's eyes at the start of the next step; strength
+  0 to 1, default 1. The range's Q, Z and X send it; bots' lineups and a
+  console can too.
+A new command is a line here.
 
 ### Queries
 
@@ -403,6 +417,11 @@ system, in `attach`), `game.query(&"name", [args], fallback)`,
 - `blindness(userid: int) -> Dictionary` {`duration`, `peak`} and
   `blind_share(userid: int) -> float` (0 to 1, how blind now; grenades;
   bots, `player_death.attackerblind`). Fallbacks {} and 0.0.
+- `burning_at(point: Vector3) -> bool`: whether fire covers that point
+  (grenades; bots keep out of it). Fallback false.
+- `holds_still(userid: int) -> bool`: true while that player is planting
+  or defusing (the bomb). `player_sim` reads it to stop moving and firing
+  without touching `frozen`, which the match owns. Fallback false.
 A new query is a line here.
 
 ## 5. What the local agent's files need, to wire this in
@@ -420,7 +439,12 @@ None of these are changed by the contract threads; this branch changes
   `player_spawn` and strips the dead player's inventory; `weapon.press_trigger()`
   per press (R2).
 - `bot.gd`: the same through PlayerSim, and `bot.arm()` replaced by the
-  inventory; USE and ATTACK2 when bots plant and throw.
+  inventory; USE and ATTACK2 when bots plant and throw; the
+  `burning_at` and `smoke_length_between` queries to keep out of fire and
+  see through smoke.
+- `player_sim.gd`, from the bomb and grenades: read `holds_still` (and
+  then the bomb's range code stops setting `frozen` from it); throw on the
+  attack buttons with a grenade in hand, as `grenades.md` describes.
 - `match_state.gd`: sends `begin_new_match`, `round_prestart`,
   `round_start`, `round_poststart`, `round_freeze_end`, `round_end` (with
   `GameEvents.round_end_reason`), `round_officially_ended`,
@@ -468,3 +492,8 @@ None of these are changed by the contract threads; this branch changes
   (3) Buttons are part of the contract: `USE 32`, `ATTACK2 64` in
   `UserCmd` (section 4). (4) Drop and buy are commands (section 4); the
   bomb takes `drop` with the C4 in hand.
+
+- Buying, grenades and the bomb (23:10, approved by the coordinator):
+  commands `buy` (short names or classes), `sellback`, `throw`; queries
+  `burning_at` and `holds_still`; `item_remove` sent once by whoever takes
+  the item out of the inventory.

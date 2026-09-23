@@ -47,6 +47,11 @@ const SETTLED_AFTER := 1.0
 var value: Vector2 = Vector2.ZERO
 var velocity: Vector2 = Vector2.ZERO
 
+## The pushes solve_impulses has worked out, by [pattern, cycle time]. Handed
+## out as copies: a packed array comes back from a dictionary shared, and a
+## weapon changing its own would change the one kept.
+static var _solved := {}
+
 
 func reset() -> void:
 	value = Vector2.ZERO
@@ -86,8 +91,14 @@ func _step(dt: float) -> void:
 ##
 ## Solved round by round, each by Newton's method on the two components; the
 ## decay is nearly linear in the push, so it converges in two or three
-## iterations.
+## iterations. That is some fifteen thousand steps of the punch for a
+## magazine, 15 ms of script, so each pattern and rate of fire is solved
+## once (_solved) and every weapon built after takes a copy: a Weapon is built
+## on every equip and every respawn, and each one froze the game for a frame.
 static func solve_impulses(pattern: PackedVector2Array, cycle_time: float) -> PackedVector2Array:
+	var key := [pattern.duplicate(), cycle_time]
+	if _solved.has(key):
+		return (_solved[key] as PackedVector2Array).duplicate()
 	var impulses := PackedVector2Array()
 	var state := RecoilState.new()
 	for i in range(pattern.size() - 1):
@@ -111,6 +122,7 @@ static func solve_impulses(pattern: PackedVector2Array, cycle_time: float) -> Pa
 		impulses.append(push)
 		state.velocity += push
 		state.advance(cycle_time)
+	_solved[key] = impulses.duplicate()
 	return impulses
 
 
