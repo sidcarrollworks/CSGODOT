@@ -28,6 +28,14 @@ extends Node3D
 ## shows your own body and its hitboxes from the front or the side, in a
 ## window of their own, to check them against how you stand, crouch and
 ## jump.
+##
+## And the bomb: you carry it, and behind the spawn is a bomb site, A,
+## marked on the floor. Hold 5 on it to plant (the attack button with the
+## bomb in hand, in CS2; here your gun stays out), and it counts down 40 s,
+## beeping. Hold E looking at it to defuse, 10 s, or 5 with the kit L gives
+## you. You plant as a terrorist and defuse as a counter-terrorist. Let it
+## go off and it does dust2's damage to you and the dummy, by distance.
+## Press 5 again once it has gone off or been defused for a new one.
 
 ## Distance from the firing line to the wall. Spray references are usually
 ## drawn at a fixed distance, so this needs to match whatever you compare
@@ -109,6 +117,15 @@ var _hitbox_window: SubViewportContainer
 ## The hits you have taken, newest first, as the readout shows them.
 var _taken: PackedStringArray = PackedStringArray()
 
+## The bomb, its site and how it is drawn.
+var bomb: C4
+var bomb_sites: Array[BombSite] = []
+var bomb_view: C4View
+## Whether you carry a defuse kit, and whether 5 was pressed since the last
+## tick (a new bomb once the last is spent).
+var has_kit: bool = false
+var _new_bomb_asked: bool = false
+
 
 func _ready() -> void:
 	_markers = Node3D.new()
@@ -127,6 +144,7 @@ func _ready() -> void:
 	_build_cover()
 	_build_player()
 	_build_shooter()
+	_build_bomb()
 	_build_hud()
 
 
@@ -155,6 +173,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		next_hitbox_view()
 	elif event.is_action_pressed(&"dummy_cover"):
 		next_cover()
+	elif event is InputEventKey and event.pressed and not event.echo:
+		# The bomb's keys are the range's own and read here rather than
+		# added to the project's input map: 5 is CS2's bomb slot, E its
+		# use key.
+		match (event as InputEventKey).physical_keycode:
+			BOMB_PLANT_KEY:
+				_new_bomb_asked = true
+			BOMB_KIT_KEY:
+				has_kit = not has_kit
 
 
 func _process(_delta: float) -> void:
@@ -201,6 +228,10 @@ func _process(_delta: float) -> void:
 		"B      shooter fires    U  its weapon",
 		"Y      your armour      J  you never die",
 		"T      your hitboxes: front, side, off",
+		"5      hold on site A behind you: plant",
+		"E      hold looking at it: defuse   L  kit (%s)" % ("on" if has_kit else "off"),
+		"",
+		bomb_readout(),
 	])
 	_dummy_label.text = dummy_readout()
 	_you_label.text = you_readout()
@@ -361,6 +392,119 @@ func _add_number(at: Vector3, amount: float, zone: StringName) -> void:
 	tween.tween_property(label, "modulate:a", 0.0, 0.6).set_delay(0.6)
 	tween.tween_property(label, "outline_modulate:a", 0.0, 0.6).set_delay(0.6)
 	tween.chain().tween_callback(label.queue_free)
+
+
+# --- The bomb --------------------------------------------------------------
+
+## The bomb's ids for you and the dummy (the game events' userid).
+const PLAYER_ID := 1
+const DUMMY_ID := 2
+const BOMB_PLANT_KEY := KEY_5
+const BOMB_DEFUSE_KEY := KEY_E
+const BOMB_KIT_KEY := KEY_L
+## Site A, behind the spawn: 384 across, 256 deep, from 96 behind it.
+const BOMB_SITE_BOX := AABB(Vector3(-192.0, -8.0, 96.0), Vector3(384.0, 136.0, 256.0))
+## dust2's bombradius, so the blast here is the one on dust2.
+const BOMB_DAMAGE := 700.0
+
+
+func _build_bomb() -> void:
+	var rules := C4Rules.new()
+	rules.bomb_damage = BOMB_DAMAGE
+	bomb = C4.new(rules)
+	bomb_sites = [BombSite.of_box("A", BOMB_SITE_BOX)]
+	bomb.give_to(PLAYER_ID, player.global_position)
+	bomb_view = C4View.new()
+	bomb_view.name = "Bomb"
+	bomb_view.bomb = bomb
+	add_child(bomb_view)
+	var box := BOMB_SITE_BOX
+	var floor_mark := _mark(Vector3(box.size.x, 1.0, box.size.z),
+		box.get_center() * Vector3(1.0, 0.0, 1.0) + Vector3.UP * 0.5, Color(0.85, 0.2, 0.15, 0.35))
+	(floor_mark.material_override as StandardMaterial3D).transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	var letter := _text("A", box.get_center() * Vector3(1.0, 0.0, 1.0) + Vector3.UP * 96.0, Color(0.95, 0.3, 0.2))
+	letter.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	# After you and the dummy have run the tick: the bomb goes by where the
+	# tick left them, as MatchState does.
+	process_physics_priority = 90
+
+
+## The bomb's tick: you and the dummy as it sees you, then what it did.
+## You are a terrorist until it is down, then a counter-terrorist.
+func _physics_process(_delta: float) -> void:
+	if bomb == null:
+		return
+	var tick := SimClock.current_tick()
+	var spent := bomb.state in [C4.State.NONE, C4.State.DEFUSED, C4.State.EXPLODED]
+	if _new_bomb_asked and spent:
+		bomb.give_to(PLAYER_ID, player.global_position)
+	_new_bomb_asked = false
+
+	var you := C4.Actor.of_player(player, PLAYER_ID)
+	you.team = "CT" if bomb.planted() else "T"
+	you.plant_held = Input.is_physical_key_pressed(BOMB_PLANT_KEY)
+	you.use_held = Input.is_physical_key_pressed(BOMB_DEFUSE_KEY)
+	you.has_kit = has_kit
+	var actors: Array[C4.Actor] = [you]
+	if dummy != null:
+		actors.append(C4.Actor.of_player(dummy, DUMMY_ID))
+	bomb.tick(SimClock.tick_end_usec(tick), actors, bomb_sites)
+	# Planting and defusing hold you still, as freeze time does.
+	player.frozen = bomb.holds_still(PLAYER_ID)
+
+	for event in bomb.take_events():
+		# The bomb's own, not being handed it or stepping on and off the site.
+		if String(event["name"]).begins_with("bomb_"):
+			_push_log(_bomb_event_line(event))
+	for record in bomb.take_blast():
+		var victim: PlayerSim = player if record["victim"] == PLAYER_ID else dummy
+		if victim == null:
+			continue
+		# Before armour: the shared damage path will say what armour does
+		# to a blast. Your readout shows it as a hit from the bomb.
+		victim.hit_target.last_hit_from = record["origin"]
+		victim.hit_target.last_hit_weapon = null
+		victim.hit_target.apply_damage(record["amount"], &"chest", 1.0)
+		_add_number(victim.global_position + Vector3.UP * 72.0, record["amount"], &"chest")
+		_push_log("blast  %-5s %3d  at %4.0f u" % [
+			"you" if victim == player else "dummy", roundi(record["amount"]),
+			(victim.global_position + Vector3.UP * 36.0).distance_to(record["origin"]),
+		])
+
+
+static func _bomb_event_line(event: Dictionary) -> String:
+	var keys := PackedStringArray()
+	for key: String in event:
+		if key != "name":
+			keys.append("%s %s" % [key, event[key]])
+	return "%s  %s" % [event["name"], ", ".join(keys)]
+
+
+func bomb_readout() -> String:
+	if bomb == null:
+		return ""
+	var now := SimClock.now_usec()
+	match bomb.state:
+		C4.State.CARRIED:
+			if bomb.planting():
+				return "BOMB   planting on %s  %3d%%" % [bomb.site, roundi(bomb.plant_progress(now) * 100.0)]
+			return "BOMB   on you" + ("   on site A: hold 5" if bomb_sites[0].contains(player.global_position) else "")
+		C4.State.DROPPED:
+			return "BOMB   dropped"
+		C4.State.PLANTED:
+			var line := "BOMB   planted on %s  %.1f s" % [bomb.site, bomb.seconds_left(now)]
+			if bomb.defusing():
+				line += "   defusing %3d%%%s" % [
+					roundi(bomb.defuse_progress(now) * 100.0), " with the kit" if bomb.defuse_with_kit else "",
+				]
+				if bomb.defuse_ends_usec > bomb.explodes_usec:
+					line += ", too late"
+			return line
+		C4.State.DEFUSED:
+			return "BOMB   defused: press 5 for another"
+		C4.State.EXPLODED:
+			return "BOMB   exploded: press 5 for another"
+	return "BOMB   -"
 
 
 # --- Being shot ------------------------------------------------------------
@@ -618,6 +762,8 @@ func _reset() -> void:
 	_log.clear()
 	if dummy != null:
 		dummy.respawn()
+	if bomb != null:
+		bomb.give_to(PLAYER_ID, player.global_position)
 	print("Range cleared.")
 
 
