@@ -116,6 +116,19 @@ static func player_spawns(entities: Array[Dictionary]) -> Dictionary:
 	return spawns
 
 
+## The map's bombradius (info_map_parameters: 700 on dust2; the game's
+## default is 500), or -1 where it sets none. Despite its name it is the old
+## bomb's damage, not its reach: before the July 2026 shockwave the blast did
+## this much at its middle and reached 3.5 times as far (2,450 units on
+## dust2), falling off as a Gaussian a third of that reach wide (CS:GO's
+## CPlantedC4::Explode and CCSGameRules::RadiusDamage).
+static func bomb_radius(entities: Array[Dictionary]) -> float:
+	for entity in entities:
+		if entity.get("classname", "") == "info_map_parameters" and entity.has("bombradius"):
+			return float(entity["bombradius"])
+	return -1.0
+
+
 ## The map's named places, the callouts the radar shows ("BombsiteA",
 ## "LongDoors"): each name to the game-space origins of the brushes that carry
 ## it (env_cs_place, 43 on dust2 over 24 names). A brush's origin is its

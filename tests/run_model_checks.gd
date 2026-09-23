@@ -341,12 +341,15 @@ func _test_sound_sets() -> void:
 func _start_bot() -> void:
 	_bot_world = Node3D.new()
 	root.add_child(_bot_world)
+	# Ground, which a round does not go through: 2 units of it did, once
+	# rounds went through walls (PR #31), and the round meant to leave a hole
+	# in it went on into nothing. Its top is still at 0.
 	var floor := StaticBody3D.new()
 	var shape := CollisionShape3D.new()
 	shape.shape = BoxShape3D.new()
-	(shape.shape as BoxShape3D).size = Vector3(1000, 2, 1000)
+	(shape.shape as BoxShape3D).size = Vector3(1000, 128, 1000)
 	floor.add_child(shape)
-	floor.position.y = -1.0
+	floor.position.y = -64.0
 	_bot_world.add_child(floor)
 	_bot = (load("res://src/bots/bot.tscn") as PackedScene).instantiate() as Bot
 	_bot.team = "CT"

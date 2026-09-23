@@ -222,19 +222,20 @@ scripts/extract_assets.sh weapons      # every gun: models and animations
 scripts/extract_assets.sh sounds       # every gun's sounds, footsteps by surface, hits
 ```
 
-`map` takes a few minutes and a little under two gigabytes. It pulls eight
+`map` takes a few minutes and a little under two gigabytes. It pulls ten
 things out of the game: the visible world as glTF with its textures, the
 collision hull as a second glTF, the entity lump as text, the nav mesh the
-game's bots walk, the second texture
+game's bots walk, the volumes of the buy zones, bomb sites and callouts (with
+the game's baked bomb damage), the radar and where it lies, the second texture
 layer of every material that has one (which a glTF has no room for), the sky
 as an HDR panorama, the 3D skybox (the buildings and hills beyond the map, a
-small map of their own, drawn behind everything as the game draws it),
-and the lightmaps the game baked its bounce light
-into, with the light probes beside them. `physics`, `entities`, `nav`,
-`layers`, `sky`, `skybox` and `lightmaps` fetch the last seven on their own;
-all but the lightmaps take seconds. The lightmaps are one 300 MB image, which
-Godot's first import spends a few minutes compressing to 90; the probes are
-720 small slices that the game packs into one file the first time it runs.
+small map of their own, drawn behind everything as the game draws it), and the
+lightmaps the game baked its bounce light into, with the light probes beside
+them. `physics`, `entities`, `nav`, `volumes`, `radar`, `layers`, `sky`,
+`skybox` and `lightmaps` fetch the last nine on their own; all but the
+lightmaps take seconds. The lightmaps are one 300 MB image, which Godot's
+first import spends a few minutes compressing to 90; the probes are 720 small
+slices that the game packs into one file the first time it runs.
 
 The nav mesh is the game's own, `maps/de_dust2.nav`: the floor cut into
 2,242 convex areas, with the links between them that CS2's bots path over,
@@ -245,6 +246,19 @@ another (`route` for the areas, `find_path` for points to walk through). The
 bots do not walk it yet. The file ends in the game's analysis of the mesh
 (hiding spots, where the two sides meet on each route, how early each team
 can reach each area), which is compressed KV3 and not read yet.
+
+The buy zones, bomb sites and callouts are brush entities, which the world's
+glTF and collision hull leave out (the world export's world_physics.gltf has
+them, but named only by class): each is a small model of its own in the
+map's archive, named by its entity. `src/map/brush_volume.gd` (`BrushVolume`) reads them as
+convex solids, with a point test and shapes for an `Area3D`: one buy zone a
+side, holding its side's 15 spawns, and the two sites, A an L of two boxes,
+spanning the boxes the game baked its bomb damage for (A's baked box is its
+L's bounds, notch and all, so a plant is tested against the volume). That bake
+(`baked_bomb_damage.vdata`) samples 85,697 points on a 10-unit grid; its
+boxes and grid are read, its damage values not yet. The radar is the game's
+overview image and the text that places it over the map; `MapOverview` goes
+from game space to the image and back.
 
 `weapons` fetches every gun with its first- and third-person animations and
 the game's weapon tuning, and `hud` the scope overlay and equipment icons.
@@ -395,9 +409,9 @@ Note that GDScript's analyser warnings (shadowed variables, unused locals) only
 appear when the editor loads a script. They do not show up in a headless run,
 so if the Godot console shows any, paste them over and they will get fixed.
 
-Seven files: movement, map import, dust2, models, weapons, the test range
-and the simulation. Without the extracted assets 530 checks run and pass;
-the dust2 and model files skip what needs files that have not been
+Eight files: movement, map import, dust2, models, weapons, penetration, the
+test range and the simulation. Without the extracted assets 590 checks run
+and pass; the dust2 and model files skip what needs files that have not been
 extracted.
 
 Half of the movement ones are the acceleration model against hand-computed
