@@ -438,7 +438,10 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
     own player, everyone else is drawn between snapshots, and a shot is
     checked against what the shooter saw (up to 1 s back). Godot's ENet gives
     the transport; prediction, snapshot buffering and the rewind are built on
-    it. A dedicated server build, and connecting by address.
+    it. A dedicated server build, and connecting by address. What each part
+    will cost, and what to settle before it (the tick rate; a server that
+    builds nothing to be seen; hitboxes posed by the tick, and their history
+    kept as capsules), is in `reference/performance.md`.
 
 ### Phase 10: a game you can hand to someone
 
