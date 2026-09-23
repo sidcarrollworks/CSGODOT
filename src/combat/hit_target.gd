@@ -44,6 +44,14 @@ var last_hitbox: Hitbox
 ## The way the last round that hit was travelling, for a body to fall with
 ## it.
 var last_hit_direction: Vector3 = Vector3.ZERO
+## Where the last round that hit came from, and what fired it: for the one
+## hit to know which way to look and how hard it was tagged. Null weapon for
+## damage that came from no weapon.
+var last_hit_from: Vector3 = Vector3.ZERO
+var last_hit_weapon: WeaponData
+## Whether armour took a share of the last hit: kevlar on the body, a
+## helmet on the head. An armoured hit throws the aim far less.
+var last_hit_armored: bool = false
 
 var _hitboxes: Array[Hitbox] = []
 var _starting_armor: float = 100.0
@@ -159,9 +167,10 @@ func apply_damage(amount: float, zone: StringName, armor_penetration: float, hit
 	if not alive:
 		return 0.0
 	last_hitbox = hitbox
+	last_hit_armored = is_armored(zone)
 
 	var dealt := amount
-	if is_armored(zone):
+	if last_hit_armored:
 		dealt = amount * armor_penetration
 		armor = maxf(armor - (amount - dealt) * 0.5, 0.0)
 

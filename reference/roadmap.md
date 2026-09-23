@@ -1,7 +1,8 @@
 # CSGODOT roadmap
 
 Written 2026-09-22 off `main` at `173a35e` (PR #21), read from the code rather
-than from notes, and brought up to date with PRs #23 to #25 at 23:00. It
+than from notes, brought up to date with PRs #23 to #25 at 23:00, and
+with PR #27 (phase 1's Remote items: being shot) on 2026-09-22. It
 replaces `plan-to-playable.md`, most of which has landed. This copy in the
 repo is the one to keep current: whoever lands a roadmap item marks it done
 here in the same PR.
@@ -75,8 +76,12 @@ Updated 2026-09-22: weapon numbers from Sid's spreadsheet and tapping (PR #23), 
 ### Combat
 - Bots and the player share one damage path (`Hitscan.fire_at` then
   `HitTarget.apply_damage`).
-- Bots wear CS2's 19 hitbox capsules on their bones; bullets pass the hull and
-  only hitboxes count.
+- Bots and the player wear CS2's 19 hitbox capsules on their bones; bullets
+  pass the hull and only hitboxes count. The player's are on a third-person
+  body the simulation poses each tick and nobody sees (PR #27).
+- Being hit tags you (the sheet's tagging power, two CS2 ticks after the
+  hit, back over 1.5 s) and throws your aim, and your next rounds with it
+  (PR #27). Bots too.
 - The player has health and armour, dies, and is back at spawn after 3 s.
 - Bots die into a ragdoll built from their capsules, back on their route
   after 5 s.
@@ -95,13 +100,18 @@ Updated 2026-09-22: weapon numbers from Sid's spreadsheet and tapping (PR #23), 
   headshot, kill), footsteps and landings per surface, impact sounds.
 
 ### HUD
-- Crosshair, health, ammo, death countdown, the movement tuning readout, and
-  where you stand and look in the top left (PR #25, F3 hides it).
+- Crosshair, health, armour, ammo, death countdown, the movement tuning
+  readout, and where you stand and look in the top left (PR #25, F3 hides
+  it).
+- A red arc round the crosshair on the side each hit came from (PR #27).
+- On the test range, a shooter that fires at you on B, with its weapon (U),
+  your armour (Y) and never-die (J) switched, a readout of your tag and
+  flinch, and a window on your own hitboxes (T) (PR #27).
 
 ### Tooling
 - `scripts/extract_assets.sh` (map, physics, weapons, characters, sounds and
   more), `inspect_assets`, and `run_tests.sh` with seven headless test files
-  (movement, map, dust2, model, weapon, range, simulation): 482 checks pass
+  (movement, map, dust2, model, weapon, range, simulation): 516 checks pass
   without the assets.
 
 ---
@@ -113,25 +123,47 @@ Items marked **(Sid)** need Sid's machine or a decision from him.
 
 ### Phase 1: make being shot feel like CS2
 
-This is the unfinished half of hit registration. The player can shoot bots
-well; being shot by them is still a stand-in.
+This was the unfinished half of hit registration. Items 1 to 4 are in (PR
+#27); blood and the third-person firing layer are left.
 
-1. **The player's own hitboxes.** *(Remote; Sid checks the fit)* The bots and the range dummy wear the 19
-   capsules (PR #20); the local player does not. The player still wears `HitTarget`'s four
-   static boxes (`PlayerSim._build_hit_target`), so a bot's headshot on you lands on a box at a fixed height,
-   whether you are crouched, jumping or mid-strafe. Put the same 19 capsules
-   the bots wear on the player's third-person body, which is already built for
-   the first-person view and shadow. Fair hit registration has to work both
-   ways.
-2. **Tagging.** *(Remote)* In CS2 a player who is hit slows down sharply. Nothing does
-   that here yet, and it changes how every fight plays. The spreadsheet gives
-   both rifles 60% tagging power.
-3. **Aim punch when hit.** *(Remote)* CS2 kicks the view of a player who takes a round
-   (lighter with a helmet). Not here yet; the view punch spring to hang it on
-   already exists.
-4. **Damage direction indicator and armour on the HUD.** *(Remote)* The HUD shows health
-   and ammo but not armour, and nothing says where a hit came from. Nothing on
-   dust2 listens to `HitTarget.damaged` yet.
+1. **The player's own hitboxes.** *(done, PR #27; Sid checks the fit)* The player
+   wears the same 19 capsules as the bots, on a third-person body the
+   simulation carries and poses each tick (`PlayerSim.wear_body`), hidden,
+   since the view draws its own body set back from the eyes. Crouched,
+   jumping or mid-strafe, a bot's round meets your head where your head is.
+   Without the character extracted the four boxes stand in, and the console
+   says so (`--- your hitboxes:`). **Sid:** play dust2 with the hitboxes
+   drawn on a bot, and on the test range press T to watch your own capsules
+   from outside while you crouch, strafe and jump; the model
+   checks now assert 19 capsules on you with the head 50 to 72 units up.
+2. **Tagging.** *(done, PR #27; Sid checks the feel)* A hit leaves the player
+   1 minus the weapon's tagging power of their top speed (40% after an AK-47
+   round, a stop after an SMG's), two CS2 ticks after it lands
+   (`sv_predictable_damage_tag_ticks`), and friction brings them down to
+   it. The tagging power is CS2's `m_flFlinchVelocityModifierLarge` taken
+   from one, read from the game's own file through `WeaponVData` (the sheet
+   agrees for every gun). Still estimated: the speed comes back at CS:GO's
+   0.4 a second, and weapons.vdata's `...Small` figure, in
+   `reference/weapons/vdata.csv` for every gun, is not used (**measure**,
+   below).
+3. **Aim punch when hit.** *(done, PR #27; Sid checks the size)* A hit pushes the
+   aim up about 2 degrees unarmoured and half a degree through kevlar or a
+   helmet, recovering the way a spray's aim punch does, within about
+   0.4 s. Unlike the recoil's view kick it is the aim: the
+   crosshair shows it and rounds fired meanwhile go there. Both sizes are
+   estimates; CS2 scales its flinch by `mp_flinch_punch_scale` 3 but does
+   not publish the base.
+4. **Damage direction indicator and armour on the HUD.** *(done, PR #27)* Armour
+   beside health, with a helmet's dome on the shield when there is one; a
+   red arc round the crosshair for each hit, on the side the round came
+   from, fading after 1.5 s.
+
+4a. **Measure being shot in CS2.** *(Local)* With a friend or bots on a
+   local server: how long a tag takes to wear off after one AK-47 body
+   shot (1.5 s here), whether a leg shot or a shot through kevlar tags less
+   (the `...Small` modifier and A1 in `reference/cs2-systems.md`), and a
+   screenshot pair of the view just before and just after an unarmoured
+   hit, to size the flinch (2 degrees here).
 5. **Blood on hit.** *(Local extracts the effects, then Remote)* A round into a body leaves no mark, so a hit is only
    heard, not seen. CS2's blood impact and decal behind the target.
 6. **Firing on the third-person model.** *(Remote; Sid checks it)* `PlayerModel` still says "Nothing is
@@ -173,8 +205,10 @@ Sid widened the scope to every gun in the sheet.
 Sid's machine (extracting models, animations and sounds, measuring reloads,
 spray patterns, fitting, playtests) and what a cloud thread can do (a weapon
 registry off the sheet, semi-auto, modes, scopes, shotguns, slots, buy menu,
-tracers). Extraction can start on Sid's machine at once; the registry can
-start in a thread at once.
+tracers). The extraction is done (L1 to L5, 2026-09-22): every gun's model,
+animations and sounds, and the game's own tuning and timings in
+`reference/weapons/`. The registry can start in a thread at once, taking its
+numbers from `WeaponVData`.
 
 ### Every CS2 system (new, 2026-09-22 21:40)
 
@@ -310,6 +344,8 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 | Hands | Measure jump height, crouch-jump reach, dead-strafe feel | Movement check |
 | Hands | Playtest the range dummy and ragdoll on current assets | Confirms PR #20 |
 | Hands | Check that first shots at a run now miss (PR #24) | Item 9 |
+| Hands | Play being shot on the test range (B, U, Y, J, T) and dust2: your capsules' fit, the tag, the flinch, the hit arcs (PR #27) | Items 1 to 4 |
+| Hands | Measure a tag's length and the flinch's size in CS2 | Item 4a |
 | Done | The every-gun extraction (weapons TODO L1 to L3), and reload, draw and zoom figures from the game's own data (L5) | Every gun: `reference/weapons/models.md`, `sounds.md`, `timings.md`, `vdata.md` |
 | Decided | The game's own numbers win over the sheet's wherever the game has them (Sid, 2026-09-22), the Desert Eagle's jump inaccuracy included (46.75, not 378.30) | `WeaponVData`, every gun |
 | Hands | The systems' Local list in `reference/cs2-systems.md`: buy zones and bomb sites (B1), radar (B3), bomb (C1 to C3), grenades (G1 to G6), knife and Zeus (K1, K2), sounds (S1, S2) | Phases 4 to 7 |
@@ -334,5 +370,6 @@ the split rather than before it); then being shot feels right and the
 shooting model is finished; then a match of rounds with money and
 buying, the bomb, grenades, the knife and Zeus, bots that play the round,
 multiplayer, and menus with a build. Every gun runs alongside all of it.
-The split is done (PR #24), so being shot is next; the housekeeping can
-start today; phase 8 waits on the nav mesh.
+The split is done (PR #24) and being shot is in apart from blood and the
+third-person firing layer (PR #27), so finishing the shooting model is
+next; the housekeeping can start today; phase 8 waits on the nav mesh.

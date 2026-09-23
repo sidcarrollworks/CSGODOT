@@ -79,8 +79,8 @@ Everything on it is a measurement, not decoration:
 ## The test range
 
 `maps/test_range/test_range.tscn`. A flat wall 512 units away to spray at,
-ruled in degrees, and beside it a lane with a dummy in it to check damage
-against.
+ruled in degrees, beside it a lane with a dummy in it to check damage
+against, and off to the left a bot that shoots you when you tell it to.
 
 | Key | |
 |---|---|
@@ -92,6 +92,11 @@ against.
 | `K` | the dummy's armour: kevlar and helmet, kevlar, none |
 | `N` | the dummy's distance: 256, 512, 1024, 2048 units |
 | `G` | the dummy never dies: a kill is logged and it is refilled, so a whole spray registers |
+| `B` | the shooter fires at you, or holds its fire |
+| `U` | the shooter's weapon: AK-47, M4A1-S, MP9 |
+| `Y` | your armour: kevlar and helmet, kevlar, none |
+| `J` | you never die: a kill refills you |
+| `T` | a window on your own body and hitboxes: from the front, from the side, off |
 
 Every bullet leaves a mark: dark on the wall, red on the dummy. The readout
 shows the current shot index in the pattern and the size of the inaccuracy cone
@@ -119,6 +124,22 @@ in kevlar and a helmet, as an opponent in a rifle round would be. Killed, it
 falls as a ragdoll, knocked the way the round was going, and two and a half
 seconds later stands up again where it was, whole. G makes it never die
 instead.
+
+**The shooter** is a dust2 bot on the red spot left of the wall, armed and
+facing the spawn, holding its fire. B sets it on you: it turns, and fires
+in bursts with its weapon's own spread and recoil and a bot's aim error.
+Each hit tags you (the readout in the bottom left gives the share of your
+top speed you have left and how fast you are going, so run while it fires),
+throws your aim (the flinch, in degrees), and puts a red arc round the
+crosshair on its side. U swaps its weapon: the rifles tag to 40%, the MP9
+(its row of the weapon sheet on the AK-47's spray, which is not measured
+for it) stops you. Y takes your armour off a piece at a time, for the
+flinch with and without it; J keeps you alive for as long as you want to be
+shot. T opens a window in the bottom right on your own body and hitboxes,
+which your camera never shows: the capsules the bots' rounds meet, from in
+front of you or from your side, to check them against how you stand,
+crouch, strafe and jump. Without the character extracted it shows the four
+stand-in boxes.
 
 `P` turns the marks you just made back into a spray pattern file in the same
 format the weapons read, so a pattern can be adjusted by eye against a CS2
@@ -249,10 +270,20 @@ them, the game's death clip for where the round landed plays instead.) And it sh
 a player in its sight (in the open, within its cone, for half a second)
 stops it in its tracks; it turns, and fires its weapon in bursts with the
 weapon's own spread and recoil, reloading when it runs dry. You have the
-same health and armour a bot has, zones a round can land on, a HUD with a
-crosshair, health and ammunition, and three seconds dead before you are
-back at your spawn with a full magazine. Bots do not take cover, flinch or
-think beyond that. In the top left the HUD says where you stand and look,
+same health and armour a bot has, and the same nineteen capsules: your
+simulation carries the third-person body nobody sees, posed each tick for
+how you move, crouch and jump, so a bot's round meets your head where your
+head is (without the character extracted, HitTarget's four standard boxes
+stand in, and the console says so). Being hit works as in CS2, for you and
+the bots alike: a round tags you, leaving you the share of your speed its
+weapon's tagging power spares (40% after an AK-47 round) a couple of ticks
+later and giving it back over 1.5 s, and it throws your aim up about 2
+degrees, half a degree through armour, taking your next rounds with it
+(`src/player/player_sim.gd`). The HUD has a crosshair, health, armour (the
+shield gets a helmet's dome when you have one), ammunition, a red arc round
+the crosshair on the side each hit came from (`src/ui/damage_indicator.gd`),
+and three seconds dead before you are back at your spawn with a full
+magazine. Bots do not take cover or think beyond that. In the top left the HUD says where you stand and look,
 like CS2's `getpos`: the feet's position and the view's yaw and pitch,
 which is everything needed to put a render where a screenshot was taken.
 F3 hides it.
@@ -339,7 +370,7 @@ appear when the editor loads a script. They do not show up in a headless run,
 so if the Godot console shows any, paste them over and they will get fixed.
 
 Seven files: movement, map import, dust2, models, weapons, the test range
-and the simulation. Without the extracted assets 485 checks run and pass;
+and the simulation. Without the extracted assets 519 checks run and pass;
 the dust2 and model files skip what needs files that have not been
 extracted.
 
@@ -414,10 +445,9 @@ original assets later is a content change rather than a git history problem.
 
 ## What is deliberately not here yet
 
-No bots that do anything but walk their spawn, no nav mesh, no firing
-animation on the third-person model, no per-bone hitboxes: a bullet hits a
-bot's hull, not its head. Shooting fires from a gun you can see at a dummy
-that does not move.
+No bots that do anything but walk their spawn and shoot what they see, no
+nav mesh, no firing animation on the third-person model. `reference/roadmap.md`
+has the rest, in order.
 
 Movement and shooting are tuned in flat grey rooms first, because tuning them
 on a real map is much harder and everything built on top of bad movement is

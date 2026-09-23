@@ -111,7 +111,9 @@ class Punch:
 @export var penetration_power: float = 2.0
 
 ## How much of a victim's speed a hit takes away, as the weapon sheet gives
-## it (0.6 for rifles). Not used yet: tagging is on the roadmap.
+## it (0.6 for rifles): an AK-47 round leaves its victim 40% of their speed
+## (PlayerSim's tagging). It is CS2's m_flFlinchVelocityModifierLarge taken
+## from one; the sheet has no column for the Small figure beside it.
 @export var tagging_power: float = 0.6
 
 # --- Rate of fire ---------------------------------------------------------

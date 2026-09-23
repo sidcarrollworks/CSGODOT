@@ -58,7 +58,7 @@ takes.
 | Penetration Power | How well a round goes through walls: 100% SMGs, shotguns and most pistols; 200% rifles, LMGs, the Deagle and the R8; 250% snipers | `penetration_power`, not used yet |
 | Magazine Size, Reserve, Total Ammo | Reserve is counted in magazines, or in rounds for the tube-fed shotguns | `magazine_size`, `reserve_ammo` = total - magazine |
 | Mobility | Top running speed holding it, u/s | `max_player_speed` |
-| Tagging Power | How much of a victim's speed a hit takes | `tagging_power`, not used yet |
+| Tagging Power | How much of a victim's speed a hit takes | `tagging_power`, tags the victim in `PlayerSim` (1 minus CS2's `m_flFlinchVelocityModifierLarge`) |
 | Bullet Range | Where a round stops: 8,192 rifles and snipers, 3,600 or 3,700 SMGs, 4,096 pistols, 1,400 or 3,000 shotguns | `max_range` |
 | Hold to Shoot | Automatic or not | `automatic`, not used yet |
 | Tracers | Every round, every third, or none (silenced) | Not yet: no tracers |

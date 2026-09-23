@@ -48,11 +48,12 @@ const PAUSE_SECONDS := 0.45
 const AIM_ERROR_DEGREES := 1.2
 const FIRE_WITHIN_DEGREES := 6.0
 
-var model: PlayerModel
-## The model's hitboxes, on its bones.
-var hitboxes: SkinnedHitboxes
 ## Its body falling, while it is dead; null otherwise.
 var ragdoll: Ragdoll
+
+## Armed but not shooting: it sees nobody, so it stands or walks its route.
+## The test range's shooter waits like this until it is told to fire.
+@export var holds_fire: bool = false
 
 ## What it hears of its weapon, in the world.
 var weapon_sounds: WeaponSounds
@@ -62,7 +63,6 @@ var target: Node3D
 signal died(zone: StringName)
 
 var _next: int = 0
-var _capsules: Array[Dictionary] = []
 var _deaths: int = 0
 var _seen_for: float = 0.0
 var _burst_clock: float = 0.0
@@ -84,13 +84,8 @@ func _ready() -> void:
 	shot_traced.connect(_on_shot_traced)
 	reload_started.connect(_on_reload_started)
 
-	model = PlayerModel.new()
-	model.name = "Model"
-	add_child(model)
-	if not model.setup(team, weapon_model):
-		model.queue_free()
-		model = null
-	else:
+	# The body, drawn, and its hitboxes are PlayerSim's (wear_body).
+	if model != null:
 		var footsteps := Footsteps.new()
 		footsteps.name = "Footsteps"
 		add_child(footsteps)
@@ -103,31 +98,32 @@ func _ready() -> void:
 		weapon_sounds.spatial = true
 		add_child(weapon_sounds)
 		weapon_sounds.equip(weapon_data)
-	if model != null:
-		hitboxes = SkinnedHitboxes.new()
-		hitboxes.name = "Hitboxes"
-		add_child(hitboxes)
-		_capsules = HitboxSet.load_for(PlayerModel.AGENTS.get(team, PlayerModel.AGENTS["T"]))
-		hitboxes.build(model.character_rig, _capsules, hit_target, MapImporter.SOURCE2_VIEWER_SCALE)
-	# Without the model's capsules (not extracted, or a broken extraction),
-	# the four standard boxes, and a grey body to see them by when there is
-	# no model either: a bot has to be something that can be shot.
-	if hit_target.hitboxes().is_empty():
-		hit_target.build_standard_body(model == null)
 
 
-## The model's capsules, on its bones, carry its hitboxes; HitTarget builds
-## none of its own.
-func _build_hit_target() -> HitTarget:
-	var target_node := HitTarget.new()
-	target_node.build_own_hitboxes = false
-	return target_node
+## Hands it another weapon's numbers, loaded; it keeps the model it holds.
+func arm(data: WeaponData) -> void:
+	weapon_data = data
+	weapon = Weapon.new(data)
+	weapon.trigger_held = false
+	if weapon_sounds != null:
+		weapon_sounds.equip(data)
+
+
+## A bot's body is seen, holding its weapon. Without the model's capsules
+## (not extracted, or a broken extraction) it wears the four standard boxes,
+## with a grey body to see them by when there is no model either: a bot has
+## to be something that can be shot.
+func _body_weapon_model() -> String:
+	return weapon_model
+
+
+func _body_drawn() -> bool:
+	return true
 
 
 func _physics_process(delta: float) -> void:
 	run_command(_think(delta), delta)
 	if alive and model != null:
-		model.update_motion(velocity, yaw_degrees, is_ducked, on_ground)
 		model.light_from(global_position + Vector3.UP * 40.0)
 
 
@@ -148,7 +144,7 @@ func _think(delta: float) -> UserCmd:
 		return cmd
 
 	# Nothing to shoot with, nothing to stop for: an unarmed bot just walks.
-	target = _look_for_target() if weapon != null else null
+	target = _look_for_target() if weapon != null and not holds_fire else null
 	if target != null:
 		_seen_for += delta
 	else:
@@ -297,6 +293,7 @@ func respawn() -> void:
 		global_position = route[0]
 		_next = 1 % route.size()
 	velocity = Vector3.ZERO
+	_forget_hits()
 	if ragdoll != null:
 		ragdoll.queue_free()
 		ragdoll = null
