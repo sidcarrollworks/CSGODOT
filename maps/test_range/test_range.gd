@@ -36,6 +36,9 @@ extends Node3D
 ## you. You plant as a terrorist and defuse as a counter-terrorist. Let it
 ## go off and it does dust2's damage to you and the dummy, by distance.
 ## Press 5 again once it has gone off or been defused for a new one.
+##
+## And CS2's grenades, all six, thrown from where you stand
+## (GrenadeLane): 4 picks one, Q throws it, Z lobs it, X throws between.
 
 ## Distance from the firing line to the wall. Spray references are usually
 ## drawn at a fixed distance, so this needs to match whatever you compare
@@ -133,6 +136,9 @@ var bomb_view: C4View
 ## The bomb's keys held since a press the range was given (_follow_bomb_key).
 var _bomb_keys_down := {}
 
+## The grenades: throwing them, what they did, and drawing them.
+var grenades: GrenadeLane
+
 
 func _ready() -> void:
 	world = GameWorld.new()
@@ -157,6 +163,7 @@ func _ready() -> void:
 	_build_shooter()
 	_build_bomb()
 	_build_hud()
+	_build_grenades()
 	shop = RangeShop.new()
 	shop.name = "Shop"
 	add_child(shop)
@@ -1000,6 +1007,13 @@ func _build_player() -> void:
 	player.hurt.connect(_on_player_hurt)
 	# Your hitboxes are drawn, on the layer only the hitbox window sees.
 	player.hit_target.set_hitboxes_drawn(true)
+
+
+func _build_grenades() -> void:
+	grenades = GrenadeLane.new()
+	grenades.name = "Grenades"
+	add_child(grenades)
+	grenades.build(self)
 
 
 func _build_hud() -> void:
