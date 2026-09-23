@@ -465,9 +465,9 @@ appear when the editor loads a script. They do not show up in a headless run,
 so if the Godot console shows any, paste them over and they will get fixed.
 
 Nine files: movement, map import, dust2, models, weapons, penetration, the
-test range, the simulation and the match. Without the extracted assets 703
-checks run and pass; the dust2 and model files skip what needs files that
-have not been extracted.
+test range, the simulation and the match. Without the extracted assets 722
+checks run and pass, 929 with them; the dust2 and model files skip what
+needs files that have not been extracted.
 
 Half of the movement ones are the acceleration model against hand-computed
 values, which is the part that decides feel and the part most likely to be
@@ -506,11 +506,14 @@ running a `UserCmd` (`src/sim/user_cmd.gd`), shaped like CS2's user command:
 the buttons held, the move keys, the look angles, and each press or release
 inside the tick with the fraction of the tick it happened at. Your keys
 become one command a tick (`PlayerInput.build_command`); a bot's brain
-writes its own. The simulation never reads the keys or the wall clock: its
-time is the tick number (`src/sim/sim_clock.gd`), so the same commands give
-the same game however fast they are run, which `tests/run_sim_checks.gd`
-holds it to. What you see and hear, the camera, the arms, your body and
-shadow, sounds and bullet holes, is `PlayerView`
+writes its own. One `GameWorld` (`src/sim/game_world.gd`) runs the game,
+as a server does: every tick it asks each player for their command, runs
+them in the order they joined (on dust2 you, then the bots), then the
+match; nothing else runs itself. The simulation never reads the keys or the
+wall clock: its time is the world's tick number (`src/sim/sim_clock.gd`),
+so the same commands give the same game however fast they are run, which
+`tests/run_sim_checks.gd` holds it to. What you see and hear, the camera,
+the arms, your body and shadow, sounds and bullet holes, is `PlayerView`
 (`src/player/player_view.gd`), which reads the simulation and never changes
 it.
 
@@ -540,7 +543,7 @@ twenty, what going online will add, and what to do about it next;
 ## Layout
 
 ```
-src/sim/         user commands and simulation time
+src/sim/         user commands, simulation time, the world that runs the tick
 src/movement/    the acceleration model and collide-and-slide
 src/player/      the player simulation, input to commands, the first-person view
 src/map/         glTF map import, and the map's entity data (spawn points)
