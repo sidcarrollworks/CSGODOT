@@ -156,6 +156,13 @@ common/physics_ticks_per_second=128
 common/max_physics_steps_per_frame=16
 3d/default_gravity=0.0
 3d/default_gravity_vector=Vector3(0, 0, 0)
+3d/physics_engine="Jolt Physics"
+jolt_physics_3d/simulation/penetration_slop=0.787
+jolt_physics_3d/simulation/speculative_contact_distance=0.787
+jolt_physics_3d/simulation/bounce_velocity_threshold=39.37
+jolt_physics_3d/simulation/sleep_velocity_threshold=1.181
+jolt_physics_3d/simulation/body_pair_contact_cache_distance_threshold=0.0394
+jolt_physics_3d/limits/max_linear_velocity=19685.0
 
 [rendering]
 

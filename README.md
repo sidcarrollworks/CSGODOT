@@ -27,6 +27,13 @@ It means Godot's default gravity is turned off in project settings and the
 camera near plane is set to one unit. If a number here looks enormous,
 that is why.
 
+The physics engine is Jolt, and Jolt's settings assume metres. The ones that
+are lengths or speeds (how far bodies may sink into each other before they
+are pushed apart, how slowly a body must move to fall asleep, the fastest
+any body may go) are set in project settings to their defaults times 39.37.
+Left alone, the speed limit of 500 was 500 u/s, which a falling body passes
+156 units down.
+
 One more unit to know about: CS2's field of view numbers (`fov 90`,
 `viewmodel_fov 68`) are the horizontal angle at 4:3, as Source games have
 always meant them; Godot's `Camera3D.fov` is vertical. They are converted
@@ -449,7 +456,7 @@ appear when the editor loads a script. They do not show up in a headless run,
 so if the Godot console shows any, paste them over and they will get fixed.
 
 Nine files: movement, map import, dust2, models, weapons, penetration, the
-test range, the simulation and the match. Without the extracted assets 695
+test range, the simulation and the match. Without the extracted assets 697
 checks run and pass; the dust2 and model files skip what needs files that
 have not been extracted.
 
@@ -501,13 +508,14 @@ it.
 A tick at 128 Hz is 7.8 ms, and every player's share of it has to fit with
 room left to draw the frame. When it does not, each frame runs more ticks to
 catch up, which makes the frame longer still, and the game crawls. Ten
-players on dust2 take about 4 ms a tick (headless, 2026-09-23), most of it
-their movement: a trace of the hull through dust2's collision costs 20 to 50
-us, and a player makes 2 of them a tick standing still and 5 running in the
-open, more against a wall or a slope. So nothing that reads the disk runs in
-a tick (the footsteps' check for the sound folder, every tick for everyone,
-was a quarter of it), and what is only seen, like the probe light on a bot's
-body, follows the frames drawn rather than the ticks.
+players on dust2 take about 3.5 ms a tick on Jolt (4.3 on Godot Physics;
+headless, 2026-09-23), most of it their movement: a trace of the hull
+through dust2's collision costs 20 to 50 us, and a player makes 2 of them a
+tick standing still and 5 running in the open, more against a wall or a
+slope. So nothing that reads the disk runs in a tick (the footsteps' check
+for the sound folder, every tick for everyone, was a quarter of it), and
+what is only seen, like the probe light on a bot's body, follows the frames
+drawn rather than the ticks.
 
 ## Layout
 
