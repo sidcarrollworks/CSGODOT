@@ -255,6 +255,16 @@ static func _centre_of(space_name: StringName) -> StringName:
 	return {&"stand": &"idle", &"crouch": &"idle_crouch", &"air_stand": &"inair_stand", &"air_crouch": &"inair_crouch_stand"}[space_name]
 
 
+## Draws the body alpha of the way from where its player stood and faced a
+## tick before the last to where the last tick left them, as a frame falling
+## between the two should show it: at 64 ticks a second a body drawn where
+## the last tick put it moves in steps on a faster screen. The hitboxes ride
+## its bones, so a round meets it where the shooter saw it.
+func show_between(from: Vector3, to: Vector3, from_yaw_degrees: float, to_yaw_degrees: float, alpha: float) -> void:
+	global_position = from.lerp(to, alpha)
+	rotation.y = PI + lerp_angle(deg_to_rad(from_yaw_degrees), deg_to_rad(to_yaw_degrees), alpha)
+
+
 ## Moves the animation with the body. velocity is in world space, yaw is
 ## where the body faces in the game's degrees (PlayerInput's), crouch how far
 ## down it is, 0 to 1 (PlayerBody.duck_progress).

@@ -8,6 +8,11 @@ extends SceneTree
 ## The last section builds a real target and traces real bullets at it, which
 ## is the part that would otherwise only be checked by squinting at a dummy.
 
+## How often these checks step and sample a weapon: every 1/128 s, finer
+## than the game's tick. A weapon runs on simulation time, not ticks (its
+## rounds go at their own instants, its punch is integrated in steps no
+## coarser than this whatever it is handed), so the step here is only how
+## closely the checks look: fine enough not to miss a peak between looks.
 const DT := 1.0 / 128.0
 const SECOND := 1_000_000
 

@@ -969,8 +969,11 @@ func _test_player_composes_kick_and_bob() -> void:
 	var rest := player.view_model.transform
 	var now := Time.get_ticks_usec()
 	player.weapon.fire(now, 0.5, Vector3.ZERO, 0.0, 0.0, Weapon.ShooterState.new())
-	player.weapon.update(1.0 / 128.0, now + 7813)
+	player.weapon.update(SimClock.tick_seconds(), now + SimClock.tick_usec())
 	var kick := player.weapon.viewmodel_punch()
+	# The same over the last two ticks, so a frame between them, which is
+	# where the view draws the kick, shows it exactly.
+	player.previous_viewmodel_punch = kick
 	player.view._update_viewmodel(1.0 / 60.0)
 	var expected := rest.basis * Basis.from_euler(Vector3(deg_to_rad(kick.y), deg_to_rad(-kick.x), 0.0))
 	_check(
@@ -981,6 +984,7 @@ func _test_player_composes_kick_and_bob() -> void:
 
 	# Running: the same kick, on top of the bob's offset.
 	player.velocity = Vector3(0.0, 0.0, -250.0)
+	player.previous_viewmodel_punch = player.weapon.viewmodel_punch()
 	for frame in 20:
 		player.view._update_viewmodel(1.0 / 60.0)
 	kick = player.weapon.viewmodel_punch()

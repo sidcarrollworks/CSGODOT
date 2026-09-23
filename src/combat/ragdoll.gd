@@ -92,6 +92,8 @@ var _order: Array[int] = []
 var _host: Dictionary = {}
 ## The jointed pairs, [parent body, child body], for the joints' friction.
 var _pairs: Array = []
+## Each body's transform before the last tick's step, for pose_skeleton.
+var _before_step: Dictionary = {}
 
 
 func _init() -> void:
@@ -188,6 +190,7 @@ func clear() -> void:
 	_order.clear()
 	_host.clear()
 	_pairs.clear()
+	_before_step.clear()
 	_skeleton = null
 
 
@@ -199,6 +202,10 @@ func _process(_delta: float) -> void:
 ## the same share every step, taken from both bodies by their weight, so the
 ## body as a whole keeps its spin and only the joints stiffen.
 func _physics_process(delta: float) -> void:
+	# Where the bodies are before this tick's step moves them, to draw the
+	# skeleton between the two (pose_skeleton).
+	for body: RigidBody3D in bodies.values():
+		_before_step[body] = body.global_transform
 	var share := 1.0 - exp(-JOINT_FRICTION * delta)
 	for pair: Array in _pairs:
 		var parent: RigidBody3D = pair[0]
@@ -210,14 +217,22 @@ func _physics_process(delta: float) -> void:
 
 
 ## Puts every bone that has a body where its body is. Parents first, so a
-## bone between two bodies (a clavicle) rides the one above it.
-func pose_skeleton() -> void:
+## bone between two bodies (a clavicle) rides the one above it. Each body is
+## taken alpha of the way between its last two ticks (by default as far as
+## the frame falls between them), as bodies alive are drawn, or it would
+## move in steps of a 64 Hz tick.
+func pose_skeleton(alpha: float = -1.0) -> void:
 	if _skeleton == null or not is_instance_valid(_skeleton):
 		return
+	if alpha < 0.0:
+		alpha = clampf(Engine.get_physics_interpolation_fraction(), 0.0, 1.0)
 	var world_to_skeleton := _skeleton.global_transform.affine_inverse()
 	for bone in _order:
 		var body: RigidBody3D = bodies[_host[bone]]
-		_skeleton.set_bone_global_pose(bone, world_to_skeleton * body.global_transform * _offsets[bone])
+		var at := body.global_transform
+		if _before_step.has(body):
+			at = (_before_step[body] as Transform3D).interpolate_with(at, alpha)
+		_skeleton.set_bone_global_pose(bone, world_to_skeleton * at * _offsets[bone])
 
 
 func _bone_world(bone: int) -> Transform3D:

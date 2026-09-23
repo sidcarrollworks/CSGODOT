@@ -12,7 +12,8 @@ extends SceneTree
 ## boxes. The match is moved on by hand (MatchState.tick) with simulation
 ## times the checks choose, so two minutes of warmup take no time at all.
 
-const DT := 1.0 / 128.0
+## The project's tick.
+var DT := SimClock.tick_seconds()
 const SECOND := 1_000_000
 
 const MATCH_FILES := [
@@ -178,7 +179,7 @@ func _test_a_round_from_warmup_to_its_end() -> void:
 	ct.hit_target.apply_damage(40.0, &"chest", 0.5)
 	var ct_armor := ct.hit_target.armor
 	_kill(t)
-	for i in 3 * 128 + 64:
+	for i in SimClock.ticks_in(3.5):
 		t.run_command(_command(), DT)
 	_check(not t.alive, "a player killed in a round stays dead past the respawn time")
 	game.tick(now + SECOND)
@@ -347,14 +348,14 @@ func _test_teammates_are_solid() -> void:
 	var mate := _new_player(Vector3(5000.0, 0.0, -100.0), "T")
 	await physics_frame
 	await physics_frame
-	_run_forward(runner, 128)
+	_run_forward(runner, SimClock.ticks_in(1.0))
 	_check(
 		runner.global_position.z > mate.global_position.z + 31.0,
 		"running into a teammate stops at their hull (%.1f units apart)" % (runner.global_position.z - mate.global_position.z)
 	)
 	_kill(mate)
 	await physics_frame
-	_run_forward(runner, 128)
+	_run_forward(runner, SimClock.ticks_in(1.0))
 	_check(runner.global_position.z < mate.global_position.z - 100.0, "a dead teammate is no longer in the way")
 	await _clear([runner, mate])
 
@@ -371,33 +372,34 @@ func _test_watching_a_teammate() -> void:
 	dead.respawns = false
 	_kill(dead)
 	var died := SimClock.current_tick()
+	var two_seconds := died + SimClock.ticks_in(2.0)
 	var cmd := UserCmd.new()
-	cmd.tick = died + 128
+	cmd.tick = died + SimClock.ticks_in(1.0)
 	dead.run_command(cmd, DT)
 	_check(dead.observing == null, "one second on, the camera is still on your own body")
 	cmd = UserCmd.new()
-	cmd.tick = died + 2 * 128 + 8
+	cmd.tick = two_seconds + 8
 	dead.run_command(cmd, DT)
 	var watched := dead.observing
 	_check(watched == first or watched == second, "two seconds on, a living teammate is watched")
 	cmd = UserCmd.new()
-	cmd.tick = died + 2 * 128 + 9
+	cmd.tick = two_seconds + 9
 	cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.ATTACK, true, 0.2, 0.0, 0.0))
 	dead.run_command(cmd, DT)
 	_check(dead.observing != watched and dead.observing != enemy and dead.observing.team == "T", "fire moves on to the other teammate")
 	cmd = UserCmd.new()
-	cmd.tick = died + 2 * 128 + 10
+	cmd.tick = two_seconds + 10
 	cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.ATTACK, true, 0.2, 0.0, 0.0))
 	dead.run_command(cmd, DT)
 	_check(dead.observing == watched, "and round again, never to the other side")
 	cmd = UserCmd.new()
-	cmd.tick = died + 2 * 128 + 11
+	cmd.tick = two_seconds + 11
 	cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.JUMP, true, 0.2, 0.0, 0.0))
 	dead.run_command(cmd, DT)
 	_check(dead.observing_chase and dead.observing == watched, "jump takes the camera behind them")
 	_kill(watched)
 	cmd = UserCmd.new()
-	cmd.tick = died + 2 * 128 + 12
+	cmd.tick = two_seconds + 12
 	dead.run_command(cmd, DT)
 	_check(dead.observing != null and dead.observing != watched and dead.observing.alive, "the one watched dies: the next one living is watched")
 	dead.spawn_at(Vector3(-3000.0, 0.0, 0.0), 0.0)

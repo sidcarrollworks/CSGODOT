@@ -34,8 +34,8 @@ const VELOCITY_DECAY := 4.5
 ## How far the bullets move per degree of punch (weapon_recoil_scale).
 const BULLET_SCALE := 2.0
 
-## The state is stepped no coarser than this. Finer than the 128 Hz tick
-## because a round lands part-way through a tick, and the steps must come
+## The state is stepped no coarser than this. Finer than the tick because a
+## round lands part-way through a tick, and the steps must come
 ## out the same however the time between two rounds is cut up; at 1/512 s
 ## the difference is under a hundredth of a degree over a magazine.
 const MAX_STEP := 1.0 / 512.0

@@ -61,7 +61,7 @@ var wants_duck: bool = false
 var jump_fraction: float = -1.0
 
 ## Previous tick's position, so the camera can interpolate between physics
-## ticks instead of stuttering at the 128 Hz tick boundary.
+## ticks instead of stuttering at the 64 Hz tick boundary.
 var previous_position: Vector3 = Vector3.ZERO
 
 ## How many times the hull has been traced: most of what a tick costs, at

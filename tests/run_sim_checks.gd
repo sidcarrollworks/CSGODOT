@@ -10,10 +10,13 @@ extends SceneTree
 ##
 ## Needs nothing extracted: bots without their model wear the standard boxes.
 
-const DT := 1.0 / 128.0
-const TICK := 7812
-const HALF_TICK := 3906
-const QUARTER_TICK := 1953
+## The project's tick, in seconds and microseconds, whatever its rate.
+var DT := SimClock.tick_seconds()
+var TICK := SimClock.tick_usec()
+@warning_ignore("integer_division")
+var HALF_TICK := TICK / 2
+@warning_ignore("integer_division")
+var QUARTER_TICK := TICK / 4
 
 ## The files that make up the simulation. None of them may read the keys or
 ## the wall clock.
@@ -122,34 +125,41 @@ func _test_presses_land_at_their_instant() -> void:
 
 # --- Same commands, same game -----------------------------------------------
 
-## A script of commands: run up, strafe, a sub-tick jump, a spray with taps
-## in it, a reload.
-func _script(ticks: int) -> Array[UserCmd]:
+## A script of commands, timed in seconds whatever the tick rate: run up,
+## strafe, a sub-tick jump, a spray with taps in it, a reload.
+func _script(seconds: float) -> Array[UserCmd]:
+	var run_up := SimClock.ticks_in(0.47)
+	var strafe := SimClock.ticks_in(0.156)
+	var jump := SimClock.ticks_in(0.547)
+	var spray_from := SimClock.ticks_in(0.9375)
+	var spray_to := SimClock.ticks_in(1.5625)
+	var taps := [SimClock.ticks_in(1.797), SimClock.ticks_in(2.031)]
+	var reload := SimClock.ticks_in(2.344)
 	var cmds: Array[UserCmd] = []
-	for i in ticks:
+	for i in SimClock.ticks_in(seconds):
 		var cmd := UserCmd.new()
 		cmd.tick = 10_000 + i
-		cmd.yaw_degrees = 30.0 + 0.1 * i
+		cmd.yaw_degrees = 30.0 + 12.8 * i * DT
 		cmd.pitch_degrees = -2.0
-		cmd.move = Vector2(0.0, 1.0) if i < 60 else Vector2(1.0 if floori(i / 20.0) % 2 == 0 else -1.0, 0.0)
-		if i == 70:
+		cmd.move = Vector2(0.0, 1.0) if i < run_up else Vector2(1.0 if floori(float(i) / strafe) % 2 == 0 else -1.0, 0.0)
+		if i == jump:
 			cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.JUMP, true, 0.37, cmd.yaw_degrees, -2.0))
-		if i >= 120 and i < 200:
+		if i >= spray_from and i < spray_to:
 			cmd.buttons |= UserCmd.ATTACK
-		if i == 230 or i == 260:
+		if i in taps:
 			cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.ATTACK, true, 0.6, cmd.yaw_degrees, -2.5))
-		if i == 300:
+		if i == reload:
 			cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.RELOAD, true, 0.1, cmd.yaw_degrees, -2.0))
 		cmds.append(cmd)
 	return cmds
 
 
 func _test_the_same_commands_give_the_same_game() -> void:
-	var cmds := _script(360)
+	var cmds := _script(2.8125)
 	var first := await _play(cmds, Vector3(-512.0, 0.0, 0.0), false)
 	var second := await _play(cmds, Vector3(-512.0, 0.0, 0.0), true)
 
-	# 80 ticks held is 625 ms: rounds at 0, 100 ... 600 ms, then two taps.
+	# 625 ms held: rounds at 0, 100 ... 600 ms, then two taps.
 	_check(first["shots"].size() == 9, "the script fires a seven-round spray and two taps (%d rounds)" % first["shots"].size())
 	_check(
 		(first["end"] as Vector3).is_equal_approx(second["end"]) and (first["velocity"] as Vector3).is_equal_approx(second["velocity"]),
@@ -208,7 +218,7 @@ func _test_a_held_trigger_fires_on_simulation_time() -> void:
 	var times: Array[int] = []
 	player.shot_traced.connect(func(shot: Weapon.Shot, _result: Hitscan.Result) -> void:
 		times.append(shot.timestamp_usec))
-	for i in 128:
+	for i in SimClock.ticks_in(1.0):
 		var cmd := UserCmd.new()
 		cmd.tick = 50_000 + i
 		cmd.buttons = UserCmd.ATTACK
@@ -231,7 +241,8 @@ func _test_a_press_fires_from_where_the_player_was() -> void:
 	var player := _new_player(Vector3(0.0, 0.0, -512.0), "T")
 	player.equip(WeaponLibrary.ak47())
 	await physics_frame
-	for i in 40:
+	var run_up := SimClock.ticks_in(0.3125)
+	for i in run_up:
 		var run := UserCmd.new()
 		run.tick = 60_000 + i
 		run.move = Vector2(1.0, 0.0)
@@ -240,7 +251,7 @@ func _test_a_press_fires_from_where_the_player_was() -> void:
 	player.shot_traced.connect(func(shot: Weapon.Shot, _result: Hitscan.Result) -> void:
 		origins.append(shot.origin))
 	var cmd := UserCmd.new()
-	cmd.tick = 60_040
+	cmd.tick = 60_000 + run_up
 	cmd.move = Vector2(1.0, 0.0)
 	cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.ATTACK, true, 0.5, 0.0, 0.0))
 	player.run_command(cmd, DT)
@@ -267,11 +278,13 @@ func _test_a_running_tap_misses() -> void:
 		shots.append(shot))
 	# Run flat out, then tap once every 1.5 s at a different point of the
 	# tick, still running, so each round is the first of its own spray.
-	for i in 128 + 12 * 192:
+	var run_up := SimClock.ticks_in(1.0)
+	var every := SimClock.ticks_in(1.5)
+	for i in run_up + 12 * every:
 		var cmd := UserCmd.new()
 		cmd.tick = 70_000 + i
 		cmd.move = Vector2(0.0, 1.0)
-		if i >= 128 and (i - 128) % 192 == 0:
+		if i >= run_up and (i - run_up) % every == 0:
 			cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.ATTACK, true, fmod(0.13 * i, 1.0), 0.0, 0.0))
 		player.run_command(cmd, DT)
 
@@ -310,7 +323,7 @@ func _test_a_bot_plays_through_commands() -> void:
 		times.append(shot.timestamp_usec))
 
 	_check(bot.weapon != null and bot.hit_target.hitboxes().size() > 0, "a bot without its model still has its weapon and the standard boxes")
-	for i in 256:
+	for i in SimClock.ticks_in(2.0):
 		await physics_frame
 		if not enemy.alive:
 			break
@@ -380,7 +393,7 @@ func _test_a_bot_finds_its_way() -> void:
 	var standing_under := 0
 	var jumps := 0
 	var was_on_ground := true
-	for i in 128 * 40:
+	for i in SimClock.ticks_in(40.0):
 		var heading: int = bot.get("_next")
 		await physics_frame
 		if bot.get("_next") != heading:
@@ -521,8 +534,10 @@ func _run_forward(player: PlayerSim, tick: int, ticks: int) -> int:
 func _test_a_hit_tags_the_player() -> void:
 	var player := _new_player(Vector3(2048.0, 0.0, 0.0), "T")
 	player.equip(WeaponLibrary.ak47())
-	var tick := _run_forward(player, 80_000, 128)
+	var tick := _run_forward(player, 80_000, SimClock.ticks_in(1.0))
 	var top := Vector2(player.velocity.x, player.velocity.z).length()
+	# CS2's two ticks of its own, in ours.
+	var delay := SimClock.ticks_in(PlayerSim.TAG_DELAY_SECONDS)
 	await physics_frame
 	await physics_frame
 	var heard: Array[Vector3] = []
@@ -537,37 +552,37 @@ func _test_a_hit_tags_the_player() -> void:
 		heard.size() == 1 and heard[0].is_equal_approx(player.global_position + Vector3(300.0, 50.0, 0.0)),
 		"and the player hears where it was fired from"
 	)
-	tick = _run_forward(player, tick, 3)
+	tick = _run_forward(player, tick, delay - 1)
 	var before := player.velocity_modifier
 	tick = _run_forward(player, tick, 1)
 	_check(
 		is_equal_approx(before, 1.0) and is_equal_approx(player.velocity_modifier, 1.0 - ak.tagging_power),
-		"the tag lands two CS2 ticks (four of ours) after the hit: %.2f, then %.2f of full speed" % [before, player.velocity_modifier]
+		"the tag lands two CS2 ticks (%d of ours) after the hit: %.2f, then %.2f of full speed" % [delay, before, player.velocity_modifier]
 	)
-	tick = _run_forward(player, tick, 32)
+	tick = _run_forward(player, tick, SimClock.ticks_in(0.25))
 	var slowed := Vector2(player.velocity.x, player.velocity.z).length()
 	_check(
 		top > 210.0 and slowed < top * 0.6,
 		"a quarter of a second on, running flat out has slowed from %.0f to %.0f u/s" % [top, slowed]
 	)
-	tick = _run_forward(player, tick, 64)
+	tick = _run_forward(player, tick, SimClock.ticks_in(0.5))
 	var second_hit_from := player.velocity_modifier
 	await physics_frame
 	await physics_frame
 	_hit(player, ak)
-	tick = _run_forward(player, tick, 4)
+	tick = _run_forward(player, tick, delay)
 	_check(
 		second_hit_from > 0.55 and is_equal_approx(player.velocity_modifier, 1.0 - ak.tagging_power),
 		"a second hit takes it back to %.2f from %.2f, no lower" % [player.velocity_modifier, second_hit_from]
 	)
 	var back_at := -1
-	for i in 256:
+	for i in SimClock.ticks_in(2.0):
 		tick = _run_forward(player, tick, 1)
 		if player.velocity_modifier >= 1.0:
 			back_at = i + 1
 			break
 	_check(
-		absi(back_at - 192) <= 1,
+		absi(back_at - SimClock.ticks_in(1.5)) <= 1,
 		"and it is all back 1.5 s later (%d ticks)" % back_at
 	)
 	var smg := WeaponLibrary.ak47()
@@ -575,7 +590,7 @@ func _test_a_hit_tags_the_player() -> void:
 	await physics_frame
 	await physics_frame
 	_hit(player, smg)
-	tick = _run_forward(player, tick, 4)
+	tick = _run_forward(player, tick, delay)
 	_check(is_zero_approx(player.velocity_modifier), "a round tagging at 100%, as an SMG's does, stops the player")
 	player.queue_free()
 	await physics_frame
@@ -597,7 +612,7 @@ func _test_a_hit_throws_the_aim() -> void:
 		player.hit_target.reset()
 		_hit(player, WeaponLibrary.ak47())
 		var peak := Vector2.ZERO
-		for i in 48:
+		for i in SimClock.ticks_in(0.375):
 			var cmd := UserCmd.new()
 			cmd.tick = tick
 			tick += 1
@@ -606,7 +621,7 @@ func _test_a_hit_throws_the_aim() -> void:
 				peak = player.hit_punch.value
 		peaks[armored] = peak
 		settled[armored] = player.hit_punch.value.length()
-		for i in 64:
+		for i in SimClock.ticks_in(0.5):
 			var cmd := UserCmd.new()
 			cmd.tick = tick
 			tick += 1
@@ -623,7 +638,7 @@ func _test_a_hit_throws_the_aim() -> void:
 	player.hit_target.wear(0.0, false)
 	player.hit_target.reset()
 	_hit(player, WeaponLibrary.ak47())
-	for i in 12:
+	for i in SimClock.ticks_in(0.094):
 		var cmd := UserCmd.new()
 		cmd.tick = tick
 		tick += 1

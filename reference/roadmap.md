@@ -31,8 +31,9 @@ Updated 2026-09-23 later: bots walk the nav mesh (item 22), to the bomb sites an
 
 ### Movement
 - Source SDK 2013's movement ported line by line: acceleration, air
-  acceleration, friction, collide-and-slide, step move, at a fixed 128 Hz in
-  Source units (`src/movement/`).
+  acceleration, friction, collide-and-slide, step move, at a fixed 64 Hz, as
+  CS2's, in Source units (`src/movement/`). It was 128 until 2026-09-23, when
+  Sid chose 64 for what a server costs; what is drawn is drawn between ticks.
 - Every gap the Source 2 research guide found is closed: `StayOnGround`, the
   quadrant ground trace, `CheckVelocity` (3500), `NON_JUMP_VELOCITY` 140, the
   splined duck eye offset, the ground-normal wish projection behind a flag, the
@@ -439,9 +440,9 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
     checked against what the shooter saw (up to 1 s back). Godot's ENet gives
     the transport; prediction, snapshot buffering and the rewind are built on
     it. A dedicated server build, and connecting by address. What each part
-    will cost, and what to settle before it (the tick rate; a server that
-    builds nothing to be seen; hitboxes posed by the tick, and their history
-    kept as capsules), is in `reference/performance.md`.
+    will cost, and what to settle before it (a server that builds nothing to
+    be seen; hitboxes posed by the tick, and their history kept as capsules),
+    is in `reference/performance.md`. The tick rate is settled: 64.
 
 ### Phase 10: a game you can hand to someone
 

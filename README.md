@@ -173,7 +173,7 @@ deliberately:
 **Sub-tick.** A click carries the time it happened and the look angles at that
 instant. The shot is traced from those angles and from where the player was at
 that instant, not from wherever the view and the body had got to by the next
-simulation tick. At 128 Hz that is up to 7.8 ms of aim
+simulation tick. At 64 Hz that is up to 15.6 ms of aim
 error removed, and it is the difference between hit registration feeling fair
 and feeling like it lags you. This is why `PlayerInput` timestamps events
 rather than polling, and it is in from day one because retrofitting it later
@@ -505,18 +505,27 @@ shadow, sounds and bullet holes, is `PlayerView`
 (`src/player/player_view.gd`), which reads the simulation and never changes
 it.
 
-A tick at 128 Hz is 7.8 ms, and every player's share of it has to fit with
-room left to draw the frame. When it does not, each frame runs more ticks to
-catch up, which makes the frame longer still, and the game crawls. Ten
-players on dust2 take about 3 ms a tick on Jolt (headless, 2026-09-23),
-most of it their movement: a trace of the hull through dust2's collision
-costs 20 to 50 us, and a player makes one a tick standing still and four
-running in the open, more against a wall or a slope (PlayerBody counts
-them, and run_tests.gd holds them to that). So nothing that reads the disk
-runs in a tick, and what is only seen, like the probe light on a bot's
-body, follows the frames drawn rather than the ticks.
-`reference/performance.md` has what every system costs, with ten players
-and twenty, what going online will add, and what to do about it next;
+The simulation runs 64 ticks a second, as CS2's does, and takes input
+between them (a press carries its fraction of the tick). It ran 128 until
+2026-09-23, when Sid chose 64 for what a server will cost: everything a tick
+does is paid half as often, and a server has room for more players.
+Everything drawn is drawn between the last two ticks, as far between them as
+the frame falls, so 64 a second does not show: your camera, the kick of your
+view and your gun, other players' bodies (and their hitboxes, which ride
+them, so a round meets a body where it was seen) and ragdolls.
+
+A tick at 64 Hz is 15.6 ms, and every player's share of it has to fit with
+room left to draw the frames. When it does not, each frame runs more ticks
+to catch up, which makes the frame longer still, and the game crawls. Ten
+players on dust2 take about 3 ms a tick on Jolt, and twenty about 8
+(headless, 2026-09-23), most of it their movement: a trace of the hull
+through dust2's collision costs 20 to 50 us, and a player makes one a tick
+standing still and four running in the open, more against a wall or a slope
+(PlayerBody counts them, and run_tests.gd holds them to that). So nothing
+that reads the disk runs in a tick, and what is only seen, like the probe
+light on a bot's body, follows the frames drawn rather than the ticks.
+`reference/performance.md` has what every system costs, with ten players and
+twenty, what going online will add, and what to do about it next;
 `scripts/profile_dust2.gd` measures it again.
 
 ## Layout

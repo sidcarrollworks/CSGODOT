@@ -64,8 +64,8 @@ class Shot:
 
 
 ## The punch spring is integrated at no coarser than this, whatever the
-## caller's frame length. 128 Hz, the simulation tick the constants suit.
-const PUNCH_MAX_STEP := 1.0 / WeaponData.SIMULATION_HZ
+## caller's tick or frame: WeaponData.PUNCH_HZ, the step its constants suit.
+const PUNCH_MAX_STEP := 1.0 / WeaponData.PUNCH_HZ
 
 ## The recoil index starts to decay once the trigger has been off this many
 ## cycles, so it never does during a spray, and then falls to a tenth every
@@ -171,7 +171,7 @@ func recoil_index_at(now_usec: int) -> float:
 
 ## When a held trigger fires next: the last round plus the cycle time,
 ## exactly. Firing on the tick instead rounds every gap up to a whole tick,
-## which is 591 rounds a minute at 128 Hz rather than 600.
+## which is 549 rounds a minute at 64 Hz rather than 600.
 func next_shot_usec() -> int:
 	return _last_shot_usec + int(round(data.cycle_time * 1_000_000.0))
 

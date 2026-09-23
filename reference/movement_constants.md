@@ -34,10 +34,11 @@ As each one gets measured, record the measurement and the method below.
 **Speeds.** Load the test course, run in a straight line, read the speedometer.
 Compare against CS2 with `cl_showpos 1`.
 
-**Acceleration.** Start from rest and count ticks to reach top speed. At 128 Hz
-with `sv_accelerate 5.5` the first tick should add exactly 10.7421875 u/s
-(`5.5 × 250 / 128`). The test suite pins this value, so if you change
-`sv_accelerate` the test will tell you the new expected figure.
+**Acceleration.** Start from rest and count ticks to reach top speed. At 64 Hz
+with `sv_accelerate 5.5` the first tick should add exactly 21.484375 u/s
+(`5.5 × 250 / 64`). The test suite pins this value (worked out from the tick,
+so it holds at any tick rate), so if you change `sv_accelerate` the test will
+tell you the new expected figure.
 
 **Jump height.** Walk into the jump gauges. You should clear 56 and not 64.
 
@@ -52,8 +53,9 @@ Ducking in the air shrinks the hull and moves the body up by the difference, so
 your head stays put and your feet come up 18 units. That is what a crouch jump
 is, and it is the only way to reach a ledge a standing jump cannot.
 
-Measured in our build: a standing jump peaks at 58.19 units and a crouch jump
-at 76.19, the difference being exactly the 18 unit hull delta.
+Measured in our build at 64 Hz: a standing jump peaks at 59.37 units and a
+crouch jump at 77.37, the difference being exactly the 18 unit hull delta
+(58.19 and 76.19 at 128 Hz, the tick until 2026-09-23).
 
 **76 may well be too generous.** The feet-raise is faithful to Source's
 `FinishDuck`, but CS:GO and CS2 also gate how fast you can duck in the air, and
@@ -134,18 +136,37 @@ and the jump ends up higher than the physics alone would give:
 | Source ordering at 128 Hz | 58.18 units |
 | Source ordering at 64 Hz | 59.36 units |
 
-**This project simulates at 128 Hz and CS2 moves at 64.** So being faithful to
-Source still leaves our jumps about 1.2 units short of CS2's. Options, once
-someone measures a real CS2 jump:
+**This project now simulates at 64 Hz, as CS2 moves** (2026-09-23; it was 128,
+which left its jumps about 1.2 units short of CS2's). Faithful to Source, a
+jump peaks at 59.36, which is CS2's if CS2 kept Source's order of gravity and
+impulse; a real CS2 jump against the jump gauges will say. If it did not,
+`tick_rate_independent_jump` and `sv_jump_impulse` can be set to the measured
+height at any tick rate. The test suite pins both behaviours so the choice
+cannot drift by accident.
 
-1. Accept the difference. It is about 2%.
-2. Turn on `tick_rate_independent_jump` and raise `sv_jump_impulse` until the
-   height matches CS2's measured value at any tick rate.
-3. Simulate movement at 64 Hz to match CS2 exactly, and keep 128 Hz only for
-   shooting.
+## What the tick rate does to the movement (2026-09-23)
 
-Option 2 is probably right, but it needs the measurement first. The test suite
-pins both behaviours so the choice cannot drift by accident.
+The movement is Source's, a step each tick, so the tick rate shows in it. The
+project moved from 128 ticks a second to CS2's 64 for what a server costs
+(`reference/performance.md`). Worked out from MovementSolver at CS2's numbers:
+
+| | 64 Hz | 128 Hz |
+|---|---|---|
+| An AK from a standstill to 99% of its 215 u/s | 531 ms | 539 ms |
+| Letting go at full speed, the distance to a stop | 30.9 units | 32.3 units |
+| A counter-strafe to the AK's standing cone | 78 ms | 78 ms |
+| A perfectly strafed jump from 250 u/s | +77 u/s | +127 u/s |
+| A perfectly strafed jump from 400 u/s | +52 u/s | +91 u/s |
+| A standing jump's peak | 59.4 units | 58.2 units |
+
+Most of it hardly moves. Air strafing does: a tick's air acceleration is
+capped at 30 u/s along the wish direction however long the tick is, so twice
+the ticks is nearly twice the gain a jump. That is why strafe jumps and bunny
+hops came easier on CS:GO's 128-tick servers than in its matchmaking. What
+CS2's own gain is (its sub-tick steps may split the air acceleration) is for
+the HUD's jump gain readout against CS2's to say. If more is wanted than
+CS2 gives, the air acceleration alone could be stepped twice a tick: a sum
+with no traces in it, so it would cost the server nothing worth counting.
 
 ## What the Source 2 audit changed (2026-09-21)
 

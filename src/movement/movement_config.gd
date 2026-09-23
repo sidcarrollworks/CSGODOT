@@ -58,9 +58,9 @@ extends Resource
 ## Leave this false to match Source exactly. Set it true to take the half-step
 ## off the impulse, which makes jump height 57.0 at any tick rate.
 ##
-## This matters more than it looks. We simulate at 128 Hz and CS2 moves at 64,
-## so faithful-to-Source still means our jumps are about a unit shorter than
-## CS2's. Measure a real CS2 jump before deciding which way this goes.
+## We simulate at 64 Hz, as CS2 moves, so faithful-to-Source gives CS2's 59.4
+## if CS2 kept Source's order; at 128 Hz, as this did until 2026-09-23, jumps
+## came out about a unit short. Measure a real CS2 jump to confirm it.
 @export var tick_rate_independent_jump: bool = false
 
 ## Source's NON_JUMP_VELOCITY (gamemovement.cpp:3830). Rising faster than this
@@ -79,7 +79,8 @@ extends Resource
 ## fractional timestamp (CSubtickMoveStep), and this is the local equivalent.
 ##
 ## It is the difference between a chained hop landing when you pressed it and
-## landing up to 7.8 ms later, which is what makes bunny hopping feel reliable.
+## landing up to a tick (15.6 ms) later, which is what makes bunny hopping feel
+## reliable.
 @export var subtick_jump: bool = true
 
 ## sv_autobunnyhopping. CS2 default is off: you have to time the jump yourself.
@@ -145,9 +146,9 @@ extends Resource
 ##
 ## Source does not do this at all: it relies on the trace stopping short by
 ## DIST_EPSILON and never adds position. s&box considered it and left the line
-## commented out. At 128 Hz with four bumps a tick, a non-zero value here
-## injects outward drift while sliding along a surface, which bleeds speed off
-## a surf ramp. Godot's own safe_margin already keeps us out of the geometry,
+## commented out. With four bumps a tick (measured at 128 Hz), a non-zero
+## value here injects outward drift while sliding along a surface, which
+## bleeds speed off a surf ramp. Godot's own safe_margin already keeps us out of the geometry,
 ## so the default is zero.
 ##
 ## Kept as a tunable rather than deleted so the surf complaint can be falsified
