@@ -27,6 +27,7 @@ static func ak47() -> WeaponData:
 	data.display_name = "AK-47"
 	data.model_path = "res://assets/weapons/weapons/models/ak47/weapon_rif_ak47.gltf"
 	data.clip_set = "rifle_ak"
+	data.world_clip_set = "rifle/rifle_ak"
 
 	# 36 to an unarmoured chest, x4 head, 77.5% through armour, 2% lost every
 	# 500 units, 600 RPM, 30 and 90, 215 u/s, firing again 2.467 s into a
@@ -51,6 +52,7 @@ static func m4a1s() -> WeaponData:
 	# The shared rifle clips are the ones authored on the M4A1-S: the weapon rig
 	# they carry is its.
 	data.clip_set = "_default_rifle"
+	data.world_clip_set = "rifle/rifle_m4a1_silencer"
 
 	# Carried with the silencer on, so its row is read over the main one: the
 	# damage is the same either way (38, x3.475 head, 132), the silencer

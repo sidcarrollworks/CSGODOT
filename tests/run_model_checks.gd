@@ -64,6 +64,31 @@ func _init() -> void:
 			and (tree.get_node(&"air_stand") as AnimationNodeBlendSpace2D).get_blend_point_count() == 5,
 		"the tree has CS2's blend spaces: the idle, runs at 225 and walks at 136 in its 24 triangles, the crouch's nine, the air's five"
 	)
+	# CS2's additive clips hold bare differences; Godot adds a clip's
+	# difference from the bone's rest, so each key is re-expressed from it.
+	var bones := Skeleton3D.new()
+	bones.add_bone("spine_0")
+	var spine_rest := Transform3D(Basis(Quaternion(Vector3.UP, 0.5)), Vector3(0, 10, 0))
+	bones.set_bone_rest(0, spine_rest)
+	var bare := Animation.new()
+	var turn := bare.add_track(Animation.TYPE_ROTATION_3D)
+	bare.track_set_path(turn, NodePath("Rig:spine_0"))
+	bare.rotation_track_insert_key(turn, 0.0, Quaternion(Vector3.RIGHT, 0.2))
+	var shift := bare.add_track(Animation.TYPE_POSITION_3D)
+	bare.track_set_path(shift, NodePath("Rig:spine_0"))
+	bare.position_track_insert_key(shift, 0.0, Vector3(1, 0, 0))
+	var grow := bare.add_track(Animation.TYPE_SCALE_3D)
+	bare.track_set_path(grow, NodePath("Rig:spine_0"))
+	bare.scale_track_insert_key(grow, 0.0, Vector3.ZERO)
+	var added := PlayerModel.rest_relative(bare, bones)
+	_check(
+		added.get_track_count() == 2
+			and (added.track_get_key_value(0, 0) as Quaternion).is_equal_approx(spine_rest.basis.get_rotation_quaternion() * Quaternion(Vector3.RIGHT, 0.2))
+			and (added.track_get_key_value(1, 0) as Vector3).is_equal_approx(Vector3(1, 10, 0))
+			and bare.get_track_count() == 3,
+		"an additive clip's keys become the rest times the difference and the rest plus it, its scale offsets dropped, the clip itself untouched"
+	)
+	bones.free()
 	var rings := {}
 	var lengths := {"run_n": 0.733, "run_ne": 0.733, "run_e": 0.733, "run_se": 0.733, "run_s": 0.733, "run_sw": 0.733, "run_w": 0.733, "run_nw": 0.733}
 	for clip in ["walk_n", "walk_ne", "walk_e", "walk_se", "walk_s", "walk_sw", "walk_w", "walk_nw"]:
@@ -1193,6 +1218,8 @@ func _test_player_model() -> void:
 		"and the idle ends it, as when the body gets up"
 	)
 
+	_test_weapon_layers()
+
 	# The first-person body: the head and arms folded away, and staying so
 	# under the clips, which animate every bone's scale.
 	model.update_motion(Vector3.ZERO, 180.0, 0.0, true)
@@ -1214,6 +1241,79 @@ func _test_player_model() -> void:
 	)
 	model.free()
 	_player_model = null
+
+
+## A body holding the AK-47 with its own third-person clips: the gun's hold
+## over the locomotion, each shot kicking the upper body and leaving the legs,
+## the reload over the upper body while the legs run on under it.
+func _test_weapon_layers() -> void:
+	var ak := WeaponLibrary.ak47()
+	var model := PlayerModel.new()
+	root.add_child(model)
+	if not model.setup("T", ak.model_path, ak.world_clip_set) or not model.has_weapon_layers:
+		_check(false, "the AK-47's own third-person clips load (%s)" % ak.world_clip_set)
+		model.free()
+		return
+	var tree := model.animation_tree
+	var rig := model.character_rig
+	var at := func(bone_name: String) -> Vector3:
+		return (rig.global_transform * rig.get_bone_global_pose(rig.find_bone(bone_name))).origin
+	var upper := {}
+	for track in model.upper_body_tracks():
+		upper[String(track.get_subname(0))] = true
+	_check(
+		model.animation_player.has_animation(&"weapon_shoot") and model.animation_player.has_animation(&"weapon_reload")
+			and model.animation_player.has_animation(&"weapon_draw") and model.animation_player.has_animation(&"weapon_idle_crouch")
+			and upper.has("spine_0") and upper.has("hand_R") and upper.has("head_0") and upper.has("wpn")
+			and not upper.has("pelvis") and not upper.has("ankle_L") and not upper.has("leg_upper_R"),
+		"the AK-47's hold, shot, reload and draw are loaded, and CS2's upper body is the spine up and the gun's bones, not the hips or legs"
+	)
+	model.pose_now()
+	tree.advance(0.5)
+	var hand: Vector3 = at.call("hand_R")
+	var ankle: Vector3 = at.call("ankle_L")
+	tree.set("parameters/hold/add_amount", 0.0)
+	tree.advance(0.0)
+	var unheld: float = (at.call("hand_R") as Vector3).distance_to(hand)
+	tree.set("parameters/hold/add_amount", 1.0)
+	tree.advance(0.0)
+	_check(
+		unheld > 0.3 and unheld < 3.0 and (at.call("hand_R") as Vector3).distance_to(hand) < 0.001,
+		"the gun's own hold moves the hands a little from the rifle locomotion's (%.2f units), not off the body" % unheld
+	)
+	model.fire()
+	for step in 4:
+		tree.advance(0.05)
+	var kicked: float = (at.call("hand_R") as Vector3).distance_to(hand)
+	var legs: float = (at.call("ankle_L") as Vector3).distance_to(ankle)
+	_check(
+		bool(tree.get("parameters/shoot/active")) and kicked > 0.5 and legs < 0.001,
+		"a shot kicks the upper body (the hand %.1f units at 0.2 s) and leaves the legs where they were" % kicked
+	)
+	for step in 14:
+		tree.advance(0.05)
+	_check(
+		not bool(tree.get("parameters/shoot/active")) and (at.call("hand_R") as Vector3).distance_to(hand) < 0.05,
+		"and it is over with the clip, the hands back in the hold"
+	)
+	model.play(&"reload", 0.1)
+	var furthest := 0.0
+	for step in 20:
+		tree.advance(0.05)
+		furthest = maxf(furthest, (at.call("hand_R") as Vector3).distance_to(hand))
+	_check(
+		bool(tree.get("parameters/gun_action/active")) and furthest > 2.0 and (at.call("ankle_L") as Vector3).distance_to(ankle) < 0.001,
+		"a reload plays the gun's own over the upper body (the hand as far as %.1f units in its first second), the legs untouched" % furthest
+	)
+	model.update_motion(Vector3(0, 0, 225), 180.0, 0.0, true)
+	tree.advance(0.1)
+	var stride_from: Vector3 = at.call("ankle_L")
+	tree.advance(0.2)
+	_check(
+		bool(tree.get("parameters/gun_action/active")) and (at.call("ankle_L") as Vector3).distance_to(stride_from) > 1.0,
+		"and running meanwhile, the legs run on under the reload"
+	)
+	model.free()
 
 
 func _find(dir_path: String, prefix: String) -> PackedStringArray:

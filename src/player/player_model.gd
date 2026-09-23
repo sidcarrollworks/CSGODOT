@@ -22,17 +22,19 @@ extends RigModel
 ## them sets how long a cycle takes: the lengths of the clips being mixed,
 ## weighted as the mix weighs them, which is how CS2 times its blend.
 ##
-## Nothing is layered yet, so firing does not show (roadmap item 6; CS2's
-## own layers are in reference/animgraph/worldmodel.md).
+## Over the locomotion go the gun's own clips, through CS2's UpperBody mask
+## and in the order its graph stacks them (reference/animgraph/worldmodel.md):
+## the gun's hold added, a reload or draw in place of the upper body, and each
+## shot added on top (add_weapon_layers()). CS2's additive clips hold bare
+## differences, which Godot adds only as differences from the rest pose, so
+## they are re-expressed from the rest as they load (rest_relative()).
 ##
 ## The rig faces along +Z (Source's +X); the game's forward is -Z, so the
 ## model is turned round and then given the body's yaw.
 
 const CLIPS_DIR := "res://assets/characters/animation/anims/world/rifle/_default_rifle"
-## The deaths every weapon shares. (Its flinches are additive layers, not
-## poses; played whole they fold the body to nothing. So are the shoot_
-## clips beside the locomotion ones. Both wait for layers over the
-## locomotion, roadmap item 6.)
+## The deaths every weapon shares. (Its flinches are additive, like the
+## guns' shots, and would go in as the shots do; they are not extracted.)
 const SHARED_DIR := "res://assets/characters/animation/anims/world/shared"
 const AGENTS := ViewModel.AGENTS
 
@@ -53,9 +55,27 @@ const TO_GROUND := 0.2
 ## How long a clip played once takes to fade back out.
 const BLEND := 0.15
 
-## What animates the body: the locomotion's spaces, the air, a clip played
-## once and a death, over the clips animation_player holds.
+## Where a gun's own third-person set is (world_clip_set under it).
+const WORLD_DIR := "res://assets/characters/animation/anims/world"
+## What the gun's own clips are loaded as: weapon_idle, weapon_reload.
+const WEAPON := "weapon_"
+## CS2's UpperBody bone mask (worldmodel.vnmskel), which its weapon, shooting
+## and idle-pose layers go through: these bones and every bone under them,
+## all at full weight.
+const UPPER_BODY := ["spine_0", "wpn", "wpnHand_L", "wpnHand_R", "wpnTip", "wpnEnd", "wpnPivot"]
+## How long a gun's reload or draw takes to fade back into the hold.
+const ACTION_FADE := 0.2
+
+## The gun clips as the body plays them (_load_weapon()), by the clip's path:
+## the rig is the same in every model, and so are they.
+static var _prepared := {}
+
+## What animates the body: the locomotion's spaces, the air, the gun's hold,
+## its reload and draw and its shots over the upper body, a clip played once
+## and a death, over the clips animation_player holds.
 var animation_tree: AnimationTree
+## Whether the gun's own set was loaded, and its layers are in the tree.
+var has_weapon_layers := false
 
 ## For each moving space, the length of a cycle at each distance from its
 ## centre (cycle_rings()).
@@ -67,9 +87,11 @@ var _on_ground := true
 var _dead: StringName = &""
 
 
-## Builds the body and weapon. Returns false, with nothing built, when the
-## models or clips have not been extracted.
-func setup(team: String, weapon_model: String) -> bool:
+## Builds the body and weapon. weapon_set is the gun's own third-person set
+## under WORLD_DIR (WeaponData.world_clip_set), for its hold, reload, draw and
+## shots; without one the body only moves. Returns false, with nothing built,
+## when the models or clips have not been extracted.
+func setup(team: String, weapon_model: String, weapon_set: String = "") -> bool:
 	one_shots = PackedStringArray(["jump", "draw", "reload", "death"])
 	held = PackedStringArray(["death"])
 	var clips := list_clips(CLIPS_DIR, PackedStringArray([
@@ -79,6 +101,7 @@ func setup(team: String, weapon_model: String) -> bool:
 	if not load_clips(clips, VARIATION):
 		return false
 	idle = &"idle"
+	var weapon_clips := _load_weapon(weapon_set)
 
 	var agent := instantiate(AGENTS.get(team, AGENTS["T"]))
 	if agent != null:
@@ -111,19 +134,104 @@ func setup(team: String, weapon_model: String) -> bool:
 
 	scale = Vector3.ONE * MapImporter.SOURCE2_VIEWER_SCALE
 	rotation_degrees = Vector3(0.0, 180.0, 0.0)
-	_build_tree()
+	_build_tree(weapon_clips)
 	return true
+
+
+## The gun's own third-person clips, from its set (rifle/rifle_ak): its hold,
+## draw, reload and shot, loaded as weapon_idle, weapon_draw and so on, and
+## returned by those names. Each keeps only the body's tracks (they carry the
+## gun's own rig too, its bolt and magazine, which the body's rig has not
+## got), and CS2's additive ones, which have a non-additive copy beside them,
+## are made ones Godot adds as CS2 does (rest_relative()).
+func _load_weapon(weapon_set: String) -> PackedStringArray:
+	var names := PackedStringArray()
+	if weapon_set.is_empty():
+		return names
+	var files := PackedStringArray()
+	for path in list_clips(WORLD_DIR.path_join(weapon_set)):
+		if not path.get_file().contains(".vnmclip+"):
+			files.append(path)
+	var suffix := common_suffix(files)
+	var library := animation_player.get_animation_library(&"")
+	var body_node := String(animation_player.get_animation(idle).track_get_path(0).get_concatenated_names())
+	for path in files:
+		var added := add_clips(PackedStringArray([path]), suffix, WEAPON)
+		if added.is_empty():
+			continue
+		var loaded_as := added[0]
+		if not _prepared.has(path):
+			var clip := (library.get_animation(loaded_as).duplicate() as Animation)
+			for track in range(clip.get_track_count() - 1, -1, -1):
+				if String(clip.track_get_path(track).get_concatenated_names()) != body_node:
+					clip.remove_track(track)
+			if ResourceLoader.exists(path.get_basename() + ".vnmclip+non_additive.gltf"):
+				clip = rest_relative(clip, character_rig)
+			clip.loop_mode = Animation.LOOP_LINEAR if loaded_as.begins_with(WEAPON + "idle") else Animation.LOOP_NONE
+			_prepared[path] = clip
+		library.remove_animation(loaded_as)
+		library.add_animation(loaded_as, _prepared[path])
+		names.append(loaded_as)
+	return names
+
+
+## One of CS2's additive clips made one Godot's additive nodes add as CS2
+## does. CS2's hold the difference itself, applied in the bone's own space
+## (Esoterica's AdditiveBlendFunction: base * delta, and base + delta for the
+## translation); Godot adds a clip's difference from the bone's rest (base *
+## rest^-1 * key, base + key - rest). So each key becomes rest * delta and
+## rest + delta. Scale goes: CS2 keeps it as an offset near nothing, which is
+## no change.
+static func rest_relative(clip: Animation, rig: Skeleton3D) -> Animation:
+	var out := clip.duplicate() as Animation
+	for track in range(out.get_track_count() - 1, -1, -1):
+		var type := out.track_get_type(track)
+		if type == Animation.TYPE_SCALE_3D:
+			out.remove_track(track)
+			continue
+		var bone := rig.find_bone(String(out.track_get_path(track).get_subname(0)))
+		if bone < 0:
+			continue
+		var rest := rig.get_bone_rest(bone)
+		for key in out.track_get_key_count(track):
+			if type == Animation.TYPE_POSITION_3D:
+				out.track_set_key_value(track, key, rest.origin + (out.track_get_key_value(track, key) as Vector3))
+			elif type == Animation.TYPE_ROTATION_3D:
+				out.track_set_key_value(track, key, rest.basis.get_rotation_quaternion() * (out.track_get_key_value(track, key) as Quaternion))
+	return out
+
+
+## The tracks of the upper body, as CS2's mask draws it: every bone at or
+## under UPPER_BODY's, as the clips name their tracks.
+func upper_body_tracks() -> Array[NodePath]:
+	var bones := {}
+	for bone in character_rig.get_bone_count():
+		var at := bone
+		while at >= 0:
+			if character_rig.get_bone_name(at) in UPPER_BODY:
+				bones[character_rig.get_bone_name(bone)] = true
+				break
+			at = character_rig.get_bone_parent(at)
+	var out: Array[NodePath] = []
+	var clip := animation_player.get_animation(idle)
+	for track in clip.get_track_count():
+		if bones.has(String(clip.track_get_path(track).get_subname(0))):
+			out.append(clip.track_get_path(track))
+	return out
 
 
 ## The tree over the loaded clips, sharing their library, so fold_bones'
 ## copies are what it plays. Without the table it falls back to the idle.
-func _build_tree() -> void:
+func _build_tree(weapon_clips: PackedStringArray) -> void:
 	var table := read_locomotion()
 	var root := build_tree(table, VARIATION)
 	if root == null:
 		push_warning("no locomotion blend spaces in %s; the body stands in its idle" % LOCOMOTION)
 		play(idle)
 		return
+	if (WEAPON + "idle") in weapon_clips and (WEAPON + "shoot") in weapon_clips:
+		add_weapon_layers(root, upper_body_tracks(), (WEAPON + "idle_crouch") in weapon_clips)
+		has_weapon_layers = true
 	var lengths := {}
 	for clip in animation_player.get_animation_list():
 		lengths[String(clip)] = animation_player.get_animation(clip).length
@@ -163,6 +271,9 @@ func _apply() -> void:
 		animation_tree.set("parameters/%s/blend_position" % space_name, _speeds)
 	animation_tree.set("parameters/move/blend_amount", _crouch)
 	animation_tree.set("parameters/air/blend_amount", _crouch)
+	if has_weapon_layers:
+		animation_tree.set("parameters/hold/add_amount", 1.0)
+		animation_tree.set("parameters/hold_pose/blend_amount", _crouch)
 	animation_tree.set("parameters/cycle/scale", 1.0 / cycle_length(_rings, _speeds.length(), _crouch))
 	var wanted := "ground" if _on_ground else "air"
 	if String(animation_tree.get("parameters/ground/current_state")) != wanted:
@@ -174,9 +285,30 @@ func _node(node_name: StringName) -> AnimationNode:
 	return (animation_tree.tree_root as AnimationNodeBlendTree).get_node(node_name)
 
 
+## A round fired: the gun's shot added over the upper body, from its start,
+## as CS2's Weapon Shoot layer restarts it on every round.
+func fire() -> void:
+	if has_weapon_layers:
+		animation_tree.set("parameters/shoot/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
+
+
+## The gun's own clip for an action (reload, draw), crouched if the body is
+## down and the gun has one; empty if the gun has none.
+func weapon_clip(action: StringName) -> StringName:
+	if not has_weapon_layers:
+		return &""
+	var crouched := StringName(WEAPON + String(action) + "_crouch")
+	if _crouch >= 0.5 and animation_player.has_animation(crouched):
+		return crouched
+	var standing := StringName(WEAPON + String(action))
+	return standing if animation_player.has_animation(standing) else &""
+
+
 ## Plays a clip by its short name over the locomotion: a death blends in and
-## is held; a clip that plays once does, and fades back to the locomotion;
-## the idle, or anything the locomotion plays of itself, ends either.
+## is held; one of the gun's actions (reload, draw) plays over the upper body
+## and fades back into the hold; a clip that plays once over the whole body
+## does, and fades back to the locomotion; the idle, or anything the
+## locomotion plays of itself, ends a death or a whole-body clip.
 func play(
 	short: StringName,
 	blend: float = 0.0,
@@ -185,6 +317,14 @@ func play(
 ) -> void:
 	if animation_tree == null:
 		super(short, blend, speed, restart)
+		return
+	var gun_clip := weapon_clip(short)
+	if gun_clip != &"" and short != idle:
+		(_node(&"gun_action_clip") as AnimationNodeAnimation).animation = gun_clip
+		var gun_action := _node(&"gun_action") as AnimationNodeOneShot
+		gun_action.fadein_time = blend
+		gun_action.fadeout_time = ACTION_FADE
+		animation_tree.set("parameters/gun_action/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
 		return
 	if _is_held(short) and animation_player.has_animation(short):
 		(_node(&"death_clip") as AnimationNodeAnimation).animation = short
@@ -203,6 +343,9 @@ func play(
 	(_node(&"death") as AnimationNodeTransition).xfade_time = blend
 	animation_tree.set("parameters/death/transition_request", "alive")
 	animation_tree.set("parameters/action/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_ABORT)
+	if has_weapon_layers:
+		animation_tree.set("parameters/gun_action/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_ABORT)
+		animation_tree.set("parameters/shoot/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_ABORT)
 
 
 func playing_one_shot() -> bool:
@@ -332,6 +475,51 @@ static func build_tree(table: Dictionary, variation: String) -> AnimationNodeBle
 	tree.connect_node(&"death", 1, &"death_clip")
 	tree.connect_node(&"output", 0, &"death")
 	return tree
+
+
+## The gun's layers, between the locomotion and the clip played once, in the
+## order CS2's third-person graph stacks them (reference/animgraph/
+## worldmodel.md), each through its UpperBody mask (upper_body, the tracks):
+## the gun's idle pose added over the locomotion, as its Idle Poses layer
+## does (hold, standing or crouched); a reload or a draw over the upper body
+## in place of the rest, as its Weapons layer does (gun_action); and each
+## shot added on top, as its Weapon Shoot layer does (shoot). CS2 blends the
+## Weapons layer in model space; Godot blends in each bone's own, so here the
+## upper body keeps its pose relative to the hips, not to the world.
+static func add_weapon_layers(tree: AnimationNodeBlendTree, upper_body: Array[NodePath], crouched_hold: bool) -> void:
+	# A node's output feeds one input: the locomotion leaves the whole-body
+	# clip's input for the hold's.
+	tree.disconnect_node(&"action", 0)
+	tree.add_node(&"hold_stand", _clip(&"weapon_idle"))
+	tree.add_node(&"hold_crouch", _clip(&"weapon_idle_crouch" if crouched_hold else &"weapon_idle"))
+	tree.add_node(&"hold_pose", _blend2())
+	tree.connect_node(&"hold_pose", 0, &"hold_stand")
+	tree.connect_node(&"hold_pose", 1, &"hold_crouch")
+	var hold := AnimationNodeAdd2.new()
+	_mask(hold, upper_body)
+	tree.add_node(&"hold", hold)
+	tree.connect_node(&"hold", 0, &"ground")
+	tree.connect_node(&"hold", 1, &"hold_pose")
+	var gun_action := AnimationNodeOneShot.new()
+	_mask(gun_action, upper_body)
+	tree.add_node(&"gun_action", gun_action)
+	tree.add_node(&"gun_action_clip", _clip(&"weapon_idle"))
+	tree.connect_node(&"gun_action", 0, &"hold")
+	tree.connect_node(&"gun_action", 1, &"gun_action_clip")
+	var shoot := AnimationNodeOneShot.new()
+	shoot.mix_mode = AnimationNodeOneShot.MIX_MODE_ADD
+	_mask(shoot, upper_body)
+	tree.add_node(&"shoot", shoot)
+	tree.add_node(&"shoot_clip", _clip(&"weapon_shoot"))
+	tree.connect_node(&"shoot", 0, &"gun_action")
+	tree.connect_node(&"shoot", 1, &"shoot_clip")
+	tree.connect_node(&"action", 0, &"shoot")
+
+
+static func _mask(node: AnimationNode, tracks: Array[NodePath]) -> void:
+	node.filter_enabled = true
+	for track in tracks:
+		node.set_filter_path(track, true)
 
 
 ## One of CS2's blend spaces as Godot's: each point its clip, where CS2

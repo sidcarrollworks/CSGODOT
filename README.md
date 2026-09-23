@@ -312,9 +312,13 @@ CS2's blend spaces, each at the speed the game authored it for (runs at
 225 units a second, walks at 136, crouching at 96), and the body's speed
 along and across where it faces mixes the ones around it, kept in step as
 CS2 keeps them; the air is blended the same way, with the game's cross-fades
-into it and back (`reference/animgraph2.md`). dust2 plays a match of five a
-side, bots in every place but yours (`team_size` on the scene root), each
-walking its side's spawn points on a loop. A bot
+into it and back (`reference/animgraph2.md`). Over that the upper body
+holds, fires and reloads the gun with the gun's own clips, as CS2's graph
+lays them over the legs: every round a bot fires kicks its arms and
+shoulders, and its reload plays while its legs keep moving. dust2 plays a
+match of five a side, bots in every place but yours (`team_size` on the
+scene root), each walking from a spawn point to a bomb site and back over
+the map's nav mesh, or its side's spawn points on a loop without it. A bot
 (`src/bots/bot.gd`) is the player's own simulation run by commands its
 brain writes instead of keys, so it moves and fires the way a player does, and it can be
 shot: it wears the game's own hitboxes, the nineteen capsules CS2 defines
@@ -445,7 +449,7 @@ appear when the editor loads a script. They do not show up in a headless run,
 so if the Godot console shows any, paste them over and they will get fixed.
 
 Eight files: movement, map import, dust2, models, weapons, penetration, the
-test range and the simulation. Without the extracted assets 621 checks run
+test range and the simulation. Without the extracted assets 622 checks run
 and pass; the dust2 and model files skip what needs files that have not been
 extracted.
 
@@ -521,8 +525,8 @@ original assets later is a content change rather than a git history problem.
 ## What is deliberately not here yet
 
 No bots that do anything but walk their spawn and shoot what they see (the
-nav mesh is read, but nothing walks it yet), no firing animation on the
-third-person model. `reference/roadmap.md`
+nav mesh is read, but nothing walks it yet), and no flinch on a body that
+is hit. `reference/roadmap.md`
 has the rest, in order.
 
 Movement and shooting are tuned in flat grey rooms first, because tuning them
