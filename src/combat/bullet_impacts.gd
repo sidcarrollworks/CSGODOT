@@ -88,9 +88,11 @@ func _ready() -> void:
 		add_child(player)
 		_players.append(player)
 	# The textures are made here, once, rather than on the first round into
-	# each surface, which would hitch.
+	# each surface, which would hitch; and the sounds are loaded, for the
+	# same reason.
 	for hole_set in HOLE_MATERIALS:
 		_variants_for(hole_set)
+	SoundBank.load_sets(PackedStringArray(SOUND_SETS.values()))
 
 
 ## Reports a shot's result to the scene's impacts, if it has any.

@@ -28,6 +28,9 @@ const SETS := {
 		"reload": [[0.55, "weapons/m4a1/m4a1_clipout"], [1.6, "weapons/m4a1/m4a1_clipin"], [2.25, "weapons/m4a1/m4a1_silencer_boltback"], [2.6, "weapons/m4a1/m4a1_silencer_boltforward"]],
 	},
 }
+## What the shooter hears of a hit (hit()): a kill, a headshot through a
+## helmet and without one, kevlar.
+const HIT_SETS := ["player/bodyshot_kill_01", "player/headshot_armor_01", "player/headshot_noarmor_0", "player/kevlar"]
 const FIRE_DB := -6.0
 const HANDLING_DB := -4.0
 const HIT_DB := -3.0
@@ -70,6 +73,12 @@ func equip(data: WeaponData) -> void:
 	weapon_set = SETS.get(set_name_for(data.model_path), {})
 	_reload_serial += 1
 	_play(_handling, weapon_set.get("draw", ""), HANDLING_DB)
+	# Its shot, its reload and the hits, now rather than at the first of each.
+	var stems := PackedStringArray([weapon_set.get("fire", "")])
+	for part: Array in weapon_set.get("reload", []):
+		stems.append(part[1])
+	stems.append_array(HIT_SETS)
+	SoundBank.load_sets(stems)
 
 
 ## The set's name from a model path: weapon_rif_ak47.gltf is "ak47".
@@ -98,11 +107,11 @@ func reload() -> void:
 ## armour, a headshot through or without a helmet, a kill.
 func hit(zone: StringName, target: HitTarget, killed: bool) -> void:
 	if killed and zone != &"head":
-		_play(_hits, "player/bodyshot_kill_01", HIT_DB)
+		_play(_hits, HIT_SETS[0], HIT_DB)
 	elif zone == &"head":
-		_play(_hits, "player/headshot_armor_01" if target.is_armored(zone) else "player/headshot_noarmor_0", HIT_DB)
+		_play(_hits, HIT_SETS[1] if target.is_armored(zone) else HIT_SETS[2], HIT_DB)
 	elif target.is_armored(zone):
-		_play(_hits, "player/kevlar", HIT_DB)
+		_play(_hits, HIT_SETS[3], HIT_DB)
 
 
 func _play(player: Node, stem: String, volume_db: float) -> void:

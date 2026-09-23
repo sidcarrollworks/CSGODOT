@@ -54,6 +54,17 @@ static func variants(stem: String) -> Array[AudioStream]:
 	return streams
 
 
+## Loads sets now rather than the first time each plays: a set is read
+## from the disk the first time it is asked for, which in play is a hitch of
+## a few milliseconds, and tens with the files not yet in the disk's cache.
+static func load_sets(stems: PackedStringArray) -> void:
+	if not available():
+		return
+	for stem in stems:
+		if not stem.is_empty():
+			randomizer(stem)
+
+
 ## One of a set's variants, at random, or null for an empty set.
 static func pick(stem: String, rng: RandomNumberGenerator) -> AudioStream:
 	var streams := variants(stem)

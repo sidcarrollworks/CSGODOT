@@ -35,9 +35,23 @@ var height: int = 0
 var band: int = 0
 ## Each volume: {"origin", "mins", "maxs" (Source axes, units, box
 ## relative to origin), "atlas" (texel offset), "size" (texels), "level"}.
-var volumes: Array[Dictionary] = []
+var volumes: Array[Dictionary] = []:
+	set(value):
+		volumes = value
+		_origins.clear()
+
+## Source's faces, +X +Y +Z -X -Y -Z, in the order of the game's: Source X
+## is game Z, Source Y is game X, Source Z is game Y.
+const FACE_ORDER := [1, 4, 2, 5, 0, 3]
 
 var _texels: PackedByteArray = PackedByteArray()  # RGB half floats
+## The volumes' boxes and sizes, packed for volume_at, which is asked for
+## every model every frame: out of a dictionary each, the search took
+## longer than the light.
+var _origins := PackedVector3Array()
+var _mins := PackedVector3Array()
+var _maxs := PackedVector3Array()
+var _extents := PackedFloat64Array()
 
 
 func is_loaded() -> bool:
@@ -101,21 +115,36 @@ static func read_volumes(path: String) -> Array[Dictionary]:
 ## The volume holding a game-space point, or -1: the smallest, since the
 ## map nests small rooms inside large volumes.
 func volume_at(position: Vector3) -> int:
+	if _origins.size() != volumes.size():
+		_pack_volumes()
 	var source := Vector3(position.z, position.x, position.y)
 	var best := -1
 	var best_extent := INF
-	for index in volumes.size():
-		var volume := volumes[index]
-		var local: Vector3 = source - volume["origin"]
-		var mins: Vector3 = volume["mins"]
-		var maxs: Vector3 = volume["maxs"]
+	for index in _origins.size():
+		var local := source - _origins[index]
+		var mins := _mins[index]
+		var maxs := _maxs[index]
 		if local.x < mins.x or local.y < mins.y or local.z < mins.z or local.x > maxs.x or local.y > maxs.y or local.z > maxs.z:
 			continue
-		var extent := (maxs - mins).length_squared()
+		var extent := _extents[index]
 		if extent < best_extent:
 			best = index
 			best_extent = extent
 	return best
+
+
+func _pack_volumes() -> void:
+	_origins.clear()
+	_mins.clear()
+	_maxs.clear()
+	_extents.clear()
+	for volume in volumes:
+		var mins: Vector3 = volume["mins"]
+		var maxs: Vector3 = volume["maxs"]
+		_origins.append(volume["origin"])
+		_mins.append(mins)
+		_maxs.append(maxs)
+		_extents.append((maxs - mins).length_squared())
 
 
 ## The ambient cube at a game-space point, in game axes: the light from
@@ -143,11 +172,35 @@ func cube_at(position: Vector3) -> PackedColorArray:
 	# at 379 world triangles (correlation 0.82 this way, 0.41 with the rows
 	# flipped within the volume, 0.11 flipped over the image).
 	var at: Vector3 = volume["atlas"] + normalized * texels - Vector3.ONE * 0.5
-	# Source's faces, +X +Y +Z -X -Y -Z, to the game's: Source X is game
-	# Z, Source Y is game X, Source Z is game Y.
-	var faces := [1, 4, 2, 5, 0, 3]
+	# A trilinear read of each face's band: the eight texels round the point
+	# and their weights are the same for every face, which is only a band
+	# further into the atlas, so they are worked out once.
+	var base := Vector3i(floori(at.x), floori(at.y), floori(at.z))
+	var fraction := at - Vector3(base)
+	var offsets := PackedInt64Array()
+	var weights := PackedFloat64Array()
+	for corner in 8:
+		var offset := Vector3i(corner & 1, (corner >> 1) & 1, (corner >> 2) & 1)
+		var weight := (fraction.x if offset.x == 1 else 1.0 - fraction.x) \
+			* (fraction.y if offset.y == 1 else 1.0 - fraction.y) \
+			* (fraction.z if offset.z == 1 else 1.0 - fraction.z)
+		if weight <= 0.0:
+			continue
+		var x := clampi(base.x + offset.x, 0, width - 1)
+		var y := clampi(base.y + offset.y, 0, height - 1)
+		var z := clampi(base.z + offset.z, 0, band - 1)
+		offsets.append(((z * height + y) * width + x) * 6)
+		weights.append(weight)
+	var band_bytes := band * height * width * 6
 	for face in FACES:
-		cube[face] = _sample(at, faces[face])
+		var shift: int = FACE_ORDER[face] * band_bytes
+		var light := Color(0, 0, 0, 1)
+		for i in offsets.size():
+			var byte := offsets[i] + shift
+			light.r += _texels.decode_half(byte) * weights[i]
+			light.g += _texels.decode_half(byte + 2) * weights[i]
+			light.b += _texels.decode_half(byte + 4) * weights[i]
+		cube[face] = light
 	return cube
 
 
@@ -162,33 +215,6 @@ static func shade(cube: PackedColorArray, normal: Vector3) -> Color:
 	light += (cube[4] if n.z >= 0.0 else cube[5]) * weights.z
 	light.a = 1.0
 	return light
-
-
-## Trilinear read of one face's band at a texel position.
-func _sample(at: Vector3, face: int) -> Color:
-	var base := Vector3i(floori(at.x), floori(at.y), floori(at.z))
-	var fraction := at - Vector3(base)
-	var result := Color(0, 0, 0, 1)
-	for corner in 8:
-		var offset := Vector3i(corner & 1, (corner >> 1) & 1, (corner >> 2) & 1)
-		var weight := (fraction.x if offset.x == 1 else 1.0 - fraction.x) \
-			* (fraction.y if offset.y == 1 else 1.0 - fraction.y) \
-			* (fraction.z if offset.z == 1 else 1.0 - fraction.z)
-		if weight <= 0.0:
-			continue
-		var texel := _texel(
-			clampi(base.x + offset.x, 0, width - 1), clampi(base.y + offset.y, 0, height - 1),
-			clampi(base.z + offset.z, 0, band - 1) + face * band
-		)
-		result.r += texel.r * weight
-		result.g += texel.g * weight
-		result.b += texel.b * weight
-	return result
-
-
-func _texel(x: int, y: int, z: int) -> Color:
-	var offset := ((z * height + y) * width + x) * 6
-	return Color(_texels.decode_half(offset), _texels.decode_half(offset + 2), _texels.decode_half(offset + 4), 1.0)
 
 
 ## Packs the decompiled slices into memory: RGB half floats, slice by
@@ -217,7 +243,7 @@ func _pack_slices(directory: String) -> bool:
 		if image == null or image.get_width() != width or image.get_height() != height:
 			band = 0
 			return false
-		# RGB half floats, which is the layout _texel reads.
+		# RGB half floats, which is the layout cube_at reads.
 		image.convert(Image.FORMAT_RGBH)
 		_texels.append_array(image.get_data())
 	return true

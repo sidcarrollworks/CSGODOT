@@ -72,6 +72,13 @@ const STEP_UP_OR_DOWN := 18.0
 ## It jumps for a landing only this close to the take-off, in plan, so it
 ## does not hop again on arriving.
 const TAKE_OFF_REACH := 24.0
+## How many bots may find their way over the nav mesh in one tick. A search
+## takes half a millisecond, and at a round's start every bot wants one on
+## the same tick: nine to twenty searches, a tick of five to ten ms. The
+## rest wait a tick or two, standing, which freeze time hides.
+const PATH_SEARCHES_PER_TICK := 2
+static var _searches_on_tick := -1
+static var _searches := 0
 
 ## Its body falling, while it is dead; null otherwise.
 
@@ -235,6 +242,8 @@ func _think(delta: float) -> UserCmd:
 func _way_on(cmd: UserCmd, delta: float) -> Vector3:
 	var goal := route[_next]
 	if nav_mesh != null and _path == null and _no_way_to != _next:
+		if not _may_search(cmd.tick):
+			return Vector3.ZERO
 		_path = nav_mesh.walk_path(global_position, goal)
 		_corner = 1
 		if _path.is_empty():
@@ -287,6 +296,18 @@ func _way_on(cmd: UserCmd, delta: float) -> Vector3:
 		cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.JUMP, true, 0.0, yaw_degrees, pitch_degrees))
 	return way.normalized() if way.length_squared() > 0.0 else Vector3.ZERO
 
+
+
+## Whether a bot may search the nav mesh on this tick, counting it if so
+## (PATH_SEARCHES_PER_TICK).
+static func _may_search(tick: int) -> bool:
+	if tick != _searches_on_tick:
+		_searches_on_tick = tick
+		_searches = 0
+	if _searches >= PATH_SEARCHES_PER_TICK:
+		return false
+	_searches += 1
+	return true
 
 
 ## On to the next point of the route, to find the way there afresh.
