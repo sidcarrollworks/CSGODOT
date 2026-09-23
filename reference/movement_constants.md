@@ -210,6 +210,7 @@ ground normal; projecting onto the slope bleeds less speed uphill, which is
 arguably better and is definitely not CS2. It was silent before, which is worse
 than either choice.
 
-Still open from that audit, all on the map side and all blocked on the dust2
-extraction: per-surface-property collision, the nav mesh, the real friction
-table in `surfaceproperties.vsurf`, and entity spawn points.
+Still open from that audit, both on the map side: per-surface-property
+collision and the real friction table in `surfaceproperties.vsurf`. The other
+two it listed are in: the entity spawn points (`SourceEntities`) and the nav
+mesh (`SourceNavMesh`).

@@ -69,6 +69,7 @@ func _process(_delta: float) -> bool:
 		_test_export_shaped_import()
 		_test_file_picking()
 		_test_entities()
+		_test_nav_mesh()
 		_test_export_offset_fix()
 		_test_paint_channel()
 		_test_blend_materials()
@@ -462,6 +463,292 @@ func _test_entities() -> void:
 		SourceEntities.parse("user://export_fixture/not_there.vents").is_empty(),
 		"a missing entity file is no entities, not an error"
 	)
+
+	# The callouts, two brushes of one name and one of another.
+	var places_path := "user://export_fixture/places.vents"
+	var place_lines := PackedStringArray()
+	for place: Array in [["BombsiteA", "[ 10.0, 20.0, 30.0 ]"], ["BombsiteA", "[ 40.0, 50.0, 60.0 ]"], ["LongDoors", "[ 1.0, 2.0, 3.0 ]"]]:
+		place_lines.append_array([
+			"====%d====" % place_lines.size(),
+			'place_name                     "%s"' % place[0],
+			'classname                      "env_cs_place"',
+			"origin                         %s" % place[1],
+			"",
+		])
+	var places_file := FileAccess.open(places_path, FileAccess.WRITE)
+	places_file.store_string("\r\n".join(place_lines) + "\r\n")
+	places_file.close()
+	var places := SourceEntities.places(SourceEntities.parse(places_path))
+	_check(
+		places.size() == 2 and (places.get("BombsiteA", []) as Array).size() == 2
+			and (places["BombsiteA"][1] as Vector3).is_equal_approx(Vector3(50.0, 60.0, 40.0)),
+		"places are read by name, each brush's origin in game space (%s)" % places
+	)
+
+
+## The nav mesh reader, on files written here byte by byte as the game writes
+## them: three areas, in Source's axes two squares side by side and a
+## triangle 40 units up across a 20-unit gap, which drops to the second square
+## but cannot be climbed from it; a ladder; and the versions dust2 (36) and
+## older maps (35, 30) use.
+func _test_nav_mesh() -> void:
+	var mesh := SourceNavMesh.parse(_nav_file(36))
+	_check(
+		mesh.error.is_empty() and mesh.version == 36 and mesh.unread_bytes == 0 and mesh.areas.size() == 3
+			and mesh.ladders.size() == 1 and mesh.analysis_bytes == NAV_ANALYSIS_BYTES,
+		"a version 36 nav mesh reads to its last byte, stepping over its KV3 blocks: %s (%d bytes unread, analysis %d)"
+			% [mesh.summary(), mesh.unread_bytes, mesh.analysis_bytes]
+	)
+	var hull: Dictionary = mesh.hulls[0] if not mesh.hulls.is_empty() else {}
+	_check(
+		mesh.hulls.size() == 1 and is_equal_approx(hull.get("radius", 0.0), 16.0)
+			and is_equal_approx(hull.get("height", 0.0), 71.0) and is_equal_approx(hull.get("crouch_height", 0.0), 35.5)
+			and is_equal_approx(hull.get("max_climb", 0.0), 16.0) and is_equal_approx(hull.get("jump_up", 0.0), 68.0)
+			and is_equal_approx(hull.get("jump_down", 0.0), 157.0),
+		"its hull is the player's: 16 by 71, 35.5 crouched, a 16-unit step, 68 up and 157 down (%s)" % hull
+	)
+	if mesh.areas.size() != 3:
+		return
+
+	var first: SourceNavMesh.Area = mesh.areas[1]
+	var second: SourceNavMesh.Area = mesh.areas[2]
+	var ledge: SourceNavMesh.Area = mesh.areas[3]
+	_check(
+		first.corners.size() == 4 and first.corners[1].is_equal_approx(Vector3(0, 0, 100))
+			and ledge.corners.size() == 3 and is_equal_approx(ledge.centre.y, 40.0)
+			and (ledge.flags & SourceNavMesh.FLAG_CROUCH) != 0 and first.ladders_up == PackedInt32Array([1])
+			and mesh.ladders[0].top_areas[0] == 3 and mesh.ladders[0].bottom_areas[0] == 1,
+		"corners come out in game space, Source (100, 0, 0) at (0, 0, 100), with the areas' flags and ladders (%s)" % first.corners
+	)
+	var across: Array = first.edges[1] if first.edges.size() > 1 else []
+	var drop: Array = ledge.edges[2] if ledge.edges.size() > 2 else []
+	var back_up := second.links().filter(func(link: SourceNavMesh.Link) -> bool: return link.area == 3)
+	_check(
+		across.size() == 1 and across[0].area == 2 and across[0].edge == 3
+			and is_zero_approx(across[0].gap) and is_zero_approx(across[0].rise)
+			and drop.size() == 1 and drop[0].area == 2 and is_equal_approx(drop[0].gap, 20.0)
+			and is_equal_approx(drop[0].rise, -40.0) and back_up.is_empty(),
+		"a link says where it leads, onto which edge, how far across and how far up: flat side by side, 20 across and 40 down off the ledge, and none back up"
+	)
+	var over_first := SourceEntities.to_game(Vector3(50, 50, 10))
+	var over_ledge := SourceEntities.to_game(Vector3(240, 20, 60))
+	_check(
+		mesh.area_at(over_first) == first and mesh.area_at(over_ledge) == ledge
+			and mesh.area_at(SourceEntities.to_game(Vector3(500, 500, 0))) == null
+			and mesh.area_at(SourceEntities.to_game(Vector3(50, 50, 500))) == null
+			and is_equal_approx(ledge.floor_at(over_ledge), 40.0),
+		"a point finds the area under it, none off the mesh or far above it, and the floor's height there"
+	)
+	var ids := mesh.route(over_ledge, over_first).map(func(area: SourceNavMesh.Area) -> int: return area.id)
+	var path := mesh.find_path(over_ledge, over_first)
+	_check(
+		ids == [3, 2, 1] and path.size() == 5
+			and path[1].is_equal_approx(SourceEntities.to_game(Vector3(220, 50, 40)))
+			and path[2].is_equal_approx(SourceEntities.to_game(Vector3(200, 50, 0)))
+			and path[3].is_equal_approx(SourceEntities.to_game(Vector3(100, 50, 0)))
+			and mesh.route(over_first, over_ledge).is_empty(),
+		"a route drops off the ledge, from the middle of its edge to the floor below, crosses the shared edge at its middle, and no route climbs back (%s, %s)"
+			% [ids, path]
+	)
+
+	var older := SourceNavMesh.parse(_nav_file(35))
+	var oldest := SourceNavMesh.parse(_nav_file(30))
+	_check(
+		older.error.is_empty() and older.unread_bytes == 0 and older.areas.size() == 3 and older.ladders.size() == 1
+			and oldest.error.is_empty() and oldest.unread_bytes == 0 and oldest.areas.size() == 3 and oldest.hulls.size() == 3
+			and oldest.areas.has(1) and (oldest.areas[1] as SourceNavMesh.Area).corners[1].is_equal_approx(Vector3(0, 0, 100)),
+		"versions 35 and 30 read too, 30 with its corners in each area and three hulls (%s; %s)" % [older.summary(), oldest.summary()]
+	)
+	var whole := _nav_file(36)
+	var not_nav := whole.duplicate()
+	not_nav[0] = 0
+	var future := whole.duplicate()
+	future.encode_u32(4, 99)
+	var damaged := whole.duplicate()
+	damaged.encode_u32(NAV_CORNER_COUNT_AT, 0x7FFFFFFF)
+	_check(
+		SourceNavMesh.parse(whole.slice(0, whole.size() >> 1)).error.contains("ends early")
+			and SourceNavMesh.parse(damaged).error.contains("ends early")
+			and SourceNavMesh.parse(not_nav).error.contains("not a nav mesh")
+			and SourceNavMesh.parse(future).error.contains("99")
+			and SourceNavMesh.load_file("user://export_fixture/not_there.nav").error.contains("extract_assets.sh nav"),
+		"a file cut short, a count too big for it, a file that is not a nav mesh, a version from the future and a missing file each say so"
+	)
+
+
+## The analysis block _nav_file() ends with, header and body.
+const NAV_ANALYSIS_BYTES := 120 + 24
+## Where _nav_file(36) keeps its corner count: after the 16-byte header and a
+## 129-byte KV3 block, on the next four bytes.
+const NAV_CORNER_COUNT_AT := 16 + 120 + 9
+
+
+## A nav mesh as the game writes one at the given version (36, 35 or 30), with
+## the areas, links and ladder _test_nav_mesh reads back.
+func _nav_file(version: int) -> PackedByteArray:
+	# Source's axes, Z up: two squares side by side, and a triangle 40 up
+	# across a 20-unit gap.
+	var polygons: Array = [
+		[Vector3(0, 0, 0), Vector3(100, 0, 0), Vector3(100, 100, 0), Vector3(0, 100, 0)],
+		[Vector3(100, 0, 0), Vector3(200, 0, 0), Vector3(200, 100, 0), Vector3(100, 100, 0)],
+		[Vector3(220, 0, 40), Vector3(300, 0, 40), Vector3(220, 100, 40)],
+	]
+	# Per area, per edge (corner i to i + 1), links as [area, its edge].
+	var links: Array = [
+		[[], [[2, 3]], [], []],
+		[[], [], [], [[1, 1]]],
+		[[], [], [[2, 1]]],
+	]
+	var flags: Array = [0, 0, SourceNavMesh.FLAG_CROUCH]
+	var sub_version := 1 if version >= 35 else 0
+	var out := StreamPeerBuffer.new()
+	out.put_u32(SourceNavMesh.MAGIC)
+	out.put_u32(version)
+	out.put_u32(sub_version)
+	out.put_u32(1)
+	if version >= 36:
+		_put_kv3(out, 0, 9)
+	if version >= 31:
+		out.put_u32(polygons.reduce(func(total: int, polygon: Array) -> int: return total + polygon.size(), 0))
+		for polygon: Array in polygons:
+			for corner: Vector3 in polygon:
+				_put_nav_vector(out, corner)
+		out.put_u32(polygons.size())
+		var next := 0
+		for polygon: Array in polygons:
+			out.put_u8(polygon.size())
+			for j in polygon.size():
+				out.put_u32(next)
+				next += 1
+			if version >= 35:
+				out.put_u32(0xFFFFFFFF)
+	if version >= 32:
+		out.put_u32(0)
+	if version >= 35:
+		out.put_u32(0)
+	if version >= 36:
+		_put_kv3(out, 0, 9)
+
+	out.put_u32(polygons.size())
+	for i in polygons.size():
+		out.put_u32(i + 1)
+		out.put_64(flags[i])
+		out.put_u8(0)
+		if version >= 31:
+			out.put_u32(i)
+		else:
+			out.put_u32(polygons[i].size())
+			for corner: Vector3 in polygons[i]:
+				_put_nav_vector(out, corner)
+		out.put_float(0.0)
+		for edge_links: Array in links[i]:
+			out.put_u32(edge_links.size())
+			for link: Array in edge_links:
+				out.put_u32(link[0])
+				out.put_u32(link[1])
+		out.put_u8(0)
+		out.put_u32(0)
+		# The ladder goes up from the first square to the ledge.
+		for ladders: Array in [[1] if i == 0 else [], [1] if i == 2 else []]:
+			out.put_u32(ladders.size())
+			for ladder: int in ladders:
+				out.put_u32(ladder)
+
+	out.put_u32(1)
+	out.put_u32(1)
+	out.put_float(32.0)
+	_put_nav_vector(out, Vector3(50, 90, 40))
+	_put_nav_vector(out, Vector3(50, 90, 0))
+	out.put_float(40.0)
+	out.put_u32(0)
+	for area: int in [3, 0, 0, 0, 1] + ([0, 0] if version >= 35 else []):
+		out.put_u32(area)
+	out.put_u32(0)
+
+	var gen := 13 if version >= 36 else 12 if version >= 35 else 6
+	out.put_32(gen)
+	out.put_u32(0)
+	for value: float in [128.0, 1.5, 2.0]:
+		out.put_float(value)
+	out.put_32(0)
+	out.put_32(0)
+	out.put_float(0.0)
+	out.put_float(0.0)
+	out.put_32(0)
+	out.put_float(0.0)
+	out.put_32(4)
+	if gen >= 7:
+		out.put_float(0.0)
+	if gen >= 12:
+		out.put_u8(0)
+		out.put_u8(0)
+	var hull_count := 1 if gen >= 12 else 3
+	out.put_32(hull_count)
+	for i in hull_count:
+		if gen >= 9:
+			out.put_u8(1)
+		out.put_float(16.0)
+		out.put_float(71.0)
+		if gen >= 9:
+			out.put_u8(1)
+			out.put_float(35.5)
+		if gen >= 13:
+			out.put_u8(0)
+			out.put_float(17.5)
+		out.put_float(16.0)
+		out.put_32(50)
+		for value: float in [157.0, 64.0, 68.0]:
+			out.put_float(value)
+		if gen >= 11:
+			out.put_32(0)
+	if gen >= 12:
+		out.put_u8(0)
+	if version >= 36:
+		_put_kv3(out, 0, 9)
+	if sub_version > 0:
+		_put_kv3(out, 2, NAV_ANALYSIS_BYTES - 120)
+	return out.data_array
+
+
+func _put_nav_vector(out: StreamPeerBuffer, value: Vector3) -> void:
+	out.put_float(value.x)
+	out.put_float(value.y)
+	out.put_float(value.z)
+
+
+## A binary KV3 block as a nav file holds one, on an eight-byte boundary: the
+## 120-byte version 5 header and `body` bytes after it, either uncompressed in
+## two buffers (as the empty ones in dust2's file are) or zstd-compressed,
+## sized by its compressed total. The body is filler: the reader steps over it.
+func _put_kv3(out: StreamPeerBuffer, compression: int, body: int) -> void:
+	while out.get_size() % 8 != 0:
+		out.put_u8(0)
+	out.put_u32(0x4B563305)
+	for i in 16:
+		out.put_u8(i)
+	out.put_u32(compression)
+	out.put_u16(0)
+	out.put_u16(0)
+	for i in 4:
+		out.put_32(0)
+	out.put_u16(0)
+	out.put_u16(0)
+	var buffer1 := 4 if compression == 0 else 100
+	var buffer2 := body - 4 if compression == 0 else 200
+	out.put_32(buffer1 + buffer2)
+	out.put_32(body if compression != 0 else buffer1 + buffer2)
+	out.put_32(0)
+	out.put_32(0)
+	out.put_32(0)
+	out.put_32(0)
+	out.put_32(buffer1)
+	out.put_32(0 if compression == 0 else body >> 1)
+	out.put_32(buffer2)
+	out.put_32(0 if compression == 0 else body - (body >> 1))
+	for i in 8:
+		out.put_32(0)
+	for i in body:
+		out.put_u8(0xAB)
 
 
 ## Source 2 Viewer pushes overlays and depth-biased geometry 0.3937 m out

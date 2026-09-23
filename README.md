@@ -212,18 +212,29 @@ scripts/extract_assets.sh weapons      # every gun: models and animations
 scripts/extract_assets.sh sounds       # every gun's sounds, footsteps by surface, hits
 ```
 
-`map` takes a few minutes and a little under two gigabytes. It pulls seven
+`map` takes a few minutes and a little under two gigabytes. It pulls eight
 things out of the game: the visible world as glTF with its textures, the
-collision hull as a second glTF, the entity lump as text, the second texture
+collision hull as a second glTF, the entity lump as text, the nav mesh the
+game's bots walk, the second texture
 layer of every material that has one (which a glTF has no room for), the sky
 as an HDR panorama, the 3D skybox (the buildings and hills beyond the map, a
 small map of their own, drawn behind everything as the game draws it),
 and the lightmaps the game baked its bounce light
-into, with the light probes beside them. `physics`, `entities`, `layers`,
-`sky`, `skybox` and `lightmaps` fetch the last six on their own; all but
-the lightmaps take seconds. The lightmaps are one 300 MB image, which
+into, with the light probes beside them. `physics`, `entities`, `nav`,
+`layers`, `sky`, `skybox` and `lightmaps` fetch the last seven on their own;
+all but the lightmaps take seconds. The lightmaps are one 300 MB image, which
 Godot's first import spends a few minutes compressing to 90; the probes are
 720 small slices that the game packs into one file the first time it runs.
+
+The nav mesh is the game's own, `maps/de_dust2.nav`: the floor cut into
+2,242 convex areas, with the links between them that CS2's bots path over,
+jumps and drops among them. `src/map/source_nav_mesh.gd` (`SourceNavMesh`)
+reads it, after Source 2 Viewer's reader of the undocumented format, and
+answers which area is under a point and how to get from one place to
+another (`route` for the areas, `find_path` for points to walk through). The
+bots do not walk it yet. The file ends in the game's analysis of the mesh
+(hiding spots, where the two sides meet on each route, how early each team
+can reach each area), which is compressed KV3 and not read yet.
 
 `weapons` fetches every gun with its first- and third-person animations and
 the game's weapon tuning, and `hud` the scope overlay and equipment icons.
@@ -375,7 +386,7 @@ appear when the editor loads a script. They do not show up in a headless run,
 so if the Godot console shows any, paste them over and they will get fixed.
 
 Seven files: movement, map import, dust2, models, weapons, the test range
-and the simulation. Without the extracted assets 519 checks run and pass;
+and the simulation. Without the extracted assets 528 checks run and pass;
 the dust2 and model files skip what needs files that have not been
 extracted.
 
@@ -450,8 +461,9 @@ original assets later is a content change rather than a git history problem.
 
 ## What is deliberately not here yet
 
-No bots that do anything but walk their spawn and shoot what they see, no
-nav mesh, no firing animation on the third-person model. `reference/roadmap.md`
+No bots that do anything but walk their spawn and shoot what they see (the
+nav mesh is read, but nothing walks it yet), no firing animation on the
+third-person model. `reference/roadmap.md`
 has the rest, in order.
 
 Movement and shooting are tuned in flat grey rooms first, because tuning them

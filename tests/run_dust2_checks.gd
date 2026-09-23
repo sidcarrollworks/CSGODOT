@@ -15,6 +15,7 @@ const MAP_DIR := "res://assets/maps/de_dust2"
 const COLLISION_DIR := "res://assets/maps/de_dust2_physics"
 const SKYBOX_DIR := "res://assets/maps/de_dust2_skybox"
 const ENTITIES_FILE := "entities/default_ents.vents"
+const NAV_FILE := "res://assets/maps/de_dust2/maps/de_dust2.nav"
 
 ## Spawn points float above the floor, the highest on dust2 by 61 units.
 const MAX_DROP := 80.0
@@ -32,6 +33,8 @@ var _importer: MapImporter
 var _players: Dictionary = {}
 var _bots: Array[Bot] = []
 var _bot_starts: Array[Vector3] = []
+var _spawns: Dictionary = {}
+var _places: Dictionary = {}
 
 
 func _process(_delta: float) -> bool:
@@ -51,6 +54,7 @@ func _process(_delta: float) -> bool:
 
 	_test_every_spawn_is_on_floor()
 	_test_bots_walk()
+	_test_nav_mesh()
 	_importer.free()
 	_report()
 	return true
@@ -133,7 +137,10 @@ func _import() -> bool:
 	var entities_path := ProjectSettings.globalize_path(
 		map_file.get_base_dir().path_join(ENTITIES_FILE)
 	)
-	var spawns := SourceEntities.player_spawns(SourceEntities.parse(entities_path))
+	var entities := SourceEntities.parse(entities_path)
+	var spawns := SourceEntities.player_spawns(entities)
+	_spawns = spawns
+	_places = SourceEntities.places(entities)
 	_check(
 		spawns["T"].size() >= 5 and spawns["CT"].size() >= 5,
 		"both teams have spawn points (%d T, %d CT; scripts/extract_assets.sh entities)"
@@ -231,6 +238,122 @@ func _test_bots_walk() -> void:
 				% [footsteps.steps if footsteps else 0, footsteps.surface if footsteps else "-"]
 		)
 
+
+
+## dust2's nav mesh, the one the game's bots walk (scripts/extract_assets.sh
+## nav): read to its last byte, lying on the floor the player walks on, under
+## every spawn and callout, and leading from both spawns to both bomb sites
+## by ways a player could walk.
+func _test_nav_mesh() -> void:
+	var mesh := SourceNavMesh.load_file(NAV_FILE)
+	_check(
+		mesh.error.is_empty() and mesh.version == 36 and mesh.unread_bytes == 0 and mesh.areas.size() > 2000
+			and mesh.hulls.size() == 1 and is_equal_approx(mesh.hulls[0].get("radius", 0.0), 16.0),
+		"dust2's nav mesh reads to its last byte, built for CS2's player: %s" % mesh.summary()
+	)
+	if not mesh.error.is_empty():
+		return
+
+	var broken := 0
+	for area: SourceNavMesh.Area in mesh.areas.values():
+		for link in area.links():
+			var other: SourceNavMesh.Area = mesh.areas.get(link.area)
+			if other == null or link.edge >= other.corners.size():
+				broken += 1
+	var t_spawn: Vector3 = _spawns["T"][0]["position"]
+	var start := mesh.area_at(t_spawn)
+	var reached := {}
+	if start != null:
+		reached[start.id] = true
+		var queue: Array[int] = [start.id]
+		while not queue.is_empty():
+			for link in (mesh.areas[queue.pop_back()] as SourceNavMesh.Area).links():
+				if not reached.has(link.area):
+					reached[link.area] = true
+					queue.append(link.area)
+	_check(
+		broken == 0 and reached.size() >= mesh.areas.size() * 0.97,
+		"every link leads to an edge of an area there is, and following them from T spawn reaches %d of the %d areas"
+			% [reached.size(), mesh.areas.size()]
+	)
+
+	# The mesh floats a little over the floor, as a mesh built from voxels
+	# does: each corner should have the hull just under it. Taken 2 units in
+	# towards the area's middle, because on a ledge the mesh reaches a unit or
+	# so past the lip, and straight down from there is the floor below.
+	var space := _importer.get_world_3d().direct_space_state
+	var mask := Hitscan.WORLD_LAYER | MapImporter.PLAYER_CLIP_LAYER
+	var corners := 0
+	var heights := PackedFloat32Array()
+	for area: SourceNavMesh.Area in mesh.areas.values():
+		for corner in area.corners:
+			corners += 1
+			var inward := Vector3(area.centre.x - corner.x, 0.0, area.centre.z - corner.z).limit_length(2.0)
+			var point := corner + inward
+			var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(point + Vector3.UP * 4.0, point + Vector3.DOWN * 24.0, mask))
+			if not hit.is_empty():
+				heights.append(corner.y - (hit["position"] as Vector3).y)
+	heights.sort()
+	var median := heights[heights.size() >> 1] if not heights.is_empty() else INF
+	_check(
+		heights.size() >= corners * 0.97 and median >= 0.0 and median < 8.0,
+		"the mesh lies on the floor the player walks on: %d of its %d corners have the hull within 24 units under them, %.1f under the middle one"
+			% [heights.size(), corners, median]
+	)
+
+	var off_mesh := PackedStringArray()
+	for player: PlayerBody in _players:
+		var feet := player.global_position
+		var under := mesh.area_at(feet)
+		if under == null or absf(under.floor_at(feet) - feet.y) > 8.0:
+			off_mesh.append("%s" % feet)
+	_check(
+		off_mesh.is_empty(),
+		"a player dropped at each of the %d spawns stands on the mesh, within 8 units of its floor (off it: %s)"
+			% [_players.size(), ", ".join(off_mesh)]
+	)
+
+	# A callout's origin is its brush's middle, up to 270 units over the
+	# floor on the tunnel stairs, and a few brushes reach past the mesh.
+	var far_callouts := PackedStringArray()
+	for place: String in _places:
+		var nearest := INF
+		for origin: Vector3 in _places[place]:
+			for area: SourceNavMesh.Area in mesh.areas.values():
+				if area.centre.y < origin.y + 24.0 and area.centre.y > origin.y - 300.0:
+					nearest = minf(nearest, area.distance_in_plan(origin))
+		if nearest > 64.0:
+			far_callouts.append("%s %.0f" % [place, nearest])
+	_check(
+		_places.size() >= 20 and _places.has("BombsiteA") and _places.has("BombsiteB") and far_callouts.is_empty(),
+		"each of dust2's %d callouts stands over the mesh or within 64 units of it (further: %s)"
+			% [_places.size(), ", ".join(far_callouts)]
+	)
+
+	# Routes between the spawns and the sites, whose legs should clear the
+	# walls at a player's waist: a path through a wall is a misread mesh.
+	var ct_spawn: Vector3 = _spawns["CT"][0]["position"]
+	for route: Array in [
+		["T spawn", t_spawn, "A", _places["BombsiteA"][0]], ["T spawn", t_spawn, "B", _places["BombsiteB"][0]],
+		["CT spawn", ct_spawn, "A", _places["BombsiteA"][0]], ["CT spawn", ct_spawn, "B", _places["BombsiteB"][0]],
+		["T spawn", t_spawn, "CT spawn", ct_spawn],
+	]:
+		var from: Vector3 = route[1]
+		var to: Vector3 = route[3]
+		var path := mesh.find_path(from, to)
+		var length := 0.0
+		var blocked := 0
+		for i in range(1, path.size()):
+			length += path[i - 1].distance_to(path[i])
+			var waist := Vector3.UP * 36.0
+			if not space.intersect_ray(PhysicsRayQueryParameters3D.create(path[i - 1] + waist, path[i] + waist, mask)).is_empty():
+				blocked += 1
+		var straight := from.distance_to(to)
+		_check(
+			path.size() > 2 and length > straight and length < straight * 2.0 and blocked * 20 <= path.size(),
+			"the mesh leads from %s to %s: %.0f units against %.0f in a straight line, %d legs, %d of them through something at waist height"
+				% [route[0], route[2], length, straight, path.size() - 1, blocked]
+		)
 
 func _test_every_spawn_is_on_floor() -> void:
 	for player: PlayerBody in _players:
