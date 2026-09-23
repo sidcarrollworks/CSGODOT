@@ -476,6 +476,7 @@ func has_kit() -> bool:
 ## and the blast's damage where it landed.
 func _on_game_event(event: GameEvent) -> void:
 	var event_name := String(event.name)
+	# Until the player reads the game's holds_still query itself.
 	player.frozen = bomb_system.holds_still(you_id())
 	if event_name.begins_with("bomb_"):
 		_push_log(_bomb_event_line(event))

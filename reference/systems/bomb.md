@@ -89,11 +89,11 @@ Not done yet, in files this does not edit:
 ### `player_sim.gd` and `PlayerInput`
 
 - Held still while planting or defusing, as freeze time holds it: no
-  moving, jumping or firing, free to look and crouch. The bomb answers it
-  (`BombSystem.holds_still(userid)`); the range sets `frozen` from it on each
-  event. In a match `frozen` is the match's, so the player needs a second
-  flag or to ask the game (a `holds_still` query, to be added to the
-  contract).
+  moving, jumping or firing, free to look and crouch. The bomb answers the
+  game's `holds_still` query (`game.query(&"holds_still", [userid], false)`),
+  which `player_sim.gd` reads beside `frozen`, the match's. Until it does,
+  the range sets `frozen` from it on each event, and stops once the player
+  reads the query.
 - The bomb in hand fires nothing: attack with `weapon_c4` in hand is the
   plant. The plant should wait for the draw (`m_flDeployDuration`, 1.23 s).
 - `PlayerInput` sets `UserCmd.USE` from E and sends `drop` on G; 5 selects

@@ -45,6 +45,9 @@ func attach(game: GameSystems) -> void:
 	game.events.listen(&"round_freeze_end", func(_e: GameEvent) -> void: live = true)
 	game.events.listen(&"round_end", func(_e: GameEvent) -> void: live = false)
 	game.on_command(&"drop", _on_drop)
+	# Whether a player is planting or defusing, for whatever runs the
+	# player to hold them still (the contract's holds_still query).
+	game.provide(&"holds_still", holds_still)
 
 
 ## Hands the bomb to a player now: a round's start does it to a random

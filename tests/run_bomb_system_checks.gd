@@ -114,7 +114,10 @@ func _test_a_plant_through_the_game(t_id: int) -> void:
 	_heard.clear()
 	_round_event(&"round_freeze_end")
 	_check(_system.live, "the round is live at round_freeze_end")
-	_step(_system.bomb.rules.plant_seconds + 0.1)
+	_step(0.5)
+	_check(_game.query(&"holds_still", [t_id], false) == true, "the game's holds_still says the planter is held still")
+	_check(_game.query(&"holds_still", [t_id + 1], false) == false, "and nobody else")
+	_step(_system.bomb.rules.plant_seconds - 0.4)
 	_check(_system.bomb.planted(), "then holding it on the site plants it")
 	_check(_names_heard().has("bomb_beginplant") and _names_heard().has("bomb_planted"),
 		"bomb_beginplant and bomb_planted are on the game's events")
