@@ -23,8 +23,8 @@ extends Node3D
 ## over the pelvis, a hand's width apart, and a chain of short bodies jointed
 ## that close together throws the physics solver into a fit (the body tangles
 ## and flies off), so the torso falls as two or three stiff pieces instead.
-## The joints also pull their bodies back together gently (JOINT_BIAS), for
-## the same reason.
+## Under Godot Physics the joints also pull their bodies back together
+## gently (JOINT_BIAS), for the same reason.
 
 ## The physics layer the bodies are on (the fifth), and what they touch.
 const LAYER := 16
@@ -52,9 +52,12 @@ const JOINTS := [
 ]
 const DEFAULT_JOINT := ["", 30.0, 15.0, 0.0, &""]
 ## How much of the way back together a joint pulls its two bodies each step,
-## when they drift apart. Godot's default is 0.3; at that, one fall in twelve
-## of a stand-in body exploded, and from 0.2 down none did, the joints still
-## holding within half a unit.
+## when they drift apart, under Godot Physics. Godot's default is 0.3; at
+## that, one fall in twelve of a stand-in body exploded, and from 0.2 down
+## none did, the joints still holding within half a unit. Jolt has no such
+## setting and warns when one is given: it puts drifting bodies back by
+## moving them, not by speeding them up, so it cannot overshoot and fling
+## them apart, which is what this was holding down.
 const JOINT_BIAS := 0.15
 ## How quickly a joint stops its two bodies turning against each other, per
 ## second: the stiffness of a dead body's joints. Godot's joints have no
@@ -318,9 +321,8 @@ func _cone(pivot: Vector3, limb: Vector3, swing: float, twist: float) -> ConeTwi
 	joint.transform = Transform3D(Basis(limb, y, limb.cross(y)), pivot)
 	joint.set_param(ConeTwistJoint3D.PARAM_SWING_SPAN, deg_to_rad(swing))
 	joint.set_param(ConeTwistJoint3D.PARAM_TWIST_SPAN, deg_to_rad(twist))
-	joint.set_param(ConeTwistJoint3D.PARAM_BIAS, JOINT_BIAS)
-	joint.set_param(ConeTwistJoint3D.PARAM_SOFTNESS, 0.8)
-	joint.set_param(ConeTwistJoint3D.PARAM_RELAXATION, 1.0)
+	if not on_jolt():
+		joint.set_param(ConeTwistJoint3D.PARAM_BIAS, JOINT_BIAS)
 	return joint
 
 
@@ -337,8 +339,15 @@ func _hinge(pivot: Vector3, upper: Vector3, lower: Vector3, axis: Vector3, most:
 	joint.set_flag(HingeJoint3D.FLAG_USE_LIMIT, true)
 	joint.set_param(HingeJoint3D.PARAM_LIMIT_LOWER, bent - deg_to_rad(most))
 	joint.set_param(HingeJoint3D.PARAM_LIMIT_UPPER, bent)
-	joint.set_param(HingeJoint3D.PARAM_BIAS, JOINT_BIAS)
+	if not on_jolt():
+		joint.set_param(HingeJoint3D.PARAM_BIAS, JOINT_BIAS)
 	return joint
+
+
+## Whether the physics is Jolt's, as the project is set to. DEFAULT is Godot
+## Physics in 4.7.
+static func on_jolt() -> bool:
+	return String(ProjectSettings.get_setting("physics/3d/physics_engine")) == "Jolt Physics"
 
 
 ## The axis a knee or an elbow bends about: rotating the lower limb about it

@@ -152,6 +152,7 @@ func _run() -> void:
 
 	await _test_ragdoll()
 	await _test_whole_ragdoll()
+	await _test_fall_speed()
 	await _test_being_shot()
 	await _test_death_cam()
 
@@ -230,6 +231,19 @@ func _test_ragdoll() -> void:
 		body_head != null and body_head.collision_layer == Ragdoll.LAYER and body_head.collision_mask == Hitscan.WORLD_LAYER,
 		"the bodies touch the world and nothing else, and are nothing a round is traced against"
 	)
+	# Jolt ignores a joint's bias and warns on every joint of every death
+	# when one is set; Godot Physics needs Ragdoll.JOINT_BIAS.
+	var biases := []
+	for joint in ragdoll.get_children():
+		if joint is ConeTwistJoint3D:
+			biases.append((joint as ConeTwistJoint3D).get_param(ConeTwistJoint3D.PARAM_BIAS))
+		elif joint is HingeJoint3D:
+			biases.append((joint as HingeJoint3D).get_param(HingeJoint3D.PARAM_BIAS))
+	var wanted := 0.3 if Ragdoll.on_jolt() else Ragdoll.JOINT_BIAS
+	_check(
+		not biases.is_empty() and biases.all(func(bias: float) -> bool: return is_equal_approx(bias, wanted)),
+		"its joints' bias is %s (%s)" % ["left alone on Jolt, which has none" if Ragdoll.on_jolt() else "Ragdoll.JOINT_BIAS on Godot Physics", biases]
+	)
 
 	for i in 128 * 4:
 		await physics_frame
@@ -278,6 +292,32 @@ func _test_ragdoll() -> void:
 
 	ragdoll.queue_free()
 	holder.queue_free()
+
+
+## A body falling for a second under the ragdoll's gravity is going 800 u/s.
+## Jolt caps every body's speed at 500 "m/s", which in this project's inches
+## is 500 u/s, what a body has after falling 156 units; the project raises
+## the cap to Jolt's 500 m/s in inches.
+func _test_fall_speed() -> void:
+	var body := RigidBody3D.new()
+	body.collision_layer = Ragdoll.LAYER
+	body.collision_mask = Ragdoll.MASK
+	body.linear_damp_mode = RigidBody3D.DAMP_MODE_REPLACE
+	body.linear_damp = 0.0
+	var shape := CollisionShape3D.new()
+	shape.shape = SphereShape3D.new()
+	(shape.shape as SphereShape3D).radius = 4.0
+	body.add_child(shape)
+	body.position = Vector3(-512.0, 5000.0, -256.0)
+	_range.add_child(body)
+	body.add_constant_central_force(Vector3.DOWN * Ragdoll.GRAVITY * body.mass)
+	for i in 128:
+		await physics_frame
+	_check(
+		absf(-body.linear_velocity.y - Ragdoll.GRAVITY) < 10.0,
+		"a body falling for a second goes %.0f u/s, as gravity has it, not held to a speed cap" % -body.linear_velocity.y
+	)
+	body.queue_free()
 
 
 ## The whole body the way CS2's hitboxes cover it, nineteen capsules on a

@@ -237,3 +237,19 @@ less, and the port now does what it does:
   check's own trace rather than tracing the same move again.
 
 Running in the open is now 5 traces a tick, and standing 2.
+
+## The traces on Jolt (2026-09-23)
+
+The hull's traces are Jolt's since the project moved to it. Two differences
+from Godot Physics reach the movement; every movement check passes on both.
+
+- Jolt's motion queries do not catch on the edges between the hull's
+  triangles: meeting one, a trace gets the face's normal rather than the
+  edge's (enhanced internal edge removal, on by default for motion queries),
+  so a box sliding over a floor or a ramp cut into triangles has nothing to
+  snag on. Godot Physics has nothing like it. It works between the shapes of
+  one body and not across bodies, and all 38 parts of dust2's hull are one
+  body: keep them so.
+- Jolt rounds a box's corners by its shape's margin, 0.04 by default, which
+  on the 32-unit hull is 0.04 of an inch: still Source's box, to about a
+  thousandth of its width.
