@@ -350,6 +350,9 @@ func _test_a_purchase() -> void:
 	_step()
 	var dropped := _game.entities.of_class("weapon_galilar")
 	_check(dropped.size() == 1 and dropped[0].owner_id == t, "the Galil AR falls at the buyer's feet")
+	var removed := _sent_named(&"item_remove")
+	_check(removed.size() == 1 and removed[0].fields["userid"] == t and removed[0].fields["item"] == "weapon_galilar",
+		"and item_remove says it left the buyer's inventory, once")
 	var purchases := _sent_named(&"item_purchase")
 	_check(purchases.size() == 1 and purchases[0].fields["weapon"] == "weapon_ak47"
 		and purchases[0].fields["team"] == "T" and purchases[0].fields["loadout"] == 11 and purchases[0].fields["userid"] == t,
