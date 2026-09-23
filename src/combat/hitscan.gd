@@ -231,10 +231,15 @@ static func fire_at(
 	space: PhysicsDirectSpaceState3D,
 	shot: Weapon.Shot,
 	data: WeaponData,
-	exclude: Array[RID] = []
+	exclude: Array[RID] = [],
+	shooter_team: String = "",
+	team_damage_scale: float = 1.0
 ) -> Result:
 	var result := trace(space, shot, data, exclude)
 	if result.hitbox != null and result.hitbox.target != null:
+		# A teammate's round does its share (friendly fire), before armour.
+		if not shooter_team.is_empty() and result.hitbox.target.team == shooter_team:
+			result.damage *= team_damage_scale
 		result.hitbox.target.last_hit_direction = shot.direction
 		result.hitbox.target.last_hit_from = shot.origin
 		result.hitbox.target.last_hit_weapon = data

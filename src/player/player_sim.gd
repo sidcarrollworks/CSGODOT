@@ -26,6 +26,26 @@ extends PlayerBody
 ## How long death lasts before the respawn.
 @export var respawn_seconds: float = 3.0
 
+## Whether a player who dies comes back after respawn_seconds. Always, on
+## its own; in a match, only in warmup (MatchState says).
+var respawns: bool = true
+## Held still by the match in freeze time: free to look round, duck,
+## reload and change weapons, but not to move, jump or fire.
+var frozen: bool = false
+## The share of its damage a round from this player does to their own
+## side: all of it on its own, CS2's third in a match (MatchRules).
+var team_damage_scale: float = 1.0
+
+## Dead in a round with no respawn: the living teammate being watched, or
+## null while the camera is still on your own body (the first
+## freeze_cam_seconds) or nobody on your side is left. Fire moves on to the
+## next teammate, jump switches between their eyes and a camera behind them
+## (observing_chase). Kept here, not in the view, as CS2's server keeps
+## who each player watches: it goes by the commands the player sends.
+var observing: PlayerSim
+var observing_chase: bool = false
+var freeze_cam_seconds: float = 2.0
+
 ## Where the player is looking, from the last command, in degrees.
 var yaw_degrees: float = 0.0
 var pitch_degrees: float = 0.0
@@ -61,6 +81,11 @@ var hitboxes: SkinnedHitboxes
 ## climbs back from there at TAG_RECOVERY_PER_SECOND.
 var velocity_modifier: float = 1.0
 
+## The physics layer every player's hull is on. Hulls are solid to each
+## other, teammates included, as in CS2 (mp_solid_teammates 1); a dead
+## player's hull leaves it.
+const PLAYER_LAYER := 2
+
 ## The visual layer your own body goes on, and nothing else: the body the
 ## bots' rounds hit, which your camera leaves out (your view draws its own)
 ## and a camera that is there to show you your hitboxes takes in. Layer 20.
@@ -86,6 +111,8 @@ signal equipped(data: WeaponData)
 ## Health ran out; zone is where the last round landed.
 signal killed(zone: StringName)
 signal respawned
+## Now on the other side, wearing that side's body.
+signal team_changed(team: String)
 
 ## CS2 holds off the slowdown for a couple of its 64 Hz ticks after the hit
 ## (sv_predictable_damage_tag_ticks 2), so a client predicting its own
@@ -124,15 +151,21 @@ var _capsules: Array[Dictionary] = []
 ## without it (CS2 ragdolls its dead on each client, not on the server).
 var ragdoll: Ragdoll
 var _respawn_at_usec: int = 0
+var _died_at_usec: int = 0
 var _spawn_position: Vector3 = Vector3.ZERO
 var _spawn_yaw: float = 0.0
+## Whether a match has put the player at a spawn point of its choosing
+## (spawn_at), which a bot then comes back to rather than its route's start.
+var _spawn_set: bool = false
 
 
 func _ready() -> void:
 	super._ready()
 	add_to_group(&"players")
+	collision_mask |= PLAYER_LAYER
 	hit_target = _build_hit_target()
 	hit_target.name = "HitTarget"
+	hit_target.team = team
 	add_child(hit_target)
 	hit_target.died.connect(_on_hit_target_died)
 	hit_target.damaged.connect(_on_hit)
@@ -222,6 +255,29 @@ func hitboxes_missing() -> bool:
 	return model != null and (hitboxes == null or hitboxes.hitboxes.is_empty())
 
 
+## To the other side: that side's body and its hitboxes in place of this
+## one's. What draws the player hears it from team_changed.
+func change_team(new_team: String) -> void:
+	if new_team == team:
+		return
+	team = new_team
+	hit_target.team = team
+	if ragdoll != null:
+		ragdoll.queue_free()
+		ragdoll = null
+	# Out of the tree now, so no round meets the old hitboxes on this tick.
+	for part: Node in [model, hitboxes]:
+		if part != null:
+			remove_child(part)
+			part.queue_free()
+	model = null
+	hitboxes = null
+	hit_target.drop_hitboxes()
+	wear_body(_body_weapon_model(), _body_drawn())
+	hit_target.set_active(alive)
+	team_changed.emit(team)
+
+
 ## Swaps to a weapon, which also changes how fast you can run.
 func equip(data: WeaponData) -> void:
 	weapon = Weapon.new(data)
@@ -251,6 +307,24 @@ func place(spawn_position: Vector3, yaw: float) -> void:
 	pitch_degrees = 0.0
 
 
+## The match puts the player at a spawn point for a round. Fresh (the
+## first round, or after the sides swap), or dead, they come back as a
+## respawn brings them: whole, armoured as they started, reloaded. Someone
+## who lived through the last round keeps their armour and weapon, rounds
+## in it and all, and is healed.
+func spawn_at(spawn_position: Vector3, yaw: float, fresh: bool = false) -> void:
+	_spawn_set = true
+	_spawn_position = spawn_position
+	_spawn_yaw = yaw
+	if fresh or not alive:
+		respawn()
+		return
+	place(spawn_position, yaw)
+	velocity = Vector3.ZERO
+	hit_target.health = hit_target.max_health
+	_forget_hits()
+
+
 func seconds_to_respawn() -> float:
 	return maxf(0.0, float(_respawn_at_usec - SimClock.now_usec()) / 1_000_000.0)
 
@@ -276,7 +350,9 @@ func _run(cmd: UserCmd, dt: float) -> void:
 		velocity = Vector3.ZERO
 
 	if not alive:
-		if SimClock.tick_end_usec(cmd.tick) >= _respawn_at_usec:
+		if not respawns:
+			_observe(cmd)
+		elif SimClock.tick_end_usec(cmd.tick) >= _respawn_at_usec:
 			respawn()
 		return
 
@@ -298,10 +374,17 @@ func _run(cmd: UserCmd, dt: float) -> void:
 	# jumps, and the tick splits there (PlayerBody.simulate). A jump from a
 	# held key has no transition to time, so it stays at the tick's start.
 	var jump := cmd.first_press(UserCmd.JUMP)
-	wants_jump = cmd.held(UserCmd.JUMP) or jump != null
-	if jump != null:
+	wants_jump = not frozen and (cmd.held(UserCmd.JUMP) or jump != null)
+	if jump != null and wants_jump:
 		jump_fraction = jump.when
 	wants_duck = cmd.held(UserCmd.DUCK)
+
+	if frozen:
+		# Still, but falling if there is anywhere to fall, and the weapon
+		# still reloads.
+		simulate(dt)
+		_update_weapon(cmd, dt)
+		return
 
 	if noclip:
 		wish_dir = _noclip_direction(cmd)
@@ -332,7 +415,9 @@ func _update_weapon(cmd: UserCmd, dt: float) -> void:
 	# tick the button comes up instead of a round and a quarter later. A press
 	# that happened and ended inside the tick still counts as held for it.
 	var presses := cmd.presses(UserCmd.ATTACK)
-	weapon.trigger_held = cmd.held(UserCmd.ATTACK) or not presses.is_empty()
+	if frozen:
+		presses.clear()
+	weapon.trigger_held = not frozen and (cmd.held(UserCmd.ATTACK) or not presses.is_empty())
 	shooter_state = Weapon.ShooterState.new(
 		Vector2(velocity.x, velocity.z).length(), on_ground, is_ducked,
 		cmd.held(UserCmd.WALK)
@@ -345,7 +430,7 @@ func _update_weapon(cmd: UserCmd, dt: float) -> void:
 			press.yaw_degrees, press.pitch_degrees
 		)
 
-	if cmd.held(UserCmd.ATTACK):
+	if weapon.trigger_held and cmd.held(UserCmd.ATTACK):
 		var began := SimClock.tick_start_usec(cmd.tick)
 		var at := clampi(weapon.next_shot_usec(), began, now)
 		_try_shoot(
@@ -374,7 +459,9 @@ func _try_shoot(at_usec: int, tick_fraction: float, yaw: float, pitch: float) ->
 	# Your own hull and hitboxes are not targets.
 	var exclude: Array[RID] = [get_rid()]
 	exclude.append_array(hit_target.rids())
-	var result := Hitscan.fire_at(get_world_3d().direct_space_state, shot, weapon.data, exclude)
+	var result := Hitscan.fire_at(
+		get_world_3d().direct_space_state, shot, weapon.data, exclude, team, team_damage_scale
+	)
 	shot_traced.emit(shot, result)
 
 
@@ -454,7 +541,10 @@ func _forget_hits() -> void:
 func _on_hit_target_died() -> void:
 	alive = false
 	hit_target.set_active(false)
-	_respawn_at_usec = SimClock.now_usec() + int(respawn_seconds * 1_000_000.0)
+	# Nobody walks into a body that is not there.
+	collision_layer = 0
+	_died_at_usec = SimClock.now_usec()
+	_respawn_at_usec = _died_at_usec + int(respawn_seconds * 1_000_000.0)
 	var zone: StringName = hit_target.last_hitbox.zone if hit_target.last_hitbox != null else &"chest"
 	_fall()
 	killed.emit(zone)
@@ -509,11 +599,47 @@ func body_centre() -> Vector3:
 	return sum / ragdoll.bodies.size()
 
 
-## Back where the map put the player, whole and reloaded.
-func respawn() -> void:
+## Dead with no respawn coming: after the freeze cam, watching a living
+## teammate, the next one on a press of fire, from their eyes or from
+## behind them on a press of jump. Only your own side.
+func _observe(cmd: UserCmd) -> void:
+	var now := SimClock.tick_end_usec(cmd.tick)
+	if now < _died_at_usec + int(freeze_cam_seconds * 1_000_000.0):
+		return
+	var watching := observing != null and is_instance_valid(observing) \
+		and observing.alive and observing.team == team
+	if not watching or cmd.first_press(UserCmd.ATTACK) != null:
+		observing = _next_teammate(observing if watching else null)
+	elif cmd.first_press(UserCmd.JUMP) != null:
+		observing_chase = not observing_chase
+
+
+## The living teammate after this one, round and round; the first when
+## there is none to follow.
+func _next_teammate(after: PlayerSim) -> PlayerSim:
+	var living: Array[PlayerSim] = []
+	for node in get_tree().get_nodes_in_group(&"players"):
+		var other := node as PlayerSim
+		if other != null and other != self and other.alive and other.team == team:
+			living.append(other)
+	if living.is_empty():
+		return null
+	return living[(living.find(after) + 1) % living.size()]
+
+
+## Up again: whole, solid, able to be shot, watching nobody.
+func _revive() -> void:
 	alive = true
 	hit_target.reset()
 	hit_target.set_active(true)
+	collision_layer = PLAYER_LAYER
+	observing = null
+	observing_chase = false
+
+
+## Back where the map put the player, whole and reloaded.
+func respawn() -> void:
+	_revive()
 	place(_spawn_position, _spawn_yaw)
 	velocity = Vector3.ZERO
 	_forget_hits()

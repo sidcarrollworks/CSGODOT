@@ -23,6 +23,7 @@ or Sid takes it; **Remote** is code and headless tests a cloud thread can do.
 ---
 
 Updated 2026-09-22: weapon numbers from Sid's spreadsheet and tapping (PR #23), every gun added, items marked Local or Remote; at 21:55, every CS2 system added (phases 3 to 10) from `reference/cs2-systems.md`; at 23:00, phase 3 done (PR #24) and the first shot while running fixed.
+Updated 2026-09-23 (later): match and round flow done (item 11).
 Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurements added (7a, 7b); dust2's nav mesh extracted and read (PR #32), so bots can start walking it (item 22); the range fixes and your own ragdoll in (PR #30), so items 6 and 6a can start; dust2's buy zones, bomb sites and radar read (PR #34); the blood extraction and what can start now added to "Waiting on Sid" and the last section.
 
 ## Part 1: what exists
@@ -48,6 +49,8 @@ Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurem
   brain writes its own. What you see and hear is a view that only reads the
   simulation (`src/player/player_view.gd`).
 - Scroll up jumps, noclip on V.
+- The match is simulation too (`src/match/match_state.gd`, item 11): it
+  moves on with the tick and changes the game only through the players.
 - A movement test course: strafe lane, stairs, ramps at 20/35/44/50 degrees,
   surf lane, jump gauges.
 
@@ -113,7 +116,12 @@ Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurem
 - Every player, you included, dies into a ragdoll built from their
   capsules, with hinged knees and elbows and friction in every joint (PR
   #30). While you are dead the camera leaves your head and looks at your
-  body; you are back at spawn after 3 s, a bot back on its route after 5 s.
+  body. On the range and in warmup you are back at spawn after 3 s, a bot
+  after 5 s; in a round nobody comes back, and after 2 s you watch a
+  living teammate (item 11).
+- Friendly fire in a match: a teammate's round does 33% (item 11). Every
+  player's hull is solid to every other's, teammates included; a dead
+  one's is not.
 - Bullet holes from the game's own decal materials, per surface, with impact
   sounds.
 - Wall penetration (item 7, PR #31): a round goes through thin walls by what they
@@ -121,8 +129,9 @@ Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurem
   A hole on both sides of every wall.
 
 ### Bots
-- Two bots of the other side, on the player's own body and movement solver.
-- They walk their spawn points in a loop, see the player (3000 units,
+- dust2 fills both sides to five with bots, on the player's own body and
+  movement solver (item 11).
+- They walk their side's spawn points in a loop, see the player (3000 units,
   75-degree half cone, line of sight, 0.5 s reaction), turn, and fire bursts
   through the same simulation and trigger path as the player, with 1.2
   degrees of extra aim error. They target only the other side.
@@ -132,6 +141,9 @@ Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurem
   headshot, kill), footsteps and landings per surface, impact sounds.
 
 ### HUD
+- In a match, the score, each side's players alive, the round's clock and
+  a line saying which part of the match it is; dead in a round, whose eyes
+  you are in (item 11).
 - Crosshair, health, armour, ammo, death countdown, the movement tuning
   readout, and where you stand and look in the top left (PR #25, F3 hides
   it).
@@ -325,10 +337,27 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
 
 ### Phase 4: a match of rounds
 
-11. **Match and round flow.** *(Remote)* Warmup, freeze time 15 s, round time
+11. **Match and round flow.** *(done, PR #40)* Warmup, freeze time 15 s, round time
     1:55, MR12 with the side swap, overtime, no respawn, spectating
     teammates, friendly fire at CS2's reductions, solid teammates. Replaces
-    the 3 s respawn.
+    the 3 s respawn. Done: `MatchState` (`src/match/`) runs it as server
+    state on the tick, with CS2's numbers in `MatchRules`: 120 s of warmup
+    with respawns (F5 ends it, as `mp_warmup_end` does), 15 s of freeze time
+    (look, duck, reload; no moving, jumping or firing), 1:55 rounds won on
+    eliminations or by the CTs on time, 7 s between rounds, the side swap
+    with 15 s of half time and the score kept by the team, the clinch at
+    13, one MR3 overtime at 12-12 without a swap into it, and 15-15 a draw.
+    Survivors keep their armour and weapon and are healed; the dead and
+    everyone after a swap start fresh. Dead in a round, after 2 s you watch
+    a living teammate, from their eyes or behind them (fire: next, jump:
+    switch). A teammate's round does 33%. Hulls are solid to each other.
+    dust2 plays five a side, bots in every place but yours. Left for the
+    items that bring them: the bomb's round ends and its stop on the clock
+    (item 16, through `end_round`), money at half time and in overtime
+    (13), the loadout a side really starts with, a pistol (12 and 14),
+    grenades' friendly fire (17 to 20), and the round's full HUD (15).
+    Guessed, not from CS2: both sides wiped out on one tick goes to the Ts,
+    and half time's 15 s replaces the 7 s pause rather than following it.
 12. **Inventory.** *(Remote; Local extracts world models)* Slots, switching
     with draw times, dropping (G), picking up and swapping, drops on death.
 13. **Economy.** *(Remote)* $800 start, $16,000 cap, round rewards, the loss
@@ -486,7 +515,7 @@ third-person firing layer (PR #27), and wall penetration is in (PR #31),
 so what is left of the shooting model is measuring (7a, 8).
 
 What a thread can start now: bots walking the nav mesh (item 22); the
-match, inventory and economy (items 11 to 13); from the weapons todo, the
+inventory and economy (items 12 and 13), on the match (item 11, done); from the weapons todo, the
 registry of all 34 guns (R1), semi-automatic fire (R2), tracers (R10) and
 the game's recovery fields (R13), with shotguns (R5) after it; the
 third-person firing layer (item 6), then the shadow's arms (6a); and the

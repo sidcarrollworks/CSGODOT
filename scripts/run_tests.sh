@@ -30,3 +30,4 @@ fi
 "$GODOT" --headless --path "$PROJECT_DIR" --script tests/run_penetration_checks.gd
 "$GODOT" --headless --path "$PROJECT_DIR" --script tests/run_range_checks.gd
 "$GODOT" --headless --path "$PROJECT_DIR" --script tests/run_sim_checks.gd
+"$GODOT" --headless --path "$PROJECT_DIR" --script tests/run_match_checks.gd
