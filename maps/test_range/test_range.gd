@@ -78,6 +78,9 @@ const HEAD_NUMBER_COLOUR := Color(1.0, 0.3, 0.2)
 
 ## What runs the range's players every tick: the dummy, you, the shooter.
 var world: GameWorld
+## The range's shared game (world.game): its events, entities, roster and
+## inventories, where grenades, the bomb and buying add their systems.
+var game: GameSystems
 var player: PlayerController
 var dummy: Bot
 var shooter: Bot
@@ -116,6 +119,7 @@ func _ready() -> void:
 	world = GameWorld.new()
 	world.name = "World"
 	add_child(world)
+	game = world.game
 	_markers = Node3D.new()
 	_markers.name = "Impacts"
 	add_child(_markers)

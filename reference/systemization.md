@@ -483,13 +483,23 @@ still needs a run there.
   2026-09-23.)* Brought forward from step 3 by Sid: the events below are
   handed out at the end of its tick, and there was nothing else to hand
   them out.
-- The item registry (finding 5), which is R1.
-- `DamageInfo` with the attacker (finding 3).
+- The item registry (finding 5), which is R1. *(Built 2026-09-23:
+  `ItemRegistry`, every item by CS2 class name; `WeaponLibrary.build` for
+  all 34 guns.)*
+- `DamageInfo` with the attacker (finding 3). *(Built: `DamageInfo.deal`,
+  `HitTarget.take_damage`, `Hitscan.fire_as`.)*
 - Game events, queued per tick and handed out by the world at its end
   (finding 4), starting with the ones items 12 to 15 need: death, hurt,
   fire, impact, round start and end, pickup and drop. Shots' sounds and
-  holes move onto them, which is half of performance step 4.
-Then inventory, economy, buying and the round HUD are built on them.
+  holes move onto them, which is half of performance step 4. *(Built:
+  `GameEvents` with CS2's names and keys, handed out by `world.game.step`
+  after the match.)*
+The three are one contract, `reference/systems/contracts.md`, in
+`src/game/`, with the inventory (item 12's carrying rules), items on the
+ground, players' commands and the world's `game`, which the bomb,
+grenades and buying are built on. Left to wire into `player_sim.gd`,
+`bot.gd` and `match_state.gd` (its section 5): the shooter's id, the
+inventory in place of the one weapon, and the match's events.
 
 **Step 2, any time, small: one surface lookup resolved at import**
 (finding 7), which feeds CS2's per-surface friction into the movement and

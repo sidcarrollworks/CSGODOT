@@ -41,7 +41,16 @@ func player(userid: int) -> Node3D:
 	return _players.get(userid)
 
 
+## What takes their damage: the one given when they joined, or else the
+## player's own hit_target once it has one (a PlayerSim builds its own when
+## it enters the scene).
 func hit_target(userid: int) -> HitTarget:
+	if not _hit_targets.has(userid):
+		var node := player(userid)
+		var own = node.get(&"hit_target") if node != null else null
+		if own is HitTarget:
+			_hit_targets[userid] = own
+			(own as HitTarget).userid = userid
 	return _hit_targets.get(userid)
 
 

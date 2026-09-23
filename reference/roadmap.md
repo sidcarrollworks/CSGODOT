@@ -374,6 +374,12 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
     and half time's 15 s replaces the 7 s pause rather than following it.
 12. **Inventory.** *(Remote; Local extracts world models)* Slots, switching
     with draw times, dropping (G), picking up and swapping, drops on death.
+    *(Partly done 2026-09-23, `reference/systems/contracts.md`: `Inventory`
+    with CS2's carrying rules, slots, Q and cycling grenades, each gun its
+    own `Weapon`; `DroppedItem` and `ItemDrops` for dropping, picking up
+    and drops on death. Left: wiring it into `player_sim.gd` in place of the
+    one weapon, draw times on a switch, G in `PlayerInput`, E to swap, and
+    the dropped guns drawn.)*
 13. **Economy.** *(Remote)* $800 start, $16,000 cap, round rewards, the loss
     ladder that a win steps down by one, plant and defuse rewards, kill
     awards from the sheet.

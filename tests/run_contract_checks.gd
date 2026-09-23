@@ -76,6 +76,8 @@ func _run() -> void:
 	await _test_a_grenade_kill_pays_its_award()
 	await _test_dropping_and_picking_up()
 	await _test_what_a_death_leaves()
+	await _test_the_world_steps_the_game()
+	await _test_the_range_s_game()
 	_finish("contract")
 
 
@@ -1048,4 +1050,50 @@ func _test_what_a_death_leaves() -> void:
 		game.roster.player(userid).queue_free()
 		game.roster.hit_target(userid).queue_free()
 	floor_body.queue_free()
+	await physics_frame
+
+
+## The GameWorld owns the game: its players are on the roster, and every
+## tick it runs the players, the match, then the game's systems and events.
+func _test_the_world_steps_the_game() -> void:
+	var world := GameWorld.new()
+	_world.add_child(world)
+	var listener := Listener.new()
+	world.game.add_system(listener)
+	var player := (load("res://src/player/player_sim.gd") as GDScript).new() as PlayerSim
+	_world.add_child(player)
+	world.add_player(player)
+	await physics_frame
+	_check_equal(world.game.roster.ids(), [0] as Array[int], "a player the world takes is on its roster")
+	_check(world.game.roster.hit_target(0) == player.hit_target and player.hit_target.userid == 0,
+		"with their own hit target, which knows their userid")
+	_check(world.game.inventory(0) != null and world.game.inventory(0).body == player.hit_target,
+		"and an inventory wearing their armour")
+	var before := listener.ticked.size()
+	world.step()
+	_check_equal(listener.ticked.slice(before).back(), world.tick, "each world tick steps the game on the same tick")
+	_check_equal(SimClock.current_tick(), world.tick, "and events are stamped with the world's tick")
+	world.remove_player(player)
+	_check(world.game.roster.ids().is_empty(), "a player who leaves the world leaves the roster")
+	player.queue_free()
+	world.queue_free()
+	await physics_frame
+
+
+func _test_the_range_s_game() -> void:
+	var range_node := (load("res://maps/test_range/test_range.tscn") as PackedScene).instantiate() as Node3D
+	root.add_child(range_node)
+	await physics_frame
+	await physics_frame
+	var game: GameSystems = range_node.get(&"game")
+	var world: GameWorld = range_node.get(&"world")
+	_check(game != null and game == world.game, "the range has one game, its world's")
+	var dummy: PlayerSim = range_node.get(&"dummy")
+	var you: PlayerSim = range_node.get(&"player")
+	var shooter: PlayerSim = range_node.get(&"shooter")
+	var ids := [game.roster.userid_of(dummy), game.roster.userid_of(you), game.roster.userid_of(shooter)]
+	_check(not ids.has(GameEvents.NOBODY) and game.roster.ids().size() == 3,
+		"the dummy, you and the shooter are on its roster (%s)" % [ids])
+	_check(game.roster.hit_target(ids[1]) == you.hit_target, "you by your own hit target")
+	range_node.queue_free()
 	await physics_frame
