@@ -15,7 +15,9 @@ extends Node3D
 ## hitboxes the bots on dust2 wear, that stands still and does not shoot
 ## back. Its hitboxes are drawn over it, each round says what it did where it
 ## landed, and the readout keeps a log of the hits and of each kill. Killed,
-## it goes down, then stands up again where it was, whole.
+## it goes down, then stands up again where it was, whole. M stands a wall
+## in front of it, one of CS2's surfaces at a thickness, to shoot it
+## through: the log says what the wall let through.
 ##
 ## And a shooter, to feel being shot: a bot off to the left of the wall
 ## that holds its fire until B, then fires at you in bursts like a dust2
@@ -79,6 +81,7 @@ var dummy: Bot
 var shooter: Bot
 var damage_indicator: DamageIndicator
 var hitbox_camera: Camera3D
+var cover: CoverPanel
 
 var _impacts: Array = []
 var _markers: Node3D
@@ -121,6 +124,7 @@ func _ready() -> void:
 	_build_angle_grid()
 	_build_lane()
 	_build_dummy()
+	_build_cover()
 	_build_player()
 	_build_shooter()
 	_build_hud()
@@ -149,6 +153,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		toggle_player_immortal()
 	elif event.is_action_pressed(&"hitbox_camera"):
 		next_hitbox_view()
+	elif event.is_action_pressed(&"dummy_cover"):
+		next_cover()
 
 
 func _process(_delta: float) -> void:
@@ -191,6 +197,7 @@ func _process(_delta: float) -> void:
 		"P      export      O  clear",
 		"H      hitboxes    K  armour",
 		"N      dummy distance   G  dummy never dies",
+		"M      a wall in front of the dummy",
 		"B      shooter fires    U  its weapon",
 		"Y      your armour      J  you never die",
 		"T      your hitboxes: front, side, off",
@@ -204,10 +211,15 @@ func _process(_delta: float) -> void:
 ## A round into the dummy also says what it did, where it landed and in the
 ## log.
 func _on_shot(shot: Weapon.Shot, result: Hitscan.Result) -> void:
-	if not result.hit:
+	if not result.touched():
 		return
-	_impacts.append({"shot": shot, "position": result.position})
-	_add_marker(result.position, result.hitbox != null)
+	# The spray reads where each round first met the wall, even one that
+	# went through it.
+	_impacts.append({"shot": shot, "position": result.first_contact()})
+	for wall in result.walls:
+		_add_marker(wall.entry, false)
+	if result.hit:
+		_add_marker(result.position, result.hitbox != null)
 	if dummy != null and result.hitbox != null and result.hitbox.target == dummy.hit_target:
 		_on_dummy_hit(shot, result)
 
@@ -216,8 +228,9 @@ func _on_dummy_hit(shot: Weapon.Shot, result: Hitscan.Result) -> void:
 	var target := dummy.hit_target
 	var data := player.weapon.data
 	# What the round carried before armour: the weapon's damage at that
-	# range, times the zone's. What it did is what the target took.
-	var raw := data.damage_at(result.distance) * data.hitbox_multiplier(result.zone)
+	# range, times the zone's, less what any wall on the way took. What it
+	# did is what the target took.
+	var raw := data.damage_at(result.distance) * data.hitbox_multiplier(result.zone) * result.kept
 	# Health can only go down so far: what the round took is what there was
 	# before it, less what is left.
 	var health_before: float = _life[-1]["remaining"] if not _life.is_empty() else target.max_health
@@ -231,6 +244,7 @@ func _on_dummy_hit(shot: Weapon.Shot, result: Hitscan.Result) -> void:
 		"distance": result.distance,
 		"weapon": data.display_name,
 		"usec": shot.timestamp_usec,
+		"through": _walls_text(result),
 	}
 	_life.append(hit)
 	result.hitbox.flash()
@@ -260,6 +274,7 @@ func dummy_readout() -> String:
 			else "down, up again in %.1f s" % dummy.seconds_to_respawn(),
 		"%s, %s" % [hitbox_source, "drawn" if target.hitboxes_drawn() else "hidden"],
 		"never dies: a kill refills it" if target.immortal else "dies, and is back in %.1f s" % DUMMY_RESPAWN_SECONDS,
+		"wall in front: %s" % (cover.describe() if cover != null else "no wall"),
 		"",
 	])
 	lines.append_array(_log)
@@ -273,9 +288,22 @@ func _hit_line(hit: Dictionary) -> String:
 	var through := ""
 	if absf(hit["raw"] - hit["dealt"]) > 0.01:
 		through = "  (%.0f before armour)" % hit["raw"]
-	return "%3d  %-10s %s %4.0f u%s  -> %d" % [
+	var walls: String = hit.get("through", "")
+	return "%3d  %-10s %s %4.0f u%s  -> %d%s" % [
 		roundi(hit["dealt"]), zone, hit["weapon"], hit["distance"], through, roundi(hit["remaining"]),
+		("\n       " + walls) if not walls.is_empty() else "",
 	]
+
+
+## The walls a round went through, and what each let through: "through
+## Wood_Plank 4 u, kept 70%".
+static func _walls_text(result: Hitscan.Result) -> String:
+	var parts := PackedStringArray()
+	for wall in result.walls:
+		parts.append("%s %.0f u, kept %d%%" % [
+			Penetration.display_name(wall.material), wall.thickness, roundi(wall.kept * 100.0),
+		])
+	return ("through " + ", then ".join(parts)) if not parts.is_empty() else ""
 
 
 ## A kill's summary: how many rounds it took, how much of its health they
@@ -501,10 +529,25 @@ func dummy_position() -> Vector3:
 
 func _place_dummy() -> void:
 	dummy.global_position = dummy_position()
+	if cover != null:
+		cover.stand_before(dummy_position())
 	dummy.previous_position = dummy.global_position
 	dummy.velocity = Vector3.ZERO
 	# The game's yaw 0 looks down -Z; 180 looks back up the lane.
 	dummy.yaw_degrees = 180.0
+
+
+## The wall that M stands in front of the dummy, down its lane with it.
+func _build_cover() -> void:
+	cover = CoverPanel.new()
+	cover.name = "Cover"
+	add_child(cover)
+	cover.stand_before(dummy_position())
+
+
+func next_cover() -> void:
+	cover.next()
+	_push_log("-- wall in front: %s" % cover.describe())
 
 
 func _on_dummy_respawned() -> void:
