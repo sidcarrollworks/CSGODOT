@@ -14,7 +14,9 @@ extends PlayerBody
 ## everyone from the commands they send.
 ##
 ## Where the local player's keys become commands is PlayerInput; where a
-## bot's decisions do is Bot.
+## bot's decisions do is Bot. What runs it, one command a tick, in turn with
+## everyone else, is the GameWorld it is in (command_for); it never runs
+## itself.
 ##
 ## Being hit is part of the simulation too, since it changes how the player
 ## moves and where their rounds go: a hit slows the player down (tagging)
@@ -22,6 +24,10 @@ extends PlayerBody
 
 ## The side the player is on.
 @export_enum("T", "CT") var team: String = "T"
+
+## The world that runs the player, and where everyone else in the game is
+## found; null until one takes it (GameWorld.add_player).
+var world: GameWorld
 
 ## How long death lasts before the respawn.
 @export var respawn_seconds: float = 3.0
@@ -172,7 +178,6 @@ var _spawn_set: bool = false
 
 func _ready() -> void:
 	super._ready()
-	add_to_group(&"players")
 	collision_mask |= PLAYER_LAYER
 	hit_target = _build_hit_target()
 	hit_target.name = "HitTarget"
@@ -181,6 +186,23 @@ func _ready() -> void:
 	hit_target.died.connect(_on_hit_target_died)
 	hit_target.damaged.connect(_on_hit)
 	wear_body(_body_weapon_model(), _body_drawn())
+
+
+## Out of the scene, out of the game: the world runs the player no more.
+func _exit_tree() -> void:
+	if is_instance_valid(world):
+		world.remove_player(self)
+
+
+## The command the player runs on this tick, which the world asks for: what
+## drives the player decides it (PlayerController your keys, Bot its
+## choices). On its own a player stands where it is, looking where it looked.
+func command_for(tick: int, _dt: float) -> UserCmd:
+	var cmd := UserCmd.new()
+	cmd.tick = tick
+	cmd.yaw_degrees = yaw_degrees
+	cmd.pitch_degrees = pitch_degrees
+	return cmd
 
 
 ## What takes the damage. Its hitboxes come from the body (wear_body).
@@ -644,12 +666,14 @@ func _observe(cmd: UserCmd) -> void:
 
 
 ## The living teammate after this one, round and round; the first when
-## there is none to follow.
+## there is none to follow. Only in the player's world: nobody else is in
+## the game.
 func _next_teammate(after: PlayerSim) -> PlayerSim:
+	if not is_instance_valid(world):
+		return null
 	var living: Array[PlayerSim] = []
-	for node in get_tree().get_nodes_in_group(&"players"):
-		var other := node as PlayerSim
-		if other != null and other != self and other.alive and other.team == team:
+	for other in world.players:
+		if other != self and other.alive and other.team == team:
 			living.append(other)
 	if living.is_empty():
 		return null

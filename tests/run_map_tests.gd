@@ -1687,15 +1687,20 @@ func _get_vector(bytes: PackedByteArray, at: int) -> Vector3:
 
 
 func _spawn_player() -> void:
+	# A world to run them, as a map has.
+	var world := GameWorld.new()
+	_importer.add_child(world)
 	var scene: PackedScene = load("res://src/player/player.tscn")
 	_player = scene.instantiate() as CharacterBody3D
 	_importer.add_child(_player)
+	world.add_player(_player as PlayerSim)
 	# Above the imported floor, whose top sits at half its height.
 	_player.global_position = Vector3(0.0, FLOOR_SIZE.y * 0.5 + 24.0, 0.0)
 
 	# And one over the export-shaped map, above its grenade clip.
 	_export_player = scene.instantiate() as CharacterBody3D
 	_export_importer.add_child(_export_player)
+	world.add_player(_export_player as PlayerSim)
 	_export_player.global_position = EXPORT_OFFSET + Vector3(0.0, 160.0, 0.0)
 
 

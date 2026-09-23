@@ -1,7 +1,8 @@
 class_name WeaponLibrary
 extends RefCounted
 
-## The two weapons the project starts with.
+## Every gun in CS2, built by its class name (build), and the two the project
+## started with, which carry what was measured of them by hand.
 ##
 ## Every number the firing model uses comes from the game's own tuning,
 ## scripts/weapons.vdata_c, read through WeaponVData: damage, armour, falloff,
@@ -25,6 +26,7 @@ static func cs_inaccuracy(value: float) -> float:
 static func ak47() -> WeaponData:
 	var data := WeaponData.new()
 	data.display_name = "AK-47"
+	data.item_class = "weapon_ak47"
 	data.model_path = "res://assets/weapons/weapons/models/ak47/weapon_rif_ak47.gltf"
 	data.clip_set = "rifle_ak"
 	data.world_clip_set = "rifle/rifle_ak"
@@ -48,6 +50,7 @@ static func ak47() -> WeaponData:
 static func m4a1s() -> WeaponData:
 	var data := WeaponData.new()
 	data.display_name = "M4A1-S"
+	data.item_class = "weapon_m4a1_silencer"
 	data.model_path = "res://assets/weapons/weapons/models/m4a1_silencer/weapon_rif_m4a1_silencer.gltf"
 	# The shared rifle clips are the ones authored on the M4A1-S: the weapon rig
 	# they carry is its.
@@ -74,5 +77,107 @@ static func m4a1s() -> WeaponData:
 	return data
 
 
+## Every gun, one of each, in the order the game lists them.
 static func all() -> Array[WeaponData]:
-	return [ak47(), m4a1s()]
+	var out: Array[WeaponData] = []
+	for weapon_class in classes():
+		out.append(build(weapon_class))
+	return out
+
+
+## The class names of every gun build() makes: the 34 in
+## reference/weapons/models.md.
+static func classes() -> PackedStringArray:
+	return PackedStringArray(_files().keys())
+
+
+static func has(weapon_class: String) -> bool:
+	return _files().has(weapon_class)
+
+
+## Any gun by its CS2 class name, as a fresh WeaponData: the game's numbers
+## (WeaponVData), the sheet's landing and ladder, and its model and clips
+## from what the extraction lists (models.md). The AK-47 and M4A1-S are the
+## hand-built ones, with their spray patterns and measured recoil. For the
+## rest, what neither file carries is left as it is on every WeaponData:
+## no spray pattern (the pattern is a straight climb of nothing until one is
+## read off a plot, weapons TODO L6), and the AK-47's recoil settling time.
+## The M4A1-S and USP-S are carried silenced, as CS2 hands them out. Null
+## for a class that is not a gun.
+static func build(weapon_class: String) -> WeaponData:
+	match weapon_class:
+		"weapon_ak47":
+			return ak47()
+		"weapon_m4a1_silencer":
+			return m4a1s()
+	if not has(weapon_class):
+		return null
+	var files: Dictionary = _files()[weapon_class]
+	var data := WeaponData.new()
+	var row: String = files["sheet_row"]
+	data.item_class = weapon_class
+	data.display_name = display_name(weapon_class)
+	data.model_path = MODELS_ROOT.path_join(files["folder"]).path_join(files["model"])
+	data.clip_set = files["first_person"]
+	data.world_clip_set = files["third_person"]
+	var silenced := row.ends_with(" (no silencer)")
+	var silenced_row := row.trim_suffix(" (no silencer)") + " (silencer)"
+	if WeaponSheet.has(row):
+		WeaponSheet.apply(data, row, silenced_row if silenced else "")
+	WeaponVData.apply(data, weapon_class, silenced)
+	# The same on every gun in CS2: the game keeps only the head's per gun.
+	data.chest_multiplier = 1.0
+	data.stomach_multiplier = 1.25
+	data.leg_multiplier = 0.75
+	return data
+
+
+## CS2's English name for a gun: the sheet's, without the silencer's mode.
+static func display_name(weapon_class: String) -> String:
+	if not has(weapon_class):
+		return ""
+	return String(_files()[weapon_class]["sheet_row"]).trim_suffix(" (no silencer)")
+
+
+const MODELS_PAGE := "res://reference/weapons/models.md"
+const MODELS_ROOT := "res://assets/weapons/weapons/models"
+
+static var _files_cache := {}
+
+
+## Each gun's row of the first table in models.md: {class: {sheet_row,
+## folder, model, first_person, third_person}}. Read once.
+static func _files() -> Dictionary:
+	if not _files_cache.is_empty():
+		return _files_cache
+	var file := FileAccess.open(MODELS_PAGE, FileAccess.READ)
+	if file == null:
+		push_error("No weapon file list at %s" % MODELS_PAGE)
+		return _files_cache
+	var in_table := false
+	while not file.eof_reached():
+		var line := file.get_line().strip_edges()
+		if line.begins_with("| Class | Sheet row"):
+			in_table = true
+			continue
+		if not in_table:
+			continue
+		if not line.begins_with("|"):
+			break
+		var cells := line.trim_prefix("|").trim_suffix("|").split("|")
+		if cells.size() < 7 or cells[0].strip_edges().begins_with("---"):
+			continue
+		var clean := func(cell: String) -> String:
+			var text := cell.strip_edges()
+			var paren := text.find(" (")
+			if text.begins_with("`") and paren > 0:
+				text = text.substr(0, paren)
+			return text.replace("`", "")
+		_files_cache[clean.call(cells[0])] = {
+			"sheet_row": String(cells[1]).strip_edges(),
+			"folder": clean.call(cells[2]),
+			"model": clean.call(cells[3]),
+			"first_person": clean.call(cells[5]),
+			"third_person": clean.call(cells[6]),
+		}
+	return _files_cache

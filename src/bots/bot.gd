@@ -72,13 +72,8 @@ const STEP_UP_OR_DOWN := 18.0
 ## It jumps for a landing only this close to the take-off, in plan, so it
 ## does not hop again on arriving.
 const TAKE_OFF_REACH := 24.0
-## How many bots may find their way over the nav mesh in one tick. A search
-## takes half a millisecond, and at a round's start every bot wants one on
-## the same tick: nine to twenty searches, a tick of five to ten ms. The
-## rest wait a tick or two, standing, which freeze time hides.
-const PATH_SEARCHES_PER_TICK := 2
-static var _searches_on_tick := -1
-static var _searches := 0
+# How many bots may find their way over the mesh in one tick is the world's
+# to say (GameWorld.PATH_SEARCHES_PER_TICK).
 
 ## Its body falling, while it is dead; null otherwise.
 
@@ -164,8 +159,8 @@ func _body_weapon_set() -> String:
 	return weapon_data.world_clip_set if weapon_data != null else ""
 
 
-func _physics_process(delta: float) -> void:
-	run_command(_think(delta), delta)
+func command_for(tick: int, dt: float) -> UserCmd:
+	return _think(tick, dt)
 
 
 ## The body as it is seen: drawn between the last two ticks, and lit, both
@@ -182,9 +177,9 @@ func _process(_delta: float) -> void:
 
 ## What it does this tick, as a command: the way it faces, the way it walks,
 ## and whether the trigger is down.
-func _think(delta: float) -> UserCmd:
+func _think(tick: int, delta: float) -> UserCmd:
 	var cmd := UserCmd.new()
-	cmd.tick = SimClock.current_tick()
+	cmd.tick = tick
 	# Where it meant to face last tick, the aim error taken back out.
 	var yaw := yaw_degrees - _sent_error.x
 	var pitch := pitch_degrees - _sent_error.y
@@ -247,7 +242,7 @@ func _think(delta: float) -> UserCmd:
 func _way_on(cmd: UserCmd, delta: float) -> Vector3:
 	var goal := route[_next]
 	if nav_mesh != null and _path == null and _no_way_to != _next:
-		if not _may_search(cmd.tick):
+		if is_instance_valid(world) and not world.may_search_path():
 			return Vector3.ZERO
 		_path = nav_mesh.walk_path(global_position, goal)
 		_corner = 1
@@ -302,19 +297,6 @@ func _way_on(cmd: UserCmd, delta: float) -> Vector3:
 	return way.normalized() if way.length_squared() > 0.0 else Vector3.ZERO
 
 
-
-## Whether a bot may search the nav mesh on this tick, counting it if so
-## (PATH_SEARCHES_PER_TICK).
-static func _may_search(tick: int) -> bool:
-	if tick != _searches_on_tick:
-		_searches_on_tick = tick
-		_searches = 0
-	if _searches >= PATH_SEARCHES_PER_TICK:
-		return false
-	_searches += 1
-	return true
-
-
 ## On to the next point of the route, to find the way there afresh.
 func _arrive() -> void:
 	_next = (_next + 1) % route.size()
@@ -351,13 +333,15 @@ func _under_low_ceiling() -> bool:
 
 
 ## The nearest living player of the other side in sight: within range,
-## within the cone, and in the open between its eyes and theirs.
+## within the cone, and in the open between its eyes and theirs. Only in its
+## world: nobody else is in the game.
 func _look_for_target() -> Node3D:
+	if not is_instance_valid(world):
+		return null
 	var best: Node3D = null
 	var best_distance := SIGHT_RANGE
-	for node in get_tree().get_nodes_in_group(&"players"):
-		var candidate := node as PlayerSim
-		if candidate == null or candidate == self or not candidate.alive or candidate.team == team:
+	for candidate in world.players:
+		if candidate == self or not candidate.alive or candidate.team == team:
 			continue
 		var distance := global_position.distance_to(candidate.global_position)
 		if distance >= best_distance:

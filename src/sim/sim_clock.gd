@@ -27,8 +27,13 @@ static func ticks_in(seconds: float) -> int:
 	return roundi(seconds * float(Engine.physics_ticks_per_second))
 
 
-## The tick being simulated now.
+## The tick being simulated now: the world's count (GameWorld.tick), which
+## starts with the game. With no world (a check that runs its players by
+## hand), the engine's.
 static func current_tick() -> int:
+	var world := GameWorld.current
+	if world != null and is_instance_valid(world):
+		return world.tick
 	return Engine.get_physics_frames()
 
 

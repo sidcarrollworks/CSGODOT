@@ -77,6 +77,9 @@ class Punch:
 
 
 @export var display_name: String = ""
+## CS2's class name for the gun (weapon_ak47): what its damage, its kills and
+## its place in the item registry go by (ItemRegistry).
+@export var item_class: String = ""
 
 ## The weapon's model, as extracted by scripts/extract_assets.sh weapons, and
 ## the set of first-person clips under animation/anims/viewmodel/rifle that
