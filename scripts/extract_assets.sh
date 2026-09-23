@@ -27,8 +27,9 @@
 #   scripts/extract_assets.sh equipment       # the bomb and kit, grenades, default knives, Zeus: models and animations
 #   scripts/extract_assets.sh hud             # the scope overlay and the equipment icons
 #   scripts/extract_assets.sh characters      # two player models and their locomotion
+#   scripts/extract_assets.sh animgraphs      # the animation graphs that drive the clips (seconds)
 #   scripts/extract_assets.sh sounds          # the guns' and the equipment's sounds, footsteps by surface, hits
-#   scripts/extract_assets.sh all             # map + weapons + equipment + hud + characters + sounds
+#   scripts/extract_assets.sh all             # map + weapons + equipment + hud + characters + animgraphs + sounds
 #
 # Requires Source2Viewer-CLI: https://github.com/ValveResourceFormat/ValveResourceFormat
 # Point at it with S2V=/path/to/Source2Viewer-CLI if it is not on PATH.
@@ -157,7 +158,7 @@ find_cs2() {
 
 COMMAND="${1:-}"
 case "$COMMAND" in
-	list-map|list-weapons|map|physics|entities|nav|volumes|radar|surfaces|layers|sky|skybox|lightmaps|weapons|weapon-animations|weapon-data|equipment|hud|characters|sounds|all) ;;
+	list-map|list-weapons|map|physics|entities|nav|volumes|radar|surfaces|layers|sky|skybox|lightmaps|weapons|weapon-animations|weapon-data|equipment|hud|characters|animgraphs|sounds|all) ;;
 	*)
 		# The header comment, down to the first line that is not one.
 		awk 'NR > 2 && /^#/ { sub(/^# ?/, ""); print; next } NR > 2 { exit }' "${BASH_SOURCE[0]}"
@@ -860,6 +861,38 @@ extract_characters() {
 		| grep -vE '^(Preloading|Added folder|--- )' || true
 }
 
+## The animation graphs: CS2's AnimGraph 2 (.vnmgraph_c, all of
+## animation/graphs/), the logic that picks and blends the clips from what
+## the game feeds it each frame (speed and direction, crouch, aim, the
+## weapon's action, the flinches). They are data, which Source 2 Viewer's -b
+## DATA prints as text: all 232, 15 MB of it, in seconds.
+## scripts/animgraph_tables.gd writes reference/animgraph/ from it, and
+## reference/animgraph2.md says what is in them.
+extract_animgraphs() {
+	require_file "$PAK_VPK"
+	local dest="$CHARACTERS_DEST/animation/graphs"
+	mkdir -p "$dest"
+	echo "Reading the animation graphs"
+	echo "        -> $dest/graph_data.txt"
+	"$S2V_BIN" -i "$PAK_VPK" -f "animation/graphs/" -e vnmgraph_c -b DATA > "$dest/graph_data.txt" 2>/dev/null || true
+	echo "        $(grep -c '^\[[0-9]*/[0-9]*\] ' "$dest/graph_data.txt" || true) graphs"
+	write_animgraph_tables
+}
+
+write_animgraph_tables() {
+	local godot
+	godot="$(find_godot)"
+	if [[ -z "$godot" ]]; then
+		echo "No Godot binary found; the tables in reference/animgraph/ were not rewritten."
+		return
+	fi
+	echo
+	local version
+	version="$(sed -n 's/^PatchVersion=//p' "$CS2_DIR/game/csgo/steam.inf" 2>/dev/null | tr -d '\r' || true)"
+	CS2_VERSION="$version" "$godot" --headless --path "$PROJECT_DIR" --script scripts/animgraph_tables.gd 2>&1 \
+		| grep -E '^(animation graph tables|  )' || true
+}
+
 ## Godot only picks up new files on an import pass, and the textures need
 ## their import settings written first (see write_import_settings.gd).
 finish() {
@@ -892,11 +925,12 @@ case "$COMMAND" in
 	skybox) extract_skybox; finish ;;
 	lightmaps) extract_lightmaps; finish ;;
 	characters) extract_characters; finish ;;
+	animgraphs) extract_animgraphs ;;
 	weapons) extract_weapons; finish ;;
 	weapon-animations) extract_weapon_animations; finish ;;
 	weapon-data) extract_weapon_data; write_weapon_tables ;;
 	equipment) extract_equipment; finish ;;
 	hud) extract_hud; finish ;;
 	sounds) extract_sounds; finish ;;
-	all) extract_map; echo; extract_weapons; echo; extract_equipment; echo; extract_hud; echo; extract_characters; echo; extract_sounds; finish ;;
+	all) extract_map; echo; extract_weapons; echo; extract_equipment; echo; extract_hud; echo; extract_characters; echo; extract_animgraphs; echo; extract_sounds; finish ;;
 esac
