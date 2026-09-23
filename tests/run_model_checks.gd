@@ -57,8 +57,33 @@ func _init() -> void:
 		"walking, crouching, standing and being in the air each have their own"
 	)
 
+	# The suffix a set's clips share, which comes off their names, and the
+	# spare body a weapon's export carries. No assets needed.
+	_check(
+		RigModel.common_suffix(PackedStringArray(["draw_ak.gltf", "idle_ak.gltf", "reload_ak.gltf"])) == "ak"
+			and RigModel.common_suffix(PackedStringArray(["a/draw_glock.vnmclip_c", "a/shoot1_glock.vnmclip_c", "a/idle_glock18.vnmclip_c"])) == "glock"
+			and RigModel.common_suffix(PackedStringArray(["draw_default_t.gltf", "light_miss1_default_t.gltf", "idle_default_t.gltf"])) == "default_t"
+			and RigModel.common_suffix(PackedStringArray([
+				"draw_revolver.gltf", "prepare_shoot_revolver.gltf", "prepare_shoot_revolver.vnmclip+non_additive.gltf",
+				"chamber_revolver_0.vnmclip+non_additive.gltf", "chamber_revolver_1.vnmclip+non_additive.gltf",
+			])) == "revolver",
+		"a set's clips lose the suffix most share: a word (_ak), or more where all share more (the T knife's _default_t), the clips' non-additive copies not counted"
+	)
+	var legacy := Node.new()
+	legacy.name = "weapon_body_legacy"
+	var hd := Node.new()
+	hd.name = "weapon_body_hd"
+	_check(
+		RigModel.is_spare_body(legacy, [legacy, hd]) and not RigModel.is_spare_body(hd, [legacy, hd])
+			and not RigModel.is_spare_body(legacy, [legacy]),
+		"a weapon's old-hardware body is spare beside another, and is the weapon where it is the only one (the default knives)"
+	)
+	legacy.free()
+	hd.free()
+
 	_test_view_model_motion()
 	_test_hitbox_set_parsing()
+	_test_nm_graph()
 	_test_sound_sets()
 	_check(
 		BulletImpacts.surface_for("physics_group_sand") == "sand" and BulletImpacts.surface_for("physics_group_wood_crate") == "wood"
@@ -146,6 +171,7 @@ func _init() -> void:
 	_check(_view_model.setup("T", data.model_path, data.clip_set), "the view model builds for the AK-47 and a T")
 	ViewModelProjection.claim(_view_model)
 	_test_every_gun_builds()
+	_test_every_equipment_builds()
 
 	_player_model = PlayerModel.new()
 	root.add_child(_player_model)
@@ -226,6 +252,94 @@ func _process(_delta: float) -> bool:
 		_start_bot()
 		return false
 	return _bot_step()
+
+
+## The animation graph reader, on a graph small enough to write out here in
+## Source 2 Viewer's text: two parameters, a condition on both, two clips in
+## a state machine. No assets needed. Where the graphs have been dumped
+## (scripts/extract_assets.sh animgraphs), the real ones as well, and that
+## reference/animgraph/locomotion.json is still what they say.
+func _test_nm_graph() -> void:
+	var parsed: Variant = NmGraph.parse_kv3('{ a = [ 1, -2.5, "x \\"y\\"" ] b = resource:"p/q.vnmclip" c = { d = true e = null } f = [  ] }')
+	_check(
+		parsed is Dictionary and parsed["a"] == [1, -2.5, "x \"y\""] and parsed["b"] == "p/q.vnmclip"
+			and parsed["c"]["d"] == true and parsed["c"]["e"] == null and parsed["f"] == [],
+		"KV3 text reads into dictionaries and arrays: numbers, escaped strings, typed strings, flags, null and empty lists (%s)" % [parsed]
+	)
+	var graph := NmGraph.from_text("""{
+	m_nRootNodeIdx = 7
+	m_controlParameterIDs = [ "action", "speed" ]
+	m_virtualParameterIDs = [  ]
+	m_virtualParameterNodeIndices = [  ]
+	m_nodePaths = [ "action", "speed", "SM/Idle/Is Reload", "SM/Idle/Fast", "SM/Idle/And", "SM/Idle/idle", "SM/Reload/reload", "SM", "SM/Idle", "SM/Reload", "SM/Idle/To Reload", ]
+	m_resources = [ resource:"animation/anims/a/idle_a.vnmclip", resource:"animation/anims/a/reload_a.vnmclip", ]
+	m_nodes =
+	[
+		{ _class = "CNmControlParameterIDNode::CDefinition" m_nNodeIdx = 0 },
+		{ _class = "CNmControlParameterFloatNode::CDefinition" m_nNodeIdx = 1 },
+		{ _class = "CNmIDComparisonNode::CDefinition" m_nNodeIdx = 2 m_nInputValueNodeIdx = 0 m_comparison = "Matches" m_comparisionIDs = [ "action_reload" ] },
+		{ _class = "CNmFloatComparisonNode::CDefinition" m_nNodeIdx = 3 m_nInputValueNodeIdx = 1 m_nComparandValueNodeIdx = -1 m_comparison = "GreaterThanEqual" m_flComparisonValue = 0.5 },
+		{ _class = "CNmAndNode::CDefinition" m_nNodeIdx = 4 m_conditionNodeIndices = [ 2, 3 ] },
+		{ _class = "CNmClipNode::CDefinition" m_nNodeIdx = 5 m_nDataSlotIdx = 0 m_bAllowLooping = true m_flSpeedMultiplier = 1.0 m_nPlayInReverseValueNodeIdx = -1 },
+		{ _class = "CNmClipNode::CDefinition" m_nNodeIdx = 6 m_nDataSlotIdx = 1 m_bAllowLooping = false m_flSpeedMultiplier = 1.0 m_nPlayInReverseValueNodeIdx = -1 },
+		{
+			_class = "CNmStateMachineNode::CDefinition"
+			m_nNodeIdx = 7
+			m_nDefaultStateIndex = 0
+			m_stateDefinitions =
+			[
+				{ m_nStateNodeIdx = 8 m_nEntryConditionNodeIdx = -1 m_transitionDefinitions = [ { m_nTargetStateIdx = 1 m_nConditionNodeIdx = 4 m_nTransitionNodeIdx = 10 m_bCanBeForced = false }, ] },
+				{ m_nStateNodeIdx = 9 m_nEntryConditionNodeIdx = 2 m_transitionDefinitions = [  ] },
+			]
+		},
+		{ _class = "CNmStateNode::CDefinition" m_nNodeIdx = 8 m_nChildNodeIdx = 5 },
+		{ _class = "CNmStateNode::CDefinition" m_nNodeIdx = 9 m_nChildNodeIdx = 6 },
+		{ _class = "CNmTransitionNode::CDefinition" m_nNodeIdx = 10 m_nTargetStateNodeIdx = 9 m_nDurationOverrideNodeIdx = -1 m_flDuration = 0.2 m_blendWeightEasing = "OutQuad" m_transitionOptions = { m_flags = 0 } },
+	]
+}""")
+	var states := graph.states(graph.root())
+	_check(
+		graph.parameters == PackedStringArray(["action", "speed"]) and graph.kind(graph.root()) == "StateMachine"
+			and graph.expression(4) == "action is action_reload and speed >= 0.5" and graph.expression(3) == "speed >= 0.5",
+		"a graph's conditions read out with its parameters by name (%s)" % graph.expression(4)
+	)
+	_check(
+		states.size() == 2 and states[0]["name"] == "Idle" and states[1]["entry"] == 2
+			and (states[0]["transitions"] as Array).size() == 1 and states[0]["transitions"][0]["to"] == 1
+			and graph.transition_blend(states[0]["transitions"][0]["node"]) == "0.2 s, OutQuad"
+			and graph.summary(states[0]["plays"]) == "clip idle_a (loops)" and graph.summary(states[1]["plays"]) == "clip reload_a",
+		"a state machine lists its states, what each plays, and where each goes, when and how fast (%s)" % [states]
+	)
+	_check(
+		graph.id_values() == {"action": PackedStringArray(["action_reload"])}
+			and NmGraph.variation_of("animation/graphs/viewmodel/viewmodel_gun.vnmgraph+ak47.vnmgraph_c") == "ak47"
+			and NmGraph.variation_of("animation/graphs/worldmodel/worldmodel.vnmgraph_c").is_empty()
+			and NmGraph.base_name("animation/graphs/viewmodel/viewmodel_gun.vnmgraph+ak47.vnmgraph_c") == "viewmodel_gun",
+		"the values an ID parameter is tested for are collected, and a graph's variation is read off its name"
+	)
+
+	var dump := "res://assets/characters/animation/graphs/graph_data.txt"
+	if not FileAccess.file_exists(dump):
+		print("animation graphs not dumped; skipping the real ones (scripts/extract_assets.sh animgraphs)")
+		return
+	var blocks := NmGraph.read_dump(dump)
+	var world := NmGraph.from_text(String(blocks.get("animation/graphs/worldmodel/worldmodel.vnmgraph_c", "")))
+	_check(
+		blocks.size() >= 200 and world.parameters.size() >= 40 and "move_speed_x" in world.parameters
+			and world.kind(world.root()) == "SnapWeapon" and "flinch_head_north" in (world.id_values().get("flinch_head_type", PackedStringArray()) as PackedStringArray),
+		"CS2's graphs read: %d of them; the third-person one takes %d parameters and starts at %s" % [blocks.size(), world.parameters.size(), world.kind(world.root())]
+	)
+	var locomotion := NmGraph.from_text(String(blocks.get("animation/graphs/worldmodel/worldmodel_locomotion.vnmgraph+rifle.vnmgraph_c", "")))
+	var table: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://reference/animgraph/locomotion.json"))
+	var same := table is Dictionary and not (table["blend_spaces"] as Array).is_empty()
+	if same:
+		for space: Dictionary in table["blend_spaces"]:
+			var values: Array = locomotion.node(int(space["node"])).get("m_values", [])
+			var points: Array = space["points"]
+			same = same and values.size() == points.size()
+			for i in mini(values.size(), points.size()):
+				same = same and is_equal_approx(float(values[i][0]), float(points[i]["x"])) and is_equal_approx(float(values[i][1]), float(points[i]["y"]))
+	_check(same, "reference/animgraph/locomotion.json is what the graphs say (scripts/animgraph_tables.gd writes it)")
 
 
 ## CS2's hitbox set is text; the test is that the fields come out of it and
@@ -344,13 +458,13 @@ func _start_bot() -> void:
 	# Ground, which a round does not go through: 2 units of it did, once
 	# rounds went through walls (PR #31), and the round meant to leave a hole
 	# in it went on into nothing. Its top is still at 0.
-	var floor := StaticBody3D.new()
+	var ground := StaticBody3D.new()
 	var shape := CollisionShape3D.new()
 	shape.shape = BoxShape3D.new()
 	(shape.shape as BoxShape3D).size = Vector3(1000, 128, 1000)
-	floor.add_child(shape)
-	floor.position.y = -64.0
-	_bot_world.add_child(floor)
+	ground.add_child(shape)
+	ground.position.y = -64.0
+	_bot_world.add_child(ground)
 	_bot = (load("res://src/bots/bot.tscn") as PackedScene).instantiate() as Bot
 	_bot.team = "CT"
 	_bot.weapon_data = WeaponLibrary.ak47()
@@ -860,6 +974,61 @@ func _test_every_gun_builds() -> void:
 	)
 
 
+## And every piece of equipment in reference/weapons/equipment.md, the same
+## way: its model on its own clip set, a draw, an idle and what it is for (the
+## plant, a stab, the Zeus's shot, a throw), with a mesh on the weapon's rig.
+## The default knives' one mesh is the body the guns carry a spare of; they
+## keep it, in the third-person model's hand too. The kit, which no one holds,
+## has only to load.
+func _test_every_equipment_builds() -> void:
+	var items: Array = (load("res://scripts/weapon_tables.gd") as GDScript).get_script_constant_map()["EQUIPMENT"]
+	var actions := {"weapon_c4": &"plant", "weapon_knife": &"light_miss1", "weapon_knife_t": &"light_miss1", "weapon_taser": &"shoot1"}
+	var built := 0
+	var failures := PackedStringArray()
+	var knife := ""
+	for item in items:
+		var model := "res://assets/weapons/weapons/models".path_join(String(item[2]) + ".gltf")
+		if not ResourceLoader.exists(model):
+			continue
+		built += 1
+		if String(item[3]).is_empty():
+			var scene := _instantiate(model)
+			if scene == null or scene.find_children("*", "MeshInstance3D", true, false).is_empty():
+				failures.append("%s (%s has no mesh)" % [item[0], model.get_file()])
+			if scene != null:
+				scene.free()
+			continue
+		var view_model := ViewModel.new()
+		root.add_child(view_model)
+		var ok := view_model.setup("CT", model, item[3])
+		var clips := view_model.animation_player.get_animation_list() if view_model.animation_player != null else PackedStringArray()
+		var action: StringName = actions.get(item[0], &"throw_overhand")
+		var meshes: Array = view_model.weapon_rig.get_parent().find_children("*", "MeshInstance3D", true, false) if view_model.weapon_rig != null else []
+		if not ok or meshes.is_empty() or not clips.has(&"draw") or not clips.has(view_model.idle) or not clips.has(action):
+			failures.append("%s (%s: %d meshes; %s)" % [item[0], item[3], meshes.size(), ", ".join(clips)])
+		if item[0] == "weapon_knife":
+			knife = model
+		view_model.free()
+	if built == 0:
+		print("no equipment extracted; skipping the every-equipment build (scripts/extract_assets.sh equipment)")
+		return
+	_check(
+		built == items.size() and failures.is_empty(),
+		"every piece of equipment builds in first person on its own clips, %d of %d (%s)" % [built - failures.size(), items.size(), "; ".join(failures)]
+	)
+	if knife.is_empty():
+		return
+	var body := PlayerModel.new()
+	root.add_child(body)
+	var held := body.setup("CT", knife)
+	var shown := 0
+	for mesh in body.find_children("*", "MeshInstance3D", true, false):
+		if mesh.name.contains("knife") and (mesh as MeshInstance3D).visible:
+			shown += 1
+	_check(held and shown == 1, "the third-person model holds the knife, its one mesh shown (%d)" % shown)
+	body.free()
+
+
 func _test_view_model_motion() -> void:
 	_check(
 		ViewModelMotion.bob_at(0.37, 0.0) == Vector2.ZERO
@@ -940,8 +1109,8 @@ func _test_player_model() -> void:
 	var skeleton: Skeleton3D = weapon_root.find_children("*", "Skeleton3D", true, false)[0] if weapon_root != null else null
 	if rig != null and skeleton != null:
 		var wpn: Vector3 = (rig.global_transform * rig.get_bone_global_pose(rig.find_bone("wpn"))).origin
-		var root: Vector3 = (skeleton.global_transform * skeleton.get_bone_global_pose(0)).origin
-		_check(wpn.distance_to(root) < 0.01, "the weapon's root bone sits on the hand's wpn bone (%.3f apart)" % wpn.distance_to(root))
+		var weapon_at: Vector3 = (skeleton.global_transform * skeleton.get_bone_global_pose(0)).origin
+		_check(wpn.distance_to(weapon_at) < 0.01, "the weapon's root bone sits on the hand's wpn bone (%.3f apart)" % wpn.distance_to(weapon_at))
 	var head: Vector3 = (rig.global_transform * rig.get_bone_global_pose(rig.find_bone("head_0"))).origin
 	_check(
 		head.y > 60.0 and head.y < 72.0 and (rig.global_transform * rig.get_bone_global_pose(rig.find_bone("root_motion"))).origin.y < 0.5,

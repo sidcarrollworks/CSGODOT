@@ -1,20 +1,21 @@
 extends SceneTree
 
 ## Writes reference/weapons/models.md, sounds.md, timings.md (with
-## timings.csv) and vdata.md (with vdata.csv) from what scripts/extract_assets.sh
-## extracted, so the code that picks a gun's model, clips and sounds, times its
-## draw and reload, and reads what the weapon sheet lacks, can be written on a
-## machine without the assets.
+## timings.csv), vdata.md (with vdata.csv) and equipment.md from what
+## scripts/extract_assets.sh extracted, so the code that picks a gun's model,
+## clips and sounds, times its draw and reload, and reads what the weapon sheet
+## lacks, can be written on a machine without the assets; and the same for the
+## bomb, the grenades, the knives and the Zeus.
 ##
 ##   godot --headless --path . --script scripts/weapon_tables.gd
 ##
-## (scripts/extract_assets.sh weapons and sounds run this for you.) The
-## class-to-folder table below is the one fact written by hand: CS2's folder
-## and file names do not follow the class names (weapon_m4a1 is the M4A4, in
-## m4a4/, and its sounds share m4a1/ with the M4A1-S). Everything else is
-## listed from disk, so a CS2 update that renames a file shows up here as a
-## gap rather than as a path that no longer exists. CS2_VERSION, if set, is
-## recorded as the build the files came from.
+## (scripts/extract_assets.sh weapons, equipment, weapon-data and sounds run
+## this for you.) The class-to-folder tables below are the one fact written by
+## hand: CS2's folder and file names do not follow the class names
+## (weapon_m4a1 is the M4A4, in m4a4/, and its sounds share m4a1/ with the
+## M4A1-S). Everything else is listed from disk, so a CS2 update that renames a
+## file shows up here as a gap rather than as a path that no longer exists.
+## CS2_VERSION, if set, is recorded as the build the files came from.
 
 const WEAPONS_ROOT := "res://assets/weapons/weapons/models"
 const FIRST_PERSON_ROOT := "res://assets/characters/animation/anims/viewmodel"
@@ -27,6 +28,9 @@ const SCOPE_ROOT := "res://assets/hud/panorama/images/hud/scope"
 ## The first-person clips' own data (lengths and events), dumped by the
 ## weapon-animations step.
 const CLIP_DATA := "res://assets/characters/animation/anims/viewmodel/clip_data.txt"
+## The equipment's clips' data, first person, and the bomb's plant and the
+## defuse in third person, dumped by the equipment step.
+const EQUIPMENT_CLIP_DATA := "res://assets/characters/animation/anims/viewmodel/equipment_clip_data.txt"
 ## The game's weapon tuning, decoded by the weapon-data step.
 const VDATA := "res://assets/scripts/weapons.vdata.txt"
 
@@ -80,6 +84,26 @@ const GUNS := [
 	["weapon_scar20", "SCAR-20", "scar20", "rifle/rifle_scar20", "rifle/rifle_scar", "scar20", "scar20", ""],
 ]
 
+## The equipment, which the equipment step extracts: class, name, model (its
+## glTF under WEAPONS_ROOT, less .gltf), first-person set, third-person set,
+## skeleton, sound folder, the vdata entry its numbers are in (the T knife has
+## none of its own: it is weapon_knife's), and icon. The defuse kit is in no
+## one's hands, so has no first-person set; its third-person set is the
+## defuse's.
+const EQUIPMENT := [
+	["weapon_c4", "C4 Explosive", "c4/weapon_c4", "equipment/c4", "equipment/c4", "c4", "c4", "weapon_c4", "c4"],
+	["item_defuser", "Defuse Kit", "defuser/defuser", "", "shared/defuse", "", "", "", "defuser"],
+	["weapon_knife", "Knife (CT)", "knife/knife_default_ct/weapon_knife_default_ct", "knife/_default_knife", "knife/default_ct", "knife_default_ct", "knife", "weapon_knife", "knife"],
+	["weapon_knife_t", "Knife (T)", "knife/knife_default_t/weapon_knife_default_t", "knife/knife_default_t", "knife/default_t", "knife_default_t", "knife", "weapon_knife", "knife_t"],
+	["weapon_taser", "Zeus x27", "taser/weapon_pist_taser", "pistol/pistol_taser", "pistol/pistol_taser", "taser", "taser", "weapon_taser", "taser"],
+	["weapon_hegrenade", "HE Grenade", "grenade/hegrenade/weapon_hegrenade", "grenade/grenade_hegrenade", "grenade/_default_grenade", "hegrenade", "hegrenade", "weapon_hegrenade", "hegrenade"],
+	["weapon_flashbang", "Flashbang", "grenade/flashbang/weapon_flashbang", "grenade/grenade_flashbang", "grenade/_default_grenade", "flashbang", "flashbang", "weapon_flashbang", "flashbang"],
+	["weapon_smokegrenade", "Smoke Grenade", "grenade/smokegrenade/weapon_smokegrenade", "grenade/grenade_smokegrenade", "grenade/_default_grenade", "smokegrenade", "smokegrenade", "weapon_smokegrenade", "smokegrenade"],
+	["weapon_molotov", "Molotov", "grenade/molotov/weapon_molotov", "grenade/grenade_molotov", "grenade/grenade_molotov", "molotov", "molotov", "weapon_molotov", "molotov"],
+	["weapon_incgrenade", "Incendiary Grenade", "grenade/incendiary/weapon_incendiarygrenade", "grenade/grenade_incendiary", "grenade/_default_grenade", "incendiary", "incgrenade", "weapon_incgrenade", "incgrenade"],
+	["weapon_decoy", "Decoy Grenade", "grenade/decoy/weapon_decoy", "grenade/_default_grenade", "grenade/_default_grenade", "decoy", "decoy", "weapon_decoy", "decoy"],
+]
+
 ## A sound's role, by what its file is called; the first that matches.
 const ROLES := [
 	["distant", "distant"],
@@ -118,7 +142,13 @@ func _initialize() -> void:
 		_write(OUT_DIR.path_join("vdata.md"), _vdata_page(source, date, vdata))
 		_write(OUT_DIR.path_join("vdata.csv"), _vdata_csv(vdata))
 		_write(OUT_DIR.path_join("vdata.csv.import"), _keep_import(OUT_DIR.path_join("vdata.csv")))
-	print("weapon tables: %d guns, %d gaps, written to %s" % [GUNS.size(), _gaps.size(), OUT_DIR])
+	# The equipment's page, once the equipment step has run.
+	var equipment_clips := read_clip_data(EQUIPMENT_CLIP_DATA)
+	if equipment_clips.is_empty():
+		_gaps.append("the equipment (scripts/extract_assets.sh equipment): %s" % EQUIPMENT_CLIP_DATA)
+	else:
+		_write(OUT_DIR.path_join("equipment.md"), _equipment_page(source, date, vdata, equipment_clips))
+	print("weapon tables: %d guns and %d pieces of equipment, %d gaps, written to %s" % [GUNS.size(), EQUIPMENT.size(), _gaps.size(), OUT_DIR])
 	for gap in _gaps:
 		print("  missing: ", gap)
 	quit(0)
@@ -361,14 +391,21 @@ func _cross_check(vdata: Dictionary) -> PackedStringArray:
 
 func _vdata_csv(vdata: Dictionary) -> String:
 	var lines := PackedStringArray(["class,field,value"])
+	var classes := []
 	for gun in GUNS:
-		var fields: Dictionary = vdata.get(gun[0], {})
+		classes.append(gun[0])
+	# And the equipment's, once each (both knives are weapon_knife).
+	for item in EQUIPMENT:
+		if not String(item[7]).is_empty() and item[7] not in classes:
+			classes.append(item[7])
+	for weapon_class in classes:
+		var fields: Dictionary = vdata.get(weapon_class, {})
 		var keys := fields.keys()
 		keys.sort()
 		for key in keys:
 			var value := String(fields[key]).replace("\"", "").replace("resource_name:", "").replace("resource:", "")
 			value = value.trim_prefix("[").trim_suffix("]").strip_edges().replace(", ", "|").replace(",", "|")
-			lines.append("%s,%s,%s" % [gun[0], key, value])
+			lines.append("%s,%s,%s" % [weapon_class, key, value])
 	return "\n".join(lines) + "\n"
 
 
@@ -382,9 +419,11 @@ static func _vd(fields: Dictionary, key: String, index: int = 0) -> Variant:
 	text = text.replace("resource_name:", "").replace("\"", "")
 	if text == "true":
 		return 1.0
-	if text == "false":
+	if text == "false" or text.is_empty():
 		return 0.0
-	return float(text) if text.is_valid_float() else (text if not text.is_empty() else 0.0)
+	if text.is_valid_float():
+		return float(text)
+	return text
 
 
 static func _yes(value: Variant) -> String:
@@ -497,12 +536,181 @@ func _timings_csv(clips: Dictionary) -> String:
 	return "\n".join(lines) + "\n"
 
 
+## The bomb and the kit, the grenades, the knives and the Zeus: their files,
+## the game's numbers for them and their clips' timings.
+func _equipment_page(source: String, date: String, vdata: Dictionary, clips: Dictionary) -> String:
+	var lines := PackedStringArray([
+		"# The equipment's files, numbers and timings",
+		"",
+		"Written by `scripts/weapon_tables.gd` on %s from what `scripts/extract_assets.sh equipment` (the models, their clips and the clips' own data) and `sounds` extracted out of %s, and the game's `scripts/weapons.vdata_c`. Do not edit by hand. The equipment is the bomb and the defuse kit, the six grenades, the two default knives and the Zeus; `vdata.csv` has their entries with the guns'." % [date, source],
+		"",
+		"## Files",
+		"",
+		"Under the roots `models.md` gives. The sets are named as the guns' are. In third person the grenades but the molotov have only `grenade/_default_grenade`, and the molotov's own set is its draw, idle and pin, over that one's throws; the knives' own sets are the draw and the idle, over `knife/_default_knife`'s attacks and locomotion. The kit's is the defuse, a clip for each kind of weapon in hand.",
+		"",
+		"| Class | Name | Model | First person | Third person | Skeleton | Sounds | Icon |",
+		"|---|---|---|---|---|---|---|---|",
+	])
+	var clip_lines := PackedStringArray()
+	for item in EQUIPMENT:
+		var model := String(item[2]) + ".gltf"
+		if not FileAccess.file_exists(WEAPONS_ROOT.path_join(model)):
+			_gaps.append("%s model %s" % [item[0], model])
+			model = ""
+		var first := _clips(FIRST_PERSON_ROOT.path_join(item[3])) if not String(item[3]).is_empty() else PackedStringArray()
+		var third := _clips(THIRD_PERSON_ROOT.path_join(item[4]))
+		if not String(item[3]).is_empty() and first.is_empty():
+			_gaps.append("%s first-person set %s" % [item[0], item[3]])
+		if third.is_empty():
+			_gaps.append("%s third-person set %s" % [item[0], item[4]])
+		var skeleton := ""
+		if not String(item[5]).is_empty():
+			skeleton = item[5] if FileAccess.file_exists(SKELETONS_ROOT.path_join(String(item[5]) + ".vnmskel")) else ""
+			if skeleton.is_empty():
+				_gaps.append("%s skeleton %s" % [item[0], item[5]])
+		var sounds := PackedStringArray()
+		if not String(item[6]).is_empty():
+			sounds = _stems(SOUNDS_ROOT.path_join(item[6]), "")
+			if sounds.is_empty():
+				_gaps.append("%s sounds in %s" % [item[0], item[6]])
+		var icon := String(item[8]) + ".svg"
+		if not FileAccess.file_exists(ICONS_ROOT.path_join(icon)):
+			_gaps.append("%s icon %s" % [item[0], icon])
+			icon = ""
+		lines.append("| `%s` | %s | %s | %s | %s | %s | %s | %s |" % [
+			item[0], item[1], _code(model),
+			"`%s` (%d)" % [item[3], first.size()] if not first.is_empty() else "-",
+			"`%s` (%d)" % [item[4], third.size()] if not third.is_empty() else "-", _code(skeleton),
+			"`%s/` (%d)" % [item[6], sounds.size()] if not sounds.is_empty() else "-", _code(icon),
+		])
+		clip_lines.append("| `%s` | %s | %s |" % [item[0], ", ".join(first) if not first.is_empty() else "-", ", ".join(third) if not third.is_empty() else "-"])
+
+	lines.append_array(PackedStringArray([
+		"",
+		"## The game's numbers",
+		"",
+		"From each one's vdata entry; the T knife's are the knife's. The file is written out in full, each entry carrying every field, so some of these are defaults nothing reads: the knife's damage and reach are the game's code (its 50 and 4096 are the knife class's defaults), and the bomb's blast is the map's `bombradius`. What the grenades do when they go off (the flash's blinding, the smoke's cloud, the fire's spread) is the game's code too. A dash is a field the entry does not have: only the grenades have a throw speed. Top speed is the player's, holding it.",
+		"",
+		"| Class | Price | Kill award | Damage | Armour ratio | Range | Thrown at | Top speed | Draw |",
+		"|---|---|---|---|---|---|---|---|---|",
+	]))
+	for item in EQUIPMENT:
+		if String(item[7]).is_empty() or String(item[0]) != String(item[7]):
+			continue
+		var fields: Dictionary = vdata.get(item[7], {})
+		if fields.is_empty():
+			_gaps.append("%s in the weapon tuning" % item[7])
+			continue
+		lines.append("| `%s` | %s | %s | %s | %s | %s | %s | %s | %s |" % [
+			item[0], _cell(fields, "m_nPrice", "$%d"), _cell(fields, "m_nKillAward", "$%d"), _cell(fields, "m_nDamage", "%d"),
+			_cell(fields, "m_flArmorRatio"), _cell(fields, "m_flRange", "%d"), _cell(fields, "m_flThrowVelocity", "%d u/s"),
+			_cell(fields, "m_flMaxSpeed", "%d"), _cell(fields, "m_flDeployDuration", "%s s"),
+		])
+
+	lines.append_array(PackedStringArray([
+		"",
+		"## Timings",
+		"",
+		"From the clips' own data, as the guns' (`timings.md`), first person: each clip's length and, for a throw, when its throw sound plays; for the plant, its key presses (the `c4.keypressquiet` sounds) and the last of its `WPN_BOMB_STAGE` marks. A clip of one frame is a pose held (the HE's and the decoy's throw charges). The idles and inspects are left out.",
+		"",
+		"| Class | Set | Draw | The rest |",
+		"|---|---|---|---|",
+	]))
+	for item in EQUIPMENT:
+		if String(item[3]).is_empty():
+			continue
+		var named := _set_clips(clips, item[3])
+		if named.is_empty():
+			_gaps.append("%s clip timings for %s" % [item[0], item[3]])
+			continue
+		var rest := PackedStringArray()
+		var names := named.keys()
+		names.sort()
+		for clip: String in names:
+			if clip == "draw" or clip.begins_with("idle") or clip.begins_with("lookat"):
+				continue
+			var data: Dictionary = named[clip]
+			var note := ""
+			var released := _event_ending(data, ".Throw")
+			if released >= 0.0:
+				note = ", throw sound at %s" % _seconds(released)
+			var presses := _events_named(data, "c4.keypress")
+			if not presses.is_empty():
+				var stages := _events_named(data, "WPN_BOMB_STAGE")
+				note = ", %d key presses from %s to %s, the last stage at %s" % [
+					presses.size(), _seconds(presses[0]), _seconds(presses[-1]), _seconds(stages[-1]) if not stages.is_empty() else "-",
+				]
+			var length := _seconds(data["duration"]) if float(data["duration"]) > 0.0 else "one frame"
+			rest.append("%s %s%s" % [clip.replace("_", " "), length, note])
+		lines.append("| `%s` | `%s` | %s | %s |" % [
+			item[0], item[3], _seconds(named["draw"]["duration"]) if named.has("draw") else "-", "; ".join(rest),
+		])
+
+	lines.append_array(PackedStringArray([
+		"",
+		"And in third person, the plant and the defuse, standing and crouched. The defuse enters, then loops for as long as it takes, with a clip for the kind of weapon in hand; the plant can turn from `WPN_C4_ALLOW_TURN` on.",
+		"",
+		"| Clip | Length | Marks |",
+		"|---|---|---|",
+	]))
+	var third_paths := PackedStringArray()
+	for path: String in clips:
+		if path.begins_with("animation/anims/world/equipment/c4/planting") or path.begins_with("animation/anims/world/shared/defuse/"):
+			third_paths.append(path)
+	third_paths.sort()
+	if third_paths.is_empty():
+		_gaps.append("the plant's and the defuse's third-person timings")
+	for path in third_paths:
+		var data: Dictionary = clips[path]
+		var marks := PackedStringArray()
+		for event in data["events"]:
+			if event["kind"] == "ID" and not String(event["name"]).is_empty():
+				marks.append("`%s` at %s" % [event["name"], _seconds(event["at"])])
+		lines.append("| `%s` | %s | %s |" % [path.get_file().trim_suffix(".vnmclip_c"), _seconds(data["duration"]), ", ".join(marks)])
+
+	lines.append_array(PackedStringArray([
+		"",
+		"## The clips in each set",
+		"",
+		"By the name the file carries, less the set's suffix, as in `models.md`.",
+		"",
+		"| Class | First person | Third person |",
+		"|---|---|---|",
+	]))
+	lines.append_array(clip_lines)
+	return "\n".join(lines) + "\n"
+
+
+## A field's value for a table, or a dash if the entry does not have it.
+static func _cell(fields: Dictionary, key: String, format: String = "%s") -> String:
+	return format % _vd(fields, key) if fields.has(key) else "-"
+
+
+## When the first event whose name ends so happens, in seconds; -1 for none.
+static func _event_ending(clip: Dictionary, ending: String) -> float:
+	for event in clip.get("events", []):
+		if String(event["name"]).ends_with(ending):
+			return event["at"]
+	return -1.0
+
+
+## When each event whose name starts so happens, in order.
+static func _events_named(clip: Dictionary, start: String) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	for event in clip.get("events", []):
+		if String(event["name"]).begins_with(start):
+			out.append(event["at"])
+	out.sort()
+	return out
+
+
 ## A set's clips from the parsed data, by their short names.
 func _set_clips(clips: Dictionary, clip_set: String) -> Dictionary:
 	var prefix := "animation/anims/viewmodel/%s/" % clip_set
 	var paths := PackedStringArray()
 	for path in clips:
-		if String(path).begins_with(prefix) and not String(path).trim_prefix(prefix).contains("/"):
+		# Not a clip's non-additive copy, which has the clip's data.
+		if String(path).begins_with(prefix) and not String(path).trim_prefix(prefix).contains("/") and not String(path).contains(".vnmclip+"):
 			paths.append(path)
 	var suffix := RigModel.common_suffix(paths)
 	var named := {}
@@ -598,20 +806,23 @@ static func _role(stem: String) -> String:
 
 ## The clip names in a set's folder, less the suffix most of them share
 ## (the set's weapon, which is not always its folder's: pistol_glock18's
-## clips end in _glock).
+## clips end in _glock, the T knife's in _default_t). A set of more than one
+## weapon's clips, the defuse's with one for each kind in hand, has no such
+## suffix, and its names are left whole.
 func _clips(dir: String) -> PackedStringArray:
-	var files := _files(dir, "gltf")
-	var counts := {}
-	for file in files:
-		var last := file.get_basename().get_slice("_", file.get_basename().get_slice_count("_") - 1)
-		counts[last] = counts.get(last, 0) + 1
-	var suffix := ""
-	for last in counts:
-		if suffix.is_empty() or counts[last] > counts[suffix]:
-			suffix = last
+	var files := PackedStringArray()
+	for file in _files(dir, "gltf"):
+		# A clip's non-additive copy (idle_c4.vnmclip+non_additive) is not a
+		# clip of its own.
+		if not file.contains(".vnmclip+"):
+			files.append(file)
+	var suffix := RigModel.common_suffix(files)
 	var out := PackedStringArray()
 	for file in files:
-		out.append(file.get_basename().trim_suffix("_" + suffix))
+		var short := file.get_basename().trim_suffix("_" + suffix)
+		if short in out:
+			return PackedStringArray(Array(files).map(func(f: String) -> String: return f.get_basename()))
+		out.append(short)
 	return out
 
 

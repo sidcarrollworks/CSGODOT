@@ -70,12 +70,14 @@ func setup(team: String, weapon_model: String, clip_set: String) -> bool:
 
 	var weapon := instantiate(weapon_model)
 	if weapon != null and weapon_rig != null:
-		for mesh in weapon.find_children("*", "MeshInstance3D", true, false):
-			# The export carries two bodies; the other is for old hardware.
-			# And the Dual Berettas carry their thigh holster, which is for the
+		var meshes := weapon.find_children("*", "MeshInstance3D", true, false)
+		for mesh in meshes:
+			# The export carries two bodies, the other for old hardware (the
+			# default knives carry only that one, and keep it). And the Dual
+			# Berettas carry their thigh holster, which is for the
 			# third-person body: no first-person clip poses it, and it floats
 			# in the middle of the view.
-			if not mesh.name.ends_with("body_legacy") and not mesh.name.ends_with("_eholster"):
+			if not is_spare_body(mesh, meshes) and not mesh.name.ends_with("_eholster"):
 				adopt(mesh, weapon_rig)
 		weapon.free()
 	if weapon_rig != null and weapon_rig.get_bone_count() > 0:

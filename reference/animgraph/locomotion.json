@@ -1,0 +1,1698 @@
+{
+	"blend_spaces": [
+		{
+			"inputs": [
+				"move_speed_x (held from the state's exit)",
+				"move_speed_y (held from the state's exit)"
+			],
+			"node": 236,
+			"path": "SM/Ground/Standing/Move/Blend 2D",
+			"points": [
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/idle_knife",
+						"knife": "animation/anims/world/knife/_default_knife/idle_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/idle_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/idle_rifle"
+					},
+					"lasts": 1.0,
+					"name": "idle_stand",
+					"speed": 0.167,
+					"x": 0.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/run_n_knife",
+						"knife": "animation/anims/world/knife/_default_knife/run_n_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/run_n_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/run_n_rifle"
+					},
+					"lasts": -1.0,
+					"name": "run_n",
+					"speed": 1.0,
+					"x": 225.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/run_ne_knife",
+						"knife": "animation/anims/world/knife/_default_knife/run_ne_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/run_ne_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/run_ne_rifle"
+					},
+					"lasts": -1.0,
+					"name": "run_ne",
+					"speed": 1.0,
+					"x": 159.0,
+					"y": -159.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/run_e_knife",
+						"knife": "animation/anims/world/knife/_default_knife/run_e_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/run_e_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/run_e_rifle"
+					},
+					"lasts": -1.0,
+					"name": "run_e",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": -225.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/run_se_knife",
+						"knife": "animation/anims/world/knife/_default_knife/run_se_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/run_se_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/run_se_rifle"
+					},
+					"lasts": -1.0,
+					"name": "run_se",
+					"speed": 1.0,
+					"x": -159.0,
+					"y": -159.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/run_s_knife",
+						"knife": "animation/anims/world/knife/_default_knife/run_s_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/run_s_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/run_s_rifle"
+					},
+					"lasts": -1.0,
+					"name": "run_s",
+					"speed": 1.0,
+					"x": -225.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/run_sw_knife",
+						"knife": "animation/anims/world/knife/_default_knife/run_sw_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/run_sw_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/run_sw_rifle"
+					},
+					"lasts": -1.0,
+					"name": "run_sw",
+					"speed": 1.0,
+					"x": -159.0,
+					"y": 159.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/run_w_knife",
+						"knife": "animation/anims/world/knife/_default_knife/run_w_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/run_w_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/run_w_rifle"
+					},
+					"lasts": -1.0,
+					"name": "run_w",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": 225.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/run_nw_knife",
+						"knife": "animation/anims/world/knife/_default_knife/run_nw_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/run_nw_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/run_nw_rifle"
+					},
+					"lasts": -1.0,
+					"name": "run_nw",
+					"speed": 1.0,
+					"x": 159.0,
+					"y": 159.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/walk_n_knife",
+						"knife": "animation/anims/world/knife/_default_knife/walk_n_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/walk_n_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/walk_n_rifle"
+					},
+					"lasts": -1.0,
+					"name": "walk_n",
+					"speed": 1.0,
+					"x": 136.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/walk_ne_knife",
+						"knife": "animation/anims/world/knife/_default_knife/walk_ne_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/walk_ne_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/walk_ne_rifle"
+					},
+					"lasts": -1.0,
+					"name": "walk_ne",
+					"speed": 1.0,
+					"x": 96.0,
+					"y": -96.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/walk_e_knife",
+						"knife": "animation/anims/world/knife/_default_knife/walk_e_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/walk_e_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/walk_e_rifle"
+					},
+					"lasts": -1.0,
+					"name": "walk_e",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": -136.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/walk_se_knife",
+						"knife": "animation/anims/world/knife/_default_knife/walk_se_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/walk_se_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/walk_se_rifle"
+					},
+					"lasts": -1.0,
+					"name": "walk_se",
+					"speed": 1.0,
+					"x": -96.0,
+					"y": -96.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/walk_s_knife",
+						"knife": "animation/anims/world/knife/_default_knife/walk_s_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/walk_s_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/walk_s_rifle"
+					},
+					"lasts": -1.0,
+					"name": "walk_s",
+					"speed": 1.0,
+					"x": -136.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/walk_sw_knife",
+						"knife": "animation/anims/world/knife/_default_knife/walk_sw_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/walk_sw_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/walk_sw_rifle"
+					},
+					"lasts": -1.0,
+					"name": "walk_sw",
+					"speed": 1.0,
+					"x": -96.0,
+					"y": 96.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/walk_w_knife",
+						"knife": "animation/anims/world/knife/_default_knife/walk_w_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/walk_w_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/walk_w_rifle"
+					},
+					"lasts": -1.0,
+					"name": "walk_w",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": 136.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/walk_nw_knife",
+						"knife": "animation/anims/world/knife/_default_knife/walk_nw_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/walk_nw_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/walk_nw_rifle"
+					},
+					"lasts": -1.0,
+					"name": "walk_nw",
+					"speed": 1.0,
+					"x": 96.0,
+					"y": 96.0
+				}
+			],
+			"triangles": [
+				[
+					4,
+					5,
+					13
+				],
+				[
+					13,
+					5,
+					6
+				],
+				[
+					11,
+					4,
+					12
+				],
+				[
+					4,
+					11,
+					3
+				],
+				[
+					3,
+					11,
+					2
+				],
+				[
+					2,
+					11,
+					10
+				],
+				[
+					11,
+					12,
+					0
+				],
+				[
+					2,
+					10,
+					9
+				],
+				[
+					11,
+					0,
+					10
+				],
+				[
+					10,
+					0,
+					9
+				],
+				[
+					0,
+					16,
+					9
+				],
+				[
+					2,
+					9,
+					1
+				],
+				[
+					0,
+					12,
+					13
+				],
+				[
+					13,
+					6,
+					14
+				],
+				[
+					12,
+					4,
+					13
+				],
+				[
+					14,
+					6,
+					15
+				],
+				[
+					0,
+					14,
+					15
+				],
+				[
+					0,
+					13,
+					14
+				],
+				[
+					15,
+					7,
+					8
+				],
+				[
+					16,
+					0,
+					15
+				],
+				[
+					15,
+					6,
+					7
+				],
+				[
+					1,
+					9,
+					8
+				],
+				[
+					9,
+					16,
+					8
+				],
+				[
+					16,
+					15,
+					8
+				]
+			]
+		},
+		{
+			"inputs": [
+				"move_speed_x",
+				"move_speed_y"
+			],
+			"node": 257,
+			"path": "SM/Ground/Standing/Move/Blend 2D",
+			"points": [
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/idle_crouch_knife",
+						"knife": "animation/anims/world/knife/_default_knife/idle_crouch_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/idle_crouch_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/idle_crouch_rifle"
+					},
+					"lasts": 1.0,
+					"name": "idle_crouch",
+					"speed": 0.167,
+					"x": 0.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/crouch_n_knife",
+						"knife": "animation/anims/world/knife/_default_knife/crouch_n_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/crouch_n_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/crouch_n_rifle"
+					},
+					"lasts": -1.0,
+					"name": "crouch_n",
+					"speed": 1.0,
+					"x": 96.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/crouch_ne_knife",
+						"knife": "animation/anims/world/knife/_default_knife/crouch_ne_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/crouch_ne_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/crouch_ne_rifle"
+					},
+					"lasts": -1.0,
+					"name": "crouch_ne",
+					"speed": 1.0,
+					"x": 67.0,
+					"y": -67.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/crouch_e_knife",
+						"knife": "animation/anims/world/knife/_default_knife/crouch_e_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/crouch_e_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/crouch_e_rifle"
+					},
+					"lasts": -1.0,
+					"name": "crouch_e",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": -96.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/crouch_se_knife",
+						"knife": "animation/anims/world/knife/_default_knife/crouch_se_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/crouch_se_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/crouch_se_rifle"
+					},
+					"lasts": -1.0,
+					"name": "crouch_se",
+					"speed": 1.0,
+					"x": -67.0,
+					"y": -67.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/crouch_s_knife",
+						"knife": "animation/anims/world/knife/_default_knife/crouch_s_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/crouch_s_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/crouch_s_rifle"
+					},
+					"lasts": -1.0,
+					"name": "crouch_s",
+					"speed": 1.0,
+					"x": -96.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/crouch_sw_knife",
+						"knife": "animation/anims/world/knife/_default_knife/crouch_sw_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/crouch_sw_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/crouch_sw_rifle"
+					},
+					"lasts": -1.0,
+					"name": "crouch_sw",
+					"speed": 1.0,
+					"x": -67.0,
+					"y": 67.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/crouch_w_knife",
+						"knife": "animation/anims/world/knife/_default_knife/crouch_w_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/crouch_w_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/crouch_w_rifle"
+					},
+					"lasts": -1.0,
+					"name": "crouch_w",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": 96.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/crouch_nw_knife",
+						"knife": "animation/anims/world/knife/_default_knife/crouch_nw_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/crouch_nw_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/crouch_nw_rifle"
+					},
+					"lasts": -1.0,
+					"name": "crouch_nw",
+					"speed": 1.0,
+					"x": 67.0,
+					"y": 67.0
+				}
+			],
+			"triangles": [
+				[
+					0,
+					3,
+					4
+				],
+				[
+					0,
+					5,
+					6
+				],
+				[
+					0,
+					4,
+					5
+				],
+				[
+					3,
+					0,
+					2
+				],
+				[
+					2,
+					0,
+					1
+				],
+				[
+					0,
+					8,
+					1
+				],
+				[
+					0,
+					6,
+					7
+				],
+				[
+					8,
+					0,
+					7
+				]
+			]
+		},
+		{
+			"inputs": [
+				"move_speed_x",
+				"move_speed_y"
+			],
+			"node": 693,
+			"path": "SM/InAir/SM/landing_blend/Blend 2D",
+			"points": [
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_stand_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_stand_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_stand_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_stand_rifle"
+					},
+					"lasts": -1.0,
+					"name": "inair_stand2",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_n_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_n_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_n_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_n_rifle"
+					},
+					"lasts": -1.0,
+					"name": "inair_n2",
+					"speed": 1.0,
+					"x": 225.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_e_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_e_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_e_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_e_rifle"
+					},
+					"lasts": -1.0,
+					"name": "inair_e2",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": -225.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_s_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_s_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_s_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_s_rifle"
+					},
+					"lasts": -1.0,
+					"name": "inair_s2",
+					"speed": 1.0,
+					"x": -225.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_w_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_w_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_w_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_w_rifle"
+					},
+					"lasts": -1.0,
+					"name": "inair_w2",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": 225.0
+				}
+			],
+			"triangles": [
+				[
+					0,
+					4,
+					1
+				],
+				[
+					3,
+					4,
+					0
+				],
+				[
+					3,
+					0,
+					2
+				],
+				[
+					2,
+					0,
+					1
+				]
+			]
+		},
+		{
+			"inputs": [
+				"move_speed_x",
+				"move_speed_y"
+			],
+			"node": 700,
+			"path": "SM/InAir/SM/landing_blend/Blend 2D",
+			"points": [
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_crouch_stand_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_crouch_stand_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_stand_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_stand_rifle"
+					},
+					"lasts": -1.0,
+					"name": "inair_crouch_stand2",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_crouch_n_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_crouch_n_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_n_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_n_rifle"
+					},
+					"lasts": -1.0,
+					"name": "inair_crouch_n2",
+					"speed": 1.0,
+					"x": 96.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_crouch_e_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_crouch_e_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_e_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_e_rifle"
+					},
+					"lasts": -1.0,
+					"name": "inair_crouch_e2",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": -96.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_crouch_s_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_crouch_s_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_s_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_s_rifle"
+					},
+					"lasts": -1.0,
+					"name": "inair_crouch_s2",
+					"speed": 1.0,
+					"x": -96.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_crouch_w_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_crouch_w_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_w_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_w_rifle"
+					},
+					"lasts": -1.0,
+					"name": "inair_crouch_w2",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": 96.0
+				}
+			],
+			"triangles": [
+				[
+					0,
+					4,
+					1
+				],
+				[
+					3,
+					4,
+					0
+				],
+				[
+					3,
+					0,
+					2
+				],
+				[
+					2,
+					0,
+					1
+				]
+			]
+		},
+		{
+			"inputs": [
+				"move_speed_x",
+				"move_speed_y"
+			],
+			"node": 708,
+			"path": "SM/InAir/SM/landing_blend/Blend 2D",
+			"points": [
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_stand_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_stand_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_stand_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_stand_rifle"
+					},
+					"lasts": -1.0,
+					"name": "InAir_stand",
+					"speed": 0.5,
+					"x": 0.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_n_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_n_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_n_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_n_rifle"
+					},
+					"lasts": -1.0,
+					"name": "InAir_n",
+					"speed": 0.5,
+					"x": 225.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_e_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_e_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_e_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_e_rifle"
+					},
+					"lasts": -1.0,
+					"name": "InAir_e",
+					"speed": 0.5,
+					"x": 0.0,
+					"y": -225.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_s_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_s_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_s_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_s_rifle"
+					},
+					"lasts": -1.0,
+					"name": "InAir_s",
+					"speed": 0.5,
+					"x": -225.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_w_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_w_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_w_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_w_rifle"
+					},
+					"lasts": -1.0,
+					"name": "InAir_w",
+					"speed": 0.5,
+					"x": 0.0,
+					"y": 225.0
+				}
+			],
+			"triangles": [
+				[
+					0,
+					4,
+					1
+				],
+				[
+					3,
+					4,
+					0
+				],
+				[
+					3,
+					0,
+					2
+				],
+				[
+					2,
+					0,
+					1
+				]
+			]
+		},
+		{
+			"inputs": [
+				"move_speed_x",
+				"move_speed_y"
+			],
+			"node": 714,
+			"path": "SM/InAir/SM/landing_blend/Blend 2D",
+			"points": [
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_crouch_stand_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_crouch_stand_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_stand_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_stand_rifle"
+					},
+					"lasts": -1.0,
+					"name": "InAir_crouch_stand",
+					"speed": 0.5,
+					"x": 0.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_crouch_n_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_crouch_n_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_n_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_n_rifle"
+					},
+					"lasts": -1.0,
+					"name": "InAir_crouch_n",
+					"speed": 0.5,
+					"x": 96.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_crouch_e_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_crouch_e_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_e_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_e_rifle"
+					},
+					"lasts": -1.0,
+					"name": "InAir_crouch_e",
+					"speed": 0.5,
+					"x": 0.0,
+					"y": -96.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_crouch_s_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_crouch_s_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_s_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_s_rifle"
+					},
+					"lasts": -1.0,
+					"name": "InAir_crouch_s",
+					"speed": 0.5,
+					"x": -96.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_crouch_w_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_crouch_w_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_w_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_w_rifle"
+					},
+					"lasts": -1.0,
+					"name": "InAir_crouch_w",
+					"speed": 0.5,
+					"x": 0.0,
+					"y": 96.0
+				}
+			],
+			"triangles": [
+				[
+					0,
+					4,
+					1
+				],
+				[
+					3,
+					4,
+					0
+				],
+				[
+					3,
+					0,
+					2
+				],
+				[
+					2,
+					0,
+					1
+				]
+			]
+		},
+		{
+			"inputs": [
+				"move_speed_x",
+				"move_speed_y"
+			],
+			"node": 724,
+			"path": "SM/InAir/SM/Jump/Blend 2D",
+			"points": [
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/jump_stand_knife",
+						"knife": "animation/anims/world/knife/_default_knife/jump_stand_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/jump_stand_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/jump_stand_rifle"
+					},
+					"lasts": -1.0,
+					"name": "jump_stand",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/jump_n_knife",
+						"knife": "animation/anims/world/knife/_default_knife/jump_n_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/jump_n_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/jump_n_rifle"
+					},
+					"lasts": -1.0,
+					"name": "jump_n",
+					"speed": 1.0,
+					"x": 225.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/jump_e_knife",
+						"knife": "animation/anims/world/knife/_default_knife/jump_e_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/jump_e_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/jump_e_rifle"
+					},
+					"lasts": -1.0,
+					"name": "jump_e",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": -225.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/jump_s_knife",
+						"knife": "animation/anims/world/knife/_default_knife/jump_s_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/jump_s_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/jump_s_rifle"
+					},
+					"lasts": -1.0,
+					"name": "jump_s",
+					"speed": 1.0,
+					"x": -225.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/jump_w_knife",
+						"knife": "animation/anims/world/knife/_default_knife/jump_w_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/jump_w_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/jump_w_rifle"
+					},
+					"lasts": -1.0,
+					"name": "jump_w",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": 225.0
+				}
+			],
+			"triangles": [
+				[
+					0,
+					4,
+					1
+				],
+				[
+					3,
+					4,
+					0
+				],
+				[
+					3,
+					0,
+					2
+				],
+				[
+					2,
+					0,
+					1
+				]
+			]
+		},
+		{
+			"inputs": [
+				"move_speed_x",
+				"move_speed_y"
+			],
+			"node": 730,
+			"path": "SM/InAir/SM/Jump/Blend 2D",
+			"points": [
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/jump_crouch_stand_knife",
+						"knife": "animation/anims/world/knife/_default_knife/jump_crouch_stand_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/jump_crouch_stand_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/jump_crouch_stand_rifle"
+					},
+					"lasts": -1.0,
+					"name": "jump_crouch_stand",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/jump_crouch_n_knife",
+						"knife": "animation/anims/world/knife/_default_knife/jump_crouch_n_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/jump_crouch_n_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/jump_crouch_n_rifle"
+					},
+					"lasts": -1.0,
+					"name": "jump_crouch_n",
+					"speed": 1.0,
+					"x": 96.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/jump_crouch_e_knife",
+						"knife": "animation/anims/world/knife/_default_knife/jump_crouch_e_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/jump_crouch_e_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/jump_crouch_e_rifle"
+					},
+					"lasts": -1.0,
+					"name": "jump_crouch_e",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": -96.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/jump_crouch_s_knife",
+						"knife": "animation/anims/world/knife/_default_knife/jump_crouch_s_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/jump_crouch_s_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/jump_crouch_s_rifle"
+					},
+					"lasts": -1.0,
+					"name": "jump_crouch_s",
+					"speed": 1.0,
+					"x": -96.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/jump_crouch_w_knife",
+						"knife": "animation/anims/world/knife/_default_knife/jump_crouch_w_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/jump_crouch_w_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/jump_crouch_w_rifle"
+					},
+					"lasts": -1.0,
+					"name": "jump_crouch_w",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": 96.0
+				}
+			],
+			"triangles": [
+				[
+					0,
+					4,
+					1
+				],
+				[
+					3,
+					4,
+					0
+				],
+				[
+					3,
+					0,
+					2
+				],
+				[
+					2,
+					0,
+					1
+				]
+			]
+		},
+		{
+			"inputs": [
+				"move_speed_x",
+				"move_speed_y"
+			],
+			"node": 746,
+			"path": "SM/landing_blend/Blend 2D",
+			"points": [
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_stand_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_stand_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_stand_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_stand_rifle"
+					},
+					"lasts": -1.0,
+					"name": "inair_stand2",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_n_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_n_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_n_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_n_rifle"
+					},
+					"lasts": -1.0,
+					"name": "inair_n2",
+					"speed": 1.0,
+					"x": 225.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_e_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_e_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_e_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_e_rifle"
+					},
+					"lasts": -1.0,
+					"name": "inair_e2",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": -225.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_s_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_s_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_s_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_s_rifle"
+					},
+					"lasts": -1.0,
+					"name": "inair_s2",
+					"speed": 1.0,
+					"x": -225.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_w_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_w_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_w_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_w_rifle"
+					},
+					"lasts": -1.0,
+					"name": "inair_w2",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": 225.0
+				}
+			],
+			"triangles": [
+				[
+					0,
+					4,
+					1
+				],
+				[
+					3,
+					4,
+					0
+				],
+				[
+					3,
+					0,
+					2
+				],
+				[
+					2,
+					0,
+					1
+				]
+			]
+		},
+		{
+			"inputs": [
+				"move_speed_x",
+				"move_speed_y"
+			],
+			"node": 753,
+			"path": "SM/landing_blend/Blend 2D",
+			"points": [
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_crouch_stand_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_crouch_stand_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_stand_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_stand_rifle"
+					},
+					"lasts": -1.0,
+					"name": "inair_crouch_stand2",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_crouch_n_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_crouch_n_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_n_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_n_rifle"
+					},
+					"lasts": -1.0,
+					"name": "inair_crouch_n2",
+					"speed": 1.0,
+					"x": 96.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_crouch_e_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_crouch_e_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_e_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_e_rifle"
+					},
+					"lasts": -1.0,
+					"name": "inair_crouch_e2",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": -96.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_crouch_s_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_crouch_s_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_s_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_s_rifle"
+					},
+					"lasts": -1.0,
+					"name": "inair_crouch_s2",
+					"speed": 1.0,
+					"x": -96.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_crouch_w_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_crouch_w_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_w_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_w_rifle"
+					},
+					"lasts": -1.0,
+					"name": "inair_crouch_w2",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": 96.0
+				}
+			],
+			"triangles": [
+				[
+					0,
+					4,
+					1
+				],
+				[
+					3,
+					4,
+					0
+				],
+				[
+					3,
+					0,
+					2
+				],
+				[
+					2,
+					0,
+					1
+				]
+			]
+		},
+		{
+			"inputs": [
+				"move_speed_x",
+				"move_speed_y"
+			],
+			"node": 761,
+			"path": "SM/landing_blend/Blend 2D",
+			"points": [
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_stand_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_stand_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_stand_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_stand_rifle"
+					},
+					"lasts": -1.0,
+					"name": "InAir_stand",
+					"speed": 0.5,
+					"x": 0.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_n_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_n_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_n_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_n_rifle"
+					},
+					"lasts": -1.0,
+					"name": "InAir_n",
+					"speed": 0.5,
+					"x": 225.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_e_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_e_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_e_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_e_rifle"
+					},
+					"lasts": -1.0,
+					"name": "InAir_e",
+					"speed": 0.5,
+					"x": 0.0,
+					"y": -225.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_s_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_s_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_s_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_s_rifle"
+					},
+					"lasts": -1.0,
+					"name": "InAir_s",
+					"speed": 0.5,
+					"x": -225.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_w_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_w_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_w_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_w_rifle"
+					},
+					"lasts": -1.0,
+					"name": "InAir_w",
+					"speed": 0.5,
+					"x": 0.0,
+					"y": 225.0
+				}
+			],
+			"triangles": [
+				[
+					0,
+					4,
+					1
+				],
+				[
+					3,
+					4,
+					0
+				],
+				[
+					3,
+					0,
+					2
+				],
+				[
+					2,
+					0,
+					1
+				]
+			]
+		},
+		{
+			"inputs": [
+				"move_speed_x",
+				"move_speed_y"
+			],
+			"node": 767,
+			"path": "SM/landing_blend/Blend 2D",
+			"points": [
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_crouch_stand_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_crouch_stand_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_stand_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_stand_rifle"
+					},
+					"lasts": -1.0,
+					"name": "InAir_crouch_stand",
+					"speed": 0.5,
+					"x": 0.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_crouch_n_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_crouch_n_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_n_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_n_rifle"
+					},
+					"lasts": -1.0,
+					"name": "InAir_crouch_n",
+					"speed": 0.5,
+					"x": 96.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_crouch_e_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_crouch_e_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_e_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_e_rifle"
+					},
+					"lasts": -1.0,
+					"name": "InAir_crouch_e",
+					"speed": 0.5,
+					"x": 0.0,
+					"y": -96.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_crouch_s_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_crouch_s_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_s_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_s_rifle"
+					},
+					"lasts": -1.0,
+					"name": "InAir_crouch_s",
+					"speed": 0.5,
+					"x": -96.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/inair_crouch_w_knife",
+						"knife": "animation/anims/world/knife/_default_knife/inair_crouch_w_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_w_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_w_rifle"
+					},
+					"lasts": -1.0,
+					"name": "InAir_crouch_w",
+					"speed": 0.5,
+					"x": 0.0,
+					"y": 96.0
+				}
+			],
+			"triangles": [
+				[
+					0,
+					4,
+					1
+				],
+				[
+					3,
+					4,
+					0
+				],
+				[
+					3,
+					0,
+					2
+				],
+				[
+					2,
+					0,
+					1
+				]
+			]
+		},
+		{
+			"inputs": [
+				"move_speed_x",
+				"move_speed_y"
+			],
+			"node": 775,
+			"path": "SM/Jump/Blend 2D",
+			"points": [
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/jump_stand_knife",
+						"knife": "animation/anims/world/knife/_default_knife/jump_stand_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/jump_stand_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/jump_stand_rifle"
+					},
+					"lasts": -1.0,
+					"name": "jump_stand",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/jump_n_knife",
+						"knife": "animation/anims/world/knife/_default_knife/jump_n_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/jump_n_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/jump_n_rifle"
+					},
+					"lasts": -1.0,
+					"name": "jump_n",
+					"speed": 1.0,
+					"x": 225.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/jump_e_knife",
+						"knife": "animation/anims/world/knife/_default_knife/jump_e_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/jump_e_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/jump_e_rifle"
+					},
+					"lasts": -1.0,
+					"name": "jump_e",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": -225.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/jump_s_knife",
+						"knife": "animation/anims/world/knife/_default_knife/jump_s_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/jump_s_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/jump_s_rifle"
+					},
+					"lasts": -1.0,
+					"name": "jump_s",
+					"speed": 1.0,
+					"x": -225.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/jump_w_knife",
+						"knife": "animation/anims/world/knife/_default_knife/jump_w_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/jump_w_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/jump_w_rifle"
+					},
+					"lasts": -1.0,
+					"name": "jump_w",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": 225.0
+				}
+			],
+			"triangles": [
+				[
+					0,
+					4,
+					1
+				],
+				[
+					3,
+					4,
+					0
+				],
+				[
+					3,
+					0,
+					2
+				],
+				[
+					2,
+					0,
+					1
+				]
+			]
+		},
+		{
+			"inputs": [
+				"move_speed_x",
+				"move_speed_y"
+			],
+			"node": 781,
+			"path": "SM/Jump/Blend 2D",
+			"points": [
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/jump_crouch_stand_knife",
+						"knife": "animation/anims/world/knife/_default_knife/jump_crouch_stand_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/jump_crouch_stand_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/jump_crouch_stand_rifle"
+					},
+					"lasts": -1.0,
+					"name": "jump_crouch_stand",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/jump_crouch_n_knife",
+						"knife": "animation/anims/world/knife/_default_knife/jump_crouch_n_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/jump_crouch_n_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/jump_crouch_n_rifle"
+					},
+					"lasts": -1.0,
+					"name": "jump_crouch_n",
+					"speed": 1.0,
+					"x": 96.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/jump_crouch_e_knife",
+						"knife": "animation/anims/world/knife/_default_knife/jump_crouch_e_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/jump_crouch_e_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/jump_crouch_e_rifle"
+					},
+					"lasts": -1.0,
+					"name": "jump_crouch_e",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": -96.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/jump_crouch_s_knife",
+						"knife": "animation/anims/world/knife/_default_knife/jump_crouch_s_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/jump_crouch_s_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/jump_crouch_s_rifle"
+					},
+					"lasts": -1.0,
+					"name": "jump_crouch_s",
+					"speed": 1.0,
+					"x": -96.0,
+					"y": 0.0
+				},
+				{
+					"clips": {
+						"default": "animation/anims/world/knife/_default_knife/jump_crouch_w_knife",
+						"knife": "animation/anims/world/knife/_default_knife/jump_crouch_w_knife",
+						"pistol": "animation/anims/world/pistol/_default_pistol/jump_crouch_w_pistol",
+						"rifle": "animation/anims/world/rifle/_default_rifle/jump_crouch_w_rifle"
+					},
+					"lasts": -1.0,
+					"name": "jump_crouch_w",
+					"speed": 1.0,
+					"x": 0.0,
+					"y": 96.0
+				}
+			],
+			"triangles": [
+				[
+					0,
+					4,
+					1
+				],
+				[
+					3,
+					4,
+					0
+				],
+				[
+					3,
+					0,
+					2
+				],
+				[
+					2,
+					0,
+					1
+				]
+			]
+		}
+	],
+	"cs2": "CS2 1.41.8.2",
+	"source": "animation/graphs/worldmodel/worldmodel_locomotion.vnmgraph",
+	"variations": [
+		"default",
+		"knife",
+		"pistol",
+		"rifle"
+	]
+}

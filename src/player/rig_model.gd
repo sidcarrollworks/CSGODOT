@@ -342,18 +342,57 @@ static func list_clips(dir_path: String, prefixes: PackedStringArray = PackedStr
 
 ## The suffix most of a set's clips end in, after their last underscore:
 ## the set's weapon, which is not always its folder's (pistol_glock18's clips
-## end in _glock, and the revolver's also carry _0 to _7).
+## end in _glock, and the revolver's also carry _0 to _7). It can run to more
+## than one word, the T knife's clips all ending in _default_t: words before
+## the last are added while every clip ending in the suffix shares them and
+## still has a name of its own before them. A clip's non-additive copy
+## (prepare_shoot_revolver.vnmclip+non_additive, new in CS2 1.41.8.2) is not
+## counted: it ends in the copy's name, not the set's, and the revolver has as
+## many of them as clips.
 static func common_suffix(paths: PackedStringArray) -> String:
 	var counts := {}
 	for path in paths:
 		var stem := path.get_file().get_basename()
+		if stem.contains(".vnmclip+"):
+			continue
 		var last := stem.get_slice("_", stem.get_slice_count("_") - 1)
 		counts[last] = counts.get(last, 0) + 1
 	var best := ""
 	for last in counts:
 		if best.is_empty() or counts[last] > counts[best]:
 			best = last
+	var rests := PackedStringArray()
+	for path in paths:
+		var stem := path.get_file().get_basename()
+		if stem.ends_with("_" + best):
+			rests.append(stem.trim_suffix("_" + best))
+	while not rests.is_empty():
+		var word := ""
+		for rest in rests:
+			var cut := rest.rfind("_")
+			var before := rest.substr(cut + 1) if cut >= 0 else ""
+			if before.is_empty() or (not word.is_empty() and before != word):
+				word = ""
+				break
+			word = before
+		if word.is_empty():
+			break
+		best = word + "_" + best
+		for i in rests.size():
+			rests[i] = rests[i].substr(0, rests[i].rfind("_"))
 	return best
+
+
+## Whether one of a weapon's meshes is the second body its export carries
+## for old hardware (...body_legacy), left out where the weapon has another.
+## The default knives have only that one, and it is their knife.
+static func is_spare_body(mesh: Node, meshes: Array) -> bool:
+	if not mesh.name.ends_with("body_legacy"):
+		return false
+	for other: Node in meshes:
+		if not other.name.ends_with("body_legacy"):
+			return true
+	return false
 
 
 ## "draw_ak.gltf" with suffix "ak" is "draw".

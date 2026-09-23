@@ -1,6 +1,6 @@
 # The game's own weapon tuning
 
-Written by `scripts/weapon_tables.gd` on 2026-09-22 from `scripts/weapons.vdata_c` in CS2 1.41.8.1, as `scripts/extract_assets.sh weapon-data` decodes it. Do not edit by hand. `vdata.csv` beside this has every field of every gun, resolved through the file's inheritance (each gun's entry has a `_base`, its prefab, which has its class's, and so on up to `weapon_base`), one row each.
+Written by `scripts/weapon_tables.gd` on 2026-09-23 from `scripts/weapons.vdata_c` in CS2 1.41.8.2, as `scripts/extract_assets.sh weapon-data` decodes it. Do not edit by hand. `vdata.csv` beside this has every field of every gun, resolved through the file's inheritance (each gun's entry has a `_base`, its prefab, which has its class's, and so on up to `weapon_base`), one row each.
 
 This is what the weapon sheet (`cs2_weapon_sheet.csv`) is transcribed from, less what the sheet leaves out. Two-valued fields are `[normal, alternate]`: unscoped and scoped for the scoped guns, silencer off and on for the M4A1-S and USP-S. Inaccuracy is in radians of the tangent (the sheet's figures are these x 1000); spread is separate from inaccuracy, and the sheet's figures include it.
 

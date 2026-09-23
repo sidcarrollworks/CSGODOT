@@ -86,6 +86,16 @@ Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurem
 - dust2's buy zones, bomb sites and callout volumes (`BrushVolume`), its
   radar (`MapOverview`) and its baked bomb damage file, extracted and read
   (PR #34).
+- The equipment extracted: the bomb and the defuse kit, the six grenades,
+  the two default knives and the Zeus, with their animations and sounds,
+  listed with the game's numbers and their clips' timings in
+  `reference/weapons/equipment.md`. Each builds in first person; nothing
+  hands them to a player yet.
+- CS2's animation graphs (AnimGraph 2) read (`NmGraph`): the parameters the
+  game sets, the third-person graph's layers and state machines, the
+  locomotion's blend spaces with each clip's speed, and the first-person
+  gun's actions, in `reference/animgraph/`; `reference/animgraph2.md` says
+  what they are and what they mean here. Nothing plays them yet.
 
 ### Combat
 - Bots and the player share one damage path (`Hitscan.fire_at` then
@@ -131,7 +141,7 @@ Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurem
 - `scripts/extract_assets.sh` (map, physics, weapons, characters, sounds and
   more, the nav mesh with `nav`), `inspect_assets`, and `run_tests.sh` with
   eight headless test files (movement, map, dust2, model, weapon,
-  penetration, range, simulation): 614 checks pass without the assets.
+  penetration, range, simulation): 620 checks pass without the assets.
 
 ---
 
@@ -195,7 +205,12 @@ item 6 is built.
    heard, not seen. CS2's blood impact and decal behind the target.
 6. **Firing on the third-person model.** *(Remote, can start now; Sid checks it)* `PlayerModel` still says "Nothing is
    layered, so firing does not show yet": a bot kills you without its arms
-   moving. Needs the upper-body layer over the locomotion clip.
+   moving. Needs the upper-body layer over the locomotion clip. CS2's own
+   graph says how it stacks them (`reference/animgraph/worldmodel.md`): the
+   weapon's actions over the locomotion in model space, the shooting and the
+   flinches additive on top; and its locomotion blends by speed in a blend
+   space (`locomotion.json`) where ours plays one clip at a time, which an
+   animation tree built for this layer can take in too.
 
 6a. **Your shadow has no arms.** *(Remote, after item 6; Sid checks it)* Sid noticed
    2026-09-22 22:06. The shadow twin (commit f42114e) put the head back but folds the
@@ -326,10 +341,10 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
 
 ### Phase 5: the bomb
 
-16. **Plant, timer, defuse, explosion.** *(Local measures and extracts,
-    then Remote)* One T carries it; plant in a site; 40 s with beeps; defuse
-    10 s or 5 with a kit; the explosion (CS2 reworked it in July 2026 into a
-    shockwave with damage baked per map: dust2's is
+16. **Plant, timer, defuse, explosion.** *(Local measures, then Remote; the
+    bomb and the kit are extracted)* One T carries it; plant in a site; 40 s
+    with beeps; defuse 10 s or 5 with a kit; the explosion (CS2 reworked it
+    in July 2026 into a shockwave with damage baked per map: dust2's is
     `baked_bomb_damage.vdata`, extracted, its damage values not yet worked
     out). The site volumes are read (`BrushVolume.bomb_sites`).
 
@@ -337,16 +352,19 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
 
 17. **Throwing.** *(Remote; Local measures)* Three throw strengths, your
     velocity added, bounces off the hull and the grenade clip.
-18. **HE, flashbang, decoy.** *(Remote; Local measures and extracts)*
-19. **Molotov and incendiary.** *(Remote; Local measures and extracts)*
-    Flames spreading over the ground, put out by smoke.
-20. **Smoke.** *(Remote; Local measures and extracts)* CS2's volumetric smoke:
-    a voxel fill through the map, HE and bullets opening holes, blocking
-    sight for players and bots. The biggest single item in the game.
+18. **HE, flashbang, decoy.** *(Remote; Local measures and extracts the
+    particles; the grenades are extracted)*
+19. **Molotov and incendiary.** *(Remote; Local measures and extracts the
+    particles; the grenades are extracted)* Flames spreading over the
+    ground, put out by smoke.
+20. **Smoke.** *(Remote; Local measures and extracts the particles; the
+    grenade is extracted)* CS2's volumetric smoke: a voxel fill through the
+    map, HE and bullets opening holes, blocking sight for players and bots.
+    The biggest single item in the game.
 
 ### Phase 7: knife and Zeus
 
-21. **Knife and Zeus.** *(Local measures and extracts, then Remote)*
+21. **Knife and Zeus.** *(Local measures, then Remote; both are extracted)*
 
 ### Phase 8: bots that play CS
 
@@ -435,9 +453,10 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 | Done | The every-gun extraction (weapons TODO L1 to L3), and reload, draw and zoom figures from the game's own data (L5) | Every gun: `reference/weapons/models.md`, `sounds.md`, `timings.md`, `vdata.md` |
 | Done | dust2's buy zones, bomb sites and callout volumes, its radar, and its baked bomb damage file (cs2-systems B1, B3, C2; PR #34) | Phases 4 and 5 |
 | Done | dust2's nav mesh, extracted and read (`SourceNavMesh`), checked against the hull, the spawns and the callouts (PR #32) | Phase 8 |
+| Done | The equipment's extraction: the bomb and the kit, the six grenades, the default knives and the Zeus, with the game's numbers and their clips' timings (cs2-systems C3, G6, K2) | Phases 5 to 7 |
 | Hands | The systems' Local list for bots in `reference/cs2-systems.md`: read the nav mesh's analysis (N3), record grenade lineups (N2) | Phase 8 |
 | Decided | The game's own numbers win over the sheet's wherever the game has them (Sid, 2026-09-22), the Desert Eagle's jump inaccuracy included (46.75, not 378.30) | `WeaponVData`, every gun |
-| Hands | The systems' Local list in `reference/cs2-systems.md`: bomb (C1, C3, and decoding C2's damage), grenades (G1 to G6), knife and Zeus (K1, K2), sounds (S1, S2) | Phases 4 to 7 |
+| Hands | The systems' Local list in `reference/cs2-systems.md`: bomb (C1, the explosion's particles from C3, and decoding C2's damage), grenades (G1 to G5, and G6's particle and smoke textures), knife (K1), sounds (S1, S2) | Phases 4 to 7 |
 
 ---
 
