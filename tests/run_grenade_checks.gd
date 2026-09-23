@@ -36,6 +36,9 @@ func _run() -> void:
 	await _test_fire_and_walls()
 	await _test_the_flash()
 	_test_the_decoy()
+	_world.queue_free()
+	await _settle()
+	await _test_the_range()
 	_finish("grenade")
 
 
@@ -346,7 +349,183 @@ func _test_the_decoy() -> void:
 	_check(again.due(15_000_000) == rounds, "the same seed, the same bursts")
 
 
-# --- The range ------------------------------------------------------------
+# --- On the range, through the shared contracts ---------------------------
+
+const RANGE_SCENE := "res://maps/test_range/test_range.tscn"
+
+var _range: Node3D
+var _lane: GrenadeLane
+var _events: Array[GameEvent] = []
+
+
+func _test_the_range() -> void:
+	_range = (load(RANGE_SCENE) as PackedScene).instantiate() as Node3D
+	root.add_child(_range)
+	for i in 8:
+		await physics_frame
+	_lane = _range.grenades
+	_check(_lane != null and _lane.system != null, "the range has its grenades")
+	var game := _lane.game
+	game.events.listen_all(func(event: GameEvent) -> void: _events.append(event))
+	var you: int = game.roster.userid_of(_range.player)
+	var dummy: int = game.roster.userid_of(_range.dummy)
+	_check(you != GameEvents.NOBODY and dummy != GameEvents.NOBODY, "you and the dummy are in its roster")
+
+	_check_equal(_lane.kind(), GrenadeRules.HE, "an HE in hand to begin with")
+	_lane.next_kind()
+	_check_equal(_lane.kind(), GrenadeRules.FLASHBANG, "4 takes the flash next")
+	_lane.kind_index = 0
+
+	# A throw: on the next tick, from your eyes.
+	_lane.ask_throw(1.0)
+	await physics_frame
+	await physics_frame
+	var thrown := _named(&"grenade_thrown")
+	_check(thrown.size() == 1 and int(thrown[0].fields["userid"]) == you and thrown[0].fields["weapon"] == GrenadeRules.HE,
+		"Q throws an HE, as you")
+	var grenades := game.entities.of_class("hegrenade_projectile")
+	_check_equal(grenades.size(), 1, "and it is in the world")
+	for i in SimClock.ticks_in(1.6):
+		await physics_frame
+	_check_equal(_named(&"hegrenade_detonate").size(), 1, "it goes off 1.5 s later")
+	_check(game.entities.of_class("hegrenade_projectile").is_empty(), "and is gone")
+	_lane.clear()
+	_events.clear()
+
+	# An HE at the dummy's feet: it is hurt, by you, through its armour.
+	var target := _range.dummy.hit_target as HitTarget
+	target.reset()
+	var feet: Vector3 = _range.dummy.global_position
+	await _set_off(GrenadeRules.HE, feet + Vector3(0.0, GrenadeRules.RADIUS, 40.0))
+	var hurt := _hurt_of(dummy)
+	_check(hurt.size() == 1 and int(hurt[0].fields["attacker"]) == you and hurt[0].fields["weapon"] == GrenadeRules.HE,
+		"an HE beside the dummy hurts it, credited to you")
+	if hurt.size() == 1:
+		var dealt := int(hurt[0].fields["dmg_health"])
+		_check(dealt > 30 and dealt <= roundi(GrenadeRules.damage(GrenadeRules.HE) * 0.6) and int(hurt[0].fields["dmg_armor"]) > 0,
+			"through its kevlar: %d to health, %d to armour" % [dealt, int(hurt[0].fields["dmg_armor"])])
+		_check_equal(int(hurt[0].fields["hitgroup"]), DamageInfo.HITGROUP_GENERIC, "hit group generic, as a blast is")
+	_lane.clear()
+	_events.clear()
+
+	# Behind the range's wall it is safe.
+	target.reset()
+	var dummy_before := target.health
+	var wall_z: float = -512.0
+	await _set_off(GrenadeRules.HE, Vector3(0.0, GrenadeRules.RADIUS, wall_z - 40.0))
+	_check(_hurt_of(you).is_empty(), "an HE behind the wall does not reach you")
+	_check_near(target.health, dummy_before, "nor the dummy, too far off")
+	_lane.clear()
+	_events.clear()
+
+	# A flash in your face whites you out; the one who threw it is you.
+	var eyes: Vector3 = _range.player.global_position + Vector3.UP * _range.player.eye_height()
+	var forward := PlayerInput.aim_direction(_range.player.yaw_degrees, _range.player.pitch_degrees)
+	await _set_off(GrenadeRules.FLASHBANG, eyes + forward * 150.0)
+	var blinded := _named(&"player_blind")
+	var yours: Array[GameEvent] = []
+	for event in blinded:
+		if int(event.fields["userid"]) == you:
+			yours.append(event)
+	_check(yours.size() == 1 and float(yours[0].fields["blind_duration"]) > 4.0, "a flash in your face blinds you for the longest")
+	_check(float(game.query(&"blind_share", [you], 0.0)) > 0.99, "all white (the blind_share query)")
+	_check(not (game.query(&"blindness", [you], {}) as Dictionary).is_empty(), "the blindness query says for how long")
+	_lane.clear()
+	_check_near(float(game.query(&"blind_share", [you], 0.0)), 0.0, "O clears it")
+	_events.clear()
+
+	# A smoke between you and the dummy hides it.
+	var dummy_eyes: Vector3 = _range.dummy.global_position + Vector3.UP * 64.0
+	var from_spot := Vector3(_range.dummy.global_position.x, 64.0, 0.0)
+	var halfway := from_spot.lerp(dummy_eyes, 0.5)
+	await _set_off(GrenadeRules.SMOKE, Vector3(halfway.x, GrenadeRules.RADIUS, halfway.z))
+	_check_equal(_named(&"smokegrenade_detonate").size(), 1, "a smoke pops once it is still")
+	for i in SimClock.ticks_in(GrenadeRules.SMOKE_BLOOM_SECONDS) + 2:
+		await physics_frame
+	var through := float(game.query(&"smoke_length_between", [from_spot, dummy_eyes], 0.0))
+	_check(through > GrenadeRules.BOT_MAX_VISIBLE_SMOKE_LENGTH, "and hides the dummy from its firing spot (%.0f units of smoke)" % through)
+
+	# A molotov into it fizzles.
+	await _set_off(GrenadeRules.MOLOTOV, Vector3(halfway.x, GrenadeRules.RADIUS, halfway.z))
+	_check_equal(_named(&"molotov_detonate").size(), 1, "a molotov into the smoke breaks")
+	_check(game.entities.of_class(InfernoEntity.ENTITY_CLASS).is_empty(), "and no fire starts")
+	_lane.clear()
+	_events.clear()
+
+	# A molotov under the dummy burns it, credited to you, armour or not.
+	target.reset()
+	await _set_off(GrenadeRules.MOLOTOV, feet + Vector3(0.0, GrenadeRules.RADIUS, 0.0))
+	_check_equal(_named(&"inferno_startburn").size(), 1, "a molotov at the dummy's feet catches")
+	for i in SimClock.ticks_in(1.5):
+		await physics_frame
+	var burns := _hurt_of(dummy)
+	var total := 0
+	for event in burns:
+		total += int(event.fields["dmg_health"])
+	_check(burns.size() >= 5 and int(burns[0].fields["attacker"]) == you and burns[0].fields["weapon"] == GrenadeRules.MOLOTOV,
+		"and burns it in steps, credited to you (%d steps)" % burns.size())
+	_check(total > 30 and total < 60, "about 40 a second, ramping up (%d in 1.5 s)" % total)
+	_check(burns.size() > 0 and int(burns[0].fields["dmg_armor"]) == 0, "armour takes none of it")
+	# A smoke on it puts it out.
+	await _set_off(GrenadeRules.SMOKE, feet + Vector3(20.0, GrenadeRules.RADIUS, 0.0))
+	for i in 3:
+		await physics_frame
+	_check_equal(_named(&"inferno_extinguish").size(), 1, "a smoke on it puts it out")
+	_check(game.entities.of_class(InfernoEntity.ENTITY_CLASS).is_empty(), "and the fire is gone")
+	_lane.clear()
+	_events.clear()
+
+	# A decoy fires in bursts.
+	await _set_off(GrenadeRules.DECOY, Vector3(-200.0, GrenadeRules.RADIUS, -100.0))
+	for i in SimClock.ticks_in(3.0):
+		await physics_frame
+	_check_equal(_named(&"decoy_started").size(), 1, "a decoy starts once it is still")
+	_check(_named(&"decoy_firing").size() >= 2, "and fires (%d rounds in 3 s)" % _named(&"decoy_firing").size())
+	_lane.clear()
+	await physics_frame
+	_check(game.entities.all().is_empty(), "O clears every grenade")
+	_range.queue_free()
+	await _settle()
+
+
+## Puts a grenade of a kind, yours, lying still at a point, due to go off,
+## and runs a tick or two for it to.
+func _set_off(weapon_class: String, at: Vector3) -> void:
+	var game := _lane.game
+	var you: int = game.roster.userid_of(_range.player)
+	var space := _range.get_world_3d().direct_space_state
+	var grenade := _lane.system.throw_from(you, weapon_class, at, 0.0, -89.0, Vector3.ZERO, 0.0, space)
+	grenade.flight.position = at
+	grenade.flight.velocity = Vector3.ZERO
+	grenade.flight.at_rest = weapon_class in [GrenadeRules.SMOKE, GrenadeRules.DECOY]
+	if GrenadeRules.is_fire(weapon_class):
+		grenade.flight.at_rest = false
+		grenade.flight.velocity = Vector3.DOWN * 200.0
+	grenade.position = at
+	# Two seconds out of the hand, all but a tick: past the fuse, and a
+	# still smoke's or decoy's check falls on the next tick.
+	grenade.thrown_usec = SimClock.now_usec() - 2_000_000 + SimClock.tick_usec()
+	for i in 4:
+		await physics_frame
+
+
+func _named(name: StringName) -> Array[GameEvent]:
+	var out: Array[GameEvent] = []
+	for event in _events:
+		if event.name == name:
+			out.append(event)
+	return out
+
+
+func _hurt_of(userid: int) -> Array[GameEvent]:
+	var out: Array[GameEvent] = []
+	for event in _named(&"player_hurt"):
+		if int(event.fields["userid"]) == userid:
+			out.append(event)
+	return out
+
+
+# --- Building the stand-ins -----------------------------------------------
 
 func _box(size: Vector3, centre: Vector3) -> StaticBody3D:
 	var body := StaticBody3D.new()

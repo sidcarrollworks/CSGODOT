@@ -28,6 +28,9 @@ extends Node3D
 ## shows your own body and its hitboxes from the front or the side, in a
 ## window of their own, to check them against how you stand, crouch and
 ## jump.
+##
+## And CS2's grenades, all six, thrown from where you stand
+## (GrenadeLane): 4 picks one, Q throws it, Z lobs it, X throws between.
 
 ## Distance from the firing line to the wall. Spray references are usually
 ## drawn at a fixed distance, so this needs to match whatever you compare
@@ -109,6 +112,9 @@ var _hitbox_window: SubViewportContainer
 ## The hits you have taken, newest first, as the readout shows them.
 var _taken: PackedStringArray = PackedStringArray()
 
+## The grenades: throwing them, what they did, and drawing them.
+var grenades: GrenadeLane
+
 
 func _ready() -> void:
 	_markers = Node3D.new()
@@ -128,6 +134,7 @@ func _ready() -> void:
 	_build_player()
 	_build_shooter()
 	_build_hud()
+	_build_grenades()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -795,6 +802,13 @@ func _build_player() -> void:
 	player.hurt.connect(_on_player_hurt)
 	# Your hitboxes are drawn, on the layer only the hitbox window sees.
 	player.hit_target.set_hitboxes_drawn(true)
+
+
+func _build_grenades() -> void:
+	grenades = GrenadeLane.new()
+	grenades.name = "Grenades"
+	add_child(grenades)
+	grenades.build(self)
 
 
 func _build_hud() -> void:
