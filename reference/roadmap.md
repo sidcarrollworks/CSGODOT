@@ -91,6 +91,11 @@ Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurem
   listed with the game's numbers and their clips' timings in
   `reference/weapons/equipment.md`. Each builds in first person; nothing
   hands them to a player yet.
+- CS2's animation graphs (AnimGraph 2) read (`NmGraph`): the parameters the
+  game sets, the third-person graph's layers and state machines, the
+  locomotion's blend spaces with each clip's speed, and the first-person
+  gun's actions, in `reference/animgraph/`; `reference/animgraph2.md` says
+  what they are and what they mean here. Nothing plays them yet.
 
 ### Combat
 - Bots and the player share one damage path (`Hitscan.fire_at` then
@@ -136,7 +141,7 @@ Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurem
 - `scripts/extract_assets.sh` (map, physics, weapons, characters, sounds and
   more, the nav mesh with `nav`), `inspect_assets`, and `run_tests.sh` with
   eight headless test files (movement, map, dust2, model, weapon,
-  penetration, range, simulation): 616 checks pass without the assets.
+  penetration, range, simulation): 620 checks pass without the assets.
 
 ---
 
@@ -200,7 +205,12 @@ item 6 is built.
    heard, not seen. CS2's blood impact and decal behind the target.
 6. **Firing on the third-person model.** *(Remote, can start now; Sid checks it)* `PlayerModel` still says "Nothing is
    layered, so firing does not show yet": a bot kills you without its arms
-   moving. Needs the upper-body layer over the locomotion clip.
+   moving. Needs the upper-body layer over the locomotion clip. CS2's own
+   graph says how it stacks them (`reference/animgraph/worldmodel.md`): the
+   weapon's actions over the locomotion in model space, the shooting and the
+   flinches additive on top; and its locomotion blends by speed in a blend
+   space (`locomotion.json`) where ours plays one clip at a time, which an
+   animation tree built for this layer can take in too.
 
 6a. **Your shadow has no arms.** *(Remote, after item 6; Sid checks it)* Sid noticed
    2026-09-22 22:06. The shadow twin (commit f42114e) put the head back but folds the
