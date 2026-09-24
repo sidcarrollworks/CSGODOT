@@ -184,6 +184,11 @@ func _ready() -> void:
 	hit_sounds.name = "HitSounds"
 	add_child(hit_sounds)
 	hit_sounds.watch(game, player.userid)
+	# The rounds' tracers and the guns' muzzle flashes.
+	var shot_effects := ShotEffects.new()
+	shot_effects.name = "ShotEffects"
+	add_child(shot_effects)
+	shot_effects.watch(game, player.userid, player)
 
 
 ## What you may take in hand here, read now rather than on the tick you buy

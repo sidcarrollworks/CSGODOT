@@ -189,7 +189,11 @@ Roughly in order; L1 to L3 can start at once.
 - [ ] **R9. Buy menu and money.** Price and kill award are in the sheet.
   In scope (Sid, 2026-09-22): CS2's economy and buy menu, detailed in
   `reference/cs2-systems.md` (sections 2 and 3).
-- [ ] **R10. Tracers.** Every round, every third, or none, per the sheet.
+- [x] **R10. Tracers.** *(done 2026-09-24, with the muzzle flashes:
+  `src/effects/`, `reference/weapons/effects.md`)* Every round of a gun
+  with tracers, as CS2's client overrides the sheet's every-third
+  (`cl_tracer_frequency_override 1`); none silenced. Each gun's own effect
+  from its `.vpcf`: speed, length, width, colour, and a noscope's 200 units.
 - [x] **R11. Penetration and tagging** for every weapon, off the game's
   penetration and tagging power (roadmap items 2 and 7). Tagging is done
   (PR #27): every weapon tags with its own figure, which `WeaponVData` reads

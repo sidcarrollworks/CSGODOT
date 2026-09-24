@@ -67,6 +67,7 @@ twenty, all 64 ticks a second in both.
 | A gun drawn: its weapon and view model built again | 0.64 ms |
 | A bot's body taking a class in hand the first time: its clips added (on the tick), its model built (the next frame) | 0.30 ms and 0.23 ms |
 | A bot's body switching between things it carries | 0.03 ms |
+| The tracers and muzzle flashes, a frame while any are drawn (`ShotEffects`, dust2's bots fighting: up to 81 cards) | 0.38 ms mean, 0.26 median, 1.1 at the 95th, 2.3 most; nothing in the tick |
 
 A body that holds whatever is in its hand (every player's since 2026-09-24,
 yours unseen too, as CS2's server poses everyone's hitboxes with what they
@@ -84,6 +85,7 @@ its animation 93 us a frame against 87 (one body, headless, AK and Glock).
 | Then everything else on either side's menu, the knife and the bomb, whose clips every body takes up, yours too (clips only) | 0.4 s more |
 | Every gun's sounds (`WeaponSounds`: 334 files, from `sounds.md` and `timings.csv`) | 0.39 s warm, 2.3 s cold |
 | Bullet-hole textures, and every sound set | 270 ms, and 120 to 570 ms (the disk's cache warm or cold) |
+| The tracers' and flashes' textures (`ShotEffects.prepare`; the flames' sheets are 4096 by 2048, and the first flash of a fight reading one held its frame up 12 ms) | 25 to 30 ms |
 
 A trace of the player's hull through dust2's collision is 20 to 50 us,
 depending on how many triangles are under it, and it is most of what a
