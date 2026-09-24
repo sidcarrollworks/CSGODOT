@@ -14,6 +14,20 @@ which browses VPK archives and decompiles Source 2 assets. It has a
 suitable for scripting, which is what `scripts/extract_assets.sh` uses so
 extraction is repeatable rather than a manual chore.
 
+The steps for one map (`map`, `physics`, `entities`, `nav`, `volumes`,
+`radar`, `layers`, `sky`, `skybox`, `lightmaps`, `list-map` and `all`) take
+the map's name after the step, `de_dust2` when none is given: `map
+de_mirage` reads `maps/de_mirage.vpk` and writes `assets/maps/de_mirage`,
+with the hull in `de_mirage_physics` and the 3D skybox in
+`de_mirage_skybox`, the brush entities' models from `maps/de_mirage/entities/`
+and the radar from `de_mirage_radar_psd` and `resource/overviews/de_mirage.txt`.
+dust2's paths are the ones they always were. `map <name>` is the one step
+that runs all of a map's steps (and the shared surfaces tables, which cost
+seconds). `paths <name>` prints where a map's files land, without CS2;
+`MapPaths` (`src/map/map_paths.gd`) derives the same, which
+`tests/run_map_mode_checks.gd` holds it to. The tables below are dust2's,
+the one map measured so far.
+
 The script deliberately does not hardcode paths inside the VPKs. It lists the
 archive and picks out what it needs, because those paths move between game
 updates and a hardcoded one fails silently a year from now. `list-map` and

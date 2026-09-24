@@ -8,9 +8,9 @@
 # geometry cannot be redistributed.
 #
 # Usage:
-#   scripts/extract_assets.sh list-map        # what is inside the dust2 VPK
+#   scripts/extract_assets.sh list-map        # what is inside the map's VPK
 #   scripts/extract_assets.sh list-weapons    # the gun models the weapons step takes
-#   scripts/extract_assets.sh map             # dust2: world, collision hull, entities
+#   scripts/extract_assets.sh map             # every step for one map: world, hull, entities, nav, volumes, radar, surfaces, layers, sky, skybox, lightmaps
 #   scripts/extract_assets.sh physics         # just the collision hull (seconds)
 #   scripts/extract_assets.sh entities        # just the entity lump (seconds)
 #   scripts/extract_assets.sh nav             # just the nav mesh the bots walk (seconds)
@@ -30,6 +30,15 @@
 #   scripts/extract_assets.sh animgraphs      # the animation graphs that drive the clips (seconds)
 #   scripts/extract_assets.sh sounds          # the guns' and the equipment's sounds, footsteps by surface, hits
 #   scripts/extract_assets.sh all             # map + weapons + equipment + hud + characters + animgraphs + sounds
+#
+# The steps for one map (list-map, map, physics, entities, nav, volumes,
+# radar, layers, sky, skybox, lightmaps, and all) take the map's name after
+# the step, de_dust2 when there is none:
+#   scripts/extract_assets.sh map de_mirage   # all of de_mirage, into assets/maps/de_mirage
+#   scripts/extract_assets.sh nav de_inferno  # just de_inferno's nav mesh
+#   scripts/extract_assets.sh paths de_mirage # where they land; needs no CS2
+# Each map lands in assets/maps/<name>, with its hull in <name>_physics and
+# its 3D skybox in <name>_skybox; maps/play/play.tscn plays it (README).
 #
 # Requires Source2Viewer-CLI: https://github.com/ValveResourceFormat/ValveResourceFormat
 # Point at it with S2V=/path/to/Source2Viewer-CLI if it is not on PATH.
@@ -156,20 +165,68 @@ find_cs2() {
 	exit 1
 }
 
+usage() {
+	# The header comment, down to the first line that is not one.
+	awk 'NR > 2 && /^#/ { sub(/^# ?/, ""); print; next } NR > 2 { exit }' "${BASH_SOURCE[0]}"
+	exit 1
+}
+
 COMMAND="${1:-}"
 case "$COMMAND" in
-	list-map|list-weapons|map|physics|entities|nav|volumes|radar|surfaces|layers|sky|skybox|lightmaps|weapons|weapon-animations|weapon-data|equipment|hud|characters|animgraphs|sounds|all) ;;
-	*)
-		# The header comment, down to the first line that is not one.
-		awk 'NR > 2 && /^#/ { sub(/^# ?/, ""); print; next } NR > 2 { exit }' "${BASH_SOURCE[0]}"
-		exit 1
+	list-map|map|physics|entities|nav|volumes|radar|layers|sky|skybox|lightmaps|all|paths) ;;
+	list-weapons|surfaces|weapons|weapon-animations|weapon-data|equipment|hud|characters|animgraphs|sounds)
+		# Not a map's own step: a map name here would be ignored, which is
+		# worse than being told.
+		if [[ $# -gt 1 ]]; then
+			echo "'$COMMAND' is not a step for one map, so it takes no map name." >&2
+			exit 1
+		fi
 		;;
+	*) usage ;;
 esac
+
+## The map the per-map steps work on, as CS2 names it (its VPK is
+## maps/<name>.vpk). Everything the map's steps read and write is named from
+## it; de_dust2's paths are the ones they always were.
+MAP_NAME="${2:-de_dust2}"
+if [[ ! "$MAP_NAME" =~ ^[a-z0-9_]+$ ]]; then
+	echo "'$MAP_NAME' is not a map name: CS2's are lower case letters, digits and underscores (de_mirage)." >&2
+	exit 1
+fi
+if [[ $# -gt 2 ]]; then
+	usage
+fi
+
+MAP_DEST="$OUT_DIR/maps/$MAP_NAME"
+# A sibling, not a subdirectory: the map directory is scanned for the world
+# glTF, and the hull export includes a file that would overwrite one of the
+# world export's.
+PHYSICS_DEST="$OUT_DIR/maps/${MAP_NAME}_physics"
+SKYBOX_DEST="$OUT_DIR/maps/${MAP_NAME}_skybox"
+## Where the map's steps put the files the game reads by name, under
+## MAP_DEST: they keep the path they have in the VPK.
+MAP_NAV="maps/$MAP_NAME.nav"
+MAP_ENTITY_MODELS="maps/$MAP_NAME/entities/"
+MAP_RADAR="panorama/images/overheadmaps/${MAP_NAME}_radar_psd"
+MAP_OVERVIEW="resource/overviews/$MAP_NAME.txt"
+
+# Where a map's files land, without CS2 or Source2Viewer-CLI: MapPaths
+# derives the same, and tests/run_map_mode_checks.gd holds the two together.
+if [[ "$COMMAND" == paths ]]; then
+	echo "map ${MAP_DEST#"$PROJECT_DIR"/}"
+	echo "physics ${PHYSICS_DEST#"$PROJECT_DIR"/}"
+	echo "skybox ${SKYBOX_DEST#"$PROJECT_DIR"/}"
+	echo "nav ${MAP_DEST#"$PROJECT_DIR"/}/$MAP_NAV"
+	echo "entity-models ${MAP_DEST#"$PROJECT_DIR"/}/$MAP_ENTITY_MODELS"
+	echo "radar ${MAP_DEST#"$PROJECT_DIR"/}/$MAP_RADAR.png"
+	echo "overview ${MAP_DEST#"$PROJECT_DIR"/}/$MAP_OVERVIEW"
+	exit 0
+fi
 
 S2V_BIN="$(find_s2v "$@")"
 CS2_DIR="$(find_cs2 "$@")"
 CSGO_DIR="$CS2_DIR/game/csgo"
-MAP_VPK="$CSGO_DIR/maps/de_dust2.vpk"
+MAP_VPK="$CSGO_DIR/maps/$MAP_NAME.vpk"
 PAK_VPK="$CSGO_DIR/pak01_dir.vpk"
 
 # On stderr, so that the list commands can be piped or redirected cleanly.
@@ -255,7 +312,7 @@ find_map_resource() {
 	found="$(grep -iE "$pattern" <<<"$listing" | head -n 1 || true)"
 	if [[ -z "$found" ]]; then
 		echo "No $description inside $vpk." >&2
-		echo "Run 'scripts/extract_assets.sh list-map' to see what is in there." >&2
+		echo "Run 'scripts/extract_assets.sh list-map $MAP_NAME' to see what is in there." >&2
 		exit 1
 	fi
 	echo "$found"
@@ -290,12 +347,6 @@ require_filter() {
 	fi
 }
 
-MAP_DEST="$OUT_DIR/maps/de_dust2"
-# A sibling, not a subdirectory: the map directory is scanned for the world
-# glTF, and the hull export includes a file that would overwrite one of the
-# world export's.
-PHYSICS_DEST="$OUT_DIR/maps/de_dust2_physics"
-SKYBOX_DEST="$OUT_DIR/maps/de_dust2_skybox"
 CHARACTERS_DEST="$OUT_DIR/characters"
 
 extract_world() {
@@ -352,7 +403,7 @@ extract_entities() {
 	"$S2V_BIN" -i "$MAP_VPK" -f "$entities" -o "$MAP_DEST" -d
 }
 
-## The nav mesh the game's bots walk: maps/de_dust2.nav, half a megabyte,
+## The nav mesh the game's bots walk: maps/<name>.nav (dust2's is half a megabyte),
 ## stored in the map's VPK as it is (not a compiled resource), so it comes
 ## out byte for byte. SourceNavMesh reads it.
 extract_nav() {
@@ -365,23 +416,23 @@ extract_nav() {
 	"$S2V_BIN" -i "$MAP_VPK" -f "$nav" -o "$MAP_DEST"
 }
 
-## The brush entities' own models, maps/de_dust2/entities/*.vmdl: the buy
+## The brush entities' own models, maps/<name>/entities/*.vmdl: the buy
 ## zones, the bomb sites and the callouts' places, which the entity lump
 ## names by model (the world export's world_physics.gltf holds them too, but
 ## named only by class). Each exports as a glTF, empty but for the two
 ## func_brush, and a _physics.gltf holding the volume, in inches about the
 ## entity's origin; BrushVolume reads them. With them, the game's baked bomb damage
-## (maps/de_dust2/baked_bomb_damage.vdata), as KV3 text.
+## (maps/<name>/baked_bomb_damage.vdata), as KV3 text.
 extract_volumes() {
 	require_file "$MAP_VPK"
 	mkdir -p "$MAP_DEST"
 	echo "Extracting the brush entities' models and the baked bomb damage"
 	echo "        -> $MAP_DEST"
 	local count
-	count="$("$S2V_BIN" -i "$MAP_VPK" -f "maps/de_dust2/entities/" -e vmdl_c -o "$MAP_DEST" -d --gltf_export_format gltf \
+	count="$("$S2V_BIN" -i "$MAP_VPK" -f "$MAP_ENTITY_MODELS" -e vmdl_c -o "$MAP_DEST" -d --gltf_export_format gltf \
 		| { grep -c '^--- Dump written' || true; })"
 	if [[ "$count" -eq 0 ]]; then
-		echo "No brush entity models under maps/de_dust2/entities/ in $MAP_VPK." >&2
+		echo "No brush entity models under $MAP_ENTITY_MODELS in $MAP_VPK." >&2
 		exit 1
 	fi
 	echo "$count models"
@@ -416,15 +467,15 @@ extract_surfaces() {
 		| grep -E '^(surface tables|  )' || true
 }
 
-## dust2's radar: the overview image (a 1024 square) and the text that says
+## The map's radar: the overview image (a 1024 square) and the text that says
 ## where it lies over the map, in the main archive rather than the map's.
 ## MapOverview reads the text.
 extract_radar() {
 	require_file "$PAK_VPK"
 	mkdir -p "$MAP_DEST"
-	echo "Extracting dust2's radar"
+	echo "Extracting $MAP_NAME's radar"
 	echo "        -> $MAP_DEST"
-	"$S2V_BIN" -i "$PAK_VPK" -f "panorama/images/overheadmaps/de_dust2_radar_psd.vtex_c,resource/overviews/de_dust2.txt" \
+	"$S2V_BIN" -i "$PAK_VPK" -f "$MAP_RADAR.vtex_c,$MAP_OVERVIEW" \
 		-o "$MAP_DEST" -d | grep -E '^--- Dump' || true
 }
 
@@ -444,7 +495,7 @@ extract_layers_under() {
 	world="$(find "$dest" -name 'world.gltf' 2>/dev/null | head -n 1)"
 	if [[ -z "$world" ]]; then
 		echo "No world.gltf under $dest to read the materials from." >&2
-		echo "Run 'scripts/extract_assets.sh map' first." >&2
+		echo "Run 'scripts/extract_assets.sh map $MAP_NAME' first." >&2
 		exit 1
 	fi
 
@@ -471,7 +522,7 @@ extract_skybox() {
 	entities="$(find "$MAP_DEST" -name 'default_ents.vents' 2>/dev/null | head -n 1)"
 	if [[ -z "$entities" ]]; then
 		echo "No entity lump under $MAP_DEST to read the skybox map from." >&2
-		echo "Run 'scripts/extract_assets.sh entities' first." >&2
+		echo "Run 'scripts/extract_assets.sh entities $MAP_NAME' first." >&2
 		exit 1
 	fi
 	local target
@@ -508,7 +559,7 @@ extract_sky() {
 	entities="$(find "$MAP_DEST" -name 'default_ents.vents' 2>/dev/null | head -n 1)"
 	if [[ -z "$entities" ]]; then
 		echo "No entity lump under $MAP_DEST to read the sky material from." >&2
-		echo "Run 'scripts/extract_assets.sh entities' first." >&2
+		echo "Run 'scripts/extract_assets.sh entities $MAP_NAME' first." >&2
 		exit 1
 	fi
 	local sky
@@ -913,6 +964,10 @@ finish() {
 	echo
 	echo "Done. Open maps/de_dust2/de_dust2.tscn and press play, or run"
 	echo "scripts/inspect_assets.sh for a report on what came through."
+	if [[ "$MAP_NAME" != de_dust2 ]]; then
+		echo "To play $MAP_NAME: set Map Name on maps/play/play.tscn, or run"
+		echo "  godot --path . maps/play/play.tscn -- --map $MAP_NAME"
+	fi
 }
 
 case "$COMMAND" in
