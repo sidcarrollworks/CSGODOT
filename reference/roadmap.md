@@ -562,13 +562,43 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
     where a map names its callouts otherwise. The map is chosen by
     `map_name` on `maps/play/play.tscn` or `--map` on the command line;
     `maps/de_dust2/de_dust2.tscn` is that scene set to dust2. No research
-    page covers other maps. **Local:** run `scripts/run_tests.sh` with the
-    assets; extract de_mirage and de_inferno (`map <name>`); play both and
-    note what breaks. **Still to do**, each its own item: the test range as
+    page covers other maps. **Local** (Sid, 2026-09-24): `scripts/run_tests.sh`
+    with the assets passed (1781 checks, dust2's 78 among them); dust2 on
+    the play scene finds its sky from the env_sky material; de_inferno,
+    extracted with `map de_inferno`, loads in 16 s with nothing missing
+    (16 spawns a side, 2 buy zones a side, both sites, bomb radius 600,
+    a nav mesh of 2738 areas) and its bots took the callout route and
+    fought for 100 s. Still open: extract and play de_mirage. **Still to
+    do**, each its own item: the test range as
     a mode; ladders (the nav mesh reads them, nothing climbs them); doors
     and breakables; hostage maps (a mode of their own); a dedicated server,
     a mode that loads the map's collision, entities and nav mesh and builds
     nothing to be seen (part of item 25).
+24b. **What de_inferno showed** (Sid's local test of 24a, 2026-09-24; none
+    of these comes from 24a):
+    - *Bots stall.* *(Remote, then Sid plays it)* 5 of 9 stood still for
+      about 60 s of a live round, alive and not fighting (1 on dust2). Two
+      Ts at A stop at (221, 232, 2030), 68 units above their site floor
+      (292, 164, 2000) and 77 away in plan; two CTs back from B jam
+      together at (2579 to 2611, 128, 2008), one jumping; a CT back from
+      A stops at (1493, 205, 2442), a spot it passed on the way out.
+      Doors and func_brush blockers are ruled out.
+    - *Café tables, chairs and signs draw solid black.* *(Local finds the
+      cause, then Remote)* They have textures; `prepare_export` warned
+      that inferno's world and skybox glTFs have a primitive with both
+      blend paint and vertex colour, which it leaves alone. Unconfirmed
+      as the cause.
+    - *No sky panorama on inferno.* *(Remote for the warning; the fix
+      waits on Source 2 Viewer)* CS2 1.41.8.3 ships VCS 72 shaders and
+      Source2Viewer-CLI 20.0 reads 59 to 71, so its env_sky material
+      (`materials/skybox/test/s2_de_inferno_sky01.vmat_c`) did not
+      decompile and 4284 textures failed. `extract_assets.sh` should warn
+      when Source 2 Viewer prints "Only VCS file versions".
+    - *The first import fails to compile `prepare_export.gd`.* *(Remote)*
+      On a fresh checkout `lightmap_materials.gd:75` names `BlendMaterials`
+      before any import has registered the class names, so the first
+      `map <name>` skips the lightmap average (`average.json`) until the
+      next import. Loading `BlendMaterials` by path there should fix it.
 
 25. **Netcode.** *(Remote; Local playtests across machines)* CS2's model: the
     server decides, clients send input with sub-tick times and predict their
