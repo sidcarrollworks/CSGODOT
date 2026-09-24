@@ -7,14 +7,24 @@ themselves (`reference/cs2-systems.md` S2). Written 2026-09-24. Docs only: no
 code or other page changes with it; the corrections it calls for are listed
 at the end.
 
+**Sources, newest and primary first.** Every number comes from the newest
+source that has it. First CS2's own shipped files, then Valve's release
+notes, then community pages, then older games' code. A claim that rests only
+on an older or secondary source says so beside it.
+
 **How each claim is marked.** *Read* means read directly from CS2's shipped
-files as SteamDatabase's GameTracking-CS2 publishes them (commit `d45f52d`,
-2026-09-23; paths below are in that repository). *SDK* means read from Source
-SDK 2013 (`src/game/shared/baseplayer_shared.cpp`), which is a spec only:
-CS2 is a different engine, so an SDK number is where CS2 started, not proof
-of what it does now. *Community* comes from web search summaries, since the
-pages themselves refuse fetches from the cloud. *Inferred* is a reasoned
-guess from the above. Nothing here comes from Valve's leaked CS:GO source.
+files as SteamDatabase's GameTracking-CS2 publishes them: commit `d45f52d`,
+**CS2 build 2000915, patch 1.41.8.3, dated 2026-09-23** (`game/csgo/steam.inf`),
+which was the newest commit when this was written (2026-09-24). Paths below are
+in that repository. *Valve* means Valve's own release notes, dated, as quoted in
+search summaries (the pages refuse fetches from the cloud). *SDK* means read
+from Source SDK 2013 (`src/game/shared/baseplayer_shared.cpp`, code from 2013
+and older). That is **an older source, not confirmed for CS2**: it shows where
+CS2's code started, not what CS2 does now, and it is used only where CS2's
+files say nothing. *Community* comes from web search summaries of guides and
+forum posts, with the date where the summary gives one. *Inferred* is a
+reasoned guess from the above. Nothing here comes from Valve's leaked CS:GO
+source.
 
 Sources, shortened below:
 
@@ -35,7 +45,7 @@ Sources, shortened below:
 |---|---|---|
 | Who decides a step | The server, on its tick (*Read*: `mp_footsteps_serverside true`) | A view node's own `_physics_process` (`footsteps.gd:85`), outside the `GameWorld` tick |
 | Silent when | Walking (0.52 of max speed) and crouching (0.34). *Inferred:* below 0.55 of the current max speed (`footstep_audible_threshold 0.55`) | Below 131 u/s, or crouched (`footsteps.gd:17, 99`) |
-| Steps a second | Not in the files. *SDK:* every 300 ms at 220 u/s and over, 400 ms below, 100 ms more crouched or on a ladder | 0.34 s at 220 and over, 0.5 s below (`footsteps.gd:19-21`) |
+| Steps a second | Not in CS2's files. Only an older source: *SDK* (2013), every 300 ms at 220 u/s and over, 400 ms below, 100 ms more crouched or on a ladder | 0.34 s at 220 and over, 0.5 s below (`footsteps.gd:19-21`) |
 | Landing sound when | *Inferred:* falling faster than 260 u/s on touchdown (`sv_min_jump_landing_sound 260`) | Faster than 200 u/s (`footsteps.gd:24`) |
 | How far a step carries | Full volume 117 units off, half by 400, a thirtieth by 1095, **silent at 1100** (*Read*, FS) | Godot's inverse distance, 10 m reference, cut at 80 m (3150 units) (`footsteps.gd:60-62`) |
 | How far a step is sent | 1250 units (*Read*: `sv_max_distance_transmit_footsteps`) | Everywhere |
@@ -81,10 +91,11 @@ Sources, shortened below:
 
 ## 2. When a step sounds
 
-- **Walking and crouching are silent; running is not** (*Community*, every
-  guide agrees: "Walking (holding the Shift key) silences your steps";
-  "Holding the left ctrl key will also make your movement silent on all
-  surfaces", counterstrike.fandom.com/wiki/Footsteps via search summary).
+- **Walking and crouching are silent; running is not** (*Community*, undated
+  pages; every guide agrees: "Walking (holding the Shift key) silences your
+  steps"; "Holding the left ctrl key will also make your movement silent on
+  all surfaces", counterstrike.fandom.com/wiki/Footsteps via search summary).
+  CS2's own files back it only by inference (the threshold below).
 - **The threshold is probably 55 % of the current top speed.**
   `footstep_audible_threshold 0.55` (*Read*, CV 3277; development-only, no
   description). *Inferred:* a fraction of the player's current maximum speed,
@@ -109,9 +120,10 @@ Sources, shortened below:
   *Inferred*). Whether "current max" includes scoping, and whether the
   threshold is on the ground speed or the full speed, is Local check F1.
 - **The SDK's floor for any step is 90 u/s standing and 60 crouched or on a
-  ladder** (*SDK* `GetStepSoundVelocities`), below which no step sounds at
+  ladder** (*SDK* `GetStepSoundVelocities`, 2013, not confirmed for CS2), below which no step sounds at
   all; CS2 moved that decision to the threshold above (*Inferred*).
-- **How often.** Not in CS2's files. *SDK* `SetStepSoundTime`: a step every
+- **How often.** Not in CS2's files; the only source is older, Source SDK
+  2013, not confirmed for CS2. *SDK* `SetStepSoundTime`: a step every
   **300 ms** at 220 u/s and over, **400 ms** under it; **350 ms** on a
   ladder; **600 ms** knee-deep in water; **+100 ms** crouched or on a ladder.
   The boundary drops to 80 u/s when crouched or on a ladder. Ours is 0.34 s
@@ -168,7 +180,7 @@ Sources, shortened below:
   So a running step is at its loudest 117 units away, half as loud by 400,
   nearly gone by 1000 and **silent at 1100 units**. That matches the
   community's "running footsteps are audible within approximately 1100 units"
-  (*Community*, csdb.gg and similar guides via search summary); others say
+  (*Community*, csdb.gg's audio guide, undated, via search summary); others say
   800 to 900, which is where it falls under the game's other sound
   (*Inferred*). The dip close in (0.45 at 50) keeps your own steps, about 45
   units from your ears, below a teammate's beside you (*Inferred*).
@@ -188,9 +200,11 @@ Sources, shortened below:
   netcode sends events.
 - **Walls muffle steps.** `occlusion_intensity 0.375`,
   `use_baked_occlusion true`, `reverb_wet 1.0`, `distance_effect_mix 1.0`
-  (*Read*, FS). An update in September 2023 "lowered occlusion and distance
-  effects for gunfire, footsteps and reloads" (*Community*, search summary of
-  csgo.com's news post). The baked occlusion is Steam Audio's, per map, and
+  (*Read*, FS). Valve's release notes of 2023-09-13 (the CS2 limited test)
+  "lowered occlusion and distance effects for gunfire, footsteps and reloads"
+  and fixed "incorrect footstep and jump land sounds" on elevated edges
+  (*Valve*, via search summaries of the notes and of csgo.com's news post).
+  The files above are the state three years later. The baked occlusion is Steam Audio's, per map, and
   not extracted; Godot has no occlusion, so ours will be clearer through walls
   until something is built.
 - **Heard in stereo only close up.** `distance_unfiltered_stereo_mapping_curve`
@@ -283,7 +297,7 @@ Sources, shortened below:
   css 518-544, xml 47-50 and 97). The client also has a `player-sound-footstep`
   class (*Read*, CS 38099). The circle "indicates how far the sounds that you
   are making (footsteps, shooting...) can be heard" (*Community*,
-  primagames.com via search summary). *Inferred:* it is sized by the range of
+  primagames.com, undated, via search summary). *Inferred:* it is sized by the range of
   the loudest noise you made recently, with the footstep class for a step and
   the max class for the largest, such as a shot. Its size is set in C++, not
   in the layout; check F4.
@@ -326,14 +340,28 @@ a plan anyone has agreed.
   (walk silent, run heard to 1100); it is what the game's sound play rests
   on. The gap to close is occlusion, which Godot does not model.
 
-## 8. Corrections other docs and code need
+## 8. What players criticise and want
+
+Sid asked (2026-09-24) to keep track of these. CS2-era feedback only; the
+forum pages refuse fetches, so each comes from a search summary. Each says
+whether it applies here and how it could be measured.
+
+| Critique | When and where | Applies here? |
+|---|---|---|
+| **Height and direction are hard to tell**, worst on maps with levels: a step above or below sounds beside you. CS2's always-on Steam Audio HRTF improved height over CS:GO, but "it still needs a permanent fix". | Sportskeeda, "5 things Counter-Strike 2 needs to improve in 2025" (early 2025); Steam discussion "Fix the directional sound" (undated) | Yes, and ours is worse: Godot pans in plain stereo with no HRTF, so height is not heard at all. An HRTF on the client (Steam Audio has a Godot extension) costs the server nothing. Measure it with a blind test: a step played from 12 directions and 3 heights; score how many a listener places right, ours against CS2. The audio-engine part of this research covers HRTF in full. |
+| **Steps are too quiet next to gunfire and grenades**; "pillows over their ears". | Steam discussions, 2023-2024 | Partly. CS2's own levels are the starting point (the step curve above). A louder step would change what players learn to hear, so it is an option to measure, not a default: the loudness of a step at 400 units against a rifle shot at 1500, in dB, ours against a CS2 recording. |
+| **Your own steps mask the enemy's** on some surfaces. | Steam discussions, 2023-2024 | Covered by CS2's curve: its dip to 0.45 inside 50 units keeps your own steps quieter than a teammate's (section 4). Ours plays your own steps at full level; following CS2's curve fixes it. |
+| **Wrong or missing step sounds on edges, crates and blended ground** (fixed for edges on 2023-09-13; for A site's crates and Cache's blended materials in a May 2026 update). | *Valve* release notes 2023-09-13; egw.news and talkesport on the May 2026 update (search summaries) | Yes. `Footsteps.surface_below` casts one ray from the body's centre (`footsteps.gd:130-133`), so on a ledge where the hull stands but the centre hangs over the drop it misses and plays concrete. The movement code already traces the whole hull down to the ground each tick (`player_body.gd:555`, with four quarter-hull retries at a ledge); keeping that hit's collider and shape gives the surface with no extra trace and fixes edges. Blended ground is roadmap item 7c (surfaces per triangle). |
+| **Sound delay grows over a session** (a client bug report). | Steam discussion, 2023-2024 | No: a bug in CS2's client, nothing to copy. |
+
+## 9. Corrections other docs and code need
 
 Not made here; each belongs to whoever owns the file.
 
 - `src/audio/footsteps.gd` (Sid's local agent owns `src/audio/`):
   - `:17` `QUIET_BELOW 131` becomes 0.55 of the current max speed
     (*Inferred*, check F1).
-  - `:19-21` the cadence has no source; the SDK's 300 / 400 ms, +100
+  - `:19-21` the cadence has no source; the SDK's (older, 2013) 300 / 400 ms, +100
     crouched, is the better start until F2.
   - `:24` `LANDING_FALL_SPEED 200` becomes 260 (`sv_min_jump_landing_sound`).
   - `:60-62` the distance falls off as CS2's curve, silent at 1100, instead
@@ -360,7 +388,7 @@ Not made here; each belongs to whoever owns the file.
 - `reference/roadmap.md:491` (item 23, "reacting to sound"): the hearing
   facts are in section 6 here.
 
-## 9. What only Sid can measure (Local)
+## 10. What only Sid can measure (Local)
 
 Each takes CS2 on Sid's machine. The most useful tool is a demo: record a
 short one on a private server (`sv_cheats 1`), then parse it with
