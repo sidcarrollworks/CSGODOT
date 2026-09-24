@@ -512,6 +512,25 @@ func _test_sound_sets() -> void:
 			and absf(WeaponSounds.curve_share(WeaponSounds.BODY_CURVE, 543.65) - 0.6074) < 0.001,
 		"a hit farther off is softer, by the event's own curve, and never silent"
 	)
+	# What everyone else hears of a hit (HitSounds): CS2's victim and
+	# onlooker events, by who is listening.
+	var as_victim := HitSounds.for_hit({"userid": 1, "attacker": 2, "hitgroup": DamageInfo.HITGROUP_HEAD, "dmg_armor": 5, "health": 40}, 1)
+	var as_shooter := HitSounds.for_hit({"userid": 1, "attacker": 2, "hitgroup": DamageInfo.HITGROUP_CHEST, "health": 40}, 2)
+	var near := HitSounds.for_hit({"userid": 1, "attacker": 2, "hitgroup": DamageInfo.HITGROUP_CHEST, "health": 0}, 3)
+	var burnt := HitSounds.for_hit({"userid": 1, "attacker": 2, "weapon": "weapon_molotov", "health": 40}, 3)
+	var knifed := HitSounds.for_hit({"userid": 1, "attacker": 2, "weapon": "weapon_knife", "hitgroup": DamageInfo.HITGROUP_HEAD, "health": 40}, 3)
+	_check(
+		as_victim.get("flat", false) and as_victim.get("layers") == HitSounds.EVENTS[&"DamageHeadShotArmor"]["victim"]
+			and as_shooter.is_empty() and not near.get("flat", true) and near.get("layers") == HitSounds.EVENTS[&"DeathBody"]["onlooker"]
+			and burnt.is_empty() and knifed.get("layers") == HitSounds.EVENTS[&"DamageBody"]["onlooker"],
+		"the one hit hears the victim's sound flat, those near the onlookers' from the body, the shooter neither (their own feedback), fire none, a knife a body hit"
+	)
+	_check(
+		HitSounds.DEATH[0][0] == HitSounds.GROAN and is_equal_approx(HitSounds.DEATH[0][1], 0.5)
+			and WeaponSounds.curve_share(HitSounds.DEATH[0][4], 1400.0) == 0.0
+			and HitSounds.EVENTS[&"DeathHeadShotArmor"]["onlooker"][2][0] == HitSounds.DINK,
+		"a death is CS2's groan (death1 to 6, 0.5, silent at 1400), and a helmeted kill's dink carries to those near"
+	)
 	if not SoundBank.available():
 		print("sounds not extracted; skipping the bank's checks (scripts/extract_assets.sh sounds)")
 		return
@@ -849,6 +868,25 @@ func _test_bot_sounds() -> void:
 		if not SoundBank._randomizers.has(stem):
 			missing.append(stem)
 	_check(missing.is_empty(), "every sound set a body, its gun and a round can play is loaded before it is needed (not: %s)" % ", ".join(missing))
+	# A hit, as the one hit hears it: flat, CS2's victim sound, on the next
+	# frame; and every file the others' sounds and the groan name is there.
+	var missing_hits := PackedStringArray()
+	for stem in HitSounds.all_stems():
+		if SoundBank.variants(stem).is_empty():
+			missing_hits.append(stem)
+	var hits := HitSounds.new()
+	root.add_child(hits)
+	var hit_game := GameSystems.new()
+	hits.watch(hit_game, 7)
+	hit_game.events.send(&"player_hurt", {"userid": 7, "attacker": 3, "hitgroup": DamageInfo.HITGROUP_HEAD, "dmg_armor": 3, "health": 50})
+	hit_game.events.flush()
+	var before := (hits.get_child(0) as AudioStreamPlayer).playing
+	hits._process(0.0)
+	_check(
+		missing_hits.is_empty() and not before and (hits.get_child(0) as AudioStreamPlayer).playing,
+		"hit, you hear CS2's own victim sound, flat, on the frame after (files missing: %s)" % ", ".join(missing_hits)
+	)
+	hits.free()
 	# A draw is heard only by whoever draws: the bot's (in the world) is not.
 	_bot.weapon_sounds.equip(WeaponLibrary.ak47())
 	var own_sounds := WeaponSounds.new()

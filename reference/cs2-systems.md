@@ -493,10 +493,15 @@ radar has B3 (`MapOverview`).
 feedback is CS2's since 2026-09-24: its attacker feedback events, read from
 `game_sounds_player.vsndevts` in GameTracking-CS2, with their files,
 volumes, pitches, delays and distance curves (`WeaponSounds.FEEDBACK`;
-`reference/research/audio-gameplay.md` 3). Not built: what the one hit
-hears (flat, `Player.Damage*.Victim`) and those near hear (to about 1100
-units, `.Onlooker`), and the death groan (`Player.Death`, `death1-6`, 0.5,
-silent at 1400), which CS2's server plays for the victim and those near.
+`reference/research/audio-gameplay.md` 3). What the one hit hears (flat,
+`Player.Damage*.Victim` and `Death*.Victim`), what those near hear from the
+body (`.Onlooker`, to about 1100 units) and the death groan everyone near
+hears (`Player.Death`, `death1-6`, 0.5, silent at 1400) are CS2's too
+(`HitSounds`, from the game's `player_hurt` and `player_death`, played on
+the frame after). The shooter hears only their own feedback, not an
+onlooker's on top (inferred). Not built: fire's (`Player.BurnDamage`),
+a fall's (`Player.DamageFall`), a Zeus kill's yelp (`Player.DeathTaser`)
+and the spectator versions.
 
 **Local**
 - **S1.** Extract the round sounds: round start and end (the bomb's and the

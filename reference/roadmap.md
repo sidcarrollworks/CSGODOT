@@ -161,8 +161,9 @@ Updated 2026-09-24: binds added (item 12a, planned in `reference/binds.md`): one
   the game's tables), the shooter's hit feedback as CS2's attacker feedback
   events have it (the body's thud, kevlar, the headshot and the helmet's
   dink, a kill's own; files, volumes, pitches and distance curves from
-  `game_sounds_player.vsndevts`), footsteps and landings per surface,
-  impact sounds.
+  `game_sounds_player.vsndevts`), what the one hit and those near hear of
+  a hit and the death groan (`HitSounds`), footsteps and landings per
+  surface, impact sounds.
 
 ### HUD
 - In a match, the score, each side's players alive, the round's clock and

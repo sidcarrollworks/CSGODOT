@@ -280,9 +280,9 @@ func _buy_zones(spawns: Dictionary) -> BuyZones:
 	return stand_in
 
 
-## What is seen of the systems: the grenades and their smoke and fire, the
-## bomb on the ground and its blast, and a flash's white-out over the HUD,
-## as CS2's covers it.
+## What is seen and heard of the systems: the grenades and their smoke and
+## fire, the bomb on the ground and its blast, a flash's white-out over the
+## HUD, as CS2's covers it, and the hits and deaths others hear.
 func _add_views() -> void:
 	if grenade_system != null:
 		var grenade_view := GrenadeView.new()
@@ -301,6 +301,11 @@ func _add_views() -> void:
 		bomb_view.name = "Bomb"
 		bomb_view.bomb = bomb_system.bomb
 		add_child(bomb_view)
+	# What the one hit and those near hear of a hit, and the death groan.
+	var hit_sounds := HitSounds.new()
+	hit_sounds.name = "HitSounds"
+	add_child(hit_sounds)
+	hit_sounds.watch(world.game, (player as PlayerSim).userid)
 
 
 ## F5 ends warmup, as mp_warmup_end does, on the world's next tick.

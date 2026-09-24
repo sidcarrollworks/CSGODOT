@@ -179,6 +179,11 @@ func _ready() -> void:
 	add_child(shop)
 	shop.setup(game, player)
 	_prepare_holding()
+	# What the one hit and those near hear of a hit, and the death groan.
+	var hit_sounds := HitSounds.new()
+	hit_sounds.name = "HitSounds"
+	add_child(hit_sounds)
+	hit_sounds.watch(game, player.userid)
 
 
 ## What you may take in hand here, read now rather than on the tick you buy
