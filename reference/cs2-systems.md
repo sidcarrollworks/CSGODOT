@@ -489,7 +489,14 @@ radar has B3 (`MapOverview`).
 
 ## 10. Sound for the new systems
 
-**Built:** the weapon, footstep, hit and impact sounds.
+**Built:** the weapon, footstep, hit and impact sounds. The shooter's hit
+feedback is CS2's since 2026-09-24: its attacker feedback events, read from
+`game_sounds_player.vsndevts` in GameTracking-CS2, with their files,
+volumes, pitches, delays and distance curves (`WeaponSounds.FEEDBACK`;
+`reference/research/audio-gameplay.md` 3). Not built: what the one hit
+hears (flat, `Player.Damage*.Victim`) and those near hear (to about 1100
+units, `.Onlooker`), and the death groan (`Player.Death`, `death1-6`, 0.5,
+silent at 1400), which CS2's server plays for the victim and those near.
 
 **Local**
 - **S1.** Extract the round sounds: round start and end (the bomb's and the

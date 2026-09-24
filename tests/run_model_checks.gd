@@ -487,6 +487,31 @@ func _test_sound_sets() -> void:
 	)
 	WeaponSounds.set_for("weapon_glock")["fire"] = PackedStringArray()
 	_check(not (WeaponSounds.set_for("weapon_glock")["fire"] as PackedStringArray).is_empty(), "the sets are handed out as copies")
+	# The shooter's hit feedback: CS2's attacker feedback events.
+	_check(
+		WeaponSounds.feedback_for(&"head", true, false) == &"DamageHeadShotArmor"
+			and WeaponSounds.feedback_for(&"chest", false, true) == &"DeathBody"
+			and WeaponSounds.feedback_for(&"head", true, true) == &"DeathHeadShotArmor"
+			and WeaponSounds.feedback_for(&"stomach", true, false) == &"DamageBodyArmor",
+		"a hit's feedback is CS2's event for where it landed, armour and a kill"
+	)
+	var dink: Array = WeaponSounds.FEEDBACK[&"DamageHeadShotArmor"]
+	var helmet_kill: Array = WeaponSounds.FEEDBACK[&"DeathHeadShotArmor"]
+	var body_kill: Array = WeaponSounds.FEEDBACK[&"DeathBody"]
+	var named := WeaponSounds.all_stems()
+	_check(
+		dink[0][0] == ["player/headshot_armor_e1"] and is_equal_approx(dink[0][1], 0.5)
+			and helmet_kill.size() == 2 and helmet_kill[1][0] == ["player/headshot_armor_e1"] and is_equal_approx(helmet_kill[1][2], 1.1)
+			and (body_kill[0][0] as Array)[0] == "physics/surfaces/mud_impact_bullet1"
+			and not named.has("player/bodyshot_kill_01") and not named.has("player/headshot_armor_01") and not named.has("player/kevlar"),
+		"the helmet's dink is CS2's headshot_armor_e1 (0.5, a kill's 0.6 at pitch 1.1 with its flesh), a body kill the mud thud; no bodyshot_kill_01, headshot_armor_01 or kevlar1-5"
+	)
+	_check(
+		is_equal_approx(WeaponSounds.curve_share(WeaponSounds.BODY_CURVE, 0.0), 1.0)
+			and is_equal_approx(WeaponSounds.curve_share(WeaponSounds.BODY_CURVE, 5000.0), 0.2148)
+			and absf(WeaponSounds.curve_share(WeaponSounds.BODY_CURVE, 543.65) - 0.6074) < 0.001,
+		"a hit farther off is softer, by the event's own curve, and never silent"
+	)
 	if not SoundBank.available():
 		print("sounds not extracted; skipping the bank's checks (scripts/extract_assets.sh sounds)")
 		return
@@ -494,9 +519,9 @@ func _test_sound_sets() -> void:
 		SoundBank.variants("weapons/ak47/ak47_0").size() == 4
 			and SoundBank.variants("player/footsteps/sand_").size() == 12
 			and SoundBank.variants("player/footsteps/land_concrete").size() == 1
-			and SoundBank.variants("player/kevlar").size() >= 5
+			and SoundBank.variants("player/kevlar_0").size() == 8 and SoundBank.variants("player/headshot_armor_e1").size() == 1
 			and SoundBank.variants("nothing/here_").is_empty(),
-		"the bank finds a set's variants by their shared stem: four AK shots, twelve sand steps, one concrete landing"
+		"the bank finds a set's variants by their shared stem: four AK shots, twelve sand steps, one concrete landing, eight kevlar hits and one helmet dink"
 	)
 	var random := SoundBank.randomizer("weapons/ak47/ak47_0")
 	_check(

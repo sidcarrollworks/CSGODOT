@@ -1,6 +1,6 @@
 # Every gun's sounds
 
-Written by `scripts/weapon_tables.gd` on 2026-09-23 from what `scripts/extract_assets.sh sounds` extracted out of CS2 1.41.8.2. Do not edit by hand.
+Written by `scripts/weapon_tables.gd` on 2026-09-23 from what `scripts/extract_assets.sh sounds` extracted out of CS2 1.41.8.3. Do not edit by hand.
 
 Each is a file stem under `res://assets/sounds/sounds/weapons/<folder>/`, decompiled to the audio it holds (`.wav`, a few `.mp3`); variants of one sound are numbered, and `SoundBank` plays a set from the stem they share. The roles are read off the names, so a name that says nothing (`zoom`) is filed by what it does say. The M4A4 and the M4A1-S share the `m4a1` folder: the M4A4 fires `m4a1_0N`, the M4A1-S `m4a1_silencer_01` silenced and `m4a1_us_0N` without. The USP-S fires `usp_0N` silenced and `usp_unsilenced_0N` without.
 
