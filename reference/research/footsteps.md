@@ -16,8 +16,10 @@ on an older or secondary source says so beside it.
 files as SteamDatabase's GameTracking-CS2 publishes them: commit `d45f52d`,
 **CS2 build 2000915, patch 1.41.8.3, dated 2026-09-23** (`game/csgo/steam.inf`),
 which was the newest commit when this was written (2026-09-24). Paths below are
-in that repository. *Valve* means Valve's own release notes, dated, as quoted in
-search summaries (the pages refuse fetches from the cloud). *SDK* means read
+in that repository. *Valve* means Valve's own release notes on
+counter-strike.net, dated as Valve posted them, read from the archive
+ckreisl/cs-updates-as-json @656981c (`data/cs2/updates_raw.json`, 231 posts,
+2023-03-22 to 2026-09-22). *SDK* means read
 from Source SDK 2013 (`src/game/shared/baseplayer_shared.cpp`, code from 2013
 and older). That is **an older source, not confirmed for CS2**: it shows where
 CS2's code started, not what CS2 does now, and it is used only where CS2's
@@ -79,6 +81,17 @@ Sources, shortened below:
   `animgraphlib/`). *Inferred:* that is the path `mp_footsteps_serverside 0`
   would use; with the default, the server's timer decides and the client only
   plays what it is sent.
+- **Your own steps: an older note says otherwise.** Valve's notes of
+  2023-06-06 say "Player's own footstep sounds are now predicted on the client
+  for a latency-independent experience" (*Valve*), which the convar's
+  description ("Clients never calculate footstep sounds locally") contradicts.
+  The convar is in today's build (2026-09-23) and the note is three years
+  older, so the convar is taken as current; when it changed is not in either
+  source. Local check F8 settles it.
+- **Keychains react to steps.** Since 2025-10-01 "Keychains will now slightly
+  jolt when a player makes an audible footstep sound" (*Valve*); the client's
+  `$keychain_audible` and `audible-seconds` strings are that (*Read*, CS 1985,
+  29877-29878). So the client is told which steps are audible.
 - **Every step is a game event.** `player_footstep` with `userid` (*Read*:
   `game/core/pak01_dir/resource/core.gameevents:382`); the server has a
   `player_footstep` string and a `PlayerFootstepEvent` class in its bot
@@ -185,7 +198,11 @@ Sources, shortened below:
   (*Inferred*). The dip close in (0.45 at 50) keeps your own steps, about 45
   units from your ears, below a teammate's beside you (*Inferred*).
 - **Landings** (*Read*, FS `Base.Land`): 1.0 out to 37 units, 0.45 at 429,
-  0.05 at 1090, silent at 1100.
+  0.05 at 1090, silent at 1100. Valve set that on 2023-11-09: "Changed jump
+  land sounds to have the same maximum audible distance as footstep sounds"
+  and "Changed volume falloff curve of jump landing sounds to better convey
+  distance"; on 2026-04-01, "Mix adjustments to help accentuate jump landing
+  sounds during combat" (*Valve*).
 - **Other movement noise for comparison** (*Read*, PL and FS): picking up a
   gun (`Player.PickupWeaponAudible`) silent at 1100; the suit rustle at 750;
   the heavy armour step at 1310; wading at 1100. A gunshot carries to 2500
@@ -200,11 +217,11 @@ Sources, shortened below:
   netcode sends events.
 - **Walls muffle steps.** `occlusion_intensity 0.375`,
   `use_baked_occlusion true`, `reverb_wet 1.0`, `distance_effect_mix 1.0`
-  (*Read*, FS). Valve's release notes of 2023-09-13 (the CS2 limited test)
-  "lowered occlusion and distance effects for gunfire, footsteps and reloads"
-  and fixed "incorrect footstep and jump land sounds" on elevated edges
-  (*Valve*, via search summaries of the notes and of csgo.com's news post).
-  The files above are the state three years later. The baked occlusion is Steam Audio's, per map, and
+  (*Read*, FS). Valve's notes of 2023-09-13 (the CS2 limited test): "Lowered
+  occlusion and distance effects for gunfire, footsteps and reloads"; of
+  2023-10-17: "Various tweaks and bug fixes around occlusion filters and
+  footstep clarity" (*Valve*). The files above are the state three years
+  later. The baked occlusion is Steam Audio's, per map, and
   not extracted; Godot has no occlusion, so ours will be clearer through walls
   until something is built.
 - **Heard in stereo only close up.** `distance_unfiltered_stereo_mapping_curve`
@@ -351,7 +368,7 @@ whether it applies here and how it could be measured.
 | **Height and direction are hard to tell**, worst on maps with levels: a step above or below sounds beside you. CS2's always-on Steam Audio HRTF improved height over CS:GO, but "it still needs a permanent fix". | Sportskeeda, "5 things Counter-Strike 2 needs to improve in 2025" (early 2025); Steam discussion "Fix the directional sound" (undated) | Yes, and ours is worse: Godot pans in plain stereo with no HRTF, so height is not heard at all. An HRTF on the client (Steam Audio has a Godot extension) costs the server nothing. Measure it with a blind test: a step played from 12 directions and 3 heights; score how many a listener places right, ours against CS2. The audio-engine part of this research covers HRTF in full. |
 | **Steps are too quiet next to gunfire and grenades**; "pillows over their ears". | Steam discussions, 2023-2024 | Partly. CS2's own levels are the starting point (the step curve above). A louder step would change what players learn to hear, so it is an option to measure, not a default: the loudness of a step at 400 units against a rifle shot at 1500, in dB, ours against a CS2 recording. |
 | **Your own steps mask the enemy's** on some surfaces. | Steam discussions, 2023-2024 | Covered by CS2's curve: its dip to 0.45 inside 50 units keeps your own steps quieter than a teammate's (section 4). Ours plays your own steps at full level; following CS2's curve fixes it. |
-| **Wrong or missing step sounds on edges, crates and blended ground** (fixed for edges on 2023-09-13; for A site's crates and Cache's blended materials in a May 2026 update). | *Valve* release notes 2023-09-13; egw.news and talkesport on the May 2026 update (search summaries) | Yes. `Footsteps.surface_below` casts one ray from the body's centre (`footsteps.gd:130-133`), so on a ledge where the hull stands but the centre hangs over the drop it misses and plays concrete. The movement code already traces the whole hull down to the ground each tick (`player_body.gd:555`, with four quarter-hull retries at a ledge); keeping that hit's collider and shape gives the surface with no extra trace and fixes edges. Blended ground is roadmap item 7c (surfaces per triangle). |
+| **Wrong or missing step sounds on edges, crates and blended ground.** Valve fixed "incorrect footstep and jump land sounds ... on elevated edges" (2023-09-13), steps on railings, hazard stripes and mud (2023-11-30 to 2024-11-14), "lack of footstep sounds on top of crates at A-site" (2026-04-29), and "Adjusted material blending to improve accuracy of footstep sounds" (2026-05-20). | *Valve* release notes, dated as given | Yes. `Footsteps.surface_below` casts one ray from the body's centre (`footsteps.gd:130-133`), so on a ledge where the hull stands but the centre hangs over the drop it misses and plays concrete. The movement code already traces the whole hull down to the ground each tick (`player_body.gd:555`, with four quarter-hull retries at a ledge); keeping that hit's collider and shape gives the surface with no extra trace and fixes edges. Blended ground is roadmap item 7c (surfaces per triangle). |
 | **Sound delay grows over a session** (a client bug report). | Steam discussion, 2023-2024 | No: a bug in CS2's client, nothing to copy. |
 
 ## 9. Corrections other docs and code need
@@ -404,3 +421,4 @@ event's tick with the player's velocity, duck state and weapon that tick.
 | F5. Bots' hearing | `bot_stop 1` with a bot facing away; run toward it from 1500, 1100, 800 units (`cl_showpos` for the distance) and note when it turns; repeat walking | The classic bot's footstep range |
 | F6. The suit | Listen for the suit rustle while running and walking, with and without heavy armour (`Gear.*`, `Heavy.Step`) | When the suit sound plays |
 | F7. How far a step is heard | Stand still while a bot runs straight past at a known line; note (or record) where its steps fade, with `cl_showpos` for both positions | That a step fades out at 1100 as the file says, occlusion aside |
+| F8. Your own steps predicted or not | With `net_fakelag 150` on a local server, run and listen: a step that lags your movement by the delay comes from the server | Whether today's CS2 still predicts your own steps (2023 note) or leaves every step to the server (today's convar) |
