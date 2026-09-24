@@ -730,6 +730,10 @@ func _test_the_hand() -> void:
 	player.select = 1
 	steps.call(float(ak_ready) / 1_000_000.0 + DT)
 	events.clear()
+	var view := DroppedItemView.new()
+	_world.add_child(view)
+	view.watch(world.game)
+	var held := player.held_transform()
 	world.game.command(player.userid, "drop")
 	steps.call(DT)
 	var on_ground := world.game.entities.of_class("weapon_ak47")
@@ -739,10 +743,36 @@ func _test_the_hand() -> void:
 			and player.in_hand_class() == "weapon_knife" and _named(events, &"item_remove").size() == 1,
 		"G drops the AK-47 in hand, its own Weapon with its 12 rounds on the ground, item_remove, and the knife comes back to the hand"
 	)
+	if dropped != null:
+		var aim := PlayerInput.aim_direction(player.yaw_degrees, player.pitch_degrees)
+		var went := dropped.position - dropped.previous_position
+		var across := Vector2(went.x, went.z).length() / DT
+		_check(
+			dropped.previous_position.is_equal_approx(held.origin) and dropped.previous_basis.is_equal_approx(held.basis)
+				and held.basis.z.dot(aim) > 0.99,
+			"it leaves from where the gun was held, pointing where the player looks"
+		)
+		_check(
+			absf(across - ItemDrops.THROW_SPEED / Vector3(aim + Vector3.UP * ItemDrops.THROW_LIFT).length()) < 1.0
+				and Vector2(went.x, went.z).normalized().dot(Vector2(aim.x, aim.z).normalized()) > 0.999,
+			"thrown the way the player looks at CS2's 300 u/s, a little lifted (%.0f u/s across)" % across
+		)
+		_check(not dropped.basis.is_equal_approx(dropped.previous_basis), "and it turns as it flies")
 	steps.call(1.0)
 	if dropped != null:
-		_check(dropped.resting and dropped.position.distance_to(player.global_position) > 32.0,
-			"thrown ahead, it comes to rest %.0f units off" % dropped.position.distance_to(player.global_position))
+		_check(
+			dropped.resting and absf(dropped.position.y) < 0.5 and dropped.position.distance_to(player.global_position) > 32.0,
+			"thrown ahead, it comes to rest on the floor %.0f units off" % dropped.position.distance_to(player.global_position)
+		)
+		view._process(0.0)
+		var model := view.model_of(dropped.id)
+		var lie: Transform3D = (view.get("_lying") as Dictionary).get("weapon_ak47", Transform3D())
+		var down := Basis(Vector3.UP, DroppedItemView.heading(dropped.basis)) * lie.basis
+		_check(
+			model != null and model.transform.basis.is_equal_approx(down)
+				and model.transform.origin.is_equal_approx(dropped.position + lie.origin),
+			"drawn, it lies on its thinnest side, the way it was heading, its lowest point on the floor"
+		)
 		player.global_position = dropped.position
 		player.previous_position = dropped.position
 	steps.call(1.0)
@@ -765,6 +795,7 @@ func _test_the_hand() -> void:
 	player.walks = false
 	world.remove_player(player)
 	player.queue_free()
+	view.queue_free()
 	world.queue_free()
 	await physics_frame
 

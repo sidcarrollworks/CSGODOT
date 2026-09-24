@@ -2,22 +2,27 @@ class_name DroppedItemView
 extends Node3D
 
 ## What is seen of the items on the ground (DroppedItem): each one's world
-## model falling and then lying where it came to rest, a gun on its side. It
-## only reads the game's entities, and draws them per frame between the tick
-## before and the last, as the players are drawn.
+## model leaving the hand, turning as it flies, and, once it has come to
+## rest, tipping over onto its thinnest side, the way it was heading. It
+## only reads the game's entities, and draws them per frame between the
+## tick before and the last, as the players are drawn.
 ##
 ## A model is the game's own (scripts/extract_assets.sh weapons and
 ## equipment) and a grey box where it has not been extracted. Each class's
-## model is read once and its size measured then; a model lies on its
-## thinnest side, turned the way it was thrown.
+## model is read once and its size measured then (lying()).
 
-## The stand-in's size, in units, where there is no model.
+## The stand-in's size, in units, where there is no model: longest along
+## its +Z, as a gun is.
 const STAND_IN := Vector3(4.0, 3.0, 24.0)
+## How long an item takes to tip over onto its side once it has come to
+## rest, in seconds of simulation time. By eye.
+const SETTLE_SECONDS := 0.2
 
 var game: GameSystems
 
-## By entity id: the item and its drawn model, and those still moving, which
-## are placed every frame; one at rest is placed once more, where it lies.
+## By entity id: the item and its drawn model, and those still moving or
+## settling, which are placed every frame; one lying still is placed once
+## more, where it lies, and left.
 var _items := {}
 var _models := {}
 var _moving := {}
@@ -41,21 +46,21 @@ func drawn() -> int:
 	return _models.size()
 
 
+## The model drawn for an entity, or null.
+func model_of(entity_id: int) -> Node3D:
+	return _models.get(entity_id)
+
+
 func _on_spawned(entity: SimEntity) -> void:
 	var item := entity as DroppedItem
 	if item == null or item.entry == null:
 		return
 	_items[item.id] = item
 	var model := _model_for(item.entry)
-	# Turned the way it was thrown, or any way if it was only let fall.
-	var yaw := atan2(item.velocity.x, item.velocity.z) if Vector2(item.velocity.x, item.velocity.z).length() > 1.0 \
-		else float(hash(item.id) % 360) * PI / 180.0
-	model.basis = Basis(Vector3.UP, yaw) * (_lying[item.entry.item.item_class] as Transform3D).basis
-	model.set_meta(&"lift", (_lying[item.entry.item.item_class] as Transform3D).origin)
 	add_child(model)
 	_models[item.id] = model
 	_moving[item.id] = true
-	_place(item, model, 0.0)
+	_place(item, model, 0.0, _draw_usec())
 
 
 func _on_removed(entity: SimEntity) -> void:
@@ -67,18 +72,53 @@ func _on_removed(entity: SimEntity) -> void:
 
 
 func _process(_delta: float) -> void:
+	if _moving.is_empty():
+		return
 	var fraction := clampf(Engine.get_physics_interpolation_fraction(), 0.0, 1.0)
+	var now := _draw_usec()
 	for id: int in _moving.keys():
 		var item: DroppedItem = _items[id]
-		if item.resting and item.previous_position == item.position:
-			_place(item, _models[id], 1.0)
+		if _place(item, _models[id], fraction, now):
 			_moving.erase(id)
-		else:
-			_place(item, _models[id], fraction)
 
 
-func _place(item: DroppedItem, model: Node3D, fraction: float) -> void:
-	model.position = item.previous_position.lerp(item.position, fraction) + (model.get_meta(&"lift") as Vector3)
+## Draws the item as the frame falls between its last two ticks: in
+## flight, where and how it was turning; at rest, tipping over onto its
+## side. True once it lies as it will stay.
+func _place(item: DroppedItem, model: Node3D, fraction: float, now_usec: int) -> bool:
+	if not item.resting:
+		model.transform = Transform3D(
+			item.previous_basis.slerp(item.basis, fraction),
+			item.previous_position.lerp(item.position, fraction)
+		)
+		return false
+	var lying: Transform3D = _lying[item.entry.item.item_class]
+	var down := Transform3D(Basis(Vector3.UP, heading(item.basis)) * lying.basis, item.position + lying.origin)
+	var settled := clampf(float(now_usec - item.rested_usec) / (SETTLE_SECONDS * 1_000_000.0), 0.0, 1.0)
+	var t := smoothstep(0.0, 1.0, settled)
+	model.transform = Transform3D(
+		item.basis.slerp(down.basis, t),
+		item.position.lerp(down.origin, t)
+	)
+	return settled >= 1.0
+
+
+## The way an item points along the ground, as a turn about the up axis
+## from +Z: where its muzzle points, or its top when the muzzle points
+## straight up or down.
+static func heading(basis: Basis) -> float:
+	var along := Vector3(basis.z.x, 0.0, basis.z.z)
+	if along.length() < 0.2:
+		along = Vector3(basis.y.x, 0.0, basis.y.z)
+	if along.length() < 0.001:
+		return 0.0
+	return atan2(along.x, along.z)
+
+
+## The simulation time a frame falls at: between the last two ticks.
+static func _draw_usec() -> int:
+	var tick := SimClock.tick_usec()
+	return SimClock.now_usec() - tick + int(Engine.get_physics_interpolation_fraction() * tick)
 
 
 ## A new model of an item, and how its class lies, measured the first time.

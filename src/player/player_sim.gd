@@ -226,6 +226,12 @@ const THROW_OVERHAND_SECONDS := 0.77
 const THROW_UNDERHAND_SECONDS := 0.50
 ## Speed with nothing in hand, as with the knife.
 const EMPTY_HANDED_SPEED := 250.0
+## Where a gun is held with no body holding one (yours): ahead of the eyes,
+## to the right and below them, in units. About where a bot's hand holds
+## its gun (57 up, 12 out), by eye.
+const HELD_AHEAD := 12.0
+const HELD_RIGHT := 6.0
+const HELD_BELOW := 8.0
 
 
 func _ready() -> void:
@@ -464,6 +470,27 @@ func in_hand_class() -> String:
 ## under way. The bomb waits for it before a plant.
 func hand_ready() -> bool:
 	return not _throwing and SimClock.now_usec() >= _drawn_until_usec
+
+
+## Where the thing in hand is, and which way it points, in the world, as the
+## world models are built (+Z the muzzle, +Y the top): the gun in the body's
+## hand where the body holds one (a bot's, which is posed every tick for
+## its hitboxes), or else just ahead of the eyes, low and to the right,
+## where a gun is seen in first person, pointing where the player looks.
+## What a drop throws from (ItemDrops).
+func held_transform() -> Transform3D:
+	var held := model.held_weapon if model != null else null
+	if held != null and held.is_inside_tree():
+		var at := held.global_transform
+		return Transform3D(at.basis.orthonormalized(), at.origin)
+	var aim := PlayerInput.aim_direction(yaw_degrees, pitch_degrees)
+	var yaw := deg_to_rad(yaw_degrees)
+	var right := Vector3(cos(yaw), 0.0, -sin(yaw))
+	var eye := global_position + Vector3.UP * eye_height()
+	return Transform3D(
+		Basis.looking_at(-aim, Vector3.UP),
+		eye + aim * HELD_AHEAD + right * HELD_RIGHT + Vector3.DOWN * HELD_BELOW
+	)
 
 
 ## Where the map put the player, to come back to.
@@ -812,6 +839,10 @@ func _on_hit_target_died() -> void:
 	_respawn_at_usec = _died_at_usec + int(respawn_seconds * 1_000_000.0)
 	var zone: StringName = hit_target.last_hitbox.zone if hit_target.last_hitbox != null else &"chest"
 	_fall()
+	# The gun leaves the hand: it falls as an item of its own (ItemDrops),
+	# from where the hand held it.
+	if model != null and model.held_weapon != null:
+		model.held_weapon.visible = false
 	killed.emit(zone)
 	velocity = Vector3.ZERO
 	_forget_hits()
@@ -851,6 +882,8 @@ func _get_up() -> void:
 			model.set_animating(true)
 	if model != null:
 		model.play(model.idle)
+		if model.held_weapon != null:
+			model.held_weapon.visible = true
 
 
 ## Where the body is: the middle of the ragdoll while there is one, or

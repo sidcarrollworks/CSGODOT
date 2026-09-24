@@ -79,6 +79,8 @@ static var _locomotion := {}
 var animation_tree: AnimationTree
 ## Whether the gun's own set was loaded, and its layers are in the tree.
 var has_weapon_layers := false
+## The gun in the hand, pinned to its wpn bone; null holding none.
+var held_weapon: Node3D
 
 ## For each moving space, the length of a cycle at each distance from its
 ## centre (cycle_rings()).
@@ -125,6 +127,7 @@ func setup(team: String, weapon_model: String, weapon_set: String = "") -> bool:
 				_probe_light(mesh)
 		var skeletons := weapon.find_children("*", "Skeleton3D", true, false)
 		character_rig.get_parent().add_child(weapon)
+		held_weapon = weapon
 		if not skeletons.is_empty() and (skeletons[0] as Skeleton3D).get_bone_count() > 0:
 			var root_rest := (skeletons[0] as Skeleton3D).get_bone_rest(0)
 			# Between the weapon's root and its skeleton sit the export's own
