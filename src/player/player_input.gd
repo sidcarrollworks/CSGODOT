@@ -67,6 +67,12 @@ const GAME_KEYS := {
 	&"slot3": KEY_3, &"slot4": KEY_4, &"slot5": KEY_5,
 	&"lastinv": KEY_Q, &"drop": KEY_G, &"use": KEY_E,
 }
+## Test keys moved off a key CS2 uses, as [from, to], put right in such a
+## map too: the range's never-die was on G, which is drop
+## (reference/binds.md).
+const MOVED_KEYS := {
+	&"dummy_immortal": [KEY_G, KEY_BRACKETLEFT],
+}
 
 var _pending: Array[ButtonEvent] = []
 var _weapon_select: int = UserCmd.SELECT_NONE
@@ -91,7 +97,8 @@ const CS_YAW_PER_COUNT := 0.022
 const PITCH_LIMIT := 89.0
 
 
-## Adds every action in GAME_KEYS the input map does not have.
+## Adds every action in GAME_KEYS the input map does not have, and moves
+## each in MOVED_KEYS still on its old key.
 static func ensure_actions() -> void:
 	for action: StringName in GAME_KEYS:
 		if InputMap.has_action(action):
@@ -100,6 +107,18 @@ static func ensure_actions() -> void:
 		var event := InputEventKey.new()
 		event.physical_keycode = GAME_KEYS[action]
 		InputMap.action_add_event(action, event)
+	for action: StringName in MOVED_KEYS:
+		if not InputMap.has_action(action):
+			continue
+		var keys: Array = MOVED_KEYS[action]
+		for event in InputMap.action_get_events(action):
+			var old_key := event as InputEventKey
+			if old_key == null or old_key.physical_keycode != keys[0]:
+				continue
+			InputMap.action_erase_event(action, event)
+			var moved := InputEventKey.new()
+			moved.physical_keycode = keys[1]
+			InputMap.action_add_event(action, moved)
 
 
 func handle_event(event: InputEvent) -> void:

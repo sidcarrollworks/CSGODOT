@@ -16,9 +16,10 @@ item 16; `reference/cs2-systems.md` section 6 has CS2's rules.
 | `tests/run_bomb_checks.gd`, `tests/run_bomb_system_checks.gd` | Their checks, and a plant on the test range. |
 
 The test range carries it: you hold it from the start, site A is marked on
-the floor behind the spawn, 5 held on the site plants, E held looking at it
-defuses, L gives or takes the kit, and 5 again after it is spent hands you
-another. You plant as a T and defuse as a CT. Its blast is dust2's (700).
+the floor behind the spawn, 5 takes it out and the attack button held on
+the site plants, E held looking at it defuses, L gives or takes the kit,
+and O, the range's reset, hands you another. You plant as a T and defuse
+as a CT. Its blast is dust2's (700).
 
 ## The numbers
 

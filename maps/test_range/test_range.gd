@@ -40,8 +40,8 @@ extends Node3D
 ## site to plant, and it counts down 40 s, beeping. Hold E looking at it to
 ## defuse, 10 s, or 5 with the kit L gives you. You plant as a terrorist and
 ## defuse as a counter-terrorist. Let it go off and it does dust2's damage
-## to you and the dummy, by distance. 5 once it has gone off or been
-## defused gives you another.
+## to you and the dummy, by distance. O, the range's reset, hands you
+## another.
 ##
 ## And CS2's grenades, thrown from your hand (GrenadeLane): the range keeps
 ## you stocked with four.
@@ -205,10 +205,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		next_hitbox_view()
 	elif event.is_action_pressed(&"dummy_cover"):
 		next_cover()
-	elif event.is_action_pressed(&"slot5"):
-		# CS2's bomb slot, which takes the bomb out; with it spent, a new one,
-		# which the same key's selection then takes out.
-		new_bomb_if_spent()
 	elif event is InputEventKey and event.pressed and not event.echo \
 			and (event as InputEventKey).physical_keycode == BOMB_KIT_KEY:
 		toggle_kit()
@@ -227,9 +223,9 @@ func _process(_delta: float) -> void:
 		"",
 		"1 2 3 4 5  rifle, pistol, knife, grenades, bomb   Q  the last",
 		"R      reload      G  drop what is in hand",
-		"P      export      O  clear",
+		"P      export      O  clear, and a new bomb",
 		"H      hitboxes    K  armour",
-		"N      dummy distance   F  dummy never dies",
+		"N      dummy distance   [  dummy never dies",
 		"M      a wall in front of the dummy",
 		"I      shooter fires    U  its weapon",
 		"Y      your armour      J  you never die",
@@ -486,12 +482,6 @@ func you_id() -> int:
 	return game.roster.userid_of(player)
 
 
-## A new bomb, once the last has gone off or been defused (5).
-func new_bomb_if_spent() -> void:
-	if bomb_system != null and bomb.state in [C4.State.NONE, C4.State.DEFUSED, C4.State.EXPLODED]:
-		bomb_system.give_to(you_id())
-
-
 ## The kit on and off (L), which the inventory carries as CS2's
 ## item_defuser.
 func toggle_kit() -> void:
@@ -553,9 +543,9 @@ func bomb_readout() -> String:
 					line += ", too late"
 			return line
 		C4.State.DEFUSED:
-			return "BOMB   defused: press 5 for another"
+			return "BOMB   defused: O for another"
 		C4.State.EXPLODED:
-			return "BOMB   exploded: press 5 for another"
+			return "BOMB   exploded: O for another"
 	return "BOMB   -"
 
 

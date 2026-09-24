@@ -481,7 +481,8 @@ None of these are changed by the contract threads; this branch changes
   match).
 - *(Done.)* `PlayerInput`: G sends `drop`, E and the right button set `USE`
   and `ATTACK2`, 3 to 5 and Q select; the buy menu sends `buy`. The
-  range's never-die moved to F, and the grenade lane's keys are gone.
+  range's never-die moved to `[` (`reference/binds.md`), and the grenade
+  lane's keys are gone.
   `PlayerInput.ensure_actions` adds any of these keys the input map lacks
   (a `project.godot` an open editor wrote back over).
 - `de_dust2.gd`: the presenters (kill feed, grenade and bomb drawing)
