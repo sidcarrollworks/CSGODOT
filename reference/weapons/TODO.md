@@ -162,9 +162,19 @@ Roughly in order; L1 to L3 can start at once.
 - [ ] **R3. Weapon modes.** Right click switches mode where the sheet has
   one: burst (FAMAS, Glock), silencer on and off with its attach time (M4A1-S,
   USP-S), fan fire (R8). A mode reads its own row over the weapon's.
-- [ ] **R4. Scopes.** Zoom levels, scoped mobility and accuracy from the
+- [x] **R4. Scopes.** Zoom levels, scoped mobility and accuracy from the
   scoped rows, the sniper unscoping after a shot, the scope overlay (L4) when
-  it exists.
+  it exists. *(Done 2026-09-24, `tests/run_scope_checks.gd`: right click
+  steps through `m_nZoomLevels` at `m_nZoomFOV1/2`, each level reached over
+  its `m_flZoomTime`; scoped speed and inaccuracy are the game's second
+  values; the AWP and SSG 08 unzoom as they fire and rezoom once the bolt is
+  worked; a reload or a switch takes the scope down; the view hides the
+  snipers' arms, draws the scope (CS2's mask where extracted) and slows the
+  mouse by the zoomed fov over 90; no crosshair on the four snipers;
+  noscope kills; bots scope before they fire. Guessed until the Local check
+  in `reference/research/combat.md`: the scoped accuracy comes in linearly
+  over the zoom time, and the zoom times are read as the time to reach each
+  level. Not done: the zoom sounds, and the scope showing inaccuracy.)*
 - [ ] **R5. Shotguns.** Pellets per shot (Bullets), each traced and damaged
   on its own, shorter range.
 - [ ] **R6. Random recoil.** Weapons marked "Random" kick by Recoil Amount

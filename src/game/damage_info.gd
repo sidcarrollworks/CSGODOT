@@ -67,6 +67,8 @@ var armor_penetration: float = 1.0
 var armor_wear: float = 0.5
 ## How many walls a round went through first.
 var walls: int = 0
+## A round from a gun with a scope, fired without it (Weapon.Shot.noscope).
+var noscope: bool = false
 
 # What the victim fills (HitTarget.take_damage).
 
@@ -136,6 +138,7 @@ static func deal(target: HitTarget, info: DamageInfo, events: GameEvents = null)
 			"weapon": info.weapon,
 			"headshot": info.headshot,
 			"penetrated": info.walls,
+			"noscope": info.noscope,
 			"distance": info.origin.distance_to(info.position),
 			"dmg_health": roundi(info.health_taken),
 			"dmg_armor": roundi(info.armor_taken),

@@ -259,15 +259,18 @@ func _think(tick: int, delta: float) -> UserCmd:
 					_rng.randf_range(-AIM_ERROR_DEGREES, AIM_ERROR_DEGREES)
 				)
 			error = _aim_error
-			if not weapon.data.automatic:
+			# A scoped gun holds its fire until the scope is in.
+			var scope_ready := _scoped_in(cmd, yaw, pitch)
+			if scope_ready and not weapon.data.automatic:
 				# Tapped: a press every TAP_SECONDS, the trigger up between.
 				_tap_clock -= delta
 				if _tap_clock <= 0.0:
 					_tap_clock = TAP_SECONDS
 					cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.ATTACK, true, 0.0, yaw + error.x, pitch + error.y))
-			elif _burst_clock < BURST_SECONDS:
+			elif scope_ready and _burst_clock < BURST_SECONDS:
 				cmd.buttons |= UserCmd.ATTACK
 	elif not route.is_empty():
+		_scope_down(cmd, yaw, pitch)
 		var way := _way_on(cmd, delta)
 		if way.length_squared() > 0.0:
 			# The game's yaw 0 looks down -Z, and yaw grows towards -X.
@@ -279,6 +282,26 @@ func _think(tick: int, delta: float) -> UserCmd:
 	cmd.pitch_degrees = pitch + error.y
 	_sent_error = error
 	return cmd
+
+
+## A gun with a scope fires only through it: scoped to its first level (a
+## right click) and once the scope has come in (Weapon.scoped_share). A
+## sniper out of the scope for its shot goes back in by itself. True for a
+## gun with no scope.
+func _scoped_in(cmd: UserCmd, yaw: float, pitch: float) -> bool:
+	if weapon.data.zoom_levels() == 0:
+		return true
+	if weapon.zoom_level == 0 and not weapon.rezoom_pending():
+		cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.ATTACK2, true, 0.0, yaw, pitch))
+		return false
+	return weapon.zoom_level > 0 and weapon.scoped_share(SimClock.tick_end_usec(cmd.tick)) >= 1.0
+
+
+## Walking on, the scope comes down (a right click a tick until it has), so
+## the bot runs at the gun's own speed rather than the scoped one.
+func _scope_down(cmd: UserCmd, yaw: float, pitch: float) -> void:
+	if weapon != null and weapon.zoom_level > 0:
+		cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.ATTACK2, true, 0.0, yaw, pitch))
 
 
 ## Buys in freeze time, once a round, on the tick it was given at its spawn:
