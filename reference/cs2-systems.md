@@ -40,6 +40,11 @@ CFG, so a live match could differ from it. Values marked **measure** are not
 in any of these files; they are community figures to be checked in CS2 by
 the Local task named beside them.
 
+Research from 2026-09-24 into how CS2 runs a round (money, buying, the
+bomb, grenades, drops, round flow and events, the HUD, bots) is in
+`reference/research/round.md`. It settles or contradicts several values
+below; this page is not yet updated to match.
+
 ---
 
 ## 1. Match and round flow
