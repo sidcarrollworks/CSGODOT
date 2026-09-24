@@ -40,6 +40,15 @@ Whoever lands an item marks it done where it is listed, in the same pull
 request. Before starting one, check it against `main`: the other side may
 have done it already.
 
+Before starting a feature, check for research on it: `reference/research/`
+first, then `reference/cs2-systems.md`, `reference/weapons/` and
+`reference/systems/`, and the open pull requests, since research pages often
+wait there before they merge. Build to what the research found rather than
+older guesses in the code or the systems pages, and take on the code fixes
+and Local checks listed at the end of its page where they concern the
+feature. When nothing covers the feature, say so in the plan or pull request
+before building, so Sid can decide whether to have it researched first.
+
 ## What the code holds to
 
 - Source units (1 unit = 1 inch), a fixed 64 Hz tick, and the project's own
