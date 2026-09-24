@@ -221,9 +221,11 @@ Sources, shortened below:
   occlusion and distance effects for gunfire, footsteps and reloads"; of
   2023-10-17: "Various tweaks and bug fixes around occlusion filters and
   footstep clarity" (*Valve*). The files above are the state three years
-  later. The baked occlusion is Steam Audio's, per map, and
-  not extracted; Godot has no occlusion, so ours will be clearer through walls
-  until something is built.
+  later. The event asks for baked occlusion, but the switch that allows it,
+  `snd_use_baked_occlusion`, is 0 in this build (*Read*, CV 9363), so in a
+  normal match the client traces its own rays instead (`snd_occlusion_rays 4`,
+  `snd_occlusion_bounces 1`; `audio-engine.md` section 3). Godot has no
+  occlusion, so ours will be clearer through walls until something is built.
 - **Heard in stereo only close up.** `distance_unfiltered_stereo_mapping_curve`
   goes from 1.0 at 50 units to 0 at 59 (*Read*, FS); *Inferred:* past 59
   units a step is positioned by the engine's 3D audio rather than played as a
