@@ -154,6 +154,8 @@ func _ready() -> void:
 	weapon_sounds.name = "WeaponSounds"
 	weapon_sounds.spatial = true
 	add_child(weapon_sounds)
+	# Its shots, heard from the game's weapon_fire (WeaponSounds.watch).
+	weapon_sounds.watch(self)
 	equipped.connect(_on_equipped)
 	if weapon_data != null:
 		arm(weapon_data)
@@ -458,8 +460,6 @@ func can_see(other: Node3D) -> bool:
 
 func _on_shot_traced(_shot: Weapon.Shot, result: Hitscan.Result) -> void:
 	BulletImpacts.mark_in(get_tree(), result)
-	if weapon_sounds != null:
-		weapon_sounds.shot()
 	# The gun's shot, added over the upper body. (CS2's third-person shoot
 	# clips are additive; played whole, as they once were, they folded the
 	# body over, and a firing bot fell as if dead with every round.)

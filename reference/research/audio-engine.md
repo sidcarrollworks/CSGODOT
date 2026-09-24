@@ -739,7 +739,9 @@ Not made here; each belongs to whoever owns the file.
 - `src/player/player_view.gd:157-160`, `src/bots/bot.gd:381-384`: sounds are
   started from a signal inside the tick; they should come from events on the
   `GameWorld` and be played by the view per frame (`CLAUDE.md`, "What the code
-  holds to").
+  holds to"). Done for shots (2026-09-24): `WeaponSounds` hears its
+  shooter's `weapon_fire` and plays it on the next frame. The reload and the
+  shooter's hit feedback still start from `reload_started` and `shot_traced`.
 - `reference/asset-pipeline.md:51`: "The sound event definitions ... are not
   fetched; those are by ear" and "bright ticks ... fading over 80 m": the
   definitions are readable in GameTracking-CS2 (this page has the gameplay

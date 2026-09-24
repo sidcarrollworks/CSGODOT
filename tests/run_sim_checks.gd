@@ -106,6 +106,7 @@ func _run() -> void:
 	await _test_a_press_fires_from_where_the_player_was()
 	await _test_a_semi_automatic_fires_once_a_click()
 	await _test_the_hand()
+	_test_shots_are_heard_from_the_events()
 	await _test_a_running_tap_misses()
 	await _test_a_bot_plays_through_commands()
 	await _test_a_bot_finds_its_way()
@@ -816,6 +817,63 @@ func _test_the_hand() -> void:
 ## Taps at a run, through the real body: every one is fired into the
 ## running cone, and they land all over it rather than on one spot. Sid,
 ## 2026-09-22: the first shot while running was still perfectly accurate.
+## A shot is heard from the game's events, never from inside the tick: the
+## shooter's own weapon_fire is noted as the tick hands it out, one for
+## each round and with the gun it names, and played on the next frame
+## drawn; another player's shots are theirs to hear.
+func _test_shots_are_heard_from_the_events() -> void:
+	var world := GameWorld.new()
+	_world.add_child(world)
+	world.set_physics_process(false)
+	var player := Commanded.new()
+	player.starting_gun = WeaponLibrary.ak47()
+	_new_player(Vector3(-2048.0, 0.0, 2048.0), "T", player)
+	player.respawn()
+	world.add_player(player)
+	var other := _new_player(Vector3(-2048.0, 0.0, 1748.0), "T")
+	world.add_player(other)
+	var sounds := WeaponSounds.new()
+	player.add_child(sounds)
+	# Frames are the test's to draw.
+	sounds.set_process(false)
+	sounds.watch(player)
+	var fired: Array[GameEvent] = []
+	var heard_in_tick: Array[int] = []
+	world.game.events.listen(&"weapon_fire", func(event: GameEvent) -> void: fired.append(event))
+	player.shot_traced.connect(func(_shot: Weapon.Shot, _result: Hitscan.Result) -> void:
+		heard_in_tick.append(sounds.pending_shots().size() - fired.size()))
+
+	player.held = UserCmd.ATTACK
+	for i in SimClock.ticks_in(ItemRegistry.item("weapon_ak47").deploy_seconds + 0.3):
+		world.step()
+	player.held = 0
+	var noted := sounds.pending_shots()
+	_check(
+		not fired.is_empty() and noted.size() == fired.size()
+			and Array(noted).all(func(item_class: String) -> bool: return item_class == "weapon_ak47"),
+		"every round the player fires is noted from its weapon_fire, as the gun it names (%d noted, %d sent)" % [noted.size(), fired.size()]
+	)
+	_check(
+		not heard_in_tick.is_empty() and heard_in_tick.all(func(ahead: int) -> bool: return ahead == 0),
+		"none of it from the shot inside the tick: a round is noted only once the tick hands its event out (%s)" % [heard_in_tick]
+	)
+	world.game.events.send(&"weapon_fire", {"userid": other.userid, "weapon": "weapon_glock"})
+	world.game.events.flush()
+	_check_equal(sounds.pending_shots().size(), noted.size(), "another player's shot is not heard as this one's")
+	sounds._process(0.0)
+	_check(sounds.pending_shots().is_empty(), "and the next frame drawn plays what was noted")
+
+	world.remove_player(player)
+	sounds._process(0.0)
+	world.game.events.send(&"weapon_fire", {"userid": 1, "weapon": "weapon_ak47"})
+	world.game.events.flush()
+	_check(sounds.pending_shots().is_empty(), "out of the world, nothing is noted from its events")
+	world.remove_player(other)
+	player.queue_free()
+	other.queue_free()
+	world.queue_free()
+
+
 func _test_a_running_tap_misses() -> void:
 	var player := _new_player(Vector3(512.0, 0.0, 0.0), "T")
 	player.equip(WeaponLibrary.ak47())
