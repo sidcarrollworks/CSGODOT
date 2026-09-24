@@ -139,11 +139,26 @@ settles which.
 
 Neither `ak47.csv` nor `m4a1s.csv` has been changed.
 
-**Not covered.** No source reachable from here has a pattern for the R8
-Revolver's fan fire, the XM1014, the G3SG1, the SCAR-20, or the scoped SG
-553 and AUG: recoil tools leave them out, and the sites that draw them
-(csdb.gg, csstats.gg, op.gg) refuse connections from the project's cloud
-threads. The guns the sheet marks "Random" (every other pistol, the other
+**Not covered.** No source reachable from here has patterns for the rest,
+and Sid's notes (2026-09-24) and CS2's weapon file sort them as follows:
+
+- **R8 Revolver, fan fire:** a wide spread, not a pattern (Sid). The game
+  agrees: fan fire's spread is 0.068 against 0.00052 on a single shot, and
+  its kick is 45 against 20 (`vdata.csv`, the alternate values).
+- **XM1014:** each shot kicks the view up hard and the pellets spread wide;
+  there is no path to learn (Sid). Its recoil magnitude is 80 with a
+  variance of 20. The spread may still be fixed: it is one of the four
+  shotguns with a spread seed (817955), from the Holiday Spread update
+  (`reference/research/combat.md`, R5).
+- **SG 553 and AUG, scoped:** the path keeps its shape (Sid). Its size
+  does not stay the same: CS2's file gives the scoped mode less recoil,
+  19 against 28 on the SG 553 and 16 against 24 on the AUG, with the same
+  seed and angle variance. Inferred: the scoped pattern is the unscoped
+  one times 0.68 and 0.67. A scoped spray at the wall would confirm it.
+- **G3SG1 and SCAR-20:** still needed. The sheet marks both "Set Pattern",
+  and the game gives each its own seed.
+
+The guns the sheet marks "Random" (every other pistol, the other
 shotguns, the AWP and the SSG 08) are weapons TODO R6. The 496-unit wall
 procedure above still covers any of them.
 
