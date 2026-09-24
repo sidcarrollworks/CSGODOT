@@ -17,6 +17,7 @@ const VARIANTS := {
 	"sun_atlas_4096": "a 4096 shadow atlas rather than 8192",
 	"sun_distance_2048": "shadows out to 2048 units rather than 8192",
 	"one_sided_casters": "the map casting from its front faces only, not both",
+	"no_occlusion": "occlusion culling off (MapOccluders): what the map's walls save by hiding what is behind them",
 	"no_msaa": "2x MSAA off",
 	"no_ssao": "screen-space occlusion off",
 	"no_glow": "bloom off",
@@ -24,7 +25,7 @@ const VARIANTS := {
 	"no_skybox": "the 3D skybox's meshes hidden (they write depth, so nothing hides them early)",
 	"no_players": "every body but the camera's hidden",
 	"half_resolution": "the 3D drawn at half the width and height: fill rate against the rest",
-	"all_off": "every one of the above at once: what is left is the map's geometry and materials",
+	"all_off": "every one of the above at once but culling and resolution: what is left is the map's geometry and materials",
 }
 
 ## A far material writes its depth (far.gdshaderinc): the skybox's meshes.
@@ -67,6 +68,8 @@ static func apply(variant: String, root: Node, viewport: Viewport) -> Callable:
 				if mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED:
 					undo.append(_change(mesh, "cast_shadow", GeometryInstance3D.SHADOW_CASTING_SETTING_ON))
 			return _together(undo)
+		"no_occlusion":
+			return _change(viewport, "use_occlusion_culling", false)
 		"no_msaa":
 			return _change(viewport, "msaa_3d", Viewport.MSAA_DISABLED)
 		"no_ssao":
@@ -91,7 +94,7 @@ static func apply(variant: String, root: Node, viewport: Viewport) -> Callable:
 		"all_off":
 			var undo: Array[Callable] = []
 			for each in VARIANTS:
-				if each != "baseline" and each != "all_off" and each != "half_resolution":
+				if not each in ["baseline", "all_off", "half_resolution", "no_occlusion"]:
 					undo.append(apply(each, root, viewport))
 			undo.reverse()
 			return _together(undo)

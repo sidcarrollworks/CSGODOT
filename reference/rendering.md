@@ -43,7 +43,7 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
 | Direct light | a custom `light()` on every map material, Godot's own Burley and GGX written out, so the baked light rides the sun's pass | `baked_light.gdshaderinc` |
 | Reflections | the sky only (`REFLECTION_SOURCE_SKY`), indoors too | `MapLighting.build` |
 | 3D skybox | ordinary geometry scaled up, every fragment writing its own depth to sit behind the map | `FarMaterials`, `far.gdshaderinc` |
-| Occlusion culling | off; nothing culls a room behind a wall but the frustum | `project.godot` |
+| Occlusion culling | on since R3, from the world's own opaque surfaces; before that, only the frustum culled | `project.godot`, `MapOccluders` |
 | Your own shadow | a second copy of your body, drawn into the shadow maps only | `PlayerView` |
 
 ## The suspects, most likely first (inferred, not measured)
@@ -102,6 +102,11 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
   and `env_cubemap` or `env_combined_light_probe_volume` in the entity
   lump), for R5.
 
+- **L5. Whether the compiled map carries its visibility.** Source 2 maps
+  are compiled with precomputed visibility, which CS2 culls with. Check
+  whether Source 2 Viewer lists or exports it for dust2 (inferred, not
+  checked). If it does, it could replace or back up the occluders (R3).
+
 ## Remote items (cloud threads)
 
 - **R0. Research CS2's renderer**, as the research pages do: what its
@@ -115,11 +120,18 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
   test works again. Small, and exact: the squeeze is affine in the depth
   the rasteriser interpolates, so it gives the same depth at every pixel.
   Waits on L1 only to know if it is worth doing first.
-- **R3. Culling**, if L1 shows many draw calls: occluders built at load
-  from the map's own geometry (`ArrayOccluder3D`, with occlusion culling
-  turned on), visibility ranges on small props, and the map's surfaces
-  merged by material where the export split them. Each counted for its CPU
-  cost at load and per frame.
+- **R3. Culling.** *(Occluders built, 2026-09-24; Sid showed the whole map
+  drawn from B tunnels.)* `MapOccluders` builds one `ArrayOccluder3D` at
+  load from the world's opaque surfaces (lightmapped brush work, with no
+  alpha edge, overlay or translucent layer, and no triangle under 64 square
+  units). Occlusion culling is on in `project.godot`, and the importer's
+  report gives the occluder's triangle count. How much it saves depends on
+  how finely the export splits the world into meshes, since a mesh is
+  culled only when all of its bounds are hidden. The profiler's
+  `no_occlusion` variant measures it. Still to do, if L1 calls for them:
+  splitting large world meshes into cells, visibility ranges on small
+  props, and CS2's own precomputed visibility, if the export can carry it
+  (L5).
 - **R4. Shadows split as CS2 splits them**, if L3 finds the baked page:
   the static world's sun shadow read from it in the lightmap shader, and
   the live shadow maps drawing only what moves (players, dropped guns,
