@@ -92,6 +92,10 @@ Updated 2026-09-24 later: game modes apart from maps (item 24a, `reference/syste
   PR #21), entity lump, blend layers, sky, 3D skybox.
 - Lighting from the map's own numbers: sun, fog, exposure, the baked
   lightmaps for bounce light, light probes for props, players and arms.
+- What a frame costs to draw, measured on Sid's machine (2026-09-24,
+  `scripts/profile_render.gd`, `reference/rendering.md`): the sun's live
+  shadows are most of it. Occlusion culling from the collision hull and a
+  skybox the depth test can hide went in with it (PR #78).
 - Viewmodel arms and weapons at CS2's `viewmodel_fov`; third-person agents
   (Phoenix and SAS) on the locomotion rig, moved by CS2's own blend spaces
   (runs at 225, walks at 136, crouching at 96, kept in step) in an animation
@@ -370,6 +374,29 @@ exist), what is built, and the Local and Remote work. The phases below put
 them in order. Settled by Sid's message: the bomb is in (so dust2 plays as
 dust2), and the economy and buy menu are in. Taken as the default because
 he asked for CS2's systems: 5 v 5, with bots filling the empty places.
+
+### Rendering (new, 2026-09-24)
+
+Sid: dust2 runs poorly at 1920x1080 here, where CS2 plays it at 3840x2160
+and about 180 frames a second on his RTX 4070 Ti, and lighting and shaders
+should look and run as well as Source 2's. `reference/rendering.md` is the
+list, split into Local and Remote items, with the measurements.
+
+- **The profiler (R1).** *(done, PR #78)* Draws dust2 from eight fixed views
+  and switches one feature off at a time.
+- **The skybox behind the map by its vertices (R2).** *(done, PR #78; Sid
+  re-runs the profiler)* Writing its depth per fragment cost 0.8 ms at 1080p
+  and 3.2 ms at 4K.
+- **Occlusion culling (R3).** *(done, PR #78, from the collision hull; Sid
+  walks long doors and top of mid again)* The camera's pass went from about
+  1,170 draw calls to 290.
+- **The sun's shadows as CS2 draws them (R4).** *(Local extracts two files,
+  then Remote; waits on Sid's go)* dust2 ships the static map's sun shadow
+  baked (`direct_light_shadows`), and the probe atlas's `_dlshd` page for
+  what moves. The live shadows cost 2.0 ms of GPU at 1080p, 6.3 ms at 4K
+  and 1.7 ms of the renderer's CPU, from 6,200 draw calls a frame.
+- **Research CS2's renderer (R0), reflections from the map's cubemaps (R5)
+  and CS2's video settings (R6).** *(Remote, not started)*
 
 ### Phase 3: split the game from the player (the ground for multiplayer)
 
@@ -682,6 +709,8 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 | Decided | The game's own numbers win over the sheet's wherever the game has them (Sid, 2026-09-22), the Desert Eagle's jump inaccuracy included (46.75, not 378.30) | `WeaponVData`, every gun |
 | Hands | List CS2's binds on a fresh config (`key_listboundkeys`) to confirm the defaults file | Item 12a |
 | Hands | The systems' Local list in `reference/cs2-systems.md`: bomb (C1, the explosion's particles from C3, and decoding C2's damage), grenades (G1 to G5, and G6's particle and smoke textures), knife (K1), sounds (S1, S2) | Phases 4 to 7 |
+| Hands | Run `scripts/profile_render.gd` again at 1080p and 4K, and walk long doors and top of mid, on PR #78 | Rendering R2, R3 |
+| Decide | Whether dust2's sun shadows move to CS2's baked page (R4), and extract `direct_light_shadows` and the probe atlas's `_dlshd` if so | Rendering R4 |
 
 ---
 
