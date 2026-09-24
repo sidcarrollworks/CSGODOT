@@ -42,7 +42,7 @@ func _process(_delta: float) -> void:
 static func shown_for(who: PlayerSim) -> bool:
 	if who == null or not who.alive or who.weapon == null:
 		return false
-	return who.weapon.zoom_level > 0 and who.weapon.data.hides_view_model_when_zoomed
+	return who.weapon.through_scope()
 
 
 func _draw() -> void:

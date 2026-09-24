@@ -466,11 +466,8 @@ func _follow_scope() -> void:
 	var hidden := false
 	var sensitivity := 1.0
 	if weapon != null and weapon.data.zoom_levels() > 0:
-		# The frame falls between the last two ticks.
-		var alpha := clampf(Engine.get_physics_interpolation_fraction(), 0.0, 1.0)
-		var now := SimClock.now_usec() - SimClock.tick_usec() + int(alpha * SimClock.tick_usec())
-		fov = weapon.zoom_fov_at(now)
-		hidden = weapon.zoom_level > 0 and weapon.data.hides_view_model_when_zoomed
+		fov = weapon.zoom_fov_at(SimClock.draw_usec())
+		hidden = weapon.through_scope()
 		sensitivity = weapon.data.zoom_fov(weapon.zoom_level) / ViewModelProjection.WORLD_FOV * ZOOM_SENSITIVITY_RATIO
 	player.input.zoom_sensitivity = sensitivity
 	if view_model != null:

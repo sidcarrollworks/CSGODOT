@@ -828,9 +828,6 @@ func _test_the_hand() -> void:
 	await physics_frame
 
 
-## Taps at a run, through the real body: every one is fired into the
-## running cone, and they land all over it rather than on one spot. Sid,
-## 2026-09-22: the first shot while running was still perfectly accurate.
 ## A shot is heard from the game's events, never from inside the tick: the
 ## shooter's own weapon_fire is noted as the tick hands it out, one for
 ## each round and with the gun it names, and played on the next frame
@@ -888,6 +885,9 @@ func _test_shots_are_heard_from_the_events() -> void:
 	world.queue_free()
 
 
+## Taps at a run, through the real body: every one is fired into the
+## running cone, and they land all over it rather than on one spot. Sid,
+## 2026-09-22: the first shot while running was still perfectly accurate.
 func _test_a_running_tap_misses() -> void:
 	var player := _new_player(Vector3(512.0, 0.0, 0.0), "T")
 	player.equip(WeaponLibrary.ak47())

@@ -320,6 +320,13 @@ func scoped_share(now_usec: int) -> float:
 	return zoom_progress(now_usec)
 
 
+## Whether the view is through the scope now: a sniper's, which puts the
+## arms away and draws the scope over the screen, where the AUG's and SG
+## 553's keep both (WeaponData.hides_view_model_when_zoomed).
+func through_scope() -> bool:
+	return zoom_level > 0 and data.hides_view_model_when_zoomed
+
+
 ## How fast the player may run with it: the scoped speed as soon as the
 ## scope is up (the AWP's 100 against 200).
 func max_speed() -> float:
@@ -390,8 +397,12 @@ func update(dt: float, now_usec: int, state: ShooterState = null) -> void:
 	var ducked := state != null and state.ducked
 	if state != null:
 		if state.on_ground and not _was_on_ground:
-			var numbers := data.scoped if zoom_level > 0 and data.scoped != null else data
-			_inaccuracy = maxf(_inaccuracy, numbers.inaccuracy_landing - numbers.inaccuracy_standing)
+			# As scoped as the cone is (scoped_share).
+			var share := scoped_share(now_usec)
+			var excess := data.inaccuracy_landing - data.inaccuracy_standing
+			if share > 0.0:
+				excess = lerpf(excess, data.scoped.inaccuracy_landing - data.scoped.inaccuracy_standing, share)
+			_inaccuracy = maxf(_inaccuracy, excess)
 		_was_on_ground = state.on_ground
 	_decay_inaccuracy(dt, ducked)
 

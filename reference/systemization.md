@@ -379,7 +379,7 @@ throughout: `mp_tagging_scale` and `sv_predictable_damage_tag_ticks` as
 constants in `PlayerSim`, `weapon_recoil_decay_coefficient` in `Weapon`,
 `mp_freezetime` and the rest in `MatchRules`, the bots' reaction and aim
 error as constants in `Bot`. The developer keys are wired by hand where
-they are used: F5 in `de_dust2.gd`, F3 in `GameHud`, V through
+they are used: F5 in `Competitive` (once `de_dust2.gd`), F3 in `GameHud`, V through
 `UserCmd.toggle_noclip`, and twelve range keys in `test_range.gd`, ten
 of them in `project.godot` but not in `scripts/setup_input_map.gd`, which
 is meant to write it.

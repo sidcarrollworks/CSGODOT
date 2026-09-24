@@ -105,18 +105,12 @@ func _process(_delta: float) -> void:
 	_pending.clear()
 	_open.clear()
 
-	var now := draw_usec()
+	var now := SimClock.draw_usec()
 	quads.begin(narrowing)
 	_draw_trails(now, camera)
 	_draw_ropes(now, eye)
 	flashes.advance(now, eye)
 	quads.finish()
-
-
-## The simulation time a frame falls at: between the last two ticks.
-static func draw_usec() -> int:
-	var tick := SimClock.tick_usec()
-	return SimClock.now_usec() - tick + int(clampf(Engine.get_physics_interpolation_fraction(), 0.0, 1.0) * tick)
 
 
 ## A round's flash and tracer, from where its gun is drawn: a shotgun's

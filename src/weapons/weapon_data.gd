@@ -197,8 +197,8 @@ func zoom_time(level: int) -> float:
 	return zoom_times[level]
 
 
-## CS2's fov with no scope.
-const UNZOOMED_FOV := 90.0
+## CS2's fov with no scope: the world's (ViewModelProjection).
+const UNZOOMED_FOV := ViewModelProjection.WORLD_FOV
 
 # --- Recoil ---------------------------------------------------------------
 

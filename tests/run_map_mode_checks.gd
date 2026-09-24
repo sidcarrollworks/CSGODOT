@@ -127,13 +127,17 @@ func _test_the_sky_from_the_maps_own_material() -> void:
 		MapLoader.resource_path('resource_name:"materials/skybox/sky_de_dust2.vmat"'), "materials/skybox/sky_de_dust2.vmat",
 		"the lump's resource reference, bare"
 	)
+	# Laid out as dust2's decompiled sky_de_dust2.vmat is: the source image,
+	# then the compiled texture under a hashed name no file has.
 	var vmat := "\n".join([
-		'\t"g_tNormal" "materials/default/default_normal.vtex"',
-		'\t"g_tSkyTexture" "materials/skybox/sky_mirage_hdr.vtex"',
+		'\t"SkyTexture"\t"materials/skybox/sky_mirage_hdr.exr"',
+		'\t"g_tNormal"\t"materials/default/default_normal.vtex"',
+		'\t"g_tSkyTexture"\t"materials/skybox/sky_mirage_hdr_exr_1a2b3c4d.vtex"',
 	])
 	_check_equal(
-		MapLoader.sky_textures(vmat), PackedStringArray(["materials/skybox/sky_mirage_hdr.vtex", "materials/default/default_normal.vtex"]),
-		"the material's sky texture comes first"
+		MapLoader.sky_textures(vmat),
+		PackedStringArray(["materials/skybox/sky_mirage_hdr.exr", "materials/skybox/sky_mirage_hdr_exr_1a2b3c4d.vtex", "materials/default/default_normal.vtex"]),
+		"the material's sky textures come first, its source image before the compiled one"
 	)
 
 	DirAccess.make_dir_recursive_absolute(SKY_DIR.path_join("materials/skybox"))
@@ -285,6 +289,8 @@ func _test_competitive_on_a_small_map() -> void:
 	)
 	_check(mode.hud != null and mode.hud.match_state == mode.match_state and mode.hud.economy == mode.economy, "the HUD reads the match and your money")
 	_check(mode.hud.scope != null and mode.hud.scope.player == mode.player, "and draws your scope, on any map")
+	var effects := mode.get_node_or_null(^"ShotEffects") as ShotEffects
+	_check(effects != null and effects.game == world.game and effects.you == mode.player, "and the rounds' tracers and the guns' flashes, as you see them")
 	_check(mode.notes.size() == 1 and mode.notes[0].contains("nav mesh"), "the only thing missing is the nav mesh (%s)" % [mode.notes])
 	var at_spawn := false
 	for spawn: Dictionary in T_SPAWNS:

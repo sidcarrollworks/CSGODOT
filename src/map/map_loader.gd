@@ -162,11 +162,13 @@ static func resource_path(value: String) -> String:
 
 
 ## The textures a decompiled material names, those on a line that mentions
-## the sky first.
+## the sky first: its source images (dust2's "SkyTexture" names the .exr
+## Source 2 Viewer writes) and its compiled textures, whose hashed names
+## (sky_de_dust2_exr_908a35ba.vtex) have no file of their own.
 static func sky_textures(vmat: String) -> PackedStringArray:
 	var sky := PackedStringArray()
 	var other := PackedStringArray()
-	var texture := RegEx.create_from_string('"([^"]+\\.vtex)"')
+	var texture := RegEx.create_from_string('"([^"]+\\.(?:vtex|exr|hdr|png))"')
 	for line in vmat.split("\n"):
 		var found := texture.search(line)
 		if found == null:

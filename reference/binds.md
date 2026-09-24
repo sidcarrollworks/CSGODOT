@@ -171,8 +171,8 @@ Radio, chat, pings and graffiti are under "Later" in the roadmap.
 - **Remote:** the tables, the commands for the test keys, moving the
   range (`test_range.gd`, `grenade_lane.gd`), the HUD's F3 and the buy
   menu onto them, `PlayerInput` reading keys through the table, the input
-  map in `project.godot`, and the checks. dust2's F5 is one line in
-  `de_dust2.gd`, done with the local agent's agreement.
+  map in `project.godot`, and the checks. The match's F5 is one line in
+  `src/modes/competitive.gd`, done with the local agent's agreement.
 - **Local:** the wiring in `contracts.md` section 5 (G `drop`, E `USE`,
   MOUSE2 `ATTACK2`, the inventory's slots and `lastinv`, the hand throw)
   adds its keys as binds in the table rather than new key reads. If that

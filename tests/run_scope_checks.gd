@@ -29,12 +29,17 @@ var _world: Node3D
 class Commanded extends PlayerSim:
 	var tap := 0
 	var walks := false
+	## Presses for the next command, in order, each [button, fraction].
+	var taps: Array = []
 
 	func command_for(tick: int, dt: float) -> UserCmd:
 		var cmd := super.command_for(tick, dt)
 		if tap != 0:
 			cmd.steps.append(UserCmd.SubtickStep.new(tap, true, 0.5, yaw_degrees, pitch_degrees))
 			tap = 0
+		for press: Array in taps:
+			cmd.steps.append(UserCmd.SubtickStep.new(press[0], true, press[1], yaw_degrees, pitch_degrees))
+		taps = []
 		if walks:
 			cmd.move = Vector2(0.0, 1.0)
 		return cmd
@@ -60,6 +65,7 @@ func _run() -> void:
 	await physics_frame
 	await physics_frame
 	await _test_a_player_scopes_with_right_click()
+	await _test_a_click_and_a_round_in_one_tick()
 	await _test_a_bot_fires_through_its_scope()
 	_finish("scope")
 
@@ -308,6 +314,51 @@ func _test_a_player_scopes_with_right_click() -> void:
 		world.step()
 		fastest = maxf(fastest, Vector2(player.velocity.x, player.velocity.z).length())
 	_check(fastest > 195.0 and fastest <= 200.5, "and it runs at 200 again (%.1f)" % fastest)
+	player.queue_free()
+	world.queue_free()
+	await physics_frame
+
+
+## A right click and a round in the one tick go in the order they came: a
+## round fired before the click that takes the scope down went out through
+## it, and one fired before the click that puts it up went out without.
+func _test_a_click_and_a_round_in_one_tick() -> void:
+	var world := GameWorld.new()
+	_world.add_child(world)
+	world.set_physics_process(false)
+	var player := Commanded.new()
+	_new_player(Vector3(0.0, 0.0, 0.0), "CT", player)
+	world.add_player(player)
+	player.equip(WeaponLibrary.build("weapon_awp"))
+	var shots: Array[Weapon.Shot] = []
+	player.shot_traced.connect(func(shot: Weapon.Shot, _result: Hitscan.Result) -> void: shots.append(shot))
+	for i in SimClock.ticks_in(2.0):
+		world.step()
+	# Up to the second level, and settled in it.
+	for i in 2:
+		player.tap = UserCmd.ATTACK2
+		world.step()
+	for i in SimClock.ticks_in(0.5):
+		world.step()
+	player.taps = [[UserCmd.ATTACK, 0.2], [UserCmd.ATTACK2, 0.7]]
+	world.step()
+	var scoped := shots.size() == 1 and shots[0].zoom_level == 2 and not shots[0].noscope
+	# Out of the scope, and the bolt worked.
+	for i in 3:
+		if player.weapon.zoom_level != 0:
+			player.tap = UserCmd.ATTACK2
+			world.step()
+	for i in SimClock.ticks_in(2.0):
+		world.step()
+	var level_before := player.weapon.zoom_level
+	player.taps = [[UserCmd.ATTACK, 0.2], [UserCmd.ATTACK2, 0.7]]
+	world.step()
+	var unscoped := level_before == 0 and shots.size() == 2 and shots[1].zoom_level == 0 and shots[1].noscope
+	_check(
+		scoped and unscoped,
+		"a round fired a moment before the click that takes the scope down goes out scoped, one before the click that puts it up a noscope (%s)"
+			% [shots.map(func(shot: Weapon.Shot) -> String: return "level %d%s" % [shot.zoom_level, ", noscope" if shot.noscope else ""])]
+	)
 	player.queue_free()
 	world.queue_free()
 	await physics_frame

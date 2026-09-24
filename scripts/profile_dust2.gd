@@ -354,7 +354,7 @@ func _single_operations() -> void:
 		if impacts != null:
 			_time("that round's holes and sounds", 200, func() -> void: impacts.mark(result))
 		if bot.weapon_sounds != null:
-			_time("a shot's sound", 200, func() -> void: bot.weapon_sounds.shot())
+			_time("a shot's sound", 200, func() -> void: bot.weapon_sounds.shot(data.item_class))
 	var capsules: Array[Dictionary] = bot.get("_capsules")
 	if model != null and not capsules.is_empty():
 		_time("a ragdoll built and taken down", 20, func() -> void:

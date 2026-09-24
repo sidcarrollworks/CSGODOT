@@ -671,14 +671,13 @@ func _update_weapon(cmd: UserCmd, dt: float, still: bool) -> void:
 	)
 	weapon.update(dt, now, shooter_state)
 
-	# Right click on a gun with a scope steps through its zoom levels, each
-	# press at its own instant (Weapon.press_zoom).
-	for press in cmd.presses(UserCmd.ATTACK2):
-		var at := SimClock.usec_at(cmd.tick, press.when)
-		if weapon.press_zoom(at):
-			_send(&"weapon_zoom", {"userid": userid}, at)
-
+	# Right clicks step a scope through its zoom levels and the trigger's
+	# presses fire, each at its own instant and in the order they came, so a
+	# round goes out at the zoom it was fired at (_zoom_by).
+	var zooms := cmd.presses(UserCmd.ATTACK2)
+	var zoomed := 0
 	for press in presses:
+		zoomed = _zoom_by(cmd, zooms, zoomed, press.when)
 		# Every press is the trigger going down afresh, which a
 		# semi-automatic gun waits for (Weapon.press_trigger).
 		weapon.press_trigger()
@@ -690,10 +689,22 @@ func _update_weapon(cmd: UserCmd, dt: float, still: bool) -> void:
 	if weapon.trigger_held and cmd.held(UserCmd.ATTACK):
 		var began := SimClock.tick_start_usec(cmd.tick)
 		var at := clampi(weapon.next_shot_usec(), began, now)
-		_try_shoot(
-			at, float(at - began) / float(SimClock.tick_usec()),
-			cmd.yaw_degrees, cmd.pitch_degrees
-		)
+		var fraction := float(at - began) / float(SimClock.tick_usec())
+		zoomed = _zoom_by(cmd, zooms, zoomed, fraction)
+		_try_shoot(at, fraction, cmd.yaw_degrees, cmd.pitch_degrees)
+	_zoom_by(cmd, zooms, zoomed, 1.0)
+
+
+## The right clicks of zooms from the from-th on that came by until (a
+## fraction of the tick), each stepping the scope at its own instant
+## (Weapon.press_zoom); the index of the first left.
+func _zoom_by(cmd: UserCmd, zooms: Array[UserCmd.SubtickStep], from: int, until: float) -> int:
+	while from < zooms.size() and zooms[from].when <= until:
+		var at := SimClock.usec_at(cmd.tick, zooms[from].when)
+		if weapon.press_zoom(at):
+			_send(&"weapon_zoom", {"userid": userid}, at)
+		from += 1
+	return from
 
 
 func _try_shoot(at_usec: int, tick_fraction: float, yaw: float, pitch: float) -> void:
