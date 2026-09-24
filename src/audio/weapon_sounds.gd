@@ -15,6 +15,13 @@ extends Node3D
 ## sounds, the reload clip's own sound events (reference/weapons/timings.csv).
 ## A draw is heard only by whoever draws, as CS2's draws are localplayeronly
 ## (reference/research/audio-gameplay.md 1.3): a bot's draw is not heard.
+##
+## A shot is heard from the game's events, not from inside the tick: the
+## shooter's weapon_fire, sent by the simulation for every round (one for a
+## shotgun's pellets), is noted as it is handed out at the tick's end, and
+## played on the next frame drawn (watch()). What is heard is the gun the
+## event names, so a shot sounds as what fired it even if the hand has
+## changed since.
 ## A gun's volumes are set by ear; its sound events (.vsndevts) are not read
 ## yet (reference/research/audio.md). The hit feedback's are CS2's (FEEDBACK).
 
@@ -76,6 +83,11 @@ var _handling: Node
 ## only the shooter's own (flat) sounds have them.
 var _feedback := {}
 var _reload_serial: int = 0
+## Whose shots these are (watch()), and the game whose events say so.
+var shooter: PlayerSim
+var _game: GameSystems
+## The guns fired since the last frame drawn, by weapon_fire.
+var _fired := PackedStringArray()
 ## Every gun's set, by class, read once (sets()).
 static var _sets := {}
 ## Every set's files read (all_stems()), once for every player: a gun is
@@ -97,6 +109,52 @@ func _ready() -> void:
 	if not _loaded_all:
 		_loaded_all = true
 		_load_all()
+
+
+## Hears p_shooter's shots from the game they are in, whichever that is:
+## a player can join a world, or another, after this is made.
+func watch(p_shooter: PlayerSim) -> void:
+	shooter = p_shooter
+	_follow_game()
+
+
+func _exit_tree() -> void:
+	if _game != null:
+		_game.events.unlisten(&"weapon_fire", _on_weapon_fire)
+		_game = null
+
+
+func _process(_delta: float) -> void:
+	_follow_game()
+	for item_class in _fired:
+		shot(item_class)
+	_fired.clear()
+
+
+## Listens to the shooter's game's weapon_fire, the one it is in now.
+func _follow_game() -> void:
+	var game: GameSystems = null
+	if is_instance_valid(shooter) and is_instance_valid(shooter.world):
+		game = shooter.world.game
+	if game == _game:
+		return
+	if _game != null:
+		_game.events.unlisten(&"weapon_fire", _on_weapon_fire)
+	_game = game
+	if _game != null:
+		_game.events.listen(&"weapon_fire", _on_weapon_fire)
+
+
+## Handed out at the tick's end: noted, and heard on the next frame.
+func _on_weapon_fire(event: GameEvent) -> void:
+	var userid: int = event.fields["userid"]
+	if is_instance_valid(shooter) and userid == shooter.userid and userid != GameEvents.NOBODY:
+		_fired.append(String(event.fields["weapon"]))
+
+
+## The shots noted and not heard yet, as a copy.
+func pending_shots() -> PackedStringArray:
+	return _fired.duplicate()
 
 
 func _make_player(polyphony: int) -> Node:
@@ -123,8 +181,10 @@ func equip(data: WeaponData) -> void:
 		_play(_handling, weapon_set.get("draw", PackedStringArray()), HANDLING_DB)
 
 
-func shot() -> void:
-	_play(_fire, weapon_set.get("fire", PackedStringArray()), FIRE_DB)
+## A round of that gun fired, heard now.
+func shot(item_class: String) -> void:
+	var fired: Dictionary = sets().get(item_class, {})
+	_play(_fire, fired.get("fire", PackedStringArray()), FIRE_DB)
 
 
 ## The reload's parts, timed from now. A new reload, or a new weapon, drops

@@ -116,6 +116,7 @@ func _ready() -> void:
 	weapon_sounds = WeaponSounds.new()
 	weapon_sounds.name = "WeaponSounds"
 	player.add_child(weapon_sounds)
+	weapon_sounds.watch(player)
 	footsteps = Footsteps.new()
 	footsteps.name = "Footsteps"
 	player.add_child(footsteps)
@@ -157,7 +158,6 @@ func _on_reload_started() -> void:
 func _on_shot_traced(_shot: Weapon.Shot, result: Hitscan.Result) -> void:
 	if view_model != null:
 		view_model.shoot()
-	weapon_sounds.shot()
 	if result.hitbox != null and result.hitbox.target != null:
 		weapon_sounds.hit(result.zone, result.hitbox.target, not result.hitbox.target.alive)
 	BulletImpacts.mark_in(get_tree(), result)
