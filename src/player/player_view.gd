@@ -54,9 +54,18 @@ var viewmodel: Node3D
 ## The bob of walking and the lag of turning, on the weapon model.
 var viewmodel_motion := ViewModelMotion.new()
 
-## The arms and weapon, drawn under the camera with a projection of their
-## own (ViewModelProjection), when the models are there.
+## The arms and what is in hand, drawn under the camera with a projection of
+## their own (ViewModelProjection), when the models are there.
 var view_model: ViewModel
+
+## A view model for everything carried, by class, built as it comes into
+## the inventory and kept while it is carried: taking something in hand
+## shows its model and hides the others, where building the gun, its clips
+## and the arms anew hitched every switch. The hidden ones are not
+## processed, so their animations cost nothing.
+var _view_models := {}
+## Planting, as last shown: the bomb's plant clip is playing.
+var _planting := false
 
 ## What you hear of your own weapon and your hits, and of your own feet.
 var weapon_sounds: WeaponSounds
@@ -112,6 +121,9 @@ func _ready() -> void:
 	player.add_child(footsteps)
 
 	player.equipped.connect(_on_equipped)
+	player.inventory.changed.connect(_build_view_models)
+	player.pin_pulled.connect(_on_pin_pulled)
+	player.grenade_released.connect(_on_grenade_released)
 	player.reload_started.connect(_on_reload_started)
 	player.shot_traced.connect(_on_shot_traced)
 	player.killed.connect(_on_killed)
@@ -119,9 +131,21 @@ func _ready() -> void:
 	player.team_changed.connect(_on_team_changed)
 
 
-func _on_equipped(data: WeaponData) -> void:
-	_show_view_model(data)
-	weapon_sounds.equip(data)
+## Something else in hand: its model shown, drawing, and a gun's sounds.
+func _on_equipped(entry: Inventory.Entry) -> void:
+	_show_in_hand(entry)
+	if entry != null and entry.weapon != null:
+		weapon_sounds.equip(entry.weapon.data)
+
+
+func _on_pin_pulled() -> void:
+	if view_model != null:
+		view_model.play(&"pullpin")
+
+
+func _on_grenade_released(underhand: bool) -> void:
+	if view_model != null:
+		view_model.play(&"throw_underhand" if underhand else &"throw_overhand")
 
 
 func _on_reload_started() -> void:
@@ -157,7 +181,8 @@ func _on_respawned() -> void:
 	_dead_for = -1.0
 
 
-## On the other side: that side's body to look down at and its arms.
+## On the other side: that side's body to look down at, and its arms round
+## everything carried.
 func _on_team_changed(_team: String) -> void:
 	for body in [body_model, body_shadow]:
 		if body != null:
@@ -165,9 +190,13 @@ func _on_team_changed(_team: String) -> void:
 	body_model = null
 	body_shadow = null
 	_show_body()
+	for model: ViewModel in _view_models.values():
+		_let_go(model)
+	_view_models.clear()
+	view_model = null
+	viewmodel = null
+	_show_in_hand(player.inventory.in_hand())
 	_show_player(player.alive)
-	if player.weapon != null:
-		_show_view_model(player.weapon.data)
 
 
 ## Your body as everyone else sees it, shown to your own camera or put back
@@ -262,17 +291,80 @@ func _show_player(shown: bool) -> void:
 			body.visible = shown
 
 
-func _show_view_model(data: WeaponData) -> void:
+## Shows the model of what is in hand, drawing it, and hides the rest; lets
+## go of the models of what is no longer carried.
+func _show_in_hand(entry: Inventory.Entry) -> void:
+	_build_view_models()
+	var shown: ViewModel = _view_models.get(entry.item.item_class) if entry != null else null
+	for item_class: String in _view_models.keys():
+		var model: ViewModel = _view_models[item_class]
+		if model == shown:
+			continue
+		if not player.inventory.has(item_class):
+			_let_go(model)
+			_view_models.erase(item_class)
+			continue
+		model.visible = false
+		model.process_mode = Node.PROCESS_MODE_DISABLED
+	view_model = shown
+	# And it rides the recoil.
+	viewmodel = shown
+	_planting = false
+	if shown == null:
+		return
+	shown.process_mode = Node.PROCESS_MODE_INHERIT
+	shown.visible = player.alive
+	shown.play(&"draw")
+
+
+## A model for everything carried that has none, hidden until it is taken
+## in hand: bought, picked up or handed out, it is built then, not at the
+## switch.
+func _build_view_models() -> void:
 	if camera == null:
 		return
-	if view_model == null:
-		view_model = ViewModel.new()
-		view_model.name = "ViewModel"
-		camera.add_child(view_model)
-		# And it rides the recoil.
-		viewmodel = view_model
-	if view_model.setup(player.team, data.model_path, data.clip_set):
-		ViewModelProjection.claim(view_model)
+	for entry in player.inventory.entries():
+		if not _view_models.has(entry.item.item_class):
+			_build_view_model(entry)
+
+
+func _build_view_model(entry: Inventory.Entry) -> void:
+	var look := {}
+	if entry.weapon != null:
+		look = {"model_path": entry.weapon.data.model_path, "clip_set": entry.weapon.data.clip_set}
+	else:
+		look = WeaponLibrary.look(entry.item.item_class, player.team)
+	if String(look.get("clip_set", "")).is_empty():
+		return
+	var model := ViewModel.new()
+	model.name = "ViewModel_%s" % entry.item.item_class
+	model.visible = false
+	model.process_mode = Node.PROCESS_MODE_DISABLED
+	camera.add_child(model)
+	if not model.setup(player.team, look["model_path"], look["clip_set"]):
+		model.free()
+		return
+	ViewModelProjection.claim(model)
+	_view_models[entry.item.item_class] = model
+
+
+## Out of the view now, its name free for the next of its class, and freed
+## at the frame's end.
+static func _let_go(model: ViewModel) -> void:
+	if model.get_parent() != null:
+		model.get_parent().remove_child(model)
+	model.queue_free()
+
+
+## The bomb's plant clip while planting with it in hand, and back to the
+## idle when a plant stops short.
+func _follow_plant() -> void:
+	var planting := player.alive and player.held_still and player.in_hand_class() == "weapon_c4"
+	if planting == _planting:
+		return
+	_planting = planting
+	if view_model != null:
+		view_model.play(&"plant" if planting else view_model.idle)
 
 
 ## The body and its shadow, when the models are there. They are top_level
@@ -349,6 +441,7 @@ func _process(delta: float) -> void:
 		0.0
 	)
 
+	_follow_plant()
 	_update_viewmodel(delta)
 	# The arms from where the eyes are, the body from its middle.
 	if view_model != null:
@@ -361,9 +454,10 @@ func _process(delta: float) -> void:
 ##
 ## The model is a child of the camera, so it already follows the view kick.
 ## This is the extra movement on top: the gun climbing in the hands relative
-## to the screen, which is most of what reads as recoil.
+## to the screen, which is most of what reads as recoil. The knife, a
+## grenade and the bomb only bob and sway.
 func _update_viewmodel(delta: float) -> void:
-	if viewmodel == null or player.weapon == null:
+	if viewmodel == null:
 		return
 	if not _viewmodel_rest_captured:
 		_viewmodel_rest = viewmodel.transform
@@ -376,7 +470,8 @@ func _update_viewmodel(delta: float) -> void:
 		Vector2(player.input.yaw_degrees, player.input.pitch_degrees)
 	)
 	var alpha := clampf(Engine.get_physics_interpolation_fraction(), 0.0, 1.0)
-	var kick := player.previous_viewmodel_punch.lerp(player.weapon.viewmodel_punch(), alpha)
+	var punch := player.weapon.viewmodel_punch() if player.weapon != null else Vector2.ZERO
+	var kick := player.previous_viewmodel_punch.lerp(punch, alpha)
 	viewmodel.transform = Transform3D(
 		motion.basis * _viewmodel_rest.basis
 			* Basis.from_euler(Vector3(deg_to_rad(kick.y), deg_to_rad(-kick.x), 0.0)),

@@ -423,8 +423,8 @@ hand, and the bomb's when the C4 is in hand. Commands so far:
 - `drop` (`ItemDrops`; the bomb's with the C4 in hand).
 - `throw <class> [strength]` (grenades, `GrenadeSystem`): throws that
   grenade from the player's eyes at the start of the next step; strength
-  0 to 1, default 1. The range's Q, Z and X send it; bots' lineups and a
-  console can too.
+  0 to 1, default 1. The hand sends it on letting go of the attack buttons
+  (`player_sim.gd`); bots' lineups and a console can too.
 A new command is a line here.
 
 ### Queries
@@ -451,22 +451,24 @@ A new query is a line here.
 None of these are changed by the contract threads; this branch changes
 `game_world.gd` only to own and step `game` and keep its roster.
 
-- `player_sim.gd`: `_try_shoot` calls `Hitscan.fire_as` with a `Shooter`
-  carrying `world.game.roster.userid_of(self)` and `world.game.events`, and
-  sends `weapon_fire` for each round and `weapon_reload`; the inventory
-  (`world.game.inventory(userid)`) in place of the single `weapon` (equip
-  and `weapon_for_slot` read it; switching keeps each `Weapon`); `_on_hit`
-  and `_fall` read `hit_target.last_damage` in place of the `last_hit_*`
-  fields; `killed` passes `hit_target.killing_damage`; a spawn sends
-  `player_spawn` and strips the dead player's inventory; `weapon.press_trigger()`
-  per press (R2).
-- `bot.gd`: the same through PlayerSim, and `bot.arm()` replaced by the
-  inventory; USE and ATTACK2 when bots plant and throw; the
-  `burning_at` and `smoke_length_between` queries to keep out of fire and
-  see through smoke.
-- `player_sim.gd`, from the bomb and grenades: read `holds_still` (and
-  then the bomb's range code stops setting `frozen` from it); throw on the
+- *(Done.)* `player_sim.gd`: `_try_shoot` calls `Hitscan.fire_as` with a
+  `Shooter` carrying the player's `userid` and `world.game.events`, and
+  sends `weapon_fire` for each round and `weapon_reload`; every player
+  carries an `Inventory` of their own (`PlayerSim.inventory`), which
+  `GameWorld.add_player` hands the game as theirs
+  (`world.game.inventory(userid)` is the same object); 1 to 5 and Q select
+  from it, each gun keeping its `Weapon`; a spawn sends `player_spawn` and
+  strips a dead player (`PlayerSim._loadout`: the knife, the side's pistol
+  and `starting_gun`); `weapon.press_trigger()` per press (R2); it reads
+  `holds_still` (the range no longer sets `frozen`) and throws on the
   attack buttons with a grenade in hand, as `grenades.md` describes.
+- `player_sim.gd`, still to do: `_on_hit` and `_fall` read
+  `hit_target.last_damage` in place of the `last_hit_*` fields; `killed`
+  passes `hit_target.killing_damage`.
+- `bot.gd`: *(done)* the inventory through PlayerSim, `bot.arm()` now
+  handing it its starting gun. Still to do: USE and ATTACK2 when bots plant
+  and throw; the `burning_at` and `smoke_length_between` queries to keep
+  out of fire and see through smoke.
 - `match_state.gd`: sends `begin_new_match`, `round_prestart`,
   `round_start`, `round_poststart`, `round_freeze_end`, `round_end` (with
   `GameEvents.round_end_reason`), `round_officially_ended`,
@@ -474,17 +476,14 @@ None of these are changed by the contract threads; this branch changes
   gives `Inventory.give_starting_items` in place of `starting_weapon`; the
   round's clock listens for `bomb_planted`, `bomb_exploded`,
   `bomb_defused`. The bomb system hands out the C4 itself on `round_start`.
-- `player_spawn` {userid} goes out on every spawn, from wherever
-  the spawn happens (PlayerSim, the GameWorld or the match). The schema has
-  it but nothing sends it yet, and buying clears a player's "dead" mark on
-  it, so until it is sent a player who died stays marked dead.
-- `PlayerInput`: G sends `drop`, the buy menu sends `buy`, E and the right
-  button set `USE` and `ATTACK2`. Two range keys move when G is `drop` and
-  Q is the last weapon: the range's never-die (`dummy_immortal` on G in
-  `project.godot`, read in `test_range.gd`) and the grenade lane's throw on
-  Q (`grenade_lane.gd`). `player_controller.gd`'s `_unhandled_input` never
-  marks an event handled, so a key bound twice does both things on one
-  press.
+- *(Done.)* `player_spawn` {userid} goes out on every spawn, from
+  `PlayerSim` (a respawn, and a survivor put at a spawn point by the
+  match).
+- *(Done.)* `PlayerInput`: G sends `drop`, E and the right button set `USE`
+  and `ATTACK2`, 3 to 5 and Q select; the buy menu sends `buy`. The
+  range's never-die moved to F, and the grenade lane's keys are gone.
+  `PlayerInput.ensure_actions` adds any of these keys the input map lacks
+  (a `project.godot` an open editor wrote back over).
 - `de_dust2.gd`: the presenters (kill feed, grenade and bomb drawing)
   listening to `world.game.events`, and the systems added to `world.game`.
 

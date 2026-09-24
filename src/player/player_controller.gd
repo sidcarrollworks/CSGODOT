@@ -50,10 +50,15 @@ func _ready() -> void:
 	if camera == null:
 		camera = _find_camera()
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	PlayerInput.ensure_actions()
 	view = PlayerView.new(self)
 	add_child(view)
 	killed.connect(func(_zone: StringName) -> void: died.emit())
-	equip(WeaponLibrary.ak47())
+	# CS2's knife and pistol, and the AK-47 in hand until there is money to
+	# buy one; a match hands out its own side's rifle.
+	if starting_gun == null:
+		starting_gun = WeaponLibrary.ak47()
+	_loadout()
 
 
 func _find_camera() -> Camera3D:
@@ -83,4 +88,9 @@ func place(spawn_position: Vector3, yaw: float) -> void:
 
 
 func command_for(tick: int, _dt: float) -> UserCmd:
+	# What the keys asked the game to do (G's drop), sent with the tick: the
+	# game runs it after everyone's commands.
+	for line in input.take_commands():
+		if is_instance_valid(world):
+			world.game.command(userid, line)
 	return input.build_command(tick)

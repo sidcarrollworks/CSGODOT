@@ -12,7 +12,13 @@ whoever lands a step marks it done here in the same pull request.
 
 Done: step 0 (the test runner and CI, 2026-09-23); the world that owns the
 tick, in its first form (finding 1, brought forward into step 1 by Sid,
-2026-09-23: `GameWorld`).
+2026-09-23: `GameWorld`); the item registry and the inventory, wired into
+every player (finding 5, 2026-09-23: `ItemRegistry`, and an `Inventory` on
+each `PlayerSim` that the game knows by userid, each gun its own `Weapon`
+through a switch, a drop and a pick-up, the slots in the command); damage
+that knows who dealt it and game events, for rounds (findings 3 and 4, the
+contract threads, wired into `player_sim.gd` the same day; the flinch and
+the fall still read the `last_hit_*` fields).
 
 The question asked: where does the code repeat itself, or hand-build one
 case at a time, in a way a shared system would replace, and in what order

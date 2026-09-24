@@ -213,14 +213,15 @@ func _on_drop(userid: int, _args: PackedStringArray, _t: SimTick) -> bool:
 	return true
 
 
-## Plant is the attack button with the bomb in hand, use the use key, from
-## the command the player ran this tick.
+## Plant is the attack button with the bomb in hand, drawn (its
+## m_flDeployDuration, 1.23 s), use the use key, from the command the player
+## ran this tick.
 func _input_from_command(_userid: int, player: Node3D, inventory: Inventory) -> Dictionary:
 	var sim := player as PlayerSim
 	if sim == null or sim.last_command == null:
 		return {}
 	var cmd := sim.last_command
-	var in_hand := inventory != null and inventory.in_hand_class() == "weapon_c4"
+	var in_hand := inventory != null and inventory.in_hand_class() == "weapon_c4" and sim.hand_ready()
 	return {
 		"plant": in_hand and cmd.held(UserCmd.ATTACK),
 		"use": cmd.held(UserCmd.USE),

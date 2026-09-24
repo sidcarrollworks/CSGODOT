@@ -141,8 +141,75 @@ static func display_name(weapon_class: String) -> String:
 
 const MODELS_PAGE := "res://reference/weapons/models.md"
 const MODELS_ROOT := "res://assets/weapons/weapons/models"
+const EQUIPMENT_PAGE := "res://reference/weapons/equipment.md"
 
 static var _files_cache := {}
+static var _equipment_cache := {}
+
+
+## How an item is drawn: its model and its first- and third-person clip
+## sets, as {model_path, clip_set, world_clip_set}. A gun's from models.md;
+## the knife's, the Zeus's, the grenades', the C4's and the kit's from
+## equipment.md, the knife by side (a terrorist's is the T knife). The kit,
+## which nobody holds in the hand, has no first-person set (""). Empty for
+## what has no model (armour).
+static func look(item_class: String, team: String = "") -> Dictionary:
+	if has(item_class):
+		var files: Dictionary = _files()[item_class]
+		return {
+			"model_path": MODELS_ROOT.path_join(files["folder"]).path_join(files["model"]),
+			"clip_set": files["first_person"],
+			"world_clip_set": files["third_person"],
+		}
+	var row_class := "weapon_knife_t" if item_class == "weapon_knife" and team == "T" else item_class
+	var row: Dictionary = _equipment().get(row_class, {})
+	if row.is_empty():
+		return {}
+	return {
+		"model_path": MODELS_ROOT.path_join(row["model"]),
+		"clip_set": row["first_person"] if row["first_person"] != "-" else "",
+		"world_clip_set": row["third_person"] if row["third_person"] != "-" else "",
+	}
+
+
+## Each piece of equipment's row of the first table in equipment.md:
+## {class: {model, first_person, third_person}}. Read once.
+static func _equipment() -> Dictionary:
+	if not _equipment_cache.is_empty():
+		return _equipment_cache
+	var file := FileAccess.open(EQUIPMENT_PAGE, FileAccess.READ)
+	if file == null:
+		push_error("No equipment list at %s" % EQUIPMENT_PAGE)
+		return _equipment_cache
+	var in_table := false
+	while not file.eof_reached():
+		var line := file.get_line().strip_edges()
+		if line.begins_with("| Class | Name | Model | First person"):
+			in_table = true
+			continue
+		if not in_table:
+			continue
+		if not line.begins_with("|"):
+			break
+		var cells := line.trim_prefix("|").trim_suffix("|").split("|")
+		if cells.size() < 5 or cells[0].strip_edges().begins_with("---"):
+			continue
+		_equipment_cache[_cell(cells[0])] = {
+			"model": _cell(cells[2]),
+			"first_person": _cell(cells[3]),
+			"third_person": _cell(cells[4]),
+		}
+	return _equipment_cache
+
+
+## A table cell's text without its backticks or a count after it
+## ("`equipment/c4` (6)" is "equipment/c4").
+static func _cell(cell: String) -> String:
+	var text := cell.strip_edges()
+	var paren := text.find(" (")
+	if text.begins_with("`") and paren > 0:
+		text = text.substr(0, paren)
+	return text.replace("`", "")
 
 
 ## Each gun's row of the first table in models.md: {class: {sheet_row,

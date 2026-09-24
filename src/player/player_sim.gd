@@ -28,6 +28,20 @@ extends PlayerBody
 ## The world that runs the player, and where everyone else in the game is
 ## found; null until one takes it (GameWorld.add_player).
 var world: GameWorld
+## Who the player is in their world's game: the userid its roster gave them,
+## which events, damage and the inventories name them by;
+## GameEvents.NOBODY out of a game.
+var userid: int = GameEvents.NOBODY
+
+## What the player carries and what is in their hand, as CS2's weapon
+## services keep it on the pawn: every gun its own Weapon, so a gun keeps its
+## rounds and its recoil through a switch, a drop and a pick-up. Their
+## world's game names it by their userid (GameSystems.inventory).
+var inventory := Inventory.new()
+## The gun a player is handed at every spawn besides CS2's knife and pistol,
+## until they buy their own: the match's side rifle, a bot's own, the
+## range's AK-47. Null for CS2's plain loadout.
+var starting_gun: WeaponData
 
 ## How long death lasts before the respawn.
 @export var respawn_seconds: float = 3.0
@@ -67,8 +81,9 @@ var previous_pitch_degrees: float = 0.0
 var previous_view_punch := Vector2.ZERO
 var previous_viewmodel_punch := Vector2.ZERO
 
-## The weapon held, and how the player was moving when it was last told:
-## what its cone is judged by.
+## The gun in hand, the inventory's own Weapon; null holding anything else
+## (the knife, a grenade, the bomb) or nothing. And how the player was
+## moving when it was last told: what its cone is judged by.
 var weapon: Weapon
 var shooter_state := Weapon.ShooterState.new()
 var rounds_fired: int = 0
@@ -123,8 +138,13 @@ signal hurt(amount: float, zone: StringName, from: Vector3)
 signal shot_traced(shot: Weapon.Shot, result: Hitscan.Result)
 ## The weapon started reloading.
 signal reload_started
-## A new weapon is in hand.
-signal equipped(data: WeaponData)
+## Something else is in hand (the inventory's entry), or nothing (null):
+## the gun, the knife, a grenade, the bomb. It is being drawn.
+signal equipped(entry: Inventory.Entry)
+## A grenade in hand: the pin is out, and then it is thrown, underhand when
+## only the right button was held.
+signal pin_pulled
+signal grenade_released(underhand: bool)
 ## Health ran out; zone is where the last round landed.
 signal killed(zone: StringName)
 signal respawned
@@ -175,6 +195,38 @@ var _spawn_yaw: float = 0.0
 ## (spawn_at), which a bot then comes back to rather than its route's start.
 var _spawn_set: bool = false
 
+## What is in hand, by class, as last followed from the inventory; and until
+## when it is being drawn, in simulation time (nothing fires or throws
+## before).
+var _held_class: String = ""
+var _drawn_until_usec: int = 0
+## A grenade in hand with its pin out, and the attack buttons held while it
+## is: which of them say how hard it goes when they are let go.
+var _pin_pulled: bool = false
+var _throw_left: bool = false
+var _throw_right: bool = false
+## A grenade thrown: the hand throwing it until then, in simulation time,
+## and only after it drawing what is in hand next.
+var _throwing: bool = false
+var _throwing_until_usec: int = 0
+## Set while several changes are made to the inventory together, so what is
+## in hand is followed once, after them.
+var _changing_inventory: bool = false
+
+## Held still by the game on the last tick: planting or defusing the bomb
+## (the holds_still query), for whatever draws the player. frozen is the
+## match's.
+var held_still: bool = false
+
+## How long a throw keeps the hand before what is next in it is drawn: the
+## first-person throw clips' lengths, overhand and underhand
+## (reference/weapons/equipment.md, from the clips' own data). The grenade
+## itself leaves at the release, as CS2 throws it at the release's instant.
+const THROW_OVERHAND_SECONDS := 0.77
+const THROW_UNDERHAND_SECONDS := 0.50
+## Speed with nothing in hand, as with the knife.
+const EMPTY_HANDED_SPEED := 250.0
+
 
 func _ready() -> void:
 	super._ready()
@@ -185,6 +237,9 @@ func _ready() -> void:
 	add_child(hit_target)
 	hit_target.died.connect(_on_hit_target_died)
 	hit_target.damaged.connect(_on_hit)
+	# Armour is worn on the hit target, which the inventory reads and sets.
+	inventory.body = hit_target
+	inventory.changed.connect(_follow_hand)
 	wear_body(_body_weapon_model(), _body_drawn())
 
 
@@ -317,23 +372,98 @@ func change_team(new_team: String) -> void:
 	team_changed.emit(team)
 
 
-## Swaps to a weapon, which also changes how fast you can run.
+## Hands the player a gun and puts it in their hand: a new one, loaded, in
+## place of whatever gun was in its slot. What the match, the range and the
+## checks hand out; buying, picking up and dropping go through the
+## inventory itself (the economy, ItemDrops).
 func equip(data: WeaponData) -> void:
-	weapon = Weapon.new(data)
-	weapon.trigger_held = false
-	config.max_speed = data.max_player_speed
-	equipped.emit(data)
+	if not ItemRegistry.has(data.item_class):
+		push_error("%s has no item class the registry knows (%s)" % [data.display_name, data.item_class])
+		return
+	_changing_inventory = true
+	inventory.remove(data.item_class)
+	inventory.add(data.item_class, Weapon.new(data))
+	inventory.select(data.item_class)
+	_changing_inventory = false
+	_follow_hand()
 
 
-## What a command's weapon_select asks for, until there is an inventory:
-## 1 the AK-47, 2 the M4A1-S.
-static func weapon_for_slot(slot: int) -> WeaponData:
-	match slot:
-		1:
-			return WeaponLibrary.ak47()
-		2:
-			return WeaponLibrary.m4a1s()
-	return null
+## What a player spawns with: CS2's knife and their side's pistol, and
+## starting_gun in hand where there is one, drawn. Everything else they
+## carried is gone (CS2 strips a player at their next spawn).
+func _loadout() -> void:
+	_changing_inventory = true
+	# The strip takes the armour off with the rest; what a player wears at a
+	# spawn is the body's (HitTarget.wear and reset), so it is put back as it
+	# was.
+	var armor := inventory.armor
+	var helmet := inventory.helmet
+	inventory.strip()
+	inventory.armor = armor
+	inventory.helmet = helmet
+	inventory.give_starting_items(team)
+	if starting_gun != null and ItemRegistry.has(starting_gun.item_class):
+		inventory.add(starting_gun.item_class, Weapon.new(starting_gun))
+		inventory.select(starting_gun.item_class)
+	_changing_inventory = false
+	_throwing = false
+	_draw(inventory.in_hand())
+
+
+## Draws what is in hand afresh, from now: for a player joining a world,
+## whose clock times the draw (one armed before it was timed by the
+## engine's).
+func draw_again() -> void:
+	_throwing = false
+	_draw(inventory.in_hand())
+
+
+## Follows what the inventory has in hand, whatever changed it (a switch, a
+## purchase, a pick-up, a drop): once something else is in it, that is
+## drawn. A throw keeps the hand until it is over (_update_grenade).
+func _follow_hand() -> void:
+	if _changing_inventory or _throwing:
+		return
+	var entry := inventory.in_hand()
+	var item_class := entry.item.item_class if entry != null else ""
+	if item_class == _held_class and (entry.weapon if entry != null else null) == weapon:
+		return
+	_draw(entry)
+
+
+## Takes entry in hand (null: nothing) and draws it, from now: the Weapon to
+## fire, how fast the player runs with it, and the draw, which holds off
+## firing and throwing for the item's deploy time (CS2's
+## m_flDeployDuration). A gun put away loses a reload under way.
+func _draw(entry: Inventory.Entry) -> void:
+	var held_weapon := entry.weapon if entry != null else null
+	if weapon != null and weapon != held_weapon:
+		weapon.holster()
+	_held_class = entry.item.item_class if entry != null else ""
+	weapon = held_weapon
+	_pin_pulled = false
+	if held_weapon != null:
+		config.max_speed = held_weapon.data.max_player_speed
+	else:
+		config.max_speed = entry.item.max_speed if entry != null else EMPTY_HANDED_SPEED
+	var now := SimClock.now_usec()
+	var deploy := entry.item.deploy_seconds if entry != null else 0.0
+	_drawn_until_usec = now + int(roundf(deploy * 1_000_000.0))
+	if held_weapon != null:
+		held_weapon.trigger_held = false
+		held_weapon.draw(now, deploy)
+	equipped.emit(entry)
+
+
+## The item in hand, by class ("weapon_ak47", "weapon_knife"); "" for none.
+func in_hand_class() -> String:
+	return _held_class
+
+
+## Whether what is in hand is out and ready: its draw over, and no throw
+## under way. The bomb waits for it before a plant.
+func hand_ready() -> bool:
+	return not _throwing and SimClock.now_usec() >= _drawn_until_usec
 
 
 ## Where the map put the player, to come back to.
@@ -350,9 +480,9 @@ func place(spawn_position: Vector3, yaw: float) -> void:
 
 ## The match puts the player at a spawn point for a round. Fresh (the
 ## first round, or after the sides swap), or dead, they come back as a
-## respawn brings them: whole, armoured as they started, reloaded. Someone
-## who lived through the last round keeps their armour and weapon, rounds
-## in it and all, and is healed.
+## respawn brings them: whole, armoured as they started, with a spawn's
+## loadout. Someone who lived through the last round keeps their armour and
+## everything they carry, rounds in it and all, and is healed.
 func spawn_at(spawn_position: Vector3, yaw: float, fresh: bool = false) -> void:
 	_spawn_set = true
 	_spawn_position = spawn_position
@@ -364,6 +494,7 @@ func spawn_at(spawn_position: Vector3, yaw: float, fresh: bool = false) -> void:
 	velocity = Vector3.ZERO
 	hit_target.health = hit_target.max_health
 	_forget_hits()
+	_send(&"player_spawn", {"userid": userid})
 
 
 func seconds_to_respawn() -> float:
@@ -407,12 +538,20 @@ func _run(cmd: UserCmd, dt: float) -> void:
 			respawn()
 		return
 
-	# The weapon already in hand, asked for again, stays as it is, as Source
-	# has it (CBasePlayer::Weapon_ShouldSelectItem): no draw, and not the full
-	# magazine a new one comes with, which made the key a reload with no wait.
-	var selected := weapon_for_slot(cmd.weapon_select)
-	if selected != null and (weapon == null or weapon.data.display_name != selected.display_name):
-		equip(selected)
+	# A throw over: what is in hand now is drawn (the next grenade of the
+	# kind, or the last thing held).
+	if _throwing and SimClock.tick_end_usec(cmd.tick) >= _throwing_until_usec:
+		_throwing = false
+		_draw(inventory.in_hand())
+
+	# A number key takes that slot in hand, pressed again going on to the
+	# next thing in it (the grenades, the knife and the Zeus); Q the last
+	# thing held. What is in hand already, asked for again, stays as it is,
+	# as Source has it (CBasePlayer::Weapon_ShouldSelectItem): no draw.
+	if cmd.weapon_select == UserCmd.SELECT_LAST:
+		inventory.select_last()
+	elif cmd.weapon_select > 0:
+		inventory.select_slot((cmd.weapon_select - 1) as ItemDef.Slot)
 
 	yaw_degrees = cmd.yaw_degrees
 	pitch_degrees = cmd.pitch_degrees
@@ -422,22 +561,28 @@ func _run(cmd: UserCmd, dt: float) -> void:
 	if reload != null and weapon != null:
 		if weapon.start_reload(SimClock.usec_at(cmd.tick, reload.when)):
 			reload_started.emit()
+			_send(&"weapon_reload", {"userid": userid})
+
+	# Held still: by the match in freeze time, or by the bomb while planting
+	# or defusing (the game's holds_still query).
+	held_still = _held_by_the_game()
+	var still := frozen or held_still
 
 	# A tap shorter than a tick still jumps: the press is in the command even
 	# if the key is back up by its end. The earliest press is the one that
 	# jumps, and the tick splits there (PlayerBody.simulate). A jump from a
 	# held key has no transition to time, so it stays at the tick's start.
 	var jump := cmd.first_press(UserCmd.JUMP)
-	wants_jump = not frozen and (cmd.held(UserCmd.JUMP) or jump != null)
+	wants_jump = not still and (cmd.held(UserCmd.JUMP) or jump != null)
 	if jump != null and wants_jump:
 		jump_fraction = jump.when
 	wants_duck = cmd.held(UserCmd.DUCK)
 
-	if frozen:
+	if still:
 		# Still, but falling if there is anywhere to fall, and the weapon
 		# still reloads.
 		simulate(dt)
-		_update_weapon(cmd, dt)
+		_update_weapon(cmd, dt, true)
 		return
 
 	if noclip:
@@ -450,16 +595,26 @@ func _run(cmd: UserCmd, dt: float) -> void:
 		wish_speed = _max_speed(cmd)
 
 	simulate(dt)
-	_update_weapon(cmd, dt)
+	_update_weapon(cmd, dt, false)
+
+
+## Whether the game holds the player still: planting or defusing the bomb,
+## which the bomb says (the holds_still query). Never out of a game.
+func _held_by_the_game() -> bool:
+	if not is_instance_valid(world):
+		return false
+	return bool(world.game.query(&"holds_still", [userid], false))
 
 
 ## Fires every round the command asks for, at the instant and the aim it
 ## asked for it: each press at its own fraction of the tick and its own look
 ## angles, then, while the trigger is held, the next round the moment the
 ## weapon is ready rather than on the tick after (on the tick, every gap
-## rounds up to whole ticks and 600 rounds a minute comes out at 591).
-func _update_weapon(cmd: UserCmd, dt: float) -> void:
+## rounds up to whole ticks and 600 rounds a minute comes out at 591). With
+## a grenade in hand, the buttons throw it instead (_update_grenade).
+func _update_weapon(cmd: UserCmd, dt: float, still: bool) -> void:
 	if weapon == null:
+		_update_grenade(cmd, still)
 		return
 
 	var now := SimClock.tick_end_usec(cmd.tick)
@@ -469,9 +624,9 @@ func _update_weapon(cmd: UserCmd, dt: float) -> void:
 	# tick the button comes up instead of a round and a quarter later. A press
 	# that happened and ended inside the tick still counts as held for it.
 	var presses := cmd.presses(UserCmd.ATTACK)
-	if frozen:
+	if still:
 		presses.clear()
-	weapon.trigger_held = not frozen and (cmd.held(UserCmd.ATTACK) or not presses.is_empty())
+	weapon.trigger_held = not still and (cmd.held(UserCmd.ATTACK) or not presses.is_empty())
 	shooter_state = Weapon.ShooterState.new(
 		Vector2(velocity.x, velocity.z).length(), on_ground, is_ducked,
 		cmd.held(UserCmd.WALK)
@@ -479,6 +634,9 @@ func _update_weapon(cmd: UserCmd, dt: float) -> void:
 	weapon.update(dt, now, shooter_state)
 
 	for press in presses:
+		# Every press is the trigger going down afresh, which a
+		# semi-automatic gun waits for (Weapon.press_trigger).
+		weapon.press_trigger()
 		_try_shoot(
 			SimClock.usec_at(cmd.tick, press.when), press.when,
 			press.yaw_degrees, press.pitch_degrees
@@ -509,14 +667,67 @@ func _try_shoot(at_usec: int, tick_fraction: float, yaw: float, pitch: float) ->
 	if shot == null:
 		return
 	rounds_fired += 1
+	var item := ItemRegistry.item(weapon.data.item_class)
+	_send(&"weapon_fire", {
+		"userid": userid, "weapon": weapon.data.item_class,
+		"silenced": item != null and item.silenced_by_default,
+	}, at_usec)
 
-	# Your own hull and hitboxes are not targets.
+	# The round is the player's: who fired it and from which side goes with
+	# its damage (Hitscan.fire_as), and every surface it meets and the hurt it
+	# does are the game's events. Your own hull and hitboxes are not targets.
 	var exclude: Array[RID] = [get_rid()]
 	exclude.append_array(hit_target.rids())
-	var result := Hitscan.fire_at(
-		get_world_3d().direct_space_state, shot, weapon.data, exclude, team, team_damage_scale
+	var shooter := Hitscan.Shooter.new(
+		userid, team, team_damage_scale, exclude,
+		world.game.events if is_instance_valid(world) else null
 	)
+	var result := Hitscan.fire_as(get_world_3d().direct_space_state, shot, weapon.data, shooter)
 	shot_traced.emit(shot, result)
+
+
+## A grenade in hand: either attack button pulls the pin once the draw is
+## over, and letting go of both throws it, as hard as the buttons held just
+## before say (GrenadeRules.strength_for: the left alone overhand, the right
+## alone a lob, both between). The throw is the game's own (the throw
+## command, which takes the grenade from the inventory and sends
+## grenade_thrown); the hand throws for the throw clip's length, and then
+## draws the next of the kind or goes back to the last thing held.
+func _update_grenade(cmd: UserCmd, still: bool) -> void:
+	var entry := inventory.in_hand()
+	if entry == null or not entry.item.is_grenade() or still or _throwing:
+		_pin_pulled = false
+		return
+	var left := cmd.held(UserCmd.ATTACK) or cmd.pressed_during(UserCmd.ATTACK)
+	var right := cmd.held(UserCmd.ATTACK2) or cmd.pressed_during(UserCmd.ATTACK2)
+	if not _pin_pulled:
+		if (left or right) and SimClock.tick_end_usec(cmd.tick) >= _drawn_until_usec:
+			_pin_pulled = true
+			_throw_left = left
+			_throw_right = right
+			pin_pulled.emit()
+		return
+	if cmd.held(UserCmd.ATTACK) or cmd.held(UserCmd.ATTACK2):
+		# Still held: whichever are down now say how hard.
+		_throw_left = cmd.held(UserCmd.ATTACK)
+		_throw_right = cmd.held(UserCmd.ATTACK2)
+		return
+	_pin_pulled = false
+	var underhand := _throw_right and not _throw_left
+	_throwing = true
+	_throwing_until_usec = SimClock.tick_end_usec(cmd.tick) + int(roundf(
+		(THROW_UNDERHAND_SECONDS if underhand else THROW_OVERHAND_SECONDS) * 1_000_000.0
+	))
+	grenade_released.emit(underhand)
+	if is_instance_valid(world):
+		var strength := GrenadeRules.strength_for(_throw_left, _throw_right)
+		world.game.command(userid, "throw %s %s" % [entry.item.item_class, strength])
+
+
+## Sends a game event, when the player is in a game.
+func _send(event_name: StringName, fields: Dictionary, at_usec: int = -1) -> void:
+	if is_instance_valid(world):
+		world.game.events.send(event_name, fields, at_usec)
 
 
 ## Noclip flies where you are looking, pitch included, with jump and duck for
@@ -693,13 +904,16 @@ func _revive() -> void:
 	observing_chase = false
 
 
-## Back where the map put the player, whole and reloaded.
+## Back where the map put the player, whole, armoured as they started, with
+## a spawn's loadout: CS2's knife and pistol, and starting_gun.
 func respawn() -> void:
+	# The loadout strips the player, armour and all, before the revive puts
+	# the starting armour back.
+	_loadout()
 	_revive()
 	place(_spawn_position, _spawn_yaw)
 	velocity = Vector3.ZERO
 	_forget_hits()
 	_get_up()
-	if weapon != null:
-		equip(weapon.data)
 	respawned.emit()
+	_send(&"player_spawn", {"userid": userid})

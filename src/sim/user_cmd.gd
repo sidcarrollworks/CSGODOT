@@ -30,9 +30,13 @@ const USE := 32
 ## knife's heavy swing.
 const ATTACK2 := 64
 
-## Weapon slots a command can ask to switch to (`weapon_select`), until
-## there is an inventory; 0 asks for nothing.
+## What a command can ask to take in hand (`weapon_select`): a slot by its
+## number key, as CS2 numbers them (1 the primary, 2 the pistol, 3 the knife
+## and the Zeus, 4 the grenades, 5 the bomb; pressed again, 3 and 4 go to
+## the next thing in the slot), or the last thing held (Q). 0 asks for
+## nothing.
 const SELECT_NONE := 0
+const SELECT_LAST := -1
 
 
 ## One button going down or up inside the tick.
@@ -66,7 +70,7 @@ var yaw_degrees: float = 0.0
 var pitch_degrees: float = 0.0
 ## Transitions during the tick, in the order they happened.
 var steps: Array[SubtickStep] = []
-## A weapon to switch to (WeaponLibrary's slot numbers), or SELECT_NONE.
+## A slot to take in hand (1 to 5), SELECT_LAST, or SELECT_NONE.
 var weapon_select: int = SELECT_NONE
 ## Noclip on or off this tick. A developer's key; CS has it as a command.
 var toggle_noclip: bool = false

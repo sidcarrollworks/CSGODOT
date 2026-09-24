@@ -80,7 +80,9 @@ func add_player(player: PlayerSim) -> void:
 		return
 	players.append(player)
 	player.world = self
-	game.add_player(player, player.hit_target)
+	player.userid = game.add_player(player, player.hit_target, player.inventory)
+	# What is in hand is drawn on this world's clock, from now.
+	player.draw_again()
 	if match_state != null:
 		match_state.add_player(player)
 
@@ -92,6 +94,7 @@ func remove_player(player: PlayerSim) -> void:
 	game.roster.remove(game.roster.userid_of(player))
 	if player.world == self:
 		player.world = null
+		player.userid = GameEvents.NOBODY
 	if is_instance_valid(match_state):
 		match_state.remove_player(player)
 

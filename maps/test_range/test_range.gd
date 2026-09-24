@@ -29,16 +29,22 @@ extends Node3D
 ## window of their own, to check them against how you stand, crouch and
 ## jump.
 ##
-## And the bomb: you carry it, and behind the spawn is a bomb site, A,
-## marked on the floor. Hold 5 on it to plant (the attack button with the
-## bomb in hand, in CS2; here your gun stays out), and it counts down 40 s,
-## beeping. Hold E looking at it to defuse, 10 s, or 5 with the kit L gives
-## you. You plant as a terrorist and defuse as a counter-terrorist. Let it
-## go off and it does dust2's damage to you and the dummy, by distance.
-## Press 5 again once it has gone off or been defused for a new one.
+## You carry what a CS2 player carries, in CS2's slots: the AK-47 on 1, your
+## side's pistol on 2, the knife on 3, grenades on 4, the bomb on 5, and Q
+## for the last thing held. G drops what is in hand, and walking over a gun
+## picks it up where its slot is free. A gun you buy (B) is put in your
+## hands.
 ##
-## And CS2's grenades, all six, thrown from where you stand
-## (GrenadeLane): 4 picks one, Q throws it, Z lobs it, X throws between.
+## And the bomb: you carry it, and behind the spawn is a bomb site, A,
+## marked on the floor. Take it out (5) and hold the attack button on the
+## site to plant, and it counts down 40 s, beeping. Hold E looking at it to
+## defuse, 10 s, or 5 with the kit L gives you. You plant as a terrorist and
+## defuse as a counter-terrorist. Let it go off and it does dust2's damage
+## to you and the dummy, by distance. 5 once it has gone off or been
+## defused gives you another.
+##
+## And CS2's grenades, thrown from your hand (GrenadeLane): the range keeps
+## you stocked with four.
 
 ## Distance from the firing line to the wall. Spray references are usually
 ## drawn at a fixed distance, so this needs to match whatever you compare
@@ -133,11 +139,11 @@ var bomb_system: BombSystem
 var bomb: C4
 var bomb_sites: Array[BombSite] = []
 var bomb_view: C4View
-## The bomb's keys held since a press the range was given (_follow_bomb_key).
-var _bomb_keys_down := {}
 
 ## The grenades: throwing them, what they did, and drawing them.
 var grenades: GrenadeLane
+## What lies on the ground: guns dropped and left by the dead.
+var dropped_view: DroppedItemView
 
 
 func _ready() -> void:
@@ -164,6 +170,10 @@ func _ready() -> void:
 	_build_bomb()
 	_build_hud()
 	_build_grenades()
+	dropped_view = DroppedItemView.new()
+	dropped_view.name = "Dropped"
+	add_child(dropped_view)
+	dropped_view.watch(game)
 	shop = RangeShop.new()
 	shop.name = "Shop"
 	add_child(shop)
@@ -171,8 +181,6 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventKey and not event.echo:
-		_follow_bomb_key(event as InputEventKey)
 	if event.is_action_pressed(&"export_spray"):
 		_export_spray()
 	elif event.is_action_pressed(&"reset_range"):
@@ -197,27 +205,59 @@ func _unhandled_input(event: InputEvent) -> void:
 		next_hitbox_view()
 	elif event.is_action_pressed(&"dummy_cover"):
 		next_cover()
-	elif event is InputEventKey and event.pressed and not event.echo:
-		# The bomb's keys are the range's own and read here rather than
-		# added to the project's input map: 5 is CS2's bomb slot, E its
-		# use key.
-		if bomb_system != null:
-			_bomb_key_pressed((event as InputEventKey).physical_keycode)
+	elif event.is_action_pressed(&"slot5"):
+		# CS2's bomb slot, which takes the bomb out; with it spent, a new one,
+		# which the same key's selection then takes out.
+		new_bomb_if_spent()
+	elif event is InputEventKey and event.pressed and not event.echo \
+			and (event as InputEventKey).physical_keycode == BOMB_KIT_KEY:
+		toggle_kit()
 
 
 func _process(_delta: float) -> void:
-	if player == null or player.weapon == null:
+	if player == null:
 		return
-	var weapon := player.weapon
-	var state := player.shooter_state
-	var cone := weapon.current_inaccuracy(state)
-	# The cone drawn round the crosshair, so moving, stopping and
-	# counter-strafing can be watched opening and closing it.
-	_crosshair.spread_degrees = cone
 	var camera := get_viewport().get_camera_3d()
 	if camera != null:
 		_crosshair.fov_degrees = camera.fov
 	_label.text = "\n".join([
+		"\n".join(_gun_readout()),
+		"impacts    %d" % _impacts.size(),
+		"\n".join(shop.readout()),
+		"",
+		"1 2 3 4 5  rifle, pistol, knife, grenades, bomb   Q  the last",
+		"R      reload      G  drop what is in hand",
+		"P      export      O  clear",
+		"H      hitboxes    K  armour",
+		"N      dummy distance   F  dummy never dies",
+		"M      a wall in front of the dummy",
+		"I      shooter fires    U  its weapon",
+		"Y      your armour      J  you never die",
+		"T      your hitboxes: front, side, off",
+		"B      buy menu, in the green zone round the spawn",
+		"5      the bomb: hold fire on site A behind you to plant",
+		"E      hold looking at it: defuse   L  kit (%s)" % ("on" if has_kit() else "off"),
+		"",
+		bomb_readout(),
+	])
+	_dummy_label.text = dummy_readout()
+	_you_label.text = you_readout()
+	_place_hitbox_camera()
+
+
+## The gun in hand, its rounds and how accurate it is now; the cone drawn
+## round the crosshair, so moving, stopping and counter-strafing can be
+## watched opening and closing it. Whatever else is in hand, its name.
+func _gun_readout() -> PackedStringArray:
+	var weapon := player.weapon
+	if weapon == null:
+		_crosshair.spread_degrees = 0.0
+		var entry := player.inventory.in_hand()
+		return PackedStringArray([entry.item.name if entry != null else "nothing in hand"])
+	var state := player.shooter_state
+	var cone := weapon.current_inaccuracy(state)
+	_crosshair.spread_degrees = cone
+	return PackedStringArray([
 		"%s" % weapon.data.display_name,
 		"ammo       %d / %d" % [weapon.ammo, weapon.reserve],
 		"shot       %d" % weapon.shot_index(),
@@ -239,26 +279,7 @@ func _process(_delta: float) -> void:
 			weapon.aim_punch.length(),
 			"still" if weapon.aim_punch.length() < 0.01 else "moving",
 		],
-		"impacts    %d" % _impacts.size(),
-		"\n".join(shop.readout()),
-		"",
-		"1 / 2  weapon      R  reload",
-		"P      export      O  clear",
-		"H      hitboxes    K  armour",
-		"N      dummy distance   G  dummy never dies",
-		"M      a wall in front of the dummy",
-		"I      shooter fires    U  its weapon",
-		"Y      your armour      J  you never die",
-		"T      your hitboxes: front, side, off",
-		"B      buy menu, in the green zone round the spawn",
-		"5      hold on site A behind you: plant",
-		"E      hold looking at it: defuse   L  kit (%s)" % ("on" if has_kit() else "off"),
-		"",
-		bomb_readout(),
 	])
-	_dummy_label.text = dummy_readout()
-	_you_label.text = you_readout()
-	_place_hitbox_camera()
 
 
 ## Records every shot the player takes, and marks the ones that hit the wall.
@@ -419,8 +440,7 @@ func _add_number(at: Vector3, amount: float, zone: StringName) -> void:
 
 # --- The bomb --------------------------------------------------------------
 
-const BOMB_PLANT_KEY := KEY_5
-const BOMB_DEFUSE_KEY := KEY_E
+## The kit on and off: the range's own key, beside CS2's.
 const BOMB_KIT_KEY := KEY_L
 ## Site A, behind the spawn: 384 across, 256 deep, from 96 behind it.
 const BOMB_SITE_BOX := AABB(Vector3(-192.0, -8.0, 96.0), Vector3(384.0, 136.0, 256.0))
@@ -429,14 +449,22 @@ const BOMB_DAMAGE := 700.0
 
 
 ## The bomb joins the range's game as its system, run on the world's tick
-## after you and the dummy; the range only says what your keys ask of it
-## and shows what it did.
+## after you and the dummy. It reads your command as a match's does (the
+## attack button with the bomb in hand plants, E defuses); the range only
+## says which side you do it as, and shows what it did.
 func _build_bomb() -> void:
 	var rules := C4Rules.new()
 	rules.bomb_damage = BOMB_DAMAGE
 	bomb_sites = [BombSite.of_box("A", BOMB_SITE_BOX)]
 	bomb_system = BombSystem.new(bomb_sites, rules)
-	bomb_system.input_of = _bomb_keys
+	var from_command := bomb_system.input_of
+	bomb_system.input_of = func(userid: int, who: Node3D, inventory: Inventory) -> Dictionary:
+		var asked: Dictionary = from_command.call(userid, who, inventory)
+		# One player plants and defuses both: a terrorist until the bomb is
+		# down, then a counter-terrorist.
+		if userid == you_id():
+			asked["team"] = "CT" if bomb.planted() else "T"
+		return asked
 	game.add_system(bomb_system)
 	bomb = bomb_system.bomb
 	bomb_system.give_to(you_id())
@@ -458,54 +486,20 @@ func you_id() -> int:
 	return game.roster.userid_of(player)
 
 
-## What your keys ask of the bomb, in place of a command's attack with the
-## bomb in hand and its use key: 5 plants, E defuses. You are a terrorist
-## until it is down, then a counter-terrorist. Nobody else asks anything.
-func _bomb_keys(userid: int, _player: Node3D, _inventory: Inventory) -> Dictionary:
-	if userid != you_id():
-		return {}
-	return {
-		"plant": _bomb_key_held(BOMB_PLANT_KEY),
-		"use": _bomb_key_held(BOMB_DEFUSE_KEY),
-		"team": "CT" if bomb.planted() else "T",
-	}
+## A new bomb, once the last has gone off or been defused (5).
+func new_bomb_if_spent() -> void:
+	if bomb_system != null and bomb.state in [C4.State.NONE, C4.State.DEFUSED, C4.State.EXPLODED]:
+		bomb_system.give_to(you_id())
 
 
-## 5 and E count as held from a press that reached the range to its
-## release: a press something else took first (the buy menu, while it is
-## open) never does. The key has to be down still, too, in case what took
-## the press took the release as well.
-func _follow_bomb_key(event: InputEventKey) -> void:
-	if event.physical_keycode not in [BOMB_PLANT_KEY, BOMB_DEFUSE_KEY]:
-		return
-	if event.pressed:
-		_bomb_keys_down[event.physical_keycode] = true
+## The kit on and off (L), which the inventory carries as CS2's
+## item_defuser.
+func toggle_kit() -> void:
+	var inventory := game.inventory(you_id())
+	if inventory.has_defuser:
+		inventory.remove("item_defuser")
 	else:
-		_bomb_keys_down.erase(event.physical_keycode)
-
-
-func _bomb_key_held(key: Key) -> bool:
-	if not _bomb_keys_down.has(key):
-		return false
-	if not Input.is_physical_key_pressed(key):
-		_bomb_keys_down.erase(key)
-		return false
-	return true
-
-
-## A new bomb once the last is spent (5), and the kit on and off (L), which
-## the inventory carries as CS2's item_defuser.
-func _bomb_key_pressed(key: Key) -> void:
-	match key:
-		BOMB_PLANT_KEY:
-			if bomb.state in [C4.State.NONE, C4.State.DEFUSED, C4.State.EXPLODED]:
-				bomb_system.give_to(you_id())
-		BOMB_KIT_KEY:
-			var inventory := game.inventory(you_id())
-			if inventory.has_defuser:
-				inventory.remove("item_defuser")
-			else:
-				inventory.add("item_defuser")
+		inventory.add("item_defuser")
 
 
 func has_kit() -> bool:
@@ -513,12 +507,9 @@ func has_kit() -> bool:
 	return inventory != null and inventory.has_defuser
 
 
-## The bomb's events in the log, planting and defusing holding you still,
-## and the blast's damage where it landed.
+## The bomb's events in the log, and the blast's damage where it landed.
 func _on_game_event(event: GameEvent) -> void:
 	var event_name := String(event.name)
-	# Until the player reads the game's holds_still query itself.
-	player.frozen = bomb_system.holds_still(you_id())
 	if event_name.begins_with("bomb_"):
 		_push_log(_bomb_event_line(event))
 	elif event_name == "player_hurt" and event.fields["weapon"] == "weapon_c4":
@@ -549,7 +540,7 @@ func bomb_readout() -> String:
 		C4.State.CARRIED:
 			if bomb.planting():
 				return "BOMB   planting on %s  %3d%%" % [bomb.site, roundi(bomb.plant_progress(now) * 100.0)]
-			return "BOMB   on you" + ("   on site A: hold 5" if bomb_sites[0].contains(player.global_position) else "")
+			return "BOMB   on you" + ("   on site A: 5, then hold fire" if bomb_sites[0].contains(player.global_position) else "")
 		C4.State.DROPPED:
 			return "BOMB   dropped"
 		C4.State.PLANTED:
@@ -580,6 +571,8 @@ static func shooter_weapons() -> Array[WeaponData]:
 	WeaponSheet.apply(mp9, "MP9")
 	WeaponVData.apply(mp9, "weapon_mp9")
 	mp9.display_name = "MP9"
+	# Carried as what it is: an MP9 in the inventory, not a second AK-47.
+	mp9.item_class = "weapon_mp9"
 	return [WeaponLibrary.ak47(), WeaponLibrary.m4a1s(), mp9]
 
 
@@ -785,6 +778,9 @@ func _export_spray() -> void:
 	if _impacts.is_empty():
 		print("Nothing to export: fire at the wall first.")
 		return
+	if player.weapon == null:
+		print("Take the gun you sprayed with in hand to export it.")
+		return
 
 	var first: Dictionary = _impacts[0]
 	var first_shot: Weapon.Shot = first["shot"]
@@ -828,6 +824,10 @@ func _reset() -> void:
 		shop.reset()
 	if bomb_system != null:
 		bomb_system.give_to(you_id())
+	# The guns on the ground, the dummy's from every death among them.
+	for entity in game.entities.all():
+		if entity is DroppedItem:
+			entity.remove()
 	print("Range cleared.")
 
 
@@ -973,15 +973,18 @@ func _build_lane() -> void:
 		sign_text.pixel_size *= clampf(distance / 512.0, 1.0, 3.0)
 
 
-## A bot with nothing to shoot with and no route: it stands where it is put
-## and faces the way it is turned. It wears the character model and the
-## game's own hitboxes on its bones where they have been extracted, and the
-## four standard boxes with a grey body where they have not.
+## A bot that holds its fire and has no route: it stands where it is put
+## and faces the way it is turned. It carries the M4A1-S it is seen holding,
+## which it drops when it dies, as anyone does. It wears the character model
+## and the game's own hitboxes on its bones where they have been extracted,
+## and the four standard boxes with a grey body where they have not.
 func _build_dummy() -> void:
 	dummy = (load("res://src/bots/bot.tscn") as PackedScene).instantiate() as Bot
 	dummy.name = "Dummy"
 	dummy.team = "CT"
-	dummy.weapon_model = WeaponLibrary.m4a1s().model_path
+	dummy.holds_fire = true
+	dummy.weapon_data = WeaponLibrary.m4a1s()
+	dummy.weapon_model = dummy.weapon_data.model_path
 	dummy.respawn_seconds = DUMMY_RESPAWN_SECONDS
 	dummy.position = dummy_position()
 	dummy.yaw_degrees = 180.0

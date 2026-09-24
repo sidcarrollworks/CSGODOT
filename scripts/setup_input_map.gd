@@ -21,6 +21,12 @@ const ACTIONS := {
 	&"reload": [KEY_R],
 	&"slot1": [KEY_1],
 	&"slot2": [KEY_2],
+	&"slot3": [KEY_3],
+	&"slot4": [KEY_4],
+	&"slot5": [KEY_5],
+	&"lastinv": [KEY_Q],
+	&"drop": [KEY_G],
+	&"use": [KEY_E],
 	&"export_spray": [KEY_P],
 	&"reset_range": [KEY_O],
 }

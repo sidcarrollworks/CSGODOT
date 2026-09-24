@@ -372,14 +372,20 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
     grenades' friendly fire (17 to 20), and the round's full HUD (15).
     Guessed, not from CS2: both sides wiped out on one tick goes to the Ts,
     and half time's 15 s replaces the 7 s pause rather than following it.
-12. **Inventory.** *(Remote; Local extracts world models)* Slots, switching
+12. **Inventory.** *(done 2026-09-23 but for E to swap and guns on the
+    ground as physics objects; Sid checks it on the range)* Slots, switching
     with draw times, dropping (G), picking up and swapping, drops on death.
-    *(Partly done 2026-09-23, `reference/systems/contracts.md`: `Inventory`
-    with CS2's carrying rules, slots, Q and cycling grenades, each gun its
-    own `Weapon`; `DroppedItem` and `ItemDrops` for dropping, picking up
-    and drops on death. Left: wiring it into `player_sim.gd` in place of the
-    one weapon, draw times on a switch, G in `PlayerInput`, E to swap, and
-    the dropped guns drawn.)*
+    `Inventory` with CS2's carrying rules, slots, Q and cycling grenades,
+    each gun its own `Weapon`; `DroppedItem` and `ItemDrops` for dropping,
+    picking up and drops on death (`reference/systems/contracts.md`). Every
+    player carries one (you and the bots, `player_sim.gd`): a spawn's knife,
+    pistol and the gun handed out, 1 to 5 and Q, the item's draw time and
+    speed on every switch, a switch stopping a reload, G dropping what is in
+    hand, a grenade thrown from the hand, and each item's first-person model
+    built once and kept while carried, so a switch builds nothing. The
+    dropped guns are drawn (`DroppedItemView`, the range and dust2). Left:
+    E to swap with the gun in hand, and a gun on the ground as a rigid body
+    that blasts and rounds push (`reference/cs2-systems.md` section 4).
 13. **Economy.** *(done 2026-09-23, Remote; wired into dust2 with the
     GameWorld; Local E1 checks three guesses)* $800 start, $16,000 cap, round
     rewards, the loss ladder that a win steps down by one, plant and defuse
@@ -402,10 +408,11 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
 ### Phase 5: the bomb
 
 16. **Plant, timer, defuse, explosion.** *(Remote part built 2026-09-23 in
-    `src/bomb/`, on the test range (5 plants, E defuses, L the kit); wiring
-    it into the match, dust2 and the HUD waits on the GameWorld and the
-    shared contracts, as `reference/systems/bomb.md` sets out; the plant
-    time, defuse reach and beeps are guesses until C1)* *(Local measures,
+    `src/bomb/`, on the test range (5 takes the bomb out and the attack
+    button plants it, E defuses, L the kit, all through your commands);
+    wiring it into the match, dust2 and the HUD is next, as
+    `reference/systems/bomb.md` sets out; the plant time, defuse reach and
+    beeps are guesses until C1)* *(Local measures,
     then Remote; the bomb and the kit are extracted)* One T carries it; plant in a site; 40 s
     with beeps; defuse 10 s or 5 with a kit; the explosion (CS2 reworked it
     in July 2026 into a shockwave with damage baked per map: dust2's is
@@ -414,8 +421,9 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
 
 ### Phase 6: grenades
 
-17. **Throwing.** *(done on the range, the grenades PR; the throw from the
-    hand waits on the inventory in `player_sim.gd`; Local measures, G1)*
+17. **Throwing.** *(done on the range, the grenades PR, and from the hand
+    since 2026-09-23: 4 takes one out, the attack buttons pull the pin and
+    throw on letting go; Local measures, G1)*
     Three throw strengths, your velocity added, bounces off the hull. The
     grenade clip is still left out of the hull on import
     (`reference/systems/grenades.md`, item 6).

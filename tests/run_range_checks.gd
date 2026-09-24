@@ -28,7 +28,8 @@ func _run() -> void:
 		await physics_frame
 
 	var dummy: Bot = _range.dummy
-	_check(dummy != null and dummy.weapon == null and dummy.route.is_empty(), "the dummy is a bot with nothing to shoot with and nowhere to go")
+	_check(dummy != null and dummy.holds_fire and dummy.target == null and dummy.route.is_empty(),
+		"the dummy is a bot that holds its fire and has nowhere to go")
 	if dummy == null:
 		_report()
 		return
@@ -139,10 +140,10 @@ func _run() -> void:
 	_check(
 		spray_hits == 8 and dummy.alive and dummy.hit_target.health > 0.0
 			and lines.size() >= 2 and lines[0].begins_with("KILLED  100 damage in 1 hit"),
-		"G keeps it standing: eight rounds to the head all register, each one counted as a kill (%d, %s)" % [spray_hits, lines[0] if lines.size() > 0 else ""]
+		"F keeps it standing: eight rounds to the head all register, each one counted as a kill (%d, %s)" % [spray_hits, lines[0] if lines.size() > 0 else ""]
 	)
 	_range.toggle_immortal()
-	_check(not dummy.hit_target.immortal, "and G again lets it die")
+	_check(not dummy.hit_target.immortal, "and F again lets it die")
 	_check(
 		_range.hitbox_source.contains("19 CS2 capsules") or _range.hitbox_source.contains("stand-in"),
 		"the readout says which hitboxes it wears (%s)" % _range.hitbox_source
@@ -376,6 +377,13 @@ func _test_the_shop() -> void:
 		return
 	player.place(Vector3(0.0, 8.0, 0.0), 0.0)
 	var userid := shop.userid
+	var carried: Inventory = _range.game.inventory(userid)
+	_check(
+		carried == player.inventory and carried.has("weapon_knife") and carried.has("weapon_glock")
+			and carried.has("weapon_ak47") and carried.has("weapon_c4") and player.in_hand_class() == "weapon_ak47",
+		"you carry a terrorist's knife and Glock, the AK-47 in hand, and the bomb: the inventory the game knows you by (%s in hand)"
+			% player.in_hand_class()
+	)
 	_check(shop.economy.money(userid) == 16000 and shop.economy.shop_refusal(userid) == Economy.OK,
 		"you start in the buy zone with $16,000")
 	shop.economy.buy(userid, "weapon_deagle")
@@ -398,12 +406,6 @@ func _test_the_shop() -> void:
 	_check(shop.economy.shop_refusal(userid) == Economy.OK,
 		"respawning sends player_spawn, and you can shop again (%s)" % shop.economy.shop_refusal(userid))
 
-	var carried := Inventory.new()
-	carried.add("weapon_c4")
-	RangeShop.stock(carried, "T", "weapon_ak47")
-	_check(carried.has("weapon_knife") and carried.has("weapon_glock") and carried.has("weapon_ak47")
-		and carried.has("weapon_c4") and carried.in_hand_class() == "weapon_ak47",
-		"with a C4 already carried, the range still stocks the knife, the Glock and the AK-47 in hand (%s)" % carried.in_hand_class())
 	shop.menu.open()
 	var opened := shop.menu.is_open()
 	shop.menu.close()
@@ -534,8 +536,12 @@ func _test_death_cam() -> void:
 	player.hit_target.immortal = false
 	player.hit_target.apply_damage(1000.0, &"head", 1.0)
 	_check(not player.alive, "a round to the head kills you")
-	for i in 60:
+	# Until the camera has swung out, on its own clock: headless frames come
+	# as fast as they can, so a count of them is no time at all.
+	for i in 2000:
 		await process_frame
+		if float(view.get("_dead_for")) >= PlayerView.DEATH_CAM_SECONDS + 0.05:
+			break
 	var centre := player.body_centre()
 	var camera := player.camera
 	var looking := -camera.global_basis.z

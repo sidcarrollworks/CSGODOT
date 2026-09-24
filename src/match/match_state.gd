@@ -19,9 +19,9 @@ extends Node
 ## when it is, it ends rounds through end_round with its own reasons, and a
 ## planted bomb stops the round's clock from ending the round.
 ##
-## Until there is an inventory and buying (roadmap items 12 and 14), a
-## player who starts a round fresh is handed their side's rifle, the AK-47
-## or the M4A1-S, in place of a pistol and the money to buy one.
+## Until there is buying in a match (roadmap item 14), a player who spawns
+## is handed their side's rifle, the AK-47 or the M4A1-S, with CS2's knife
+## and pistol (PlayerSim.starting_gun), in place of the money to buy one.
 
 enum Phase {
 	## Everyone plays, dies and comes back; nothing counts.
@@ -288,9 +288,10 @@ func _swap_sides() -> void:
 		var side := other(player.team)
 		var bot := player as Bot
 		if bot != null:
+			# Held in the body the side change builds.
 			var data := starting_weapon(side)
 			bot.weapon_model = data.model_path
-			bot.arm(data)
+			bot.weapon_data = data
 		player.change_team(side)
 	sides_swapped.emit()
 
@@ -314,8 +315,7 @@ func _spawn_everyone(fresh: bool) -> void:
 		var points := _spawn_order(spawns.get(side, []), rng)
 		for i in members.size():
 			var player := members[i]
-			if fresh:
-				_arm(player)
+			_arm(player)
 			if points.is_empty():
 				player.spawn_at(player.global_position, player.yaw_degrees, fresh)
 			else:
@@ -350,15 +350,15 @@ static func _shuffle(items: Array, rng: RandomNumberGenerator) -> void:
 		items[j] = kept
 
 
-## A fresh player's weapon: their side's rifle.
+## What a player spawning this round is handed besides CS2's knife and
+## pistol: their side's rifle, until there is buying (roadmap item 14). A
+## spawn hands it out (PlayerSim.respawn); a survivor keeps what they carry.
 func _arm(player: PlayerSim) -> void:
 	var data := starting_weapon(player.team)
+	player.starting_gun = data
 	var bot := player as Bot
 	if bot != null:
-		if bot.weapon_data == null or bot.weapon_data.display_name != data.display_name:
-			bot.arm(data)
-	elif player.weapon == null or player.weapon.data.display_name != data.display_name:
-		player.equip(data)
+		bot.weapon_data = data
 
 
 ## A side that started the round with players and has none alive. Both
