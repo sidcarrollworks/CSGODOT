@@ -61,7 +61,7 @@ takes.
 | Tagging Power | How much of a victim's speed a hit takes | `tagging_power`, tags the victim in `PlayerSim` (1 minus CS2's `m_flFlinchVelocityModifierLarge`) |
 | Bullet Range | Where a round stops: 8,192 rifles and snipers, 3,600 or 3,700 SMGs, 4,096 pistols, 1,400 or 3,000 shotguns | `max_range` |
 | Hold to Shoot | Automatic or not | `automatic`: a semi-automatic gun fires once a click (`Weapon.can_fire`) |
-| Tracers | Every round, every third, or none (silenced) | Not yet: no tracers |
+| Tracers | Every round, every third, or none (silenced) | Every round, CS2's client overriding the every-third; none silenced (`Tracers`, `reference/weapons/effects.md`) |
 | Accurate Range Stand / Crouch | Where the cone is six inches wide, in metres | Checked, not stored |
 | Standing / Crouching Inaccuracy | The cone standing still, crouched still | `inaccuracy_standing`, `_crouching` |
 | Running Inaccuracy | The cone at full run | `inaccuracy_moving` |
@@ -156,7 +156,10 @@ the scopes' zoom levels and times, the deploy time, how soon a reload lets
 the gun fire again, the muzzle's position, the tracers, the burst timing,
 and Random recoil's angle and size (R6). Of these the firing model uses the
 spread (inside every inaccuracy total) and when a reload lets the gun fire
-again (`reload_time`); the rest are not used yet. For everything the two
+again (`reload_time`), and the tracers (`src/effects/`) use the tracer
+effect, its frequency and the range; the muzzle's position is where the
+model's own muzzle attachment is from the eye, which the effects checks hold
+`Muzzles` to. The rest are not used yet. For everything the two
 share, the game's file wins (see the top of this file).
 
 Checked against the sheet, 914 values agree. Of the six that do not, five

@@ -76,6 +76,11 @@ Updated 2026-09-24: binds added (item 12a, planned in `reference/binds.md`): one
   Animation and accuracy-reset times measured in CS2.
 - The firing clip replays on every round; viewmodel bob, sway and lag;
   your own body and shadow when you look down.
+- Tracers and muzzle flashes (2026-09-24), CS2's own: every gun's tracer at
+  its effect's speed, length and colour, from the drawn muzzle, every round
+  but a silenced one's; every gun's flash in first person and third, its
+  flames, beams, sparks, smoke and light (`src/effects/`,
+  `reference/weapons/effects.md`).
 - Test range: a wall ruled in degrees at 496 units, spray export to CSV, and
   a dummy wearing CS2's own hitboxes with a hit log, damage numbers, armour and
   distance switches, a never-die mode and a ragdoll death (PR #20).
@@ -654,7 +659,7 @@ grenades.
 What a thread can start now: what is left of the inventory (item 12: E to
 swap, guns on the ground as rigid bodies); the bind table (12a), taking over
 the keys the inventory put in `PlayerInput`; from the weapons todo, the
-registry of all 34 guns (R1), tracers (R10) and
+registry of all 34 guns (R1) and
 the game's recovery fields (R13), with shotguns (R5) after it; the
 third-person firing layer (item 6), then the shadow's arms (6a); and the
 housekeeping.

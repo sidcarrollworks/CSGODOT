@@ -292,7 +292,7 @@ func _vdata_page(source: String, date: String, vdata: Dictionary) -> String:
 		"- Reload lockout: seconds after starting a reload that the gun cannot fire. For the magazine guns it is the reload clip's length in `timings.md`, or a frame longer (AK-47, USP-S, MAG-7, MP7, UMP-45). For the shotguns that load a shell at a time (Nova, XM1014, Sawed-Off) it is far shorter than the clip: it ends near the end of the clip's `WPN_RELOAD_INTRO`, before the first shell goes in.",
 		"- Spread: the gun's own cone, inside the inaccuracy; normal, alternate.",
 		"- Recovery, final: a second, slower recovery time the firing penalty falls by from the round the transition starts at to the one it ends at, blended; stand and crouch.",
-		"- Muzzle: where the muzzle flash and tracers start, in the model's units (x forward).",
+		"- Muzzle: where the muzzle flash and tracers start: the gun model's muzzle_flash attachment (muzzle_flash2 second), seen from the eye in the first-person idle pose, in inches (x ahead, y left, z up; `src/effects/muzzles.gd`).",
 		"- Tracers: one round in so many draws one; 0 is none.",
 		"- Burst: the cycle time in burst mode and the time between a burst's rounds.",
 		"",

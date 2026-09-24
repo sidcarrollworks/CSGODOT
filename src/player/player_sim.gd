@@ -705,9 +705,16 @@ func _try_shoot(at_usec: int, tick_fraction: float, yaw: float, pitch: float) ->
 		return
 	rounds_fired += 1
 	var item := ItemRegistry.item(weapon.data.item_class)
+	var silenced := item != null and item.silenced_by_default
 	_send(&"weapon_fire", {
-		"userid": userid, "weapon": weapon.data.item_class,
-		"silenced": item != null and item.silenced_by_default,
+		"userid": userid, "weapon": weapon.data.item_class, "silenced": silenced,
+	}, at_usec)
+	# Where it left and which way, for whoever draws its tracer.
+	var angles := PlayerInput.angles_from_direction(shot.direction)
+	_send(&"fire_bullets", {
+		"userid": userid, "weapon": weapon.data.item_class, "mode": 1 if silenced else 0,
+		"x": shot.origin.x, "y": shot.origin.y, "z": shot.origin.z,
+		"pitch": angles.y, "yaw": angles.x, "inaccuracy": tan(deg_to_rad(shot.inaccuracy)),
 	}, at_usec)
 
 	# The round is the player's: who fired it and from which side goes with

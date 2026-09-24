@@ -282,7 +282,8 @@ func _buy_zones(spawns: Dictionary) -> BuyZones:
 
 ## What is seen and heard of the systems: the grenades and their smoke and
 ## fire, the bomb on the ground and its blast, a flash's white-out over the
-## HUD, as CS2's covers it, and the hits and deaths others hear.
+## HUD, as CS2's covers it, the hits and deaths others hear, and the
+## rounds' tracers and the guns' muzzle flashes.
 func _add_views() -> void:
 	if grenade_system != null:
 		var grenade_view := GrenadeView.new()
@@ -306,6 +307,11 @@ func _add_views() -> void:
 	hit_sounds.name = "HitSounds"
 	add_child(hit_sounds)
 	hit_sounds.watch(world.game, (player as PlayerSim).userid)
+	# The rounds' tracers and the guns' muzzle flashes.
+	var shot_effects := ShotEffects.new()
+	shot_effects.name = "ShotEffects"
+	add_child(shot_effects)
+	shot_effects.watch(world.game, (player as PlayerSim).userid, player as PlayerController)
 
 
 ## F5 ends warmup, as mp_warmup_end does, on the world's next tick.
