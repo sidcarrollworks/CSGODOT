@@ -518,9 +518,10 @@ None of these are changed by the contract threads; this branch changes
 - `bot.gd`: *(done)* the inventory through PlayerSim, `bot.arm()` now
   handing it its starting gun; *(done 2026-09-23)* buying in freeze time
   through `buy` commands, after the `can_buy` and `money` queries
-  (`BotBuying`), and its best gun taken out. Still to do: USE and ATTACK2
-  when bots plant and throw; the `burning_at` and `smoke_length_between`
-  queries to keep out of fire and see through smoke.
+  (`BotBuying`), and its best gun taken out; *(done 2026-09-24)* the
+  `smoke_length_between` and `blind_share` queries in its sight. Still to
+  do: USE and ATTACK2 when bots plant and throw; the `burning_at` query to
+  keep out of fire.
 - *(Done 2026-09-23.)* `match_state.gd`: sends `round_announce_warmup`,
   `begin_new_match`, `round_prestart` (handed out at once), `round_start`,
   `round_poststart`, `round_freeze_end`, `round_end` (with

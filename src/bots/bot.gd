@@ -18,7 +18,11 @@ extends PlayerSim
 ## and recoil exactly as yours do (a pistol tapped), and it reloads when it
 ## runs dry. On a map it spawns as you do, with the knife and its side's
 ## pistol, buys in freeze time as CS2's bot does (BotBuying), and takes its
-## best gun out. It does not flinch, take cover or think.
+## best gun out. Smoke hides a player from it past as much of it as CS2's
+## bot sees through, and a flash blinds it by the same rules it blinds you:
+## blinded, it sees nobody, fires where it last saw the one it was engaging,
+## and otherwise backs off until it can see again. It does not flinch, take
+## cover or think.
 ##
 ## The point of it being the same simulation is that it moves and shoots
 ## like a player. A bot that walked on rails and fired by its own rules
@@ -75,6 +79,15 @@ const SHOP_DELAY_TICKS := 16
 const SHOP_SPREAD_TICKS := 48
 const AIM_ERROR_DEGREES := 1.2
 const FIRE_WITHIN_DEGREES := 6.0
+## Smoke hides a player from it once the line from its eyes to theirs runs
+## through more than this much of it (bot_max_visible_smoke_length 200,
+## reference/research/round-hud-bots.md B5): thin edges do not.
+const MAX_VISIBLE_SMOKE_LENGTH := GrenadeRules.BOT_MAX_VISIBLE_SMOKE_LENGTH
+## Blinded past this share of white (the blind_share query), it sees
+## nobody. A choice: the classic bot's own threshold is in no file, so it
+## is where CS2 counts a kill as blind (sv_flashed_amount_for_blind_kill
+## 0.7), about the flash's hold and the first third of its fade.
+const BLIND_SHARE := GrenadeRules.FLASHED_FOR_BLIND_KILL
 
 ## Walking a path: close enough to a corner to turn for the next, in units.
 ## Tighter than arrive_distance, since cutting a corner early walks the hull
@@ -129,6 +142,10 @@ var _rng := RandomNumberGenerator.new()
 var _shop_tick: int = -1
 ## Time to the next tap of a semi-automatic gun's trigger.
 var _tap_clock: float = 0.0
+## Blinded while engaging someone, it fires where it last saw them
+## (m_blindFire), at this point, until it can see again.
+var _blind_firing: bool = false
+var _blind_fire_at: Vector3 = Vector3.ZERO
 
 
 func _init() -> void:
@@ -230,19 +247,31 @@ func _think(tick: int, delta: float) -> UserCmd:
 		_shop(tick)
 		_take_best_gun(cmd)
 
-	# Nothing to shoot with, nothing to stop for: an unarmed bot just walks.
-	target = _look_for_target() if weapon != null and not holds_fire else null
+	# Blinded, it sees nobody. Blinded while engaging someone, it keeps
+	# firing where it last saw them; otherwise it backs off, facing the way
+	# it faced, until it can see again (round-hud-bots.md B5).
+	var blinded := is_blind()
+	if blinded:
+		if target != null and _seen_for >= REACTION_SECONDS:
+			_blind_firing = true
+			_blind_fire_at = target.global_position + Vector3.UP * 48.0
+		target = null
+	else:
+		_blind_firing = false
+		# Nothing to shoot with, nothing to stop for: an unarmed bot just walks.
+		target = _look_for_target() if weapon != null and not holds_fire else null
 	if target != null:
 		_seen_for += delta
 	else:
 		_seen_for = 0.0
-		_burst_clock = 0.0
-		_tap_clock = 0.0
+		if not _blind_firing:
+			_burst_clock = 0.0
+			_tap_clock = 0.0
 
-	if target != null and _seen_for >= REACTION_SECONDS:
+	if (target != null and _seen_for >= REACTION_SECONDS) or (_blind_firing and weapon != null):
 		# Stops, turns to face the target, and fires in bursts once facing it.
 		var eyes := global_position + Vector3.UP * eye_height()
-		var aim: Vector3 = target.global_position + Vector3.UP * 48.0
+		var aim: Vector3 = _blind_fire_at if target == null else target.global_position + Vector3.UP * 48.0
 		var angles := PlayerInput.angles_from_direction(aim - eyes)
 		yaw = rad_to_deg(rotate_toward(deg_to_rad(yaw), deg_to_rad(angles.x), deg_to_rad(turn_rate) * delta))
 		pitch = angles.y
@@ -267,6 +296,8 @@ func _think(tick: int, delta: float) -> UserCmd:
 					cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.ATTACK, true, 0.0, yaw + error.x, pitch + error.y))
 			elif _burst_clock < BURST_SECONDS:
 				cmd.buttons |= UserCmd.ATTACK
+	elif blinded:
+		cmd.move = Vector2(0.0, -1.0)
 	elif not route.is_empty():
 		var way := _way_on(cmd, delta)
 		if way.length_squared() > 0.0:
@@ -438,8 +469,9 @@ func _look_for_target() -> Node3D:
 	return best
 
 
-## Whether a body is within the cone the bot faces and nothing of the map
-## stands between its eyes and theirs.
+## Whether a body is within the cone the bot faces, nothing of the map
+## stands between its eyes and theirs, and no more smoke than it sees
+## through.
 func can_see(other: Node3D) -> bool:
 	var eyes := global_position + Vector3.UP * eye_height()
 	var theirs: Vector3 = other.global_position + Vector3.UP * 60.0
@@ -453,7 +485,24 @@ func can_see(other: Node3D) -> bool:
 	if flat.length_squared() > 1e-6 and rad_to_deg(forward.angle_to(flat.normalized())) > SIGHT_HALF_ANGLE:
 		return false
 	var query := PhysicsRayQueryParameters3D.create(eyes, theirs, Hitscan.WORLD_LAYER, [get_rid()])
-	return get_world_3d().direct_space_state.intersect_ray(query).is_empty()
+	if not get_world_3d().direct_space_state.intersect_ray(query).is_empty():
+		return false
+	return not _smoke_between(eyes, theirs)
+
+
+## Whether more smoke than it sees through lies between two points: asked
+## of the game (the grenades' smoke_length_between), none without grenades.
+func _smoke_between(from: Vector3, to: Vector3) -> bool:
+	if not is_instance_valid(world):
+		return false
+	return float(world.game.query(&"smoke_length_between", [from, to], 0.0)) > MAX_VISIBLE_SMOKE_LENGTH
+
+
+## Whether a flash has it too white to see (the grenades' blind_share).
+func is_blind() -> bool:
+	if not is_instance_valid(world):
+		return false
+	return float(world.game.query(&"blind_share", [userid], 0.0)) > BLIND_SHARE
 
 
 func _on_shot_traced(_shot: Weapon.Shot, result: Hitscan.Result) -> void:
