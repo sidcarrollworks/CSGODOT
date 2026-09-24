@@ -66,6 +66,10 @@ var view_model: ViewModel
 var _view_models := {}
 ## Planting, as last shown: the bomb's plant clip is playing.
 var _planting := false
+## The field of view last drawn, in CS2's degrees, and the view model it
+## was drawn for: a scope narrows it (_follow_scope).
+var _fov := ViewModelProjection.WORLD_FOV
+var _fov_model: ViewModel
 
 ## What you hear of your own weapon and your hits, and of your own feet.
 var weapon_sounds: WeaponSounds
@@ -405,6 +409,7 @@ func _physics_process(_delta: float) -> void:
 func _process(delta: float) -> void:
 	if camera == null:
 		return
+	_follow_scope()
 	if _dead_for >= 0.0:
 		var watched := player.observing
 		if watched != null and is_instance_valid(watched) and watched.alive:
@@ -448,6 +453,40 @@ func _process(delta: float) -> void:
 		view_model.light_from(camera.global_position)
 	if body_model != null:
 		body_model.light_from(interpolated + Vector3.UP * 40.0)
+
+
+## The scope, as the gun in hand has it at this frame: the camera's field
+## of view narrowed to its zoom (eased over the zoom time), the arms and gun
+## put away while a sniper is scoped, and the mouse slowed by the zoomed
+## field of view over the unzoomed one (CS2's zoom_sensitivity_ratio 1).
+## The arms keep their own field of view whatever the world's.
+func _follow_scope() -> void:
+	var weapon := player.weapon if player.alive and _dead_for < 0.0 else null
+	var fov := ViewModelProjection.WORLD_FOV
+	var hidden := false
+	var sensitivity := 1.0
+	if weapon != null and weapon.data.zoom_levels() > 0:
+		# The frame falls between the last two ticks.
+		var alpha := clampf(Engine.get_physics_interpolation_fraction(), 0.0, 1.0)
+		var now := SimClock.now_usec() - SimClock.tick_usec() + int(alpha * SimClock.tick_usec())
+		fov = weapon.zoom_fov_at(now)
+		hidden = weapon.zoom_level > 0 and weapon.data.hides_view_model_when_zoomed
+		sensitivity = weapon.data.zoom_fov(weapon.zoom_level) / ViewModelProjection.WORLD_FOV * ZOOM_SENSITIVITY_RATIO
+	player.input.zoom_sensitivity = sensitivity
+	if view_model != null:
+		view_model.visible = player.alive and not hidden
+	if is_equal_approx(fov, _fov) and _fov_model == view_model:
+		return
+	_fov = fov
+	_fov_model = view_model
+	camera.fov = ViewModelProjection.vertical_fov(fov)
+	if view_model != null:
+		ViewModelProjection.claim(view_model, fov)
+
+
+## CS2's zoom_sensitivity_ratio: scoped, the mouse turns the view this much
+## on top of the narrowing of the field of view.
+const ZOOM_SENSITIVITY_RATIO := 1.0
 
 
 ## Rides the weapon model on the same punch, scaled by viewmodel_recoil.

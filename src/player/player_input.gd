@@ -92,6 +92,9 @@ var pitch_degrees: float = 0.0
 ## CS2 semantics: the game turns m_yaw (0.022 degrees) per mouse count per
 ## point of sensitivity, so this is the same number you would type in CS2.
 var sensitivity: float = 2.0
+## What a scope makes of it: the zoomed field of view over the unzoomed one,
+## set by the view each frame (PlayerView._follow_scope); 1 unscoped.
+var zoom_sensitivity: float = 1.0
 const CS_YAW_PER_COUNT := 0.022
 
 const PITCH_LIMIT := 89.0
@@ -124,8 +127,8 @@ static func ensure_actions() -> void:
 func handle_event(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		var motion := event as InputEventMouseMotion
-		yaw_degrees -= motion.relative.x * sensitivity * CS_YAW_PER_COUNT
-		pitch_degrees -= motion.relative.y * sensitivity * CS_YAW_PER_COUNT
+		yaw_degrees -= motion.relative.x * sensitivity * zoom_sensitivity * CS_YAW_PER_COUNT
+		pitch_degrees -= motion.relative.y * sensitivity * zoom_sensitivity * CS_YAW_PER_COUNT
 		pitch_degrees = clampf(pitch_degrees, -PITCH_LIMIT, PITCH_LIMIT)
 		return
 

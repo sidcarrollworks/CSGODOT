@@ -226,8 +226,9 @@ Filled by the victim: `victim` (its userid), `health_taken`, `armor_taken`,
   it meets. `Hitscan.fire_at` keeps its signature and calls it with nobody
   as the shooter.
 - `player_death` is sent with what the record knows (attacker, weapon,
-  headshot, penetrated, distance, hitgroup, damage). Assists, flash
-  assists, noscope, through smoke and blind attackers are filled by
+  headshot, penetrated, noscope, distance, hitgroup, damage; noscope is
+  a round from a scoped gun fired unscoped, `Weapon.Shot.noscope`).
+  Assists, flash assists, through smoke and blind attackers are filled by
   whoever knows them later (a kill-credit system listening to
   `player_hurt`, the grenades' smoke query).
 

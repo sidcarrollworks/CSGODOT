@@ -45,9 +45,10 @@ static func fov_narrowing(world_fov: float = WORLD_FOV, view_model_fov: float = 
 
 
 ## Makes a node's meshes draw as the view model, and stops them casting
-## shadows: in the game the arms cast none.
-static func claim(node: Node) -> void:
-	var projection := Vector2(fov_narrowing(), DEPTH_SQUEEZE)
+## shadows: in the game the arms cast none. world_fov is the camera's, in
+## CS2's degrees: a scope narrows it, and the arms keep their own 68.
+static func claim(node: Node, world_fov: float = WORLD_FOV) -> void:
+	var projection := Vector2(fov_narrowing(world_fov), DEPTH_SQUEEZE)
 	for mesh in node.find_children("*", "MeshInstance3D", true, false):
 		(mesh as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		(mesh as MeshInstance3D).set_instance_shader_parameter(&"view_model_projection", projection)

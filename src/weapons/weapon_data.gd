@@ -150,6 +150,56 @@ class Punch:
 ## is 250; rifles are slower.
 @export var max_player_speed: float = 215.0
 
+# --- Scope ----------------------------------------------------------------
+
+## The field of view at each zoom level, in CS2's degrees (horizontal at
+## 4:3, where unzoomed is 90): the game's m_nZoomFOV1 and m_nZoomFOV2, as
+## many as it has levels (m_nZoomLevels). Empty for a gun with no scope.
+## The AWP's are 40 and 10; the AUG's and SG 553's one is 45.
+@export var zoom_fovs: PackedFloat32Array = PackedFloat32Array()
+## How long the view takes to reach each level, level 0 (unzoomed) first:
+## the game's m_flZoomTime0 to 2. Read as the time to reach level N rather
+## than into 1, into 2 and out, as reference/research/combat.md
+## (correction 4) argues; either reading gives the AWP 0.05 s everywhere.
+@export var zoom_times: PackedFloat32Array = PackedFloat32Array()
+## The AWP and SSG 08 come out of the scope as they fire and go back in
+## once the bolt is worked (m_bUnzoomsAfterShot, and CS2's
+## cl_sniper_auto_rezoom, on by default).
+@export var unzooms_after_shot: bool = false
+## The snipers put the arms and gun away while scoped and draw the scope
+## instead (m_bHideViewModelWhenZoomed); the AUG and SG 553 keep them.
+@export var hides_view_model_when_zoomed: bool = false
+## Whether the crosshair is drawn with it in hand (m_bShowCrosshair): not
+## for the four snipers, whose only aim is the scope.
+@export var shows_crosshair: bool = true
+## The gun scoped: the game's second values for speed, inaccuracy and
+## recovery (and the sheet's "(scoped)" row for landing and ladders). Null
+## for a gun with no scope.
+@export var scoped: WeaponData
+
+
+## How many zoom levels the gun has: 0 for none.
+func zoom_levels() -> int:
+	return zoom_fovs.size()
+
+
+## The field of view at a zoom level, in CS2's degrees: 90 at level 0.
+func zoom_fov(level: int) -> float:
+	if level <= 0 or level > zoom_fovs.size():
+		return UNZOOMED_FOV
+	return zoom_fovs[level - 1]
+
+
+## How long the view takes to get to a zoom level, in seconds.
+func zoom_time(level: int) -> float:
+	if level < 0 or level >= zoom_times.size():
+		return 0.0
+	return zoom_times[level]
+
+
+## CS2's fov with no scope.
+const UNZOOMED_FOV := 90.0
+
 # --- Recoil ---------------------------------------------------------------
 
 ## Per-shot aim offsets in degrees, indexed by shot number. This is the spray

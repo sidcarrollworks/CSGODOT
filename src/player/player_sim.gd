@@ -671,6 +671,13 @@ func _update_weapon(cmd: UserCmd, dt: float, still: bool) -> void:
 	)
 	weapon.update(dt, now, shooter_state)
 
+	# Right click on a gun with a scope steps through its zoom levels, each
+	# press at its own instant (Weapon.press_zoom).
+	for press in cmd.presses(UserCmd.ATTACK2):
+		var at := SimClock.usec_at(cmd.tick, press.when)
+		if weapon.press_zoom(at):
+			_send(&"weapon_zoom", {"userid": userid}, at)
+
 	for press in presses:
 		# Every press is the trigger going down afresh, which a
 		# semi-automatic gun waits for (Weapon.press_trigger).
@@ -793,7 +800,9 @@ func _noclip_direction(cmd: UserCmd) -> Vector3:
 ## top, and friction brings a running player down to it: the slowdown is in
 ## what the player can reach, not a kick to the velocity.
 func _max_speed(cmd: UserCmd) -> float:
-	var speed := config.max_speed * velocity_modifier
+	# Scoped, the gun's scoped speed (the AWP's 100 against 200).
+	var top := weapon.max_speed() if weapon != null and weapon.zoom_level > 0 else config.max_speed
+	var speed := top * velocity_modifier
 	if is_ducked:
 		speed *= config.duck_modifier
 	elif cmd.held(UserCmd.WALK):
