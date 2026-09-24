@@ -32,8 +32,9 @@ const NOBODY := -1
 ## ("weapon_ak47"); positions are x, y and z in Source units; hitgroup is
 ## CS2's number (DamageInfo). Written from what CS2 and CS:GO send; keys CS2
 ## has that nothing here can fill (xuids, item ids, pawn handles) are left
-## out. Checking the list against CS2's own game.gameevents needs Sid's
-## machine.
+## out. CS2's own lists are its core.gameevents, mod.gameevents and
+## game.gameevents, which GameTracking-CS2 keeps as text (read 2026-09-24
+## for the round's events: every one here is in them, with these keys).
 const SCHEMA := {
 	# Players.
 	&"player_spawn": {"userid": NOBODY},
@@ -81,17 +82,28 @@ const SCHEMA := {
 	## Warmup has begun (CS2's announcement of it; that it is sent as
 	## warmup starts is read from its name).
 	&"round_announce_warmup": {},
+	&"warmup_end": {},
+	## "Fired when a match ends or is restarted" (game.gameevents).
 	&"begin_new_match": {},
 	&"round_prestart": {},
 	&"round_start": {"timelimit": 0, "fraglimit": 0, "objective": ""},
 	&"round_poststart": {},
 	&"round_freeze_end": {},
-	&"round_end": {"winner": "", "reason": "", "message": "", "player_count": 0},
+	## legacy: "server-generated legacy value"; nomusic: "if set, don't play
+	## round end music, because action is still on-going" (mod.gameevents).
+	&"round_end": {"winner": "", "reason": "", "message": "", "legacy": 0, "player_count": 0, "nomusic": 0},
 	&"round_officially_ended": {},
-	&"round_mvp": {"userid": NOBODY, "reason": 0, "value": 0},
+	&"round_mvp": {"userid": NOBODY, "reason": 0, "value": 0, "nomusic": 0},
+	## What CS2 announces of a round as it starts (MatchState.announce_round).
+	&"round_announce_match_start": {},
+	&"round_announce_last_round_half": {},
+	&"round_announce_match_point": {},
+	&"round_announce_final": {},
 	## The end of every half: half time, regulation into overtime, and each
 	## overtime half.
 	&"announce_phase_end": {},
+	## Half time, with the side swap (and each overtime half's).
+	&"start_halftime": {},
 	&"cs_win_panel_match": {},
 
 	# The bomb. Sites are "A" and "B" (CS2 sends the site's entity index).

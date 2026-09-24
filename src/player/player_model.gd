@@ -47,10 +47,13 @@ const VARIATION := "rifle"
 ## The graph's other variations, which a body that holds whatever is in its
 ## hand moves by as well: each the same spaces with its own clips, from its
 ## own set, loaded under its name (pistol_run_n). CS2 picks one by what is
-## in hand (variation_for(), reference/animgraph/parameters.md) and switches
-## at once, the idle poses cross-fading into it (worldmodel.md).
+## in hand (variation_for(), reference/animgraph/parameters.md), keeps the
+## one it has while the draw plays (not while action_deploy) and switches
+## after it, its idle poses cross-fading into the new weapon's in 0.2 s, 0.5
+## into a pistol's (reference/animgraph/worldmodel.md; the same in 1.41.8.3).
 const HELD_VARIATIONS := {"pistol": "pistol/_default_pistol", "knife": "knife/_default_knife"}
 const VARIATION_FADE := 0.2
+const PISTOL_FADE := 0.5
 ## The locomotion clips a variation's set is read for.
 const LOCOMOTION_CLIPS := ["idle_", "run_", "walk_", "crouch_", "inair_", "jump_stand"]
 ## How far the spaces reach, beyond CS2's furthest clip (225).
@@ -118,8 +121,11 @@ var _shown := ""
 ## them all): for each moving space, the length of a cycle at each distance
 ## from its centre (cycle_rings()).
 var _rings := {}
-## Which of them the body moves by now.
+## Which of them the body moves by now, and the one it goes to once the
+## draw under way is over (at _switch_at_usec, simulation time), or "".
 var _variation := VARIATION
+var _pending_variation := ""
+var _switch_at_usec := 0
 var _speeds := Vector2.ZERO
 var _crouch := 0.0
 var _on_ground := true
@@ -245,13 +251,14 @@ func prepared_set(weapon_set: String) -> Dictionary:
 
 
 ## Reads what holding each of these items needs before play, so that taking
-## one in hand reads nothing from the disk: its clips (prepared_set()) and its
-## model's scene. team picks the knife.
-func prepare_holding(item_classes: PackedStringArray, team: String) -> void:
+## one in hand reads nothing from the disk: its clips (prepared_set()) and,
+## for a body that is seen (models), its model's scene. team picks the knife.
+func prepare_holding(item_classes: PackedStringArray, team: String, models: bool = true) -> void:
 	for item_class in item_classes:
 		var look := WeaponLibrary.look(item_class, team)
 		prepared_set(String(look.get("world_clip_set", "")))
-		preload_scene(String(look.get("model_path", "")))
+		if models:
+			preload_scene(String(look.get("model_path", "")))
 
 
 ## Takes an item in the hand, by class, as look has it (WeaponLibrary.look):
@@ -281,10 +288,15 @@ func hold(item_class: String, look: Dictionary = {}) -> void:
 	if animation_tree == null or not has_weapon_layers:
 		return
 	var moves_by := variation_for(item_class) if not item_class.is_empty() else _variation
+	_pending_variation = ""
 	if moves_by != _variation and _rings.has(moves_by + "/"):
-		_variation = moves_by
-		(_node(&"variation") as AnimationNodeTransition).xfade_time = VARIATION_FADE
-		animation_tree.set("parameters/variation/transition_request", moves_by)
+		var draw := _held_clip(&"draw")
+		if draw == &"":
+			_switch_variation(moves_by)
+		else:
+			# The legs and body keep what they had while the draw plays.
+			_pending_variation = moves_by
+			_switch_at_usec = SimClock.now_usec() + int(animation_player.get_animation(draw).length * 1_000_000.0)
 	var crouched := _held_clip(&"idle_crouch")
 	(_node(&"hold_stand") as AnimationNodeAnimation).animation = stand if _has_hold else idle
 	(_node(&"hold_crouch") as AnimationNodeAnimation).animation = crouched if crouched != &"" else (stand if _has_hold else idle)
@@ -452,8 +464,13 @@ func update_motion(velocity: Vector3, yaw_degrees: float, crouch: float, on_grou
 
 
 ## Sets the tree's parameters from the motion: the locomotion moving now,
-## or every one of them (all), for one about to be switched to.
+## or every one of them (all), for one about to be switched to. A switch
+## waiting on a draw is made once the draw is over, on the tick.
 func _apply(all: bool = false) -> void:
+	if not _pending_variation.is_empty() and SimClock.now_usec() >= _switch_at_usec:
+		var moves_by := _pending_variation
+		_pending_variation = ""
+		_switch_variation(moves_by)
 	for at: String in _rings:
 		if all or at.is_empty() or at == _variation + "/":
 			_apply_locomotion(at)
@@ -474,6 +491,15 @@ func _apply_locomotion(at: String) -> void:
 		var ground := _node(&"ground") if at.is_empty() else (_node(StringName(at.trim_suffix("/"))) as AnimationNodeBlendTree).get_node(&"ground")
 		(ground as AnimationNodeTransition).xfade_time = TO_GROUND if _on_ground else TO_AIR
 		animation_tree.set(path + "ground/transition_request", wanted)
+
+
+## Moves the body by another variation's locomotion, its parameters set
+## first, cross-faded as CS2 fades its idle poses.
+func _switch_variation(moves_by: String) -> void:
+	_variation = moves_by
+	_apply_locomotion(moves_by + "/")
+	(_node(&"variation") as AnimationNodeTransition).xfade_time = PISTOL_FADE if moves_by == "pistol" else VARIATION_FADE
+	animation_tree.set("parameters/variation/transition_request", moves_by)
 
 
 ## The locomotion CS2 moves a body by with an item in hand: the pistol's
@@ -576,12 +602,14 @@ func state() -> StringName:
 
 
 ## Poses the skeleton now rather than at the next animation step. A fresh
-## tree's first step only builds its caches and poses nothing, so it steps
-## twice; on a tree already going the second changes nothing.
+## tree's first step only builds its caches and poses nothing, and one with
+## the variations' locomotion (holds_items) takes another to settle into its
+## first, so it steps three times; on a tree already going the rest change
+## nothing.
 func pose_now() -> void:
 	if animation_tree != null:
-		animation_tree.advance(0.0)
-		animation_tree.advance(0.0)
+		for step in 3:
+			animation_tree.advance(0.0)
 	elif animation_player != null:
 		animation_player.advance(0.0)
 

@@ -1687,7 +1687,7 @@
 			]
 		}
 	],
-	"cs2": "CS2 1.41.8.2",
+	"cs2": "CS2 1.41.8.3",
 	"source": "animation/graphs/worldmodel/worldmodel_locomotion.vnmgraph",
 	"variations": [
 		"default",

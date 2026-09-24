@@ -56,7 +56,7 @@ below; this page is not yet updated to match.
 | Teams | 5 v 5 |
 | Match | 24 rounds (MR12), sides swap after 12, a team can clinch at 13 |
 | Overtime (Premier, TMM) | one MR3 overtime at 12-12, $10,000 each half; 15-15 is a draw |
-| Warmup | 120 s |
+| Warmup | 120 s (`mp_warmuptime`); none in an offline match (`mp_warmup_offline_enabled false`, `reference/research/audio-round.md` 1.2), which dust2 keeps for trying things |
 | Freeze time | 15 s (20 in TMM) |
 | Round time | 1:55 (`mp_roundtime_defuse 1.92`) |
 | After a round | win panel 3 s, next round after 7 s (CV) |
@@ -89,7 +89,15 @@ with bots filling the places. The list below says what is left of it.
   overtime (section 2) plug into the match when they are built.~~ Done
   2026-09-23, through the match's game events.
 
-**Local:** none.
+**Local**
+- **R1.** The round's announcements and beeps (`reference/research/audio-round.md`
+  Local checks 1 and 2): with `net_showevents 2`, the tick each of
+  `round_announce_match_start`, `_last_round_half`, `_match_point`,
+  `_final`, `warmup_end` and `start_halftime` arrives, against
+  `round_start` and `round_freeze_end`, and which comes when two hold
+  (here: at `round_start`, one a round, final first); the freeze time's
+  `cs_round_start_beep` and `cs_round_final_beep` (how many, when) and the
+  clock at `round_time_warning`, which are not sent here until measured.
 
 ## 2. Economy
 
@@ -178,8 +186,18 @@ loadout.
   `TeamNum`, `func_bomb_target`).
 - **B2. Buy menu art.** *(icons done with L4:
   `panorama/images/icons/equipment/`, fetched by `scripts/extract_assets.sh
-  hud`)* The weapon icons and the buy menu's sounds; the sounds are still to
-  find.
+  hud`)* The weapon icons and the buy menu's sounds. The sounds are found
+  (`reference/research/audio-round.md` 1.2): `UIPanorama.buymenu_mouseover`
+  0.3, `buymenu_select` 0.5, `buymenu_purchase` 0.3 (`radial_menu_buy_03`)
+  and `buymenu_failure` 0.4 (`weapon_cant_buy`), 2D, the buyer's own, in
+  `game_sounds_ui.vsndevts`; and a purchase of armour is heard by others
+  to 1000 units (`Player.EquipArmor_T` 0.3, `_CT` 0.1,
+  `audio-gameplay.md` 1.3). Left: extracting `sounds/ui/` and
+  `sounds/items/`, then playing them (the menu locally, the armour from
+  `item_purchase` in a view); and audio-round.md's Local check 6: buy a
+  rifle, armour and a grenade near a second client, refund one, and note
+  what each hears (`snd_sos_show_soundevent_start 1`), whether a buy plays
+  a pickup to the world, and whether the rifle comes into the hand.
 - **E2.** Measure when buy time ends (the guess: 20 s after freeze time),
   the helmet-only price (the guess: $350), warmup's money, and the buy
   menu's key order.
@@ -203,8 +221,9 @@ and side's pistol (the Glock-18, the CTs' P2000), 1 to 5 and Q through the comma
 (`UserCmd.weapon_select`), each gun its own `Weapon` keeping its rounds, the
 item's draw time before it fires or a pin is pulled, its speed, a switch
 stopping a reload. G sends `drop`, which throws the gun or grenade in hand
-from the hand as it was held (`HeldPose`, CS2's hold measured from its
-third-person clips) at CS2's 300 u/s where you look, turning end over end,
+from the hand as it was held (`HeldPose`: CS2's hold measured level from
+its third-person clips, turned with the aim's pitch, as CS2's AimCS bends
+the body with it) at CS2's 300 u/s where you look, turning end over end,
 bouncing and coming to rest; walking over a gun takes it after CS2's owner
 waits; a death drops the best gun and a grenade (`ItemDrops`), the gun from
 the hand, moving as the body was. A bot's body shows the gun in its hand
@@ -232,6 +251,17 @@ so a switch builds nothing.
   with this lift of 0.25 about 156); the same running at 250 (whether the
   thrower's speed is added); how many turns it makes in the air; where a
   killed bot's gun lands, standing and running.
+- **Measure** in CS2, during `reference/research/hitboxes-aim.md` section
+  7's pitch sweep (a bot mimicking you, side on): where the gun is (its
+  `wpn` bone, `ent_skeleton`) at pitch -89, -45, 0, 45 and 89, standing and
+  crouched, with an AK-47, a Glock-18 and a grenade, against
+  `HeldPose.of`'s offset from the eye. If CS2 turns the gun less than the
+  whole pitch, or about a point lower than the eye, `HeldPose` follows.
+- Sounds of the items, not built (`reference/research/audio-gameplay.md`
+  1.3): a pickup heard by everyone to 1100 units, a dropped gun's
+  `weapon.<Type>.Impact` as it lands (every bounce or the first, not
+  known), from `item_pickup` and the item's landing in a view; the files
+  (`sounds/items/`, the physics impacts) are still to extract.
 
 **Local**
 - **I1.** Every weapon's world model (the dropped one), with L1 in

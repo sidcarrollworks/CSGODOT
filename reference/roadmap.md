@@ -251,10 +251,17 @@ item 6 is built.
    switched to the pistol's, knife's or rifle's as CS2's graph picks it
    (`PlayerModel.variation_for`). What its bots may hold is read before
    play (`prepare_holding`), so taking a gun in hand reads nothing from the
-   disk. Left: CS2 blends the weapon layer in model space, Godot in each
-   bone's own, so the upper body follows the hips here; and the flinches,
-   additive too and ready to go in the same way, are not extracted yet (the
-   characters step takes only the deaths from `world/shared/`).
+   disk. Every body does it, yours unseen too, as CS2's server poses every
+   player's hitboxes with what they hold; the variation switches once the
+   draw is over, as CS2's graph has it. Left: CS2 blends the weapon layer in
+   model space, Godot in each bone's own, so the upper body follows the hips
+   here; the flinches, additive too and ready to go in the same way, are
+   not extracted yet (the characters step takes only the deaths from
+   `world/shared/`); and the aim: CS2's AimCS bends the upper body and head
+   with the aim's pitch (and the torso with part of its yaw), on the
+   server, so the hitboxes move with it. Here bodies and their hitboxes
+   stand as if looking level (`reference/research/hitboxes-aim.md`: a
+   Local measurement, then the aim stage after systemization step 8).
 
 6a. **Your shadow has no arms.** *(Remote, can start now; Sid checks it)* Sid noticed
    2026-09-22 22:06. The shadow twin (commit f42114e) put the head back but folds the
@@ -409,8 +416,9 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
     built once and kept while carried, so a switch builds nothing. The
     dropped guns are drawn (`DroppedItemView`, the range and dust2). Since
     2026-09-23 a drop is thrown from the hand as it was held (`HeldPose`:
-    CS2's hold from its third-person clips, from where the player stands
-    and looks), at CS2's 300 u/s where they look, turning as it flies,
+    CS2's hold from its third-person clips, measured level and turned with
+    the aim's pitch, from where the player stands and looks), at CS2's
+    300 u/s where they look, turning as it flies,
     bouncing, and laid on its side where it stops; a death lets the gun go
     from the hand, moving as the body was. Left: E to swap with the gun in
     hand, and a gun on the ground as a rigid body that blasts and rounds

@@ -1,6 +1,6 @@
 # The third-person locomotion
 
-Written by `scripts/animgraph_tables.gd` on 2026-09-23 from `animation/graphs/worldmodel/worldmodel_locomotion.vnmgraph+rifle.vnmgraph_c` in CS2 1.41.8.2. Do not edit by hand; `reference/animgraph2.md` says how to read it.
+Written by `scripts/animgraph_tables.gd` on 2026-09-23 from `animation/graphs/worldmodel/worldmodel_locomotion.vnmgraph+rifle.vnmgraph_c` in CS2 1.41.8.3. Do not edit by hand; `reference/animgraph2.md` says how to read it.
 
 `worldmodel_locomotion.vnmgraph`, which the third-person graph runs for the legs and body: idle, starts, moving, turning on the spot, the air and ladders. Its clips are shown for the rifle variation; the pistol and knife ones swap in their own sets, and the blend spaces are the same in all three (`locomotion.json` has each variation's clips).
 

@@ -9,11 +9,17 @@ extends RefCounted
 ##
 ## The offsets are CS2's, measured from its third-person clips: the gun's wpn
 ## bone in frame 0 of each set's idle, from the eye (64 standing, 46
-## crouched), forward, to the right and up. The hold is turned with the view
-## (pitch included), as a gun is seen in first person pointing where you
-## look; looking level it is the third-person hold, barrel forward and top
-## up. The pose is in the world models' own axes: +Z the muzzle, +Y the top,
-## +X the gun's left side.
+## crouched), forward, to the right and up; that is the hold looking level,
+## barrel forward and top up. It is turned with the view's pitch as CS2's
+## third-person AimCS bends the upper body, and the gun, with the aim, on the
+## server (reference/research/hitboxes-aim.md 1). How far CS2 turns it, and
+## about what point, is in Valve's code and no file: the whole pitch about
+## the eye is a stand-in until that page's section 7 measures it. The bodies
+## drawn here do not bend with the aim yet, so a death looking far up or
+## down lets the gun go from where the drawn body did not hold it. The pose
+## is in the world models' own axes: +Z the muzzle, +Y the top, +X the gun's
+## left side. It follows the body's crouch as PlayerBody moves it
+## (duck_progress), so an eased duck in the air comes with the movement's.
 
 ## rifle/rifle_ak, standing and crouched; every long gun is held so.
 const RIFLE_STAND := Vector3(13.7, 4.7, -3.7)

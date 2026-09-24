@@ -22,7 +22,9 @@ const DROP_GRENADES := true
 ## CS2's pickup_check_period, 0.25 s, so 16 ticks at 64 Hz.
 const PICKUP_CHECK_PERIOD_USEC := 250_000
 ## How near a player's feet an item has to lie to be taken, across and up:
-## the hull's half width and its height. In no file (measure).
+## the hull's width, from the middle of its feet (the item's own size
+## standing in for the half the hull leaves), and its standing height. In
+## no file (measure).
 const REACH_ACROSS := 32.0
 const REACH_UP := 72.0
 ## How hard a drop throws the item: CS2's m_flDropSpeed, 300 for every

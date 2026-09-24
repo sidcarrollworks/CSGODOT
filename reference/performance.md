@@ -68,7 +68,9 @@ twenty, all 64 ticks a second in both.
 | A bot's body taking a class in hand the first time: its clips added (on the tick), its model built (the next frame) | 0.30 ms and 0.23 ms |
 | A bot's body switching between things it carries | 0.03 ms |
 
-A body that holds whatever is in its hand (a map's bot, 2026-09-23) carries
+A body that holds whatever is in its hand (every player's since 2026-09-24,
+yours unseen too, as CS2's server poses everyone's hitboxes with what they
+hold; a map's bot's since 2026-09-23) carries
 the pistol's and the knife's locomotion beside the rifle's, and moves by
 one at a time: its motion's parameters take 7.6 us a tick against 5.6, and
 its animation 93 us a frame against 87 (one body, headless, AK and Glock).
@@ -78,7 +80,9 @@ its animation 93 us a frame against 87 (one body, headless, AK and Glock).
 | dust2 loaded to the first frame | 4.8 s (5.1 with twenty players), before its bots' guns were read |
 | The first body of each kind (its ~80 scenes read) | 240 ms; every one after, 2.7 ms |
 | The first body that holds what is in hand (the pistol's and knife's locomotion read too) | 210 ms more; every one after, 4.6 ms |
-| What dust2's bots may hold, read before play (`prepare_holding`: 17 classes' clips and models) | 2.8 s |
+| What dust2's bots may hold, read before play (`prepare_holding`: 17 classes' clips and models) | 1.0 s with the disk's cache warm, 2.8 s cold |
+| Then everything else on either side's menu, the knife and the bomb, whose clips every body takes up, yours too (clips only) | 0.4 s more |
+| Every gun's sounds (`WeaponSounds`: 334 files, from `sounds.md` and `timings.csv`) | 0.39 s warm, 2.3 s cold |
 | Bullet-hole textures, and every sound set | 270 ms, and 120 to 570 ms (the disk's cache warm or cold) |
 
 A trace of the player's hull through dust2's collision is 20 to 50 us,

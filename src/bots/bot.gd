@@ -470,6 +470,10 @@ func _on_shot_traced(_shot: Weapon.Shot, result: Hitscan.Result) -> void:
 func _on_reload_started() -> void:
 	if model != null:
 		model.play(&"reload", 0.1)
+	# Heard by those near, as CS2's reloads are (to 1100 units,
+	# reference/research/audio.md).
+	if weapon_sounds != null:
+		weapon_sounds.reload()
 
 
 ## Dies where the last round landed: the body has gone limp and fallen

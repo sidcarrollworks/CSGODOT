@@ -4,7 +4,12 @@ What CS2's animation system is, how much of it the game's files give us, and
 what that means for this project. Worked out on 2026-09-23 from CS2 1.41.8.2,
 Source 2 Viewer 20.0 and Esoterica's source; the tables in
 `reference/animgraph/` are generated from the game's own graphs by
-`scripts/animgraph_tables.gd`.
+`scripts/animgraph_tables.gd`. They were regenerated from 1.41.8.3 on
+2026-09-24: its third-person graph puts the Weapons layer's state machine
+inside one state played at a new parameter, `weapon_action_speedscale`,
+times the speed, and adds a placeholder `weapon_temp` among the rifles'
+idle poses; the locomotion's variations and every transition otherwise
+read the same.
 
 ## What it is
 

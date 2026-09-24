@@ -463,12 +463,30 @@ func _test_sound_sets() -> void:
 			and Footsteps.set_for("physics_group") == "concrete_ct" and Footsteps.set_for("CollisionShape3D") == "concrete_ct",
 		"the hull's material names map to the game's footstep sets, concrete when unknown"
 	)
+	# Every gun's set from the game's own tables (committed, so CI reads them).
+	var guns := WeaponSounds.sets()
+	var without := []
+	for item: ItemDef in ItemRegistry.guns():
+		if ((guns.get(item.item_class, {}) as Dictionary).get("fire", PackedStringArray()) as PackedStringArray).is_empty():
+			without.append(item.item_class)
+	var glock: Dictionary = guns.get("weapon_glock", {})
+	var m4s: Dictionary = guns.get("weapon_m4a1_silencer", {})
+	var ak: Dictionary = guns.get("weapon_ak47", {})
 	_check(
-		WeaponSounds.set_name_for(WeaponLibrary.ak47().model_path) == "ak47"
-			and WeaponSounds.set_name_for(WeaponLibrary.m4a1s().model_path) == "m4a1_silencer"
-			and WeaponSounds.SETS.has("ak47") and WeaponSounds.SETS.has("m4a1_silencer"),
-		"each weapon's model names its sound set, and both sets are known"
+		without.is_empty() and glock.get("fire") == PackedStringArray(["weapons/glock18/glock_01", "weapons/glock18/glock_02"])
+			and glock.get("draw") == PackedStringArray(["weapons/glock18/glock_draw"])
+			and m4s.get("fire") == PackedStringArray(["weapons/m4a1/m4a1_silencer_01"])
+			and not (ak.get("fire", PackedStringArray()) as PackedStringArray).has("weapons/ak47/ak47-1"),
+		"every gun has its shot from the game's own files, the M4A1-S's silenced, the AK's numbered ones (without: %s)" % [without]
 	)
+	var parts: Array = glock.get("reload", [])
+	_check(
+		parts.size() == 4 and is_equal_approx(float(parts[0][0]), 0.4667) and parts[0][1] == PackedStringArray(["weapons/glock18/glock_clipout"])
+			and parts[3][1] == PackedStringArray(["weapons/glock18/glock_sliderelease"]),
+		"the Glock-18's reload sounds at its clip's own events: clip out at 0.47 s, then in, slide back, slide release (%s)" % [parts]
+	)
+	WeaponSounds.set_for("weapon_glock")["fire"] = PackedStringArray()
+	_check(not (WeaponSounds.set_for("weapon_glock")["fire"] as PackedStringArray).is_empty(), "the sets are handed out as copies")
 	if not SoundBank.available():
 		print("sounds not extracted; skipping the bank's checks (scripts/extract_assets.sh sounds)")
 		return
@@ -486,8 +504,11 @@ func _test_sound_sets() -> void:
 			and SoundBank.randomizer("nothing/here_") == null,
 		"a set plays through one randomizer, made once, and an empty set has none"
 	)
-	for part: Array in WeaponSounds.SETS["ak47"]["reload"] + WeaponSounds.SETS["m4a1_silencer"]["reload"]:
-		_check(not SoundBank.variants(part[1]).is_empty(), "the reload part %s is there" % part[1])
+	var missing := []
+	for stem in WeaponSounds.all_stems():
+		if SoundBank.variants(stem).is_empty():
+			missing.append(stem)
+	_check(missing.is_empty(), "every file a gun's set names is there (not: %s)" % [missing])
 	var impact_sets := 0
 	for surface in BulletImpacts.SOUND_SETS:
 		impact_sets += 1 if not SoundBank.variants(BulletImpacts.SOUND_SETS[surface]).is_empty() else 0
@@ -803,6 +824,17 @@ func _test_bot_sounds() -> void:
 		if not SoundBank._randomizers.has(stem):
 			missing.append(stem)
 	_check(missing.is_empty(), "every sound set a body, its gun and a round can play is loaded before it is needed (not: %s)" % ", ".join(missing))
+	# A draw is heard only by whoever draws: the bot's (in the world) is not.
+	_bot.weapon_sounds.equip(WeaponLibrary.ak47())
+	var own_sounds := WeaponSounds.new()
+	root.add_child(own_sounds)
+	own_sounds.equip(WeaponLibrary.ak47())
+	_check(
+		not (_bot.weapon_sounds.weapon_set.get("fire", PackedStringArray()) as PackedStringArray).is_empty()
+			and not (_bot.weapon_sounds.get_child(1) as AudioStreamPlayer3D).playing and (own_sounds.get_child(1) as AudioStreamPlayer).playing,
+		"a bot takes up its gun's sounds without its draw being heard; your own draw is"
+	)
+	own_sounds.free()
 
 
 func _test_bot_wears_hitboxes() -> void:
@@ -1422,10 +1454,17 @@ func _test_a_body_holds_what_is_in_hand() -> void:
 	)
 	model.pose_now()
 	tree.advance(0.3)
-	_check_equal(String(tree.get("parameters/variation/current_state")), "pistol", "and the body moves as CS2's does with a pistol")
+	_check_equal(String(tree.get("parameters/variation/current_state")), "rifle", "while the draw plays the body keeps the locomotion it had, as CS2's graph does")
+	# The draw over, on the simulation's clock.
+	model._switch_at_usec = SimClock.now_usec()
+	model.update_motion(Vector3.ZERO, 0.0, 0.0, true)
+	tree.advance(0.6)
+	_check_equal(String(tree.get("parameters/variation/current_state")), "pistol", "and then moves as CS2's does with a pistol")
 	model.hold("weapon_ak47", WeaponLibrary.look("weapon_ak47", "T"))
 	model.show_held()
 	var ak := model.held_weapon
+	model._switch_at_usec = SimClock.now_usec()
+	model.update_motion(Vector3.ZERO, 0.0, 0.0, true)
 	tree.advance(0.3)
 	_check(
 		ak != null and ak != glock and ak.visible and not glock.visible
@@ -1436,6 +1475,8 @@ func _test_a_body_holds_what_is_in_hand() -> void:
 	model.show_held()
 	_check(model.held_weapon == glock and glock.visible and not ak.visible, "the Glock again: the same model, shown again")
 	model.hold("weapon_hegrenade", WeaponLibrary.look("weapon_hegrenade", "T"))
+	model._switch_at_usec = SimClock.now_usec()
+	model.update_motion(Vector3.ZERO, 0.0, 0.0, true)
 	tree.advance(0.3)
 	_check_equal(String(tree.get("parameters/variation/current_state")), "knife", "a grenade in hand: the knife's locomotion")
 	model.let_go()

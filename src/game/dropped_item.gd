@@ -42,7 +42,8 @@ const REST_SPEED := 40.0
 ## time it meets the world it is turned this share of the way to level,
 ## the way it was heading. By eye.
 const LEVEL_ON_BOUNCE := 0.7
-## How steep a surface still counts as a floor to rest on.
+## How steep a surface still counts as a floor to rest on: CS2's
+## sv_standable_normal 0.7, as MovementConfig has it.
 const FLOOR_NORMAL_Y := 0.7
 ## How far off a surface it is kept, so the next trace does not start in it.
 const SKIN := 0.1

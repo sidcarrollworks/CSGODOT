@@ -127,16 +127,22 @@ Items
 - `buytime_ended`: (none)
 
 Rounds and the match
-- `round_prestart`, `round_poststart`, `round_freeze_end`, `round_officially_ended`, `begin_new_match`, `round_announce_warmup`, `cs_win_panel_match`: (none)
+- `round_prestart`, `round_poststart`, `round_freeze_end`, `round_officially_ended`, `begin_new_match`, `round_announce_warmup`, `warmup_end`, `start_halftime`, `cs_win_panel_match`: (none)
+- `round_announce_match_start`, `round_announce_last_round_half`, `round_announce_match_point`, `round_announce_final`: (none); what CS2 announces of a round as it starts, sent after `round_start` (`MatchState.announce_round`; the moment is inferred from their names)
 - `round_start`: timelimit, fraglimit, objective
-- `round_end`: winner, reason, message, player_count
-- `round_mvp`: userid, reason, value
+- `round_end`: winner, reason, message, legacy, player_count, nomusic (`nomusic` set: no round-end music, the action goes on)
+- `round_mvp`: userid, reason, value, nomusic
+- Every round event here, with these keys, is CS2's: its `core.gameevents`,
+  `mod.gameevents` and `game.gameevents`, which GameTracking-CS2 keeps as
+  text (read 2026-09-24).
 - `announce_phase_end`: sent as every half's last round ends: half time,
   regulation into overtime (no swap there), and each overtime half. What
   follows a half (the swap, the money) comes at the next round's start
-  (`round_prestart`). A new match is `begin_new_match`, warmup
-  `round_announce_warmup`. Whether the half starting is overtime is known
-  from the round count against `MatchRules` (money does this itself).
+  (`round_prestart`). Half time, and each overtime half's swap, sends
+  `start_halftime` after it. A new match is `begin_new_match`, warmup
+  `round_announce_warmup`, and its end `warmup_end`. Whether the half
+  starting is overtime is known from the round count against `MatchRules`
+  (money does this itself).
 - The match's order at a round's start, CS2's: `round_officially_ended`
   (after a round's end), `round_prestart`, handed out at once so the
   ground is cleared and the C4 taken back before anyone spawns, then the
@@ -342,9 +348,12 @@ entry, velocity)` puts one on the ground at a player's middle: buying uses
 it for the gun a purchase replaced. `DroppedItem.drop_from(game, userid,
 entry, from, velocity, spin)` starts it from a transform: a drop and a
 death let the gun in hand go from the hand as it was held
-(`HeldPose.of(node, item_class)`, CS2's hold from its third-person clips,
-from the player's position, view and crouch alone, never an animated
-bone), at 300 u/s where they look, a little lifted, with their own motion;
+(`HeldPose.of(node, item_class)`: CS2's hold, level, measured from its
+third-person clips, turned with the view's pitch as CS2's AimCS bends the
+upper body with the aim (`reference/research/hitboxes-aim.md`; how far and
+about what point is a stand-in until measured), from the player's
+position, view and crouch alone, never an animated bone), at 300 u/s
+where they look, a little lifted, with their own motion;
 a death with the body's motion as it died (`PlayerSim.death_velocity`,
 since the body stops before `player_death` is handed out).
 `ItemDrops`, the items contract's own system (GameSystems adds it first):
@@ -355,7 +364,12 @@ since the body stops before `player_death` is handed out).
 - picks an item up for a living player standing on it (32 units across,
   72 up) whose slot is free (`item_pickup`, or `defuser_pickup`, and only
   CTs take the kit). Swapping with the gun in hand (E) waits for a use-key
-  handler;
+  handler; CS2's other way, taking a dropped gun from the buy menu
+  (`UIPanorama.buymenu_pickup_weapon`), is not built. Pickups are silent
+  here: CS2 plays `Player.PickupWeaponAudible` (and `PickupGrenadeAudible`,
+  `PickupPistol`) to everyone within 1100 units and the picker's own
+  `Player.PickupWeapon` (`reference/research/audio-gameplay.md` 1.3), which
+  a view will play from `item_pickup` once the files are extracted;
 - clears what lies on the ground at `round_prestart`.
 The C4 on the ground is the bomb's own entity, not a `DroppedItem`.
 

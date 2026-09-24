@@ -60,6 +60,7 @@ func _run() -> void:
 
 	await _test_a_round_from_warmup_to_its_end()
 	await _test_the_round_events()
+	_test_what_a_round_announces()
 	await _test_the_score_stays_with_the_team()
 	await _test_overtime()
 	await _test_friendly_fire()
@@ -248,8 +249,8 @@ func _test_the_round_events() -> void:
 	now += 120 * SECOND
 	game.tick(now)
 	events.flush()
-	_check_equal(heard, [&"begin_new_match", &"round_prestart", &"round_start", &"round_poststart"],
-		"warmup's end: the match begins, and round 1 with prestart, start and poststart")
+	_check_equal(heard, [&"warmup_end", &"begin_new_match", &"round_prestart", &"round_start", &"round_announce_match_start", &"round_poststart"],
+		"warmup's end: warmup_end, the match begins, and round 1 with prestart, start, the match start's announcement and poststart")
 	_check(t_alive_at_prestart == [false] and t.alive, "round_prestart is handed out before the dead are spawned")
 	heard.clear()
 	now = game.phase_ends_usec
@@ -270,8 +271,8 @@ func _test_the_round_events() -> void:
 	now = game.phase_ends_usec
 	game.tick(now)
 	events.flush()
-	_check_equal(heard, [&"round_officially_ended", &"round_prestart", &"round_start", &"round_poststart"],
-		"the next round: the last officially ended, then prestart, start, poststart")
+	_check_equal(heard, [&"round_officially_ended", &"round_prestart", &"round_start", &"round_announce_last_round_half", &"round_poststart"],
+		"the next round, the half's last: the last officially ended, then prestart, start, its announcement, poststart")
 	now = game.phase_ends_usec
 	game.tick(now)
 	events.send(&"bomb_planted", {"userid": t.userid, "site": "A"}, now)
@@ -287,8 +288,33 @@ func _test_the_round_events() -> void:
 		game.phase == MatchState.Phase.ROUND_END and game.last_winner == "T" and game.last_reason == MatchState.Reason.BOMB_EXPLODED,
 		"the blast ends it for the Ts"
 	)
-	_check(heard.has(&"round_end") and heard.has(&"announce_phase_end"), "and it was the half's last round: announce_phase_end")
+	_check(
+		heard.has(&"round_end") and heard.find(&"announce_phase_end") > heard.find(&"round_end")
+			and heard.find(&"start_halftime") > heard.find(&"announce_phase_end"),
+		"and it was the half's last round: announce_phase_end, then start_halftime with the swap (%s)" % [heard]
+	)
 	await _clear([t, ct, game])
+
+
+## What CS2 announces of a round as it starts, by the score: the match's
+## first round, the last of a half, a round a side wins the match by
+## winning, the last of regulation or of an overtime.
+func _test_what_a_round_announces() -> void:
+	var game := MatchState.new()
+	game.rules = MatchRules.new()
+	var say := func(t: int, ct: int) -> StringName:
+		game._score = {"T": t, "CT": ct}
+		game.rounds_played = t + ct
+		return game.announce_round()
+	_check(
+		say.call(0, 0) == &"round_announce_match_start" and say.call(6, 5) == &"round_announce_last_round_half"
+			and say.call(7, 5) == &"" and say.call(12, 3) == &"round_announce_match_point"
+			and say.call(3, 12) == &"round_announce_match_point" and say.call(12, 11) == &"round_announce_final"
+			and say.call(13, 13) == &"round_announce_last_round_half" and say.call(15, 13) == &"round_announce_match_point"
+			and say.call(15, 14) == &"round_announce_final",
+		"round 1 starts the match, 12 the half's last, 12-3 match point, 24 the final one; in overtime 13-13 its half's last, 15-13 match point, 15-14 its final"
+	)
+	game.free()
 
 
 # --- The score --------------------------------------------------------------

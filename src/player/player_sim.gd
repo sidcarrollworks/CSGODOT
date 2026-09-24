@@ -290,9 +290,11 @@ func _body_weapon_set() -> String:
 
 ## Whether the body holds whatever is in the hand, changing with it
 ## (PlayerModel.hold), rather than the one gun _body_weapon_model() gives it
-## for life.
+## for life. Every body does, seen or not: CS2's server poses every player's
+## hitboxes with what they hold (reference/research/hitboxes-aim.md 1). A
+## body nobody sees takes the item's clips and locomotion, never its model.
 func _body_holds_items() -> bool:
-	return false
+	return true
 
 
 ## Puts the body on: the third-person model holding weapon_model, with the
@@ -471,11 +473,12 @@ func _draw(entry: Inventory.Entry) -> void:
 	equipped.emit(entry)
 
 
-## The body holds what is in the hand, for those who see it: its model, and
-## its own hold, draw, reload and shots (PlayerModel.hold). A body nobody
-## sees holds nothing.
+## The body holds what is in the hand: its own hold, draw, reload and shots
+## and the locomotion for it (PlayerModel.hold), which the hitboxes ride, and
+## for those who see it, its model. A body built with one gun holds it
+## whenever anything is in hand.
 func _body_holds(entry: Inventory.Entry) -> void:
-	if model == null or not _body_drawn():
+	if model == null or not (model.holds_items or _body_drawn()):
 		return
 	var item_class := entry.item.item_class if entry != null else ""
 	model.hold(item_class, WeaponLibrary.look(item_class, team) if not item_class.is_empty() else {})

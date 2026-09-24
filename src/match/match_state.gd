@@ -181,6 +181,7 @@ func start(now_usec: int = SimClock.now_usec()) -> void:
 ## Ends warmup now and starts the first round (CS2's mp_warmup_end).
 func end_warmup(now_usec: int = SimClock.now_usec()) -> void:
 	if phase == Phase.WARMUP:
+		_send(&"warmup_end", {}, now_usec)
 		_send(&"begin_new_match", {}, now_usec)
 		_start_round(now_usec, true)
 
@@ -245,6 +246,10 @@ func end_round(side: String, reason: Reason, now_usec: int = SimClock.now_usec()
 	# and the money come at the next round's start.
 	if _swap_next or rounds_played == rules.max_rounds:
 		_send(&"announce_phase_end", {}, now_usec)
+	# Half time (and each overtime half's): CS2's start_halftime, with the
+	# swap.
+	if _swap_next:
+		_send(&"start_halftime", {}, now_usec)
 	var pause := rules.halftime_seconds if _swap_next else rules.round_restart_seconds
 	_enter(Phase.ROUND_END, now_usec + _usec(pause))
 
@@ -336,6 +341,9 @@ func _start_round(now_usec: int, fresh: bool) -> void:
 		player.frozen = rules.freeze_seconds > 0.0
 	round_started.emit(round_number)
 	_send(&"round_start", {"timelimit": roundi(rules.round_seconds)}, now_usec)
+	var announced := announce_round()
+	if not announced.is_empty():
+		_send(announced, {}, now_usec)
 	_send(&"round_poststart", {}, now_usec)
 	if rules.freeze_seconds > 0.0:
 		_enter(Phase.FREEZE, now_usec + _usec(rules.freeze_seconds))
@@ -466,30 +474,35 @@ func _on_bomb_defused(event: GameEvent) -> void:
 ## more than half of an overtime's rounds wins it, and level at its end
 ## goes to another, or is a draw once the limit is reached.
 func _after_round() -> Dictionary:
+	return _outcome(score("T"), score("CT"), rounds_played)
+
+
+## The same for any score, rounds played: what the match does after a round
+## that leaves it so (_after_round, and asking of the round about to be
+## played, announce_round()).
+func _outcome(t: int, ct: int, played: int) -> Dictionary:
 	var result := {"over": false, "winner": "", "swap": false}
-	var t := score("T")
-	var ct := score("CT")
 	var leader := "T" if t > ct else "CT"
 	var regulation := rules.max_rounds
 	@warning_ignore("integer_division")
 	var half := regulation / 2
 
-	if rounds_played <= regulation:
+	if played <= regulation:
 		if rules.can_clinch and maxi(t, ct) > half:
 			result["over"] = true
 			result["winner"] = leader
-		elif rounds_played == regulation:
+		elif played == regulation:
 			if t != ct or not rules.overtime:
 				result["over"] = true
 				result["winner"] = leader if t != ct else ""
-		elif rounds_played == half:
+		elif played == half:
 			result["swap"] = true
 		return result
 
 	var length := maxi(rules.overtime_rounds, 2)
 	@warning_ignore("integer_division")
 	var length_half := length / 2
-	var into := rounds_played - regulation
+	var into := played - regulation
 	@warning_ignore("integer_division")
 	var index := (into - 1) / length
 	var played_in_this := into - index * length
@@ -506,6 +519,40 @@ func _after_round() -> Dictionary:
 	elif played_in_this == length_half:
 		result["swap"] = true
 	return result
+
+
+## What CS2 announces of the round starting now, as its event, or empty:
+## the match's first round (round_announce_match_start), the last round of
+## regulation or of an overtime (round_announce_final), a round a side
+## wins the match by winning (round_announce_match_point), the last round
+## before a half ends (round_announce_last_round_half). One a round, the
+## first of these that holds. The events are CS2's (game.gameevents); when
+## in the round it sends them, and which it sends when two hold, is
+## inferred from their names (audio-round.md; a Local check measures it).
+func announce_round() -> StringName:
+	if rounds_played == 0:
+		return &"round_announce_match_start"
+	var t := score("T")
+	var ct := score("CT")
+	var regulation := rules.max_rounds
+	@warning_ignore("integer_division")
+	var half := regulation / 2
+	var next := rounds_played + 1
+	var length := maxi(rules.overtime_rounds, 2)
+	@warning_ignore("integer_division")
+	var length_half := length / 2
+	var last_of_regulation := next == regulation
+	var into := next - regulation
+	var last_of_overtime := into > 0 and into % length == 0
+	if last_of_regulation or last_of_overtime:
+		return &"round_announce_final"
+	for side: String in SIDES:
+		var won := _outcome(t + (1 if side == "T" else 0), ct + (1 if side == "CT" else 0), next)
+		if won["over"] and won["winner"] == side:
+			return &"round_announce_match_point"
+	if next == half or (into > 0 and into % length == length_half):
+		return &"round_announce_last_round_half"
+	return &""
 
 
 ## The side a team on this side now started the match on.

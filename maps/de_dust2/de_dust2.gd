@@ -122,6 +122,7 @@ func _ready() -> void:
 	_build_skybox()
 	_place_player(map_file)
 	_place_bots()
+	_prepare_holding()
 	_start_match()
 	var hud := GameHud.new()
 	hud.name = "Hud"
@@ -159,7 +160,6 @@ func _place_bots() -> void:
 		_sites = _bomb_site_floors()
 	var scene := load("res://src/bots/bot.tscn") as PackedScene
 	var number := 0
-	var warmed := false
 	for team: String in ["T", "CT"]:
 		if (spawns[team] as Array).is_empty():
 			continue
@@ -176,12 +176,25 @@ func _place_bots() -> void:
 			add_child(bot)
 			world.add_player(bot)
 			bot.global_position = spawns[team][i % spawns[team].size()]["position"]
-			if not warmed and bot.model != null:
-				# What a bot may take in hand, read now rather than on the tick
-				# it is bought or drawn.
-				for side: String in ["T", "CT"]:
-					bot.model.prepare_holding(BotBuying.may_hold(side), side)
-				warmed = true
+
+
+## What anyone may take in hand, read now rather than on the tick it is
+## bought, picked up or drawn: every item on either side's menu, the knife
+## and the bomb, whose clips every body takes up (the hitboxes ride them),
+## and the models of what a bot's body shows.
+func _prepare_holding() -> void:
+	var body: PlayerModel = null
+	for sim: PlayerSim in world.players:
+		if sim.model != null:
+			body = sim.model
+			break
+	if body == null:
+		return
+	for side: String in ["T", "CT"]:
+		body.prepare_holding(BotBuying.may_hold(side), side)
+		var anyone := PackedStringArray(Loadout.items(side))
+		anyone.append_array(PackedStringArray(["weapon_knife", "weapon_c4"]))
+		body.prepare_holding(anyone, side, false)
 
 
 ## The route of a side's nth bot: from one of its side's spawn points to a

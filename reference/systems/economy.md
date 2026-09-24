@@ -91,7 +91,14 @@ The default loadout, the menu's columns (IG `flexible_loadout_slot` and
 - **Warmup**: buying is open for as long as warmup lasts, and accounts hold
   $16,000 (`MoneyRules.warmup_money`, set on `round_announce_warmup`), the
   community's figure; CS2's warmup money is not in the files (E2). The
-  match's money starts at `begin_new_match`, when warmup ends.
+  match's money starts at `begin_new_match`, when warmup ends. CS2's
+  offline match has no warmup at all (`mp_warmup_offline_enabled false`,
+  `reference/research/audio-round.md` 1.2); dust2 keeps its 120 s
+  (`warmup_seconds`, 0 for CS2's way) for trying things out.
+- **Sounds**: buying makes none here yet. CS2's buyer hears the menu's own
+  (`buymenu_purchase`, `buymenu_failure`), and others hear armour put on
+  within 1000 units (`reference/cs2-systems.md` B2 has them all, and the
+  Local check that settles the rest).
 - **Half time's money comes at the next round's start.** The half is
   announced as its last round ends (`announce_phase_end`), and the money
   and the ladders go back to a half's start on the next `round_prestart`,
