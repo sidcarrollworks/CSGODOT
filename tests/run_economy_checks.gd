@@ -76,6 +76,7 @@ func _run() -> void:
 	_test_what_may_be_bought()
 	_test_armour_prices()
 	_test_a_purchase()
+	_test_a_buy_from_before_the_round()
 	_test_undoing_a_purchase()
 	_test_the_menu_buys_by_keys()
 	for body in _bodies.values():
@@ -239,18 +240,26 @@ func _test_half_time_and_overtime() -> void:
 	for round in 12:
 		_round("CT", "CTsWin")
 	_send(&"announce_phase_end")
-	_check(_all_have(_ts, 800) and _all_have(_cts, 800), "half time: everyone back to $800")
+	_check(not _all_have(_cts, 800), "the half's end is announced as its last round ends; the money stays until the next round")
+	_send(&"round_prestart")
+	_check(_all_have(_ts, 800) and _all_have(_cts, 800), "half time: everyone back to $800 as the next round starts")
 	_check(_economy.losses("T") == 1 and _economy.losses("CT") == 1, "and both ladders back to one step up")
 	for round in 12:
 		_round("T" if round % 2 == 0 else "CT", "TerroristsWin" if round % 2 == 0 else "CTsWin")
 	_send(&"announce_phase_end")
+	_send(&"round_prestart")
 	_check(_all_have(_ts, 10000) and _all_have(_cts, 10000), "overtime: everyone to $10,000")
 	for round in 3:
 		_round("CT", "CTsWin")
 	_send(&"announce_phase_end")
+	_send(&"round_prestart")
 	_check(_all_have(_ts, 10000) and _all_have(_cts, 10000), "and again for overtime's second half")
 	_send(&"begin_new_match")
 	_check(_all_have(_ts, 800), "a new match starts everyone at $800")
+	_send(&"round_announce_warmup")
+	_check(_all_have(_ts, 16000) and _all_have(_cts, 16000), "warmup: everyone on $16,000")
+	_send(&"begin_new_match")
+	_check(_all_have(_ts, 800), "and the match itself starts from $800")
 
 
 func _test_the_cap() -> void:
@@ -388,6 +397,36 @@ func _test_a_purchase() -> void:
 	_step()
 	_check(_game.inventory(t).helmet and _game.inventory(t).has("weapon_deagle") and _economy.money(t) == 5000 - 1000 - 700,
 		"CS2's own buy command names work: buy vesthelm, buy deagle")
+	_check_equal(inv.in_hand_class(), "weapon_deagle", "a gun bought is taken in hand")
+	_buy(t, "weapon_flashbang")
+	_check_equal(inv.in_hand_class(), "weapon_deagle", "a grenade bought is only carried")
+	_check(
+		_game.query(&"money", [t], -1) == _economy.money(t) and _game.query(&"can_buy", [t], false) == true,
+		"what a bot asks before it shops: its money and whether it may buy (the money and can_buy queries)"
+	)
+	_place(t, MID)
+	_check(_game.query(&"can_buy", [t], true) == false, "and out of the buy zone it may not")
+	_place(t, T_SPAWN)
+
+
+## The match sets a round up after the players' commands and before the
+## game's step: a buy run on that tick was asked of the round before (a
+## bot's warmup plan), and is dropped rather than paid from the new round's
+## money.
+func _test_a_buy_from_before_the_round() -> void:
+	_new_game(1)
+	_send(&"begin_new_match")
+	_send(&"round_start")
+	var t := _ts[0]
+	var set_up := SimClock.current_tick()
+	_game.command(t, "buy vest")
+	_game.events.send(&"round_prestart")
+	_game.events.flush()
+	_game.step(set_up)
+	_check(_game.inventory(t).armor == 0.0 and _economy.money(t) == 800, "a buy asked before the round was set up, run on its tick, buys nothing")
+	_game.command(t, "buy vest")
+	_step()
+	_check(_game.inventory(t).armor == 100.0 and _economy.money(t) == 150, "asked again after it, it buys")
 
 
 func _test_undoing_a_purchase() -> void:
@@ -433,8 +472,11 @@ func _test_the_menu_buys_by_keys() -> void:
 	menu.userid = t
 	root.add_child(menu)
 	_place(t, MID)
+	var refusals := []
+	menu.refused.connect(func(why: StringName) -> void: refusals.append(why))
 	menu.open()
 	_check(not menu.is_open(), "the menu does not open out of the buy zone")
+	_check(refusals == [Economy.NOT_IN_BUY_ZONE], "and says why, for the HUD to show (%s)" % [refusals])
 	_place(t, T_SPAWN)
 	menu.open()
 	_check(menu.is_open(), "it opens in it")

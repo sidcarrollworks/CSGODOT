@@ -15,8 +15,10 @@ extends PlayerSim
 ## back: when a player of the other side is in its sight, in the open and
 ## within its cone for long enough to react, it stops, turns, and holds the
 ## trigger in bursts, so its rounds go through the weapon's own rate, spread
-## and recoil exactly as yours do, and it reloads when it runs dry. It does
-## not flinch, take cover or think.
+## and recoil exactly as yours do (a pistol tapped), and it reloads when it
+## runs dry. On a map it spawns as you do, with the knife and its side's
+## pistol, buys in freeze time as CS2's bot does (BotBuying), and takes its
+## best gun out. It does not flinch, take cover or think.
 ##
 ## The point of it being the same simulation is that it moves and shoots
 ## like a player. A bot that walked on rails and fired by its own rules
@@ -41,9 +43,16 @@ var nav_mesh: SourceNavMesh
 @export var turn_rate: float = 540.0
 
 ## What it holds: the model to draw, and the gun it is handed at every
-## spawn (its starting_gun), which arm() puts in its hand.
+## spawn (its starting_gun), which arm() puts in its hand. With no model
+## given, its body holds whatever is in its hand, changing with it (a map's
+## bots, who spawn with a pistol and buy the rest).
 @export var weapon_model: String = ""
 @export var weapon_data: WeaponData
+
+## Which of botprofile.db's weapon templates it buys by in freeze time
+## (BotBuying), and takes its best gun in hand after; empty never buys (the
+## range's shooter and dummy, which are handed their guns).
+@export var buy_template: StringName = &""
 
 ## Sight: how far and how wide it sees, in units and degrees either side
 ## of where it faces, and how long a player has to be in sight before it
@@ -54,6 +63,16 @@ const SIGHT_HALF_ANGLE := 75.0
 const REACTION_SECONDS := 0.5
 const BURST_SECONDS := 0.6
 const PAUSE_SECONDS := 0.45
+## A semi-automatic gun fires once a press, so it is tapped: CS2's bot at
+## normal difficulty taps a pistol every half second
+## (reference/research/round-hud-bots.md).
+const TAP_SECONDS := 0.5
+## When in freeze time it shops: this many ticks after it spawns, and up to
+## SHOP_SPREAD_TICKS more, from its seed, so the bots' purchases (and the
+## guns their bodies take up) do not all land on one tick. A choice: when
+## CS2's bot buys in freeze time is in no file.
+const SHOP_DELAY_TICKS := 16
+const SHOP_SPREAD_TICKS := 48
 const AIM_ERROR_DEGREES := 1.2
 const FIRE_WITHIN_DEGREES := 6.0
 
@@ -106,6 +125,10 @@ var _aim_error: Vector2 = Vector2.ZERO
 ## it meant to face rather than from where the error put it.
 var _sent_error: Vector2 = Vector2.ZERO
 var _rng := RandomNumberGenerator.new()
+## The tick it shops on this round; -1 once it has, or when it will not.
+var _shop_tick: int = -1
+## Time to the next tap of a semi-automatic gun's trigger.
+var _tap_clock: float = 0.0
 
 
 func _init() -> void:
@@ -162,6 +185,10 @@ func _body_drawn() -> bool:
 	return true
 
 
+func _body_holds_items() -> bool:
+	return weapon_model.is_empty()
+
+
 func _body_weapon_set() -> String:
 	return weapon_data.world_clip_set if weapon_data != null else ""
 
@@ -178,6 +205,7 @@ func _process(_delta: float) -> void:
 	# Drawn as far between its last two ticks as the frame falls.
 	var alpha := clampf(Engine.get_physics_interpolation_fraction(), 0.0, 1.0)
 	model.show_between(previous_position, global_position, previous_yaw_degrees, yaw_degrees, alpha)
+	model.show_held()
 	if alive:
 		model.light_from(global_position + Vector3.UP * 40.0)
 
@@ -198,6 +226,10 @@ func _think(tick: int, delta: float) -> UserCmd:
 		_sent_error = Vector2.ZERO
 		return cmd
 
+	if not buy_template.is_empty():
+		_shop(tick)
+		_take_best_gun(cmd)
+
 	# Nothing to shoot with, nothing to stop for: an unarmed bot just walks.
 	target = _look_for_target() if weapon != null and not holds_fire else null
 	if target != null:
@@ -205,6 +237,7 @@ func _think(tick: int, delta: float) -> UserCmd:
 	else:
 		_seen_for = 0.0
 		_burst_clock = 0.0
+		_tap_clock = 0.0
 
 	if target != null and _seen_for >= REACTION_SECONDS:
 		# Stops, turns to face the target, and fires in bursts once facing it.
@@ -226,7 +259,13 @@ func _think(tick: int, delta: float) -> UserCmd:
 					_rng.randf_range(-AIM_ERROR_DEGREES, AIM_ERROR_DEGREES)
 				)
 			error = _aim_error
-			if _burst_clock < BURST_SECONDS:
+			if not weapon.data.automatic:
+				# Tapped: a press every TAP_SECONDS, the trigger up between.
+				_tap_clock -= delta
+				if _tap_clock <= 0.0:
+					_tap_clock = TAP_SECONDS
+					cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.ATTACK, true, 0.0, yaw + error.x, pitch + error.y))
+			elif _burst_clock < BURST_SECONDS:
 				cmd.buttons |= UserCmd.ATTACK
 	elif not route.is_empty():
 		var way := _way_on(cmd, delta)
@@ -240,6 +279,45 @@ func _think(tick: int, delta: float) -> UserCmd:
 	cmd.pitch_degrees = pitch + error.y
 	_sent_error = error
 	return cmd
+
+
+## Buys in freeze time, once a round, on the tick it was given at its spawn:
+## what BotBuying plans for its side, its money and what it carries, sent as
+## the buy commands a player's menu sends, which the economy prices and
+## refuses as it does anyone's. It waits while it may not buy yet and the
+## round is frozen; once it could not buy, it gives up for the round. With
+## no economy it never can.
+func _shop(tick: int) -> void:
+	if _shop_tick < 0 or tick < _shop_tick or not is_instance_valid(world):
+		return
+	if not bool(world.game.query(&"can_buy", [userid], false)):
+		if not frozen:
+			_shop_tick = -1
+		return
+	_shop_tick = -1
+	var money := int(world.game.query(&"money", [userid], 0))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(["bot_buy", userid, tick])
+	for item_class in BotBuying.plan(team, money, inventory, buy_template, rng):
+		world.game.command(userid, "buy " + item_class)
+
+
+## Its best gun in hand, a primary over a pistol, once the hand is ready: a
+## gun bought or picked up is taken out on the next tick.
+func _take_best_gun(cmd: UserCmd) -> void:
+	var best := inventory.best_gun()
+	if best != null and best.item.item_class != in_hand_class() and hand_ready():
+		cmd.weapon_select = int(best.item.slot) + 1
+
+
+## When in freeze time it shops, from a spawn on this tick: none for a bot
+## that does not buy.
+func _plan_shopping() -> void:
+	if buy_template.is_empty():
+		_shop_tick = -1
+		return
+	var now := SimClock.current_tick()
+	_shop_tick = now + SHOP_DELAY_TICKS + posmod(hash(["bot_buy_delay", userid, now]), SHOP_SPREAD_TICKS + 1)
 
 
 ## Which way it walks this tick, flat, towards route[_next]: along the path
@@ -392,6 +470,10 @@ func _on_shot_traced(_shot: Weapon.Shot, result: Hitscan.Result) -> void:
 func _on_reload_started() -> void:
 	if model != null:
 		model.play(&"reload", 0.1)
+	# Heard by those near, as CS2's reloads are (to 1100 units,
+	# reference/research/audio.md).
+	if weapon_sounds != null:
+		weapon_sounds.reload()
 
 
 ## Dies where the last round landed: the body has gone limp and fallen
@@ -424,6 +506,7 @@ func respawn() -> void:
 	velocity = Vector3.ZERO
 	_forget_hits()
 	_get_up()
+	_plan_shopping()
 	respawned.emit()
 	_send(&"player_spawn", {"userid": userid})
 
@@ -435,6 +518,7 @@ func spawn_at(spawn_position: Vector3, yaw: float, fresh: bool = false) -> void:
 	_sent_error = Vector2.ZERO
 	_seen_for = 0.0
 	target = null
+	_plan_shopping()
 	# The way it was finding over the nav mesh is from where it was.
 	_path = null
 	_no_way_to = -1

@@ -1,6 +1,6 @@
 # CS2's animation graphs
 
-Written by `scripts/animgraph_tables.gd` on 2026-09-23 from the 232 graphs under `animation/graphs/` in CS2 1.41.8.2, as `scripts/extract_assets.sh animgraphs` decodes them. Do not edit by hand. `reference/animgraph2.md` says what a graph is and how to read these.
+Written by `scripts/animgraph_tables.gd` on 2026-09-23 from the 232 graphs under `animation/graphs/` in CS2 1.41.8.3, as `scripts/extract_assets.sh animgraphs` decodes them. Do not edit by hand. `reference/animgraph2.md` says what a graph is and how to read these.
 
 A graph with variations is one graph compiled again with other clips in its slots, named `<graph>.vnmgraph+<variation>`; the nodes, blends and conditions are the same in each. Nodes counts every node, the parameters and the conditions among them; Runs is the graphs it plays through its graph slots.
 
@@ -8,7 +8,7 @@ A graph with variations is one graph compiled again with other clips in its slot
 
 | Graph | Variations | Nodes | Parameters | Skeleton | Runs |
 |---|---|---|---|---|---|
-| `worldmodel` | - | 1849 | 46 | worldmodel | worldmodel_locomotion, worldmodel_gun, worldmodel_grenade, worldmodel_knife, worldmodel_gun_cz75 |
+| `worldmodel` | - | 1870 | 47 | worldmodel | worldmodel_locomotion, worldmodel_gun, worldmodel_grenade, worldmodel_knife, worldmodel_gun_cz75 |
 | `worldmodel_grenade` | decoy, flash, he, incendiary, molotov, smoke | 74 | 7 | worldmodel | - |
 | `worldmodel_gun` | ak47, aug, awp, bizon, deagle, elites, famas, five_seven, g3sg1, galil, glock, hkp2000, m249, m4a1s, m4a4, mac10, mag7, mp5sd, mp7, mp9, negev, nova, p250, p90, revolver, sawedoff, scar20, sg556, ssg08, taser, tec9, ump45, usp, xm1014 | 121 | 8 | worldmodel | - |
 | `worldmodel_gun_cz75` | - | 70 | 6 | worldmodel | - |

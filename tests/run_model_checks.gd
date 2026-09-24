@@ -463,11 +463,73 @@ func _test_sound_sets() -> void:
 			and Footsteps.set_for("physics_group") == "concrete_ct" and Footsteps.set_for("CollisionShape3D") == "concrete_ct",
 		"the hull's material names map to the game's footstep sets, concrete when unknown"
 	)
+	# Every gun's set from the game's own tables (committed, so CI reads them).
+	var guns := WeaponSounds.sets()
+	var without := []
+	for item: ItemDef in ItemRegistry.guns():
+		if ((guns.get(item.item_class, {}) as Dictionary).get("fire", PackedStringArray()) as PackedStringArray).is_empty():
+			without.append(item.item_class)
+	var glock: Dictionary = guns.get("weapon_glock", {})
+	var m4s: Dictionary = guns.get("weapon_m4a1_silencer", {})
+	var ak: Dictionary = guns.get("weapon_ak47", {})
 	_check(
-		WeaponSounds.set_name_for(WeaponLibrary.ak47().model_path) == "ak47"
-			and WeaponSounds.set_name_for(WeaponLibrary.m4a1s().model_path) == "m4a1_silencer"
-			and WeaponSounds.SETS.has("ak47") and WeaponSounds.SETS.has("m4a1_silencer"),
-		"each weapon's model names its sound set, and both sets are known"
+		without.is_empty() and glock.get("fire") == PackedStringArray(["weapons/glock18/glock_01", "weapons/glock18/glock_02"])
+			and glock.get("draw") == PackedStringArray(["weapons/glock18/glock_draw"])
+			and m4s.get("fire") == PackedStringArray(["weapons/m4a1/m4a1_silencer_01"])
+			and not (ak.get("fire", PackedStringArray()) as PackedStringArray).has("weapons/ak47/ak47-1"),
+		"every gun has its shot from the game's own files, the M4A1-S's silenced, the AK's numbered ones (without: %s)" % [without]
+	)
+	var parts: Array = glock.get("reload", [])
+	_check(
+		parts.size() == 4 and is_equal_approx(float(parts[0][0]), 0.4667) and parts[0][1] == PackedStringArray(["weapons/glock18/glock_clipout"])
+			and parts[3][1] == PackedStringArray(["weapons/glock18/glock_sliderelease"]),
+		"the Glock-18's reload sounds at its clip's own events: clip out at 0.47 s, then in, slide back, slide release (%s)" % [parts]
+	)
+	WeaponSounds.set_for("weapon_glock")["fire"] = PackedStringArray()
+	_check(not (WeaponSounds.set_for("weapon_glock")["fire"] as PackedStringArray).is_empty(), "the sets are handed out as copies")
+	# The shooter's hit feedback: CS2's attacker feedback events.
+	_check(
+		WeaponSounds.feedback_for(&"head", true, false) == &"DamageHeadShotArmor"
+			and WeaponSounds.feedback_for(&"chest", false, true) == &"DeathBody"
+			and WeaponSounds.feedback_for(&"head", true, true) == &"DeathHeadShotArmor"
+			and WeaponSounds.feedback_for(&"stomach", true, false) == &"DamageBodyArmor",
+		"a hit's feedback is CS2's event for where it landed, armour and a kill"
+	)
+	var dink: Array = WeaponSounds.FEEDBACK[&"DamageHeadShotArmor"]
+	var helmet_kill: Array = WeaponSounds.FEEDBACK[&"DeathHeadShotArmor"]
+	var body_kill: Array = WeaponSounds.FEEDBACK[&"DeathBody"]
+	var named := WeaponSounds.all_stems()
+	_check(
+		dink[0][0] == ["player/headshot_armor_e1"] and is_equal_approx(dink[0][1], 0.5)
+			and helmet_kill.size() == 2 and helmet_kill[1][0] == ["player/headshot_armor_e1"] and is_equal_approx(helmet_kill[1][2], 1.1)
+			and (body_kill[0][0] as Array)[0] == "physics/surfaces/mud_impact_bullet1"
+			and not named.has("player/bodyshot_kill_01") and not named.has("player/headshot_armor_01") and not named.has("player/kevlar"),
+		"the helmet's dink is CS2's headshot_armor_e1 (0.5, a kill's 0.6 at pitch 1.1 with its flesh), a body kill the mud thud; no bodyshot_kill_01, headshot_armor_01 or kevlar1-5"
+	)
+	_check(
+		is_equal_approx(WeaponSounds.curve_share(WeaponSounds.BODY_CURVE, 0.0), 1.0)
+			and is_equal_approx(WeaponSounds.curve_share(WeaponSounds.BODY_CURVE, 5000.0), 0.2148)
+			and absf(WeaponSounds.curve_share(WeaponSounds.BODY_CURVE, 543.65) - 0.6074) < 0.001,
+		"a hit farther off is softer, by the event's own curve, and never silent"
+	)
+	# What everyone else hears of a hit (HitSounds): CS2's victim and
+	# onlooker events, by who is listening.
+	var as_victim := HitSounds.for_hit({"userid": 1, "attacker": 2, "hitgroup": DamageInfo.HITGROUP_HEAD, "dmg_armor": 5, "health": 40}, 1)
+	var as_shooter := HitSounds.for_hit({"userid": 1, "attacker": 2, "hitgroup": DamageInfo.HITGROUP_CHEST, "health": 40}, 2)
+	var near := HitSounds.for_hit({"userid": 1, "attacker": 2, "hitgroup": DamageInfo.HITGROUP_CHEST, "health": 0}, 3)
+	var burnt := HitSounds.for_hit({"userid": 1, "attacker": 2, "weapon": "weapon_molotov", "health": 40}, 3)
+	var knifed := HitSounds.for_hit({"userid": 1, "attacker": 2, "weapon": "weapon_knife", "hitgroup": DamageInfo.HITGROUP_HEAD, "health": 40}, 3)
+	_check(
+		as_victim.get("flat", false) and as_victim.get("layers") == HitSounds.EVENTS[&"DamageHeadShotArmor"]["victim"]
+			and as_shooter.is_empty() and not near.get("flat", true) and near.get("layers") == HitSounds.EVENTS[&"DeathBody"]["onlooker"]
+			and burnt.is_empty() and knifed.get("layers") == HitSounds.EVENTS[&"DamageBody"]["onlooker"],
+		"the one hit hears the victim's sound flat, those near the onlookers' from the body, the shooter neither (their own feedback), fire none, a knife a body hit"
+	)
+	_check(
+		HitSounds.DEATH[0][0] == HitSounds.GROAN and is_equal_approx(HitSounds.DEATH[0][1], 0.5)
+			and WeaponSounds.curve_share(HitSounds.DEATH[0][4], 1400.0) == 0.0
+			and HitSounds.EVENTS[&"DeathHeadShotArmor"]["onlooker"][2][0] == HitSounds.DINK,
+		"a death is CS2's groan (death1 to 6, 0.5, silent at 1400), and a helmeted kill's dink carries to those near"
 	)
 	if not SoundBank.available():
 		print("sounds not extracted; skipping the bank's checks (scripts/extract_assets.sh sounds)")
@@ -476,9 +538,9 @@ func _test_sound_sets() -> void:
 		SoundBank.variants("weapons/ak47/ak47_0").size() == 4
 			and SoundBank.variants("player/footsteps/sand_").size() == 12
 			and SoundBank.variants("player/footsteps/land_concrete").size() == 1
-			and SoundBank.variants("player/kevlar").size() >= 5
+			and SoundBank.variants("player/kevlar_0").size() == 8 and SoundBank.variants("player/headshot_armor_e1").size() == 1
 			and SoundBank.variants("nothing/here_").is_empty(),
-		"the bank finds a set's variants by their shared stem: four AK shots, twelve sand steps, one concrete landing"
+		"the bank finds a set's variants by their shared stem: four AK shots, twelve sand steps, one concrete landing, eight kevlar hits and one helmet dink"
 	)
 	var random := SoundBank.randomizer("weapons/ak47/ak47_0")
 	_check(
@@ -486,8 +548,11 @@ func _test_sound_sets() -> void:
 			and SoundBank.randomizer("nothing/here_") == null,
 		"a set plays through one randomizer, made once, and an empty set has none"
 	)
-	for part: Array in WeaponSounds.SETS["ak47"]["reload"] + WeaponSounds.SETS["m4a1_silencer"]["reload"]:
-		_check(not SoundBank.variants(part[1]).is_empty(), "the reload part %s is there" % part[1])
+	var missing := []
+	for stem in WeaponSounds.all_stems():
+		if SoundBank.variants(stem).is_empty():
+			missing.append(stem)
+	_check(missing.is_empty(), "every file a gun's set names is there (not: %s)" % [missing])
 	var impact_sets := 0
 	for surface in BulletImpacts.SOUND_SETS:
 		impact_sets += 1 if not SoundBank.variants(BulletImpacts.SOUND_SETS[surface]).is_empty() else 0
@@ -795,14 +860,44 @@ func _test_bot_sounds() -> void:
 	# and hits, and every surface's impacts.
 	var wanted := Footsteps.all_sets()
 	wanted.append_array(PackedStringArray(BulletImpacts.SOUND_SETS.values()))
-	wanted.append_array(PackedStringArray(WeaponSounds.HIT_SETS))
-	for part: Array in _bot.weapon_sounds.weapon_set.get("reload", []):
-		wanted.append(part[1])
+	# Every gun's, not only the one in hand: a bot takes up what it buys on
+	# the tick.
+	wanted.append_array(WeaponSounds.all_stems())
 	var missing := PackedStringArray()
 	for stem in wanted:
 		if not SoundBank._randomizers.has(stem):
 			missing.append(stem)
 	_check(missing.is_empty(), "every sound set a body, its gun and a round can play is loaded before it is needed (not: %s)" % ", ".join(missing))
+	# A hit, as the one hit hears it: flat, CS2's victim sound, on the next
+	# frame; and every file the others' sounds and the groan name is there.
+	var missing_hits := PackedStringArray()
+	for stem in HitSounds.all_stems():
+		if SoundBank.variants(stem).is_empty():
+			missing_hits.append(stem)
+	var hits := HitSounds.new()
+	root.add_child(hits)
+	var hit_game := GameSystems.new()
+	hits.watch(hit_game, 7)
+	hit_game.events.send(&"player_hurt", {"userid": 7, "attacker": 3, "hitgroup": DamageInfo.HITGROUP_HEAD, "dmg_armor": 3, "health": 50})
+	hit_game.events.flush()
+	var before := (hits.get_child(0) as AudioStreamPlayer).playing
+	hits._process(0.0)
+	_check(
+		missing_hits.is_empty() and not before and (hits.get_child(0) as AudioStreamPlayer).playing,
+		"hit, you hear CS2's own victim sound, flat, on the frame after (files missing: %s)" % ", ".join(missing_hits)
+	)
+	hits.free()
+	# A draw is heard only by whoever draws: the bot's (in the world) is not.
+	_bot.weapon_sounds.equip(WeaponLibrary.ak47())
+	var own_sounds := WeaponSounds.new()
+	root.add_child(own_sounds)
+	own_sounds.equip(WeaponLibrary.ak47())
+	_check(
+		not (_bot.weapon_sounds.weapon_set.get("fire", PackedStringArray()) as PackedStringArray).is_empty()
+			and not (_bot.weapon_sounds.get_child(1) as AudioStreamPlayer3D).playing and (own_sounds.get_child(1) as AudioStreamPlayer).playing,
+		"a bot takes up its gun's sounds without its draw being heard; your own draw is"
+	)
+	own_sounds.free()
 
 
 func _test_bot_wears_hitboxes() -> void:
@@ -1263,6 +1358,7 @@ func _test_player_model() -> void:
 	)
 
 	_test_weapon_layers()
+	_test_a_body_holds_what_is_in_hand()
 	_test_bodies_share_what_they_read()
 
 	# The first-person body: the head and arms folded away, and staying so
@@ -1394,6 +1490,61 @@ func _test_weapon_layers() -> void:
 		bool(tree.get("parameters/gun_action/active")) and (at.call("ankle_L") as Vector3).distance_to(stride_from) > 1.0,
 		"and running meanwhile, the legs run on under the reload"
 	)
+	model.free()
+
+
+## A body that holds whatever is in its hand (a map's bot): the Glock-18's
+## hold, clips and model, on the pistol's own locomotion; then the AK-47's
+## on the rifle's, with no new model built for the Glock when it comes back;
+## a grenade on the knife's; nothing in hand, nothing shown.
+func _test_a_body_holds_what_is_in_hand() -> void:
+	var model := PlayerModel.new()
+	root.add_child(model)
+	if not model.setup("T", "", "", true):
+		_check(false, "a body that holds what is in hand builds")
+		model.free()
+		return
+	var tree := model.animation_tree
+	_check(model.has_weapon_layers and model.held_weapon == null and model.holding == "", "it is built holding nothing, the gun's layers ready")
+	model.hold("weapon_glock", WeaponLibrary.look("weapon_glock", "T"))
+	model.show_held()
+	var glock := model.held_weapon
+	_check(
+		model.holding == "weapon_glock" and glock != null and glock.visible
+			and String((tree.tree_root as AnimationNodeBlendTree).get_node(&"hold_stand").animation).ends_with("_idle")
+			and model.weapon_clip(&"reload") != &"" and float(tree.get("parameters/hold/add_amount")) == 1.0,
+		"the Glock-18 in hand: its model shown, its own hold and reload (%s)" % model.weapon_clip(&"reload")
+	)
+	model.pose_now()
+	tree.advance(0.3)
+	_check_equal(String(tree.get("parameters/variation/current_state")), "rifle", "while the draw plays the body keeps the locomotion it had, as CS2's graph does")
+	# The draw over, on the simulation's clock.
+	model._switch_at_usec = SimClock.now_usec()
+	model.update_motion(Vector3.ZERO, 0.0, 0.0, true)
+	tree.advance(0.6)
+	_check_equal(String(tree.get("parameters/variation/current_state")), "pistol", "and then moves as CS2's does with a pistol")
+	model.hold("weapon_ak47", WeaponLibrary.look("weapon_ak47", "T"))
+	model.show_held()
+	var ak := model.held_weapon
+	model._switch_at_usec = SimClock.now_usec()
+	model.update_motion(Vector3.ZERO, 0.0, 0.0, true)
+	tree.advance(0.3)
+	_check(
+		ak != null and ak != glock and ak.visible and not glock.visible
+			and String(tree.get("parameters/variation/current_state")) == "rifle",
+		"the AK-47 in hand: its model shown, the Glock's hidden, the rifle's locomotion"
+	)
+	model.hold("weapon_glock", WeaponLibrary.look("weapon_glock", "T"))
+	model.show_held()
+	_check(model.held_weapon == glock and glock.visible and not ak.visible, "the Glock again: the same model, shown again")
+	model.hold("weapon_hegrenade", WeaponLibrary.look("weapon_hegrenade", "T"))
+	model._switch_at_usec = SimClock.now_usec()
+	model.update_motion(Vector3.ZERO, 0.0, 0.0, true)
+	tree.advance(0.3)
+	_check_equal(String(tree.get("parameters/variation/current_state")), "knife", "a grenade in hand: the knife's locomotion")
+	model.let_go()
+	model.show_held()
+	_check(model.holding == "" and model.held_weapon == null and not glock.visible and not ak.visible, "nothing in hand: nothing shown")
 	model.free()
 
 

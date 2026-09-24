@@ -59,6 +59,8 @@ func _run() -> void:
 	await physics_frame
 
 	await _test_a_round_from_warmup_to_its_end()
+	await _test_the_round_events()
+	_test_what_a_round_announces()
 	await _test_the_score_stays_with_the_team()
 	await _test_overtime()
 	await _test_friendly_fire()
@@ -138,10 +140,14 @@ func _test_a_round_from_warmup_to_its_end() -> void:
 	)
 	_check(t.alive and t.hit_target.health == 100.0 and _at_a_spawn(t, T_SPAWNS), "everyone starts it alive at a spawn")
 	_check(t.frozen and ct.frozen and not t.respawns, "held still, and nobody comes back from a death now")
-	_check(
-		t.weapon != null and t.weapon.data.display_name == "AK-47" and ct.weapon != null and ct.weapon.data.display_name == "M4A1-S",
-		"the Ts with the AK-47 and the CTs with the M4A1-S, until they can buy"
-	)
+	for player: PlayerSim in [t, ct]:
+		var pistol: String = Inventory.STARTING_PISTOLS[player.team]
+		_check(
+			player.in_hand_class() == pistol and player.inventory.has("weapon_knife")
+				and player.inventory.item_in(ItemDef.Slot.PRIMARY) == null and player.inventory.grenade_count() == 0
+				and is_zero_approx(player.hit_target.armor) and not player.hit_target.helmet and not player.inventory.has_defuser,
+			"a %s starts with the knife and the %s in hand, and nothing else: no rifle, no armour (mp_free_armor 0)" % [player.team, pistol]
+		)
 
 	var from := t.global_position
 	var fired := t.rounds_fired
@@ -181,6 +187,10 @@ func _test_a_round_from_warmup_to_its_end() -> void:
 
 	now += 15 * SECOND
 	game.tick(now)
+	# Both bought armour and a rifle this round.
+	for player: PlayerSim in [t, ct]:
+		player.inventory.add("item_assaultsuit")
+		player.inventory.add("weapon_ak47" if player.team == "T" else "weapon_m4a1_silencer")
 	ct.hit_target.apply_damage(40.0, &"chest", 0.5)
 	var ct_armor := ct.hit_target.armor
 	_kill(t)
@@ -197,11 +207,114 @@ func _test_a_round_from_warmup_to_its_end() -> void:
 	game.tick(now)
 	_check(t.alive and t.hit_target.health == 100.0 and _at_a_spawn(t, T_SPAWNS), "the next round they are back, whole, at a T spawn")
 	_check(
-		ct.hit_target.health == 100.0 and is_equal_approx(ct.hit_target.armor, ct_armor) and ct_armor < 100.0,
-		"and the CT who lived is healed and keeps the armour they had left (%.0f)" % ct.hit_target.armor
+		ct.hit_target.health == 100.0 and is_equal_approx(ct.hit_target.armor, ct_armor) and ct_armor < 100.0 and ct_armor > 0.0
+			and ct.hit_target.helmet and ct.inventory.has("weapon_m4a1_silencer"),
+		"and the CT who lived is healed and keeps the armour they had left (%.0f), the helmet and the rifle" % ct.hit_target.armor
 	)
-	_check(t.hit_target.armor == 100.0, "the one who died has their armour back as it was")
+	_check(
+		is_zero_approx(t.hit_target.armor) and not t.hit_target.helmet and not t.inventory.has("weapon_ak47")
+			and t.in_hand_class() == "weapon_glock",
+		"the one who died starts again from nothing: no armour, no helmet, no rifle, the Glock-18 in hand"
+	)
 	await _clear([t, ct, game])
+
+
+## What the match says as it goes, into the game's events, in CS2's order:
+## warmup announced; the match begun; each round's prestart handed out
+## before anyone spawns, so the ground is cleared first; the round's start,
+## the end of freeze time, the round's end with its reason; the end of the
+## half. A planted bomb holds the round past its time and past the last T,
+## and its blast ends it for the Ts.
+func _test_the_round_events() -> void:
+	var t := _new_player(Vector3(0.0, 0.0, 600.0), "T")
+	var ct := _new_player(Vector3(0.0, 0.0, -2600.0), "CT")
+	var rules := MatchRules.new()
+	# Half time after round 2.
+	rules.max_rounds = 4
+	var game := _new_match([t, ct], rules)
+	var events := GameEvents.new()
+	var heard := []
+	var ends := []
+	var t_alive_at_prestart := []
+	events.listen_all(func(event: GameEvent) -> void: heard.append(event.name))
+	events.listen(&"round_end", func(event: GameEvent) -> void: ends.append(event.fields))
+	events.listen(&"round_prestart", func(_event: GameEvent) -> void: t_alive_at_prestart.append(t.alive))
+	game.events = events
+	var now := 10 * SECOND
+	game.start(now)
+	events.flush()
+	_check_equal(heard, [&"round_announce_warmup"], "warmup is announced")
+	heard.clear()
+	_kill(t)
+	now += 120 * SECOND
+	game.tick(now)
+	events.flush()
+	_check_equal(heard, [&"warmup_end", &"begin_new_match", &"round_prestart", &"round_start", &"round_announce_match_start", &"round_poststart"],
+		"warmup's end: warmup_end, the match begins, and round 1 with prestart, start, the match start's announcement and poststart")
+	_check(t_alive_at_prestart == [false] and t.alive, "round_prestart is handed out before the dead are spawned")
+	heard.clear()
+	now = game.phase_ends_usec
+	game.tick(now)
+	events.flush()
+	_check_equal(heard, [&"round_freeze_end"], "freeze time's end is said")
+	heard.clear()
+	now += 115 * SECOND
+	game.tick(now)
+	events.flush()
+	_check(
+		heard.size() == 1 and heard[0] == &"round_end" and ends[0]["winner"] == "CT"
+			and ends[0]["reason"] == GameEvents.round_end_reason(MatchState.Reason.TIME_RAN_OUT)
+			and ends[0]["message"] == "#SFUI_Notice_Target_Saved" and ends[0]["player_count"] == 2,
+		"time out: round_end, the CTs', with its reason and message (%s)" % [ends]
+	)
+	heard.clear()
+	now = game.phase_ends_usec
+	game.tick(now)
+	events.flush()
+	_check_equal(heard, [&"round_officially_ended", &"round_prestart", &"round_start", &"round_announce_last_round_half", &"round_poststart"],
+		"the next round, the half's last: the last officially ended, then prestart, start, its announcement, poststart")
+	now = game.phase_ends_usec
+	game.tick(now)
+	events.send(&"bomb_planted", {"userid": t.userid, "site": "A"}, now)
+	events.flush()
+	_kill(t)
+	now += 116 * SECOND
+	game.tick(now)
+	_check(game.phase == MatchState.Phase.LIVE, "with the bomb planted neither the clock nor the last T dying ends the round")
+	heard.clear()
+	events.send(&"bomb_exploded", {"userid": t.userid, "site": "A"}, now)
+	events.flush()
+	_check(
+		game.phase == MatchState.Phase.ROUND_END and game.last_winner == "T" and game.last_reason == MatchState.Reason.BOMB_EXPLODED,
+		"the blast ends it for the Ts"
+	)
+	_check(
+		heard.has(&"round_end") and heard.find(&"announce_phase_end") > heard.find(&"round_end")
+			and heard.find(&"start_halftime") > heard.find(&"announce_phase_end"),
+		"and it was the half's last round: announce_phase_end, then start_halftime with the swap (%s)" % [heard]
+	)
+	await _clear([t, ct, game])
+
+
+## What CS2 announces of a round as it starts, by the score: the match's
+## first round, the last of a half, a round a side wins the match by
+## winning, the last of regulation or of an overtime.
+func _test_what_a_round_announces() -> void:
+	var game := MatchState.new()
+	game.rules = MatchRules.new()
+	var say := func(t: int, ct: int) -> StringName:
+		game._score = {"T": t, "CT": ct}
+		game.rounds_played = t + ct
+		return game.announce_round()
+	_check(
+		say.call(0, 0) == &"round_announce_match_start" and say.call(6, 5) == &"round_announce_last_round_half"
+			and say.call(7, 5) == &"" and say.call(12, 3) == &"round_announce_match_point"
+			and say.call(3, 12) == &"round_announce_match_point" and say.call(12, 11) == &"round_announce_final"
+			and say.call(13, 13) == &"round_announce_last_round_half" and say.call(15, 13) == &"round_announce_match_point"
+			and say.call(15, 14) == &"round_announce_final",
+		"round 1 starts the match, 12 the half's last, 12-3 match point, 24 the final one; in overtime 13-13 its half's last, 15-13 match point, 15-14 its final"
+	)
+	game.free()
 
 
 # --- The score --------------------------------------------------------------
@@ -243,7 +356,7 @@ func _test_the_score_stays_with_the_team() -> void:
 		"the old side's hitboxes are gone and the new side's are on, one set (%d worn, %d in the tree: %s)"
 			% [worn.size(), in_tree, a.hitbox_source()]
 	)
-	_check(a.weapon.data.display_name == "M4A1-S", "and the team now on CT has the M4A1-S")
+	_check(a.in_hand_class() == "weapon_hkp2000" and b.in_hand_class() == "weapon_glock", "and the team now on CT has the CTs' P2000, the other the Glock-18")
 
 	for i in 4:
 		now = _play_round(game, now, "CT")

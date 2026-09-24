@@ -180,10 +180,12 @@ Roughly in order; L1 to L3 can start at once.
 - [ ] **R8. Slots, switching, drop and pick up.** Knife, pistol, primary;
   number keys and the scroll wheel (scroll up is jump today; ask Sid); a
   weapon on the ground; bots carrying what they bought. *(Done but for E to
-  swap with the gun in hand, the gun on the ground as a rigid body, the
-  scroll wheel's `invnext` and bots buying, with roadmap item 12: every
-  player carries an `Inventory`, 1 to 5 and Q, draw times on a switch, G
-  drops and walking over a gun picks it up, each gun keeping its rounds.)*
+  swap with the gun in hand, the gun on the ground as a rigid body and the
+  scroll wheel's `invnext`, with roadmap item 12: every player carries an
+  `Inventory`, 1 to 5 and Q, draw times on a switch, G drops and walking
+  over a gun picks it up, each gun keeping its rounds. Bots buying and
+  holding what they bought done 2026-09-23: `BotBuying`, and a bot's body
+  holding whatever is in its hand.)*
 - [ ] **R9. Buy menu and money.** Price and kill award are in the sheet.
   In scope (Sid, 2026-09-22): CS2's economy and buy menu, detailed in
   `reference/cs2-systems.md` (sections 2 and 3).

@@ -1,6 +1,6 @@
 # The third-person graph
 
-Written by `scripts/animgraph_tables.gd` on 2026-09-23 from `animation/graphs/worldmodel/worldmodel.vnmgraph_c` in CS2 1.41.8.2. Do not edit by hand; `reference/animgraph2.md` says how to read it.
+Written by `scripts/animgraph_tables.gd` on 2026-09-23 from `animation/graphs/worldmodel/worldmodel.vnmgraph_c` in CS2 1.41.8.3. Do not edit by hand; `reference/animgraph2.md` says how to read it.
 
 The player as the others see them: `worldmodel.vnmgraph`, over the world rig (`animation/skeletons/characters/worldmodel.vnmskel`). It runs the locomotion (`locomotion.md`) and the weapon graphs through graph slots, so its own states name which graph plays rather than clips.
 
@@ -27,7 +27,7 @@ Each node is named by its path in Valve's editor. Conditions are written out wit
 
 | Layer | Plays | Weight | Bone mask | Blend | Synced |
 |---|---|---|---|---|---|
-| `Weapons` | state machine Weapons (9 states) | the state's | - | ModelSpace | no |
+| `Weapons` | state machine Weapons (1 states) | the state's | - | ModelSpace | no |
 | `Defuse` | state machine Defuse (2 states) | the state's | - | ModelSpace | no |
 | `BodyAdditives` | state machine BodyAdditives (4 states) | the state's | - | Additive | no |
 | `Weapon Shoot` | state machine Weapon Shoot (7 states) | the state's | - | Additive | no |
@@ -54,7 +54,7 @@ Each node is named by its path in Valve's editor. Conditions are written out wit
 | `Weapon Shoot/Pistols/SM/Elites/Right` | state machine Weapon Shoot/Pistols/SM/Elites/Right (2 states) | the state's | - | Overlay | no |
 
 
-## State machines (61)
+## State machines (62)
 
 ### `SM0`
 
@@ -93,7 +93,7 @@ Starts in Equipment.
 | MG (starts here when weapon_category is weapon_category_machinegun) | state machine SM0/Locomotion/Idle Poses/MG/SM (2 states) | - |
 | Shotguns (starts here when weapon_category is weapon_category_shotgun) | state machine SM0/Locomotion/Idle Poses/Shotguns/SM (4 states) | - |
 | SMG (starts here when weapon_category is weapon_category_smg) | state machine SM0/Locomotion/Idle Poses/SMG/SM (7 states) | - |
-| Rifles (starts here when weapon_category is weapon_category_rifle) | state machine SM0/Locomotion/Idle Poses/Rifles/SM (7 states) | - |
+| Rifles (starts here when weapon_category is weapon_category_rifle) | state machine SM0/Locomotion/Idle Poses/Rifles/SM (8 states) | - |
 | Knives (starts here when weapon_category is weapon_category_knife) | state machine SM0/Locomotion/Idle Poses/Knives/SM (22 states) | - |
 | Pistols (starts here when weapon_category is weapon_category_pistol) | state machine SM0/Locomotion/Idle Poses/Pistols/SM (11 states) | - |
 
@@ -209,6 +209,7 @@ Starts in AK.
 | GALIL (starts here when weapon_type is weapon_galilar) | a 1D blend on move_crouch_amount eased over 0.2 s of idle_galilar at 0, idle_crouch_galilar at 1 | - |
 | M4A4 (starts here when weapon_type is weapon_m4a1) | a 1D blend on move_crouch_amount eased over 0.2 s of idle_m4a4 at 0, idle_crouch_m4a4 at 1 | - |
 | FAMAS (starts here when weapon_type is weapon_famas) | a 1D blend on move_crouch_amount eased over 0.2 s of idle_famas at 0, idle_crouch_famas at 1 | - |
+| TEMP (starts here when weapon_type is weapon_temp) | a 1D blend on move_crouch_amount eased over 0.2 s of idle at 0, idle_crouch at 1 | - |
 
 From more than one state:
 
@@ -218,6 +219,7 @@ From more than one state:
 - to GALIL when weapon_type is weapon_galilar (0 s), from any state
 - to M4A4 when weapon_type is weapon_m4a1 (0 s), from any state
 - to FAMAS when weapon_type is weapon_famas (0 s), from any state
+- to TEMP when weapon_type is weapon_temp (0.2 s), from any state
 - to AK when weapon_type is weapon_ak47 (0 s), from any state
 
 ### `SM0/Locomotion/Idle Poses/Knives/SM`
@@ -325,19 +327,27 @@ Starts in Off.
 
 ### `Weapons`
 
+Starts in State.
+
+| State | Plays | Goes to |
+|---|---|---|
+| State | state machine Weapons/State/Weapons (9 states), at weapon_action_speedscale times the speed | - |
+
+### `Weapons/State/Weapons`
+
 Starts in Equipment.
 
 | State | Plays | Goes to |
 |---|---|---|
-| Equipment (starts here when weapon_category is weapon_category_equipment) | state machine Weapons/Equipment/SM (2 states) | - |
-| SniperRifles (starts here when weapon_category is weapon_category_sniper) | state machine Weapons/SniperRifles/SM (4 states) | - |
-| Grenades (starts here when weapon_category is weapon_category_grenade) | state machine Weapons/Grenades/SM (6 states) | - |
-| MG (starts here when weapon_category is weapon_category_machinegun) | state machine Weapons/MG/SM (2 states) | - |
-| Shotguns (starts here when weapon_category is weapon_category_shotgun) | state machine Weapons/Shotguns/SM (4 states) | - |
-| SMG (starts here when weapon_category is weapon_category_smg) | state machine Weapons/SMG/SM (7 states) | - |
-| Rifles (starts here when weapon_category is weapon_category_rifle) | state machine Weapons/Rifles/SM (7 states) | - |
-| Knives (starts here when weapon_category is weapon_category_knife) | state machine Weapons/Knives/SM (22 states) | - |
-| Pistols (starts here when weapon_category is weapon_category_pistol) | state machine Weapons/Pistols/SM (11 states) | - |
+| Equipment (starts here when weapon_category is weapon_category_equipment) | state machine Weapons/State/Weapons/Equipment/SM (2 states) | - |
+| SniperRifles (starts here when weapon_category is weapon_category_sniper) | state machine Weapons/State/Weapons/SniperRifles/SM (4 states) | - |
+| Grenades (starts here when weapon_category is weapon_category_grenade) | state machine Weapons/State/Weapons/Grenades/SM (6 states) | - |
+| MG (starts here when weapon_category is weapon_category_machinegun) | state machine Weapons/State/Weapons/MG/SM (2 states) | - |
+| Shotguns (starts here when weapon_category is weapon_category_shotgun) | state machine Weapons/State/Weapons/Shotguns/SM (4 states) | - |
+| SMG (starts here when weapon_category is weapon_category_smg) | state machine Weapons/State/Weapons/SMG/SM (7 states) | - |
+| Rifles (starts here when weapon_category is weapon_category_rifle) | state machine Weapons/State/Weapons/Rifles/SM (8 states) | - |
+| Knives (starts here when weapon_category is weapon_category_knife) | state machine Weapons/State/Weapons/Knives/SM (22 states) | - |
+| Pistols (starts here when weapon_category is weapon_category_pistol) | state machine Weapons/State/Weapons/Pistols/SM (11 states) | - |
 
 From more than one state:
 
@@ -351,16 +361,16 @@ From more than one state:
 - to Pistols when weapon_category is weapon_category_pistol (0.1 s), from any state
 - to Equipment when weapon_category is weapon_category_equipment (0.1 s), from any state
 
-### `Weapons/Equipment/SM`
+### `Weapons/State/Weapons/Equipment/SM`
 
 Starts in HealthShot.
 
 | State | Plays | Goes to |
 |---|---|---|
-| HealthShot (starts here when weapon_type is weapon_healthshot) | state machine Weapons/Equipment/SM/HealthShot/SM (3 states) | C4 when weapon_type is weapon_c4 (0 s) |
-| C4 (starts here when weapon_type is weapon_c4) | state machine Weapons/Equipment/SM/C4/SM (2 states) | HealthShot when weapon_type is weapon_healthshot (0 s) |
+| HealthShot (starts here when weapon_type is weapon_healthshot) | state machine Weapons/State/Weapons/Equipment/SM/HealthShot/SM (3 states) | C4 when weapon_type is weapon_c4 (0 s) |
+| C4 (starts here when weapon_type is weapon_c4) | state machine Weapons/State/Weapons/Equipment/SM/C4/SM (2 states) | HealthShot when weapon_type is weapon_healthshot (0 s) |
 
-### `Weapons/Equipment/SM/HealthShot/SM`
+### `Weapons/State/Weapons/Equipment/SM/HealthShot/SM`
 
 Starts in Off.
 
@@ -375,7 +385,7 @@ From more than one state:
 - to Inject when action is action_healthshot_inject (0 s), from any state
 - to Deploy when action is action_deploy (0.2 s), from any state
 
-### `Weapons/Equipment/SM/C4/SM`
+### `Weapons/State/Weapons/Equipment/SM/C4/SM`
 
 Starts in Off.
 
@@ -384,7 +394,7 @@ Starts in Off.
 | Deploying (starts here when action is action_deploy) | a 1D blend on move_crouch_amount eased over 0.2 s of draw_c4 at 0, draw_crouch_c4 at 1 | Off when action is not action_deploy (0.2 s) |
 | Off (starts here when not (action is action_deploy)) |   | Deploying when action is action_deploy (0.2 s) |
 
-### `Weapons/SniperRifles/SM`
+### `Weapons/State/Weapons/SniperRifles/SM`
 
 Starts in AWP.
 
@@ -402,7 +412,7 @@ From more than one state:
 - to SCAR20 when weapon_type is weapon_scar20 (0 s), from any state
 - to AWP when weapon_type is weapon_awp (0 s), from any state
 
-### `Weapons/Grenades/SM`
+### `Weapons/State/Weapons/Grenades/SM`
 
 Starts in Decoy.
 
@@ -424,7 +434,7 @@ From more than one state:
 - to Flash when weapon_type is weapon_flashbang (0 s), from any state
 - to Decoy when weapon_type is weapon_decoy (0 s), from any state
 
-### `Weapons/MG/SM`
+### `Weapons/State/Weapons/MG/SM`
 
 Starts in M249.
 
@@ -433,7 +443,7 @@ Starts in M249.
 | M249 (starts here when weapon_type is weapon_m249) | the worldmodel_gun graph (m249) | Negev when weapon_type is weapon_negev (0 s) |
 | Negev (starts here when weapon_type is weapon_negev) | the worldmodel_gun graph (negev) | M249 when weapon_type is weapon_m249 (0 s) |
 
-### `Weapons/Shotguns/SM`
+### `Weapons/State/Weapons/Shotguns/SM`
 
 Starts in Nova.
 
@@ -451,7 +461,7 @@ From more than one state:
 - to MAG7 when weapon_type is weapon_mag7 (0 s), from any state
 - to Nova when weapon_type is weapon_nova (0 s), from any state
 
-### `Weapons/SMG/SM`
+### `Weapons/State/Weapons/SMG/SM`
 
 Starts in MP7.
 
@@ -475,7 +485,7 @@ From more than one state:
 - to ump45 when weapon_type is weapon_ump45 (0 s), from any state
 - to MP7 when weapon_type is weapon_mp7 (0 s), from any state
 
-### `Weapons/Rifles/SM`
+### `Weapons/State/Weapons/Rifles/SM`
 
 Starts in AK.
 
@@ -488,6 +498,7 @@ Starts in AK.
 | GALIL (starts here when weapon_type is weapon_galilar) | the worldmodel_gun graph (galil) | - |
 | M4A4 (starts here when weapon_type is weapon_m4a1) | the worldmodel_gun graph (m4a4) | - |
 | FAMAS (starts here when weapon_type is weapon_famas) | the worldmodel_gun graph (famas) | - |
+| TEMP (starts here when weapon_type is weapon_temp) | a graph from the caller | - |
 
 From more than one state:
 
@@ -497,9 +508,10 @@ From more than one state:
 - to GALIL when weapon_type is weapon_galilar (0 s), from any state
 - to M4A4 when weapon_type is weapon_m4a1 (0 s), from any state
 - to FAMAS when weapon_type is weapon_famas (0 s), from any state
+- to TEMP when weapon_type is weapon_temp (0.2 s), from any state
 - to AK when weapon_type is weapon_ak47 (0 s), from any state
 
-### `Weapons/Knives/SM`
+### `Weapons/State/Weapons/Knives/SM`
 
 Starts in Default_CT.
 
@@ -553,7 +565,7 @@ From more than one state:
 - to Karambit when weapon_type is weapon_knife_karambit (0 s), from any state
 - to Default_CT when weapon_type is weapon_knife (0 s), from any state
 
-### `Weapons/Pistols/SM`
+### `Weapons/State/Weapons/Pistols/SM`
 
 Starts in USP.
 
@@ -764,7 +776,7 @@ Starts in Off.
 | MG (starts here when action is action_attack and weapon_category is weapon_category_machinegun) | state machine Weapon Shoot/MG/SM (2 states) | - |
 | Shotguns (starts here when action is action_attack and weapon_category is weapon_category_shotgun) | state machine Weapon Shoot/Shotguns/SM (4 states) | - |
 | SMG (starts here when action is action_attack and weapon_category is weapon_category_smg) | state machine Weapon Shoot/SMG/SM (7 states) | - |
-| Rifles (starts here when action is action_attack and weapon_category is weapon_category_rifle) | state machine Weapon Shoot/Rifles/SM (8 states) | - |
+| Rifles (starts here when action is action_attack and weapon_category is weapon_category_rifle) | state machine Weapon Shoot/Rifles/SM (9 states) | - |
 | Pistols (starts here when action is action_attack and weapon_category is weapon_category_pistol) | state machine Weapon Shoot/Pistols/SM (11 states) | - |
 | Off (starts here when weapon_category is one of weapon_category_equipment, weapon_category_grenade, weapon_category_knife or not (action is action_attack)) |   | - |
 
@@ -861,6 +873,7 @@ Starts in Off.
 | M4A4 (starts here when weapon_type is weapon_m4a1) | clip shoot_m4a4 | - |
 | FAMAS (starts here when weapon_type is weapon_famas) | clip shoot_famas | - |
 | Off |   | - |
+| TEMP (starts here when weapon_type is weapon_temp) | no clip (the slot is empty in this variation) | - |
 
 From more than one state:
 
@@ -870,6 +883,7 @@ From more than one state:
 - to GALIL when weapon_type is weapon_galilar (0 s), from any state
 - to M4A4 when weapon_type is weapon_m4a1 (0 s), from any state
 - to FAMAS when weapon_type is weapon_famas (0 s), from any state
+- to TEMP when weapon_type is weapon_temp (0.2 s), from any state
 - to AK when weapon_type is weapon_ak47 (0 s), from any state
 
 ### `Weapon Shoot/Pistols/SM`

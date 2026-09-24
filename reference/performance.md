@@ -65,11 +65,24 @@ twenty, all 64 ticks a second in both.
 | A side swap, one player's new body | 2.6 ms |
 | A spawn | 2 us |
 | A gun drawn: its weapon and view model built again | 0.64 ms |
+| A bot's body taking a class in hand the first time: its clips added (on the tick), its model built (the next frame) | 0.30 ms and 0.23 ms |
+| A bot's body switching between things it carries | 0.03 ms |
+
+A body that holds whatever is in its hand (every player's since 2026-09-24,
+yours unseen too, as CS2's server poses everyone's hitboxes with what they
+hold; a map's bot's since 2026-09-23) carries
+the pistol's and the knife's locomotion beside the rifle's, and moves by
+one at a time: its motion's parameters take 7.6 us a tick against 5.6, and
+its animation 93 us a frame against 87 (one body, headless, AK and Glock).
 
 | Once | Cost |
 |---|---|
-| dust2 loaded to the first frame | 4.8 s (5.1 with twenty players) |
+| dust2 loaded to the first frame | 4.8 s (5.1 with twenty players), before its bots' guns were read |
 | The first body of each kind (its ~80 scenes read) | 240 ms; every one after, 2.7 ms |
+| The first body that holds what is in hand (the pistol's and knife's locomotion read too) | 210 ms more; every one after, 4.6 ms |
+| What dust2's bots may hold, read before play (`prepare_holding`: 17 classes' clips and models) | 1.0 s with the disk's cache warm, 2.8 s cold |
+| Then everything else on either side's menu, the knife and the bomb, whose clips every body takes up, yours too (clips only) | 0.4 s more |
+| Every gun's sounds (`WeaponSounds`: 334 files, from `sounds.md` and `timings.csv`) | 0.39 s warm, 2.3 s cold |
 | Bullet-hole textures, and every sound set | 270 ms, and 120 to 570 ms (the disk's cache warm or cold) |
 
 A trace of the player's hull through dust2's collision is 20 to 50 us,
@@ -187,6 +200,9 @@ air strafing most), and run_tests.gd holds it at any tick rate.
    share what one sees of another with the other.
 8. One body of each kind built while the map loads, so the first bot to
    spawn does not pay the 240 ms.
+9. What the bots may hold read on a thread while the map loads, or only
+   each side's likely guns, rather than the 2.8 s of every template's; and
+   on a server, only their clips (their models are only seen).
 
 ## Measuring it again
 

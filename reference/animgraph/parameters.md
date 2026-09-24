@@ -1,6 +1,6 @@
 # What the game tells the animation graphs
 
-Written by `scripts/animgraph_tables.gd` on 2026-09-23 from CS2 1.41.8.2's animation graphs. Do not edit by hand.
+Written by `scripts/animgraph_tables.gd` on 2026-09-23 from CS2 1.41.8.3's animation graphs. Do not edit by hand.
 
 The control parameters are what the game sets on a player's graphs every frame; the graphs do the rest. An ID parameter is a name: Values lists every one the graphs test it for, which is the game's vocabulary for it (an empty one is written (none)). A float's range is for the game's code to say; the blend spaces in `locomotion.json` and the conditions in the layout pages show what values the graphs expect. Graphs names the families that take the parameter (`graphs.md`).
 
@@ -45,6 +45,7 @@ The control parameters are what the game sets on a player's graphs every frame; 
 | `move_speed_y` | Float | worldmodel, worldmodel_locomotion | - |
 | `move_type` | ID | worldmodel, worldmodel_locomotion | move_type_air, move_type_ground, move_type_jump, move_type_ladder |
 | `reload_stage` | ID | worldmodel, worldmodel_gun, worldmodel_gun_cz75 | stage_outro |
+| `weapon_action_speedscale` | Float | worldmodel | - |
 | `weapon_ammo` | Float | worldmodel, worldmodel_gun, worldmodel_gun_cz75 | - |
 | `weapon_ammo_max` | Float | worldmodel | - |
 | `weapon_ammo_reserve` | Float | worldmodel | - |
@@ -54,7 +55,7 @@ The control parameters are what the game sets on a player's graphs every frame; 
 | `weapon_ironsight_amount` | Float | worldmodel | - |
 | `weapon_is_legacy_model` | Bool | worldmodel | - |
 | `weapon_is_silenced` | Bool | worldmodel | - |
-| `weapon_type` | ID | worldmodel, worldmodel_grenade, worldmodel_gun, worldmodel_gun_cz75, worldmodel_knife | (none), weapon_ak47, weapon_aug, weapon_awp, weapon_bayonet, weapon_bizon, weapon_c4, weapon_cz75a, weapon_deagle, weapon_decoy, weapon_elite, weapon_famas, weapon_fiveseven, weapon_flashbang, weapon_g3sg1, weapon_galilar, weapon_glock, weapon_healthshot, weapon_hegrenade, weapon_hkp2000, weapon_incgrenade, weapon_knife, weapon_knife_butterfly, weapon_knife_canis, weapon_knife_cord, weapon_knife_css, weapon_knife_falchion, weapon_knife_flip, weapon_knife_gut, weapon_knife_gypsy_jackknife, weapon_knife_karambit, weapon_knife_kukri, weapon_knife_m9_bayonet, weapon_knife_outdoor, weapon_knife_push, weapon_knife_skeleton, weapon_knife_stiletto, weapon_knife_survival_bowie, weapon_knife_t, weapon_knife_tactical, weapon_knife_ursus, weapon_knife_widowmaker, weapon_m249, weapon_m4a1, weapon_m4a1_silencer, weapon_mac10, weapon_mag7, weapon_molotov, weapon_mp5sd, weapon_mp7, weapon_mp9, weapon_negev, weapon_nova, weapon_p250, weapon_p90, weapon_revolver, weapon_sawedoff, weapon_scar20, weapon_sg556, weapon_smokegrenade, weapon_ssg08, weapon_taser, weapon_tec9, weapon_ump45, weapon_usp_silencer, weapon_xm1014 |
+| `weapon_type` | ID | worldmodel, worldmodel_grenade, worldmodel_gun, worldmodel_gun_cz75, worldmodel_knife | (none), weapon_ak47, weapon_aug, weapon_awp, weapon_bayonet, weapon_bizon, weapon_c4, weapon_cz75a, weapon_deagle, weapon_decoy, weapon_elite, weapon_famas, weapon_fiveseven, weapon_flashbang, weapon_g3sg1, weapon_galilar, weapon_glock, weapon_healthshot, weapon_hegrenade, weapon_hkp2000, weapon_incgrenade, weapon_knife, weapon_knife_butterfly, weapon_knife_canis, weapon_knife_cord, weapon_knife_css, weapon_knife_falchion, weapon_knife_flip, weapon_knife_gut, weapon_knife_gypsy_jackknife, weapon_knife_karambit, weapon_knife_kukri, weapon_knife_m9_bayonet, weapon_knife_outdoor, weapon_knife_push, weapon_knife_skeleton, weapon_knife_stiletto, weapon_knife_survival_bowie, weapon_knife_t, weapon_knife_tactical, weapon_knife_ursus, weapon_knife_widowmaker, weapon_m249, weapon_m4a1, weapon_m4a1_silencer, weapon_mac10, weapon_mag7, weapon_molotov, weapon_mp5sd, weapon_mp7, weapon_mp9, weapon_negev, weapon_nova, weapon_p250, weapon_p90, weapon_revolver, weapon_sawedoff, weapon_scar20, weapon_sg556, weapon_smokegrenade, weapon_ssg08, weapon_taser, weapon_tec9, weapon_temp, weapon_ump45, weapon_usp_silencer, weapon_xm1014 |
 
 Computed by the graphs themselves (virtual parameters), from the others:
 

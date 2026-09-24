@@ -80,13 +80,36 @@ static func pick(stem: String, rng: RandomNumberGenerator) -> AudioStream:
 static func randomizer(stem: String) -> AudioStreamRandomizer:
 	if _randomizers.has(stem):
 		return _randomizers[stem]
-	var streams := variants(stem)
-	var random: AudioStreamRandomizer = null
-	if not streams.is_empty():
-		random = AudioStreamRandomizer.new()
-		random.playback_mode = AudioStreamRandomizer.PLAYBACK_RANDOM_NO_REPEATS
-		random.random_pitch = 1.05
-		for stream in streams:
-			random.add_stream(-1, stream)
+	var random := _random_over(variants(stem))
 	_randomizers[stem] = random
+	return random
+
+
+## The same over several stems' variants together: a set named file by
+## file (a gun's shots, ak47_01 to _04 but not ak47-1). Kept by the stems
+## joined, so asking again builds nothing.
+static func randomizer_of(stems: PackedStringArray) -> AudioStreamRandomizer:
+	var key := ",".join(stems)
+	if _randomizers.has(key):
+		return _randomizers[key]
+	# A stem's variants take in names that go on from it (ak47_boltpull has
+	# ak47_boltpull_01), which may be named too: each once.
+	var streams: Array[AudioStream] = []
+	for stem in stems:
+		for stream in variants(stem):
+			if not streams.has(stream):
+				streams.append(stream)
+	var random := _random_over(streams)
+	_randomizers[key] = random
+	return random
+
+
+static func _random_over(streams: Array[AudioStream]) -> AudioStreamRandomizer:
+	if streams.is_empty():
+		return null
+	var random := AudioStreamRandomizer.new()
+	random.playback_mode = AudioStreamRandomizer.PLAYBACK_RANDOM_NO_REPEATS
+	random.random_pitch = 1.05
+	for stream in streams:
+		random.add_stream(-1, stream)
 	return random

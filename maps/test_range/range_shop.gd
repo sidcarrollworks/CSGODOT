@@ -12,8 +12,8 @@ extends Node3D
 ## undoing a purchase.
 ##
 ## What you buy goes into your own inventory, the one you carry. A gun you
-## buy is put in your hands, to try it at once; undoing the one in your
-## hands puts back what you held before.
+## buy is put in your hands (the economy does it, as on dust2); undoing the
+## one in your hands puts back what you held before.
 
 ## The buy zone: a box on the floor round the spawn, drawn so it can be
 ## seen, for either side.
@@ -40,7 +40,6 @@ func setup(range_game: GameSystems, you: PlayerController) -> void:
 	economy = Economy.new(MoneyRules.new(), zones)
 	game.add_system(economy)
 	economy.set_money(userid, economy.rules.max_money)
-	game.events.listen(&"item_purchase", _on_purchase)
 
 	var layer := CanvasLayer.new()
 	layer.layer = 10
@@ -71,16 +70,6 @@ func readout() -> PackedStringArray:
 			"B: buy menu" if why == Economy.OK else Economy.MESSAGES.get(why, "")],
 		"carrying   %s" % ", ".join(carried),
 	])
-
-
-## A gun bought is taken in hand; a grenade, armour or the kit is only
-## carried.
-func _on_purchase(event: GameEvent) -> void:
-	if event.fields["userid"] != userid:
-		return
-	var item := ItemRegistry.item(String(event.fields["weapon"]))
-	if item != null and item.is_gun and item.slot in [ItemDef.Slot.PRIMARY, ItemDef.Slot.PISTOL]:
-		game.inventory(userid).select(item.item_class)
 
 
 func _draw_zone() -> void:

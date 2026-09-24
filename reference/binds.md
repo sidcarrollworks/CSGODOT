@@ -72,7 +72,7 @@ change.
 | MWHEELUP | jump | player | `invprev` | stays: Sid's choice |
 | V | noclip | player | `+radialradio2` | stays: Sid's choice, bound to the `noclip` command (a cheat command in CS2 too) |
 | ESCAPE | frees or captures the mouse; closes the buy menu | player, buy menu | `cancelselect` | stays until item 26's pause menu |
-| B | buy menu | range (dust2 later) | `buymenu` | stays |
+| B | buy menu | range, dust2 | `buymenu` | stays |
 | 1 to 5 in the buy menu | column, then item | buy menu | the same in CS2's menu | stays; an open menu takes keys first, as in CS2 |
 | E | defuse | range (bomb) | `+use` | stays; becomes the `USE` bit (contract section 5). *Done: the inventory PR* |
 | 4 | next grenade | range (grenade lane) | `slot4`, cycles grenades | stays; becomes `slot4` with the inventory in the player. *Done: the inventory PR* |

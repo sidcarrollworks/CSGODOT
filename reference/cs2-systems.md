@@ -56,7 +56,7 @@ below; this page is not yet updated to match.
 | Teams | 5 v 5 |
 | Match | 24 rounds (MR12), sides swap after 12, a team can clinch at 13 |
 | Overtime (Premier, TMM) | one MR3 overtime at 12-12, $10,000 each half; 15-15 is a draw |
-| Warmup | 120 s |
+| Warmup | 120 s (`mp_warmuptime`); none in an offline match (`mp_warmup_offline_enabled false`, `reference/research/audio-round.md` 1.2), which dust2 keeps for trying things |
 | Freeze time | 15 s (20 in TMM) |
 | Round time | 1:55 (`mp_roundtime_defuse 1.92`) |
 | After a round | win panel 3 s, next round after 7 s (CV) |
@@ -80,14 +80,24 @@ with bots filling the places. The list below says what is left of it.
   overtime, match end, with the timers above and the score.~~ Done.
 - ~~Spawning ten players on dust2's priority spawns each round; survivors keep
   their gear and health resets.~~ Done.
-- Friendly fire with the reductions above: bullets done; grenades and the
-  rest come with them. ~~Solid teammates in the movement solver.~~ Done.
+- Friendly fire with the reductions above: bullets done; grenades done
+  (on dust2, 2026-09-23); the rest come with what deals it. ~~Solid
+  teammates in the movement solver.~~ Done.
 - ~~Death: body stays (ragdoll), spectating teammates, the freeze cam.~~ Done.
 - ~~Bots fill empty slots on either side.~~ Done.
-- The bomb's round ends (section 4) and money at half time and in overtime
-  (section 2) plug into the match when they are built.
+- ~~The bomb's round ends (section 4) and money at half time and in
+  overtime (section 2) plug into the match when they are built.~~ Done
+  2026-09-23, through the match's game events.
 
-**Local:** none.
+**Local**
+- **R1.** The round's announcements and beeps (`reference/research/audio-round.md`
+  Local checks 1 and 2): with `net_showevents 2`, the tick each of
+  `round_announce_match_start`, `_last_round_half`, `_match_point`,
+  `_final`, `warmup_end` and `start_halftime` arrives, against
+  `round_start` and `round_freeze_end`, and which comes when two hold
+  (here: at `round_start`, one a round, final first); the freeze time's
+  `cs_round_start_beep` and `cs_round_final_beep` (how many, when) and the
+  clock at `round_time_warning`, which are not sent here until measured.
 
 ## 2. Economy
 
@@ -153,8 +163,11 @@ The numbers, their sources and the guesses: `reference/systems/economy.md`.
 default loadout (items_game's `flexible_loadout_slot`), undoing a purchase,
 armour, the helmet, the kit, grenades, the Zeus, team-only weapons, five
 purchases of a type a round (`mp_weapons_allow_typecount`), all in
-`src/economy/`, on the test range until the GameWorld wires it into dust2.
-Not built: choosing another loadout.
+`src/economy/`, on the test range and, since 2026-09-23, on dust2: its buy
+zones, the money and buy time on the HUD, warmup's $16,000, a gun bought
+taken in hand, and the bots buying as CS2's classic bot does
+(`reference/systems/economy.md`, Bots buying). Not built: choosing another
+loadout.
 
 **Remote**
 - Buy zones and buying time; the buy menu (CS2's wheel and grid, keyboard
@@ -173,8 +186,18 @@ Not built: choosing another loadout.
   `TeamNum`, `func_bomb_target`).
 - **B2. Buy menu art.** *(icons done with L4:
   `panorama/images/icons/equipment/`, fetched by `scripts/extract_assets.sh
-  hud`)* The weapon icons and the buy menu's sounds; the sounds are still to
-  find.
+  hud`)* The weapon icons and the buy menu's sounds. The sounds are found
+  (`reference/research/audio-round.md` 1.2): `UIPanorama.buymenu_mouseover`
+  0.3, `buymenu_select` 0.5, `buymenu_purchase` 0.3 (`radial_menu_buy_03`)
+  and `buymenu_failure` 0.4 (`weapon_cant_buy`), 2D, the buyer's own, in
+  `game_sounds_ui.vsndevts`; and a purchase of armour is heard by others
+  to 1000 units (`Player.EquipArmor_T` 0.3, `_CT` 0.1,
+  `audio-gameplay.md` 1.3). Left: extracting `sounds/ui/` and
+  `sounds/items/`, then playing them (the menu locally, the armour from
+  `item_purchase` in a view); and audio-round.md's Local check 6: buy a
+  rifle, armour and a grenade near a second client, refund one, and note
+  what each hears (`snd_sos_show_soundevent_start 1`), whether a buy plays
+  a pickup to the world, and whether the rifle comes into the hand.
 - **E2.** Measure when buy time ends (the guess: 20 s after freeze time),
   the helmet-only price (the guess: $350), warmup's money, and the buy
   menu's key order.
@@ -194,12 +217,17 @@ Not built: choosing another loadout.
 
 **Built:** every player carries an `Inventory` (the items contract,
 `reference/systems/contracts.md`), you and the bots alike: a spawn's knife
-and side's pistol and the gun handed out, 1 to 5 and Q through the command
+and side's pistol (the Glock-18, the CTs' P2000), 1 to 5 and Q through the command
 (`UserCmd.weapon_select`), each gun its own `Weapon` keeping its rounds, the
 item's draw time before it fires or a pin is pulled, its speed, a switch
 stopping a reload. G sends `drop`, which throws the gun or grenade in hand
-ahead with its rounds; walking over a gun takes it after CS2's owner waits;
-a death drops the best gun and a grenade (`ItemDrops`). Grenades are thrown
+from the hand as it was held (`HeldPose`: CS2's hold measured level from
+its third-person clips, turned with the aim's pitch, as CS2's AimCS bends
+the body with it) at CS2's 300 u/s where you look, turning end over end,
+bouncing and coming to rest; walking over a gun takes it after CS2's owner
+waits; a death drops the best gun and a grenade (`ItemDrops`), the gun from
+the hand, moving as the body was. A bot's body shows the gun in its hand
+and lets go of it at its death. Grenades are thrown
 from the hand: the attack buttons pull the pin, letting go throws it (the
 right alone underhand), and the hand is busy for the throw clip's length
 before what is next is drawn. The bomb is planted with it in hand and the
@@ -217,7 +245,23 @@ so a switch builds nothing.
 - **Measure** in CS2: whether a release throws before the pin-pull clip
   (0.97 s) has finished; how long the hand is busy after a throw (here the
   throw clip's length, 0.77 s overhand and 0.50 s underhand); whether a gun
-  bought is taken in hand (the range does it).
+  bought is taken in hand (here it is).
+- **Measure** in CS2 (I3), a drop: on flat ground, standing still and
+  looking level, how far ahead an AK lands (with no lift about 130 units,
+  with this lift of 0.25 about 156); the same running at 250 (whether the
+  thrower's speed is added); how many turns it makes in the air; where a
+  killed bot's gun lands, standing and running.
+- **Measure** in CS2, during `reference/research/hitboxes-aim.md` section
+  7's pitch sweep (a bot mimicking you, side on): where the gun is (its
+  `wpn` bone, `ent_skeleton`) at pitch -89, -45, 0, 45 and 89, standing and
+  crouched, with an AK-47, a Glock-18 and a grenade, against
+  `HeldPose.of`'s offset from the eye. If CS2 turns the gun less than the
+  whole pitch, or about a point lower than the eye, `HeldPose` follows.
+- Sounds of the items, not built (`reference/research/audio-gameplay.md`
+  1.3): a pickup heard by everyone to 1100 units, a dropped gun's
+  `weapon.<Type>.Impact` as it lands (every bounce or the first, not
+  known), from `item_pickup` and the item's landing in a view; the files
+  (`sounds/items/`, the physics impacts) are still to extract.
 
 **Local**
 - **I1.** Every weapon's world model (the dropped one), with L1 in
@@ -235,6 +279,10 @@ figure doubled (AK 1.55, sheet 77.5%).
 
 **Built:** `HitTarget` already takes armour, helmet, the zones it covers and
 the half-point-per-damage wear, and the range dummy switches it with K.
+
+**Built** (2026-09-23): none at a spawn from nothing in a match
+(`MatchRules.free_armor`, CS2's `mp_free_armor 0`), warmup included; bought
+through the buy menu, lost with the round when you die, kept by a survivor.
 
 **Remote:** bought through the buy menu, lost with the round when you die.
 Armour is on the HUD (PR #27). Whether armour softens tagging is open
@@ -262,7 +310,8 @@ as server-side state: carried, dropped on death and picked up by Ts,
 planted only on a site (3.0 s, a guess), the 40 s timer, the defuse (10 s,
 5 with a kit, started over when let go), the explosion by the old radius
 rule, CS2's bomb events, and a view with the beeps (cadence a guess). Tried
-on the test range; not yet wired into the match or dust2. The sites' volumes
+on the test range, and since 2026-09-23 in dust2's match: a plant holds
+the round's clock, and the blast or the defuse ends the round. The sites' volumes
 are read (`BrushVolume.bomb_sites`,
 with each site's `bomb_damage_power`: A 1929, B 3234) and the map's
 `bombradius` (700 damage, reaching 2,450 under the old rule;
@@ -440,7 +489,19 @@ radar has B3 (`MapOverview`).
 
 ## 10. Sound for the new systems
 
-**Built:** the weapon, footstep, hit and impact sounds.
+**Built:** the weapon, footstep, hit and impact sounds. The shooter's hit
+feedback is CS2's since 2026-09-24: its attacker feedback events, read from
+`game_sounds_player.vsndevts` in GameTracking-CS2, with their files,
+volumes, pitches, delays and distance curves (`WeaponSounds.FEEDBACK`;
+`reference/research/audio-gameplay.md` 3). What the one hit hears (flat,
+`Player.Damage*.Victim` and `Death*.Victim`), what those near hear from the
+body (`.Onlooker`, to about 1100 units) and the death groan everyone near
+hears (`Player.Death`, `death1-6`, 0.5, silent at 1400) are CS2's too
+(`HitSounds`, from the game's `player_hurt` and `player_death`, played on
+the frame after). The shooter hears only their own feedback, not an
+onlooker's on top (inferred). Not built: fire's (`Player.BurnDamage`),
+a fall's (`Player.DamageFall`), a Zeus kill's yelp (`Player.DeathTaser`)
+and the spectator versions.
 
 **Local**
 - **S1.** Extract the round sounds: round start and end (the bomb's and the
@@ -461,8 +522,11 @@ marked crouch-only, jumping where a link rises past a step; roadmap item
 
 **Remote**
 - Teams of bots fighting each other.
-- Buying: an economy plan per round (full buy, force, eco, save), dropping
-  for teammates.
+- *(Done 2026-09-23.)* Buying as CS2's stock bot does: nothing below
+  `bot_eco_limit` $2,000, a primary by its `botprofile.db` template,
+  armour, a CT's kit, a third of the time one grenade (`BotBuying`).
+- Buying beyond it: an economy plan per round (full buy, force, eco,
+  save), dropping for teammates.
 - The objective: carry and plant (T), rotate, retake and defuse (CT), save
   when a round is lost.
 - Utility: a small table of known smokes, flashes and molotovs for dust2,

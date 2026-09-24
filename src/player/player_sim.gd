@@ -91,6 +91,9 @@ var rounds_fired: int = 0
 ## Health and armour, and what a round can hit.
 var hit_target: HitTarget
 var alive: bool = true
+## How the player was moving when they died, which what they drop keeps
+## (ItemDrops): velocity itself is zero from the death on.
+var death_velocity: Vector3 = Vector3.ZERO
 
 ## The last command run, for whatever draws the player.
 var last_command := UserCmd.new()
@@ -285,6 +288,15 @@ func _body_weapon_set() -> String:
 	return ""
 
 
+## Whether the body holds whatever is in the hand, changing with it
+## (PlayerModel.hold), rather than the one gun _body_weapon_model() gives it
+## for life. Every body does, seen or not: CS2's server poses every player's
+## hitboxes with what they hold (reference/research/hitboxes-aim.md 1). A
+## body nobody sees takes the item's clips and locomotion, never its model.
+func _body_holds_items() -> bool:
+	return true
+
+
 ## Puts the body on: the third-person model holding weapon_model, with the
 ## game's capsules on its bones, and HitTarget's four standard boxes where
 ## either has not been extracted, with a grey body to see them by when the
@@ -295,7 +307,7 @@ func wear_body(weapon_model: String, drawn: bool) -> void:
 	# A model nobody sees needs no lighting.
 	model.probe_lit = drawn
 	add_child(model)
-	if not model.setup(team, weapon_model, _body_weapon_set()):
+	if not model.setup(team, weapon_model, _body_weapon_set(), _body_holds_items()):
 		model.queue_free()
 		model = null
 	elif not drawn:
@@ -368,6 +380,8 @@ func change_team(new_team: String) -> void:
 	hitboxes = null
 	hit_target.drop_hitboxes()
 	wear_body(_body_weapon_model(), _body_drawn())
+	if alive:
+		_body_holds(inventory.in_hand())
 	hit_target.set_active(alive)
 	team_changed.emit(team)
 
@@ -452,7 +466,22 @@ func _draw(entry: Inventory.Entry) -> void:
 	if held_weapon != null:
 		held_weapon.trigger_held = false
 		held_weapon.draw(now, deploy)
+	# A dead player's hand empties as what they drop goes; the body lets go
+	# at the death, and takes up what is in hand again when it gets up.
+	if alive:
+		_body_holds(entry)
 	equipped.emit(entry)
+
+
+## The body holds what is in the hand: its own hold, draw, reload and shots
+## and the locomotion for it (PlayerModel.hold), which the hitboxes ride, and
+## for those who see it, its model. A body built with one gun holds it
+## whenever anything is in hand.
+func _body_holds(entry: Inventory.Entry) -> void:
+	if model == null or not (model.holds_items or _body_drawn()):
+		return
+	var item_class := entry.item.item_class if entry != null else ""
+	model.hold(item_class, WeaponLibrary.look(item_class, team) if not item_class.is_empty() else {})
 
 
 ## The item in hand, by class ("weapon_ak47", "weapon_knife"); "" for none.
@@ -464,6 +493,14 @@ func in_hand_class() -> String:
 ## under way. The bomb waits for it before a plant.
 func hand_ready() -> bool:
 	return not _throwing and SimClock.now_usec() >= _drawn_until_usec
+
+
+## Where the thing in hand is, and which way it points, in the world, as the
+## world models are built (+Z the muzzle, +Y the top): CS2's hold for it,
+## from where the player stands and looks (HeldPose). What a drop throws
+## from (ItemDrops).
+func held_transform() -> Transform3D:
+	return HeldPose.of(self, _held_class)
 
 
 ## Where the map put the player, to come back to.
@@ -812,7 +849,14 @@ func _on_hit_target_died() -> void:
 	_respawn_at_usec = _died_at_usec + int(respawn_seconds * 1_000_000.0)
 	var zone: StringName = hit_target.last_hitbox.zone if hit_target.last_hitbox != null else &"chest"
 	_fall()
+	# The gun leaves the hand: it falls as an item of its own (ItemDrops),
+	# from where the hand held it.
+	if model != null:
+		model.let_go()
 	killed.emit(zone)
+	# What the death drops is let go at the end of the tick, moving as the
+	# body was.
+	death_velocity = velocity
 	velocity = Vector3.ZERO
 	_forget_hits()
 
@@ -851,6 +895,12 @@ func _get_up() -> void:
 			model.set_animating(true)
 	if model != null:
 		model.play(model.idle)
+		if model.holds_items and not _held_class.is_empty() and model.holding == _held_class:
+			# Alive and spawned fresh, the body took what is in hand a moment
+			# ago and the idle ended its draw: it draws again.
+			model.play(&"draw")
+		else:
+			_body_holds(inventory.in_hand())
 
 
 ## Where the body is: the middle of the ragdoll while there is one, or

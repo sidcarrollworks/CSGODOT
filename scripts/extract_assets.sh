@@ -755,11 +755,16 @@ write_weapon_tables() {
 ## the weapon sounds they share (empty clicks, the zoom, the fire-mode
 ## switch), and the equipment's (the bomb's, the grenades', the knives' and
 ## the Zeus's); footsteps and landings by the surface types the map's hull
-## names; and what the shooter hears on a hit. CS2 keeps sounds as one file
+## names; and what the shooter hears on a hit, the files CS2's attacker
+## feedback events name (game_sounds_player.vsndevts: kevlar_01 to _08, the
+## helmet's headshot_armor_e1 and _flesh, headshot_noarmor, and the body's
+## mud_impact_bullet; not the older kevlar1, headshot_armor_01 or
+## bodyshot_kill_01, which no event plays), what the one hit and those near
+## hear (player_damagebody_04 to _08), and the death groan (death1 to 6). CS2 keeps sounds as one file
 ## each (.vsnd_c), a few variants to a set, which the decompile writes out as
 ## the audio they hold. The sound event definitions that pair them with
 ## volumes and distances are not fetched; the numbers are set by ear.
-SOUND_FILTER="^sounds/(weapons/($GUN_SOUND_DIRS|$EQUIPMENT_SOUND_DIRS)/[a-z0-9_-]+|weapons/[a-z0-9_]+|player/footsteps/(concrete_ct|dirt|sand|wood|metal_solid|metal_vent|metal_chainlink|metal_grate|tile|gravel|grass|carpet|glass|rubber|plastic_barrel|mud)_[0-9]+|player/footsteps/land_(concrete|dirt|sand|metal_solid|metal_vent|metal_grate|tile|gravel|grass|carpet|glass|rubber|mud|auto)(_[0-9]+)?|player/(kevlar[0-9]|headshot_armor_01|headshot_noarmor_0[1-5]|bodyshot_kill_01)|physics/(concrete/concrete_impact_bullet[0-9]|surfaces/(sand|dirt|tile|default|carpet|grass)_impact_bullet[0-9_]*|metal/metal_solid_impact_bullet[0-9]|wood/wood_solid_impact_bullet[0-9]))\.vsnd_c$"
+SOUND_FILTER="^sounds/(weapons/($GUN_SOUND_DIRS|$EQUIPMENT_SOUND_DIRS)/[a-z0-9_-]+|weapons/[a-z0-9_]+|player/footsteps/(concrete_ct|dirt|sand|wood|metal_solid|metal_vent|metal_chainlink|metal_grate|tile|gravel|grass|carpet|glass|rubber|plastic_barrel|mud)_[0-9]+|player/footsteps/land_(concrete|dirt|sand|metal_solid|metal_vent|metal_grate|tile|gravel|grass|carpet|glass|rubber|mud|auto)(_[0-9]+)?|player/(kevlar_0[1-8]|headshot_armor_e1|headshot_armor_flesh|headshot_noarmor_0[1-5]|player_damagebody_0[4-8]|death[1-6])|physics/(concrete/concrete_impact_bullet[0-9]|surfaces/(sand|dirt|tile|default|carpet|grass|mud)_impact_bullet[0-9_]*|metal/metal_solid_impact_bullet[0-9]|wood/wood_solid_impact_bullet[0-9]))\.vsnd_c$"
 
 ## The bullet holes: the game's bullet-hole materials for concrete, plaster,
 ## metal and wood, which are what dust2 is made of, and the colour, occlusion

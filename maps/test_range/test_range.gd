@@ -178,6 +178,23 @@ func _ready() -> void:
 	shop.name = "Shop"
 	add_child(shop)
 	shop.setup(game, player)
+	_prepare_holding()
+	# What the one hit and those near hear of a hit, and the death groan.
+	var hit_sounds := HitSounds.new()
+	hit_sounds.name = "HitSounds"
+	add_child(hit_sounds)
+	hit_sounds.watch(game, player.userid)
+
+
+## What you may take in hand here, read now rather than on the tick you buy
+## it: your body takes up its clips (your hitboxes ride them).
+func _prepare_holding() -> void:
+	if player.model == null:
+		return
+	for side: String in ["T", "CT"]:
+		var anyone := PackedStringArray(Loadout.items(side))
+		anyone.append_array(PackedStringArray(["weapon_knife", "weapon_c4"]))
+		player.model.prepare_holding(anyone, side, false)
 
 
 func _unhandled_input(event: InputEvent) -> void:

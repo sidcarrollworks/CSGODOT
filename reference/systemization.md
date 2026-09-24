@@ -132,6 +132,9 @@ results:
   `Weapon.new` is written four times (`bot.gd:126, 138, 396`,
   `player_sim.gd:289`). `MatchState._arm` and `_swap_sides`
   (`match_state.gd:288` on) check `player as Bot` to choose between them.
+  *(2026-09-23: they no longer do; a match hands everyone the same knife
+  and pistol, bots buy the rest through `buy` commands, and a bot's
+  shopping is seeded from the game's state.)*
 - `Bot.respawn` (`bot.gd:393`) repeats `PlayerSim.respawn` with its own
   additions.
 - The brain keeps its own clocks in `delta` sums and an unseeded

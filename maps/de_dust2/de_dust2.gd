@@ -48,6 +48,10 @@ const NAV_FILE := "res://assets/maps/de_dust2/maps/de_dust2.nav"
 ## mesh they keep to their spawn points, where a straight line is safe.
 @export var bots_walk_to_sites: bool = true
 
+## How far round a side's spawn points the stand-in buy zone reaches, where
+## the map's own zones have not been extracted.
+const BUY_ZONE_STAND_IN_MARGIN := 128.0
+
 var importer: MapImporter
 var skybox: MapImporter
 ## What runs the game: you first, then the bots in the order they were
@@ -56,6 +60,12 @@ var world: GameWorld
 var player: PlayerBody
 ## The match being played: warmup, the rounds and the score.
 var match_state: MatchState
+## The game's systems in world.game, as a match has them: money and buying
+## (with dust2's own buy zones), the bomb (its two sites, the map's own
+## blast), grenades. Null without a match.
+var economy: Economy
+var bomb_system: BombSystem
+var grenade_system: GrenadeSystem
 
 ## The map's entity lump, parsed once for whoever needs it.
 var entities: Array[Dictionary] = []
@@ -112,12 +122,16 @@ func _ready() -> void:
 	_build_skybox()
 	_place_player(map_file)
 	_place_bots()
+	_prepare_holding()
 	_start_match()
 	var hud := GameHud.new()
 	hud.name = "Hud"
 	hud.player = player as PlayerController
 	hud.match_state = match_state
+	hud.economy = economy
+	hud.userid = (player as PlayerSim).userid
 	add_child(hud)
+	_add_views()
 	var impacts := BulletImpacts.new()
 	impacts.name = "BulletImpacts"
 	add_child(impacts)
@@ -154,13 +168,33 @@ func _place_bots() -> void:
 			var bot := scene.instantiate() as Bot
 			bot.name = "Bot%d" % number
 			bot.team = team
-			bot.weapon_data = MatchState.starting_weapon(team)
-			bot.weapon_model = bot.weapon_data.model_path
+			# It spawns with the knife and its side's pistol, as you do, and
+			# buys the rest in freeze time, by a profile's preferences.
+			bot.buy_template = BotBuying.template_for(bot.name)
 			bot.nav_mesh = nav_mesh
 			bot.route = bot_route(spawns, team, i, _sites)
 			add_child(bot)
 			world.add_player(bot)
 			bot.global_position = spawns[team][i % spawns[team].size()]["position"]
+
+
+## What anyone may take in hand, read now rather than on the tick it is
+## bought, picked up or drawn: every item on either side's menu, the knife
+## and the bomb, whose clips every body takes up (the hitboxes ride them),
+## and the models of what a bot's body shows.
+func _prepare_holding() -> void:
+	var body: PlayerModel = null
+	for sim: PlayerSim in world.players:
+		if sim.model != null:
+			body = sim.model
+			break
+	if body == null:
+		return
+	for side: String in ["T", "CT"]:
+		body.prepare_holding(BotBuying.may_hold(side), side)
+		var anyone := PackedStringArray(Loadout.items(side))
+		anyone.append_array(PackedStringArray(["weapon_knife", "weapon_c4"]))
+		body.prepare_holding(anyone, side, false)
 
 
 ## The route of a side's nth bot: from one of its side's spawn points to a
@@ -183,7 +217,8 @@ static func side_route(spawns: Dictionary, team: String) -> PackedVector3Array:
 
 
 ## The match: everyone in it, spawned for warmup, which counts down to the
-## first round. After a side swap each bot takes a route of its new side.
+## first round, and the game's systems it plays with. After a side swap each
+## bot takes a route of its new side.
 func _start_match() -> void:
 	var spawns := SourceEntities.player_spawns(entities)
 	if (spawns["T"] as Array).is_empty() or (spawns["CT"] as Array).is_empty():
@@ -202,14 +237,82 @@ func _start_match() -> void:
 			if sim is Bot:
 				(sim as Bot).route = bot_route(spawns, sim.team, counts[sim.team], _sites)
 				counts[sim.team] += 1)
+	_add_systems(spawns)
 	match_state.start()
 
 
-## F5 ends warmup, as mp_warmup_end does.
+## The game's systems a match on dust2 plays with, in world.game, added
+## before the match starts so they hear its first events.
+func _add_systems(spawns: Dictionary) -> void:
+	economy = Economy.new(MoneyRules.new(), _buy_zones(spawns))
+	economy.match_rules = match_state.rules
+	world.game.add_system(economy)
+	var sites := BombSite.from_volumes(BrushVolume.bomb_sites(entities, MAP_DIR))
+	if sites.is_empty():
+		_show_note("No bomb sites: run scripts/extract_assets.sh volumes. There is no bomb.", 1)
+	else:
+		var rules := C4Rules.new()
+		var radius := SourceEntities.bomb_radius(entities)
+		if radius > 0.0:
+			rules.bomb_damage = radius
+		bomb_system = BombSystem.new(sites, rules)
+		world.game.add_system(bomb_system)
+	grenade_system = GrenadeSystem.new()
+	# In a match a grenade does CS2's share to the thrower's own side.
+	grenade_system.team_damage_scale = GrenadeRules.TEAM_DAMAGE_IN_MATCH
+	world.game.add_system(grenade_system)
+
+
+## Each side's func_buyzone (scripts/extract_assets.sh volumes). Without
+## them, a stand-in box round each side's spawn points, and a note saying
+## so; CS2 has no such fallback.
+func _buy_zones(spawns: Dictionary) -> BuyZones:
+	var zones := BuyZones.from_volumes(BrushVolume.buy_zones(entities, MAP_DIR))
+	if not zones.zones["T"].is_empty() and not zones.zones["CT"].is_empty():
+		return zones
+	_show_note("No buy zones: run scripts/extract_assets.sh volumes. Buying is round each side's spawn points instead.", 2)
+	var stand_in := BuyZones.new()
+	for side: String in ["T", "CT"]:
+		var box := AABB(spawns[side][0]["position"], Vector3.ZERO)
+		for spawn: Dictionary in spawns[side]:
+			box = box.expand(spawn["position"])
+		stand_in.add_box(side, box.grow(BUY_ZONE_STAND_IN_MARGIN))
+	return stand_in
+
+
+## What is seen and heard of the systems: the grenades and their smoke and
+## fire, the bomb on the ground and its blast, a flash's white-out over the
+## HUD, as CS2's covers it, and the hits and deaths others hear.
+func _add_views() -> void:
+	if grenade_system != null:
+		var grenade_view := GrenadeView.new()
+		grenade_view.name = "Grenades"
+		add_child(grenade_view)
+		grenade_view.watch(world.game)
+		var canvas := CanvasLayer.new()
+		canvas.layer = 2
+		add_child(canvas)
+		var overlay := FlashOverlay.new()
+		overlay.game = world.game
+		overlay.viewer_id = (player as PlayerSim).userid
+		canvas.add_child(overlay)
+	if bomb_system != null:
+		var bomb_view := C4View.new()
+		bomb_view.name = "Bomb"
+		bomb_view.bomb = bomb_system.bomb
+		add_child(bomb_view)
+	# What the one hit and those near hear of a hit, and the death groan.
+	var hit_sounds := HitSounds.new()
+	hit_sounds.name = "HitSounds"
+	add_child(hit_sounds)
+	hit_sounds.watch(world.game, (player as PlayerSim).userid)
+
+
+## F5 ends warmup, as mp_warmup_end does, on the world's next tick.
 func _unhandled_key_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	if key != null and key.pressed and not key.echo and key.keycode == KEY_F5 and match_state != null:
-		match_state.end_warmup()
+		match_state.end_warmup_on_next_tick()
 
 
 ## The floor at the middle of each bomb site, A then B, from the callouts
@@ -233,12 +336,13 @@ func _bomb_site_floors() -> PackedVector3Array:
 
 
 ## A line in the top left, under the position readout, for something that
-## is missing but leaves the map playable.
-func _show_note(text: String) -> void:
+## is missing but leaves the map playable; line puts it lower down, so notes
+## do not cover each other.
+func _show_note(text: String, line: int = 0) -> void:
 	var layer := CanvasLayer.new()
 	var label := Label.new()
 	label.text = text
-	label.position = Vector2(12, 36)
+	label.position = Vector2(12, 36 + 22 * line)
 	label.add_theme_font_size_override("font_size", 16)
 	label.add_theme_color_override("font_color", Color(1.0, 0.8, 0.4))
 	label.add_theme_color_override("font_outline_color", Color.BLACK)

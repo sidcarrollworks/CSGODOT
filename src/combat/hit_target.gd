@@ -66,12 +66,14 @@ var last_hit_armored: bool = false
 
 var _hitboxes: Array[Hitbox] = []
 var _starting_armor: float = 100.0
+var _starting_helmet: bool = true
 var _drawn: bool = false
 
 
 func _ready() -> void:
 	health = max_health
 	_starting_armor = armor
+	_starting_helmet = helmet
 	if build_own_hitboxes:
 		build_standard_body(build_visual)
 
@@ -89,6 +91,7 @@ func build_standard_body(visual: bool) -> void:
 ## comes back with after a reset.
 func wear(armor_value: float, with_helmet: bool) -> void:
 	_starting_armor = armor_value
+	_starting_helmet = with_helmet
 	armor = armor_value
 	helmet = with_helmet
 
@@ -253,4 +256,5 @@ func reset() -> void:
 	killing_damage = null
 	health = max_health
 	armor = _starting_armor
+	helmet = _starting_helmet
 	alive = true

@@ -38,6 +38,9 @@ func attach(p_game: GameSystems) -> void:
 	# A round through a smoke cuts a tunnel in it: from the shooter's eyes
 	# to where the round landed.
 	game.events.listen(&"bullet_impact", _on_bullet_impact)
+	# A new round starts clean: no grenade in the air or on the ground, no
+	# smoke, no fire, nobody blind (grenades.md, dust2's wiring item 1).
+	game.events.listen(&"round_prestart", _on_round_prestart)
 	# What the rest of the game may ask (reference/systems/contracts.md).
 	game.provide(&"smoke_length_between", smoke_length_between)
 	game.provide(&"blindness", blindness)
@@ -282,6 +285,13 @@ static func position_of(fields: Dictionary) -> Vector3:
 ## Everything ended: a new round.
 func clear() -> void:
 	_blinds.clear()
+
+
+func _on_round_prestart(_event: GameEvent) -> void:
+	for entity in game.entities.all():
+		if entity is GrenadeEntity or entity is InfernoEntity:
+			entity.remove()
+	clear()
 
 
 func _primary_of(userid: int) -> String:

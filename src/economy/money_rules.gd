@@ -21,6 +21,10 @@ extends Resource
 ## What every account holds at the start of each half of overtime
 ## (mp_overtime_startmoney).
 @export var overtime_start_money: int = 10000
+## What every account holds in warmup: the mode's cap, by the community's
+## account (reference/research/round-economy.md 2.7); in no file, E2
+## measures it.
+@export var warmup_money: int = 16000
 
 @export_group("Rounds")
 ## Each player on the side that won by killing the other side, on a map

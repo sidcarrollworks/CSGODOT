@@ -41,11 +41,15 @@ static var current: GameWorld
 var players: Array[PlayerSim] = []
 
 ## The match, run after the players every tick; null where there is none
-## (the test range). Everyone in the world is in it, whenever they joined.
+## (the test range). Everyone in the world is in it, whenever they joined,
+## and it says what the round is doing into the world's events.
 var match_state: MatchState:
 	set(value):
+		if is_instance_valid(match_state) and match_state != value:
+			match_state.events = null
 		match_state = value
 		if value != null:
+			value.events = game.events
 			for player in players:
 				value.add_player(player)
 

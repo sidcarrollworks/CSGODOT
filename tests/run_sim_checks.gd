@@ -730,6 +730,10 @@ func _test_the_hand() -> void:
 	player.select = 1
 	steps.call(float(ak_ready) / 1_000_000.0 + DT)
 	events.clear()
+	var view := DroppedItemView.new()
+	_world.add_child(view)
+	view.watch(world.game)
+	var held := player.held_transform()
 	world.game.command(player.userid, "drop")
 	steps.call(DT)
 	var on_ground := world.game.entities.of_class("weapon_ak47")
@@ -739,10 +743,49 @@ func _test_the_hand() -> void:
 			and player.in_hand_class() == "weapon_knife" and _named(events, &"item_remove").size() == 1,
 		"G drops the AK-47 in hand, its own Weapon with its 12 rounds on the ground, item_remove, and the knife comes back to the hand"
 	)
+	if dropped != null:
+		var aim := PlayerInput.aim_direction(player.yaw_degrees, player.pitch_degrees)
+		var went := dropped.position - dropped.previous_position
+		var across := Vector2(went.x, went.z).length() / DT
+		_check(
+			dropped.previous_position.is_equal_approx(held.origin) and dropped.previous_basis.is_equal_approx(held.basis)
+				and held.basis.z.dot(aim) > 0.99,
+			"it leaves from where the gun was held, pointing where the player looks"
+		)
+		var right := Vector3(cos(deg_to_rad(player.yaw_degrees)), 0.0, -sin(deg_to_rad(player.yaw_degrees)))
+		var off := held.origin - (player.global_position + Vector3.UP * player.eye_height())
+		_check(
+			absf(off.dot(aim) - HeldPose.RIFLE_STAND.x) < 0.01 and absf(off.dot(right) - HeldPose.RIFLE_STAND.y) < 0.01
+				and absf(off.dot(right.cross(aim)) - HeldPose.RIFLE_STAND.z) < 0.01,
+			"held where CS2's third-person hold has the AK-47, from the game's state alone: 13.7 ahead of the eyes, 4.7 right, 3.7 down"
+		)
+		_check(
+			absf(across - ItemDrops.THROW_SPEED / Vector3(aim + Vector3.UP * ItemDrops.THROW_LIFT).length()) < 1.0
+				and Vector2(went.x, went.z).normalized().dot(Vector2(aim.x, aim.z).normalized()) > 0.999,
+			"thrown the way the player looks at CS2's 300 u/s, a little lifted (%.0f u/s across)" % across
+		)
+		_check(not dropped.basis.is_equal_approx(dropped.previous_basis), "and it turns as it flies")
 	steps.call(1.0)
 	if dropped != null:
-		_check(dropped.resting and dropped.position.distance_to(player.global_position) > 32.0,
-			"thrown ahead, it comes to rest %.0f units off" % dropped.position.distance_to(player.global_position))
+		_check(
+			dropped.resting and absf(dropped.position.y) < 0.5 and dropped.position.distance_to(player.global_position) > 32.0,
+			"thrown ahead, it comes to rest on the floor %.0f units off" % dropped.position.distance_to(player.global_position)
+		)
+		view._process(0.0)
+		var model := view.model_of(dropped.id)
+		# Measured on what is drawn, not by the view's own sums: the drawn
+		# box's height is the model's thinnest size, its bottom the floor,
+		# and the muzzle's axis along the way it was heading.
+		var own := DroppedItemView.bounds(model) if model != null else AABB()
+		var lying_box := model.transform * own if model != null else AABB()
+		var way := DroppedItemView.heading(dropped.basis)
+		var muzzle := (model.transform.basis * Vector3.BACK).normalized() if model != null else Vector3.ZERO
+		_check(
+			model != null and absf(lying_box.position.y - dropped.position.y) < 0.1
+				and absf(lying_box.size.y - minf(own.size.x, minf(own.size.y, own.size.z))) < 0.1
+				and absf(muzzle.dot(Vector3(sin(way), 0.0, cos(way)))) > 0.99,
+			"drawn, it lies on its thinnest side, the way it was heading, its lowest point on the floor (%.2f high, bottom %.2f off)" % [lying_box.size.y, lying_box.position.y - dropped.position.y]
+		)
 		player.global_position = dropped.position
 		player.previous_position = dropped.position
 	steps.call(1.0)
@@ -765,6 +808,7 @@ func _test_the_hand() -> void:
 	player.walks = false
 	world.remove_player(player)
 	player.queue_free()
+	view.queue_free()
 	world.queue_free()
 	await physics_frame
 
