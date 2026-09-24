@@ -1,31 +1,24 @@
 class_name GrenadeLane
 extends Node3D
 
-## The range's grenades: throw any of CS2's six from where you stand, at the
-## strength of either mouse button or both, and read what each did.
+## The range's grenades: CS2's, thrown from your hand, and what each did.
 ##
-##   4  the next grenade (CS2's grenade slot: HE, flash, smoke, molotov,
-##      incendiary, decoy)
-##   Q  throw it as a left click does, Z as a right click (a lob), X as
-##      both buttons
+## Throwing is the player's own (player_sim.gd): 4 takes a grenade out,
+## pressed again the next one; either attack button pulls the pin and
+## letting go throws it, the left alone overhand, the right alone a lob,
+## both between. The throw takes the grenade from your inventory, as in a
+## match, so the lane stocks you with four, the most CS2 lets you carry (an
+## HE, a flashbang, a smoke and your side's fire grenade), and hands back
+## each one you throw: there is no limit to how many. A decoy, or the other
+## side's fire grenade, is the buy menu's, with room made for it (G drops
+## the grenade in hand).
 ##
-## Throwing a grenade from your hand is the player's to do, through the
-## inventory and the attack buttons (player_sim.gd), so here a key sends the
-## game the throw command ("throw weapon_hegrenade 1"), and the grenade
-## leaves your eyes on the next tick, as your hand would throw it. The throw
-## takes the grenade from your inventory, so the lane hands you one first:
-## there is no limit to how many.
-##
-## The readout at the bottom says which grenade is in hand and what the
-## last ones did: the damage an HE or a fire did and to whom, how long a
-## flash blinded you and the dummy, when a smoke or a decoy went off. Your
-## own blinding whites out the screen, and the dummy's is in the readout,
-## since a bot does not yet look away from what it cannot see.
+## The readout at the bottom says what the last ones did: the damage an HE
+## or a fire did and to whom, how long a flash blinded you and the dummy,
+## when a smoke or a decoy went off. Your own blinding whites out the
+## screen, and the dummy's is in the readout, since a bot does not yet look
+## away from what it cannot see.
 
-const NEXT_KEY := KEY_4
-const THROW_KEY := KEY_Q
-const LOB_KEY := KEY_Z
-const BOTH_KEY := KEY_X
 const LOG_LINES := 6
 
 var range_node: Node3D
@@ -34,8 +27,6 @@ var system: GrenadeSystem
 var view: GrenadeView
 var overlay: FlashOverlay
 
-## Which grenade is in hand, as an index into GrenadeRules.ALL.
-var kind_index: int = 0
 var _log := PackedStringArray()
 var _label: Label
 var _player_id: int = GameEvents.NOBODY
@@ -44,7 +35,7 @@ var _dummy_id: int = GameEvents.NOBODY
 
 ## Sets up on a range: the grenade system in its game (its world's, which
 ## steps it), what draws the grenades, the readout and the white-out, which
-## covers the HUD as CS2's does.
+## covers the HUD as CS2's does; and your grenades.
 func build(p_range: Node3D) -> void:
 	range_node = p_range
 	game = range_node.game
@@ -57,6 +48,7 @@ func build(p_range: Node3D) -> void:
 	add_child(view)
 	view.watch(game)
 	game.events.listen_all(_on_event)
+	stock()
 
 	var canvas := CanvasLayer.new()
 	canvas.layer = 2
@@ -77,43 +69,21 @@ func build(p_range: Node3D) -> void:
 	canvas.add_child(_label)
 
 
-func kind() -> String:
-	return GrenadeRules.ALL[kind_index]
+## The grenades the lane keeps you in: an HE, a flashbang, a smoke and your
+## side's fire grenade.
+func stocked() -> Array[String]:
+	var fire := GrenadeRules.INCENDIARY if String(range_node.player.team) == "CT" else GrenadeRules.MOLOTOV
+	return [GrenadeRules.HE, GrenadeRules.FLASHBANG, GrenadeRules.SMOKE, fire]
 
 
-func next_kind() -> void:
-	kind_index = (kind_index + 1) % GrenadeRules.ALL.size()
-
-
-## A throw at a strength (GrenadeRules.strength_for), on the next tick.
-## The range hands you the grenade first, so it throws without buying; the
-## throw takes it back out. Refused when you carry four other grenades
-## already (or the other of the molotov and incendiary).
-func ask_throw(strength: float) -> void:
+## Hands you whichever of them you are without, where there is room.
+func stock() -> void:
 	var inventory := game.inventory(_player_id)
-	if inventory != null and not inventory.has(kind()):
-		if inventory.can_add(kind()) != Inventory.Can.OK:
-			_note("no room for a %s: you carry too many grenades" % GrenadeRules.display_name(kind()))
-			return
-		inventory.add(kind())
-	game.command(_player_id, "throw %s %s" % [kind(), strength])
-
-
-func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed(&"reset_range"):
-		clear()
+	if inventory == null:
 		return
-	if not (event is InputEventKey and event.pressed and not event.echo):
-		return
-	match (event as InputEventKey).physical_keycode:
-		NEXT_KEY:
-			next_kind()
-		THROW_KEY:
-			ask_throw(GrenadeRules.strength_for(true, false))
-		LOB_KEY:
-			ask_throw(GrenadeRules.strength_for(false, true))
-		BOTH_KEY:
-			ask_throw(GrenadeRules.strength_for(true, true))
+	for grenade in stocked():
+		if not inventory.has(grenade) and inventory.can_add(grenade) == Inventory.Can.OK:
+			inventory.add(grenade)
 
 
 ## Every grenade gone and nobody blind: O, the range's reset.
@@ -125,11 +95,16 @@ func clear() -> void:
 	_log.clear()
 
 
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed(&"reset_range"):
+		clear()
+
+
 func _process(_delta: float) -> void:
 	if _label == null:
 		return
 	var lines := PackedStringArray([
-		"GRENADE  %s     4 next   Q throw   Z lob   X both" % GrenadeRules.display_name(kind()),
+		"GRENADES  4 takes one out   left throws   right lobs   both between",
 	])
 	var blind := system.blind_amount(_dummy_id)
 	if blind > 0.0:
@@ -143,11 +118,16 @@ func log_lines() -> PackedStringArray:
 
 
 ## What the log says of the game's events: the grenades' own, and the hurt
-## and blinding they did.
+## and blinding they did. A grenade of yours thrown is handed back, and a
+## spawn, which strips you, stocks you again.
 func _on_event(event: GameEvent) -> void:
 	var line := ""
 	var fields := event.fields
 	match event.name:
+		&"grenade_thrown", &"player_spawn":
+			if int(fields["userid"]) == _player_id:
+				stock()
+			return
 		&"hegrenade_detonate", &"flashbang_detonate", &"smokegrenade_detonate", &"decoy_started", \
 				&"decoy_detonate", &"molotov_detonate", &"inferno_extinguish", &"smokegrenade_expired":
 			line = String(event.name).replace("_", " ")

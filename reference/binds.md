@@ -67,20 +67,20 @@ change.
 |---|---|---|---|---|
 | W A S D, SPACE, CTRL, SHIFT, R | move, jump, duck, walk, reload | player | same | stays |
 | MOUSE1 | fire | player | `+attack` | stays |
-| MOUSE2 | nothing yet (in the input map, not in `PlayerInput.BUTTONS`) | player | `+attack2` | stays; sends `ATTACK2` (contract section 5) |
+| MOUSE2 | nothing yet (in the input map, not in `PlayerInput.BUTTONS`) | player | `+attack2` | stays; sends `ATTACK2` (contract section 5). *Done: the inventory PR* |
 | 1, 2 | slot 1, slot 2 | player | `slot1`, `slot2` | stays |
 | MWHEELUP | jump | player | `invprev` | stays: Sid's choice |
 | V | noclip | player | `+radialradio2` | stays: Sid's choice, bound to the `noclip` command (a cheat command in CS2 too) |
 | ESCAPE | frees or captures the mouse; closes the buy menu | player, buy menu | `cancelselect` | stays until item 26's pause menu |
 | B | buy menu | range (dust2 later) | `buymenu` | stays |
 | 1 to 5 in the buy menu | column, then item | buy menu | the same in CS2's menu | stays; an open menu takes keys first, as in CS2 |
-| E | defuse | range (bomb) | `+use` | stays; becomes the `USE` bit (contract section 5) |
-| 4 | next grenade | range (grenade lane) | `slot4`, cycles grenades | stays; becomes `slot4` with the inventory in the player |
-| 5 | plant | range (bomb) | `slot5`, the C4 | moves off when the inventory is in the player: 5 takes the C4 out and `+attack` or `+use` plants, as in CS2 |
-| Q | throw as MOUSE1 does | range (grenade lane) | `lastinv` | retires with the hand throw (`grenades.md` item 2): MOUSE1 overhand, MOUSE2 underhand, both for the middle. Until then, `;` |
-| Z | throw as MOUSE2 does | range (grenade lane) | `radio` | as Q; until then `/` |
-| X | throw as both buttons | range (grenade lane) | `slot12` | as Q; until then `\` |
-| G | the dummy never dies | range | `drop` | moves to `[`; G is `drop` (contract section 5) |
+| E | defuse | range (bomb) | `+use` | stays; becomes the `USE` bit (contract section 5). *Done: the inventory PR* |
+| 4 | next grenade | range (grenade lane) | `slot4`, cycles grenades | stays; becomes `slot4` with the inventory in the player. *Done: the inventory PR* |
+| 5 | plant | range (bomb) | `slot5`, the C4 | moves off when the inventory is in the player: 5 takes the C4 out and `+attack` or `+use` plants, as in CS2. *Done for `+attack` (the inventory PR); `+use` does not plant yet* |
+| Q | throw as MOUSE1 does | range (grenade lane) | `lastinv` | retires with the hand throw (`grenades.md` item 2): MOUSE1 overhand, MOUSE2 underhand, both for the middle. Until then, `;`. *Done: retired by the inventory PR; Q is `lastinv`* |
+| Z | throw as MOUSE2 does | range (grenade lane) | `radio` | as Q; until then `/`. *Done: retired* |
+| X | throw as both buttons | range (grenade lane) | `slot12` | as Q; until then `\`. *Done: retired* |
+| G | the dummy never dies | range | `drop` | moves to `[`; G is `drop` (contract section 5). *Done: the inventory PR* |
 | H | hitboxes shown | range | `switchhands` | moves to F1 |
 | T | hitbox camera | range | `+spray_menu` | moves to F2 |
 | M | next surface behind the dummy | range | `teammenu` | moves to `]` |
@@ -102,10 +102,17 @@ inventory and the hand throw are in the player, retires four stand-ins
 dust2 and on the range alike, and the test keys sit only where CS2 has
 nothing.
 
-Still to adopt from CS2's list as the systems arrive: 3 (knife, item 21), Q
-`lastinv`, G `drop`, MWHEELDOWN `invnext`, 6 to 0 and X (each grenade and
-the Zeus), F `+lookatweapon`, TAB (item 15's scoreboard), `,` `.` DEL F4
-(buying's extras), `` ` `` (the console, `systemization.md` step 4).
+The inventory PR (roadmap item 12) went in before the table. It binds
+G `drop`, E `+use`, MOUSE2 `+attack2`, 3 to 5 and Q `lastinv` in
+`project.godot` and `PlayerInput`, retires the four stand-ins (the range's
+new bomb went from 5 to `O`, its reset), and moves the never-die to `[`.
+The table takes those over as it takes the rest.
+
+Still to adopt from CS2's list as the systems arrive (3, Q `lastinv` and
+G `drop` came with the inventory): MWHEELDOWN `invnext`, 6 to 0 and X
+(each grenade and the Zeus), F `+lookatweapon`, TAB (item 15's
+scoreboard), `,` `.` DEL F4 (buying's extras), `` ` `` (the console,
+`systemization.md` step 4).
 Radio, chat, pings and graffiti are under "Later" in the roadmap.
 
 ## The system
@@ -139,7 +146,7 @@ Radio, chat, pings and graffiti are under "Later" in the roadmap.
 6. **Physical keys**, as now, so WASD stays WASD on another layout.
 7. **The table replaces `project.godot`'s input map** as where the game's
    keys are set. `scripts/setup_input_map.gd`, which should write that map,
-   already knows only 15 of its 26 actions. Godot's own `ui_*` actions can
+   already knows only 21 of its 32 actions (the range's are the rest). Godot's own `ui_*` actions can
    stay for menus.
 8. **Rebinding comes later:** a user file in CS2's `bind` syntax, edited
    from the settings page (item 26) or the console's `bind` and `unbind`

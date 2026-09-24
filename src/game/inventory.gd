@@ -18,6 +18,12 @@ extends RefCounted
 ## armour points and the helmet on the player's HitTarget, which damage
 ## wears down. This is the one way to read and change them; given no
 ## HitTarget (a test), it keeps them itself.
+##
+## changed says when what is carried or what is in hand has changed, by
+## whatever changed it (a purchase, a pick-up, a drop, a throw, a switch), so
+## the player holding it and what draws them can follow.
+
+signal changed
 
 ## What can_add finds.
 enum Can {
@@ -220,13 +226,16 @@ func add(item_class: String, weapon: Weapon = null) -> Array[Entry]:
 	match item_class:
 		"item_kevlar":
 			armor = FULL_ARMOR
+			changed.emit()
 			return replaced
 		"item_assaultsuit":
 			armor = FULL_ARMOR
 			helmet = true
+			changed.emit()
 			return replaced
 		"item_defuser":
 			has_defuser = true
+			changed.emit()
 			return replaced
 
 	var took_hand := false
@@ -245,6 +254,7 @@ func add(item_class: String, weapon: Weapon = null) -> Array[Entry]:
 		_insert(Entry.new(def, weapon))
 	if _active.is_empty() or took_hand:
 		_active = item_class
+	changed.emit()
 	return replaced
 
 
@@ -260,6 +270,7 @@ func remove(item_class: String) -> Entry:
 			if not has_defuser:
 				return null
 			has_defuser = false
+			changed.emit()
 			return Entry.new(def)
 		"item_kevlar", "item_assaultsuit":
 			if not has(item_class):
@@ -267,18 +278,21 @@ func remove(item_class: String) -> Entry:
 			armor = 0.0
 			if item_class == "item_assaultsuit":
 				helmet = false
+			changed.emit()
 			return Entry.new(def)
 	var entry := _find(item_class)
 	if entry == null:
 		return null
 	if entry.count > 1:
 		entry.count -= 1
+		changed.emit()
 		return Entry.new(entry.item, null, 1)
 	_entries.erase(entry)
 	if _active == item_class:
 		_hand_emptied()
 	if _previous == item_class:
 		_previous = ""
+	changed.emit()
 	return entry
 
 
@@ -294,6 +308,7 @@ func select(item_class: String) -> bool:
 	if item_class != _active:
 		_previous = _active
 		_active = item_class
+		changed.emit()
 	return true
 
 
@@ -355,6 +370,7 @@ func strip() -> void:
 	has_defuser = false
 	armor = 0.0
 	helmet = false
+	changed.emit()
 
 
 ## What a player on side team starts a half with: the knife and the side's
@@ -403,6 +419,7 @@ func load_state(state: Dictionary) -> void:
 	has_defuser = state.get("defuser", false)
 	armor = state.get("armor", 0.0)
 	helmet = state.get("helmet", false)
+	changed.emit()
 
 
 func _find(item_class: String) -> Entry:

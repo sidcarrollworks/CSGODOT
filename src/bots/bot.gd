@@ -40,7 +40,8 @@ var nav_mesh: SourceNavMesh
 ## How fast the bot turns to face its way, in degrees per second.
 @export var turn_rate: float = 540.0
 
-## What it holds: the model to draw and the numbers to shoot with.
+## What it holds: the model to draw, and the gun it is handed at every
+## spawn (its starting_gun), which arm() puts in its hand.
 @export var weapon_model: String = ""
 @export var weapon_data: WeaponData
 
@@ -123,24 +124,30 @@ func _ready() -> void:
 		var footsteps := Footsteps.new()
 		footsteps.name = "Footsteps"
 		add_child(footsteps)
-	# What it shoots with is the simulation's, model or no model.
+	# What it shoots with is the simulation's, model or no model, from its
+	# inventory: its own gun is its starting gun, handed out with CS2's knife
+	# and pistol at every spawn, and in its hand now.
+	weapon_sounds = WeaponSounds.new()
+	weapon_sounds.name = "WeaponSounds"
+	weapon_sounds.spatial = true
+	add_child(weapon_sounds)
+	equipped.connect(_on_equipped)
 	if weapon_data != null:
-		weapon = Weapon.new(weapon_data)
-		weapon.trigger_held = false
-		weapon_sounds = WeaponSounds.new()
-		weapon_sounds.name = "WeaponSounds"
-		weapon_sounds.spatial = true
-		add_child(weapon_sounds)
-		weapon_sounds.equip(weapon_data)
+		arm(weapon_data)
 
 
-## Hands it another weapon's numbers, loaded; it keeps the model it holds.
+## Hands it another gun, loaded and in hand, and makes it the one it spawns
+## with; it keeps the model it holds.
 func arm(data: WeaponData) -> void:
 	weapon_data = data
-	weapon = Weapon.new(data)
-	weapon.trigger_held = false
-	if weapon_sounds != null:
-		weapon_sounds.equip(data)
+	starting_gun = data
+	equip(data)
+
+
+## Whatever is in hand now: a gun sounds as that gun.
+func _on_equipped(entry: Inventory.Entry) -> void:
+	if entry != null and entry.weapon != null:
+		weapon_sounds.equip(entry.weapon.data)
 
 
 ## A bot's body is seen, holding its weapon. Without the model's capsules
@@ -401,10 +408,9 @@ func _on_killed(zone: StringName) -> void:
 ## Back at the spawn point a match gave it, or else at the start of the
 ## route, whole; with neither, where it fell.
 func respawn() -> void:
+	# A spawn's loadout (PlayerSim.respawn): stripped, then armoured again.
+	_loadout()
 	_revive()
-	if weapon_data != null:
-		weapon = Weapon.new(weapon_data)
-		weapon.trigger_held = false
 	_seen_for = 0.0
 	target = null
 	if _spawn_set:
@@ -419,6 +425,7 @@ func respawn() -> void:
 	_forget_hits()
 	_get_up()
 	respawned.emit()
+	_send(&"player_spawn", {"userid": userid})
 
 
 ## At a spawn point for a round: it sets off for the point of its route

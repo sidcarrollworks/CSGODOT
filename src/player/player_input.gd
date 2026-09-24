@@ -46,15 +46,40 @@ class ButtonEvent:
 ## The actions that are buttons in a command, and their bits.
 const BUTTONS := {
 	&"attack": UserCmd.ATTACK,
+	&"attack2": UserCmd.ATTACK2,
+	&"use": UserCmd.USE,
 	&"jump": UserCmd.JUMP,
 	&"duck": UserCmd.DUCK,
 	&"walk": UserCmd.WALK,
 	&"reload": UserCmd.RELOAD,
 }
+## The mouse's buttons, which count only while the game has the mouse.
+const MOUSE_BUTTONS: Array[StringName] = [&"attack", &"attack2"]
+
+## The number keys, CS2's slots: the primary, the pistol, the knife and the
+## Zeus, the grenades, the bomb.
+const SLOT_ACTIONS: Array[StringName] = [&"slot1", &"slot2", &"slot3", &"slot4", &"slot5"]
+
+## The keys the game reads that project.godot has not always had, with
+## CS2's own bindings: added at start wherever the input map lacks them (a
+## project.godot an open editor wrote back over), so the keys still work.
+const GAME_KEYS := {
+	&"slot3": KEY_3, &"slot4": KEY_4, &"slot5": KEY_5,
+	&"lastinv": KEY_Q, &"drop": KEY_G, &"use": KEY_E,
+}
+## Test keys moved off a key CS2 uses, as [from, to], put right in such a
+## map too: the range's never-die was on G, which is drop
+## (reference/binds.md).
+const MOVED_KEYS := {
+	&"dummy_immortal": [KEY_G, KEY_BRACKETLEFT],
+}
 
 var _pending: Array[ButtonEvent] = []
 var _weapon_select: int = UserCmd.SELECT_NONE
 var _toggle_noclip: bool = false
+## Console commands the keys have asked for since the last command ("drop"),
+## for whatever runs the player to send to the game.
+var _commands := PackedStringArray()
 ## When the last command was sampled, on the wall clock: the start of the
 ## stretch the next one covers.
 var _last_sample_usec: int = -1
@@ -72,6 +97,30 @@ const CS_YAW_PER_COUNT := 0.022
 const PITCH_LIMIT := 89.0
 
 
+## Adds every action in GAME_KEYS the input map does not have, and moves
+## each in MOVED_KEYS still on its old key.
+static func ensure_actions() -> void:
+	for action: StringName in GAME_KEYS:
+		if InputMap.has_action(action):
+			continue
+		InputMap.add_action(action, 0.2)
+		var event := InputEventKey.new()
+		event.physical_keycode = GAME_KEYS[action]
+		InputMap.action_add_event(action, event)
+	for action: StringName in MOVED_KEYS:
+		if not InputMap.has_action(action):
+			continue
+		var keys: Array = MOVED_KEYS[action]
+		for event in InputMap.action_get_events(action):
+			var old_key := event as InputEventKey
+			if old_key == null or old_key.physical_keycode != keys[0]:
+				continue
+			InputMap.action_erase_event(action, event)
+			var moved := InputEventKey.new()
+			moved.physical_keycode = keys[1]
+			InputMap.action_add_event(action, moved)
+
+
 func handle_event(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		var motion := event as InputEventMouseMotion
@@ -86,12 +135,22 @@ func handle_event(event: InputEvent) -> void:
 		elif event.is_action_released(action):
 			_pending.append(_event(action, false))
 
-	if event.is_action_pressed(&"slot1"):
-		_weapon_select = 1
-	elif event.is_action_pressed(&"slot2"):
-		_weapon_select = 2
+	for i in SLOT_ACTIONS.size():
+		if event.is_action_pressed(SLOT_ACTIONS[i]):
+			_weapon_select = i + 1
+	if event.is_action_pressed(&"lastinv"):
+		_weapon_select = UserCmd.SELECT_LAST
+	elif event.is_action_pressed(&"drop"):
+		_commands.append("drop")
 	elif event.is_action_pressed(&"noclip"):
 		_toggle_noclip = not _toggle_noclip
+
+
+## The console commands asked for since the last call, in order.
+func take_commands() -> PackedStringArray:
+	var commands := _commands
+	_commands = PackedStringArray()
+	return commands
 
 
 func _event(action: StringName, pressed: bool) -> ButtonEvent:
@@ -168,7 +227,7 @@ func build_command(tick: int, now_usec: int = -1) -> UserCmd:
 	# not a shot.
 	var has_mouse := Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED
 	for action: StringName in BUTTONS:
-		if Input.is_action_pressed(action) and (has_mouse or action != &"attack"):
+		if Input.is_action_pressed(action) and (has_mouse or action not in MOUSE_BUTTONS):
 			cmd.buttons |= BUTTONS[action]
 	cmd.move = Vector2(
 		Input.get_axis(&"move_left", &"move_right"),

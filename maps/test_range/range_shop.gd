@@ -11,10 +11,9 @@ extends Node3D
 ## a match has it: the zone, the prices, the sides, what can be carried,
 ## undoing a purchase.
 ##
-## Until the player carries an inventory of their own (the GameWorld's work,
-## reference/systems/economy.md), what you hold is kept in step with it
-## here: a gun you buy is put in your hands, and undoing the one in your
-## hands puts the best one left there. Armour goes straight onto your body.
+## What you buy goes into your own inventory, the one you carry. A gun you
+## buy is put in your hands, to try it at once; undoing the one in your
+## hands puts back what you held before.
 
 ## The buy zone: a box on the floor round the spawn, drawn so it can be
 ## seen, for either side.
@@ -42,11 +41,6 @@ func setup(range_game: GameSystems, you: PlayerController) -> void:
 	game.add_system(economy)
 	economy.set_money(userid, economy.rules.max_money)
 	game.events.listen(&"item_purchase", _on_purchase)
-	game.events.listen(&"item_remove", _on_remove)
-
-	stock(game.inventory(userid), player.team,
-		player.weapon.data.item_class if player.weapon != null else "")
-	player.respawned.connect(_on_respawned)
 
 	var layer := CanvasLayer.new()
 	layer.layer = 10
@@ -56,22 +50,6 @@ func setup(range_game: GameSystems, you: PlayerController) -> void:
 	menu.userid = userid
 	layer.add_child(menu)
 	_draw_zone()
-
-
-## The inventory holds what you are holding: the knife, your side's pistol
-## and the gun in your hands, each added only if it is missing, beside
-## whatever is there already (the C4, when the bomb was set up first), and
-## the gun in your hands in hand.
-static func stock(inv: Inventory, team: String, held: String) -> void:
-	if inv.item_in(ItemDef.Slot.KNIFE) == null:
-		inv.add("weapon_knife")
-	if inv.item_in(ItemDef.Slot.PISTOL) == null and Inventory.STARTING_PISTOLS.has(team):
-		inv.add(Inventory.STARTING_PISTOLS[team])
-	if held.is_empty() or not ItemRegistry.has(held):
-		return
-	if not inv.has(held):
-		inv.add(held)
-	inv.select(held)
 
 
 ## O: the account full again.
@@ -95,29 +73,14 @@ func readout() -> PackedStringArray:
 	])
 
 
-## Back after dying: player_spawn, which the match will send for its own
-## spawns (reference/systems/contracts.md), so the economy knows you are
-## alive and can shop again.
-func _on_respawned() -> void:
-	game.events.send(&"player_spawn", {"userid": userid})
-
-
+## A gun bought is taken in hand; a grenade, armour or the kit is only
+## carried.
 func _on_purchase(event: GameEvent) -> void:
 	if event.fields["userid"] != userid:
 		return
-	var data := ItemRegistry.weapon_data(String(event.fields["weapon"]))
-	if data != null:
-		player.equip(data)
-
-
-func _on_remove(event: GameEvent) -> void:
-	if event.fields["userid"] != userid or player.weapon == null:
-		return
-	if player.weapon.data.item_class != String(event.fields["item"]):
-		return
-	var best := game.inventory(userid).best_gun()
-	if best != null:
-		player.equip(ItemRegistry.weapon_data(best.item_class()))
+	var item := ItemRegistry.item(String(event.fields["weapon"]))
+	if item != null and item.is_gun and item.slot in [ItemDef.Slot.PRIMARY, ItemDef.Slot.PISTOL]:
+		game.inventory(userid).select(item.item_class)
 
 
 func _draw_zone() -> void:

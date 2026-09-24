@@ -11,7 +11,8 @@ extends "res://tests/check_suite.gd"
 ##
 ## Needs nothing extracted: the bomb is plain state, moved on by hand with
 ## simulation times the checks choose, so 40 s take no time at all. The
-## last checks plant it on the test range, with its key held, in real time.
+## last checks plant it on the test range, the attack button held with it in
+## hand, in real time.
 
 const SECOND := 1_000_000
 const BOMB_FILES := [
@@ -502,60 +503,68 @@ func _test_saved_and_put_back() -> void:
 
 # --- On the range -----------------------------------------------------------------
 
+## Buttons held down for a check, on top of whatever the keys say: the
+## mouse's are not to be had headless, where nothing captures the mouse.
+class HeldButtons extends PlayerInput:
+	var held := 0
+
+	func build_command(tick: int, now_usec: int = -1) -> UserCmd:
+		var cmd := super.build_command(tick, now_usec)
+		cmd.buttons |= held
+		return cmd
+
+
 func _test_on_the_range() -> void:
 	var range_map := (load("res://maps/test_range/test_range.tscn") as PackedScene).instantiate() as Node3D
 	root.add_child(range_map)
 	for i in 4:
 		await physics_frame
 	var bomb: C4 = range_map.bomb
-	var player: PlayerSim = range_map.player
-	_check(bomb != null and bomb.state == C4.State.CARRIED and bomb.carrier == range_map.you_id(),
-		"on the range you carry the bomb")
+	var player: PlayerController = range_map.player
+	var inventory: Inventory = range_map.game.inventory(range_map.you_id())
+	_check(bomb != null and bomb.state == C4.State.CARRIED and bomb.carrier == range_map.you_id()
+			and inventory.has("weapon_c4"),
+		"on the range you carry the bomb, in your inventory")
 	_check(not range_map.bomb_view.visible, "and it is not drawn on the ground")
 
+	var buttons := HeldButtons.new()
+	player.input = buttons
 	player.place(range_map.BOMB_SITE_BOX.get_center() * Vector3(1.0, 0.0, 1.0) + Vector3.UP * 2.0, 180.0)
 	for i in 8:
 		await physics_frame
 	_check(range_map.bomb_sites[0].contains(player.global_position), "site A is behind the spawn")
-	# Something that takes the key first, as the buy menu does while open.
-	var menu := Node.new()
-	var taker := GDScript.new()
-	taker.source_code = "extends Node\nfunc _input(event: InputEvent) -> void:\n\tif event is InputEventKey:\n\t\tget_viewport().set_input_as_handled()\n"
-	taker.reload()
-	menu.set_script(taker)
-	range_map.add_child(menu)
-	var taken := InputEventKey.new()
-	taken.physical_keycode = range_map.BOMB_PLANT_KEY
-	taken.pressed = true
-	Input.parse_input_event(taken)
+	# The rifle in hand, drawn: the attack button fires it and plants nothing.
+	while player.weapon != null and player.weapon.is_drawing(SimClock.now_usec()):
+		await physics_frame
+	buttons.held = UserCmd.ATTACK
 	for i in 32:
 		await physics_frame
-	_check(not bomb.planting() and not bomb.planted(), "a press of 5 the buy menu takes plants nothing")
-	var let_go := InputEventKey.new()
-	let_go.physical_keycode = range_map.BOMB_PLANT_KEY
-	let_go.pressed = false
-	Input.parse_input_event(let_go)
+	_check(not bomb.planting() and not bomb.planted() and player.rounds_fired > 0,
+		"holding fire with the rifle in hand on the site shoots, and plants nothing")
+	buttons.held = 0
+	inventory.select("weapon_c4")
 	await physics_frame
-	menu.queue_free()
-	await physics_frame
-	var press := InputEventKey.new()
-	press.physical_keycode = range_map.BOMB_PLANT_KEY
-	press.pressed = true
-	Input.parse_input_event(press)
+	_check_equal(player.in_hand_class(), "weapon_c4", "5 takes the bomb out")
+	# Held while it is drawn, nothing is planted.
+	buttons.held = UserCmd.ATTACK
+	for i in SimClock.ticks_in(0.5):
+		await physics_frame
+	_check(not bomb.planting() and not player.hand_ready(), "held while the bomb is drawn, the button plants nothing yet")
+	while not player.hand_ready():
+		await physics_frame
 	var waited := 0
 	while not bomb.planted() and waited < SimClock.ticks_in(bomb.rules.plant_seconds + 1.0):
 		await physics_frame
 		waited += 1
 		if waited == 16:
-			_check(bomb.planting() and player.frozen, "holding 5 on it plants, holding you still")
+			_check(bomb.planting() and player.held_still and not player.frozen,
+				"holding fire with the bomb in hand plants, holding you still (the holds_still query, not the match's frozen)")
 	_check(bomb.planted(), "and in %.1f s it is down" % bomb.rules.plant_seconds)
-	var release := InputEventKey.new()
-	release.physical_keycode = range_map.BOMB_PLANT_KEY
-	release.pressed = false
-	Input.parse_input_event(release)
+	buttons.held = 0
 	await physics_frame
 	await process_frame
-	_check(not player.frozen, "and you are free to move")
+	_check(not player.held_still and player.in_hand_class() != "weapon_c4" and not inventory.has("weapon_c4"),
+		"and you are free to move, the bomb gone from your inventory and your hand (%s in it)" % player.in_hand_class())
 	_check(range_map.bomb_view.visible, "it is drawn where it was planted")
 	_check("planted on A" in range_map.bomb_readout(), "and the readout counts it down (%s)" % range_map.bomb_readout())
 	_check(range_map.log_lines().size() >= 2 and "bomb_planted" in range_map.log_lines()[0],

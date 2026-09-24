@@ -50,11 +50,17 @@ func systems() -> Array:
 	return _systems.duplicate()
 
 
-## Adds a player to the roster, with an empty inventory holding their armour
-## on hit_target. Their userid.
-func add_player(player: Node3D, hit_target: HitTarget = null) -> int:
+## Adds a player to the roster, with an inventory holding their armour on
+## hit_target: the one the player carries already (a PlayerSim's own, which
+## the game then names by their userid), or an empty one. Their userid.
+func add_player(player: Node3D, hit_target: HitTarget = null, carried: Inventory = null) -> int:
 	var userid := roster.add(player, hit_target)
-	if not _inventories.has(userid):
+	if carried != null:
+		carried.userid = userid
+		if carried.body == null:
+			carried.body = hit_target
+		_inventories[userid] = carried
+	elif not _inventories.has(userid):
 		_inventories[userid] = Inventory.new(userid, hit_target)
 	return userid
 

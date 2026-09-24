@@ -966,12 +966,13 @@ func _test_player_composes_kick_and_bob() -> void:
 			"the twin stands where the body stands, moving as it moves"
 		)
 
-	# Frame one captures the rest pose; then a kick from a real shot.
+	# Frame one captures the rest pose; then a kick from a real shot, the
+	# moment the AK-47's draw lets it fire.
 	player.velocity = Vector3.ZERO
 	player.on_ground = true
 	player.view._update_viewmodel(1.0 / 60.0)
 	var rest := player.view_model.transform
-	var now := Time.get_ticks_usec()
+	var now := player.weapon.next_shot_usec()
 	player.weapon.fire(now, 0.5, Vector3.ZERO, 0.0, 0.0, Weapon.ShooterState.new())
 	player.weapon.update(SimClock.tick_seconds(), now + SimClock.tick_usec())
 	var kick := player.weapon.viewmodel_punch()
@@ -1000,6 +1001,28 @@ func _test_player_composes_kick_and_bob() -> void:
 				motion_only.basis * rest.basis * Basis.from_euler(Vector3(deg_to_rad(kick.y), deg_to_rad(-kick.x), 0.0))
 			),
 		"running, the bob moves the model and the kick still sits inside it"
+	)
+
+	# A view model for each thing carried, built as it comes into the
+	# inventory: a switch shows the one in hand and hides the rest, and
+	# builds nothing.
+	var carried := player.camera.find_children("ViewModel_*", "", false, false)
+	_check(carried.size() == player.inventory.entries().size(),
+		"a view model for each thing carried, the knife, the Glock and the AK-47 (%d for %d)" % [carried.size(), player.inventory.entries().size()])
+	player.inventory.add("weapon_hegrenade")
+	var grenade := player.camera.get_node_or_null("ViewModel_weapon_hegrenade") as ViewModel
+	_check(grenade != null and not grenade.visible and grenade.process_mode == Node.PROCESS_MODE_DISABLED,
+		"a grenade picked up has its own built there and then, hidden and still until it is taken out")
+	player.inventory.select("weapon_glock")
+	var glock := player.view_model
+	player.inventory.select("weapon_ak47")
+	var ak := player.view_model
+	player.inventory.select("weapon_glock")
+	_check(
+		glock != null and ak != null and glock != ak and player.view_model == glock and glock.visible
+			and glock.process_mode == Node.PROCESS_MODE_INHERIT and not ak.visible and ak.process_mode == Node.PROCESS_MODE_DISABLED
+			and player.camera.find_children("ViewModel_*", "", false, false).size() == carried.size() + 1,
+		"switching shows the one in hand, hides the rest and stills them, and builds none anew"
 	)
 	player.free()
 

@@ -371,42 +371,42 @@ func _test_the_range() -> void:
 	var dummy: int = game.roster.userid_of(_range.dummy)
 	_check(you != GameEvents.NOBODY and dummy != GameEvents.NOBODY, "you and the dummy are in its roster")
 
-	_check_equal(_lane.kind(), GrenadeRules.HE, "an HE in hand to begin with")
-	_lane.next_kind()
-	_check_equal(_lane.kind(), GrenadeRules.FLASHBANG, "4 takes the flash next")
-	_lane.kind_index = 0
+	var inventory := game.inventory(you)
+	_check(
+		inventory.has(GrenadeRules.HE) and inventory.has(GrenadeRules.FLASHBANG) and inventory.has(GrenadeRules.SMOKE)
+			and inventory.has(GrenadeRules.MOLOTOV) and inventory.grenade_count() == Inventory.MOST_GRENADES,
+		"the range hands you four grenades, the most you can carry: an HE, a flash, a smoke and a terrorist's molotov"
+	)
 
 	# A throw: on the next tick, from your eyes.
-	_lane.ask_throw(1.0)
+	game.command(you, "throw %s 1" % GrenadeRules.HE)
 	await physics_frame
 	await physics_frame
 	var thrown := _named(&"grenade_thrown")
 	_check(thrown.size() == 1 and int(thrown[0].fields["userid"]) == you and thrown[0].fields["weapon"] == GrenadeRules.HE,
-		"Q throws an HE, as you")
+		"the throw command throws an HE, as you")
 	var grenades := game.entities.of_class("hegrenade_projectile")
 	_check_equal(grenades.size(), 1, "and it is in the world")
+	_check(inventory.has(GrenadeRules.HE), "and the range hands you another")
 	for i in SimClock.ticks_in(1.6):
 		await physics_frame
 	_check_equal(_named(&"hegrenade_detonate").size(), 1, "it goes off 1.5 s later")
 	_check(game.entities.of_class("hegrenade_projectile").is_empty(), "and is gone")
-	_check(not game.inventory(you).has(GrenadeRules.HE), "the throw took the HE the range handed you")
 	_lane.clear()
 	_events.clear()
 	game.command(you, "throw weapon_ak47")
 	await physics_frame
 	await physics_frame
 	_check(_named(&"grenade_thrown").is_empty(), "the throw command takes only a grenade")
-	game.command(you, "throw %s" % GrenadeRules.SMOKE)
+	game.command(you, "throw %s" % GrenadeRules.DECOY)
 	await physics_frame
 	await physics_frame
 	_check(_named(&"grenade_thrown").is_empty(), "and only one you carry")
-	game.inventory(you).add(GrenadeRules.HE)
 	game.command(you, "throw %s" % GrenadeRules.HE)
 	game.command(you, "throw %s" % GrenadeRules.HE)
 	await physics_frame
 	await physics_frame
-	_check_equal(_named(&"grenade_thrown").size(), 1, "one HE carried throws once")
-	_check_equal(game.inventory(you).count(GrenadeRules.HE), 0, "and is gone from your inventory")
+	_check_equal(_named(&"grenade_thrown").size(), 1, "one HE carried throws once, however often it is asked on a tick")
 	_lane.clear()
 	_events.clear()
 

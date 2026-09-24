@@ -16,9 +16,10 @@ item 16; `reference/cs2-systems.md` section 6 has CS2's rules.
 | `tests/run_bomb_checks.gd`, `tests/run_bomb_system_checks.gd` | Their checks, and a plant on the test range. |
 
 The test range carries it: you hold it from the start, site A is marked on
-the floor behind the spawn, 5 held on the site plants, E held looking at it
-defuses, L gives or takes the kit, and 5 again after it is spent hands you
-another. You plant as a T and defuse as a CT. Its blast is dust2's (700).
+the floor behind the spawn, 5 takes it out and the attack button held on
+the site plants, E held looking at it defuses, L gives or takes the kit,
+and O, the range's reset, hands you another. You plant as a T and defuse
+as a CT. Its blast is dust2's (700).
 
 ## The numbers
 
@@ -81,23 +82,25 @@ GameWorld's tick after the players and the match, and:
   clears it on `round_prestart`. With no match (the range) plants are
   always allowed.
 
-The test range adds one to `test_range.game`, feeding it your keys through
-`BombSystem.input_of` in place of a command.
+The test range adds one to `test_range.game`. It reads your command as a
+match's would, and adds only the side you plant or defuse as (a terrorist
+until it is down, then a counter-terrorist), wrapping the default
+`BombSystem.input_of`.
 
-Not done yet, in files this does not edit:
-
-### `player_sim.gd` and `PlayerInput`
+### `player_sim.gd` and `PlayerInput` *(done)*
 
 - Held still while planting or defusing, as freeze time holds it: no
   moving, jumping or firing, free to look and crouch. The bomb answers the
   game's `holds_still` query (`game.query(&"holds_still", [userid], false)`),
-  which `player_sim.gd` reads beside `frozen`, the match's. Until it does,
-  the range sets `frozen` from it on each event, and stops once the player
-  reads the query.
+  which `player_sim.gd` reads beside `frozen`, the match's, and keeps as
+  `held_still` for the view (the plant clip).
 - The bomb in hand fires nothing: attack with `weapon_c4` in hand is the
-  plant. The plant should wait for the draw (`m_flDeployDuration`, 1.23 s).
+  plant, once the bomb is drawn (`m_flDeployDuration`, 1.23 s;
+  `PlayerSim.hand_ready`).
 - `PlayerInput` sets `UserCmd.USE` from E and sends `drop` on G; 5 selects
   the bomb.
+
+Not done yet, in files this does not edit:
 
 ### `match_state.gd`
 

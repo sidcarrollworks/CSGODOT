@@ -32,6 +32,7 @@ const SIMULATION_FILES := [
 	"res://src/weapons/recoil_state.gd",
 	"res://src/combat/hit_target.gd",
 	"res://src/combat/hitscan.gd",
+	"res://src/game/inventory.gd",
 ]
 
 var _world: Node3D
@@ -46,6 +47,27 @@ class Scripted extends PlayerSim:
 	func command_for(tick: int, dt: float) -> UserCmd:
 		said.append("%s %d" % [name, tick])
 		var cmd := super.command_for(tick, dt)
+		if walks:
+			cmd.move = Vector2(0.0, 1.0)
+		return cmd
+
+
+## A player that runs what the check asks of it, on the world's tick: the
+## buttons it holds, a tap of one, a slot to take in hand, walking forward.
+class Commanded extends PlayerSim:
+	var held := 0
+	var tap := 0
+	var select := UserCmd.SELECT_NONE
+	var walks := false
+
+	func command_for(tick: int, dt: float) -> UserCmd:
+		var cmd := super.command_for(tick, dt)
+		cmd.buttons = held
+		if tap != 0:
+			cmd.steps.append(UserCmd.SubtickStep.new(tap, true, 0.0, yaw_degrees, pitch_degrees))
+			tap = 0
+		cmd.weapon_select = select
+		select = UserCmd.SELECT_NONE
 		if walks:
 			cmd.move = Vector2(0.0, 1.0)
 		return cmd
@@ -66,6 +88,7 @@ func _initialize() -> void:
 func _run() -> void:
 	_test_the_simulation_reads_only_commands()
 	_test_presses_land_at_their_instant()
+	_test_an_old_input_map_is_put_right()
 
 	_world = Node3D.new()
 	root.add_child(_world)
@@ -82,7 +105,7 @@ func _run() -> void:
 	await _test_a_held_trigger_fires_on_simulation_time()
 	await _test_a_press_fires_from_where_the_player_was()
 	await _test_a_semi_automatic_fires_once_a_click()
-	await _test_asking_for_the_weapon_in_hand()
+	await _test_the_hand()
 	await _test_a_running_tap_misses()
 	await _test_a_bot_plays_through_commands()
 	await _test_a_bot_finds_its_way()
@@ -149,6 +172,36 @@ func _test_presses_land_at_their_instant() -> void:
 	# put every press at 0.
 	var stale := PlayerInput.tick_fraction(start + HALF_TICK, start + TICK + 100, TICK)
 	_check(is_zero_approx(stale), "measured from the tick's own start, the same click would have been at 0")
+
+
+## An input map an open editor wrote back from before the inventory: no
+## drop, and the range's never-die still on G. The keys come back as CS2
+## has them, and G does one thing.
+func _test_an_old_input_map_is_put_right() -> void:
+	var kept := {}
+	for action: StringName in [&"drop", &"dummy_immortal"]:
+		kept[action] = InputMap.action_get_events(action) if InputMap.has_action(action) else []
+	if InputMap.has_action(&"drop"):
+		InputMap.erase_action(&"drop")
+	if not InputMap.has_action(&"dummy_immortal"):
+		InputMap.add_action(&"dummy_immortal", 0.2)
+	InputMap.action_erase_events(&"dummy_immortal")
+	var g := InputEventKey.new()
+	g.physical_keycode = KEY_G
+	InputMap.action_add_event(&"dummy_immortal", g)
+	PlayerInput.ensure_actions()
+	var keys_of := func(action: StringName) -> Array:
+		return InputMap.action_get_events(action).map(func(event: InputEvent) -> int:
+			return (event as InputEventKey).physical_keycode if event is InputEventKey else -1)
+	_check(
+		keys_of.call(&"drop") == [KEY_G] and keys_of.call(&"dummy_immortal") == [KEY_BRACKETLEFT],
+		"an old input map gets drop on G and the range's never-die moved to [ (%s, %s)"
+			% [keys_of.call(&"drop"), keys_of.call(&"dummy_immortal")]
+	)
+	for action: StringName in kept:
+		InputMap.action_erase_events(action)
+		for event: InputEvent in kept[action]:
+			InputMap.action_add_event(action, event)
 
 
 # --- The world that runs the tick -------------------------------------------
@@ -532,33 +585,186 @@ func _test_a_semi_automatic_fires_once_a_click() -> void:
 	await physics_frame
 
 
-## Asking for the weapon already in hand leaves it as it is, as Source does:
-## no draw, and the rounds it had rather than a full magazine. Asking for
-## another draws that one.
-func _test_asking_for_the_weapon_in_hand() -> void:
-	var player := _new_player(Vector3(-1024.0, 0.0, -1536.0), "T")
-	player.equip(WeaponLibrary.ak47())
-	var drawn: Array[String] = []
-	player.equipped.connect(func(data: WeaponData) -> void: drawn.append(data.display_name))
+## What a player carries and holds, through commands on a world's ticks: a
+## spawn's loadout, drawn on the world's clock; each gun its own, keeping its
+## rounds through a switch; asking for what is in hand leaving it as it is,
+## as Source does (no draw, not a full magazine); anything else drawn, and
+## firing only once the draw is over; a switch stopping a reload; the knife;
+## a grenade thrown from the hand; a gun dropped and picked up again with
+## its rounds; and the bomb holding the player still. Every round is the
+## game's: weapon_fire, and the hurt it does is the shooter's.
+func _test_the_hand() -> void:
+	var player := Commanded.new()
+	player.starting_gun = WeaponLibrary.ak47()
+	_new_player(Vector3(2048.0, 0.0, 2048.0), "T", player)
+	# Armed before there is a world, on the engine's clock.
+	player.respawn()
+	var world := GameWorld.new()
+	_world.add_child(world)
+	world.set_physics_process(false)
+	world.game.add_system(GrenadeSystem.new())
+	var events: Array[GameEvent] = []
+	world.game.events.listen_all(func(event: GameEvent) -> void: events.append(event))
+	world.add_player(player)
 	var ak := player.weapon
+	var inventory := player.inventory
+	var ak_ready := int(roundf(ItemRegistry.item("weapon_ak47").deploy_seconds * 1_000_000.0))
+	_check(
+		ak != null and ak.data.item_class == "weapon_ak47" and inventory.has("weapon_knife") and inventory.has("weapon_glock")
+			and world.game.inventory(player.userid) == inventory,
+		"a terrorist spawns with the knife and the Glock and the AK-47 handed out, in hand; the game knows the inventory by the player's userid"
+	)
+	_check_equal(ak.next_shot_usec(), ak_ready, "armed before the world was made, joining it draws the AK-47 again on its clock")
+	var steps := func(seconds: float) -> void:
+		for i in maxi(SimClock.ticks_in(seconds), 1):
+			world.step()
+
+	# Held from the spawn, the first round goes the moment the draw is over,
+	# into another player, as the game's.
+	var victim := _new_player(Vector3(2048.0, 0.0, 1748.0), "CT")
+	world.add_player(victim)
+	var victim_id := victim.userid
+	# Its hitboxes are where the physics space sees them once it has stepped.
+	await physics_frame
+	await physics_frame
+	var shots: Array[int] = []
+	player.shot_traced.connect(func(shot: Weapon.Shot, _result: Hitscan.Result) -> void: shots.append(shot.timestamp_usec))
+	player.held = UserCmd.ATTACK
+	steps.call(float(ak_ready) / 1_000_000.0 + 0.2)
+	player.held = 0
+	steps.call(DT)
+	_check(not shots.is_empty() and shots[0] == ak_ready,
+		"held from the spawn, the AK-47 fires the moment its draw is over, %.2f s in (%s)" % [float(ak_ready) / 1_000_000.0, shots.slice(0, 1)])
+	var fired := _named(events, &"weapon_fire")
+	_check(
+		fired.size() == shots.size() and fired.all(func(event: GameEvent) -> bool:
+			return int(event.fields["userid"]) == player.userid and event.fields["weapon"] == "weapon_ak47"),
+		"every round sends weapon_fire, saying who fired it and with what (%d of %d)" % [fired.size(), shots.size()]
+	)
+	var hurt := _named(events, &"player_hurt")
+	_check(
+		not hurt.is_empty() and int(hurt[0].fields["attacker"]) == player.userid and int(hurt[0].fields["userid"]) == victim_id
+			and hurt[0].fields["weapon"] == "weapon_ak47",
+		"and the round that finds the other side hurts them as the shooter's (player_hurt from %s)" % [hurt[0].fields if not hurt.is_empty() else {}]
+	)
+	world.remove_player(victim)
+	victim.queue_free()
+
+	var drawn: Array[String] = []
+	player.equipped.connect(func(entry: Inventory.Entry) -> void:
+		drawn.append(entry.item.item_class if entry != null else ""))
 	ak.ammo = 12
-	var cmd := UserCmd.new()
-	cmd.tick = 90_000
-	cmd.weapon_select = 1
-	player.run_command(cmd, DT)
+	player.select = 1
+	steps.call(DT)
+	_check(player.weapon == ak and ak.ammo == 12 and drawn.is_empty(),
+		"asking for the AK-47 in hand leaves it as it is: no draw, and the %d rounds it had" % ak.ammo)
+
+	player.select = 2
+	steps.call(DT)
+	var glock := player.weapon
+	_check(glock != null and glock.data.item_class == "weapon_glock" and drawn.size() == 1 and drawn[0] == "weapon_glock",
+		"2 draws the Glock (%s)" % [drawn])
+	_check(is_equal_approx(player.config.max_speed, glock.data.max_player_speed), "and runs at its speed")
+	shots.clear()
+	player.held = UserCmd.ATTACK
+	var glock_draw := ItemRegistry.item("weapon_glock").deploy_seconds
+	steps.call(glock_draw * 0.5)
+	_check(shots.is_empty(), "held while it is drawn, it does not fire")
+	steps.call(glock_draw * 0.5 + 0.25)
+	_check_equal(shots.size(), 1, "then fires once for the held trigger, a semi-automatic")
+	player.held = 0
+
+	player.select = 1
+	steps.call(DT)
+	_check(player.weapon == ak and ak.ammo == 12, "1 draws the same AK-47 again, with its 12 rounds")
+	steps.call(float(ak_ready) / 1_000_000.0)
+	player.tap = UserCmd.RELOAD
+	steps.call(DT)
+	var reloading := ak.is_reloading(SimClock.now_usec())
+	player.select = 2
+	steps.call(DT)
+	player.select = UserCmd.SELECT_LAST
+	steps.call(ak.data.reload_time + 0.1)
+	_check(reloading and player.weapon == ak and ak.ammo == 12 and not ak.is_reloading(SimClock.now_usec()),
+		"a reload is stopped by a switch, without its rounds; Q takes the AK-47 back (%d rounds)" % ak.ammo)
+
+	player.select = 3
+	steps.call(DT)
+	_check(player.weapon == null and player.in_hand_class() == "weapon_knife"
+			and is_equal_approx(player.config.max_speed, ItemRegistry.item("weapon_knife").max_speed),
+		"3 takes the knife, at its speed (%.0f)" % player.config.max_speed)
+
+	# A grenade: the pin once it is drawn, the throw on letting go.
+	inventory.add(GrenadeRules.HE)
+	player.select = 4
+	steps.call(DT)
+	_check_equal(player.in_hand_class(), GrenadeRules.HE, "4 takes the HE out")
+	var pulled := [0]
+	var released: Array[bool] = []
+	player.pin_pulled.connect(func() -> void: pulled[0] += 1)
+	player.grenade_released.connect(func(underhand: bool) -> void: released.append(underhand))
+	player.held = UserCmd.ATTACK2
+	steps.call(0.25)
+	_check_equal(pulled[0], 0, "the right button pulls no pin while the HE is drawn")
+	steps.call(ItemRegistry.item(GrenadeRules.HE).deploy_seconds)
+	_check_equal(pulled[0], 1, "and once it is out, pulls it")
+	events.clear()
+	player.held = 0
+	steps.call(DT)
+	var thrown := _named(events, &"grenade_thrown")
 	_check(
-		player.weapon == ak and player.weapon.ammo == 12 and drawn.is_empty(),
-		"asking for the AK-47 in hand leaves it as it is: no draw, and the %d rounds it had" % player.weapon.ammo
+		released.size() == 1 and released[0] and thrown.size() == 1 and int(thrown[0].fields["userid"]) == player.userid
+			and not inventory.has(GrenadeRules.HE) and world.game.entities.of_class("hegrenade_projectile").size() == 1,
+		"let go, the right button alone throws it underhand, from the hand: grenade_thrown, the HE in the world and out of the inventory"
 	)
-	cmd = UserCmd.new()
-	cmd.tick = 90_001
-	cmd.weapon_select = 2
-	player.run_command(cmd, DT)
+	# Not to go off at the thrower's feet.
+	for grenade in world.game.entities.of_class("hegrenade_projectile"):
+		grenade.remove()
+	_check(player.in_hand_class() == GrenadeRules.HE and player.weapon == null, "the throw keeps the hand while it lasts")
+	steps.call(PlayerSim.THROW_UNDERHAND_SECONDS)
+	_check_equal(player.in_hand_class(), "weapon_knife", "and then the last thing held is drawn")
+
+	# Dropped, the AK-47 keeps its rounds on the ground, and comes back with
+	# them when picked up.
+	player.select = 1
+	steps.call(float(ak_ready) / 1_000_000.0 + DT)
+	events.clear()
+	world.game.command(player.userid, "drop")
+	steps.call(DT)
+	var on_ground := world.game.entities.of_class("weapon_ak47")
+	var dropped: DroppedItem = on_ground[0] if not on_ground.is_empty() else null
 	_check(
-		player.weapon != ak and player.weapon.data.display_name == "M4A1-S" and drawn.size() == 1 and drawn[0] == "M4A1-S",
-		"asking for the M4A1-S draws it (%s)" % [drawn]
+		dropped != null and dropped.entry.weapon == ak and ak.ammo == 12 and inventory.item_in(ItemDef.Slot.PRIMARY) == null
+			and player.in_hand_class() == "weapon_knife" and _named(events, &"item_remove").size() == 1,
+		"G drops the AK-47 in hand, its own Weapon with its 12 rounds on the ground, item_remove, and the knife comes back to the hand"
 	)
+	steps.call(1.0)
+	if dropped != null:
+		_check(dropped.resting and dropped.position.distance_to(player.global_position) > 32.0,
+			"thrown ahead, it comes to rest %.0f units off" % dropped.position.distance_to(player.global_position))
+		player.global_position = dropped.position
+		player.previous_position = dropped.position
+	steps.call(1.0)
+	var primary := inventory.item_in(ItemDef.Slot.PRIMARY)
+	_check(primary != null and primary.weapon == ak and ak.ammo == 12 and world.game.entities.of_class("weapon_ak47").is_empty(),
+		"walked over, once whoever dropped it may take it back, it is picked up with its rounds")
+
+	# Held still by the game: planting or defusing, which the bomb says.
+	player.select = 1
+	steps.call(float(ak_ready) / 1_000_000.0 + DT)
+	world.game.provide(&"holds_still", func(_userid: int) -> bool: return true)
+	shots.clear()
+	var from := player.global_position
+	player.held = UserCmd.ATTACK
+	player.walks = true
+	steps.call(0.5)
+	_check(player.held_still and shots.is_empty() and Vector2(player.global_position.x - from.x, player.global_position.z - from.z).length() < 1.0,
+		"held still by the game, the player neither fires nor moves")
+	player.held = 0
+	player.walks = false
+	world.remove_player(player)
 	player.queue_free()
+	world.queue_free()
 	await physics_frame
 
 
@@ -1032,6 +1238,15 @@ func _build_floor() -> void:
 	shape.position = Vector3(0.0, -16.0, 0.0)
 	floor_body.add_child(shape)
 	_world.add_child(floor_body)
+
+
+## The events of one name among those heard.
+static func _named(events: Array[GameEvent], event_name: StringName) -> Array[GameEvent]:
+	var out: Array[GameEvent] = []
+	for event in events:
+		if event.name == event_name:
+			out.append(event)
+	return out
 
 
 ## A player in the simulation with nothing drawing it, standing on the floor:

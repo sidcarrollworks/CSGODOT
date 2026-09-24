@@ -56,9 +56,13 @@ which is where shooting gets tuned.
 | `Scroll up` | jump, for bunny hopping |
 | `V` | noclip |
 | `Esc` | release the mouse |
-| `Mouse 1` | fire |
+| `Mouse 1` | fire; with a grenade out, pull the pin, and throw it overhand on letting go |
+| `Mouse 2` | with a grenade out, lob it underhand (both buttons: between the two) |
 | `R` | reload |
-| `1` / `2` | AK-47 / M4A1-S |
+| `1` to `5` | CS2's slots: your rifle, your pistol, the knife, the grenades (again for the next), the bomb |
+| `Q` | the last thing held |
+| `G` | drop what is in hand (a gun or a grenade; never the knife); walk over a gun to pick it up where its slot is free |
+| `E` | use: defuse the bomb (on the range, until dust2 has its bomb and grenades) |
 | `F5` | end warmup and start the match (dust2) |
 | `Mouse 1` / `Space`, dead | watch the next teammate / from their eyes or behind them |
 
@@ -93,20 +97,23 @@ against, and off to the left a bot that shoots you when you tell it to.
 
 | Key | |
 |---|---|
-| `1` / `2` | AK-47 / M4A1-S |
+| `1` to `5`, `Q`, `G` | as everywhere: the AK-47, the Glock, the knife, the grenades, the bomb; the last thing held; drop it |
 | `R` | reload |
 | `P` | export the spray you just fired |
-| `O` | clear the impact markers, the log, and stand the dummy up |
+| `O` | clear the impact markers, the log and the guns on the ground, stand the dummy up, and hand you the bomb again |
 | `H` | draw or hide the dummy's hitboxes |
 | `K` | the dummy's armour: kevlar and helmet, kevlar, none |
 | `N` | the dummy's distance: 256, 512, 1024, 2048 units |
-| `G` | the dummy never dies: a kill is logged and it is refilled, so a whole spray registers |
+| `[` | the dummy never dies: a kill is logged and it is refilled, so a whole spray registers |
 | `M` | a wall in front of the dummy to shoot it through: a wooden door, a crate, sheet and solid metal, plaster, thin and thick concrete, none |
-| `B` | the shooter fires at you, or holds its fire |
+| `I` | the shooter fires at you, or holds its fire |
 | `U` | the shooter's weapon: AK-47, M4A1-S, MP9 |
 | `Y` | your armour: kevlar and helmet, kevlar, none |
 | `J` | you never die: a kill refills you |
 | `T` | a window on your own body and hitboxes: from the front, from the side, off |
+| `B` | the buy menu, in the green zone round the spawn ($16,000, filled again by `O`) |
+| `5`, then `Mouse 1` on site A | plant the bomb, behind the spawn; `E` looking at it defuses, `L` puts the kit on or off, and `O` gives you another |
+| `4`, then the mouse | throw a grenade: the range keeps you in an HE, a flash, a smoke and a molotov |
 
 Every bullet leaves a mark: dark on the wall, red on the dummy. The readout
 shows the current shot index in the pattern and the size of the inaccuracy cone
@@ -131,9 +138,9 @@ the damage in how many hits and the time from the first to the last. The readout
 hitboxes it wears, and when they are the stand-in boxes on an extracted
 character, why the game's are missing. It starts
 in kevlar and a helmet, as an opponent in a rifle round would be. Killed, it
-falls as a ragdoll, knocked the way the round was going, and two and a half
-seconds later stands up again where it was, whole. G makes it never die
-instead.
+falls as a ragdoll, knocked the way the round was going, drops the M4A1-S it
+holds as anyone does, and two and a half seconds later stands up again where
+it was, whole. `[` makes it never die instead.
 
 **Walls to shoot through.** M stands a wall across the dummy's lane just in
 front of it, one of CS2's surfaces at a thickness, and steps through them.
@@ -289,10 +296,13 @@ tells them, how they blend and layer the clips, and at what speeds, written
 out in `reference/animgraph/`; `reference/animgraph2.md` says what they are
 and how much they give us. `all` does the lot.
 
-With those in place the player has arms and a weapon on screen, animated by
-the game's own clips: draw on equip, shoot and reload from the firing model,
+With those in place the player has arms and whatever is in hand on screen,
+animated by the game's own clips: the draw on taking it out, shoot and
+reload from the firing model, a grenade's pin and throws, the bomb's plant,
 idle between. `src/player/view_model.gd` puts the agent's arm meshes and the
-weapon's meshes on the rigs the clips animate, and
+weapon's meshes on the rigs the clips animate, one for each thing carried,
+built as it comes into the inventory and hidden while something else is in
+hand, so taking it out builds nothing; and
 `src/player/view_model_projection.gd` draws them in the world's own render
 with a projection of their own, set in their vertex pass: narrowed to CS2's
 `viewmodel_fov`, so they do not stretch at the edges, and squeezed towards

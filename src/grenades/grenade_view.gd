@@ -226,6 +226,8 @@ func _grenade_model(weapon_class: String) -> Node3D:
 	var packed := _models.get(weapon_class) as PackedScene
 	if packed != null:
 		model = packed.instantiate() as Node3D
+		# The export is in metres; the world is in units.
+		model.scale = Vector3.ONE * MapImporter.SOURCE2_VIEWER_SCALE
 	else:
 		var mesh := MeshInstance3D.new()
 		var capsule := CapsuleMesh.new()

@@ -139,7 +139,14 @@ func _build_body() -> Node3D:
 	if ResourceLoader.exists(MODEL_PATH):
 		var scene := load(MODEL_PATH) as PackedScene
 		if scene != null:
-			return scene.instantiate() as Node3D
+			var model := scene.instantiate() as Node3D
+			# The export is in metres; the world is in units. Lying flat, its
+			# underside on the ground.
+			model.scale = Vector3.ONE * MapImporter.SOURCE2_VIEWER_SCALE
+			var laid := Node3D.new()
+			laid.add_child(model)
+			model.transform = DroppedItemView.lying(laid) * model.transform
+			return laid
 	var box := MeshInstance3D.new()
 	var mesh := BoxMesh.new()
 	mesh.size = BOX_SIZE

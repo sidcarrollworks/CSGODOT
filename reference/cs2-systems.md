@@ -192,14 +192,32 @@ Not built: choosing another loadout.
   best one, the kit, the Zeus and the bomb all drop.
 - Draw time and a weapon's own movement speed apply on every switch.
 
-**Built:** one weapon at a time; swapping it (1 and 2) rebuilds it.
+**Built:** every player carries an `Inventory` (the items contract,
+`reference/systems/contracts.md`), you and the bots alike: a spawn's knife
+and side's pistol and the gun handed out, 1 to 5 and Q through the command
+(`UserCmd.weapon_select`), each gun its own `Weapon` keeping its rounds, the
+item's draw time before it fires or a pin is pulled, its speed, a switch
+stopping a reload. G sends `drop`, which throws the gun or grenade in hand
+ahead with its rounds; walking over a gun takes it after CS2's owner waits;
+a death drops the best gun and a grenade (`ItemDrops`). Grenades are thrown
+from the hand: the attack buttons pull the pin, letting go throws it (the
+right alone underhand), and the hand is busy for the throw clip's length
+before what is next is drawn. The bomb is planted with it in hand and the
+attack button held, and E defuses. What is dropped is drawn lying on its
+thinnest side (`DroppedItemView`). Every item has its own first-person
+model, built as it comes into the inventory and kept while it is carried,
+so a switch builds nothing.
 
 **Remote**
-- An inventory per player with the slots above; switching with draw times;
-  the weapon on the ground as a rigid body with its ammo kept; pick up and
-  swap; drops on death.
+- The weapon on the ground as a rigid body (blasts and rounds push it; its
+  own physics hull is extracted beside each model, `*_physics.gltf`), and E
+  to swap with the one in hand.
 - Scroll wheel: CS2 cycles weapons with it, and here scroll up jumps (Sid's
   choice). Keep scroll for jumping unless Sid says otherwise.
+- **Measure** in CS2: whether a release throws before the pin-pull clip
+  (0.97 s) has finished; how long the hand is busy after a throw (here the
+  throw clip's length, 0.77 s overhand and 0.50 s underhand); whether a gun
+  bought is taken in hand (the range does it).
 
 **Local**
 - **I1.** Every weapon's world model (the dropped one), with L1 in

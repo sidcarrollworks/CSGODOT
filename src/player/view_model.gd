@@ -48,10 +48,18 @@ static func clips_dir(clip_set: String) -> String:
 	return CLIPS_ROOT.path_join(clip_set if clip_set.contains("/") else "rifle".path_join(clip_set))
 
 
-## Builds the arms and weapon. Returns false, with nothing built, when the
-## models or clips have not been extracted; the game plays on without them.
+## Builds the arms and what they hold: a gun, the knife, a grenade, the
+## bomb. Returns false, with nothing built, when the models or clips have
+## not been extracted; the game plays on without them.
 func setup(team: String, weapon_model: String, clip_set: String) -> bool:
-	one_shots = PackedStringArray(["draw", "shoot", "reload", "lookat", "silencer"])
+	# Besides a gun's: a grenade's pin and throws, the bomb's plant, the
+	# knife's swings. The pin pulled and a throw's end are held, not left
+	# for the idle, until the throw and what is drawn next take over.
+	one_shots = PackedStringArray([
+		"draw", "shoot", "reload", "lookat", "silencer",
+		"pullpin", "throw_", "plant", "light_", "heavy_",
+	])
+	held = PackedStringArray(["pullpin", "throw_"])
 	var clips := list_clips(clips_dir(clip_set))
 	if not load_clips(clips, common_suffix(clips)):
 		return false
@@ -59,7 +67,9 @@ func setup(team: String, weapon_model: String, clip_set: String) -> bool:
 	# "idle1".
 	var idles := clips_named("idle")
 	idle = &"idle" if idles.has("idle") or idles.is_empty() else StringName(idles[0])
-	shoot_clips = clips_named("shoot")
+	# Not a pistol's last round, which leaves its slide back (shoot_empty).
+	shoot_clips = PackedStringArray(Array(clips_named("shoot")).filter(
+		func(clip: String) -> bool: return not clip.contains("empty")))
 	_next_shoot = 0
 
 	var agent := instantiate(AGENTS.get(team, AGENTS["T"]))

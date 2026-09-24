@@ -24,17 +24,13 @@ All in `src/grenades/`, checked by `tests/run_grenade_checks.gd`.
 | `grenade_system.gd` | The system (`GameSystems.add_system`): the throw, and the queries `smoke_length_between`, `blindness`, `blind_share`, `burning_at` |
 | `grenade_view.gd`, `flash_overlay.gd` | What is drawn: the grenades (the game's world models where extracted), the cloud, the flames, a light where one goes off, the white-out. They only read |
 
-On the range, `maps/test_range/grenade_lane.gd`: 4 picks the next grenade,
-Q throws it as a left click, Z as a right click (a lob), X as both. Each key
-hands you the grenade and sends the game the command
-`throw <class> <strength>` (`GrenadeSystem` takes it, and the grenade out of
-your inventory), and it leaves your eyes on the next tick; no limit. The
-keys stand in for the mouse until the throw from the hand (item 2 below) is
-wired, and then go: Q is CS2's last-weapon key (`Inventory.select_last`).
-They read `_unhandled_input`, so a buy menu that handles every key press
-while it is open keeps them from throwing. The readout at the bottom says
-what the last ones did. O clears them. The system is in the range's game,
-its `GameWorld`'s, which steps it after the players each tick.
+On the range, `maps/test_range/grenade_lane.gd` keeps you in four, the most
+you can carry (an HE, a flash, a smoke and your side's fire grenade), and
+hands back each one you throw; a spawn stocks you again. Throwing is the
+hand's (item 2 below): 4 takes one out, again for the next, and the attack
+buttons pull the pin and throw it on letting go. The readout at the bottom
+says what the last ones did. O clears them. The system is in the range's
+game, its `GameWorld`'s, which steps it after the players each tick.
 
 ## What each does
 
@@ -124,7 +120,10 @@ files named:
    are cleared (`entities.clear()`, as the contract says) and the system's
    blinding with them (`GrenadeSystem.clear()`). In a match,
    `team_damage_scale = GrenadeRules.TEAM_DAMAGE_IN_MATCH`.
-2. **`player_sim.gd`: the throw from the hand.** With a grenade in hand
+2. **`player_sim.gd`: the throw from the hand.** *(Done: `_update_grenade`,
+   with the throw at the release and the hand busy for the throw clip's
+   length, 0.77 s overhand and 0.50 s underhand, before what is next is
+   drawn.)* With a grenade in hand
    (`Inventory.in_hand_class()`), the attack buttons pull the pin and the
    release throws: the strength is from the buttons held at the release
    (`GrenadeRules.strength_for(left, right)`, from `UserCmd.ATTACK` and

@@ -151,6 +151,9 @@ var _impulses := PackedVector2Array()
 var _inaccuracy: float = 0.0
 var _was_on_ground: bool = true
 var _reloading_until_usec: int = -1
+## Until when it is being drawn, in simulation time: it fires from then on
+## (draw()).
+var _drawn_usec: int = 0
 
 
 func _init(p_data: WeaponData) -> void:
@@ -185,11 +188,27 @@ func recoil_index_at(now_usec: int) -> float:
 ## exactly. Firing on the tick instead rounds every gap up to a whole tick,
 ## which is 549 rounds a minute at 64 Hz rather than 600.
 func next_shot_usec() -> int:
-	return _last_shot_usec + int(round(data.cycle_time * 1_000_000.0))
+	return maxi(_last_shot_usec + int(round(data.cycle_time * 1_000_000.0)), _drawn_usec)
 
 
 func is_reloading(now_usec: int) -> bool:
 	return now_usec < _reloading_until_usec
+
+
+## Taken in hand at now_usec: it fires once the draw is over, seconds later
+## (CS2's deploy time, the item's m_flDeployDuration).
+func draw(now_usec: int, seconds: float) -> void:
+	_drawn_usec = now_usec + int(roundf(seconds * 1_000_000.0))
+
+
+## Put away: a reload under way stops, without its rounds, as a switch
+## stops one in CS2.
+func holster() -> void:
+	_reloading_until_usec = -1
+
+
+func is_drawing(now_usec: int) -> bool:
+	return now_usec < _drawn_usec
 
 
 ## The trigger went down afresh. Call it for every press, before firing the
@@ -210,7 +229,7 @@ func press_trigger() -> void:
 
 
 func can_fire(now_usec: int) -> bool:
-	if ammo <= 0 or is_reloading(now_usec):
+	if ammo <= 0 or is_reloading(now_usec) or is_drawing(now_usec):
 		return false
 	if not data.automatic and not _trigger_reset:
 		return false

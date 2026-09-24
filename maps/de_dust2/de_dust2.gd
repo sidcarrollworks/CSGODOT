@@ -121,6 +121,11 @@ func _ready() -> void:
 	var impacts := BulletImpacts.new()
 	impacts.name = "BulletImpacts"
 	add_child(impacts)
+	# The guns dropped (G) and left by the dead, on the ground.
+	var dropped := DroppedItemView.new()
+	dropped.name = "Dropped"
+	add_child(dropped)
+	dropped.watch(world.game)
 
 
 ## Bots in every place you do not take, on both sides, each walking its
