@@ -115,7 +115,7 @@ Roughly in order; L1 to L3 can start at once.
   reload time (to rounds in, and to ready), draw time, and for the snipers the
   zoom levels (FOV per level) and time to scope in. Frame-by-frame, the way
   the recoil timings were taken.
-- [ ] **L6. Spray patterns for every "Set Pattern" weapon**, by the procedure
+- [ ] **L6. Spray patterns for every "Set Pattern" weapon** *(partly answered 2026-09-24 from a community source, not a measurement: `reference/spray_patterns/weapon_<class>.csv` has the M4A4, Galil AR, FAMAS, unscoped SG 553 and AUG, all seven SMGs, M249, Negev and CZ75-Auto, on the AK's scale, not yet read by the game; its AK-47 and M4A1-S match the plots but for two swapped pairs of rounds each. The R8's fan fire and the XM1014 have no path to learn (Sid, 2026-09-24), and the scoped SG 553 and AUG are likely their unscoped paths scaled down by the game's scoped recoil (19 against 28, 16 against 24). Left: the G3SG1 and SCAR-20, one scoped spray each of the SG 553 and AUG to settle that, and the scale, which the 496-unit AK spray still settles; `README.md` there says how far to trust the rest)*, by the procedure
   in `reference/spray_patterns/README.md`, from 496 units at the range's wall
   so every pattern has a known scale: CZ75 Auto, R8 Revolver, XM1014, all
   seven SMGs, Galil AR, FAMAS, M4A4, SG 553 and its scope, AUG and its scope,
@@ -162,11 +162,27 @@ Roughly in order; L1 to L3 can start at once.
 - [ ] **R3. Weapon modes.** Right click switches mode where the sheet has
   one: burst (FAMAS, Glock), silencer on and off with its attach time (M4A1-S,
   USP-S), fan fire (R8). A mode reads its own row over the weapon's.
-- [ ] **R4. Scopes.** Zoom levels, scoped mobility and accuracy from the
+- [x] **R4. Scopes.** Zoom levels, scoped mobility and accuracy from the
   scoped rows, the sniper unscoping after a shot, the scope overlay (L4) when
-  it exists.
-- [ ] **R5. Shotguns.** Pellets per shot (Bullets), each traced and damaged
-  on its own, shorter range.
+  it exists. *(Done 2026-09-24, `tests/run_scope_checks.gd`: right click
+  steps through `m_nZoomLevels` at `m_nZoomFOV1/2`, each level reached over
+  its `m_flZoomTime`; scoped speed and inaccuracy are the game's second
+  values; the AWP and SSG 08 unzoom as they fire and rezoom once the bolt is
+  worked; a reload or a switch takes the scope down; the view hides the
+  snipers' arms, draws the scope (CS2's mask where extracted) and slows the
+  mouse by the zoomed fov over 90; no crosshair on the four snipers;
+  noscope kills; bots scope before they fire. Guessed until the Local check
+  in `reference/research/combat.md`: the scoped accuracy comes in linearly
+  over the zoom time, and the zoom times are read as the time to reach each
+  level. Not done: the zoom sounds, and the scope showing inaccuracy.)*
+- [x] **R5. Shotguns.** Pellets per shot (Bullets), each traced and damaged
+  on its own, shorter range. *(Done 2026-09-24 for the Nova, XM1014,
+  Sawed-Off and MAG-7, the player's and the bots': a pull fires
+  `m_nNumBullets` pellets, each its own trace, impact and hurt, in a fixed
+  pattern `m_flSpread` wide from `m_nSpreadSeed`, which the rest of the cone
+  throws whole (`Weapon.pellet_directions`, `tests/run_shotgun_checks.gd`).
+  One report a pull. The pattern's shape is inferred; the Local check in
+  `reference/research/combat.md` (R5) gives the real one.)*
 - [ ] **R6. Random recoil.** Weapons marked "Random" kick by Recoil Amount
   with the two variances rather than by a pattern file. Needs how CS turns
   those into degrees; research first. *(Researched 2026-09-24,

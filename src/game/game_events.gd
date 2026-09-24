@@ -71,10 +71,11 @@ const SCHEMA := {
 	# eye). The angles are the round's own, spread and recoil in, where CS2
 	# sends the aim and a seed for each client to roll the spread again.
 	# mode is 1 with the silencer on or scoped, as vdata's two-valued fields;
-	# inaccuracy is CS2's, the tangent of the cone.
+	# inaccuracy is CS2's, the tangent of the cone. A shotgun's pellets are a
+	# round each, numbered by pellet from 0, under the pull's one weapon_fire.
 	&"fire_bullets": {
 		"userid": NOBODY, "weapon": "", "mode": 0, "x": 0.0, "y": 0.0, "z": 0.0,
-		"pitch": 0.0, "yaw": 0.0, "inaccuracy": 0.0,
+		"pitch": 0.0, "yaw": 0.0, "inaccuracy": 0.0, "pellet": 0,
 	},
 
 	# Items.

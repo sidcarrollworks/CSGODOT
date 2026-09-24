@@ -61,6 +61,42 @@ class Shot:
 	## The view kick this shot applied, in degrees. Recorded for debugging;
 	## it has no bearing on where this bullet went.
 	var view_punch: Vector2
+	## The zoom level it was fired at (0 unscoped), and whether it went out
+	## of a gun that has a scope without it: CS2's noscope.
+	var zoom_level: int
+	var noscope: bool
+	## Which of the trigger pull's rounds this is: 0, or a shotgun's pellet.
+	## Everything else is the trigger pull's and the same for every pellet.
+	var pellet: int = 0
+	## Where every one of the pull's rounds goes, the first being direction.
+	## Filled by Weapon.fire; empty on a shot built by hand, which is one
+	## round.
+	var pellet_directions := PackedVector3Array()
+
+	## How many rounds the trigger pull put out.
+	func pellets() -> int:
+		return maxi(pellet_directions.size(), 1)
+
+	## The pull's round `index` as a shot of its own, to trace: this one,
+	## pointed where that pellet goes.
+	func pellet_shot(index: int) -> Shot:
+		if index == pellet:
+			return self
+		var copy := Shot.new()
+		copy.origin = origin
+		copy.direction = pellet_directions[index]
+		copy.shot_index = shot_index
+		copy.timestamp_usec = timestamp_usec
+		copy.tick_fraction = tick_fraction
+		copy.inaccuracy = inaccuracy
+		copy.base_yaw = base_yaw
+		copy.base_pitch = base_pitch
+		copy.view_punch = view_punch
+		copy.zoom_level = zoom_level
+		copy.noscope = noscope
+		copy.pellet = index
+		copy.pellet_directions = pellet_directions
+		return copy
 
 
 ## The punch spring is integrated at no coarser than this, whatever the
@@ -155,6 +191,18 @@ var _reloading_until_usec: int = -1
 ## (draw()).
 var _drawn_usec: int = 0
 
+## The scope, for a gun that has one (WeaponData.zoom_fovs): the level it is
+## at, 0 unscoped. Right click steps it up and round (press_zoom). Speed
+## follows the level at once; the view and the scoped accuracy take the
+## level's zoom time to get there (zoom_progress).
+var zoom_level: int = 0
+## The level it was at before the last change, and when the change was.
+var _zoom_from: int = 0
+var _zoomed_usec: int = -1_000_000_000
+## A sniper that came out of the scope to fire goes back in to this level
+## once it may fire again (WeaponData.unzooms_after_shot); 0 for none.
+var _rezoom_level: int = 0
+
 
 func _init(p_data: WeaponData) -> void:
 	data = p_data
@@ -199,12 +247,92 @@ func is_reloading(now_usec: int) -> bool:
 ## (CS2's deploy time, the item's m_flDeployDuration).
 func draw(now_usec: int, seconds: float) -> void:
 	_drawn_usec = now_usec + int(roundf(seconds * 1_000_000.0))
+	_unscope()
 
 
 ## Put away: a reload under way stops, without its rounds, as a switch
-## stops one in CS2.
+## stops one in CS2, and the scope comes down.
 func holster() -> void:
 	_reloading_until_usec = -1
+	_unscope()
+
+
+## Right click on a gun with a scope: the next zoom level, and from the last
+## back out, one level a press (CS2's cl_debounce_zoom: holding does not
+## cycle). Not while it is being drawn or reloaded. Whether it zoomed:
+## false for a gun with no scope, where right click is something else's.
+func press_zoom(now_usec: int) -> bool:
+	if data.zoom_levels() == 0 or is_drawing(now_usec) or is_reloading(now_usec):
+		return false
+	_rezoom_level = 0
+	_zoom_to((zoom_level + 1) % (data.zoom_levels() + 1), now_usec)
+	return true
+
+
+func _zoom_to(level: int, now_usec: int) -> void:
+	if level == zoom_level:
+		return
+	_zoom_from = zoom_level
+	zoom_level = level
+	_zoomed_usec = now_usec
+
+
+## Straight out of the scope, with no time to get there: put away, drawn.
+func _unscope() -> void:
+	zoom_level = 0
+	_zoom_from = 0
+	_zoomed_usec = -1_000_000_000
+	_rezoom_level = 0
+
+
+## Whether it is out of the scope for a shot and going back in
+## (WeaponData.unzooms_after_shot).
+func rezoom_pending() -> bool:
+	return _rezoom_level > 0
+
+
+## How far the last zoom change has got, 0 to 1, over its level's zoom
+## time.
+func zoom_progress(now_usec: int) -> float:
+	var seconds := data.zoom_time(zoom_level)
+	if seconds <= 0.0:
+		return 1.0
+	return clampf(float(now_usec - _zoomed_usec) / (seconds * 1_000_000.0), 0.0, 1.0)
+
+
+## The field of view the scope gives at a moment, in CS2's degrees (90
+## unscoped), eased from the last level's to this one's over the zoom time.
+## What the view is drawn with; nothing in the game reads it.
+func zoom_fov_at(now_usec: int) -> float:
+	return lerpf(data.zoom_fov(_zoom_from), data.zoom_fov(zoom_level), zoom_progress(now_usec))
+
+
+## How much of the scoped accuracy it has: none unscoped, and scoping in, it
+## comes in over the zoom time, as the view narrows; coming out, it is gone
+## at once. CS2 keeps m_fAccuracySmoothedForZoom for this and publishes no
+## rate, so easing over the zoom time is a guess until it is measured
+## (reference/research/combat.md, R4).
+func scoped_share(now_usec: int) -> float:
+	if zoom_level == 0 or data.scoped == null:
+		return 0.0
+	if _zoom_from > 0:
+		return 1.0
+	return zoom_progress(now_usec)
+
+
+## Whether the view is through the scope now: a sniper's, which puts the
+## arms away and draws the scope over the screen, where the AUG's and SG
+## 553's keep both (WeaponData.hides_view_model_when_zoomed).
+func through_scope() -> bool:
+	return zoom_level > 0 and data.hides_view_model_when_zoomed
+
+
+## How fast the player may run with it: the scoped speed as soon as the
+## scope is up (the AWP's 100 against 200).
+func max_speed() -> float:
+	if zoom_level > 0 and data.scoped != null:
+		return data.scoped.max_player_speed
+	return data.max_player_speed
 
 
 func is_drawing(now_usec: int) -> bool:
@@ -246,6 +374,12 @@ func can_fire(now_usec: int) -> bool:
 ## standing on the ground.
 func update(dt: float, now_usec: int, state: ShooterState = null) -> void:
 	_clock_usec = maxi(_clock_usec, now_usec)
+	# Back into the scope once the bolt is worked, unless it is reloading or
+	# empty (a reload takes it out anyway).
+	if _rezoom_level > 0 and now_usec >= next_shot_usec():
+		if ammo > 0 and not is_reloading(now_usec):
+			_zoom_to(_rezoom_level, next_shot_usec())
+		_rezoom_level = 0
 	var since_shot := float(now_usec - _last_shot_usec) / 1_000_000.0
 
 	# Held, and still shooting. The gap matters as well as the button, because
@@ -263,7 +397,12 @@ func update(dt: float, now_usec: int, state: ShooterState = null) -> void:
 	var ducked := state != null and state.ducked
 	if state != null:
 		if state.on_ground and not _was_on_ground:
-			_inaccuracy = maxf(_inaccuracy, data.inaccuracy_landing - data.inaccuracy_standing)
+			# As scoped as the cone is (scoped_share).
+			var share := scoped_share(now_usec)
+			var excess := data.inaccuracy_landing - data.inaccuracy_standing
+			if share > 0.0:
+				excess = lerpf(excess, data.scoped.inaccuracy_landing - data.scoped.inaccuracy_standing, share)
+			_inaccuracy = maxf(_inaccuracy, excess)
 		_was_on_ground = state.on_ground
 	_decay_inaccuracy(dt, ducked)
 
@@ -383,25 +522,38 @@ func viewmodel_punch() -> Vector2:
 ## totals over standing still, so what each adds is its excess over that.
 ## A jump taken at a run is therefore worse than either, while a standing
 ## jump is not as bad as a full run.
-func current_inaccuracy(state: ShooterState) -> float:
-	var base := data.inaccuracy_standing
+##
+## Scoped, the gun's scoped numbers, as far as they have come in at now_usec
+## (scoped_share; the latest time the weapon was told of, left out).
+func current_inaccuracy(state: ShooterState, now_usec: int = -1) -> float:
+	var share := scoped_share(now_usec if now_usec >= 0 else _clock_usec)
+	var base := _cone_for(data, state)
+	if share > 0.0:
+		base = lerpf(base, _cone_for(data.scoped, state), share)
+	return base + _inaccuracy
+
+
+## The cone for how the shooter stands and moves, with one set of the gun's
+## numbers (unscoped or scoped), before the firing penalty.
+static func _cone_for(numbers: WeaponData, state: ShooterState) -> float:
+	var base := numbers.inaccuracy_standing
 	if state.ducked:
-		base = data.inaccuracy_crouching
+		base = numbers.inaccuracy_crouching
 	if not state.on_ground:
-		base += maxf(data.inaccuracy_jumping - data.inaccuracy_standing, 0.0)
+		base += maxf(numbers.inaccuracy_jumping - numbers.inaccuracy_standing, 0.0)
 	# Nothing under a third of the weapon's top speed, all of it from 95% up,
 	# as CS does. Between, it rises steeply (the fourth root) unless the walk
 	# key is down, when it is in proportion: a little speed costs a lot
 	# unless you are walking, which is what makes counter-strafing matter.
 	var over := inverse_lerp(
-		data.max_player_speed * MOVING_FROM, data.max_player_speed * MOVING_FULL, state.speed
+		numbers.max_player_speed * MOVING_FROM, numbers.max_player_speed * MOVING_FULL, state.speed
 	)
 	if over > 0.0:
 		over = minf(over, 1.0)
 		if not state.walking:
 			over = pow(over, 0.25)
-		base += maxf(data.inaccuracy_moving - data.inaccuracy_standing, 0.0) * over
-	return base + _inaccuracy
+		base += maxf(numbers.inaccuracy_moving - numbers.inaccuracy_standing, 0.0) * over
+	return base
 
 
 ## The view kick of one round, in degrees.
@@ -458,14 +610,20 @@ func fire(
 	#
 	# This is the whole point. The pattern is the truth and it is the same
 	# every spray, which is what makes it learnable. The view only suggests it.
-	var spread := current_inaccuracy(state)
+	#
+	# A shotgun's pellets keep a fixed pattern, the gun's spread wide, round
+	# an aim that the rest of the cone throws (pellet_directions).
+	var spread := current_inaccuracy(state, now_usec)
+	var many := data.pellets > 1
 	var direction := _spread_direction(
 		# Pattern x is degrees to the RIGHT, and yaw decreases rightward.
 		yaw_degrees - current.x,
 		pitch_degrees + current.y,
-		spread,
+		maxf(spread - data.spread, 0.0) if many else spread,
 		now_usec
 	)
+	var rounds := pellet_directions(direction) if many else PackedVector3Array([direction])
+	direction = rounds[0]
 
 	# The view gets kicked by this shot's own recoil, scaled down, and as a
 	# push on the punch velocity rather than a jump in the angle, so it rises
@@ -482,12 +640,19 @@ func fire(
 	shot.view_punch = punch
 	shot.base_yaw = yaw_degrees
 	shot.base_pitch = pitch_degrees
+	shot.pellet_directions = rounds
+	shot.zoom_level = zoom_level
+	shot.noscope = data.zoom_levels() > 0 and zoom_level == 0
 
 	_snap.kick(punch * data.snap_punch_impulse_scale())
 	_hold.kick(punch * data.hold_punch_impulse_scale())
 	_model_snap.kick(punch * data.model_snap_punch_impulse_scale())
 	_model_hold.kick(punch * data.model_hold_punch_impulse_scale())
-	_inaccuracy += data.inaccuracy_per_shot
+	var per_shot := data.inaccuracy_per_shot
+	var share := scoped_share(now_usec)
+	if share > 0.0:
+		per_shot = lerpf(per_shot, data.scoped.inaccuracy_per_shot, share)
+	_inaccuracy += per_shot
 	if not _impulses.is_empty():
 		_recoil.velocity += _impulses[mini(round_index, _impulses.size() - 1)]
 	_recoil_index = index + 1.0
@@ -495,6 +660,11 @@ func fire(
 	_clock_usec = maxi(_clock_usec, now_usec)
 	_trigger_reset = false
 	ammo -= 1
+	# The AWP and SSG 08 come out of the scope with the shot, and go back in
+	# once the bolt is worked (update).
+	if data.unzooms_after_shot and zoom_level > 0:
+		_rezoom_level = zoom_level
+		_zoom_to(0, now_usec)
 
 	return shot
 
@@ -503,6 +673,9 @@ func start_reload(now_usec: int) -> bool:
 	if reserve <= 0 or ammo >= data.magazine_size or is_reloading(now_usec):
 		return false
 	_reloading_until_usec = now_usec + int(data.reload_time * 1_000_000.0)
+	# Reloading takes the scope down, and it stays down.
+	_rezoom_level = 0
+	_zoom_to(0, now_usec)
 	return true
 
 
@@ -536,7 +709,36 @@ func _spread_direction(
 
 	var angle := rng.randf() * TAU
 	var radius := rng.randf() * spread_degrees
+	return _tilted(direction, angle, radius)
 
+
+## Where each of a shotgun's pellets goes from an aim: the gun's pattern
+## laid round it, the same every shot. The pattern is drawn the way a
+## round's place in the cone is, a direction and a uniform share of the
+## gun's spread, from the gun's spread seed and the pellet's number rather
+## than from when it was fired.
+##
+## CS2 fixed each shotgun's pattern in place of random pellets (Valve's
+## "Holiday Spread", December 2017; weapon_accuracy_shotgun_spread_patterns
+## is on), and only the shotguns have a spread seed. That the pattern comes
+## from the seed and that the spread sets its size is inferred; its real
+## shape is still to be read off CS2 (reference/research/combat.md, R5).
+func pellet_directions(aim: Vector3) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	var rng := RandomNumberGenerator.new()
+	for i in maxi(data.pellets, 1):
+		rng.seed = hash([data.spread_seed, i])
+		var angle := rng.randf() * TAU
+		var radius := rng.randf() * data.spread
+		out.append(_tilted(aim, angle, radius))
+	return out
+
+
+## direction turned `degrees` away from itself, towards `angle` round it
+## (0 to the right, a quarter turn up).
+static func _tilted(direction: Vector3, angle: float, degrees: float) -> Vector3:
+	if degrees <= 0.0:
+		return direction
 	var right := direction.cross(Vector3.UP)
 	if right.length_squared() < 0.0001:
 		# Looking straight up or down; any perpendicular will do.
@@ -544,7 +746,7 @@ func _spread_direction(
 	right = right.normalized()
 	var up := right.cross(direction).normalized()
 
-	var offset := (right * cos(angle) + up * sin(angle)) * tan(deg_to_rad(radius))
+	var offset := (right * cos(angle) + up * sin(angle)) * tan(deg_to_rad(degrees))
 	return (direction + offset).normalized()
 
 

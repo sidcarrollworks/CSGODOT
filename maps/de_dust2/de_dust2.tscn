@@ -1,6 +1,7 @@
 [gd_scene load_steps=2 format=3]
 
-[ext_resource type="Script" path="res://maps/de_dust2/de_dust2.gd" id="1_dust2"]
+[ext_resource type="Script" path="res://maps/play/play.gd" id="1_play"]
 
 [node name="Dust2" type="Node3D"]
-script = ExtResource("1_dust2")
+script = ExtResource("1_play")
+map_name = "de_dust2"

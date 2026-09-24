@@ -29,6 +29,7 @@ Updated 2026-09-23 later: bots walk the nav mesh (item 22), to the bomb sites an
 Updated 2026-09-23 evening: one world runs the tick (`GameWorld`, the first part of `reference/systemization.md`'s step 1).
 Updated 2026-09-23 night: dust2 buys (items 13 and 14 wired in), spawns give the knife and pistol only, the match sends CS2's round events, the bomb and grenades are in dust2's match, bots buy as CS2's do and hold what is in hand (items 6 and 24), and a drop is thrown from the hand (item 12).
 Updated 2026-09-24: binds added (item 12a, planned in `reference/binds.md`): one table of keys, CS2's defaults, for the game and the test range alike.
+Updated 2026-09-24 later: game modes apart from maps (item 24a, `reference/systemization.md` step 4's first part): any extracted defusal map plays in competitive.
 
 ## Part 1: what exists
 
@@ -336,7 +337,9 @@ item 6 is built.
 8. **Set `recoil_scale` from a measurement (Sid).** *(Local)* The spray's overall size
    is the one estimate left in the recoil model (it assumes the AK climbs 16
    degrees). Spray a wall in CS2 from 496 units and compare it with the
-   range's degree-lined wall.
+   range's degree-lined wall. A community recoil tool's patterns (2026-09-24,
+   `reference/spray_patterns/README.md`) put the AK's climb at 11.7
+   degrees, which would make `recoil_scale` 0.73; the measurement decides.
 9. **Weapon numbers from the CS2 Weapon Spreadsheet.** *(done, PR #23)*
    Every number the firing model uses was read from the sheet, now in the
    repo: damage, armour, falloff, magazine (M4A1-S 20), inaccuracy, recovery
@@ -544,11 +547,66 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
 24. **Playing the round.** *(Remote; Local records grenade lineups)* Bots on
     both sides fighting each other, buying to a plan, planting, rotating,
     retaking and defusing, throwing known smokes and flashes, getting out of
-    fire. *(CS2's stock buying done 2026-09-23: `BotBuying`, from its
+    fire. *(Smoke hiding players from bots and flashes blinding them done
+    2026-09-24: `Bot.can_see`, `Bot.is_blind`.)* *(CS2's stock buying done 2026-09-23: `BotBuying`, from its
     convars and `botprofile.db`, `reference/systems/economy.md`. A team's
     plan (full buy, force, save) is still to do, beyond CS2's own bots.)*
 
 ### Phase 9: multiplayer
+
+24a. **Game modes apart from maps.** *(done 2026-09-24, Remote; Local checks
+    below; `reference/systemization.md` finding 11 and step 4)* A map is
+    loaded by name and a mode runs on whatever map is loaded, so any CS2
+    defusal map the extraction has taken plays in competitive, not only
+    dust2. `scripts/extract_assets.sh` takes the map's name after each of a
+    map's steps (`map de_mirage`; de_dust2 when there is none; dust2's
+    paths unchanged); `MapLoader` (`src/map/map_loader.gd`) derives every
+    path from the name (`MapPaths`), loads the map, its lighting, its sky
+    (from the map's own sky material), its skybox, entities and nav mesh,
+    and says what is missing; `Competitive` (`src/modes/competitive.gd`)
+    sets up you, the bots, the match, its systems, the HUD and the views,
+    and F5, reading the map only through `MapContents`. Bots walk to the
+    `BombsiteA` and `BombsiteB` callouts, or to the bomb sites' volumes
+    where a map names its callouts otherwise. The map is chosen by
+    `map_name` on `maps/play/play.tscn` or `--map` on the command line;
+    `maps/de_dust2/de_dust2.tscn` is that scene set to dust2. No research
+    page covers other maps. **Local** (Sid, 2026-09-24): `scripts/run_tests.sh`
+    with the assets passed (1781 checks, dust2's 78 among them); dust2 on
+    the play scene finds its sky from the env_sky material; de_inferno,
+    extracted with `map de_inferno`, loads in 16 s with nothing missing
+    (16 spawns a side, 2 buy zones a side, both sites, bomb radius 600,
+    a nav mesh of 2738 areas) and its bots took the callout route and
+    fought for 100 s. Still open: extract and play de_mirage. **Still to
+    do**, each its own item: the test range as
+    a mode; ladders (the nav mesh reads them, nothing climbs them); doors
+    and breakables; hostage maps (a mode of their own); a dedicated server,
+    a mode that loads the map's collision, entities and nav mesh and builds
+    nothing to be seen (part of item 25).
+24b. **What de_inferno showed** (Sid's local test of 24a, 2026-09-24; none
+    of these comes from 24a):
+    - *Bots stall.* *(Remote, then Sid plays it)* 5 of 9 stood still for
+      about 60 s of a live round, alive and not fighting (1 on dust2). Two
+      Ts at A stop at (221, 232, 2030), 68 units above their site floor
+      (292, 164, 2000) and 77 away in plan; two CTs back from B jam
+      together at (2579 to 2611, 128, 2008), one jumping; a CT back from
+      A stops at (1493, 205, 2442), a spot it passed on the way out.
+      Doors and func_brush blockers are ruled out.
+    - *Café tables, chairs and signs draw solid black.* *(Local finds the
+      cause, then Remote)* They have textures; `prepare_export` warned
+      that inferno's world and skybox glTFs have a primitive with both
+      blend paint and vertex colour, which it leaves alone. Unconfirmed
+      as the cause.
+    - *No sky panorama on inferno.* *(Remote for the warning; the fix
+      waits on Source 2 Viewer)* CS2 1.41.8.3 ships VCS 72 shaders and
+      Source2Viewer-CLI 20.0 reads 59 to 71, so its env_sky material
+      (`materials/skybox/test/s2_de_inferno_sky01.vmat_c`) did not
+      decompile and 4284 textures failed. `extract_assets.sh` should warn
+      when Source 2 Viewer prints "Only VCS file versions".
+    - *The first import fails to compile `prepare_export.gd`.* *(Remote)*
+      On a fresh checkout `lightmap_materials.gd:75` names `BlendMaterials`
+      before any import has registered the class names, so the first
+      `map <name>` skips the lightmap average (`average.json`) until the
+      next import. Loading `BlendMaterials` by path there should fix it.
 
 25. **Netcode.** *(Remote; Local playtests across machines)* CS2's model: the
     server decides, clients send input with sub-tick times and predict their
@@ -659,7 +717,6 @@ grenades.
 What a thread can start now: what is left of the inventory (item 12: E to
 swap, guns on the ground as rigid bodies); the bind table (12a), taking over
 the keys the inventory put in `PlayerInput`; from the weapons todo, the
-registry of all 34 guns (R1) and
-the game's recovery fields (R13), with shotguns (R5) after it; the
+game's recovery fields (R13); the
 third-person firing layer (item 6), then the shadow's arms (6a); and the
 housekeeping.

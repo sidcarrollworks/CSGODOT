@@ -48,13 +48,14 @@ static func load_from(path: String) -> PackedVector2Array:
 
 
 ## Writes a pattern out in the same format, so a measured spray can go straight
-## back into the file it came from.
+## back into the file it came from. Each line of the note is a comment line.
 static func save_to(path: String, pattern: PackedVector2Array, note: String = "") -> Error:
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file == null:
 		return FileAccess.get_open_error()
 	if not note.is_empty():
-		file.store_line("# %s" % note)
+		for line in note.split("\n"):
+			file.store_line("# %s" % line)
 	file.store_line("# shot,x_degrees,y_degrees")
 	for index in pattern.size():
 		file.store_line("%d,%.4f,%.4f" % [

@@ -112,8 +112,9 @@ static func skeleton_of(gun: Node3D) -> Skeleton3D:
 ## where the world's projection puts the same place on screen. The camera
 ## space x and y are widened by the narrowing; the depth is kept. Source
 ## does the same for every view model attachment (FormatViewModelAttachment,
-## Source SDK 2013); that CS2's tracer starts there is inferred.
-static func as_drawn(eye: Transform3D, point: Vector3) -> Vector3:
+## Source SDK 2013); that CS2's tracer starts there is inferred. narrowing
+## is the arms' as drawn now (ViewModelProjection.narrowing_under): a scope
+## changes it.
+static func as_drawn(eye: Transform3D, point: Vector3, narrowing: float = ViewModelProjection.fov_narrowing()) -> Vector3:
 	var local := eye.affine_inverse() * point
-	var narrowing := ViewModelProjection.fov_narrowing()
 	return eye * Vector3(local.x * narrowing, local.y * narrowing, local.z)

@@ -216,6 +216,28 @@ func _test_the_drawn_muzzle() -> void:
 			and aside.is_equal_approx(Vector3(4.94 * k, 64.0 - 3.39 * k, -37.42)),
 		"a point on the first-person gun is drawn widened by the fov ratio (%.3f), its depth kept" % k
 	)
+	# A scope narrows the camera's field of view, and the arms' with it: your
+	# tracer starts, and the first-person cards are drawn, at the scope's.
+	var camera := Camera3D.new()
+	camera.fov = ViewModelProjection.vertical_fov(45.0)
+	var scoped := ViewModelProjection.narrowing_under(camera)
+	camera.free()
+	var scoped_aside := Muzzles.as_drawn(eye, Vector3(4.94, 60.61, -37.42), scoped)
+	var quads := EffectQuads.new()
+	root.add_child(quads)
+	var texture := ImageTexture.create_from_image(Image.create(1, 1, false, Image.FORMAT_RGBA8))
+	quads.begin(k)
+	quads.quad(texture, &"add", true, Transform3D.IDENTITY, Rect2(0.0, 0.0, 1.0, 1.0), Color.WHITE)
+	quads.finish()
+	quads.begin(scoped)
+	var drawn_at: Variant = (quads.get_child(0) as GeometryInstance3D).get_instance_shader_parameter(&"view_model_projection")
+	quads.free()
+	_check(
+		is_equal_approx(scoped, ViewModelProjection.fov_narrowing(45.0)) and scoped < k
+			and scoped_aside.is_equal_approx(Vector3(4.94 * scoped, 64.0 - 3.39 * scoped, -37.42))
+			and drawn_at is Vector2 and is_equal_approx((drawn_at as Vector2).x, scoped),
+		"scoped to 45, your tracer starts and the first-person cards are drawn at the scope's narrowing (%.3f, %s)" % [scoped, drawn_at]
+	)
 
 
 ## A round's impacts go with it, the first wall ending its tracer and the
@@ -263,6 +285,16 @@ func _test_a_round_and_its_impacts() -> void:
 		not into_nothing.is_empty() and is_equal_approx((into_nothing[0] as Tracers.Trail).end.z, -WeaponVData.number("weapon_ak47", "m_flRange")),
 		"a round that meets nothing draws its tracer to the gun's range (%s)" % [into_nothing.map(func(t: Tracers.Trail) -> Vector3: return t.end)]
 	)
+	# A shotgun's pellets are a round each: a tracer to each one's own end,
+	# none run on from one pellet's end to another's.
+	for pellet in 3:
+		game.events.send(&"fire_bullets", {"userid": 2, "weapon": "weapon_nova", "x": 0.0, "y": 64.0, "z": 0.0, "yaw": pellet * 2.0, "pellet": pellet})
+		game.events.send(&"bullet_impact", {"userid": 2, "x": -pellet * 20.0, "y": 64.0, "z": -600.0})
+	game.events.flush()
+	effects._trails.clear()
+	effects._process(0.0)
+	var ends := effects._trails.map(func(trail: Tracers.Trail) -> String: return "%s %.0f" % [trail.kind, trail.end.x])
+	_check(ends == ["shot 0", "shot -20", "shot -40"], "a shotgun's pellets draw a tracer each, to its own end (%s)" % [ends])
 	effects.queue_free()
 	camera.queue_free()
 	await process_frame

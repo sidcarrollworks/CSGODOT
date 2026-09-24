@@ -113,19 +113,13 @@ func _process(_delta: float) -> void:
 	if game == null:
 		return
 	var fraction := Engine.get_physics_interpolation_fraction()
-	var now := draw_usec()
+	var now := SimClock.draw_usec()
 	for id: int in _entities:
 		var entity: SimEntity = _entities[id]
 		if entity is GrenadeEntity:
 			_draw_grenade(entity as GrenadeEntity, fraction, now)
 		elif entity is InfernoEntity:
 			_draw_fire(id, entity as InfernoEntity, now)
-
-
-## The simulation time a frame falls at: between the last two ticks.
-static func draw_usec() -> int:
-	var tick := SimClock.tick_usec()
-	return SimClock.now_usec() - tick + int(Engine.get_physics_interpolation_fraction() * tick)
 
 
 func _draw_grenade(grenade: GrenadeEntity, fraction: float, now: int) -> void:
