@@ -45,12 +45,31 @@ var _fire: Node
 var _handling: Node
 var _hits: Node
 var _reload_serial: int = 0
+## Every set read (all_stems()), once for every player: a gun is taken up on
+## the tick (a bot's purchase), which must not read the disk.
+static var _loaded_all := false
 
 
 func _ready() -> void:
 	_fire = _make_player(4)
 	_handling = _make_player(2)
 	_hits = _make_player(2)
+	if not _loaded_all:
+		_loaded_all = true
+		SoundBank.load_sets(all_stems())
+
+
+## Every sound a weapon plays here, as stems: each set's shot, draw and
+## reload parts, and the hits.
+static func all_stems() -> PackedStringArray:
+	var stems := PackedStringArray(HIT_SETS)
+	for set_name: String in SETS:
+		var weapon: Dictionary = SETS[set_name]
+		stems.append(weapon.get("fire", ""))
+		stems.append(weapon.get("draw", ""))
+		for part: Array in weapon.get("reload", []):
+			stems.append(part[1])
+	return stems
 
 
 func _make_player(polyphony: int) -> Node:
@@ -72,13 +91,8 @@ func _make_player(polyphony: int) -> Node:
 func equip(data: WeaponData) -> void:
 	weapon_set = SETS.get(set_name_for(data.model_path), {})
 	_reload_serial += 1
+	# Every set was read as the first player's sounds were made (_ready).
 	_play(_handling, weapon_set.get("draw", ""), HANDLING_DB)
-	# Its shot, its reload and the hits, now rather than at the first of each.
-	var stems := PackedStringArray([weapon_set.get("fire", "")])
-	for part: Array in weapon_set.get("reload", []):
-		stems.append(part[1])
-	stems.append_array(HIT_SETS)
-	SoundBank.load_sets(stems)
 
 
 ## The set's name from a model path: weapon_rif_ak47.gltf is "ak47".

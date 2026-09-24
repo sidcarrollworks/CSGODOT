@@ -59,10 +59,11 @@ which is where shooting gets tuned.
 | `Mouse 1` | fire; with a grenade out, pull the pin, and throw it overhand on letting go |
 | `Mouse 2` | with a grenade out, lob it underhand (both buttons: between the two) |
 | `R` | reload |
-| `1` to `5` | CS2's slots: your rifle, your pistol, the knife, the grenades (again for the next), the bomb |
+| `1` to `5` | CS2's slots: your primary, your pistol, the knife, the grenades (again for the next), the bomb |
 | `Q` | the last thing held |
 | `G` | drop what is in hand (a gun or a grenade; never the knife); walk over a gun to pick it up where its slot is free |
-| `E` | use: defuse the bomb (on the range, until dust2 has its bomb and grenades) |
+| `E` | use: defuse the bomb |
+| `B` | the buy menu, in your side's buy zone while buying is open (dust2; the range's is below) |
 | `F5` | end warmup and start the match (dust2) |
 | `Mouse 1` / `Space`, dead | watch the next teammate / from their eyes or behind them |
 
@@ -373,16 +374,21 @@ dust2 is a match, run the way CS2's server runs one (`src/match/`), with
 CS2's competitive numbers (`MatchRules`): two minutes of warmup, where you
 come back when you die (F5 ends it), then rounds of 15 s of freeze time,
 where you can look round but not move or fire, and 1:55 of play. A round
-ends when a side is all dead, or when time runs out, which the
-counter-terrorists win; the next starts 7 s later, everyone back at a spawn,
-the survivors healed with the armour and weapon they had. Nobody comes back
+ends when a side is all dead, when time runs out, which the
+counter-terrorists win, or by the bomb: once it is planted the clock no
+longer ends the round and the Ts all dead does not either; its blast wins
+it for the Ts, its defuse for the CTs. The next starts 7 s later, everyone
+back at a spawn, the survivors healed with the armour and weapons they had. Nobody comes back
 during a round: dead, you see your body for 2 s, then a living teammate's
 eyes (fire moves to the next, jump puts the camera behind them). After 12
 rounds the sides swap and the score goes with the team; 13 wins it, 12-12
 goes to one overtime of six rounds, and 15-15 is a draw. A teammate's round
 does a third of its damage, and nobody walks through anybody. The score,
-each side's players alive and the clock are at the top of the screen. Until
-there is buying, each side starts with its rifle.
+each side's players alive and the clock are at the top of the screen. A
+spawn from nothing gives the knife and the side's pistol (the Glock-18, the
+CTs' P2000) and no armour, and the rest is bought: B in your buy zone,
+$800 to start, $16,000 in warmup, your money above your health. The bots
+buy in freeze time as CS2's own bots do, and hold what is in their hands.
 
 The sounds are the game's own too (`src/audio/`): the weapon's shots,
 reload in its parts and draw, flat in your ears the way the game plays your

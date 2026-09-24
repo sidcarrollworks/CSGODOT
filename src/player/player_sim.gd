@@ -91,6 +91,9 @@ var rounds_fired: int = 0
 ## Health and armour, and what a round can hit.
 var hit_target: HitTarget
 var alive: bool = true
+## How the player was moving when they died, which what they drop keeps
+## (ItemDrops): velocity itself is zero from the death on.
+var death_velocity: Vector3 = Vector3.ZERO
 
 ## The last command run, for whatever draws the player.
 var last_command := UserCmd.new()
@@ -226,12 +229,6 @@ const THROW_OVERHAND_SECONDS := 0.77
 const THROW_UNDERHAND_SECONDS := 0.50
 ## Speed with nothing in hand, as with the knife.
 const EMPTY_HANDED_SPEED := 250.0
-## Where a gun is held with no body holding one (yours): ahead of the eyes,
-## to the right and below them, in units. About where a bot's hand holds
-## its gun (57 up, 12 out), by eye.
-const HELD_AHEAD := 12.0
-const HELD_RIGHT := 6.0
-const HELD_BELOW := 8.0
 
 
 func _ready() -> void:
@@ -291,6 +288,13 @@ func _body_weapon_set() -> String:
 	return ""
 
 
+## Whether the body holds whatever is in the hand, changing with it
+## (PlayerModel.hold), rather than the one gun _body_weapon_model() gives it
+## for life.
+func _body_holds_items() -> bool:
+	return false
+
+
 ## Puts the body on: the third-person model holding weapon_model, with the
 ## game's capsules on its bones, and HitTarget's four standard boxes where
 ## either has not been extracted, with a grey body to see them by when the
@@ -301,7 +305,7 @@ func wear_body(weapon_model: String, drawn: bool) -> void:
 	# A model nobody sees needs no lighting.
 	model.probe_lit = drawn
 	add_child(model)
-	if not model.setup(team, weapon_model, _body_weapon_set()):
+	if not model.setup(team, weapon_model, _body_weapon_set(), _body_holds_items()):
 		model.queue_free()
 		model = null
 	elif not drawn:
@@ -374,6 +378,8 @@ func change_team(new_team: String) -> void:
 	hitboxes = null
 	hit_target.drop_hitboxes()
 	wear_body(_body_weapon_model(), _body_drawn())
+	if alive:
+		_body_holds(inventory.in_hand())
 	hit_target.set_active(alive)
 	team_changed.emit(team)
 
@@ -458,7 +464,21 @@ func _draw(entry: Inventory.Entry) -> void:
 	if held_weapon != null:
 		held_weapon.trigger_held = false
 		held_weapon.draw(now, deploy)
+	# A dead player's hand empties as what they drop goes; the body lets go
+	# at the death, and takes up what is in hand again when it gets up.
+	if alive:
+		_body_holds(entry)
 	equipped.emit(entry)
+
+
+## The body holds what is in the hand, for those who see it: its model, and
+## its own hold, draw, reload and shots (PlayerModel.hold). A body nobody
+## sees holds nothing.
+func _body_holds(entry: Inventory.Entry) -> void:
+	if model == null or not _body_drawn():
+		return
+	var item_class := entry.item.item_class if entry != null else ""
+	model.hold(item_class, WeaponLibrary.look(item_class, team) if not item_class.is_empty() else {})
 
 
 ## The item in hand, by class ("weapon_ak47", "weapon_knife"); "" for none.
@@ -473,24 +493,11 @@ func hand_ready() -> bool:
 
 
 ## Where the thing in hand is, and which way it points, in the world, as the
-## world models are built (+Z the muzzle, +Y the top): the gun in the body's
-## hand where the body holds one (a bot's, which is posed every tick for
-## its hitboxes), or else just ahead of the eyes, low and to the right,
-## where a gun is seen in first person, pointing where the player looks.
-## What a drop throws from (ItemDrops).
+## world models are built (+Z the muzzle, +Y the top): CS2's hold for it,
+## from where the player stands and looks (HeldPose). What a drop throws
+## from (ItemDrops).
 func held_transform() -> Transform3D:
-	var held := model.held_weapon if model != null else null
-	if held != null and held.is_inside_tree():
-		var at := held.global_transform
-		return Transform3D(at.basis.orthonormalized(), at.origin)
-	var aim := PlayerInput.aim_direction(yaw_degrees, pitch_degrees)
-	var yaw := deg_to_rad(yaw_degrees)
-	var right := Vector3(cos(yaw), 0.0, -sin(yaw))
-	var eye := global_position + Vector3.UP * eye_height()
-	return Transform3D(
-		Basis.looking_at(-aim, Vector3.UP),
-		eye + aim * HELD_AHEAD + right * HELD_RIGHT + Vector3.DOWN * HELD_BELOW
-	)
+	return HeldPose.of(self, _held_class)
 
 
 ## Where the map put the player, to come back to.
@@ -841,9 +848,12 @@ func _on_hit_target_died() -> void:
 	_fall()
 	# The gun leaves the hand: it falls as an item of its own (ItemDrops),
 	# from where the hand held it.
-	if model != null and model.held_weapon != null:
-		model.held_weapon.visible = false
+	if model != null:
+		model.let_go()
 	killed.emit(zone)
+	# What the death drops is let go at the end of the tick, moving as the
+	# body was.
+	death_velocity = velocity
 	velocity = Vector3.ZERO
 	_forget_hits()
 
@@ -882,8 +892,12 @@ func _get_up() -> void:
 			model.set_animating(true)
 	if model != null:
 		model.play(model.idle)
-		if model.held_weapon != null:
-			model.held_weapon.visible = true
+		if model.holds_items and not _held_class.is_empty() and model.holding == _held_class:
+			# Alive and spawned fresh, the body took what is in hand a moment
+			# ago and the idle ended its draw: it draws again.
+			model.play(&"draw")
+		else:
+			_body_holds(inventory.in_hand())
 
 
 ## Where the body is: the middle of the ragdoll while there is one, or

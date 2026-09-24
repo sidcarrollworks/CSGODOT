@@ -11,8 +11,11 @@ extends CanvasLayer
 ## it are alive, the clock of whatever part of the round it is, and a line
 ## under them saying what that part is (warmup, freeze time, who won the
 ## round, half time, the result). Dead in a round, the line across the middle
-## says who you are watching. The rest of a round's HUD (money, the kill
-## feed, the radar, the scoreboard) is roadmap item 15.
+## says who you are watching. With an economy: your money above your
+## health, and while you may buy (in your buy zone, in buy time) a "B  buy"
+## beside it with the buy time left, as CS2 shows a cart there; and CS2's
+## buy menu on B, over the rest. The rest of a round's HUD (the kill feed,
+## the radar, the scoreboard) is roadmap item 15.
 ##
 ## And, small in the top left, where you are and where you are looking,
 ## like CS2's getpos: the feet's position in units and the view's yaw and
@@ -22,6 +25,12 @@ extends CanvasLayer
 var player: PlayerController
 ## The match, where there is one; it is only read.
 var match_state: MatchState
+## Money and buying, where there is an economy, and whose; only read, and
+## asked for purchases through the menu.
+var economy: Economy
+var userid: int = GameEvents.NOBODY
+## CS2's buy menu (B), over the rest of the HUD; null without an economy.
+var buy_menu: BuyMenu
 
 var _health: Label
 var _armor: Label
@@ -33,6 +42,13 @@ var _where: Label
 var _score: Label
 var _clock: Label
 var _round: Label
+var _money: Label
+var _buy_hint: Label
+## Why B would not open the menu, for a moment.
+var _notice: Label
+var _notice_left: float = 0.0
+## How long a refusal stays up, in seconds.
+const NOTICE_SECONDS := 2.0
 
 
 func _ready() -> void:
@@ -67,6 +83,23 @@ func _ready() -> void:
 	_round.size.x = 800.0
 	for label in [_clock, _score, _round]:
 		label.visible = match_state != null
+	_money = _label(Control.PRESET_BOTTOM_LEFT, Vector2(24, -104), HORIZONTAL_ALIGNMENT_LEFT, 28)
+	_money.add_theme_color_override("font_color", Color(0.55, 0.9, 0.5))
+	_money.visible = economy != null
+	_buy_hint = _label(Control.PRESET_BOTTOM_LEFT, Vector2(150, -98), HORIZONTAL_ALIGNMENT_LEFT, 18)
+	_buy_hint.add_theme_color_override("font_color", Color(0.7, 1.0, 0.7))
+	_buy_hint.visible = false
+	_notice = _label(Control.PRESET_CENTER, Vector2(-300, 120), HORIZONTAL_ALIGNMENT_CENTER, 22)
+	_notice.size.x = 600.0
+	_notice.visible = false
+	if economy != null:
+		# Last, so it draws over everything else here.
+		buy_menu = BuyMenu.new()
+		buy_menu.name = "BuyMenu"
+		buy_menu.economy = economy
+		buy_menu.userid = userid
+		add_child(buy_menu)
+		buy_menu.refused.connect(_on_buy_refused)
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
@@ -75,7 +108,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		_where.visible = not _where.visible
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if economy != null:
+		_show_money(delta)
 	if player == null:
 		return
 	if player.hit_target != null:
@@ -96,6 +131,33 @@ func _process(_delta: float) -> void:
 		_show_match()
 	if _where.visible:
 		_where.text = where_line(player.global_position, player.input.yaw_degrees, player.input.pitch_degrees)
+
+
+## Your money, and while you may buy, B and the buy time left beside it;
+## and a refusal, for a moment.
+func _show_money(delta: float) -> void:
+	_money.text = money_text(economy.money(userid))
+	var may_buy := economy.shop_refusal(userid) == Economy.OK
+	_buy_hint.visible = may_buy and not buy_menu.is_open()
+	if may_buy:
+		_buy_hint.text = buy_hint(economy.buy_seconds_left(SimClock.now_usec()))
+	_notice_left -= delta
+	_notice.visible = _notice_left > 0.0
+
+
+static func money_text(amount: int) -> String:
+	return "$%d" % amount
+
+
+## "B  buy" while buying has no end yet (warmup, freeze time), then the
+## seconds left.
+static func buy_hint(seconds: float) -> String:
+	return "B  buy" if is_inf(seconds) else "B  buy   %d s" % ceili(seconds)
+
+
+func _on_buy_refused(why: StringName) -> void:
+	_notice.text = Economy.MESSAGES.get(why, "")
+	_notice_left = NOTICE_SECONDS
 
 
 ## What the line across the middle says while you are dead: when you are

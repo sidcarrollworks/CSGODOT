@@ -66,6 +66,14 @@ var _hold_next_win := {"T": false, "CT": false}
 var _planted := false
 var _dead := {}
 var _rounds_played := 0
+## A half has ended (announce_phase_end): the money and the ladders go back
+## to a half's start at the next round's start (round_prestart), as CS2's
+## swap happens at the round reset, so what is earned in the pause does not
+## outlast it.
+var _half_ended := false
+## The tick a round was last set up on (round_prestart): buying commands run
+## on it were sent before it (_sent_before_the_round).
+var _round_set_up_tick := -1
 ## Buying: open until _buy_ends_usec (-1 while freeze time or warmup runs,
 ## when it has no end yet).
 var _buy_open := true
@@ -90,8 +98,10 @@ func _init(money_rules: MoneyRules = null, zones_by_side: BuyZones = null) -> vo
 func attach(game_systems: GameSystems) -> void:
 	game = game_systems
 	var events := game.events
+	events.listen(&"round_announce_warmup", _on_warmup)
 	events.listen(&"begin_new_match", _on_begin_new_match)
 	events.listen(&"announce_phase_end", _on_half)
+	events.listen(&"round_prestart", _on_round_prestart)
 	events.listen(&"round_start", _on_round_start)
 	events.listen(&"round_freeze_end", _on_freeze_end)
 	events.listen(&"round_end", _on_round_end)
@@ -101,6 +111,9 @@ func attach(game_systems: GameSystems) -> void:
 	events.listen(&"bomb_defused", _on_bomb_defused)
 	game.on_command(&"buy", _on_buy_command)
 	game.on_command(&"sellback", _on_sellback_command)
+	# What a bot asks before it shops (the contract's queries).
+	game.provide(&"money", money)
+	game.provide(&"can_buy", func(userid: int) -> bool: return shop_refusal(userid) == OK)
 
 
 func tick(t: SimTick) -> void:
@@ -248,18 +261,29 @@ static func item_named(name: String) -> String:
 
 # --- Buying ------------------------------------------------------------------
 
-func _on_buy_command(userid: int, args: PackedStringArray, _t: SimTick) -> bool:
+func _on_buy_command(userid: int, args: PackedStringArray, t: SimTick) -> bool:
 	if args.is_empty():
 		return false
-	_buy(userid, item_named(args[0]))
+	if not _sent_before_the_round(t):
+		_buy(userid, item_named(args[0]))
 	return true
 
 
-func _on_sellback_command(userid: int, args: PackedStringArray, _t: SimTick) -> bool:
+func _on_sellback_command(userid: int, args: PackedStringArray, t: SimTick) -> bool:
 	if args.is_empty():
 		return false
-	_undo(userid, item_named(args[0]))
+	if not _sent_before_the_round(t):
+		_undo(userid, item_named(args[0]))
 	return true
+
+
+## Whether a command run on this tick was sent before the round the tick
+## set up: the match starts a round after the players' commands and before
+## the game's step, so what was asked on that tick was asked of the round
+## before (a bot's warmup plan, a click in its last moment), and is taken
+## and dropped rather than bought with the new round's money.
+func _sent_before_the_round(t: SimTick) -> bool:
+	return t != null and t.tick == _round_set_up_tick
 
 
 func _buy(userid: int, item_class: String) -> void:
@@ -269,6 +293,10 @@ func _buy(userid: int, item_class: String) -> void:
 	var price := price_for(userid, item_class)
 	var record := {"item": item_class, "price": price, "armor": inv.armor, "helmet": inv.helmet}
 	var replaced := inv.add(item_class)
+	# A gun bought is taken in hand; anything else is only carried.
+	var bought := ItemRegistry.item(item_class)
+	if bought.is_gun and bought.slot in [ItemDef.Slot.PRIMARY, ItemDef.Slot.PISTOL]:
+		inv.select(item_class)
 	_accounts[userid] = money(userid) - price
 	if not _bought.has(userid):
 		_bought[userid] = []
@@ -355,15 +383,31 @@ func _update_zones() -> void:
 
 # --- Money -------------------------------------------------------------------
 
+## Warmup: everyone on warmup's money.
+func _on_warmup(_event: GameEvent) -> void:
+	_reset_accounts(rules.warmup_money)
+
+
 func _on_begin_new_match(_event: GameEvent) -> void:
 	_rounds_played = 0
+	_half_ended = false
 	_reset_accounts(rules.start_money)
 	_reset_ladders()
 
 
-## Half time, and each half of overtime: everyone back to the half's money,
-## the ladders back to where a half starts.
+## The end of a half: half time, regulation into overtime, each half of
+## overtime. The money follows at the next round's start.
 func _on_half(_event: GameEvent) -> void:
+	_half_ended = true
+
+
+## A round is about to start: after a half, everyone back to the half's
+## money, the ladders back to where a half starts.
+func _on_round_prestart(event: GameEvent) -> void:
+	_round_set_up_tick = event.tick
+	if not _half_ended:
+		return
+	_half_ended = false
 	var overtime := _rounds_played >= match_rules.max_rounds
 	_reset_accounts(rules.overtime_start_money if overtime else rules.start_money)
 	_reset_ladders()

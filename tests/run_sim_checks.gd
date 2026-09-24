@@ -752,6 +752,13 @@ func _test_the_hand() -> void:
 				and held.basis.z.dot(aim) > 0.99,
 			"it leaves from where the gun was held, pointing where the player looks"
 		)
+		var right := Vector3(cos(deg_to_rad(player.yaw_degrees)), 0.0, -sin(deg_to_rad(player.yaw_degrees)))
+		var off := held.origin - (player.global_position + Vector3.UP * player.eye_height())
+		_check(
+			absf(off.dot(aim) - HeldPose.RIFLE_STAND.x) < 0.01 and absf(off.dot(right) - HeldPose.RIFLE_STAND.y) < 0.01
+				and absf(off.dot(right.cross(aim)) - HeldPose.RIFLE_STAND.z) < 0.01,
+			"held where CS2's third-person hold has the AK-47, from the game's state alone: 13.7 ahead of the eyes, 4.7 right, 3.7 down"
+		)
 		_check(
 			absf(across - ItemDrops.THROW_SPEED / Vector3(aim + Vector3.UP * ItemDrops.THROW_LIFT).length()) < 1.0
 				and Vector2(went.x, went.z).normalized().dot(Vector2(aim.x, aim.z).normalized()) > 0.999,
@@ -766,12 +773,18 @@ func _test_the_hand() -> void:
 		)
 		view._process(0.0)
 		var model := view.model_of(dropped.id)
-		var lie: Transform3D = (view.get("_lying") as Dictionary).get("weapon_ak47", Transform3D())
-		var down := Basis(Vector3.UP, DroppedItemView.heading(dropped.basis)) * lie.basis
+		# Measured on what is drawn, not by the view's own sums: the drawn
+		# box's height is the model's thinnest size, its bottom the floor,
+		# and the muzzle's axis along the way it was heading.
+		var own := DroppedItemView.bounds(model) if model != null else AABB()
+		var lying_box := model.transform * own if model != null else AABB()
+		var way := DroppedItemView.heading(dropped.basis)
+		var muzzle := (model.transform.basis * Vector3.BACK).normalized() if model != null else Vector3.ZERO
 		_check(
-			model != null and model.transform.basis.is_equal_approx(down)
-				and model.transform.origin.is_equal_approx(dropped.position + lie.origin),
-			"drawn, it lies on its thinnest side, the way it was heading, its lowest point on the floor"
+			model != null and absf(lying_box.position.y - dropped.position.y) < 0.1
+				and absf(lying_box.size.y - minf(own.size.x, minf(own.size.y, own.size.z))) < 0.1
+				and absf(muzzle.dot(Vector3(sin(way), 0.0, cos(way)))) > 0.99,
+			"drawn, it lies on its thinnest side, the way it was heading, its lowest point on the floor (%.2f high, bottom %.2f off)" % [lying_box.size.y, lying_box.position.y - dropped.position.y]
 		)
 		player.global_position = dropped.position
 		player.previous_position = dropped.position

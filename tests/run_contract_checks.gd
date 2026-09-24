@@ -74,6 +74,7 @@ func _run() -> void:
 	_test_queries()
 	_test_commands()
 	await _test_a_grenade_kill_pays_its_award()
+	await _test_a_death_drop_moves_as_the_body_did()
 	await _test_dropping_and_picking_up()
 	await _test_what_a_death_leaves()
 	await _test_the_world_steps_the_game()
@@ -532,8 +533,15 @@ func _test_starting_items() -> void:
 	_check_equal(t.in_hand_class(), "weapon_glock", "with the Glock in hand")
 	var ct := Inventory.new()
 	ct.give_starting_items("CT")
-	_check(ct.has("weapon_usp_silencer") and ct.in_hand_class() == "weapon_usp_silencer", "a CT with the USP-S")
+	_check(ct.has("weapon_hkp2000") and ct.in_hand_class() == "weapon_hkp2000", "a CT with the P2000 (mp_ct_default_secondary)")
 	_check_equal(ct.in_hand().weapon.ammo, ct.in_hand().weapon.data.magazine_size, "loaded")
+	_check(
+		ct.item_in(ItemDef.Slot.PRIMARY) == null and not ct.helmet and is_zero_approx(ct.armor)
+			and ct.item_in(ItemDef.Slot.GRENADE) == null,
+		"and nothing else: no primary, no armour, no grenade"
+	)
+	for side: String in ["T", "CT"]:
+		_check_equal(Inventory.STARTING_PISTOLS[side], Loadout.item_at(side, 0, 0), "%s: the starting pistol is the default loadout's first pistol" % side)
 
 
 func _test_one_gun_a_slot() -> void:
@@ -622,7 +630,7 @@ func _test_switching_keeps_the_gun() -> void:
 	inv.select("weapon_m4a1_silencer")
 	var m4 := inv.in_hand().weapon
 	m4.ammo = 11
-	_check(inv.select_slot(ItemDef.Slot.PISTOL) and inv.in_hand_class() == "weapon_usp_silencer", "2 takes the pistol")
+	_check(inv.select_slot(ItemDef.Slot.PISTOL) and inv.in_hand_class() == "weapon_hkp2000", "2 takes the pistol")
 	_check(inv.select_last() and inv.in_hand().weapon == m4 and m4.ammo == 11, "Q takes back the same M4, 11 rounds in it")
 	_check(inv.select_slot(ItemDef.Slot.KNIFE) and inv.in_hand_class() == "weapon_knife", "3 the knife")
 	_check(not inv.select("weapon_awp"), "a gun not carried cannot be taken out")
@@ -907,6 +915,7 @@ class _Player:
 	var alive: bool = true
 	var yaw_degrees: float = 0.0
 	var velocity := Vector3.ZERO
+	var death_velocity := Vector3.ZERO
 
 
 func _new_player(game: GameSystems, team: String, at: Vector3) -> int:
@@ -931,6 +940,27 @@ func _settle(game: GameSystems, tick: int) -> int:
 		if not falling:
 			break
 	return tick
+
+
+## A body stops dead as it dies, before the death is handed out; what it
+## drops still moves as the body was moving (PlayerSim.death_velocity).
+func _test_a_death_drop_moves_as_the_body_did() -> void:
+	var game := GameSystems.new()
+	var victim := await _new_player(game, "T", Vector3(0.0, 0.0, -600.0))
+	var inv := game.inventory(victim)
+	inv.give_starting_items("T")
+	inv.add("weapon_ak47")
+	inv.select("weapon_ak47")
+	var node := game.roster.player(victim) as _Player
+	node.death_velocity = Vector3(250.0, 0.0, 0.0)
+	node.alive = false
+	game.events.send(&"player_death", {"userid": victim})
+	game.step(2000)
+	var guns := game.entities.of_class("weapon_ak47")
+	_check(
+		guns.size() == 1 and (guns[0] as DroppedItem).velocity.is_equal_approx(Vector3(250.0, 0.0, 0.0)),
+		"a gun dropped by a death moves as the body was moving as it died (%s)" % [(guns[0] as DroppedItem).velocity if not guns.is_empty() else null]
+	)
 
 
 func _test_dropping_and_picking_up() -> void:

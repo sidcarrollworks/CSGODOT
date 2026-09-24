@@ -14,14 +14,24 @@ extends Node
 ## client drawing what it says.
 ##
 ## A round ends when a side that started it with players has none left
-## alive, or when the round's time runs out, which the counter-terrorists
-## win because no bomb went off. The bomb is not in yet (roadmap item 16):
-## when it is, it ends rounds through end_round with its own reasons, and a
-## planted bomb stops the round's clock from ending the round.
+## alive, when the round's time runs out, which the counter-terrorists win
+## because no bomb went off, or when the bomb goes off or is defused (its
+## events). Once the bomb is down the round's clock no longer ends the
+## round, and every terrorist dead no longer does either: the
+## counter-terrorists still have to defuse it.
 ##
-## Until there is buying in a match (roadmap item 14), a player who spawns
-## is handed their side's rifle, the AK-47 or the M4A1-S, with CS2's knife
-## and pistol (PlayerSim.starting_gun), in place of the money to buy one.
+## It says what the round is doing as the game's events, as CS2's server
+## does (reference/systems/contracts.md): round_announce_warmup,
+## begin_new_match, round_officially_ended, round_prestart, round_start,
+## round_poststart, round_freeze_end, round_end, announce_phase_end and
+## cs_win_panel_match, into the events of the world that runs it (events).
+## The economy, the bomb, the grenades and what lies on the ground go by
+## them.
+##
+## A player spawns with CS2's knife and their side's pistol and nothing
+## else (mp_t_default_secondary, mp_ct_default_secondary, mp_free_armor 0);
+## the rest is bought. Someone who lived through the last round keeps what
+## they carry.
 
 enum Phase {
 	## Everyone plays, dies and comes back; nothing counts.
@@ -69,6 +79,22 @@ signal match_over(winner: String)
 
 @export var rules: MatchRules
 
+## The game's events, where the match says what the round is doing and
+## hears what the bomb does. The GameWorld that runs the match hands it its
+## own (GameWorld.match_state); null for a match a check runs by hand, which
+## then says nothing.
+var events: GameEvents:
+	set(value):
+		if events != null:
+			events.unlisten(&"bomb_planted", _on_bomb_planted)
+			events.unlisten(&"bomb_exploded", _on_bomb_exploded)
+			events.unlisten(&"bomb_defused", _on_bomb_defused)
+		events = value
+		if events != null:
+			events.listen(&"bomb_planted", _on_bomb_planted)
+			events.listen(&"bomb_exploded", _on_bomb_exploded)
+			events.listen(&"bomb_defused", _on_bomb_defused)
+
 ## Everyone in the match.
 var players: Array[PlayerSim] = []
 ## Where each side spawns, as SourceEntities.player_spawns gives them:
@@ -98,6 +124,12 @@ var _swap_next := false
 ## Which sides started the round with anyone on them: a side nobody plays
 ## cannot be eliminated.
 var _fielded := {"T": false, "CT": false}
+## The bomb is down this round (bomb_planted): the clock and a dead T side no
+## longer end it.
+var _bomb_planted := false
+## Warmup is to end on the next tick (F5, mp_warmup_end), so its spawns and
+## events happen inside the tick like everything else.
+var _warmup_end_asked := false
 
 
 func _ready() -> void:
@@ -112,6 +144,7 @@ func add_player(player: PlayerSim) -> void:
 	players.append(player)
 	player.team_damage_scale = rules.friendly_fire_bullets if rules != null else 1.0
 	player.freeze_cam_seconds = rules.freeze_cam_seconds if rules != null else 2.0
+	_give_spawn_armor(player)
 
 
 ## Someone leaves the match: out of the game altogether (GameWorld).
@@ -126,6 +159,7 @@ func start(now_usec: int = SimClock.now_usec()) -> void:
 	for player in players:
 		player.team_damage_scale = rules.friendly_fire_bullets
 		player.freeze_cam_seconds = rules.freeze_cam_seconds
+		_give_spawn_armor(player)
 	_score = {"T": 0, "CT": 0}
 	_swapped = false
 	_swap_next = false
@@ -133,8 +167,10 @@ func start(now_usec: int = SimClock.now_usec()) -> void:
 	round_number = 0
 	winner = ""
 	if rules.warmup_seconds <= 0.0:
+		_send(&"begin_new_match", {}, now_usec)
 		_start_round(now_usec, true)
 		return
+	_send(&"round_announce_warmup", {}, now_usec)
 	_spawn_everyone(true)
 	for player in players:
 		player.respawns = true
@@ -145,7 +181,14 @@ func start(now_usec: int = SimClock.now_usec()) -> void:
 ## Ends warmup now and starts the first round (CS2's mp_warmup_end).
 func end_warmup(now_usec: int = SimClock.now_usec()) -> void:
 	if phase == Phase.WARMUP:
+		_send(&"begin_new_match", {}, now_usec)
 		_start_round(now_usec, true)
+
+
+## Ends warmup at the next tick: what a key (F5) asks for, from outside the
+## tick.
+func end_warmup_on_next_tick() -> void:
+	_warmup_end_asked = true
 
 
 ## Moves the match on to where it stands at this moment of simulation time:
@@ -153,7 +196,8 @@ func end_warmup(now_usec: int = SimClock.now_usec()) -> void:
 func tick(now_usec: int) -> void:
 	match phase:
 		Phase.WARMUP:
-			if now_usec >= phase_ends_usec:
+			if now_usec >= phase_ends_usec or _warmup_end_asked:
+				_warmup_end_asked = false
 				end_warmup(now_usec)
 		Phase.FREEZE:
 			if now_usec >= phase_ends_usec:
@@ -162,7 +206,7 @@ func tick(now_usec: int) -> void:
 			var eliminated := _eliminated()
 			if eliminated != Reason.NONE:
 				end_round(winner_of(eliminated), eliminated, now_usec)
-			elif now_usec >= phase_ends_usec:
+			elif now_usec >= phase_ends_usec and not _bomb_planted:
 				end_round("CT", Reason.TIME_RAN_OUT, now_usec)
 		Phase.ROUND_END:
 			if now_usec >= phase_ends_usec:
@@ -179,6 +223,11 @@ func end_round(side: String, reason: Reason, now_usec: int = SimClock.now_usec()
 	last_winner = side
 	last_reason = reason
 	round_ended.emit(side, reason)
+	_send(&"round_end", {
+		"winner": side, "reason": GameEvents.round_end_reason(reason),
+		"message": GameEvents.round_end_message(reason),
+		"player_count": alive_on("T") + alive_on("CT"),
+	}, now_usec)
 
 	var next := _after_round()
 	if next["over"]:
@@ -187,9 +236,15 @@ func end_round(side: String, reason: Reason, now_usec: int = SimClock.now_usec()
 			player.frozen = true
 			player.respawns = false
 		_enter(Phase.OVER, now_usec)
+		_send(&"cs_win_panel_match", {}, now_usec)
 		match_over.emit(winner)
 		return
 	_swap_next = next["swap"]
+	# The end of a half: half time, regulation into overtime (no swap), each
+	# overtime half. CS2 announces it as the half's last round ends; the swap
+	# and the money come at the next round's start.
+	if _swap_next or rounds_played == rules.max_rounds:
+		_send(&"announce_phase_end", {}, now_usec)
 	var pause := rules.halftime_seconds if _swap_next else rules.round_restart_seconds
 	_enter(Phase.ROUND_END, now_usec + _usec(pause))
 
@@ -238,11 +293,6 @@ static func other(side: String) -> String:
 	return "CT" if side == "T" else "T"
 
 
-## What the weapon a player on this side starts with is, until they can buy.
-static func starting_weapon(side: String) -> WeaponData:
-	return WeaponLibrary.m4a1s() if side == "CT" else WeaponLibrary.ak47()
-
-
 func _enter(next: Phase, ends_usec: int) -> void:
 	phase = next
 	phase_ends_usec = ends_usec
@@ -253,11 +303,22 @@ func _go_live(now_usec: int) -> void:
 	for player in players:
 		player.frozen = false
 	_enter(Phase.LIVE, now_usec + _usec(rules.round_seconds))
+	_send(&"round_freeze_end", {}, now_usec)
 
 
 ## A round starts: sides swapped if it is time, everyone at a spawn, still
 ## until freeze time is over, and nobody coming back who dies.
+##
+## CS2's order: round_prestart before anything else is done (handed out at
+## once, so the ground is cleared and the bomb taken back before anyone
+## spawns onto them), then the swap and the spawns, then round_start and
+## round_poststart.
 func _start_round(now_usec: int, fresh: bool) -> void:
+	if phase == Phase.ROUND_END:
+		_send(&"round_officially_ended", {}, now_usec)
+	_send(&"round_prestart", {}, now_usec)
+	if events != null:
+		events.flush()
 	if phase == Phase.WARMUP:
 		# Warmup counted for nothing.
 		_score = {"T": 0, "CT": 0}
@@ -265,6 +326,7 @@ func _start_round(now_usec: int, fresh: bool) -> void:
 	if _swap_next:
 		_swap_sides()
 		_swap_next = false
+	_bomb_planted = false
 	round_number = rounds_played + 1
 	_spawn_everyone(fresh)
 	for side in SIDES:
@@ -273,26 +335,21 @@ func _start_round(now_usec: int, fresh: bool) -> void:
 		player.respawns = false
 		player.frozen = rules.freeze_seconds > 0.0
 	round_started.emit(round_number)
+	_send(&"round_start", {"timelimit": roundi(rules.round_seconds)}, now_usec)
+	_send(&"round_poststart", {}, now_usec)
 	if rules.freeze_seconds > 0.0:
 		_enter(Phase.FREEZE, now_usec + _usec(rules.freeze_seconds))
 	else:
 		_go_live(now_usec)
 
 
-## Everyone to the other side: the other side's model, hitboxes and rifle.
-## They start the round fresh, as CS2 hands a team that has swapped nothing
-## but the pistol and the money it starts with.
+## Everyone to the other side: the other side's model and hitboxes. They
+## start the round fresh, as CS2 hands a team that has swapped nothing but
+## the pistol and the money it starts with.
 func _swap_sides() -> void:
 	_swapped = not _swapped
 	for player in players:
-		var side := other(player.team)
-		var bot := player as Bot
-		if bot != null:
-			# Held in the body the side change builds.
-			var data := starting_weapon(side)
-			bot.weapon_model = data.model_path
-			bot.weapon_data = data
-		player.change_team(side)
+		player.change_team(other(player.team))
 	sides_swapped.emit()
 
 
@@ -350,26 +407,53 @@ static func _shuffle(items: Array, rng: RandomNumberGenerator) -> void:
 		items[j] = kept
 
 
-## What a player spawning this round is handed besides CS2's knife and
-## pistol: their side's rifle, until there is buying (roadmap item 14). A
-## spawn hands it out (PlayerSim.respawn); a survivor keeps what they carry.
+## What a player spawning this round is handed: CS2's knife and their
+## side's pistol and nothing else, whatever gun they were given outside a
+## match (the range's AK-47, a bot's own); the rest is bought. A spawn hands
+## it out (PlayerSim.respawn); a survivor keeps what they carry.
 func _arm(player: PlayerSim) -> void:
-	var data := starting_weapon(player.team)
-	player.starting_gun = data
-	var bot := player as Bot
-	if bot != null:
-		bot.weapon_data = data
+	player.starting_gun = null
+
+
+## The armour a player spawns with, as a reset puts it back: none in
+## competitive (mp_free_armor 0), kevlar, or kevlar and a helmet.
+func _give_spawn_armor(player: PlayerSim) -> void:
+	if player.hit_target == null or rules == null:
+		return
+	player.hit_target.wear(Inventory.FULL_ARMOR if rules.free_armor > 0 else 0.0, rules.free_armor >= 2)
 
 
 ## A side that started the round with players and has none alive. Both
 ## sides gone on the same tick is given to the terrorists, the
 ## counter-terrorists being checked first; how CS2 decides it is not known.
+## With the bomb down, the terrorists all dead is not the end: the
+## counter-terrorists still have to defuse it.
 func _eliminated() -> Reason:
 	if _fielded["CT"] and alive_on("CT") == 0:
 		return Reason.CT_ELIMINATED
-	if _fielded["T"] and alive_on("T") == 0:
+	if _fielded["T"] and alive_on("T") == 0 and not _bomb_planted:
 		return Reason.T_ELIMINATED
 	return Reason.NONE
+
+
+## Says what happened, into the world's events, stamped with the moment of
+## the transition (the economy times buying from it).
+func _send(event_name: StringName, fields: Dictionary, at_usec: int) -> void:
+	if events != null:
+		events.send(event_name, fields, at_usec)
+
+
+func _on_bomb_planted(_event: GameEvent) -> void:
+	if phase == Phase.LIVE:
+		_bomb_planted = true
+
+
+func _on_bomb_exploded(event: GameEvent) -> void:
+	end_round("T", Reason.BOMB_EXPLODED, event.at_usec)
+
+
+func _on_bomb_defused(event: GameEvent) -> void:
+	end_round("CT", Reason.BOMB_DEFUSED, event.at_usec)
 
 
 ## After a round is scored: whether the match is over and who won it, and

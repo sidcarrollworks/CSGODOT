@@ -70,9 +70,11 @@ func _on_death(event: GameEvent) -> void:
 	if inventory == null:
 		return
 	var node := game.roster.player(userid)
-	var velocity: Vector3 = node.get(&"velocity") if node != null and node.get(&"velocity") is Vector3 else Vector3.ZERO
+	var velocity := _death_velocity(node)
 	var held := inventory.in_hand_class()
-	var hand := _held_transform(node)
+	# Held out past the hull, a gun can be through the wall its holder died
+	# against, as for a drop.
+	var hand := _clear_of_walls(node, _held_transform(node), game.last_tick.space if game.last_tick != null else null)
 	for entry in inventory.drops_on_death():
 		var from := hand if entry.item.item_class == held else _middle(node)
 		var rng := _seeded(userid, entry.item.item_class)
@@ -155,6 +157,19 @@ func _throw_velocity(node: Node3D) -> Vector3:
 	var aim := PlayerInput.aim_direction(yaw if yaw is float else 0.0, pitch if pitch is float else 0.0)
 	var own = node.get(&"velocity")
 	return (aim + Vector3.UP * THROW_LIFT).normalized() * THROW_SPEED + (own if own is Vector3 else Vector3.ZERO)
+
+
+## How a player was moving as they died: PlayerSim keeps it
+## (death_velocity), since a death stops the body before the death's event is
+## handed out; else their velocity, else still.
+static func _death_velocity(node: Node3D) -> Vector3:
+	if node == null:
+		return Vector3.ZERO
+	for property: StringName in [&"death_velocity", &"velocity"]:
+		var value = node.get(property)
+		if value is Vector3:
+			return value
+	return Vector3.ZERO
 
 
 ## Where the thing in hand is, and which way it points: the player's own

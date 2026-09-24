@@ -33,6 +33,10 @@ var _picked_column: int = -1
 var _built_for: String = ""
 var _mouse_before: Input.MouseMode = Input.MOUSE_MODE_CAPTURED
 
+## B was pressed where the menu may not open: why (Economy's refusal), for
+## the HUD to say.
+signal refused(reason: StringName)
+
 
 func _ready() -> void:
 	visible = false
@@ -45,7 +49,11 @@ func is_open() -> bool:
 
 
 func open() -> void:
-	if economy == null or visible or not _may_shop():
+	if economy == null or visible:
+		return
+	var why := economy.shop_refusal(userid)
+	if why != Economy.OK:
+		refused.emit(why)
 		return
 	_build()
 	_picked_column = -1

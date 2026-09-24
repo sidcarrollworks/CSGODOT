@@ -89,7 +89,16 @@ The default loadout, the menu's columns (IG `flexible_loadout_slot` and
 - **When buy time counts from**: the end of freeze time, so buying is open
   for all of freeze time and 20 s after.
 - **Warmup**: buying is open for as long as warmup lasts, and accounts hold
-  $800. CS2's warmup money is not in the files.
+  $16,000 (`MoneyRules.warmup_money`, set on `round_announce_warmup`), the
+  community's figure; CS2's warmup money is not in the files (E2). The
+  match's money starts at `begin_new_match`, when warmup ends.
+- **Half time's money comes at the next round's start.** The half is
+  announced as its last round ends (`announce_phase_end`), and the money
+  and the ladders go back to a half's start on the next `round_prestart`,
+  as CS2 swaps the sides at the round reset (`m_bSwitchingTeamsAtRoundReset`,
+  round-economy.md); so nothing earned in the pause outlasts it.
+- **A gun bought is taken in hand** (a primary or a pistol); armour, the
+  kit, grenades and the Zeus are only carried. From memory of CS2.
 - **The menu's key order** (1 pistols to 5 grenades) follows the loadout's
   order; undoing is a right-click. Both by eye; CS2's own menu decides.
 - Not built: the short-handed bonus (CFG `cash_team_bonus_shorthanded 1000`,
@@ -107,41 +116,78 @@ Local tasks (Sid's machine), added to `reference/cs2-systems.md`'s E1 and E2:
 - **E2.** When buy time counts from, the helmet's own price, and the
   menu's key order.
 
-## What the GameWorld needs to do to wire it in
+## How it is wired in
 
-None of this is in the files the local agent owns (`player_sim.gd`,
-`bot.gd`, `match_state.gd`, `de_dust2.gd`). Checked against the GameWorld
-(PR #50): the two combine without a conflict and every check passes. Once
-the world holds a `GameSystems` and steps it in `GameWorld.end_tick`, after
-the match:
+On dust2 (done 2026-09-23, `de_dust2.gd`'s `_add_systems`):
 
-1. Add the economy to it:
-   `game.add_system(Economy.new(MoneyRules.new(), BuyZones.from_volumes(BrushVolume.buy_zones(entities, root))))`,
-   with `economy.match_rules` set to the match's `MatchRules`. It reads the
-   tick's time from the `SimTick` it is handed, so it runs on the world's
-   count like everything else.
-2. `MatchState` sends, as the contract lists: `begin_new_match` when warmup
-   ends, `round_start` and `round_freeze_end` each round, `round_end` with
-   `GameEvents.round_end_reason`, and `announce_phase_end` at every side
-   swap, after the round that ends the half has been paid. Money needs
-   nothing else from it.
-3. `MatchState._arm` stops handing a fresh player a rifle: a fresh player
-   gets `Inventory.give_starting_items(side)`, and a survivor keeps what
-   they had, including what they bought.
-4. Deaths go through `DamageInfo.deal` (it sends `player_death` with the
-   weapon's class), and the bomb sends `bomb_planted` and `bomb_defused`.
-   Every spawn sends `player_spawn` (a respawn, where the game has them):
-   the economy counts a player dead from `player_death` until then, or
-   until the next `round_start`.
-5. On dust2, `BuyMenu` goes in the HUD's layer with `economy` and your
-   `userid` set (see `maps/test_range/test_range.gd`), and B opens it.
-6. Bots buying (roadmap item 24) sends the same `buy` command.
+1. The economy is a system in the world's game:
+   `Economy.new(MoneyRules.new(), BuyZones.from_volumes(BrushVolume.buy_zones(entities, root)))`,
+   with `economy.match_rules` set to the match's `MatchRules`. Where the
+   buy zones have not been extracted (`scripts/extract_assets.sh volumes`)
+   a stand-in box 128 units round each side's spawn points is used, and the
+   map says so in the top left; CS2 has no such fallback.
+2. `MatchState` sends the round's events into the world's events
+   (`GameWorld.match_state` hands it them): `round_announce_warmup`,
+   `begin_new_match` when warmup ends, `round_prestart` (handed out at
+   once, before anyone spawns), `round_start`, `round_freeze_end`,
+   `round_end` with `GameEvents.round_end_reason` and its message, and
+   `announce_phase_end` as each half's last round ends, half time,
+   regulation into overtime and each overtime half alike.
+3. A spawn from nothing gives `Inventory.give_starting_items(side)` and no
+   armour (`MatchRules.free_armor`, CS2's `mp_free_armor 0`); a survivor
+   keeps what they had, including what they bought.
+4. Deaths go through `DamageInfo.deal`, the bomb sends `bomb_planted`,
+   `bomb_defused` and `bomb_exploded`, and every spawn sends
+   `player_spawn`.
+5. The HUD (`GameHud`) shows your money above your health and, while you
+   may buy, "B  buy" with the buy time left; B opens `BuyMenu`, and when it
+   may not open the HUD says why for two seconds (the menu's `refused`).
+6. Bots buy through the same `buy` command (below).
 
-On the test range this is done already (`maps/test_range/range_shop.gd`):
-the economy is a system in the range's `game`, with a buy zone round the
-spawn, $16,000 (O fills it again) and buying that never closes. Until
-`PlayerSim` does these itself, the range does them for the player: a gun
-bought is put in their hands, and a respawn sends `player_spawn`
-(`RangeShop._on_respawned`, to remove once `PlayerSim` sends it). The
-range's starting items are added beside whatever is carried already, so
-the order the range sets things up in does not matter.
+On the test range (`maps/test_range/range_shop.gd`) the economy is a
+system in the range's `game`, with a buy zone round the spawn, $16,000 (O
+fills it again) and buying that never closes. The range's starting items
+are added beside whatever is carried already, so the order the range sets
+things up in does not matter.
+
+## Bots buying
+
+What CS2's classic bot (CCSBot, which plays competitive and casual) does,
+as `BotBuying` (`src/bots/bot_buying.gd`) plans it and `Bot` carries it
+out, as the buy commands a player's menu sends, so the economy prices and
+refuses each as it does anyone's (reference/research/round-hud-bots.md B):
+
+| Rule | CS2 | Source |
+|---|---|---|
+| Nothing below the eco limit | $2,000 (`bot_eco_limit`), so nothing on a pistol round | CV |
+| Order | primary, secondary, armour, then with what is left a grenade | CV `sv_bot_buy_grenade_chance`'s description |
+| Primary | the first gun on its weapon template its side may buy and it can afford; none when it carries one | GT `botprofile.db` |
+| Templates | Rifle 25, RifleT 12, Sniper 8, PunchT 6, Spray 5, Punch 4, Shotgun 4, Power 2 of 147 profiles; 81 with none | GT `botprofile.db` |
+| Grenade | a third of the time (`sv_bot_buy_grenade_chance 33`), one, HE 6 : flash, smoke, fire, decoy 1 each | CV |
+| Kit | a CT buys one when it can | From memory |
+
+The choices where CS2 is silent, each marked in the code:
+
+- **When**: 0.25 to 1 s after it spawns (16 ticks, then up to 48 more from
+  its seed), so nine bots do not all buy on one tick. CS2's delay is in no
+  file.
+- **A bot's template** is picked from its name, weighted as the 147
+  profiles use them, and kept all match. The 81 profiles with no preference
+  buy by CS2's own `autobuy.txt` gun order, a stand-in.
+- **The loadout**: a template's `m4a1` buys the M4 the side's loadout
+  holds (the M4A1-S), and `mp7` the MP5-SD, by `autobuy.txt`'s rule that a
+  weapon sharing a place buys the one equipped there; a gun the loadout
+  does not hold (M249, SCAR-20, G3SG1) is skipped, as the menu cannot buy
+  it either.
+- **No pistol step**: which pistol CS2's bot buys is in no file; it keeps
+  its own.
+- **Armour**: the suit, then the vest (refused once the suit is on).
+- **The kit before the grenade.**
+- A molotov weight stands for the incendiary on a CT.
+
+After buying, a bot takes its best gun out (a primary over a pistol), and
+a gun it picks up the same way. Everything is seeded from the game's own
+state (its userid, the tick, its name), so two runs of a match buy the
+same. Checked by `tests/run_bot_buy_checks.gd`. A team's plan (full buy,
+force, save, dropping guns for teammates) goes beyond CS2's own bots and
+is roadmap item 24's.

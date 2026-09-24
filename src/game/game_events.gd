@@ -13,6 +13,13 @@ extends RefCounted
 ## ones already queued, so a death and the money paid for it settle within
 ## the tick they happened in.
 ##
+## One flush comes earlier: a round's start (MatchState._start_round)
+## hands out round_prestart at once, so the ground is cleared and the bomb
+## taken back before anyone spawns. It runs in the world's end of the tick,
+## after the players' commands and before the game's step, so everything
+## queued so far that tick goes out with it, while GameSystems.now_usec() is
+## still the last tick's; a listener wanting the time takes event.at_usec.
+##
 ## The names and keys are CS2's (SCHEMA), so what a system listens for is
 ## what CS2's own game sends. An event or key not in SCHEMA is refused, which
 ## keeps SCHEMA and the contract the one list of what can happen.
@@ -71,6 +78,9 @@ const SCHEMA := {
 	&"buytime_ended": {},
 
 	# Rounds and the match.
+	## Warmup has begun (CS2's announcement of it; that it is sent as
+	## warmup starts is read from its name).
+	&"round_announce_warmup": {},
 	&"begin_new_match": {},
 	&"round_prestart": {},
 	&"round_start": {"timelimit": 0, "fraglimit": 0, "objective": ""},
@@ -79,7 +89,8 @@ const SCHEMA := {
 	&"round_end": {"winner": "", "reason": "", "message": "", "player_count": 0},
 	&"round_officially_ended": {},
 	&"round_mvp": {"userid": NOBODY, "reason": 0, "value": 0},
-	## Every side swap: half time, and each overtime's halves.
+	## The end of every half: half time, regulation into overtime, and each
+	## overtime half.
 	&"announce_phase_end": {},
 	&"cs_win_panel_match": {},
 
@@ -211,6 +222,16 @@ func pending() -> Array[GameEvent]:
 	return _queue.duplicate()
 
 
+## Whether an event of this name is queued and not yet handed out: a round
+## ended this tick (round_end), which what runs later in the tick must not
+## act past. Copies nothing.
+func is_pending(name: StringName) -> bool:
+	for event in _queue:
+		if event.name == name:
+			return true
+	return false
+
+
 ## Drops what is queued without handing it out.
 func clear() -> void:
 	_queue.clear()
@@ -230,3 +251,21 @@ static func round_end_reason(reason: int) -> String:
 		MatchState.Reason.BOMB_DEFUSED:
 			return "BombDefused"
 	return "RoundDraw"
+
+
+## round_end's message, the notice CS2 shows for a reason: its localisation
+## token (round-hud-bots.md A6; that the server sends the token is from
+## memory).
+static func round_end_message(reason: int) -> String:
+	match reason:
+		MatchState.Reason.T_ELIMINATED:
+			return "#SFUI_Notice_CTs_Win"
+		MatchState.Reason.CT_ELIMINATED:
+			return "#SFUI_Notice_Terrorists_Win"
+		MatchState.Reason.TIME_RAN_OUT:
+			return "#SFUI_Notice_Target_Saved"
+		MatchState.Reason.BOMB_EXPLODED:
+			return "#SFUI_Notice_Target_Bombed"
+		MatchState.Reason.BOMB_DEFUSED:
+			return "#SFUI_Notice_Bomb_Defused"
+	return "#SFUI_Notice_Round_Draw"

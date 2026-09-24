@@ -50,6 +50,7 @@ func _run() -> void:
 
 	_test_handed_out_at_the_round_start(t_id)
 	_test_no_plant_before_the_round_is_live(t_id)
+	_test_no_plant_once_the_round_has_ended(t_id)
 	_test_a_plant_through_the_game(t_id)
 	_test_the_blast_through_the_damage_path(t_id, ct_id, ct)
 	_test_dropped_and_picked_up(t_id, planter)
@@ -108,6 +109,28 @@ func _test_no_plant_before_the_round_is_live(t_id: int) -> void:
 	_step(4.0)
 	_check(not _system.bomb.planting() and _system.bomb.state == C4.State.CARRIED,
 		"holding the plant in freeze time plants nothing")
+
+
+## A round the match ends on a tick is over for the bomb on that tick, though
+## round_end is handed out only at its end: a plant that would finish then
+## does not, pays nothing and leaves no bomb down.
+func _test_no_plant_once_the_round_has_ended(t_id: int) -> void:
+	_round_event(&"round_freeze_end")
+	_asks[t_id] = {"plant": true}
+	_step(_system.bomb.rules.plant_seconds - 0.1)
+	var was_planting := _system.bomb.planting()
+	_heard.clear()
+	# The match ends the round (time out) before the game's step, on the
+	# tick the plant would finish.
+	_game.events.send(&"round_end", {"winner": "CT", "reason": "TargetSaved"})
+	_step(0.2)
+	_check(
+		was_planting and not _names_heard().has("bomb_planted") and not _system.bomb.planted()
+			and _game.entities.of_class("planted_c4").is_empty() and not _system.live,
+		"a plant that would finish on the tick the round ends does not: no bomb_planted, no bomb down"
+	)
+	# Still held, for the next round's plant.
+	_step(0.1)
 
 
 func _test_a_plant_through_the_game(t_id: int) -> void:

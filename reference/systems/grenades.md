@@ -114,10 +114,10 @@ Counted in the checks, for the performance rules:
 For the GameWorld (`src/sim/game_world.gd`, PR #50) and whoever owns the
 files named:
 
-1. **dust2's `GameWorld`** adds the system to its game, as the range does:
-   `world.game.add_system(GrenadeSystem.new())`, and a `GrenadeView` that
-   `watch`es the game. At a round's start the entities
-   are cleared (`entities.clear()`, as the contract says) and the system's
+1. *(Done 2026-09-23.)* **dust2's `GameWorld`** adds the system to its
+   game, as the range does: `world.game.add_system(GrenadeSystem.new())`,
+   and a `GrenadeView` that `watch`es the game. At a round's start
+   (`round_prestart`) the grenades and fires are removed and the system's
    blinding with them (`GrenadeSystem.clear()`). In a match,
    `team_damage_scale = GrenadeRules.TEAM_DAMAGE_IN_MATCH`.
 2. **`player_sim.gd`: the throw from the hand.** *(Done: `_update_grenade`,
@@ -138,7 +138,7 @@ files named:
    at the tick of the command. Holding one caps the speed at 245
    (`WeaponData.max_player_speed` from `ItemRegistry.weapon_data`).
 3. **Your view (`player_view.gd` or the HUD):** a `FlashOverlay` with your
-   userid, on top of the HUD. The flashed ringing is a sound (below).
+   userid, on top of the HUD *(done on dust2 2026-09-23)*. The flashed ringing is a sound (below).
 4. **`bot.gd`: sight.** `can_see` adds two checks after its wall trace:
    no sight when `game.query(&"smoke_length_between", [eyes, theirs], 0.0)`
    is over `GrenadeRules.BOT_MAX_VISIBLE_SMOKE_LENGTH`, and none (or firing

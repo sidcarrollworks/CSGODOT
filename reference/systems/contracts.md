@@ -40,6 +40,16 @@ listeners. An event sent by a listener during `flush()` is handed out in the
 same flush, after the ones already queued, so a chain (a death, then the
 money for it) settles within one tick.
 
+One flush comes earlier: a round's start (`MatchState._start_round`)
+hands out `round_prestart` at once, so the ground is cleared and the C4
+taken back before anyone spawns. It runs after the players' commands and
+before `game.step`, so everything queued so far that tick goes out with it
+(the commands' events, `round_officially_ended`), while
+`GameSystems.now_usec()` is still the last tick's: a listener that wants
+the time takes `event.at_usec`. Anything later in a tick that must not act
+past a round's end asks `events.is_pending(&"round_end")` (the bomb does,
+so no plant lands on the tick a round ends).
+
 ```gdscript
 var events := GameEvents.new()
 events.send(&"player_death", {"userid": 3, "attacker": 1, "weapon": "weapon_ak47", "headshot": true})
@@ -117,14 +127,20 @@ Items
 - `buytime_ended`: (none)
 
 Rounds and the match
-- `round_prestart`, `round_poststart`, `round_freeze_end`, `round_officially_ended`, `begin_new_match`, `cs_win_panel_match`: (none)
+- `round_prestart`, `round_poststart`, `round_freeze_end`, `round_officially_ended`, `begin_new_match`, `round_announce_warmup`, `cs_win_panel_match`: (none)
 - `round_start`: timelimit, fraglimit, objective
 - `round_end`: winner, reason, message, player_count
 - `round_mvp`: userid, reason, value
-- `announce_phase_end`: sent at every side swap (half time, and each
-  overtime's halves); a new match is `begin_new_match`. Whether the half
-  starting is overtime is known from the round count against
-  `MatchRules` (money does this itself).
+- `announce_phase_end`: sent as every half's last round ends: half time,
+  regulation into overtime (no swap there), and each overtime half. What
+  follows a half (the swap, the money) comes at the next round's start
+  (`round_prestart`). A new match is `begin_new_match`, warmup
+  `round_announce_warmup`. Whether the half starting is overtime is known
+  from the round count against `MatchRules` (money does this itself).
+- The match's order at a round's start, CS2's: `round_officially_ended`
+  (after a round's end), `round_prestart`, handed out at once so the
+  ground is cleared and the C4 taken back before anyone spawns, then the
+  swap and the spawns, then `round_start` and `round_poststart`.
 
 The bomb (as the bomb thread asked, with CS2's `entindex` added to `bomb_dropped`)
 - `player_given_c4`: userid
@@ -300,9 +316,11 @@ var saved := inv.save_state(); inv.load_state(saved)
   it itself when its carrier dies. A dead player's inventory keeps the
   rest until they next spawn (`strip()` then), so every system hearing
   `player_death` still sees what they carried.
-- Starting items: the knife, and the Glock-18 for T or the USP-S for CT
-  (CS2's default loadout; the P2000 is the CT alternative once there is a
-  loadout).
+- Starting items: the knife, and the Glock-18 for T or the P2000 for CT
+  (CS2's `mp_t_default_secondary` and `mp_ct_default_secondary`, and the
+  default loadout's first pistol place; the USP-S is the CT alternative
+  once there is a loadout page). No armour (`mp_free_armor 0`,
+  `MatchRules.free_armor`).
 - Nothing here sends events; the system that caused the change does
   (`item_purchase`, `item_pickup`, `bomb_dropped`, `grenade_thrown`).
 - `item_remove` {userid, item} is sent once, by whoever takes the item out
@@ -316,9 +334,19 @@ var saved := inv.save_state(); inv.load_state(saved)
 
 `DroppedItem` (a `SimEntity`, class the item's own: `"weapon_ak47"`,
 `"item_defuser"`) holds the carried `Inventory.Entry`, so a gun keeps its
-ammo; it falls under gravity (one trace a tick while falling) and lies
-still. `DroppedItem.drop(game, userid, entry, velocity)` puts one on the
-ground from a player: buying uses it for the gun a purchase replaced.
+ammo, and a `basis` (the world model's axes: +Z the muzzle, +Y the top) and
+spin; it flies under gravity, turning (one ray a tick while it moves),
+bounces off the world, and rests; drawn, it lies on its thinnest side the
+way it was heading (`DroppedItemView`). `DroppedItem.drop(game, userid,
+entry, velocity)` puts one on the ground at a player's middle: buying uses
+it for the gun a purchase replaced. `DroppedItem.drop_from(game, userid,
+entry, from, velocity, spin)` starts it from a transform: a drop and a
+death let the gun in hand go from the hand as it was held
+(`HeldPose.of(node, item_class)`, CS2's hold from its third-person clips,
+from the player's position, view and crouch alone, never an animated
+bone), at 300 u/s where they look, a little lifted, with their own motion;
+a death with the body's motion as it died (`PlayerSim.death_velocity`,
+since the body stops before `player_death` is handed out).
 `ItemDrops`, the items contract's own system (GameSystems adds it first):
 - hears `player_death` and drops what `drops_on_death()` gives
   (`defuser_dropped` for the kit);
@@ -347,9 +375,10 @@ on 2026-09-23 and checked against both files:
 | `weapon_auto_cleanup_time`, `weapon_max_before_cleanup` | 0, 0 | nothing is cleaned up before the round ends |
 | `mp_shoot_dropped_grenades` | false | bullets pass through items on the ground |
 
-In no file (measure): the drop's throw speed (200 forward, 100 up), the
-pickup reach, which grenade counts as best, a gun's mass and bounce on the
-ground, and how blasts and bullets push it. The bomb's dropped C4 takes
+In no file (measure): the throw's split between forward and up
+(`ItemDrops.THROW_LIFT`; the speed is CS2's `m_flDropSpeed` 300), the
+spin (by eye), the pickup reach, which grenade counts as best, a gun's
+mass and bounce on the ground, and how blasts and bullets push it. The bomb's dropped C4 takes
 the same two waits if it follows CS2.
 
 ## 4. The tick, and how systems join it
@@ -444,6 +473,12 @@ system, in `attach`), `game.query(&"name", [args], fallback)`,
 - `holds_still(userid: int) -> bool`: true while that player is planting
   or defusing (the bomb). `player_sim` reads it to stop moving and firing
   without touching `frozen`, which the match owns. Fallback false.
+- `money(userid: int) -> int`: that player's account (the economy). Bots
+  read it before they shop. Fallback 0.
+- `can_buy(userid: int) -> bool`: whether that player may shop now: on a
+  side, alive, buying open, in their buy zone (the economy's
+  `shop_refusal` is OK). Fallback false, so with no economy a bot never
+  buys.
 A new query is a line here.
 
 ## 5. What the local agent's files need, to wire this in
@@ -459,23 +494,29 @@ None of these are changed by the contract threads; this branch changes
   (`world.game.inventory(userid)` is the same object); 1 to 5 and Q select
   from it, each gun keeping its `Weapon`; a spawn sends `player_spawn` and
   strips a dead player (`PlayerSim._loadout`: the knife, the side's pistol
-  and `starting_gun`); `weapon.press_trigger()` per press (R2); it reads
+  and `starting_gun`, which a match leaves empty); a drawn body holds what
+  is in hand (`PlayerModel.hold`); `weapon.press_trigger()` per press (R2); it reads
   `holds_still` (the range no longer sets `frozen`) and throws on the
   attack buttons with a grenade in hand, as `grenades.md` describes.
 - `player_sim.gd`, still to do: `_on_hit` and `_fall` read
   `hit_target.last_damage` in place of the `last_hit_*` fields; `killed`
   passes `hit_target.killing_damage`.
 - `bot.gd`: *(done)* the inventory through PlayerSim, `bot.arm()` now
-  handing it its starting gun. Still to do: USE and ATTACK2 when bots plant
-  and throw; the `burning_at` and `smoke_length_between` queries to keep
-  out of fire and see through smoke.
-- `match_state.gd`: sends `begin_new_match`, `round_prestart`,
-  `round_start`, `round_poststart`, `round_freeze_end`, `round_end` (with
-  `GameEvents.round_end_reason`), `round_officially_ended`,
-  `announce_phase_end` at each side swap, `cs_win_panel_match`; `_arm`
-  gives `Inventory.give_starting_items` in place of `starting_weapon`; the
-  round's clock listens for `bomb_planted`, `bomb_exploded`,
-  `bomb_defused`. The bomb system hands out the C4 itself on `round_start`.
+  handing it its starting gun; *(done 2026-09-23)* buying in freeze time
+  through `buy` commands, after the `can_buy` and `money` queries
+  (`BotBuying`), and its best gun taken out. Still to do: USE and ATTACK2
+  when bots plant and throw; the `burning_at` and `smoke_length_between`
+  queries to keep out of fire and see through smoke.
+- *(Done 2026-09-23.)* `match_state.gd`: sends `round_announce_warmup`,
+  `begin_new_match`, `round_prestart` (handed out at once), `round_start`,
+  `round_poststart`, `round_freeze_end`, `round_end` (with
+  `GameEvents.round_end_reason` and `round_end_message`),
+  `round_officially_ended`, `announce_phase_end` at the end of each half,
+  `cs_win_panel_match`, into the events `GameWorld.match_state` hands it;
+  `_arm` hands out nothing but a spawn's knife and pistol; a planted bomb
+  holds the round's clock and a dead T side, and `bomb_exploded` and
+  `bomb_defused` end the round. The bomb system hands out the C4 itself on
+  `round_start`.
 - *(Done.)* `player_spawn` {userid} goes out on every spawn, from
   `PlayerSim` (a respawn, and a survivor put at a spawn point by the
   match).
@@ -485,8 +526,9 @@ None of these are changed by the contract threads; this branch changes
   lane's keys are gone.
   `PlayerInput.ensure_actions` adds any of these keys the input map lacks
   (a `project.godot` an open editor wrote back over).
-- `de_dust2.gd`: the presenters (kill feed, grenade and bomb drawing)
-  listening to `world.game.events`, and the systems added to `world.game`.
+- `de_dust2.gd`: *(done 2026-09-23)* the economy, the bomb and the
+  grenades added to `world.game`, and their drawing (grenades, smoke and
+  fire, the flash's white-out, the bomb). Still to do: the kill feed.
 
 ## Asked for by the other threads
 

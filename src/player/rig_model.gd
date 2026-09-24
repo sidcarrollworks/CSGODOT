@@ -60,7 +60,7 @@ var _lit_by: LightProbes
 ## cache, so each body read them all from the disk again: a quarter of a
 ## second a body, and at half time everyone's at once. The animations are
 ## shared, as instances of one scene share them; a model changes copies of
-## them (fold_bones, PlayerModel._load_weapon); load_clips sets their loop
+## them (fold_bones, PlayerModel.prepared_set); load_clips sets their loop
 ## mode, the same for every body.
 static var _scenes := {}
 static var _animations := {}
@@ -334,10 +334,18 @@ func pin(node: Node3D, bone_name: String, inverse: Transform3D = Transform3D.IDE
 	return true
 
 
+## Lets go of a node pin() kept on a bone.
+func unpin(node: Node3D) -> void:
+	for i in range(_pins.size() - 1, -1, -1):
+		if _pins[i]["node"] == node:
+			_pins.remove_at(i)
+
+
+## A hidden node is not moved: it is put on its bone when it is shown.
 func _update_pins() -> void:
 	for entry in _pins:
 		var node := entry["node"] as Node3D
-		if node != null and node.is_inside_tree():
+		if node != null and node.visible and node.is_inside_tree():
 			node.global_transform = (
 				character_rig.global_transform
 				* character_rig.get_bone_global_pose(entry["bone"])
@@ -365,6 +373,13 @@ func _add_bone_from(source: Skeleton3D, bone_name: String, rig: Skeleton3D) -> v
 
 ## A scene by its path, read once (_scenes), or null when it is not there.
 static func instantiate(path: String) -> Node:
+	var packed := preload_scene(path)
+	return packed.instantiate() if packed != null else null
+
+
+## A scene by its path, read into _scenes now if it is not already, for an
+## instance later that reads nothing from the disk; null when it is not there.
+static func preload_scene(path: String) -> PackedScene:
 	var packed: PackedScene = _scenes.get(path)
 	if packed == null:
 		if path.is_empty() or not ResourceLoader.exists(path):
@@ -373,7 +388,7 @@ static func instantiate(path: String) -> Node:
 		if packed == null:
 			return null
 		_scenes[path] = packed
-	return packed.instantiate()
+	return packed
 
 
 ## The clip glTFs in a directory, sorted, or only those whose names start

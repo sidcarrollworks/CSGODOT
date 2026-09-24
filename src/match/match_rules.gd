@@ -41,6 +41,10 @@ extends Resource
 ## (ff_damage_reduction_bullets), before armour takes its part.
 @export var friendly_fire_bullets: float = 0.33
 
+## The armour a player spawns with: 0 none, 1 kevlar, 2 kevlar and a helmet
+## (mp_free_armor; none in competitive).
+@export_range(0, 2) var free_armor: int = 0
+
 ## Dead, how long the camera stays on your own body before it moves to a
 ## living teammate (spec_freeze_time).
 @export var freeze_cam_seconds: float = 2.0

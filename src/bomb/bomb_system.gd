@@ -65,6 +65,9 @@ func give_to(userid: int) -> void:
 func tick(t: SimTick) -> void:
 	_game = t.game
 	var actors: Array[C4.Actor] = []
+	# A round the match ended this tick is over, though round_end is handed
+	# out only at the tick's end: no plant finishes on it.
+	var may_plant := live and not t.events.is_pending(&"round_end")
 	for userid in t.roster.ids():
 		var player := t.roster.player(userid) as PlayerSim
 		if player == null:
@@ -72,7 +75,7 @@ func tick(t: SimTick) -> void:
 		var actor := C4.Actor.of_player(player, userid)
 		var inventory := t.game.inventory(userid)
 		var asked: Dictionary = input_of.call(userid, player, inventory)
-		actor.plant_held = live and bool(asked.get("plant", false))
+		actor.plant_held = may_plant and bool(asked.get("plant", false))
 		actor.use_held = bool(asked.get("use", false))
 		actor.drop = _drop_asked.has(userid)
 		actor.has_kit = inventory != null and inventory.has_defuser
@@ -185,6 +188,11 @@ func _on_round_prestart(_event: GameEvent) -> void:
 	_forget_entity()
 	bomb.reset()
 	live = false
+	# A carrier who lived through the round has it still: taken back, so the
+	# round's start hands out the only one.
+	if _game != null:
+		for userid in _game.roster.ids():
+			_take_from(userid)
 
 
 ## CS2 gives the bomb to one terrorist at random at each round's start.

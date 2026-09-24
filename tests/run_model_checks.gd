@@ -795,9 +795,9 @@ func _test_bot_sounds() -> void:
 	# and hits, and every surface's impacts.
 	var wanted := Footsteps.all_sets()
 	wanted.append_array(PackedStringArray(BulletImpacts.SOUND_SETS.values()))
-	wanted.append_array(PackedStringArray(WeaponSounds.HIT_SETS))
-	for part: Array in _bot.weapon_sounds.weapon_set.get("reload", []):
-		wanted.append(part[1])
+	# Every gun's, not only the one in hand: a bot takes up what it buys on
+	# the tick.
+	wanted.append_array(WeaponSounds.all_stems())
 	var missing := PackedStringArray()
 	for stem in wanted:
 		if not SoundBank._randomizers.has(stem):
@@ -1263,6 +1263,7 @@ func _test_player_model() -> void:
 	)
 
 	_test_weapon_layers()
+	_test_a_body_holds_what_is_in_hand()
 	_test_bodies_share_what_they_read()
 
 	# The first-person body: the head and arms folded away, and staying so
@@ -1394,6 +1395,52 @@ func _test_weapon_layers() -> void:
 		bool(tree.get("parameters/gun_action/active")) and (at.call("ankle_L") as Vector3).distance_to(stride_from) > 1.0,
 		"and running meanwhile, the legs run on under the reload"
 	)
+	model.free()
+
+
+## A body that holds whatever is in its hand (a map's bot): the Glock-18's
+## hold, clips and model, on the pistol's own locomotion; then the AK-47's
+## on the rifle's, with no new model built for the Glock when it comes back;
+## a grenade on the knife's; nothing in hand, nothing shown.
+func _test_a_body_holds_what_is_in_hand() -> void:
+	var model := PlayerModel.new()
+	root.add_child(model)
+	if not model.setup("T", "", "", true):
+		_check(false, "a body that holds what is in hand builds")
+		model.free()
+		return
+	var tree := model.animation_tree
+	_check(model.has_weapon_layers and model.held_weapon == null and model.holding == "", "it is built holding nothing, the gun's layers ready")
+	model.hold("weapon_glock", WeaponLibrary.look("weapon_glock", "T"))
+	model.show_held()
+	var glock := model.held_weapon
+	_check(
+		model.holding == "weapon_glock" and glock != null and glock.visible
+			and String((tree.tree_root as AnimationNodeBlendTree).get_node(&"hold_stand").animation).ends_with("_idle")
+			and model.weapon_clip(&"reload") != &"" and float(tree.get("parameters/hold/add_amount")) == 1.0,
+		"the Glock-18 in hand: its model shown, its own hold and reload (%s)" % model.weapon_clip(&"reload")
+	)
+	model.pose_now()
+	tree.advance(0.3)
+	_check_equal(String(tree.get("parameters/variation/current_state")), "pistol", "and the body moves as CS2's does with a pistol")
+	model.hold("weapon_ak47", WeaponLibrary.look("weapon_ak47", "T"))
+	model.show_held()
+	var ak := model.held_weapon
+	tree.advance(0.3)
+	_check(
+		ak != null and ak != glock and ak.visible and not glock.visible
+			and String(tree.get("parameters/variation/current_state")) == "rifle",
+		"the AK-47 in hand: its model shown, the Glock's hidden, the rifle's locomotion"
+	)
+	model.hold("weapon_glock", WeaponLibrary.look("weapon_glock", "T"))
+	model.show_held()
+	_check(model.held_weapon == glock and glock.visible and not ak.visible, "the Glock again: the same model, shown again")
+	model.hold("weapon_hegrenade", WeaponLibrary.look("weapon_hegrenade", "T"))
+	tree.advance(0.3)
+	_check_equal(String(tree.get("parameters/variation/current_state")), "knife", "a grenade in hand: the knife's locomotion")
+	model.let_go()
+	model.show_held()
+	_check(model.holding == "" and model.held_weapon == null and not glock.visible and not ak.visible, "nothing in hand: nothing shown")
 	model.free()
 
 

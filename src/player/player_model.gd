@@ -42,8 +42,17 @@ const AGENTS := ViewModel.AGENTS
 ## (scripts/animgraph_tables.gd writes it).
 const LOCOMOTION := "res://reference/animgraph/locomotion.json"
 ## Which of the graph's variations the clips are. CS2 picks it by the
-## weapon in hand; every gun anyone carries so far is rifle-style.
+## weapon in hand; a body built with one gun moves as a rifle does.
 const VARIATION := "rifle"
+## The graph's other variations, which a body that holds whatever is in its
+## hand moves by as well: each the same spaces with its own clips, from its
+## own set, loaded under its name (pistol_run_n). CS2 picks one by what is
+## in hand (variation_for(), reference/animgraph/parameters.md) and switches
+## at once, the idle poses cross-fading into it (worldmodel.md).
+const HELD_VARIATIONS := {"pistol": "pistol/_default_pistol", "knife": "knife/_default_knife"}
+const VARIATION_FADE := 0.2
+## The locomotion clips a variation's set is read for.
+const LOCOMOTION_CLIPS := ["idle_", "run_", "walk_", "crouch_", "inair_", "jump_stand"]
 ## How far the spaces reach, beyond CS2's furthest clip (225).
 const SPACE_EXTENT := 300.0
 
@@ -65,8 +74,11 @@ const WEAPON := "weapon_"
 const UPPER_BODY := ["spine_0", "wpn", "wpnHand_L", "wpnHand_R", "wpnTip", "wpnEnd", "wpnPivot"]
 ## How long a gun's reload or draw takes to fade back into the hold.
 const ACTION_FADE := 0.2
+## How many models of what it has held a body keeps, shown or hidden, before
+## it lets them all go and builds again what it holds next.
+const MODELS_KEPT := 4
 
-## The gun clips as the body plays them (_load_weapon()), by the clip's path:
+## The gun clips as the body plays them (prepared_set()), by the clip's path:
 ## the rig is the same in every model, and so are they.
 static var _prepared := {}
 ## The locomotion table, read once (read_locomotion()), which hands out
@@ -77,14 +89,37 @@ static var _locomotion := {}
 ## its reload and draw and its shots over the upper body, a clip played once
 ## and a death, over the clips animation_player holds.
 var animation_tree: AnimationTree
-## Whether the gun's own set was loaded, and its layers are in the tree.
+## Whether the gun's layers are in the tree: its own set was loaded, or the
+## body holds whatever is put in its hand (holds_items).
 var has_weapon_layers := false
 ## The gun in the hand, pinned to its wpn bone; null holding none.
 var held_weapon: Node3D
+## Whether the body holds what is put in its hand (hold()), rather than the
+## one gun it was built with, for life.
+var holds_items := false
+## The item in the hand, by class; "" for none (hold()).
+var holding: String = ""
 
-## For each moving space, the length of a cycle at each distance from its
-## centre (cycle_rings()).
+## Where in the library the held item's own clips are: WEAPON for the set the
+## body was built with, "held_<set>_" for one taken in hand since; "" for none.
+var _hold_prefix := ""
+## Whether the held item has a hold of its own, and a shot.
+var _has_hold := false
+var _has_shoot := false
+## The held item's model, and the models of what the body has held, by
+## class, each pinned to the wpn bone and shown only while in the hand
+## (show_held()); the class shown.
+var _held_model_path := ""
+var _held_models := {}
+var _shown := ""
+
+## The locomotion the tree moves by, each by where its parameters are
+## ("" for a body with the one, "rifle/", "pistol/", "knife/" for one with
+## them all): for each moving space, the length of a cycle at each distance
+## from its centre (cycle_rings()).
 var _rings := {}
+## Which of them the body moves by now.
+var _variation := VARIATION
 var _speeds := Vector2.ZERO
 var _crouch := 0.0
 var _on_ground := true
@@ -94,19 +129,26 @@ var _dead: StringName = &""
 
 ## Builds the body and weapon. weapon_set is the gun's own third-person set
 ## under WORLD_DIR (WeaponData.world_clip_set), for its hold, reload, draw and
-## shots; without one the body only moves. Returns false, with nothing built,
-## when the models or clips have not been extracted.
-func setup(team: String, weapon_model: String, weapon_set: String = "") -> bool:
+## shots; without one the body only moves. A body that holds_items is built
+## holding nothing, with the gun's layers ready for whatever it is handed
+## (hold()), and weapon_model and weapon_set are not used. Returns false,
+## with nothing built, when the models or clips have not been extracted.
+func setup(team: String, weapon_model: String, weapon_set: String = "", holds: bool = false) -> bool:
 	one_shots = PackedStringArray(["jump", "draw", "reload", "death"])
 	held = PackedStringArray(["death"])
-	var clips := list_clips(CLIPS_DIR, PackedStringArray([
-		"idle_", "run_", "walk_", "crouch_", "inair_", "jump_stand",
-	]))
+	var clips := list_clips(CLIPS_DIR, PackedStringArray(LOCOMOTION_CLIPS))
 	clips.append_array(list_clips(SHARED_DIR, PackedStringArray(["death_"])))
 	if not load_clips(clips, VARIATION):
 		return false
 	idle = &"idle"
-	var weapon_clips := _load_weapon(weapon_set)
+	holds_items = holds
+	if holds:
+		for variation: String in HELD_VARIATIONS:
+			var added := add_clips(list_clips(WORLD_DIR.path_join(HELD_VARIATIONS[variation]), PackedStringArray(LOCOMOTION_CLIPS)), variation, variation + "_")
+			for clip_name in added:
+				if not clip_name.begins_with(variation + "_jump"):
+					animation_player.get_animation(clip_name).loop_mode = Animation.LOOP_LINEAR
+	var weapon_clips := PackedStringArray() if holds else _add_set(weapon_set, WEAPON)
 
 	var agent := instantiate(AGENTS.get(team, AGENTS["T"]))
 	if agent != null:
@@ -114,29 +156,8 @@ func setup(team: String, weapon_model: String, weapon_set: String = "") -> bool:
 			adopt(mesh, character_rig)
 		agent.free()
 
-	# The locomotion clips carry no weapon rig, so the weapon keeps its own
-	# skeleton and is held by it: the root bone on the hand's wpn bone.
-	var weapon := instantiate(weapon_model) as Node3D
-	if weapon != null:
-		var meshes := weapon.find_children("*", "MeshInstance3D", true, false)
-		for mesh in meshes:
-			(mesh as MeshInstance3D).layers = LAYER
-			if is_spare_body(mesh, meshes):
-				mesh.visible = false
-			elif probe_lit:
-				_probe_light(mesh)
-		var skeletons := weapon.find_children("*", "Skeleton3D", true, false)
-		character_rig.get_parent().add_child(weapon)
-		held_weapon = weapon
-		if not skeletons.is_empty() and (skeletons[0] as Skeleton3D).get_bone_count() > 0:
-			var root_rest := (skeletons[0] as Skeleton3D).get_bone_rest(0)
-			# Between the weapon's root and its skeleton sit the export's own
-			# nodes; their transform is folded in so the root lands on the bone.
-			var to_skeleton := Transform3D.IDENTITY
-			var above := (skeletons[0] as Skeleton3D).get_parent() as Node3D
-			if above != null and above != weapon:
-				to_skeleton = above.transform
-			pin(weapon, "wpn", (to_skeleton * root_rest).affine_inverse())
+	if not holds:
+		held_weapon = _attach_weapon(weapon_model)
 
 	scale = Vector3.ONE * MapImporter.SOURCE2_VIEWER_SCALE
 	rotation_degrees = Vector3(0.0, 180.0, 0.0)
@@ -144,41 +165,175 @@ func setup(team: String, weapon_model: String, weapon_set: String = "") -> bool:
 	return true
 
 
-## The gun's own third-person clips, from its set (rifle/rifle_ak): its hold,
-## draw, reload and shot, loaded as weapon_idle, weapon_draw and so on, and
-## returned by those names. Each keeps only the body's tracks (they carry the
-## gun's own rig too, its bolt and magazine, which the body's rig has not
-## got), and CS2's additive ones, which have a non-additive copy beside them,
-## are made ones Godot adds as CS2 does (rest_relative()).
-func _load_weapon(weapon_set: String) -> PackedStringArray:
+## A weapon's model beside the rig, held by its own skeleton: the locomotion
+## clips carry no weapon rig, so its root bone is pinned on the hand's wpn
+## bone. Null when the model is not there.
+func _attach_weapon(weapon_model: String) -> Node3D:
+	var weapon := instantiate(weapon_model) as Node3D
+	if weapon == null:
+		return null
+	var meshes := weapon.find_children("*", "MeshInstance3D", true, false)
+	for mesh in meshes:
+		(mesh as MeshInstance3D).layers = LAYER
+		if is_spare_body(mesh, meshes):
+			mesh.visible = false
+		elif probe_lit:
+			_probe_light(mesh)
+	var skeletons := weapon.find_children("*", "Skeleton3D", true, false)
+	character_rig.get_parent().add_child(weapon)
+	if not skeletons.is_empty() and (skeletons[0] as Skeleton3D).get_bone_count() > 0:
+		var root_rest := (skeletons[0] as Skeleton3D).get_bone_rest(0)
+		# Between the weapon's root and its skeleton sit the export's own
+		# nodes; their transform is folded in so the root lands on the bone.
+		var to_skeleton := Transform3D.IDENTITY
+		var above := (skeletons[0] as Skeleton3D).get_parent() as Node3D
+		if above != null and above != weapon:
+			to_skeleton = above.transform
+		pin(weapon, "wpn", (to_skeleton * root_rest).affine_inverse())
+	return weapon
+
+
+## A gun's own third-person clips, from its set (rifle/rifle_ak), added to
+## this body's clips under prefix: its hold, draw, reload and shot, as
+## weapon_idle, weapon_draw and so on. Returns the names they are under.
+func _add_set(weapon_set: String, prefix: String) -> PackedStringArray:
 	var names := PackedStringArray()
-	if weapon_set.is_empty():
-		return names
+	var library := animation_player.get_animation_library(&"")
+	var clips := prepared_set(weapon_set)
+	for action: String in clips:
+		var clip_name := StringName(prefix + action)
+		if not library.has_animation(clip_name):
+			library.add_animation(clip_name, clips[action])
+		names.append(clip_name)
+	return names
+
+
+## A gun's own third-person clips as the body plays them, by action (idle,
+## idle_crouch, draw, reload, shoot): each keeps only the body's tracks (they
+## carry the gun's own rig too, its bolt and magazine, which the body's rig
+## has not got), and CS2's additive ones, which have a non-additive copy
+## beside them, are made ones Godot adds as CS2 does (rest_relative()). Made
+## once for every body (_prepared); the first call for a set reads it from
+## the disk, so a map calls it for what its players will hold before play
+## (prepare_holding()).
+func prepared_set(weapon_set: String) -> Dictionary:
+	var out := {}
+	if weapon_set.is_empty() or character_rig == null:
+		return out
 	var files := PackedStringArray()
 	for path in list_clips(WORLD_DIR.path_join(weapon_set)):
 		if not path.get_file().contains(".vnmclip+"):
 			files.append(path)
 	var suffix := common_suffix(files)
-	var library := animation_player.get_animation_library(&"")
 	var body_node := String(animation_player.get_animation(idle).track_get_path(0).get_concatenated_names())
 	for path in files:
-		var added := add_clips(PackedStringArray([path]), suffix, WEAPON)
-		if added.is_empty():
-			continue
-		var loaded_as := added[0]
+		var action := String(short_name(path, suffix))
 		if not _prepared.has(path):
-			var clip := (library.get_animation(loaded_as).duplicate() as Animation)
+			var source := clip_animation(path)
+			if source == null:
+				continue
+			var clip := source.duplicate() as Animation
 			for track in range(clip.get_track_count() - 1, -1, -1):
 				if String(clip.track_get_path(track).get_concatenated_names()) != body_node:
 					clip.remove_track(track)
 			if ResourceLoader.exists(path.get_basename() + ".vnmclip+non_additive.gltf"):
 				clip = rest_relative(clip, character_rig)
-			clip.loop_mode = Animation.LOOP_LINEAR if loaded_as.begins_with(WEAPON + "idle") else Animation.LOOP_NONE
+			clip.loop_mode = Animation.LOOP_LINEAR if action.begins_with("idle") else Animation.LOOP_NONE
 			_prepared[path] = clip
-		library.remove_animation(loaded_as)
-		library.add_animation(loaded_as, _prepared[path])
-		names.append(loaded_as)
-	return names
+		out[action] = _prepared[path]
+	return out
+
+
+## Reads what holding each of these items needs before play, so that taking
+## one in hand reads nothing from the disk: its clips (prepared_set()) and its
+## model's scene. team picks the knife.
+func prepare_holding(item_classes: PackedStringArray, team: String) -> void:
+	for item_class in item_classes:
+		var look := WeaponLibrary.look(item_class, team)
+		prepared_set(String(look.get("world_clip_set", "")))
+		preload_scene(String(look.get("model_path", "")))
+
+
+## Takes an item in the hand, by class, as look has it (WeaponLibrary.look):
+## its own third-person clips for the hold, the draw, the reload and the
+## shots, from its set, and its draw played. "" holds nothing. A body built
+## with one gun (not holds_items) holds that one whenever anything is in
+## hand. Its model is shown from the next frame drawn (show_held()): the pose
+## is what the hitboxes ride, and the gun is only seen.
+func hold(item_class: String, look: Dictionary = {}) -> void:
+	if not holds_items:
+		if held_weapon != null:
+			held_weapon.visible = not item_class.is_empty()
+		return
+	if item_class == holding:
+		return
+	holding = item_class
+	_held_model_path = String(look.get("model_path", ""))
+	var weapon_set := String(look.get("world_clip_set", ""))
+	_hold_prefix = ""
+	if not item_class.is_empty() and not weapon_set.is_empty():
+		_hold_prefix = "held_%s_" % weapon_set.get_file()
+		_add_set(weapon_set, _hold_prefix)
+	var stand := _held_clip(&"idle")
+	var shot := _held_clip(&"shoot")
+	_has_hold = stand != &""
+	_has_shoot = shot != &""
+	if animation_tree == null or not has_weapon_layers:
+		return
+	var moves_by := variation_for(item_class) if not item_class.is_empty() else _variation
+	if moves_by != _variation and _rings.has(moves_by + "/"):
+		_variation = moves_by
+		(_node(&"variation") as AnimationNodeTransition).xfade_time = VARIATION_FADE
+		animation_tree.set("parameters/variation/transition_request", moves_by)
+	var crouched := _held_clip(&"idle_crouch")
+	(_node(&"hold_stand") as AnimationNodeAnimation).animation = stand if _has_hold else idle
+	(_node(&"hold_crouch") as AnimationNodeAnimation).animation = crouched if crouched != &"" else (stand if _has_hold else idle)
+	(_node(&"shoot_clip") as AnimationNodeAnimation).animation = shot if _has_shoot else idle
+	animation_tree.set("parameters/shoot/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_ABORT)
+	animation_tree.set("parameters/gun_action/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_ABORT)
+	_apply(true)
+	if _held_clip(&"draw") != &"":
+		play(&"draw")
+
+
+## Nothing in the hand: a death's, whose gun falls as an item of its own.
+func let_go() -> void:
+	hold("")
+
+
+## The held item's own clip for an action, standing; empty if it has none.
+func _held_clip(action: StringName) -> StringName:
+	if _hold_prefix.is_empty():
+		return &""
+	var clip := StringName(_hold_prefix + String(action))
+	return clip if animation_player.has_animation(clip) else &""
+
+
+## Shows the model of the item in hand on the wpn bone and hides the rest,
+## built the first time it is wanted. Per frame, from whoever draws the body.
+## A body keeps the models of the last few things it held (MODELS_KEPT).
+func show_held() -> void:
+	if not holds_items or holding == _shown:
+		return
+	_shown = holding
+	if held_weapon != null:
+		held_weapon.visible = false
+	held_weapon = null
+	if holding.is_empty():
+		return
+	held_weapon = _held_models.get(holding)
+	if held_weapon == null:
+		if _held_models.size() >= MODELS_KEPT:
+			for item_class: String in _held_models.keys():
+				unpin(_held_models[item_class])
+				(_held_models[item_class] as Node).queue_free()
+			_held_models.clear()
+		held_weapon = _attach_weapon(_held_model_path)
+		if held_weapon == null:
+			return
+		_held_models[holding] = held_weapon
+	held_weapon.visible = true
+	_update_pins()
 
 
 ## One of CS2's additive clips made one Godot's additive nodes add as CS2
@@ -230,19 +385,33 @@ func upper_body_tracks() -> Array[NodePath]:
 ## copies are what it plays. Without the table it falls back to the idle.
 func _build_tree(weapon_clips: PackedStringArray) -> void:
 	var table := read_locomotion()
-	var root := build_tree(table, VARIATION)
+	var variations := [VARIATION] + HELD_VARIATIONS.keys() if holds_items else []
+	var root := build_varied_tree(table, variations) if holds_items else build_tree(table, VARIATION)
 	if root == null:
 		push_warning("no locomotion blend spaces in %s; the body stands in its idle" % LOCOMOTION)
 		play(idle)
 		return
-	if (WEAPON + "idle") in weapon_clips and (WEAPON + "shoot") in weapon_clips:
-		add_weapon_layers(root, upper_body_tracks(), (WEAPON + "idle_crouch") in weapon_clips)
+	if holds_items:
+		# Nothing in hand yet: the layers stand on the locomotion's idle, and
+		# hold() points them at the clips of whatever is handed over.
+		add_weapon_layers(root, upper_body_tracks(), idle, idle, idle, &"variation")
 		has_weapon_layers = true
+	elif (WEAPON + "idle") in weapon_clips and (WEAPON + "shoot") in weapon_clips:
+		var crouched := StringName(WEAPON + "idle_crouch") if (WEAPON + "idle_crouch") in weapon_clips else StringName(WEAPON + "idle")
+		add_weapon_layers(root, upper_body_tracks(), StringName(WEAPON + "idle"), crouched, StringName(WEAPON + "shoot"))
+		has_weapon_layers = true
+		_hold_prefix = WEAPON
+		_has_hold = true
+		_has_shoot = true
 	var lengths := {}
 	for clip in animation_player.get_animation_list():
 		lengths[String(clip)] = animation_player.get_animation(clip).length
-	for space_name: StringName in [&"stand", &"crouch"]:
-		_rings[space_name] = cycle_rings(find_space(table, "/Move/", _centre_of(space_name), VARIATION), VARIATION, lengths)
+	for variation: String in (variations if holds_items else [VARIATION]):
+		var rings := {}
+		var clip_prefix := "" if variation == VARIATION else variation + "_"
+		for space_name: StringName in [&"stand", &"crouch"]:
+			rings[space_name] = cycle_rings(find_space(table, "/Move/", _centre_of(space_name), variation), variation, lengths, clip_prefix)
+		_rings[variation + "/" if holds_items else ""] = rings
 	animation_tree = AnimationTree.new()
 	animation_tree.name = "Animation"
 	animation_player.get_parent().add_child(animation_tree)
@@ -282,19 +451,43 @@ func update_motion(velocity: Vector3, yaw_degrees: float, crouch: float, on_grou
 	_apply()
 
 
-func _apply() -> void:
-	for space_name in [&"stand", &"crouch", &"air_stand", &"air_crouch"]:
-		animation_tree.set("parameters/%s/blend_position" % space_name, _speeds)
-	animation_tree.set("parameters/move/blend_amount", _crouch)
-	animation_tree.set("parameters/air/blend_amount", _crouch)
+## Sets the tree's parameters from the motion: the locomotion moving now,
+## or every one of them (all), for one about to be switched to.
+func _apply(all: bool = false) -> void:
+	for at: String in _rings:
+		if all or at.is_empty() or at == _variation + "/":
+			_apply_locomotion(at)
 	if has_weapon_layers:
-		animation_tree.set("parameters/hold/add_amount", 1.0)
+		animation_tree.set("parameters/hold/add_amount", 1.0 if _has_hold else 0.0)
 		animation_tree.set("parameters/hold_pose/blend_amount", _crouch)
-	animation_tree.set("parameters/cycle/scale", 1.0 / cycle_length(_rings, _speeds.length(), _crouch))
+
+
+func _apply_locomotion(at: String) -> void:
+	var path := "parameters/" + at
+	for space_name in [&"stand", &"crouch", &"air_stand", &"air_crouch"]:
+		animation_tree.set(path + String(space_name) + "/blend_position", _speeds)
+	animation_tree.set(path + "move/blend_amount", _crouch)
+	animation_tree.set(path + "air/blend_amount", _crouch)
+	animation_tree.set(path + "cycle/scale", 1.0 / cycle_length(_rings[at], _speeds.length(), _crouch))
 	var wanted := "ground" if _on_ground else "air"
-	if String(animation_tree.get("parameters/ground/current_state")) != wanted:
-		(_node(&"ground") as AnimationNodeTransition).xfade_time = TO_GROUND if _on_ground else TO_AIR
-		animation_tree.set("parameters/ground/transition_request", wanted)
+	if String(animation_tree.get(path + "ground/current_state")) != wanted:
+		var ground := _node(&"ground") if at.is_empty() else (_node(StringName(at.trim_suffix("/"))) as AnimationNodeBlendTree).get_node(&"ground")
+		(ground as AnimationNodeTransition).xfade_time = TO_GROUND if _on_ground else TO_AIR
+		animation_tree.set(path + "ground/transition_request", wanted)
+
+
+## The locomotion CS2 moves a body by with an item in hand: the pistol's
+## for pistols, the Zeus and the bomb; the knife's for knives and grenades;
+## the rifle's for every other gun (reference/animgraph/parameters.md).
+static func variation_for(item_class: String) -> String:
+	var item := ItemRegistry.item(item_class) if not item_class.is_empty() else null
+	if item == null:
+		return VARIATION
+	if item.slot == ItemDef.Slot.PISTOL or item.slot == ItemDef.Slot.C4 or item.type == "taser":
+		return "pistol"
+	if item.slot == ItemDef.Slot.KNIFE or item.is_grenade():
+		return "knife"
+	return VARIATION
 
 
 func _node(node_name: StringName) -> AnimationNode:
@@ -304,19 +497,19 @@ func _node(node_name: StringName) -> AnimationNode:
 ## A round fired: the gun's shot added over the upper body, from its start,
 ## as CS2's Weapon Shoot layer restarts it on every round.
 func fire() -> void:
-	if has_weapon_layers:
+	if has_weapon_layers and _has_shoot:
 		animation_tree.set("parameters/shoot/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
 
 
-## The gun's own clip for an action (reload, draw), crouched if the body is
-## down and the gun has one; empty if the gun has none.
+## The held gun's own clip for an action (reload, draw), crouched if the body
+## is down and the gun has one; empty if the gun has none.
 func weapon_clip(action: StringName) -> StringName:
-	if not has_weapon_layers:
+	if not has_weapon_layers or _hold_prefix.is_empty():
 		return &""
-	var crouched := StringName(WEAPON + String(action) + "_crouch")
+	var crouched := StringName(_hold_prefix + String(action) + "_crouch")
 	if _crouch >= 0.5 and animation_player.has_animation(crouched):
 		return crouched
-	var standing := StringName(WEAPON + String(action))
+	var standing := StringName(_hold_prefix + String(action))
 	return standing if animation_player.has_animation(standing) else &""
 
 
@@ -462,37 +655,71 @@ static func clip_name(point: Dictionary, variation: String) -> StringName:
 ## and the air cross-faded; a clip played once over that; a death over it
 ## all. Null when the table lacks a space.
 static func build_tree(table: Dictionary, variation: String) -> AnimationNodeBlendTree:
+	var tree := AnimationNodeBlendTree.new()
+	if not _add_locomotion(tree, table, variation, ""):
+		return null
+	_add_action_and_death(tree, &"ground")
+	return tree
+
+
+## The same over each of several variations' locomotion, each its own tree
+## (named by the variation, its clips under its name but for the first's),
+## one of them moving the body at a time (variation).
+static func build_varied_tree(table: Dictionary, variations: Array) -> AnimationNodeBlendTree:
+	var tree := AnimationNodeBlendTree.new()
+	tree.add_node(&"variation", _transition(variations))
+	for i in variations.size():
+		var variation: String = variations[i]
+		var locomotion := AnimationNodeBlendTree.new()
+		if not _add_locomotion(locomotion, table, variation, "" if i == 0 else variation + "_"):
+			return null
+		locomotion.connect_node(&"output", 0, &"ground")
+		tree.add_node(StringName(variation), locomotion)
+		tree.connect_node(&"variation", i, StringName(variation))
+	_add_action_and_death(tree, &"variation")
+	return tree
+
+
+## One variation's locomotion in a tree: the standing and crouched spaces
+## mixed by the crouch under the cycle's time scale, the air's the same way,
+## the ground and the air cross-faded (ground). False when the table lacks a
+## space.
+static func _add_locomotion(tree: AnimationNodeBlendTree, table: Dictionary, variation: String, clip_prefix: String) -> bool:
 	var spaces := {}
 	for space_name: StringName in [&"stand", &"crouch", &"air_stand", &"air_crouch"]:
 		spaces[space_name] = find_space(table, "/Move/" if space_name in [&"stand", &"crouch"] else "/InAir/", _centre_of(space_name), variation)
 		if (spaces[space_name] as Dictionary).is_empty():
-			return null
-	var tree := AnimationNodeBlendTree.new()
-	tree.add_node(&"stand", blend_space(spaces[&"stand"], variation, true))
-	tree.add_node(&"crouch", blend_space(spaces[&"crouch"], variation, true))
+			return false
+	tree.add_node(&"stand", blend_space(spaces[&"stand"], variation, true, clip_prefix))
+	tree.add_node(&"crouch", blend_space(spaces[&"crouch"], variation, true, clip_prefix))
 	tree.add_node(&"move", _blend2())
 	tree.connect_node(&"move", 0, &"stand")
 	tree.connect_node(&"move", 1, &"crouch")
 	tree.add_node(&"cycle", AnimationNodeTimeScale.new())
 	tree.connect_node(&"cycle", 0, &"move")
-	tree.add_node(&"air_stand", blend_space(spaces[&"air_stand"], variation, false))
-	tree.add_node(&"air_crouch", blend_space(spaces[&"air_crouch"], variation, false))
+	tree.add_node(&"air_stand", blend_space(spaces[&"air_stand"], variation, false, clip_prefix))
+	tree.add_node(&"air_crouch", blend_space(spaces[&"air_crouch"], variation, false, clip_prefix))
 	tree.add_node(&"air", _blend2())
 	tree.connect_node(&"air", 0, &"air_stand")
 	tree.connect_node(&"air", 1, &"air_crouch")
 	tree.add_node(&"ground", _transition(["ground", "air"]))
 	tree.connect_node(&"ground", 0, &"cycle")
 	tree.connect_node(&"ground", 1, &"air")
+	return true
+
+
+## Over the locomotion (moving, the node it comes out of): a clip played
+## once over it, and a death over it all.
+static func _add_action_and_death(tree: AnimationNodeBlendTree, moving: StringName) -> void:
 	tree.add_node(&"action", AnimationNodeOneShot.new())
 	tree.add_node(&"action_clip", _clip(_centre_of(&"stand")))
-	tree.connect_node(&"action", 0, &"ground")
+	tree.connect_node(&"action", 0, moving)
 	tree.connect_node(&"action", 1, &"action_clip")
 	tree.add_node(&"death", _transition(["alive", "dead"]))
 	tree.add_node(&"death_clip", _clip(_centre_of(&"stand")))
 	tree.connect_node(&"death", 0, &"action")
 	tree.connect_node(&"death", 1, &"death_clip")
 	tree.connect_node(&"output", 0, &"death")
-	return tree
 
 
 ## The gun's layers, between the locomotion and the clip played once, in the
@@ -504,31 +731,31 @@ static func build_tree(table: Dictionary, variation: String) -> AnimationNodeBle
 ## shot added on top, as its Weapon Shoot layer does (shoot). CS2 blends the
 ## Weapons layer in model space; Godot blends in each bone's own, so here the
 ## upper body keeps its pose relative to the hips, not to the world.
-static func add_weapon_layers(tree: AnimationNodeBlendTree, upper_body: Array[NodePath], crouched_hold: bool) -> void:
+static func add_weapon_layers(tree: AnimationNodeBlendTree, upper_body: Array[NodePath], hold_stand: StringName, hold_crouch: StringName, shot: StringName, moving: StringName = &"ground") -> void:
 	# A node's output feeds one input: the locomotion leaves the whole-body
 	# clip's input for the hold's.
 	tree.disconnect_node(&"action", 0)
-	tree.add_node(&"hold_stand", _clip(&"weapon_idle"))
-	tree.add_node(&"hold_crouch", _clip(&"weapon_idle_crouch" if crouched_hold else &"weapon_idle"))
+	tree.add_node(&"hold_stand", _clip(hold_stand))
+	tree.add_node(&"hold_crouch", _clip(hold_crouch))
 	tree.add_node(&"hold_pose", _blend2())
 	tree.connect_node(&"hold_pose", 0, &"hold_stand")
 	tree.connect_node(&"hold_pose", 1, &"hold_crouch")
 	var hold := AnimationNodeAdd2.new()
 	_mask(hold, upper_body)
 	tree.add_node(&"hold", hold)
-	tree.connect_node(&"hold", 0, &"ground")
+	tree.connect_node(&"hold", 0, moving)
 	tree.connect_node(&"hold", 1, &"hold_pose")
 	var gun_action := AnimationNodeOneShot.new()
 	_mask(gun_action, upper_body)
 	tree.add_node(&"gun_action", gun_action)
-	tree.add_node(&"gun_action_clip", _clip(&"weapon_idle"))
+	tree.add_node(&"gun_action_clip", _clip(hold_stand))
 	tree.connect_node(&"gun_action", 0, &"hold")
 	tree.connect_node(&"gun_action", 1, &"gun_action_clip")
 	var shoot := AnimationNodeOneShot.new()
 	shoot.mix_mode = AnimationNodeOneShot.MIX_MODE_ADD
 	_mask(shoot, upper_body)
 	tree.add_node(&"shoot", shoot)
-	tree.add_node(&"shoot_clip", _clip(&"weapon_shoot"))
+	tree.add_node(&"shoot_clip", _clip(shot))
 	tree.connect_node(&"shoot", 0, &"gun_action")
 	tree.connect_node(&"shoot", 1, &"shoot_clip")
 	tree.connect_node(&"action", 0, &"shoot")
@@ -543,14 +770,14 @@ static func _mask(node: AnimationNode, tracks: Array[NodePath]) -> void:
 ## One of CS2's blend spaces as Godot's: each point its clip, where CS2
 ## places it, cut into CS2's own triangles. A moving space's clips are each
 ## stretched to one cycle, for the cycle's time scale to pace them together.
-static func blend_space(space: Dictionary, variation: String, one_cycle: bool) -> AnimationNodeBlendSpace2D:
+static func blend_space(space: Dictionary, variation: String, one_cycle: bool, clip_prefix: String = "") -> AnimationNodeBlendSpace2D:
 	var out := AnimationNodeBlendSpace2D.new()
 	out.auto_triangles = false
 	out.sync = true
 	out.min_space = Vector2.ONE * -SPACE_EXTENT
 	out.max_space = Vector2.ONE * SPACE_EXTENT
 	for point: Dictionary in space.get("points", []):
-		var clip := _clip(clip_name(point, variation))
+		var clip := _clip(StringName(clip_prefix + clip_name(point, variation)))
 		if one_cycle:
 			clip.use_custom_timeline = true
 			clip.timeline_length = 1.0
@@ -587,13 +814,13 @@ static func _transition(inputs: Array) -> AnimationNodeTransition:
 ## cycle is, the mean of their lengths, the idle's the time CS2 makes it
 ## last. lengths has the clips' lengths by short name. By distance, nearest
 ## first.
-static func cycle_rings(space: Dictionary, variation: String, lengths: Dictionary) -> Array:
+static func cycle_rings(space: Dictionary, variation: String, lengths: Dictionary, clip_prefix: String = "") -> Array:
 	var by_radius := {}
 	for point: Dictionary in space.get("points", []):
 		var radius := snappedf(Vector2(float(point.get("x", 0.0)), float(point.get("y", 0.0))).length(), 5.0)
 		var seconds := float(point.get("lasts", -1.0))
 		if seconds <= 0.0:
-			seconds = float(lengths.get(String(clip_name(point, variation)), 1.0))
+			seconds = float(lengths.get(clip_prefix + String(clip_name(point, variation)), 1.0))
 		var ring: Array = by_radius.get(radius, [])
 		ring.append(seconds)
 		by_radius[radius] = ring

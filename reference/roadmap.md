@@ -27,6 +27,7 @@ Updated 2026-09-23 (later): match and round flow done (item 11).
 Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurements added (7a, 7b); dust2's nav mesh extracted and read (PR #32), so bots can start walking it (item 22); the range fixes and your own ragdoll in (PR #30), so items 6 and 6a can start; dust2's buy zones, bomb sites and radar read (PR #34); the blood extraction and what can start now added to "Waiting on Sid" and the last section.
 Updated 2026-09-23 later: bots walk the nav mesh (item 22), to the bomb sites and back.
 Updated 2026-09-23 evening: one world runs the tick (`GameWorld`, the first part of `reference/systemization.md`'s step 1).
+Updated 2026-09-23 night: dust2 buys (items 13 and 14 wired in), spawns give the knife and pistol only, the match sends CS2's round events, the bomb and grenades are in dust2's match, bots buy as CS2's do and hold what is in hand (items 6 and 24), and a drop is thrown from the hand (item 12).
 Updated 2026-09-24: binds added (item 12a, planned in `reference/binds.md`): one table of keys, CS2's defaults, for the game and the test range alike.
 
 ## Part 1: what exists
@@ -144,7 +145,16 @@ Updated 2026-09-24: binds added (item 12a, planned in `reference/binds.md`): one
   through the same simulation and trigger path as the player, with 1.2
   degrees of extra aim error. They target only the other side.
 - Their bodies hold, fire and reload their guns with the guns' own
-  third-person clips, over the upper body (item 6).
+  third-person clips, over the upper body (item 6). On dust2 a body holds
+  whatever is in its hand, its model and its clips changing with it, and
+  moves on CS2's locomotion for it: the pistol's, the knife's (knives and
+  grenades) or the rifle's.
+- On dust2 they spawn as you do, with the knife and their side's pistol,
+  and buy in freeze time as CS2's classic bot does (`BotBuying`: nothing
+  below $2,000, a primary by one of `botprofile.db`'s weapon templates,
+  armour, a kit for a CT, a third of the time a grenade), then take their
+  best gun out. They tap a pistol every half second rather than hold the
+  trigger (item 24).
 
 ### Sound
 - The game's own sounds: weapon shots, reload and draw, hit sounds (kevlar,
@@ -235,9 +245,15 @@ item 6 is built.
    mask: the gun's hold added, its reload or draw in place of the upper
    body, each round's shot added on top. CS2's additive clips are re-expressed
    from the rest pose for Godot's additive blend (`PlayerModel.rest_relative`).
-   Left: CS2 blends the weapon layer in model space, Godot in each bone's
-   own, so the upper body follows the hips here; and the flinches, additive
-   too and ready to go in the same way, are not extracted yet (the
+   Since 2026-09-23 a map's bot holds whatever is in its hand
+   (`PlayerModel.hold`): each item's model kept while carried and shown in
+   hand, its own set's clips added the first time, and the locomotion
+   switched to the pistol's, knife's or rifle's as CS2's graph picks it
+   (`PlayerModel.variation_for`). What its bots may hold is read before
+   play (`prepare_holding`), so taking a gun in hand reads nothing from the
+   disk. Left: CS2 blends the weapon layer in model space, Godot in each
+   bone's own, so the upper body follows the hips here; and the flinches,
+   additive too and ready to go in the same way, are not extracted yet (the
    characters step takes only the deaths from `world/shared/`).
 
 6a. **Your shadow has no arms.** *(Remote, can start now; Sid checks it)* Sid noticed
@@ -366,11 +382,18 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
     everyone after a swap start fresh. Dead in a round, after 2 s you watch
     a living teammate, from their eyes or behind them (fire: next, jump:
     switch). A teammate's round does 33%. Hulls are solid to each other.
-    dust2 plays five a side, bots in every place but yours. Left for the
-    items that bring them: the bomb's round ends and its stop on the clock
-    (item 16, through `end_round`), money at half time and in overtime
-    (13), the loadout a side really starts with, a pistol (12 and 14),
-    grenades' friendly fire (17 to 20), and the round's full HUD (15).
+    dust2 plays five a side, bots in every place but yours. Since
+    2026-09-23 the match says what the round is doing as CS2's game events
+    (`round_announce_warmup`, `begin_new_match`, `round_prestart` handed
+    out before anyone spawns, `round_start`, `round_freeze_end`,
+    `round_end`, `announce_phase_end`, `cs_win_panel_match`), which the
+    economy, the bomb, the grenades and what lies on the ground go by; a
+    planted bomb stops the clock and a dead T side from ending the round,
+    and its blast or defuse ends it. A spawn from nothing is CS2's: the
+    knife and the side's pistol (the Glock-18, the CTs' P2000), no armour
+    (`mp_free_armor 0`). A grenade does 85% to the thrower's side in
+    dust2's match (`GrenadeRules.TEAM_DAMAGE_IN_MATCH`), all of it to the
+    thrower. Left for the item that brings it: the round's full HUD (15).
     Guessed, not from CS2: both sides wiped out on one tick goes to the Ts,
     and half time's 15 s replaces the 7 s pause rather than following it.
 12. **Inventory.** *(done 2026-09-23 but for E to swap and guns on the
@@ -379,14 +402,19 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
     `Inventory` with CS2's carrying rules, slots, Q and cycling grenades,
     each gun its own `Weapon`; `DroppedItem` and `ItemDrops` for dropping,
     picking up and drops on death (`reference/systems/contracts.md`). Every
-    player carries one (you and the bots, `player_sim.gd`): a spawn's knife,
-    pistol and the gun handed out, 1 to 5 and Q, the item's draw time and
+    player carries one (you and the bots, `player_sim.gd`): a spawn's knife
+    and pistol (in a match; the range hands out its gun), 1 to 5 and Q, the item's draw time and
     speed on every switch, a switch stopping a reload, G dropping what is in
     hand, a grenade thrown from the hand, and each item's first-person model
     built once and kept while carried, so a switch builds nothing. The
-    dropped guns are drawn (`DroppedItemView`, the range and dust2). Left:
-    E to swap with the gun in hand, and a gun on the ground as a rigid body
-    that blasts and rounds push (`reference/cs2-systems.md` section 4).
+    dropped guns are drawn (`DroppedItemView`, the range and dust2). Since
+    2026-09-23 a drop is thrown from the hand as it was held (`HeldPose`:
+    CS2's hold from its third-person clips, from where the player stands
+    and looks), at CS2's 300 u/s where they look, turning as it flies,
+    bouncing, and laid on its side where it stops; a death lets the gun go
+    from the hand, moving as the body was. Left: E to swap with the gun in
+    hand, and a gun on the ground as a rigid body that blasts and rounds
+    push, on its own physics hull (`reference/cs2-systems.md` section 4).
 12a. **Binds: the same keys everywhere, the test range included.** *(Remote;
     Local wires section 5's keys through it and checks CS2's defaults; new
     2026-09-24, Sid: "Ideally the same keys are used everywhere even in
@@ -425,9 +453,12 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
     guesses)* Buy zones and 20 s of buy time, CS2's buy menu (B, then a
     column and an item by number, or the mouse), undoing a purchase, the
     default loadout, armour and the helmet, the kit, grenades, the Zeus,
-    team-only weapons. Still to do: choosing another loadout (a settings
-    page), and wiring it into dust2 (the steps are in
-    `reference/systems/economy.md`).
+    team-only weapons. On dust2 since 2026-09-23: its own buy zones (or a
+    stand-in round each side's spawn where they are not extracted, which
+    the map says), your money and "B  buy" with the time left on the HUD,
+    and why B does nothing when it does not open; warmup's $16,000; a gun
+    bought taken in hand. Still to do: choosing another loadout (a settings
+    page).
 15. **HUD for rounds.** *(Remote; the radar is extracted, `MapOverview`)*
     Money, armour, timer, score and players alive, kill feed, radar,
     scoreboard, round-end panel.
@@ -437,8 +468,9 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
 16. **Plant, timer, defuse, explosion.** *(Remote part built 2026-09-23 in
     `src/bomb/`, on the test range (5 takes the bomb out and the attack
     button plants it, E defuses, L the kit, all through your commands);
-    wiring it into the match, dust2 and the HUD is next, as
-    `reference/systems/bomb.md` sets out; the plant time, defuse reach and
+    in dust2's match since 2026-09-23 (its two sites, the map's own blast
+    radius, the round ending on the blast or the defuse); the HUD is next,
+    as `reference/systems/bomb.md` sets out; the plant time, defuse reach and
     beeps are guesses until C1)* *(Local measures,
     then Remote; the bomb and the kit are extracted)* One T carries it; plant in a site; 40 s
     with beeps; defuse 10 s or 5 with a kit; the explosion (CS2 reworked it
@@ -450,7 +482,8 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
 
 17. **Throwing.** *(done on the range, the grenades PR, and from the hand
     since 2026-09-23: 4 takes one out, the attack buttons pull the pin and
-    throw on letting go; Local measures, G1)*
+    throw on letting go; on dust2 too since 2026-09-23, bought from the
+    menu, the map cleared of them at each round's start; Local measures, G1)*
     Three throw strengths, your velocity added, bounces off the hull. The
     grenade clip is still left out of the hull on import
     (`reference/systems/grenades.md`, item 6).
@@ -493,7 +526,9 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
 24. **Playing the round.** *(Remote; Local records grenade lineups)* Bots on
     both sides fighting each other, buying to a plan, planting, rotating,
     retaking and defusing, throwing known smokes and flashes, getting out of
-    fire.
+    fire. *(CS2's stock buying done 2026-09-23: `BotBuying`, from its
+    convars and `botprofile.db`, `reference/systems/economy.md`. A team's
+    plan (full buy, force, save) is still to do, beyond CS2's own bots.)*
 
 ### Phase 9: multiplayer
 

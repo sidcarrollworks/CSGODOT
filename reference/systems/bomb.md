@@ -100,17 +100,18 @@ until it is down, then a counter-terrorist), wrapping the default
 - `PlayerInput` sets `UserCmd.USE` from E and sends `drop` on G; 5 selects
   the bomb.
 
-Not done yet, in files this does not edit:
+Not done yet, in files this does not edit (`match_state.gd` and
+`de_dust2.gd` done 2026-09-23, as below):
 
-### `match_state.gd`
+### `match_state.gd` *(done 2026-09-23)*
 
 - **Handing it out** is the bomb system's, from the match's `round_prestart`,
   `round_start`, `round_freeze_end` and `round_end` events, which the
-  match has to send. Warmup sends no `round_start`, so it has no bomb.
+  match sends. Warmup sends no `round_start`, so it has no bomb.
 - **The clock.** From `bomb_planted` the round's time no longer ends the
-  round: the HUD shows the bomb's (`bomb.seconds_left`). Time running out
-  with the bomb not down is a CT win (`TIME_RAN_OUT`, "TargetSaved"), a
-  plant in progress included.
+  round (the HUD showing the bomb's, `bomb.seconds_left`, is still to do).
+  Time running out with the bomb not down is a CT win (`TIME_RAN_OUT`,
+  "TargetSaved"), a plant in progress included.
 - **Who wins, once it is down:**
   - `bomb_exploded`: Ts, `BOMB_EXPLODED` ("TargetBombed").
   - `bomb_defused`: CTs, `BOMB_DEFUSED` ("BombDefused").
@@ -132,11 +133,12 @@ by the blast earns nobody anything: its `player_death` has no attacker, so
 the C4's $300 `m_nKillAward` in vdata is never paid. That is from memory of
 CS2's kill feed, not measured; C1 can confirm it.
 
-### `de_dust2.gd`
+### `de_dust2.gd` *(done 2026-09-23)*
 
 - `world.game.add_system(BombSystem.new(sites, rules))` with the sites from
   `BombSite.from_volumes(BrushVolume.bomb_sites(entities, root))` and
-  `rules.bomb_damage = SourceEntities.bomb_radius(entities)` (700).
+  `rules.bomb_damage = SourceEntities.bomb_radius(entities)` (700); with no
+  sites extracted there is no bomb, and the map says so.
 - A `C4View` reading `bomb_system.bomb`, as the range adds one.
 
 ### Bots (`bot.gd`, later)

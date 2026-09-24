@@ -48,9 +48,11 @@ const GRENADE_DROP_ORDER := [
 	"weapon_molotov", "weapon_incgrenade", "weapon_hegrenade", "weapon_smokegrenade",
 	"weapon_flashbang", "weapon_decoy",
 ]
-## Each side's pistol at the start of a half: CS2's default loadout (the
-## P2000 is the CTs' other choice, once there is a loadout to choose it in).
-const STARTING_PISTOLS := {"T": "weapon_glock", "CT": "weapon_usp_silencer"}
+## Each side's pistol at a spawn from nothing: CS2's mp_t_default_secondary
+## and mp_ct_default_secondary (gamemode_competitive.cfg), which the default
+## loadout's first pistol place agrees with (Loadout; the USP-S is the CTs'
+## other choice, once there is a loadout page to choose it on).
+const STARTING_PISTOLS := {"T": "weapon_glock", "CT": "weapon_hkp2000"}
 const FULL_ARMOR := 100.0
 
 
