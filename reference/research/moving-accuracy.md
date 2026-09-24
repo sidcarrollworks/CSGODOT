@@ -17,18 +17,35 @@ each unknown (Local), and changes no code.
 
 ## Sources
 
-One research pass on 2026-09-24. The keys follow `combat.md`'s:
+Research on 2026-09-24, rechecked the same day against the newest build.
+Sid asked for the most up-to-date primary sources, so CS2's own files at
+the newest build come first, then Valve's own notes, then community pages.
+Where only an older or secondary source exists, the claim says so beside it.
 
-| Key | Source |
-|---|---|
-| WV | CS2's `scripts/weapons.vdata`, as `reference/weapons/vdata.csv` carries it (GameTracking-CS2 `game/csgo/pak01_dir/scripts/weapons.vdata` @d45f52d is the same file). A pair `a\|b` is `[normal, alternate]` |
-| SH | Sid's community sheet, `reference/weapons/cs2_weapon_sheet.csv` (18 March 2026) |
-| CV | GameTracking-CS2 `DumpSource2/convars.txt` @d45f52d, by line |
-| SCH | GameTracking-CS2 `DumpSource2/schemas/server/<Class>.h` @d45f52d, CS2's own class layouts |
-| PB | GameTracking-CS2 `Protobufs/cs_gameevents.proto` @d45f52d |
-| SS | GameTracking-CS2 `game/csgo/bin/win64/{server,client}_strings.txt` @d45f52d (names and format strings only) |
-| DP | demoparser2 (LaihoE/demoparser, MIT), `src/parser/src/maps.rs` on `main`, 2026-09-24: the properties it reads from a CS2 demo |
-| WS | A web search's summary of a named page. The proxy refused cs.money, the Counter-Strike fandom wiki, HLTV, Steam and gist.github.com, so these are search summaries, not the pages. Re-read them before quoting them |
+**The newest build.** GameTracking-CS2's newest commit at 05:05 UTC on
+2026-09-24 is d45f52d: CS2 **1.41.8.3**, build 2000915, dated 23 September
+2026 (its `game/csgo/steam.inf`). Every file key below except WV is read at
+that commit. `weapons.vdata` last changed at 10f3693 (1.41.8.2, 22
+September 2026) and is unchanged in 1.41.8.3; `reference/weapons/vdata.csv`
+was generated from 1.41.8.2, so it is the current file. Every value WV
+gives below was checked against the file at d45f52d.
+
+The keys follow `combat.md`'s:
+
+| Key | Source | Date or build |
+|---|---|---|
+| WV | CS2's `scripts/weapons.vdata`, as `reference/weapons/vdata.csv` carries it. A pair `a\|b` is `[normal, alternate]` | 1.41.8.2, 22 Sep 2026 (current) |
+| CV | GameTracking-CS2 `DumpSource2/convars.txt`, by line | 1.41.8.3, 23 Sep 2026 |
+| CVH | The same file's 40 dumps in GameTracking-CS2's history from 6aba72a to d45f52d. "Since at least 22 May 2026" means present at the oldest of them | 22 May to 23 Sep 2026 |
+| SCH | GameTracking-CS2 `DumpSource2/schemas/server/<Class>.h`, CS2's own class layouts | 1.41.8.3; every field cited here present since at least 22 May 2026 (CVH window) |
+| PB | GameTracking-CS2 `Protobufs/cs_gameevents.proto` | 1.41.8.3 |
+| SS | GameTracking-CS2 `game/csgo/bin/win64/{server,client}_strings.txt` (names and format strings only) | 1.41.8.3 |
+| SH | Sid's community sheet, `reference/weapons/cs2_weapon_sheet.csv`. Secondary, and older than the game's file | 18 Mar 2026 |
+| DP | demoparser2 (LaihoE/demoparser, MIT), `src/parser/src/maps.rs` on `main`: the properties it reads from a CS2 demo | read 24 Sep 2026 |
+| WS | A web search's summary of a named page, with that page's date. The proxy refused cs.money, the Counter-Strike fandom wiki, HLTV, Steam, SteamDB, fpshub and gist.github.com, so these are search summaries, not the pages. Re-read them before quoting them | per claim |
+
+Valve's own release notes are primary but could not be fetched; where they
+are cited it is through a search summary, and the note's date is given.
 
 Labels: **inferred** means reasoned from names, fields or data, not stated
 by Valve. **From memory** means not checked against any source reachable
@@ -57,9 +74,9 @@ here. Nothing on this page comes from Valve's leaked CS:GO source.
 
 | What the repo assumes | Verdict |
 |---|---|
-| No cost below 34% of the gun's top speed | **Community figure for CS2 too** (WS). No file states it; it is a compiled constant |
-| Full cost from 95% | **Unsourced** (from memory, CS:GO). Nothing reachable here names it |
-| Fourth-root rise between, steep early | **Open, and possibly backwards.** Valve's one public word on the shape (CS:GO, 10 July 2013) calls it exponential, which usually means slow early, steep late (WS) |
+| No cost below 34% of the gun's top speed | **Community figure, 2026 guides** (WS). No primary source: no CS2 file states it, since it is a compiled constant |
+| Full cost from 95% | **Unsourced** (from memory, CS:GO era). Nothing reachable here names it |
+| Fourth-root rise between, steep early | **Open, and possibly backwards.** The only Valve statement on the shape is CS:GO's, from 10 July 2013, with nothing newer: it calls the curve exponential, which usually means slow early, steep late (WS) |
 | The walk key makes the rise linear | **Unconfirmed** (from memory). CS2 does track the walk key on the player (`m_bIsWalking`, SCH) |
 | Landing costs the same for every fall | **Probably wrong.** The game's landing field is a coefficient about a thousand times smaller than every other inaccuracy, and CS2 keeps each landing's speed (WV, SCH; inferred) |
 | The sheet's landing figure is the penalty landing puts on | **Probably wrong.** It cannot be rebuilt from the game's coefficient and any one fall speed; the factor between them runs from 1.5 to 484 and follows each gun's recovery time (below) |
@@ -101,10 +118,11 @@ section).
 
 - Community guides for CS2 give 34% of top speed as where moving starts to
   cost accuracy, "roughly 88 units/s with a rifle" (WS: steamanalyst.com,
-  metabot.gg, 2026). 34% of the AK's 215 is 73 u/s; 88 would be 34% of 260,
-  so the guide's figure is loose. Same threshold as the repo.
+  metabot.gg, both 2026). **Secondary only**: no current primary source
+  gives it. 34% of the AK's 215 is 73 u/s; 88 would be 34% of 260, so the
+  guide's figure is loose. Same threshold as the repo.
 - A coincidence worth knowing: the duck speed is 0.34 of top speed
-  (`movement_constants.md:24`, CS:GO's). Crouch-walking at full crouch speed
+  (`movement_constants.md:24`; **CS:GO's value**, not checked against CS2). Crouch-walking at full crouch speed
   therefore sits exactly at the threshold and costs nothing (inferred; it
   holds if both numbers are CS2's).
 - **Which top speed.** The repo divides by the gun's `m_flMaxSpeed` for the
@@ -118,12 +136,15 @@ section).
 
 ### The shape between
 
-- CS:GO's release notes of 10 July 2013: "Adjusted the function that maps
-  movement speed to weapon inaccuracy. The linear portion of this function
-  is now exponential." Players at the time read it as changing only the
-  stretch from standing to moving accuracy, not the running figure (WS:
-  HLTV news 10954, a Steam discussion of 7/10/13). Nothing reachable here
-  says Valve changed it again for CS2.
+- **Only an older source exists.** CS:GO's release notes of 10 July 2013:
+  "Adjusted the function that maps movement speed to weapon inaccuracy. The
+  linear portion of this function is now exponential." Players at the time
+  read it as changing only the stretch from standing to moving accuracy,
+  not the running figure (WS: HLTV news 10954, a Steam discussion of
+  7/10/13). This is CS:GO's, 13 years before today's build. No CS2 note
+  found by search mentions the curve, and CS2's files cannot show it (the
+  constants are compiled in), so whether CS2 kept the 2013 shape is
+  unknown.
 - "Exponential" in everyday use means slow at first and steep near the top.
   The repo's fourth root is the opposite: steep at first, flat near the top.
   For the AK at 80 u/s, just past the threshold, the repo gives 5.2 degrees
@@ -139,8 +160,8 @@ section).
   `CCSPlayerPawn`), and demos carry it (`is_walking`, and the `WALK` button
   bit 1 << 16, DP). Inferred: it is networked because something the client
   predicts reads it, and the weapon's inaccuracy is the obvious candidate.
-- The walk speed is 0.52 of top speed in the repo (CS:GO's,
-  `movement_constants.md:23`); 112 u/s for the AK, above the 73 u/s
+- The walk speed is 0.52 of top speed in the repo (**CS:GO's value**,
+  `movement_constants.md:23`, not checked against CS2); 112 u/s for the AK, above the 73 u/s
   threshold. So a walking AK is never at standing accuracy while it moves.
   Whether CS2's walk is still 0.52 is the movement research's to settle.
 - **What the key does to the curve is unconfirmed.** The repo's reading
@@ -150,7 +171,8 @@ section).
   uses its own curve. At the AK's full walk speed the three give 3.4
   degrees (the repo's linear), 7.8 (the repo's running curve at walking
   speed), or something else. Guides only say walking is better than running
-  and worse than standing (WS: csmarket.gg, cs.money).
+  and worse than standing (WS: csmarket.gg, 2025; cs.money, a CS:GO-era
+  article updated for CS2, undated in the summary).
 - The test that separates them holds the speed and flips only the key (see
   the last section).
 
@@ -180,15 +202,18 @@ section).
   to it.
 - `weapon_land_dip_amt 20`, "the amount the gun should dip when the player
   lands after a jump" (CV 11793), is the view model's dip only: cosmetic.
-- The Deagle's April 2020 change also shortened "the time to recover
-  accuracy after the player lands" (WS: CS:GO release notes 2020). With no
-  landing-recovery field in WV, inferred: that was done through the
-  coefficient or the recovery time, not a separate timer.
+- **Only an older source exists.** The Deagle's April 2020 change also
+  shortened "the time to recover accuracy after the player lands" (WS:
+  CS:GO release notes, April 2020). That is CS:GO's; no CS2 note found
+  mentions landing accuracy. With no landing-recovery field in WV,
+  inferred: that was done through the coefficient or the recovery time,
+  not a separate timer.
 
 ### What a fall-scaled landing would give
 
 A jump on flat ground lands at about its take-off speed, 302 u/s
-(`sv_jump_impulse` 301.993 in the repo); a drop of 100 units lands at
+(`sv_jump_impulse 301.993` and `sv_gravity 800` in CS2 today, CV 10179,
+10092; the repo has the same); a drop of 100 units lands at
 about 400 u/s. Coefficient times fall speed, if that is the rule (inferred):
 
 | Gun | Coefficient (WV) | Flat jump, x 302 | 100-unit drop, x 400 | Sheet's excess over standing (SH) |
@@ -236,6 +261,24 @@ the movement service, `m_bJumpApexPending` (SCH
 `CCSPlayer_MovementServices`), so the game marks the apex as an event
 (inferred). `weapon_air_spread_scale 1` scales the airborne term (CV 11772).
 
+## What players criticise, and what could apply here
+
+Sid, 2026-09-24: "While researching keep track of critiques and improvements
+players want to see." Newest first, CS2-era before CS:GO-era. Forum and news
+pages refuse fetches from here, so each is a search summary (WS) unless it
+says otherwise; its date is the page's or the event's. His standing rule
+applies: CS2 is the starting point, not the limit, and anything proposed
+must be measurable and weigh a server's cost per tick first.
+
+| When | What players or Valve said | What it means for us |
+|---|---|---|
+| 22 Sep 2026 (1.41.8.2) | **Valve made the Dynamic Quad the default crosshair** because it "better represents weapon accuracy" (WS: steamanalyst.com, dust2.us, on that day's notes). Primary confirmation: `cl_crosshairstyle` defaults to 7, and "Styles 0, 1 and 7 track the weapon's actual inaccuracy" (CV 1005-1006, 1.41.8.3); the Dynamic Quad arrived in 1.41.8.2 (CVH). Pros mostly keep static crosshairs (WS: refrag.gg, 2026) | Players could not see when moving had cost them accuracy, and Valve's answer is to show the cone by default. Our `Crosshair` draws four fixed ticks and only draws the cone as a debug circle on the range (`src/ui/crosshair.gd:26-40`). The match HUD could default to ticks that open with `current_inaccuracy`, keeping static as an option. It reads state per frame; nothing per tick |
+| 19 Oct 2024 | **Running accuracy ranked fourth** of the problems more than 40 pros named in Thour's survey, after performance, sub-tick networking and view-model bob (WS: esports.gg, dust2.us) | The complaint is that running shots land too often. Part of it is how CS2 feels online, not the numbers: on the victim's screen the shooter is still running when they had already stopped on their own (WS: Steam discussions, 2023), which is the interpolation delay `CLAUDE.md` names as a known weakness, and that belongs to the netcode (roadmap item 25). The rest is the curve, which the demo below measures. A measurable proposal once it is in: hit rate of first shots fired above the threshold, CS2 against ours, at the same range |
+| 19 Aug 2024 | **Valve banned input automation** (Snap Tap, null binds, jump binds) because it circumvents "core skills" such as counter-strafing, kicking suspected players on official servers (WS: dust2.us, pcgamesn.com, quoting Valve's notes) | Counter-strafing is meant to be a skill of timing, so the accuracy cost of speed has to stay. Single player needs nothing. For multiplayer, detecting several movement changes from one input is a check per command per player, cheap next to a hull trace; it is a policy for Sid to decide later |
+| 2026 guides | **Players cannot tell whether they had stopped** when they fired: "shooting too early" before speed drops under the threshold is the common mistake, "difficult to self-diagnose" (WS: nextfrag.gg, metabot.gg) | A training aid CS2 only has behind cheats (`cl_weapon_debug_show_accuracy`, CV 2332): on the range, show the speed and movement cost of each shot beside the hit log. It reads what the shot already records; nothing per tick |
+| 7 Sep 2023 (CS2 limited test) | **Pimp's video of running pistol kills**, "the running accuracy is out of this world"; later judged less severe (WS: win.gg, n4g.com) | By CS2's own numbers pistols lose little while running: the Glock's move term is 0.01 and the Deagle's 0.0481, against the AK's 0.17506 (WV, current). We read the same numbers, so we inherit this. Changing it would depart from CS2 on purpose; the numbers are there if Sid wants to |
+| 28 Apr 2016 (**CS:GO era**) | "Most weapons are almost 100% accurate right after landing from a jump", the Deagle the exception; a crouch-jump AWP shot lands accurate. The poster asked for a landing penalty that lingers about half a second for every gun (WS: Steam discussion "Accuracy after jumping fix") | An old observation, but it fits the small landing coefficients better than the fall-speed reading's large first-tick figures in section 3, which is one more reason to measure before changing our landing. If CS2 still lands this accurately, a longer landing penalty would be a deliberate improvement to propose, measured as the cone 100, 200 and 300 ms after a flat jump |
+
 ## Corrections other docs and code need
 
 For whoever takes these on; this PR makes none of them.
@@ -264,7 +307,11 @@ For whoever takes these on; this PR makes none of them.
    note it beside them.
 6. `reference/research/combat.md` §R13 "Jumping": add
    `m_bJumpApexPending` and the landing fields above.
-7. `tests/run_tests.gd` phase 9 (counter-strafe timings) measures when the
+7. `src/ui/crosshair.gd`: CS2's default crosshair has tracked the
+   weapon's inaccuracy since 1.41.8.2 (22 September 2026). Whoever builds
+   the match HUD (roadmap item 15) should make ours follow
+   `Weapon.current_inaccuracy` by default, with static as an option.
+8. `tests/run_tests.gd` phase 9 (counter-strafe timings) measures when the
    cone closes; the 78 ms and 203 ms it prints depend on the curve's shape
    and will move when the curve does.
 
