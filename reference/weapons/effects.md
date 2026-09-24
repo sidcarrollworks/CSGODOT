@@ -122,8 +122,13 @@ CS2's overbright gives only that way. Ours still reads a little smaller than
 the screenshot's (Local check 7).
 
 The flash's light is an `OmniLight3D` for CS2's light's life (25 to 52 ms),
-its range the particle's radius times 0.5 (inferred), its brightness CS2's
-intensity times its alpha times `MuzzleFlashes.LIGHT_ENERGY`, set by eye.
+its range the particle's radius times 0.5 (inferred), fading only to its
+range (Godot's own falloff is by the metre and left the hand a tenth of
+it), its colour CS2's as it is, and its brightness CS2's intensity times its
+alpha times `MuzzleFlashes.LIGHT_ENERGY` (50), set by eye so a Glock's
+flash lights the glove, as it does in Sid's screenshot. A Glock's light is a
+quarter of a rifle's in CS2's numbers, so a rifle's lights the front of the
+gun orange.
 
 ## What it costs
 
@@ -153,9 +158,9 @@ first flash of a fight, the 4096 by 2048 flame sheet held that frame up
    screenshot them next to ours: the streak's bright head and tail, the
    flame's size and reach (the Deagle's faint flame 15 to 35 units out), the
    AWP's ground dust.
-5. **The light.** How far a flash lights a wall (80 units a rifle, 70 a
-   pistol, 160 a machine gun or shotgun) and how brightly, to set
-   `LIGHT_ENERGY`; that silenced guns cast none.
+5. **The light.** How far and how brightly a flash lights your hand and a
+   wall (80 units a rifle, 70 a pistol, 160 a machine gun or shotgun), in
+   shade and in sun, to set `LIGHT_ENERGY`; that silenced guns cast none.
 6. **Size on screen.** A distant tracer's width at 1080p: about 1 pixel a
    pistol's, 2 an AWP's.
 7. **The flash's bloom.** Against CS2 side by side (a few guns, first person

@@ -27,9 +27,12 @@ extends Node3D
 ## Seconds of CS2's drag step: velocity x (1 - drag) each 1/30 s.
 const DRAG_STEP := 1.0 / 30.0
 ## How bright a flash's light is in Godot's energy per unit of CS2's
-## intensity x alpha (C_OP_RenderStandardLight). Set by eye against the
-## renders; a Local check compares a wall lit by a flash in CS2.
-const LIGHT_ENERGY := 12.0
+## intensity x alpha (C_OP_RenderStandardLight), set by eye: Sid's
+## screenshot of a Glock has its flash lighting the glove, and a Glock's
+## light is a quarter of a rifle's (0.1 x 0.41 against 0.2 x 0.75), so a
+## rifle's lights the gun's front orange. A Local check compares a hand and
+## a wall lit by a flash in CS2.
+const LIGHT_ENERGY := 50.0
 ## Lights at once, the oldest reused.
 const LIGHTS := 8
 ## CS2 draws every flame a second time into its effects bloom, which is
@@ -121,6 +124,11 @@ func _ready() -> void:
 		var light := OmniLight3D.new()
 		light.visible = false
 		light.shadow_enabled = false
+		# No falloff but the fade to its range, as CS2's light has: Godot's
+		# is by the metre, and at a flash's 5 to 20 units from the hand it
+		# left the hand a tenth of the light (Sid's screenshot of a Glock has
+		# the flash lighting the glove).
+		light.omni_attenuation = 0.0
 		add_child(light)
 		_lights.append(light)
 		_light_until.append(0)
@@ -443,7 +451,7 @@ func _light(flash: Flash, p: Particle, at: Vector3) -> void:
 		offset.y += randf_range(-1.0, 1.0) * float(p.layer.get("offset_side", 0.0))
 		p.position = offset if p.local else flash.muzzle * offset
 		p.light.omni_range = p.half
-		p.light.light_color = p.color.srgb_to_linear()
+		p.light.light_color = p.color.srgb_to_linear() if DECODE_COLOURS else p.color
 		p.light.light_energy = float(p.layer.get("energy", 0.2)) * p.alpha * LIGHT_ENERGY
 		p.light.visible = true
 		var slot := _lights.find(p.light)
