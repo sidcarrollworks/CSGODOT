@@ -115,7 +115,7 @@ effects bloom, which is blurred and added over the frame. How far that blur
 spreads is not in the files. A soft glow card behind each flame (CS2's
 `particle_glow_04`, 1.6 times the flame, at 0.2) stands in for it, set by
 eye against Sid's screenshot of a Glock's flash
-(`reference/cs2 _screenshots/Glock_muzzleflash.png`); stronger, it hazes the
+(`reference/cs2 _screenshots/Glock_muzzleflash.webp`); stronger, it hazes the
 gun white. The flames' and tracers' colours are CS2's 0-255 as they are, not
 decoded from sRGB: the screenshot's flame is yellow-white at its core, which
 CS2's overbright gives only that way. Ours still reads a little smaller than
@@ -126,7 +126,8 @@ its range the particle's radius times 0.5 (inferred), falling off as one
 over the distance to that range, its colour CS2's as it is, and its
 brightness CS2's intensity times its alpha times
 `MuzzleFlashes.LIGHT_ENERGY` (250, large because the distance is in
-inches). Set by eye against Sid's screenshots of CS2 on dust2: an AK-47
+inches). Set by eye against Sid's screenshots of CS2 on dust2
+(`reference/cs2 _screenshots/ak47_flash_*.webp`): an AK-47
 fired at the wall with the rail on Tunnel Stairs lights that wall orange all
 round, brightest by the muzzle, and the glove holding the gun; in the sun
 outside the tunnel it shows little. A Glock's light is a quarter of a

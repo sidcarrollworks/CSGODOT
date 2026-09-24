@@ -28,9 +28,10 @@ extends Node3D
 const DRAG_STEP := 1.0 / 30.0
 ## How bright a flash's light is in Godot's energy per unit of CS2's
 ## intensity x alpha (C_OP_RenderStandardLight), set by eye against Sid's
-## screenshots of CS2 on dust2: an AK-47 fired at the wall with the rail on
-## Tunnel Stairs lights the wall orange all round, brightest by the muzzle,
-## and the glove; in the sun outside the tunnel it shows little. A Glock's
+## screenshots of CS2 on dust2 (reference/cs2 _screenshots/ak47_flash_*):
+## an AK-47 fired at the wall with the rail on Tunnel Stairs lights the wall
+## orange all round, brightest by the muzzle, and the glove; in the sun
+## outside the tunnel it shows little. A Glock's
 ## light is a quarter of a rifle's (0.1 x 0.41 against 0.2 x 0.75).
 const LIGHT_ENERGY := 250.0
 ## Lights at once, the oldest reused.
@@ -42,7 +43,7 @@ const LIGHTS := 8
 ## by a soft glow card behind each flame (CS2's own particle_glow_04), this
 ## many times the flame's size and this bright, set by eye against Sid's
 ## screenshot of a Glock's flash (reference/cs2 _screenshots/
-## Glock_muzzleflash.png): stronger, it hazes the gun white, where CS2's is
+## Glock_muzzleflash.webp): stronger, it hazes the gun white, where CS2's is
 ## a fireball.
 const BLOOM_SIZE := 1.6
 const BLOOM_STRENGTH := 0.2
