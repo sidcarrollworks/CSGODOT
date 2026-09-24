@@ -50,6 +50,10 @@ from the cloud. Nothing here comes from Valve's leaked CS:GO source.
   (all in one 16-slot atlas), lit per voxel from the map's light probes and
   shadows, broken up by two octaves of Worley noise, at half or quarter
   resolution with a full-resolution pass to fill holes (*Decoded*, *Read*).
+- **A video's edge-case tests agree** (section 2a): the grid is placed where
+  the smoke lands, so small gaps pass or block by luck of alignment; confined
+  smokes run into a hard box; a formed cloud does not reflow when a window
+  breaks or props move; some invisible tool brushes block smoke.
 - **For this repo:** the server-side model (a fill over a coarse grid, a
   density-along-a-line query, holes from HE and bullets) is what #53 already
   built. The numbers to change are the voxel size (20), the 640-unit box,
@@ -87,8 +91,8 @@ Functions and names in `game/csgo/bin/win64/server_strings.txt` (*Read*):
   so it may be recent bullet paths, or recent bounce points (*Inferred*,
   unsettled).
 - `SmokeVolume::RebuildVoxels(const AABB_t&)`: rebuilds the voxels inside a
-  box. Probably for something in the world changing, such as a door or a
-  breakable (*Inferred*).
+  box. What calls it is unknown: in the video in section 2a, neither a
+  broken window nor moved physics props reshaped a formed cloud.
 - `SmokeVolume::GetSmokeDensityInLine(start, end, …)` (public) and
   `GetSmokeDensityLOS` (private): how much smoke a line crosses. The same
   two appear in the client DLL, so client and server share this code.
@@ -173,6 +177,69 @@ from its edges inwards. The duration is still disputed: most sources say
 strong cover"), one says about 20 (Swap.gg, csdb.gg, bo3.gg; the round
 research has the same split). G4 settles it by timing `smokegrenade_detonate`
 to `smokegrenade_expired` in a demo.
+
+## 2a. What a video's tests show
+
+Sid pasted the transcript of a YouTube video (youtube.com/watch?v=4xG4No0-y9w;
+the channel isn't named in the transcript) that tests CS2's smokes in a
+custom map built for it. It credits Acerola's recreation and focuses on edge
+cases. What it found, in its own words where quoted, with how each finding
+sits against the files (*Video* marks the claim):
+
+- **The grid is placed where the smoke lands, not on a world grid.** Three
+  throws at slightly different spots between two holes in a glass tube gave
+  four different results: a tidy "smoke sausage" inside the tube, a cloud
+  out of one hole, the tube's solid part filled, a cloud out of the other
+  hole. The video's explanation is that the voxels are large and offset by
+  the landing point, so whether a gap one voxel wide lets smoke through
+  depends on how the grid happens to line up with it (*Video*). This
+  agrees with the shaders, whose grid is centred on each smoke's
+  `m_vSmokeDetonationPos` (*Decoded*), and the repo already anchors its
+  grid the same way (`SmokeVoxels.anchor`).
+- **Its guess of "20 across perhaps, about 8,000 cubes"** is a guess; the
+  shaders put the box at 32 cells of 20 units, and how many are filled is
+  still G4.
+- **Smoke shows through glass beside a hole before it reaches the hole.**
+  The video asks whether that is drawing or spreading. The drawing explains
+  it: the grid is sampled with trilinear filtering (`g_sTrilinearClamp`),
+  so a filled 20-unit cell bleeds up to a cell's width past a thin wall
+  (*Inferred*).
+- **In a confined space the smoke travels further, up to a hard limit.**
+  Narrower corridors push it further, then it stops abruptly, which the
+  video draws as "a big invisible cube around the smoke grenade" (*Video*):
+  the 640-unit box (*Decoded*). So the fill keeps a fixed amount of smoke
+  and spends it further along a narrow way, as the repo's does, but CS2's
+  limit is the box, not a distance along the path.
+- **Too confined, it breaks the rules.** With little room it sometimes
+  passes straight through a side wall, and in a thin corridor it can appear
+  at the far end but not in the gap between (*Video*). Neither follows from
+  a plain flood fill; the video offers no cause and nor do the files.
+- **Inside a solid, it fills the solid.** A smoke that goes off inside a
+  surface treats the inside as empty space and sometimes spills out too;
+  one below the ground lays a layer of fog over it (*Video*). Not something
+  play reaches, but it says the fill does not check whether its start is
+  inside geometry.
+- **Props block like walls.** Trees and prop walls stop it; a row of trees
+  with gaps is impassable because the gaps are narrower than a voxel
+  (*Video*).
+- **Some invisible tool brushes block it.** The video names four that do:
+  "solid", "block light", "block bullets", and a fourth the captions garble
+  ("layer on trol lip"; possibly a player-control clip). Others, such as
+  plain player clip, let it through (*Video*; the list of which do not is
+  not given in full). `TOOLS/TOOLSBLOCKBOMB` and `csgo_grenadeclip` are in
+  `server_strings.txt` (*Read*) but the transcript does not say either blocks.
+- **Once formed, the cloud does not reflow.** After shooting out a window
+  next to a smoke only "the billowy wafts" pour through, not the cloud's
+  body; moving physics props after it has formed changes nothing (*Video*).
+  So the shape is fixed when the build ends, and the wisps are the
+  drawing's noise sampled past the old edge (*Inferred*).
+- **Its complaints:** fire is not reliably put out, and player shadows can
+  show through smokes (*Video*; the second is the lighting's, section 4).
+
+For this repo: the grid anchored at the landing point is CS2's behaviour,
+not a flaw to fix; the box limit is new; and which of dust2's tool brushes
+block smoke is a Local question (section 9), since the importer's hull
+decides what the fill traces against.
 
 ## 3. What changes it
 
@@ -320,7 +387,8 @@ The repo's numbers are in `src/grenades/grenade_rules.gd` and
 | Repo | CS2 | Verdict |
 |---|---|---|
 | 16-unit cubes (`SMOKE_VOXEL`) | 20-unit cells | **Change to 20** (*Decoded*) |
-| No box limit; `SMOKE_REACH` 400 along the path | A 640-unit box round the centre (±320) | **Add the box**; the reach can stay as the flow limit |
+| No box limit; `SMOKE_REACH` 400 along the path | A 640-unit box round the centre (±320), which confined smokes run into (the video) | **Add the box**; the reach can stay as the flow limit |
+| The grid anchored where the grenade stopped | The same: small gaps pass or block depending on the landing spot (the video) | Keep |
 | 1,600 cubes (6.6 million cubic units) | Not published; the torus shape is about 300 x 156 in the open | **Measure** (G4: the cloud's size in the open) |
 | A dome from a nearest-first search, up costs 1.25, down 0.8 | A torus 61/88 centred 68 up | **Aim the fill at the torus shape** (*Inferred*) |
 | Grows over 1 s | About 1 s, drawn from half size | Keep |
@@ -392,6 +460,7 @@ demoparser2 (MIT), as the combat research proposes:
 | Whether HE holes and bullet tunnels exist on the server | A bot behind a smoke: does it see and shoot you through a fresh HE hole, or a tunnel you keep open? And does a kill through the hole carry `thrusmoke`? |
 | The HE hole's size and refill | An HE into a smoke, filmed from outside at a known distance |
 | The torus convars' effect on the fill | With `sv_cheats 1`, change `cl_smoke_torus_ring_radius` and see whether the cloud's shape changes for a second client (it is replicated) |
+| Which tool brushes block smoke on dust2 | The video found four that do; list dust2's tool brushes from the extraction and throw a smoke against each kind on the range copy |
 | Whether the fill traces or reads a pre-built grid | Not measurable from outside; not needed |
 
 ## Sources
@@ -420,6 +489,9 @@ demoparser2 (MIT), as the combat research proposes:
 - Insider Gaming, "CS2 update adds bomb interaction with smokes and
   molotovs"; community.skin.club, "C4 now affects smokes and fire" (2026-07).
 - esports.gg, "Every major CS2 update explained" (2025 overlap fixes).
+- A YouTube video testing CS2's smokes in a custom map
+  (youtube.com/watch?v=4xG4No0-y9w), from the transcript Sid pasted into
+  the project on 2026-09-24.
 - This repo: `reference/research/round-bomb-grenades.md` on PR #58 (fire and
   smoke, the 2023-03-30 note); `/mnt/project-files/reviews/local-review-notes.md`
   (the trace count).
