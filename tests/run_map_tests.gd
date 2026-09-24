@@ -1720,7 +1720,62 @@ func _test_lighting() -> void:
 			"with no panorama on disk the sky is procedural, and the report says so"
 		)
 		_check(environment.ssao_enabled and environment.glow_enabled, "occlusion and glow are on")
+	_check(
+		used["lamps"] == 0 and holder.find_children("*", "SpotLight3D", true, false).is_empty(),
+		"a lump without live lamps lights none"
+	)
 	holder.free()
+
+	# dust2's two lamps down lower tunnels, which CS2 lights as it draws
+	# (stationary: directlight 3, a baked shadow index), and one of its CT
+	# spawn lamps, baked whole into the lightmap (directlight 1), as the
+	# entity lump has them; and a live light of a kind not built.
+	var tunnel := {
+		"classname": "light_barn", "origin": "[ -1040.0, 1424.563354, 84.561882 ]", "angles": "[ 89.999985, 0.0, 0.0 ]",
+		"color": "[ 255, 184, 123 ]", "brightness_lumens": "3000.0", "brightnessscale": "1.0", "range": "204.848007",
+		"directlight": "3", "bakedshadowindex": "1", "castshadows": "1", "size_params": "[ 16.0, 16.0, 0.12 ]",
+		"soft_x": "0.33", "soft_y": "0.33", "enabled": "true",
+	}
+	var dimmer := tunnel.duplicate()
+	dimmer["origin"] = "[ -691.999939, 1424.563354, 88.312721 ]"
+	dimmer["brightness_lumens"] = "850.0"
+	dimmer["bakedshadowindex"] = "2"
+	var baked := tunnel.duplicate()
+	baked["origin"] = "[ 325.308746, 2371.635986, 31.464579 ]"
+	baked["directlight"] = "1"
+	baked.erase("bakedshadowindex")
+	var rect := {"classname": "light_rect", "directlight": "3", "bakedshadowindex": "3", "size_params": "[ 6.0, 10.0, 0.15 ]"}
+	var lamp_entities: Array[Dictionary] = [tunnel, dimmer, baked, rect]
+	var lit := Node3D.new()
+	root.add_child(lit)
+	var lamps := MapLighting.add_lamps(lit, lamp_entities)
+	var spots := lit.find_children("*", "SpotLight3D", true, false)
+	_check(lamps["built"] == 2 and lamps["left_out"] == 1 and spots.size() == 2,
+		"the two live lamps are lit, the baked one left to the lightmap, the rect light counted as left out (%s)" % [lamps])
+	if spots.size() == 2:
+		var lamp := spots[0] as SpotLight3D
+		# CS2's frustum: its eye 1 / 0.12 = 8.33 units above the lamp, 16
+		# units either side there, 62.49 degrees off its axis, a solid angle
+		# of 3.6213 steradians; 40 pi x 3000 lumens over that, at the sun's
+		# scale, is 72,870 at one unit.
+		_check(
+			lamp.global_position.is_equal_approx(Vector3(1424.563354, 84.561882 + 1.0 / 0.12, -1040.0))
+				and (-lamp.global_basis.z).is_equal_approx(Vector3.DOWN)
+				and is_equal_approx(lamp.spot_angle, rad_to_deg(atan(16.0 * 0.12)))
+				and absf(lamp.light_energy - 72870.0) < 50.0 and is_equal_approx(lamp.spot_attenuation, 2.0)
+				and lamp.light_color.is_equal_approx(Color8(255, 184, 123)) and lamp.shadow_enabled,
+			"a barn is a shadowed spot from its frustum's eye, straight down, 62.5 degrees wide, falling off as the square (%s, %.0f)"
+				% [lamp.global_position, lamp.light_energy]
+		)
+		var full := pow(1.0 - pow((8.33 + 204.85) / lamp.spot_range, 4.0), 2.0)
+		var inner := atan(0.67 * 16.0 * 0.12)
+		var rim := (1.0 - cos(inner)) / (1.0 - cos(deg_to_rad(lamp.spot_angle)))
+		_check(
+			full > 0.94 and absf(1.0 - pow(rim, lamp.spot_angle_attenuation) - MapLighting.LAMP_EDGE_KEPT) < 0.001
+				and absf((spots[1] as SpotLight3D).light_energy - 72870.0 * 850.0 / 3000.0) < 20.0,
+			"it keeps 95% of its light out to CS2's range and inside its soft rim; the dimmer lamp is lit by its own lumens"
+		)
+	lit.free()
 
 	# With the lightmap's average measured, that is the ambient instead, at
 	# the lightmapped surfaces' own energy.

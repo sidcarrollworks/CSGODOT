@@ -94,9 +94,11 @@ Updated 2026-09-24 later: game modes apart from maps (item 24a, `reference/syste
   lightmaps for bounce light, light probes for props, players and arms.
   The 3D skybox lit by its own lightmaps, the props with a decal UV set
   (the kasbah towers, arches, crates) by the map's through their third
-  UV set, and the props' decals and glow (the tunnels' lamps), after Sid
-  found black skybox buildings, orange blocks on the towers and unlit
-  lamps (2026-09-24, `reference/asset-pipeline.md`).
+  UV set, and the props' decals and glow; and the two lamps down lower
+  tunnels, which CS2 lights as it draws rather than bakes, lit the same
+  way (`MapLighting.add_lamps`). After Sid found black skybox buildings,
+  orange blocks on the towers and a dark lower tunnel (2026-09-24,
+  `reference/asset-pipeline.md`).
 - Viewmodel arms and weapons at CS2's `viewmodel_fov`; third-person agents
   (Phoenix and SAS) on the locomotion rig, moved by CS2's own blend spaces
   (runs at 225, walks at 136, crouching at 96, kept in step) in an animation

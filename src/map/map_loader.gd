@@ -79,9 +79,9 @@ func _ready() -> void:
 		self, importer.stats.get("sun", {}), entities, sky,
 		importer.stats.get("lightmaps", {}).get("ambient")
 	)
-	print("--- lighting: sun energy %.2f, exposure %.2f, sky from %s, fog %s, ambient from %s" % [
+	print("--- lighting: sun energy %.2f, exposure %.2f, sky from %s, fog %s, ambient from %s, %d lamps lit live" % [
 		lighting["sun_energy"], lighting["exposure"], lighting["sky"], "on" if lighting["fog"] else "off",
-		lighting["ambient"],
+		lighting["ambient"], lighting["lamps"],
 	])
 	_build_skybox()
 	_read_contents(entities_path)
