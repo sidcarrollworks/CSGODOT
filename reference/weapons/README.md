@@ -50,7 +50,7 @@ takes.
 |---|---|---|
 | Price, Kill Award | Buy price and the money a kill with it pays | Not yet: no economy |
 | Damage | To an unarmoured chest at point blank | `base_damage` |
-| Bullets | Rounds per trigger pull: 1, or a shotgun's pellets (6 to 9) | `pellets`, not used yet |
+| Bullets | Rounds per trigger pull: 1, or a shotgun's pellets (6 to 9) | `pellets`, each traced on its own (`Weapon.pellet_directions`) |
 | Armor Penetration | Share of damage that gets through armour | `armor_penetration` |
 | Damage Falloff @ 500U | Share lost every 500 units, compounding | `range_modifier` = 1 - this |
 | Headshot Multiplier | Not always x4: M4A1-S x3.475, Desert Eagle x3.9 | `head_multiplier` |

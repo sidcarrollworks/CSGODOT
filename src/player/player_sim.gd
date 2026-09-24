@@ -137,7 +137,8 @@ var hit_punch := RecoilState.new()
 signal hurt(amount: float, zone: StringName, from: Vector3)
 
 
-## A round left the weapon and was traced to where it landed.
+## A round left the weapon and was traced to where it landed: each of a
+## shotgun's pellets is one (Weapon.Shot.pellet), the first being the shot.
 signal shot_traced(shot: Weapon.Shot, result: Hitscan.Result)
 ## The weapon started reloading.
 signal reload_started
@@ -719,8 +720,11 @@ func _try_shoot(at_usec: int, tick_fraction: float, yaw: float, pitch: float) ->
 		userid, team, team_damage_scale, exclude,
 		world.game.events if is_instance_valid(world) else null
 	)
-	var result := Hitscan.fire_as(get_world_3d().direct_space_state, shot, weapon.data, shooter)
-	shot_traced.emit(shot, result)
+	# A shotgun's pellets are each traced and do their damage on their own.
+	for i in shot.pellets():
+		var pellet := shot.pellet_shot(i)
+		var result := Hitscan.fire_as(get_world_3d().direct_space_state, pellet, weapon.data, shooter)
+		shot_traced.emit(pellet, result)
 
 
 ## A grenade in hand: either attack button pulls the pin once the draw is

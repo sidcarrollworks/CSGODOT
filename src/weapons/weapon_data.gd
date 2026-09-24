@@ -112,7 +112,8 @@ class Punch:
 ## Beyond this the bullet stops entirely.
 @export var max_range: float = 8192.0
 
-## Rounds a trigger pull puts out: 1, or a shotgun's pellets. Not used yet.
+## Rounds a trigger pull puts out: 1, or a shotgun's pellets
+## (m_nNumBullets), each traced and damaged on its own (Weapon.Shot.pellet).
 @export var pellets: int = 1
 
 ## How well a round carries through walls and props, as the game gives it
@@ -349,6 +350,16 @@ class Punch:
 @export var inaccuracy_crouching: float = 0.31
 @export var inaccuracy_moving: float = 10.32
 @export var inaccuracy_jumping: float = 8.41
+
+## The gun's own spread (m_flSpread), in degrees: the part of each total
+## above that is the gun rather than how it is held. A gun of one round
+## fires into the whole total. A shotgun's pellets keep a fixed pattern
+## this wide round the round's aim, and the rest of the total, what moving,
+## jumping and firing add, throws that aim (Weapon.fire).
+@export var spread: float = 0.0
+## Seeds a shotgun's pellet pattern (m_nSpreadSeed; only the four shotguns
+## have one), so a gun's pattern is the same every shot.
+@export var spread_seed: int = 0
 
 ## Added per shot while firing, in degrees.
 @export var inaccuracy_per_shot: float = 0.447
