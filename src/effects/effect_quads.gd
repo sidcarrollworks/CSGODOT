@@ -9,7 +9,8 @@ extends Node3D
 ## and turned on the CPU (sprite() and streak() build its transform), and
 ## carries its texture rectangle (a sheet's frame) and its colour. A card
 ## drawn in first person goes in a batch with the view model's projection
-## (ViewModelProjection), so it sits where the drawn gun is.
+## (ViewModelProjection), so it sits where the drawn gun is, at the arms'
+## narrowing as it is this frame: a scope changes it.
 
 const SHADERS := {
 	&"add": preload("res://src/effects/effect_add.gdshader"),
@@ -23,18 +24,26 @@ const FIRST_CAPACITY := 64
 
 var _batches := {}
 var _quad := QuadMesh.new()
+## The arms' narrowing the first-person batches are drawn at.
+var _narrowing := ViewModelProjection.fov_narrowing()
 
 
 class Batch:
 	var node: MultiMeshInstance3D
 	var multimesh: MultiMesh
 	var count := 0
+	var first_person := false
 
 
-## Starts a frame: every batch empties.
-func begin() -> void:
+## Starts a frame at the arms' narrowing (ViewModelProjection.narrowing_under):
+## every batch empties.
+func begin(narrowing: float = ViewModelProjection.fov_narrowing()) -> void:
+	var narrowed := not is_equal_approx(narrowing, _narrowing)
+	_narrowing = narrowing
 	for batch: Batch in _batches.values():
 		batch.count = 0
+		if narrowed and batch.first_person:
+			_project(batch)
 
 
 ## One card: texture's rectangle uv (UV, a frame of its sheet) on a unit
@@ -120,12 +129,17 @@ func _batch(texture: Texture2D, blend: StringName, first_person: bool, ends: Arr
 	batch.node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	# The cards are anywhere on the map; nothing is gained by culling the batch.
 	batch.node.custom_aabb = AABB(Vector3.ONE * -1e6, Vector3.ONE * 2e6)
+	batch.first_person = first_person
 	if first_person:
-		batch.node.set_instance_shader_parameter(&"view_model_projection",
-			Vector2(ViewModelProjection.fov_narrowing(), ViewModelProjection.DEPTH_SQUEEZE))
+		_project(batch)
 	add_child(batch.node)
 	_batches[key] = batch
 	return batch
+
+
+func _project(batch: Batch) -> void:
+	batch.node.set_instance_shader_parameter(&"view_model_projection",
+		Vector2(_narrowing, ViewModelProjection.DEPTH_SQUEEZE))
 
 
 ## Doubles a batch's room. Resizing drops what it held, which is nothing

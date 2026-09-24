@@ -207,6 +207,23 @@ func _test_every_pellet_does_its_damage() -> void:
 	_check(not victim.alive and dealt >= 99,
 		"point blank to the chest, the Nova's pellets together kill through kevlar (%d dealt in %d hits)" % [dealt, hurts.size()])
 	_check(_named(events, &"bullet_impact").size() >= hurts.size(), "every pellet that lands is a bullet_impact")
+	# Each pellet is a round of its own to whoever draws it: its fire_bullets,
+	# numbered, then its own impacts, so each has its tracer (ShotEffects).
+	var rounds := PackedInt32Array()
+	var impacts_in_order := true
+	for event in events:
+		if event.name == &"fire_bullets":
+			rounds.append(int(event.fields["pellet"]))
+		elif event.name == &"bullet_impact" and rounds.is_empty():
+			impacts_in_order = false
+	var bullets := _named(events, &"fire_bullets")
+	var ways := {}
+	for event in bullets:
+		ways["%.3f %.3f" % [event.fields["yaw"], event.fields["pitch"]]] = true
+	_check(
+		rounds == PackedInt32Array([0, 1, 2, 3, 4, 5, 6, 7, 8]) and impacts_in_order and ways.size() == 9,
+		"and a fire_bullets for each pellet, numbered 0 to 8, each its own way and before its impacts (%s)" % [rounds]
+	)
 	player.queue_free()
 	victim.queue_free()
 	world.queue_free()

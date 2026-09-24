@@ -99,13 +99,14 @@ func _process(_delta: float) -> void:
 		_pending.clear()
 		return
 	var eye := camera.global_transform
+	var narrowing := ViewModelProjection.narrowing_under(camera)
 	for round in _pending:
-		_start(round, eye)
+		_start(round, eye, narrowing)
 	_pending.clear()
 	_open.clear()
 
 	var now := draw_usec()
-	quads.begin()
+	quads.begin(narrowing)
 	_draw_trails(now, camera)
 	_draw_ropes(now, eye)
 	flashes.advance(now, eye)
@@ -118,8 +119,10 @@ static func draw_usec() -> int:
 	return SimClock.now_usec() - tick + int(clampf(Engine.get_physics_interpolation_fraction(), 0.0, 1.0) * tick)
 
 
-## A round's flash and tracer, from where its gun is drawn.
-func _start(round: Dictionary, eye: Transform3D) -> void:
+## A round's flash and tracer, from where its gun is drawn: a shotgun's
+## pellets a tracer each and the pull one flash. narrowing is the arms' as
+## drawn this frame.
+func _start(round: Dictionary, eye: Transform3D, narrowing: float) -> void:
 	var fields: Dictionary = round["fields"]
 	var fired: int = round["at_usec"]
 	var userid: int = fields["userid"]
@@ -139,7 +142,7 @@ func _start(round: Dictionary, eye: Transform3D) -> void:
 	elif gun is PlayerModel:
 		muzzle = Muzzles.in_hand(gun, weapon_class, second)
 
-	if muzzle != null:
+	if muzzle != null and int(fields["pellet"]) == 0:
 		flashes.fire(weapon_class, mode, nth, first_person, gun, second, fired, _rng)
 
 	if not Tracers.draws(weapon_class, mode, nth):
@@ -148,7 +151,7 @@ func _start(round: Dictionary, eye: Transform3D) -> void:
 	if muzzle != null:
 		start = (muzzle as Transform3D).origin
 		if first_person:
-			start = Muzzles.as_drawn(eye, start)
+			start = Muzzles.as_drawn(eye, start, narrowing)
 	var impacts: Array = round["impacts"]
 	var stop: Vector3 = impacts[0] if not impacts.is_empty() \
 		else origin + direction * WeaponVData.number(weapon_class, "m_flRange")
@@ -177,18 +180,19 @@ func _start(round: Dictionary, eye: Transform3D) -> void:
 			_ropes.append(rope)
 
 
-## Whether userid's rounds are seen from the first-person gun: yours, while
-## you are alive and your arms are drawn.
+## Whether userid's rounds are seen from your own eyes: yours, while you
+## are alive.
 func _in_first_person(userid: int) -> bool:
-	return userid == listener_id and you != null and is_instance_valid(you) and you.alive \
-		and you.view_model != null and you.view_model.is_visible_in_tree()
+	return userid == listener_id and you != null and is_instance_valid(you) and you.alive
 
 
-## The drawn gun a player's rounds come from: the view model in first
-## person, the body's otherwise; null when nothing of them is drawn.
+## The drawn gun a player's rounds come from: in first person the arms',
+## none while a sniper's scope puts them away (your own body is not drawn);
+## the body's for everyone else; null when nothing of them is drawn.
 func _gun(userid: int, first_person: bool) -> Node3D:
 	if first_person:
-		return you.view_model
+		var arms := you.view_model
+		return arms if arms != null and arms.is_visible_in_tree() else null
 	var node := game.roster.player(userid) if game != null else null
 	if node is PlayerSim and (node as PlayerSim).model != null:
 		return (node as PlayerSim).model

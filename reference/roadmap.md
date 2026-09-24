@@ -717,7 +717,6 @@ grenades.
 What a thread can start now: what is left of the inventory (item 12: E to
 swap, guns on the ground as rigid bodies); the bind table (12a), taking over
 the keys the inventory put in `PlayerInput`; from the weapons todo, the
-registry of all 34 guns (R1) and
-the game's recovery fields (R13), with shotguns (R5) after it; the
+game's recovery fields (R13); the
 third-person firing layer (item 6), then the shadow's arms (6a); and the
 housekeeping.

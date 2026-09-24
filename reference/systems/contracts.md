@@ -116,10 +116,11 @@ Weapons
 - `weapon_reload`: userid
 - `weapon_zoom`: userid
 - `bullet_impact`: userid, x, y, z
-- `fire_bullets`: userid, weapon, mode, x, y, z, pitch, yaw, inaccuracy
+- `fire_bullets`: userid, weapon, mode, x, y, z, pitch, yaw, inaccuracy, pellet
   (CS2's `CMsgTEFireBullets`, one a round between its `weapon_fire` and
   its `bullet_impact`s; the angles are the round's own, where CS2 sends
-  the aim and a seed)
+  the aim and a seed; a shotgun's pellets are a round each, numbered from
+  0, under the pull's one `weapon_fire`; mode is 1 silenced or scoped)
 
 Items
 - `item_purchase`: userid, team, loadout, weapon

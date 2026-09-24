@@ -63,6 +63,8 @@ is inferred. Tracers were covered by `reference/research/combat.md` R10.
   the guns' every-third. A silenced gun (M4A1-S and USP-S silencer on,
   MP5-SD) draws none: that the override leaves their 0 alone is inferred.
   A sniper round more than 0.085 inaccurate (CS2's tangent) draws 200 units.
+  A shotgun's pellets draw a tracer each, as Source's `FireBullets` makes
+  one a shot (Source SDK 2013), and the pull one flash.
 - **How long.** A trail flies from the muzzle to where the round stopped at
   its speed and is gone as it arrives (an AK's across 500 units lives 24
   ms). It shows from a fifth of its way, full by 30%, fading over its last
@@ -74,7 +76,9 @@ is inferred. Tracers were covered by `reference/research/combat.md` R10.
   designer's note in `weapon_tracers_rifle_wisp` ties to first person), and
   starts where the first-person gun is drawn: the view model's narrower field
   of view widens a point's place in the view, as Source's
-  `FormatViewModelAttachment` does.
+  `FormatViewModelAttachment` does, at the arms' field of view as drawn that
+  frame: an AUG's or SG 553's scope narrows it. While a sniper's scope puts
+  the arms away, yours draws no flash and its tracer starts at the eye.
 - **Through a wall.** The tracer ends at the first wall, and a fainter,
   slower streak (`weapon_wallbang_risidual_tracers`: 10,500 u/s, 500 units,
   half the alpha) goes on to where the round stopped. That CS2 ends the

@@ -717,13 +717,6 @@ func _try_shoot(at_usec: int, tick_fraction: float, yaw: float, pitch: float) ->
 	_send(&"weapon_fire", {
 		"userid": userid, "weapon": weapon.data.item_class, "silenced": silenced,
 	}, at_usec)
-	# Where it left and which way, for whoever draws its tracer.
-	var angles := PlayerInput.angles_from_direction(shot.direction)
-	_send(&"fire_bullets", {
-		"userid": userid, "weapon": weapon.data.item_class, "mode": 1 if silenced else 0,
-		"x": shot.origin.x, "y": shot.origin.y, "z": shot.origin.z,
-		"pitch": angles.y, "yaw": angles.x, "inaccuracy": tan(deg_to_rad(shot.inaccuracy)),
-	}, at_usec)
 
 	# The round is the player's: who fired it and from which side goes with
 	# its damage (Hitscan.fire_as), and every surface it meets and the hurt it
@@ -737,6 +730,15 @@ func _try_shoot(at_usec: int, tick_fraction: float, yaw: float, pitch: float) ->
 	# A shotgun's pellets are each traced and do their damage on their own.
 	for i in shot.pellets():
 		var pellet := shot.pellet_shot(i)
+		# Where it left and which way, for whoever draws its tracer, before
+		# the impacts it ends at.
+		var angles := PlayerInput.angles_from_direction(pellet.direction)
+		_send(&"fire_bullets", {
+			"userid": userid, "weapon": weapon.data.item_class,
+			"mode": 1 if silenced or shot.zoom_level > 0 else 0,
+			"x": shot.origin.x, "y": shot.origin.y, "z": shot.origin.z,
+			"pitch": angles.y, "yaw": angles.x, "inaccuracy": tan(deg_to_rad(shot.inaccuracy)), "pellet": i,
+		}, at_usec)
 		var result := Hitscan.fire_as(get_world_3d().direct_space_state, pellet, weapon.data, shooter)
 		shot_traced.emit(pellet, result)
 
