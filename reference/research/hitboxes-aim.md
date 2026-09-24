@@ -24,10 +24,14 @@ claim says which it rests on:
   `007953aa79` in `game/csgo/pak01_dir.txt`), while the skeleton is the same
   as 1.41.8.2's. The compiled graph is not in GameTracking-CS2, so only a
   re-extraction on Sid's machine can say what changed (section 7).
-- *Valve, via search*: Valve's own update notes. counter-strike.net, Steam
-  and the Steam news API all refuse connections from the cloud, so the
-  wording comes from search summaries of those pages; the Valve URLs are in
-  Sources for Sid to check.
+- *Valve*: Valve's own release notes, the text of
+  counter-strike.net/news/updates as archived by ckreisl/cs-updates-as-json
+  at `656981c` (`data/cs2/updates_raw.json`, 231 posts, 22 Mar 2023 to
+  22 Sep 2026), quoted word for word and dated as Valve dated them (the
+  heading's date, or the date posted, UTC, where the heading has none).
+  counter-strike.net and Steam refuse connections from the cloud; the
+  archive is how their text arrives. It has no note for the 23 Sep 2026
+  build.
 - *Community*: third-party articles and forum posts, again from search
   summaries (secondary).
 - *Inferred*: a reasoned guess from the above.
@@ -152,43 +156,57 @@ against any file here).
 
 ## 2. What changed over CS2's life
 
-Newest first. Valve's own notes are the primary source for each; none could
-be fetched from the cloud, so each line says where its wording came from.
+Newest first, in Valve's words (*Valve*) unless marked otherwise. Only the
+lines about the third-person body, its aim and its hitboxes are listed.
 
 - 2026-09-23, 1.41.8.3: the third-person graph file changed (*Read*, the
-  CRC above). What changed is unknown until it is re-extracted.
-- 2026-04-21: AnimGraph 2's third person went live for everyone (*Valve,
-  via search*: counter-strike.net and Steam's "Counter-Strike 2 Update";
-  wording from HLTV and Insider Gaming summaries).
-- 2026-04-14: the second AnimGraph 2 beta patch fixed "stuttering in
-  third-person aiming", among other things (*Community*: Insider Gaming and
-  thespike.gg summaries; Valve's own note not reached).
-- 2026-04-02: "Animgraph 2 Beta": all third-person animations re-authored,
-  and the CPU and network cost of animation cut (*Valve, via search*:
-  counter-strike.net/newsentry/528750051218948816).
-- 2023-11-30: "Improved character posing when aiming up and down" (*Valve,
-  via search*: the Steam announcement, wording from counterstrike.fandom.com's
-  copy). Older, and from the first animation system.
-- 2023-10-10: "Fixed several hitbox alignment bugs", after players found
+  CRC above). Valve's archived notes stop at 22 Sep, so what changed is
+  unknown until it is re-extracted.
+- 2026-04-24: "Fixed a case where high frequency stutter steps would cause
+  large pose changes." "Made foot IK transitions smoother."
+- 2026-04-21: AnimGraph 2 left beta for everyone on or about this date
+  (*Community*: HLTV and Insider Gaming summaries). Valve's archived notes
+  have no line saying so; its 21 Apr note changes recoil's camera motion
+  and in-air crouching, and from 24 Apr its notes fix AnimGraph 2 poses on
+  the live build.
+- 2026-04-17 (beta): "Adjusted counter-strafe animation head dip amount."
+- 2026-04-14 (beta): "Improved stuttering of 3rd person aim." "Fixed wrong
+  pose when backing into corners." "Fixed head wobbling when planting C4."
+- 2026-04-01 (beta, posted UTC): "The CS2 animation system has been
+  updated to Animgraph 2, which reduces CPU and networking costs associated
+  with animation." "All third-person animations have been re-authored, and
+  in several cases adjusted in response to player feedback."
+- 2025-11-04: "Fixed a bug causing third person models to not animate
+  smoothly."
+- 2025-07-28: AnimGraph 2 replaced "all first-person animations"; the third
+  person stayed on the old system until April 2026.
+- 2024-11-07: "Fixed a case mid-spray where lag compensation would rewind
+  target hitboxes further into the past than what was on screen." (Older.)
+- 2023-11-30: "Improved character posing when aiming up and down." (Older,
+  and from the first animation system.)
+- 2023-10-09: "Fixed several hitbox alignment bugs." Players had found
   hitboxes off the model when crouching and looking down, worst with a
   knife or the bomb in hand (*Community*: Dexerto, PC Gamer, Escorenews,
-  ensigame). Older, and from the first animation system.
+  ensigame). (Older, and from the first animation system.)
 
 So anything from before April 2026 (videos, guides, the 2023 reports)
-describes a system CS2 no longer runs.
+describes a system CS2 no longer runs. Valve's own notes name the aim twice:
+posing by aim pitch in 2023, and the third-person aim's stutter in the
+AnimGraph 2 beta; neither gives an amount.
 
 ## 3. What players criticise and ask for
 
-Sid asked to track these (2026-09-24). All are *Community*, from search
-summaries of forum posts and articles, since Reddit, Steam discussions and
-HLTV refuse fetches from the cloud. Newest first, CS2-era only.
+Sid asked to track these (2026-09-24). The complaints are *Community*,
+from search summaries of forum posts and articles (secondary), since Reddit,
+Steam discussions and HLTV refuse fetches from the cloud; where Valve's own
+notes answered one, the note is quoted. Newest first, CS2-era only.
 
 | When | What players say | Source | Does it apply to our hitboxes? |
 |---|---|---|---|
 | 2026-04-22 onward, after AnimGraph 2 went live | Headshots feel instant and holding an angle feels easier than swinging, but some still call hit registration "very bad" | Steam discussion "Animgraph 2 Hit Registration"; Shane the Gamer, white.market, gamermarkt.com summaries | Partly. Our shooter sees the same pose the server hits, so the "looked like a hit" class cannot happen offline. It returns with netcode (item 25), where `combat.md`'s lag-compensation options apply |
 | 2026-04-22 | The model's head bobs up and down when strafing | Steam discussion, dated in the search summary | Yes, once the body's motion reaches the head. Our locomotion clips carry whatever bob CS2's do; the aim stage below must not add to it. Measurable: the head capsule's height over a strafe, ours against CS2's |
-| 2026-04, beta feedback | The "head dip" when counter-strafing makes jigglers hard to track; Valve toned it down in steps | Shane the Gamer, white.market, skin.club summaries | Yes: it moves the head hitbox. Same check: the head's drop on a counter-strafe, ours against CS2's |
-| 2026-04-14 | Third-person aim stuttered in the beta | Insider Gaming, thespike.gg summaries (Valve fixed it) | Yes, as a rule for us: the aim stage must be smooth from tick to tick, which interpolating the pitch between ticks (as `show_between` does the yaw) gives |
+| 2026-04, beta feedback | The "head dip" when counter-strafing makes jigglers hard to track | Shane the Gamer, white.market, skin.club summaries; Valve answered on 2026-04-17: "Adjusted counter-strafe animation head dip amount" (*Valve*) | Yes: it moves the head hitbox. Same check: the head's drop on a counter-strafe, ours against CS2's |
+| 2026-04-14 | Third-person aim stuttered in the beta | Valve's own note that day: "Improved stuttering of 3rd person aim" (*Valve*) | Yes, as a rule for us: the aim stage must be smooth from tick to tick, which interpolating the pitch between ticks (as `show_between` does the yaw) gives |
 | 2025 to 2026, before AnimGraph 2 | Shots that land on a head on screen do no damage; a mix of position desync and animation mismatch | Steam discussions, sportskeeda, tradeit.gg, critfeed.com summaries | Not offline, as above. Online it argues for recording the posed capsules on the tick (systemization step 8) and rewinding to the tick and fraction |
 | 2023-10 onward | Hitboxes off the model when crouching and looking down, worst with a knife or the bomb | Escorenews, ensigame, game-tournaments.com summaries | Yes, as a warning: the bend must be measured per crouch state and weapon category, not assumed from one standing rifle pose |
 | Undated guides | The camera sits right of the head, so a right-hand peek shows less head than it sees | skin.club and steamanalyst.com peeking guides | Yes. Our eye is centred on the body; if CS2's is offset, a player looking down or peeking shows a different share of head than here. Worth a Local check (section 7) |
@@ -345,11 +363,12 @@ Not made here; for whoever takes the item.
   (github.com/SteamDatabase/GameTracking-CS2).
 - This repo's generated graph pages: `reference/animgraph/worldmodel.md`,
   `reference/animgraph/parameters.md` (CS2 1.41.8.2, one update old).
-- Valve's own notes, not reachable from the cloud (read through search
-  summaries): counter-strike.net/news/updates;
-  counter-strike.net/newsentry/528750051218948816 ("Animgraph 2 Beta",
-  2026-04-02); store.steampowered.com/news/app/730 (the 2023-11-30 and
-  2026-04-21 "Counter-Strike 2 Update" posts).
+- Valve's release notes (counter-strike.net/news/updates), as archived by
+  ckreisl/cs-updates-as-json at `656981c`, `data/cs2/updates_raw.json`
+  (raw.githubusercontent.com; 231 posts, 22 Mar 2023 to 22 Sep 2026). The
+  posts quoted: 2023-10-09, 2023-11-30, 2024-11-07, 2025-07-28, 2025-11-04,
+  2026-04-01, 2026-04-14, 2026-04-17, 2026-04-21 and 2026-04-24. The
+  movement research (PR #66) found the archive.
 - Players' critiques, search summaries (2026-04 onward unless dated):
   Steam discussions "Animgraph 2 Hit Registration" and "The AnimGraph 2
   Revolution"; Shane the Gamer, "CS2 Finally Feels Like CSGO Again After
