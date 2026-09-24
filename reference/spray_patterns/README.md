@@ -154,7 +154,8 @@ and Sid's notes (2026-09-24) and CS2's weapon file sort them as follows:
   does not stay the same: CS2's file gives the scoped mode less recoil,
   19 against 28 on the SG 553 and 16 against 24 on the AUG, with the same
   seed and angle variance. Inferred: the scoped pattern is the unscoped
-  one times 0.68 and 0.67. A scoped spray at the wall would confirm it.
+  one times 0.68 and 0.67. Until a scoped spray at the wall settles it,
+  both scoped patterns stay missing.
 - **G3SG1 and SCAR-20:** still needed. The sheet marks both "Set Pattern",
   and the game gives each its own seed.
 
