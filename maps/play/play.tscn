@@ -2,6 +2,5 @@
 
 [ext_resource type="Script" path="res://maps/play/play.gd" id="1_play"]
 
-[node name="Dust2" type="Node3D"]
+[node name="Play" type="Node3D"]
 script = ExtResource("1_play")
-map_name = "de_dust2"

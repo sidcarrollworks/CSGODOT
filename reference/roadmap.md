@@ -29,6 +29,7 @@ Updated 2026-09-23 later: bots walk the nav mesh (item 22), to the bomb sites an
 Updated 2026-09-23 evening: one world runs the tick (`GameWorld`, the first part of `reference/systemization.md`'s step 1).
 Updated 2026-09-23 night: dust2 buys (items 13 and 14 wired in), spawns give the knife and pistol only, the match sends CS2's round events, the bomb and grenades are in dust2's match, bots buy as CS2's do and hold what is in hand (items 6 and 24), and a drop is thrown from the hand (item 12).
 Updated 2026-09-24: binds added (item 12a, planned in `reference/binds.md`): one table of keys, CS2's defaults, for the game and the test range alike.
+Updated 2026-09-24 later: game modes apart from maps (item 24a, `reference/systemization.md` step 4's first part): any extracted defusal map plays in competitive.
 
 ## Part 1: what exists
 
@@ -544,6 +545,30 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
     plan (full buy, force, save) is still to do, beyond CS2's own bots.)*
 
 ### Phase 9: multiplayer
+
+24a. **Game modes apart from maps.** *(done 2026-09-24, Remote; Local checks
+    below; `reference/systemization.md` finding 11 and step 4)* A map is
+    loaded by name and a mode runs on whatever map is loaded, so any CS2
+    defusal map the extraction has taken plays in competitive, not only
+    dust2. `scripts/extract_assets.sh` takes the map's name after each of a
+    map's steps (`map de_mirage`; de_dust2 when there is none; dust2's
+    paths unchanged); `MapLoader` (`src/map/map_loader.gd`) derives every
+    path from the name (`MapPaths`), loads the map, its lighting, its sky
+    (from the map's own sky material), its skybox, entities and nav mesh,
+    and says what is missing; `Competitive` (`src/modes/competitive.gd`)
+    sets up you, the bots, the match, its systems, the HUD and the views,
+    and F5, reading the map only through `MapContents`. Bots walk to the
+    `BombsiteA` and `BombsiteB` callouts, or to the bomb sites' volumes
+    where a map names its callouts otherwise. The map is chosen by
+    `map_name` on `maps/play/play.tscn` or `--map` on the command line;
+    `maps/de_dust2/de_dust2.tscn` is that scene set to dust2. No research
+    page covers other maps. **Local:** run `scripts/run_tests.sh` with the
+    assets; extract de_mirage and de_inferno (`map <name>`); play both and
+    note what breaks. **Still to do**, each its own item: the test range as
+    a mode; ladders (the nav mesh reads them, nothing climbs them); doors
+    and breakables; hostage maps (a mode of their own); a dedicated server,
+    a mode that loads the map's collision, entities and nav mesh and builds
+    nothing to be seen (part of item 25).
 
 25. **Netcode.** *(Remote; Local playtests across machines)* CS2's model: the
     server decides, clients send input with sub-tick times and predict their

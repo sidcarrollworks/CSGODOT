@@ -153,7 +153,7 @@ func _import() -> bool:
 	_check(not skybox_file.is_empty(), "the 3D skybox is there (scripts/extract_assets.sh skybox)")
 	if not skybox_file.is_empty():
 		# The skybox the game builds, placed as it places it.
-		var skybox: MapImporter = load("res://maps/de_dust2/de_dust2.gd").make_skybox(SKYBOX_DIR)
+		var skybox: MapImporter = MapLoader.make_skybox(SKYBOX_DIR)
 		root.add_child(skybox)
 		# Where the sky camera is, read here on its own: scaled up about the
 		# map's origin by its own scale, it must land there.

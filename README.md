@@ -234,7 +234,7 @@ somewhere it can be found:
 
 ```sh
 scripts/extract_assets.sh list-map     # see what is inside the dust2 VPK
-scripts/extract_assets.sh map          # extract it, then import it into Godot
+scripts/extract_assets.sh map          # extract it, then import it into Godot (map de_mirage: another map)
 scripts/extract_assets.sh weapons      # every gun: models and animations
 scripts/extract_assets.sh equipment    # the bomb and kit, grenades, knives, Zeus
 scripts/extract_assets.sh sounds       # the weapons' sounds, footsteps by surface, hits
@@ -403,6 +403,33 @@ silent, the walls unmarked, and everything else works.
 `assets/` can live on another drive: make it a junction (`mklink /J`) and
 every script and Godot itself read straight through it.
 
+### Other maps
+
+Every step for one map takes the map's name after it, `de_dust2` when there
+is none, so any CS2 defusal map comes out the same way, into
+`assets/maps/<name>` with its hull and 3D skybox beside it
+(`<name>_physics`, `<name>_skybox`); dust2's paths are the ones they always
+were. `map <name>` runs every one of that map's steps, and
+`paths <name>` prints where they land without needing CS2:
+
+```sh
+scripts/extract_assets.sh map de_mirage     # all of mirage
+scripts/extract_assets.sh nav de_inferno    # just inferno's nav mesh
+```
+
+Then play it with `maps/play/play.tscn`: set **Map Name** on its root, or
+give `--map` on the command line, which wins over the scene's own
+(`godot --path . maps/play/play.tscn -- --map de_mirage`; with no scene
+named, the main scene, dust2's, takes `--map` too). There are no menus yet
+(roadmap item 26). `MapLoader` (`src/map/map_loader.gd`) derives every path
+from the name (`MapPaths`) and loads what is there; `Competitive`
+(`src/modes/competitive.gd`) plays a match on it: you and the bots, the
+match, money and buying in the map's buy zones, the bomb on its sites,
+grenades, the HUD. Bots walk to the callouts named `BombsiteA` and
+`BombsiteB`, or, where a map names its callouts otherwise, to the middle
+of each bomb site's volume. Ladders, doors, breakables and hostage maps are
+not built yet (roadmap item 24a).
+
 The script finds everything itself: Source2Viewer-CLI on `PATH` or where the
 release zip unpacks to in Downloads, CS2 by way of Steam's library list (so a
 second drive is fine), Godot on `PATH` or the desktop, and the resources
@@ -411,7 +438,7 @@ between game updates. Override with `S2V=`, `CS2_PATH=` and `GODOT=` if it
 guesses wrong.
 
 Then open `maps/de_dust2/de_dust2.tscn` and press play. You start at one of
-the map's own T spawn points (`spawn_team` on the scene root switches sides),
+the map's own T spawn points (**Spawn Team** on the scene root switches sides),
 colliding with the hull the game itself collides with, player clips included
 (which stop you and not your rounds). None of the visible world is solid.
 
@@ -579,11 +606,14 @@ twenty, what going online will add, and what to do about it next;
 src/sim/         user commands, simulation time, the world that runs the tick
 src/movement/    the acceleration model and collide-and-slide
 src/player/      the player simulation, input to commands, the first-person view
-src/map/         glTF map import, and the map's entity data (spawn points)
+src/map/         glTF map import, the map's entity data (spawn points), and
+                 MapLoader, which loads any extracted map by name
+src/modes/       game modes, which run on whatever map is loaded: Competitive
 src/weapons/     weapon data, recoil patterns, the firing model
 src/combat/      hitboxes, hit targets, hitscan
 src/ui/          the tuning readout and the crosshair
-maps/            generated test courses, and the dust2 scene
+maps/            generated test courses, the play scene (maps/play: any map,
+                 --map), and dust2's, which is the play scene set to dust2
 tests/           headless test suite
 reference/       measured constants and how they were measured; the roadmap
                  (roadmap.md), CS2's systems (cs2-systems.md), the guns' todo
