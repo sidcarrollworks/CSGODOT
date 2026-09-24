@@ -5,7 +5,8 @@ extends "res://tests/check_suite.gd"
 ## (bot_max_visible_smoke_length), and a line past its edge does not; a
 ## flash in its face blinds it by the same rules it blinds you, and blinded
 ## it sees nobody, fires where it last saw the one it was engaging, backs
-## off when it was engaging nobody, and sees again once the white fades.
+## off when it was engaging nobody (out of its scope, at its gun's own
+## speed), and sees again once the white fades.
 ##
 ##   godot --headless --path . --script tests/run_bot_sight_checks.gd
 ##
@@ -31,12 +32,14 @@ func _run() -> void:
 	await _test_smoke()
 	await _test_flash_while_engaging()
 	await _test_flash_while_walking()
+	await _test_flash_while_scoped()
 	_finish("bot-sight")
 
 
-## A world with a floor and the grenades, a T bot with an AK-47 facing down
-## -Z and a CT bot in front of it that never fires and never dies.
-func _build() -> Array[Bot]:
+## A world with a floor and the grenades, a T bot with an AK-47 (or the gun
+## named) facing down -Z and a CT bot in front of it that never fires and
+## never dies.
+func _build(weapon_class: String = "weapon_ak47") -> Array[Bot]:
 	_stage = Node3D.new()
 	root.add_child(_stage)
 	_world = GameWorld.new()
@@ -55,7 +58,7 @@ func _build() -> Array[Bot]:
 	var watcher := (load("res://src/bots/bot.tscn") as PackedScene).instantiate() as Bot
 	watcher.name = "Watcher"
 	watcher.team = "T"
-	watcher.weapon_data = WeaponLibrary.ak47()
+	watcher.weapon_data = WeaponLibrary.build(weapon_class)
 	_stage.add_child(watcher)
 	_world.add_player(watcher)
 	watcher.place(WATCHER_AT, 0.0)
@@ -181,6 +184,35 @@ func _test_flash_while_walking() -> void:
 	var back := Vector3(sin(deg_to_rad(watcher.yaw_degrees)), 0.0, cos(deg_to_rad(watcher.yaw_degrees)))
 	_check(moved.dot(back) > 50.0, "and it backs off (%.0f units back)" % moved.dot(back))
 	_check(_shots(watcher) == 0, "without firing, having nobody to fire at")
+	await _tear_down()
+
+
+## Scoped with an AWP, engaging nobody, when a flash goes off in its face:
+## backing off is walking, so the scope comes down and it backs off at the
+## AWP's own speed rather than the scoped one.
+func _test_flash_while_scoped() -> void:
+	var bots := await _build("weapon_awp")
+	var watcher: Bot = bots[0]
+	var target: Bot = bots[1]
+	watcher.holds_fire = true
+	target.place(Vector3(0.0, 0.0, 3000.0), 0.0)
+	# Drawn, then scoped by hand: holding its fire, it never scopes itself.
+	_step(2.0)
+	watcher.weapon.press_zoom(SimClock.now_usec())
+	_step(0.1)
+	_check_equal(watcher.weapon.zoom_level, 1, "an AWP bot standing scoped in")
+	var eyes := watcher.global_position + Vector3.UP * watcher.eye_height()
+	var forward := PlayerInput.aim_direction(watcher.yaw_degrees, watcher.pitch_degrees)
+	_set_off(GrenadeRules.FLASHBANG, eyes + forward * 100.0, target.userid)
+	var fastest := 0.0
+	for i in SimClock.ticks_in(1.5):
+		_world.step()
+		fastest = maxf(fastest, Vector2(watcher.velocity.x, watcher.velocity.z).length())
+	_check(watcher.is_blind(), "a flash in its face blinds it")
+	_check_equal(watcher.weapon.zoom_level, 0, "backing off, it comes out of the scope")
+	var scoped_speed := watcher.weapon.data.scoped.max_player_speed
+	_check(fastest > scoped_speed + 20.0,
+		"and backs off faster than it could scoped (%.0f u/s against %.0f)" % [fastest, scoped_speed])
 	await _tear_down()
 
 

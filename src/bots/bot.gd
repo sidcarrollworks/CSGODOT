@@ -301,6 +301,8 @@ func _think(tick: int, delta: float) -> UserCmd:
 			elif scope_ready and _burst_clock < BURST_SECONDS:
 				cmd.buttons |= UserCmd.ATTACK
 	elif blinded:
+		# Backing off is walking: out of the scope, at the gun's own speed.
+		_scope_down(cmd, yaw, pitch)
 		cmd.move = Vector2(0.0, -1.0)
 	elif not route.is_empty():
 		_scope_down(cmd, yaw, pitch)

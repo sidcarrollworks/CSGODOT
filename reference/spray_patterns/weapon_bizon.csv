@@ -1,7 +1,7 @@
 # PP-Bizon (weapon_bizon): 64 shots.
 # From Artanis-RCS (MIT), github.com/ArtanisInc/Artanis-RCS,
 # patterns/bizon.csv at 7387d39 (2026-05-01). Converted by
-# scripts/convert_rcs_patterns.py: the mouse moves summed and turned
+# scripts/convert_rcs_patterns.gd: the mouse moves summed and turned
 # into degrees (2.45 x 0.022 per unit), then x1.3577 onto ak47.csv's
 # scale. Not measured here. See README.md for how far to trust it.
 # shot,x_degrees,y_degrees

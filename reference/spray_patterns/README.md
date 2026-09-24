@@ -77,7 +77,9 @@ The `weapon_<class>.csv` files hold 17 patterns, taken on 2026-09-24 from
 [Artanis-RCS](https://github.com/ArtanisInc/Artanis-RCS) (MIT licence,
 commit 7387d39 of 1 May 2026; the patterns date from its first upload on 9
 June 2025, the MP9's from 22 July 2025 and the Negev's from 10 October 2025).
-`scripts/convert_rcs_patterns.py` rebuilds them from a checkout.
+`scripts/convert_rcs_patterns.gd` rebuilds them from a checkout, writing
+each through `RecoilPattern.save_to` as every pattern file is:
+`godot --headless --path . --script scripts/convert_rcs_patterns.gd -- <checkout>`.
 
 | Class | Gun | Shots |
 |---|---|---|

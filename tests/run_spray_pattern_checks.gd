@@ -30,6 +30,7 @@ func _initialize() -> void:
 	_check_nothing_else()
 	_check_shared_seed("weapon_mp7", "weapon_mp5sd")
 	_check_straight_up("weapon_negev")
+	_check_written_back()
 	_finish("spray-pattern")
 
 
@@ -79,3 +80,17 @@ func _check_straight_up(weapon_class: String) -> void:
 	for offset in RecoilPattern.load_pattern(weapon_class):
 		sideways = maxf(sideways, absf(offset.x))
 	_check_equal(sideways, 0.0, "%s never moves sideways" % weapon_class)
+
+
+## The files are written as every pattern file is (RecoilPattern.save_to,
+## which scripts/convert_rcs_patterns.gd uses): a note of several lines is a
+## comment line each, and the pattern reads back as it went out.
+func _check_written_back() -> void:
+	var path := "user://spray_pattern_check.csv"
+	var pattern := PackedVector2Array([Vector2.ZERO, Vector2(0.25, 1.5), Vector2(-0.5, 3.0)])
+	_check_equal(RecoilPattern.save_to(path, pattern, "first line\nsecond line"), OK, "a pattern with a note of two lines is written")
+	var lines := FileAccess.get_file_as_string(path).split("\n")
+	_check(lines.size() >= 3 and lines[0] == "# first line" and lines[1] == "# second line" and lines[2] == "# shot,x_degrees,y_degrees",
+		"each line of the note is a comment line, before the column names")
+	_check_equal(RecoilPattern.load_from(path), pattern, "and the pattern reads back as it went out")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))

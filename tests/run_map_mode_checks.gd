@@ -284,6 +284,7 @@ func _test_competitive_on_a_small_map() -> void:
 		"all three in the world's game"
 	)
 	_check(mode.hud != null and mode.hud.match_state == mode.match_state and mode.hud.economy == mode.economy, "the HUD reads the match and your money")
+	_check(mode.hud.scope != null and mode.hud.scope.player == mode.player, "and draws your scope, on any map")
 	_check(mode.notes.size() == 1 and mode.notes[0].contains("nav mesh"), "the only thing missing is the nav mesh (%s)" % [mode.notes])
 	var at_spawn := false
 	for spawn: Dictionary in T_SPAWNS:

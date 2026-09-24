@@ -37,6 +37,7 @@ func _run() -> void:
 	_test_a_pull_puts_out_every_pellet()
 	_test_the_pattern_is_the_same_every_shot()
 	_test_a_rifle_still_fires_one_round()
+	_test_a_pellet_keeps_the_pulls_scope()
 
 	_world = Node3D.new()
 	root.add_child(_world)
@@ -94,6 +95,22 @@ func _test_a_pull_puts_out_every_pellet() -> void:
 		_check(shot.pellet_shot(0) == shot, "%s's first pellet is the shot itself" % weapon_class)
 
 
+## A pellet is the pull's in everything but where it goes, the scope too
+## (the scopes, weapons TODO R4): each pellet's hurt and death carry the
+## zoom level and noscope of the pull that fired it.
+func _test_a_pellet_keeps_the_pulls_scope() -> void:
+	var shot := Weapon.Shot.new()
+	shot.direction = Vector3.FORWARD
+	shot.pellet_directions = PackedVector3Array([Vector3.FORWARD, Vector3(0.1, 0.0, -1.0).normalized()])
+	shot.zoom_level = 1
+	var pellet := shot.pellet_shot(1)
+	_check(pellet.zoom_level == 1 and not pellet.noscope, "a pellet of a scoped pull is scoped")
+	shot.zoom_level = 0
+	shot.noscope = true
+	pellet = shot.pellet_shot(1)
+	_check(pellet.zoom_level == 0 and pellet.noscope, "and a pellet of a noscope pull is a noscope")
+
+
 ## Held still with nothing but the spread in the cone, every shot lands the
 ## same pattern; the rest of the cone throws the pattern whole, so the
 ## pellets keep their places towards each other.
@@ -138,7 +155,7 @@ func _test_a_rifle_still_fires_one_round() -> void:
 
 
 ## A Nova fired from 100 units into another player's chest: one pull, one
-## weapon_fire, and a trace, a bullet_impact and a hurt for every pellet
+## weapon_fire and so one report heard, and a trace, a bullet_impact and a hurt for every pellet
 ## that lands, the lot killing where one pellet's 26 would not. The player
 ## here is what a bot is too: both fire through PlayerSim._try_shoot.
 func _test_every_pellet_does_its_damage() -> void:
@@ -160,6 +177,11 @@ func _test_every_pellet_does_its_damage() -> void:
 
 	var traced: Array[Weapon.Shot] = []
 	player.shot_traced.connect(func(shot: Weapon.Shot, _result: Hitscan.Result) -> void: traced.append(shot))
+	# What the shooter hears, from the pull's weapon_fire (WeaponSounds.watch).
+	var sounds := WeaponSounds.new()
+	player.add_child(sounds)
+	sounds.set_process(false)
+	sounds.watch(player)
 	# At the chest: down from the eye to about the victim's middle.
 	player.pitch_degrees = -rad_to_deg(atan2(player.eye_height() - 40.0, 100.0))
 	var ready := int(roundf(ItemRegistry.item("weapon_nova").deploy_seconds * 1_000_000.0))
@@ -173,6 +195,7 @@ func _test_every_pellet_does_its_damage() -> void:
 	_check(traced.all(func(shot: Weapon.Shot) -> bool: return shot.timestamp_usec == traced[0].timestamp_usec),
 		"all nine at the one instant")
 	_check_equal(_named(events, &"weapon_fire").size(), 1, "and sends one weapon_fire")
+	_check(sounds.pending_shots() == PackedStringArray(["weapon_nova"]), "so the shooter hears one report, the Nova's (%s)" % [sounds.pending_shots()])
 	var hurts := _named(events, &"player_hurt")
 	var dealt := 0
 	for event in hurts:
