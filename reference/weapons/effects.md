@@ -122,13 +122,15 @@ CS2's overbright gives only that way. Ours still reads a little smaller than
 the screenshot's (Local check 7).
 
 The flash's light is an `OmniLight3D` for CS2's light's life (25 to 52 ms),
-its range the particle's radius times 0.5 (inferred), fading only to its
-range (Godot's own falloff is by the metre and left the hand a tenth of
-it), its colour CS2's as it is, and its brightness CS2's intensity times its
-alpha times `MuzzleFlashes.LIGHT_ENERGY` (50), set by eye so a Glock's
-flash lights the glove, as it does in Sid's screenshot. A Glock's light is a
-quarter of a rifle's in CS2's numbers, so a rifle's lights the front of the
-gun orange.
+its range the particle's radius times 0.5 (inferred), falling off as one
+over the distance to that range, its colour CS2's as it is, and its
+brightness CS2's intensity times its alpha times
+`MuzzleFlashes.LIGHT_ENERGY` (250, large because the distance is in
+inches). Set by eye against Sid's screenshots of CS2 on dust2: an AK-47
+fired at the wall with the rail on Tunnel Stairs lights that wall orange all
+round, brightest by the muzzle, and the glove holding the gun; in the sun
+outside the tunnel it shows little. A Glock's light is a quarter of a
+rifle's in CS2's numbers.
 
 ## What it costs
 

@@ -27,12 +27,12 @@ extends Node3D
 ## Seconds of CS2's drag step: velocity x (1 - drag) each 1/30 s.
 const DRAG_STEP := 1.0 / 30.0
 ## How bright a flash's light is in Godot's energy per unit of CS2's
-## intensity x alpha (C_OP_RenderStandardLight), set by eye: Sid's
-## screenshot of a Glock has its flash lighting the glove, and a Glock's
-## light is a quarter of a rifle's (0.1 x 0.41 against 0.2 x 0.75), so a
-## rifle's lights the gun's front orange. A Local check compares a hand and
-## a wall lit by a flash in CS2.
-const LIGHT_ENERGY := 50.0
+## intensity x alpha (C_OP_RenderStandardLight), set by eye against Sid's
+## screenshots of CS2 on dust2: an AK-47 fired at the wall with the rail on
+## Tunnel Stairs lights the wall orange all round, brightest by the muzzle,
+## and the glove; in the sun outside the tunnel it shows little. A Glock's
+## light is a quarter of a rifle's (0.1 x 0.41 against 0.2 x 0.75).
+const LIGHT_ENERGY := 250.0
 ## Lights at once, the oldest reused.
 const LIGHTS := 8
 ## CS2 draws every flame a second time into its effects bloom, which is
@@ -124,11 +124,12 @@ func _ready() -> void:
 		var light := OmniLight3D.new()
 		light.visible = false
 		light.shadow_enabled = false
-		# No falloff but the fade to its range, as CS2's light has: Godot's
-		# is by the metre, and at a flash's 5 to 20 units from the hand it
-		# left the hand a tenth of the light (Sid's screenshot of a Glock has
-		# the flash lighting the glove).
-		light.omni_attenuation = 0.0
+		# Falling off with distance as Godot's lights do (1 / d, to its
+		# range), which in Sid's screenshots of CS2 is the shape of it: a
+		# rifle's flash lights the hand and the wall beside it brightly and
+		# the wall further off less. The distance is in inches, so
+		# LIGHT_ENERGY is large.
+		light.omni_attenuation = 1.0
 		add_child(light)
 		_lights.append(light)
 		_light_until.append(0)
