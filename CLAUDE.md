@@ -35,6 +35,8 @@ README says what the game is and how it is built.
   on, and in what order.
 - `reference/performance.md`: what everything costs, and how to measure it
   again (`scripts/profile_dust2.gd`).
+- `reference/rendering.md`: what a frame costs to draw, how to measure it
+  (`scripts/profile_render.gd`, on a GPU), and the renderer's plan.
 
 Whoever lands an item marks it done where it is listed, in the same pull
 request. Before starting one, check it against `main`: the other side may

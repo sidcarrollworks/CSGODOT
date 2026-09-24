@@ -22,7 +22,8 @@ about 8.5 ms of every 7.8 ms tick.
 
 ## Where it goes
 
-Headless, so a frame is its script alone: drawing comes on top.
+Headless, so a frame is its script alone: drawing comes on top
+(`reference/rendering.md` and `scripts/profile_render.gd` measure that).
 
 | A tick | 10 players | 20 players | Each player |
 |---|---|---|---|
