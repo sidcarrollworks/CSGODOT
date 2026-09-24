@@ -643,6 +643,20 @@ func _test_the_hand() -> void:
 			return int(event.fields["userid"]) == player.userid and event.fields["weapon"] == "weapon_ak47"),
 		"every round sends weapon_fire, saying who fired it and with what (%d of %d)" % [fired.size(), shots.size()]
 	)
+	# And fire_bullets, CS2's message a tracer is drawn from: where it left
+	# and which way, after its weapon_fire and before where it landed.
+	var bullets := _named(events, &"fire_bullets")
+	var names := events.map(func(event: GameEvent) -> String: return String(event.name))
+	var first_order := names.slice(names.find("weapon_fire"), names.find("weapon_fire") + 3)
+	var round_way := PlayerInput.aim_direction(float(bullets[0].fields["yaw"]), float(bullets[0].fields["pitch"])) if not bullets.is_empty() else Vector3.ZERO
+	var toward := PlayerInput.aim_direction(0.0, 0.0)
+	_check(
+		bullets.size() == shots.size() and int(bullets[0].fields["userid"]) == player.userid
+			and bullets[0].fields["weapon"] == "weapon_ak47" and int(bullets[0].fields["mode"]) == 0
+			and first_order == ["weapon_fire", "fire_bullets", "bullet_impact"]
+			and round_way.dot(toward) > 0.999 and float(bullets[0].fields["y"]) > player.global_position.y + 50.0,
+		"every round sends fire_bullets too, from the eye toward where it went, between its weapon_fire and its impacts (%s)" % [first_order]
+	)
 	var hurt := _named(events, &"player_hurt")
 	_check(
 		not hurt.is_empty() and int(hurt[0].fields["attacker"]) == player.userid and int(hurt[0].fields["userid"]) == victim_id

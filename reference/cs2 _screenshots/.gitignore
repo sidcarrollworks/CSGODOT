@@ -1,0 +1,3 @@
+# The PNG originals stay on disk; the WebP copies are what is kept in git.
+*.png
+*.import

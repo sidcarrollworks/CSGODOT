@@ -222,7 +222,10 @@ here. Nothing on this page comes from Valve's leaked CS:GO source.
 - **Speed.** In the particle file, not in any data this session could read.
   Source SDK 2013's default is 5000 units a second (SDK `fx_tracer.cpp`
   19). Local: decompile `weapon_tracers_assrifle.vpcf_c` with Source 2
-  Viewer.
+  Viewer. *(Done 2026-09-24, `reference/weapons/effects.md`: 20,500 for the
+  rifles, 18,000 pistols and SMGs, 24,000-24,500 shotguns, 30,000 snipers,
+  15,500 machine guns. And which round: CS2's client draws every one,
+  `cl_tracer_frequency_override 1`, a development-only setting, so fixed.)*
 - **The whiz.** `cl_tracer_whiz_distance 72` and
   `cl_tracer_whiz_infront_distance 32` (CV 2242-2245). Source SDK 2013
   plays its near-miss sound when a round passes within 72 units of the

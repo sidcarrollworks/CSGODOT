@@ -64,6 +64,18 @@ const SCHEMA := {
 	&"weapon_reload": {"userid": NOBODY},
 	&"weapon_zoom": {"userid": NOBODY},
 	&"bullet_impact": {"userid": NOBODY, "x": 0.0, "y": 0.0, "z": 0.0},
+	# CS2's CMsgTEFireBullets (its game event 452), the one message other
+	# clients draw a shot from, its tracer and impacts
+	# (reference/research/audio-engine.md 10). One a round, sent between its
+	# weapon_fire and its bullet_impacts; x, y and z are where it left (the
+	# eye). The angles are the round's own, spread and recoil in, where CS2
+	# sends the aim and a seed for each client to roll the spread again.
+	# mode is 1 with the silencer on or scoped, as vdata's two-valued fields;
+	# inaccuracy is CS2's, the tangent of the cone.
+	&"fire_bullets": {
+		"userid": NOBODY, "weapon": "", "mode": 0, "x": 0.0, "y": 0.0, "z": 0.0,
+		"pitch": 0.0, "yaw": 0.0, "inaccuracy": 0.0,
+	},
 
 	# Items.
 	&"item_purchase": {"userid": NOBODY, "team": "", "loadout": 0, "weapon": ""},

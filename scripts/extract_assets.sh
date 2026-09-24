@@ -26,10 +26,11 @@
 #   scripts/extract_assets.sh weapon-data     # just the game's weapon tuning (seconds)
 #   scripts/extract_assets.sh equipment       # the bomb and kit, grenades, default knives, Zeus: models and animations
 #   scripts/extract_assets.sh hud             # the scope overlay and the equipment icons
+#   scripts/extract_assets.sh effects         # the tracers' and muzzle flashes' textures
 #   scripts/extract_assets.sh characters      # two player models and their locomotion
 #   scripts/extract_assets.sh animgraphs      # the animation graphs that drive the clips (seconds)
 #   scripts/extract_assets.sh sounds          # the guns' and the equipment's sounds, footsteps by surface, hits
-#   scripts/extract_assets.sh all             # map + weapons + equipment + hud + characters + animgraphs + sounds
+#   scripts/extract_assets.sh all             # map + weapons + equipment + hud + effects + characters + animgraphs + sounds
 #
 # The steps for one map (list-map, map, physics, entities, nav, volumes,
 # radar, layers, sky, skybox, lightmaps, and all) take the map's name after
@@ -174,7 +175,7 @@ usage() {
 COMMAND="${1:-}"
 case "$COMMAND" in
 	list-map|map|physics|entities|nav|volumes|radar|layers|sky|skybox|lightmaps|all|paths) ;;
-	list-weapons|surfaces|weapons|weapon-animations|weapon-data|equipment|hud|characters|animgraphs|sounds)
+	list-weapons|surfaces|weapons|weapon-animations|weapon-data|equipment|hud|effects|characters|animgraphs|sounds)
 		# Not a map's own step: a map name here would be ignored, which is
 		# worse than being told.
 		if [[ $# -gt 1 ]]; then
@@ -730,6 +731,38 @@ extract_hud() {
 	echo "        $(find "$dest" -name '*.svg' | wc -l | tr -d ' ') icons, $(find "$dest" -path '*scope*' -name '*.png' | wc -l | tr -d ' ') scope images"
 }
 
+## The textures the guns' tracers and muzzle flashes draw with. CS2's particle
+## systems (.vpcf) do not run in Godot; src/effects/ rebuilds them from their
+## numbers (reference/weapons/effects.md), and draws them with these. The
+## flames, steam and smoke are sprite sheets, which Source 2 Viewer writes as
+## one trimmed image a frame; effect_textures.gd puts every frame back where
+## it was on its sheet, from the rectangles the texture's data block gives
+## (-b DATA), so each sheet is one texture again.
+EFFECT_TEXTURES="materials/effects/spark.vtex_c,materials/particle/sparks/sparks.vtex_c,materials/particle/effects/bullet_tracer_seq.vtex_c,materials/particle/effects/bullet_tracer_tintable.vtex_c,materials/particle/fire_gas/fire_gas_batch_b_top.vtex_c,materials/particle/fire_small_sim/fire_small_sim_b.vtex_c,materials/particle/simulated/steam/wispy_steam_burst_b.vtex_c,materials/particle/simulated/steam/wispy_steam_set.vtex_c,materials/particle/smoke/smokeburst/smokeloop_i_0_sc_hardedge.vtex_c,materials/particle/smoke/smokeburst/smokeloop_i_0_sc.vtex_c,materials/particle/particle_glow_04.vtex_c"
+
+extract_effects() {
+	require_file "$PAK_VPK"
+	local dest="$OUT_DIR/effects"
+	local raw="$dest/raw"
+	mkdir -p "$raw"
+	# The frames as Source 2 Viewer writes them are only read to be put back
+	# together, not imported.
+	touch "$raw/.gdignore"
+	echo "Extracting the tracers' and the muzzle flashes' textures"
+	echo "        -> $dest"
+	"$S2V_BIN" -i "$PAK_VPK" -f "$EFFECT_TEXTURES" -o "$raw" -d \
+		| grep -vE '^(Preloading|Added folder|--- )' || true
+	"$S2V_BIN" -i "$PAK_VPK" -f "$EFFECT_TEXTURES" -b DATA > "$raw/textures_data.txt" 2>/dev/null || true
+	local godot
+	godot="$(find_godot)"
+	if [[ -z "$godot" ]]; then
+		echo "No Godot binary found; the sprite sheets were not put back together."
+		return
+	fi
+	"$godot" --headless --path "$PROJECT_DIR" --script scripts/effect_textures.gd 2>&1 \
+		| grep -E '^(effect textures|  )' || true
+}
+
 ## The game's own weapon tuning, scripts/weapons.vdata_c, decoded to KV3 text
 ## (this Source 2 Viewer reads it; older ones did not). Every gun's damage,
 ## fire rate, spread and inaccuracy, recovery, recoil, zoom levels, deploy
@@ -991,6 +1024,7 @@ case "$COMMAND" in
 	weapon-data) extract_weapon_data; write_weapon_tables ;;
 	equipment) extract_equipment; finish ;;
 	hud) extract_hud; finish ;;
+	effects) extract_effects; finish ;;
 	sounds) extract_sounds; finish ;;
-	all) extract_map; echo; extract_weapons; echo; extract_equipment; echo; extract_hud; echo; extract_characters; echo; extract_animgraphs; echo; extract_sounds; finish ;;
+	all) extract_map; echo; extract_weapons; echo; extract_equipment; echo; extract_hud; echo; extract_effects; echo; extract_characters; echo; extract_animgraphs; echo; extract_sounds; finish ;;
 esac
