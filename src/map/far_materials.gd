@@ -19,6 +19,8 @@ extends RefCounted
 
 const SHADER := preload("res://src/map/far.gdshader")
 const INCLUDE := "#include \"res://src/map/far.gdshaderinc\""
+## Where a blended material's edge is cut, drawn behind everything.
+const BLENDED_CUT := 0.5
 
 static var _variants := {}  # Shader -> its far variant, and a two-sided one under a string key
 
@@ -77,8 +79,12 @@ static func build(material: Material, far: float) -> Material:
 	lit.set_shader_parameter("roughness_factor", base.roughness)
 	lit.set_shader_parameter(
 		"alpha_scissor",
-		base.alpha_scissor_threshold
-		if base.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR else -1.0
+		base.alpha_scissor_threshold if base.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+		# A blended edge is cut instead: the squeeze is written in the
+		# opaque pass, and at the skybox's distance a cut edge looks the
+		# same. Drawn opaque, the palms' tree cards were solid triangles.
+		else BLENDED_CUT if base.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED
+		else -1.0
 	)
 	lit.set_shader_parameter("far_plane_depth", far)
 	lit.set_meta("extras", base.get_meta("extras", {}))

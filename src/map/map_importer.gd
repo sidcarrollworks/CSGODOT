@@ -271,7 +271,7 @@ func import_map() -> Dictionary:
 	var probes := {"volumes": 0, "surfaces": 0}
 	if not lightmaps_dir.is_empty():
 		var map_dir := source_path.get_base_dir().path_join(lightmaps_dir)
-		lightmaps = LightmapMaterials.apply(visible_meshes, map_dir, scale_factor)
+		lightmaps = LightmapMaterials.apply(visible_meshes, map_dir, scale_factor, layer_textures_dir)
 		# What the lightmaps did not cover, the light probes light: the props
 		# placed to be lit by them, once, where they stand; and, through the
 		# field left in the scene, whatever moves.
@@ -282,7 +282,9 @@ func import_map() -> Dictionary:
 			field.probes = field_probes
 			add_child(field)
 			probes["volumes"] = field_probes.volumes.size()
-			probes["surfaces"] = ProbeMaterials.apply(visible_meshes, field_probes, LightmapMaterials.PROP_SHADERS)
+			probes["surfaces"] = ProbeMaterials.apply(
+				visible_meshes, field_probes, LightmapMaterials.PROP_SHADERS, layer_textures_dir
+			)
 
 	var behind := FarMaterials.apply(visible_meshes) if behind_everything else 0
 

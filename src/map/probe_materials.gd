@@ -18,10 +18,12 @@ static var _variants := {}  # variant key -> Shader
 
 
 ## Puts every surface of these meshes that still has a standard material
-## on the probe shader, and lights each mesh from the probes at its centre.
-## Returns how many surfaces moved. Surfaces already on a shader material
-## (the lightmapped and blended ones) are left alone.
-static func apply(meshes: Array[MeshInstance3D], probes: LightProbes, only_shaders: Array = []) -> int:
+## on the probe shader, and lights each mesh from the probes at its centre;
+## a prop's decal and self-illumination come from textures_dir
+## (LightmapMaterials.carry_features). Returns how many surfaces moved.
+## Surfaces already on a shader material (the lightmapped and blended ones)
+## are left alone.
+static func apply(meshes: Array[MeshInstance3D], probes: LightProbes, only_shaders: Array = [], textures_dir: String = "") -> int:
 	var surfaces := 0
 	for mesh_instance in meshes:
 		var mesh := mesh_instance.mesh
@@ -34,7 +36,7 @@ static func apply(meshes: Array[MeshInstance3D], probes: LightProbes, only_shade
 				continue
 			if not only_shaders.is_empty() and String(BlendMaterials.vmat(material).get("ShaderName", "")) not in only_shaders:
 				continue
-			mesh_instance.set_surface_override_material(surface, build(material as BaseMaterial3D))
+			mesh_instance.set_surface_override_material(surface, build(material as BaseMaterial3D, textures_dir))
 			surfaces += 1
 			moved = true
 		if moved and probes != null:
@@ -52,7 +54,7 @@ static func light_instance(instance: GeometryInstance3D, cube: PackedColorArray)
 
 ## A probe-lit material carrying over what the import made of a standard
 ## one: textures, colour, cut, blend and sidedness. Made once per source.
-static func build(material: BaseMaterial3D) -> ShaderMaterial:
+static func build(material: BaseMaterial3D, textures_dir: String = "") -> ShaderMaterial:
 	if _built.has(material):
 		return _built[material]
 	var blended := material.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA \
@@ -75,6 +77,7 @@ static func build(material: BaseMaterial3D) -> ShaderMaterial:
 			if material.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR else -1.0
 		)
 	lit.set_shader_parameter("probe_energy", LightmapMaterials.ENERGY)
+	LightmapMaterials.carry_features(lit, BlendMaterials.vmat(material), textures_dir)
 	lit.set_meta("extras", material.get_meta("extras", {}))
 	_built[material] = lit
 	return lit

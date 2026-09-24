@@ -23,6 +23,17 @@ uniform sampler2D lightmap_direction : hint_default_white, filter_linear, repeat
 uniform float lightmap_energy = 0.4;
 uniform float lightmap_directional_strength = 1.0;
 
+// Where a surface's lightmap coordinates are: the second UV set, or on a
+// prop whose second set is its own (F_FORCE_UV2: its decal reads it) the
+// third, which Godot imports as CUSTOM0. This include writes vertex(), so a
+// shader using it has none of its own.
+uniform bool lightmap_uv_in_custom0 = false;
+varying vec2 lightmap_uv;
+
+void vertex() {
+	lightmap_uv = lightmap_uv_in_custom0 ? CUSTOM0.xy : UV2;
+}
+
 const float LIGHTMAP_DIRECTION_MIN_Z = 0.0872;
 const float LIGHTMAP_DIRECTIONAL_MIN_Z = 0.05;
 

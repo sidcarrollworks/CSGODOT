@@ -8,6 +8,7 @@ render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_sc
 
 #include "res://src/map/lightmap.gdshaderinc"
 #include "res://src/map/baked_light.gdshaderinc"
+#include "res://src/map/prop_features.gdshaderinc"
 
 uniform sampler2D albedo_texture : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform vec4 albedo_color : source_color = vec4(1.0);
@@ -23,7 +24,8 @@ uniform bool has_normal_map = true;
 void fragment() {
 	vec4 albedo = texture(albedo_texture, UV) * albedo_color;
 	vec3 orm = texture(orm_texture, UV).rgb;
-	ALBEDO = albedo.rgb;
+	ALBEDO = prop_decal(albedo.rgb, UV, UV2);
+	EMISSION = prop_self_illum(ALBEDO, UV, UV2);
 	ROUGHNESS = orm.g * roughness_factor;
 	METALLIC = orm.b;
 	AO = orm.r;
@@ -39,5 +41,5 @@ void fragment() {
 		NORMAL_MAP_DEPTH = normal_depth;
 		tangent_normal = lightmap_tangent_normal(rg, normal_depth);
 	}
-	baked_light = orm.r * lightmap_indirect(UV2, tangent_normal);
+	baked_light = orm.r * lightmap_indirect(lightmap_uv, tangent_normal);
 }

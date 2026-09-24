@@ -218,6 +218,9 @@ static func make_skybox(skybox_dir: String) -> MapImporter:
 	sky_importer.scale_factor = MapImporter.SOURCE2_VIEWER_SCALE * sky_scale
 	sky_importer.collision_source = MapImporter.CollisionSource.NONE
 	sky_importer.layer_textures_dir = skybox_dir
+	# Its own baked light, beside its world as the map's is: the two-layer
+	# walls take all but the sun from it, and without it are black in shade.
+	sky_importer.lightmaps_dir = "."
 	# Its terrain sits at its own ground level, which is above some of the
 	# map's floors; the map must win wherever they overlap.
 	sky_importer.behind_everything = true

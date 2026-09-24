@@ -107,22 +107,51 @@ func _import() -> bool:
 		lightmaps.get("ambient") is Color,
 		"the lightmap's average is measured, for the ambient of the rest (scripts/extract_assets.sh lightmaps runs the prepare step)"
 	)
-	# A crate whose decal coordinates happen to sit at lightmap density
-	# must still not read the lightmap through them: its material says so.
-	var crate_shader := ""
+	# A crate's second UV set is its stickers', which happen to sit at
+	# lightmap density: it must never read the lightmap through them, but
+	# through its third, where the map put its lightmap coordinates. So
+	# must the kasbah towers, with their dirt decal over them, and the
+	# tunnels' hanging lamps glow.
+	var crates := {"third": 0, "stickers": 0, "probes": 0}
+	var tower: ShaderMaterial = null
+	var lamp: ShaderMaterial = null
 	for node in _importer.get_child(0).find_children("*", "MeshInstance3D", true, false):
 		var mesh_instance := node as MeshInstance3D
 		for surface in mesh_instance.mesh.get_surface_count():
-			if (mesh_instance.mesh as ArrayMesh).surface_get_name(surface) == "dust_shipping_crate_01_painted_color":
-				var material := mesh_instance.get_active_material(surface)
-				crate_shader = (material as ShaderMaterial).shader.resource_path.get_file() if material is ShaderMaterial else "standard"
+			var surface_name := (mesh_instance.mesh as ArrayMesh).surface_get_name(surface)
+			var material := mesh_instance.get_active_material(surface) as ShaderMaterial
+			if material == null:
+				continue
+			if surface_name == "dust_shipping_crate_01_painted_color":
+				if material.get_shader_parameter("probe_energy") != null:
+					crates["probes"] += 1
+				elif material.get_shader_parameter("lightmap_uv_in_custom0") == true:
+					crates["third"] += 1
+				else:
+					crates["stickers"] += 1
+			elif surface_name == "dust_mudbrick_tower_01_plaster":
+				tower = material
+			elif surface_name == "dust_hanging_light_02_on":
+				lamp = material
 	_check(
-		crate_shader == "probe_lit.gdshader",
-		"the painted crates, whose second UV set is their stickers', are lit by the probes and not the lightmap (%s)" % crate_shader
+		crates["stickers"] == 0 and crates["third"] > 0,
+		"the painted crates read the lightmap through their third UV set, never their stickers' second (%s)" % [crates]
+	)
+	_check(
+		tower != null and tower.get_shader_parameter("lightmap_uv_in_custom0") == true
+			and tower.get_shader_parameter("decal_mode") == 1 and tower.get_shader_parameter("decal_texture") is Texture2D,
+		"the kasbah towers are lit by the lightmap through their third UV set, with their dirt decal (scripts/extract_assets.sh layers)"
+	)
+	var glow: Variant = lamp.get_shader_parameter("self_illum_color") if lamp != null else null
+	_check(
+		glow is Vector3 and (glow as Vector3).x > 1.0 and lamp.get_shader_parameter("self_illum_mask") is Texture2D,
+		"the tunnels' hanging lamps glow (%s; scripts/extract_assets.sh layers)" % [glow]
 	)
 	var probes: Dictionary = stats.get("probes", {})
+	# 943 on 2026-09-24, once the 187 props with their lightmap coordinates in a
+	# third UV set (the crates, towers and arches) moved onto the lightmap.
 	_check(
-		int(probes.get("volumes", 0)) == 43 and int(probes.get("surfaces", 0)) >= 1000,
+		int(probes.get("volumes", 0)) == 43 and int(probes.get("surfaces", 0)) >= 900,
 		"the map's 43 light-probe volumes are read and light the props the lightmaps did not (%d volumes, %d surfaces; scripts/extract_assets.sh lightmaps)"
 			% [probes.get("volumes", 0), probes.get("surfaces", 0)]
 	)
@@ -169,6 +198,12 @@ func _import() -> bool:
 				and (skybox.position + camera * sky_scale).length() < 0.01,
 			"the skybox is scaled by the sky camera's %.0f about the camera's point, which lands on the map's origin (off by %.1f)"
 				% [sky_scale, (skybox.position + camera * sky_scale).length()]
+		)
+		var sky_lightmaps: Dictionary = skybox.stats.get("lightmaps", {})
+		_check(
+			sky_lightmaps.get("found", false) and int(sky_lightmaps.get("surfaces", 0)) >= 50,
+			"the skybox has its own baked light, so its walls are not black in shade (%d surfaces; scripts/extract_assets.sh skybox)"
+				% sky_lightmaps.get("surfaces", 0)
 		)
 		var sky_bounds: AABB = skybox.stats.get("bounds", AABB())
 		var sky_casting := 0
