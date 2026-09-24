@@ -331,7 +331,9 @@ item 6 is built.
 8. **Set `recoil_scale` from a measurement (Sid).** *(Local)* The spray's overall size
    is the one estimate left in the recoil model (it assumes the AK climbs 16
    degrees). Spray a wall in CS2 from 496 units and compare it with the
-   range's degree-lined wall.
+   range's degree-lined wall. A community recoil tool's patterns (2026-09-24,
+   `reference/spray_patterns/README.md`) put the AK's climb at 11.7
+   degrees, which would make `recoil_scale` 0.73; the measurement decides.
 9. **Weapon numbers from the CS2 Weapon Spreadsheet.** *(done, PR #23)*
    Every number the firing model uses was read from the sheet, now in the
    repo: damage, armour, falloff, magazine (M4A1-S 20), inaccuracy, recovery

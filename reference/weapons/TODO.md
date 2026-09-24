@@ -115,7 +115,7 @@ Roughly in order; L1 to L3 can start at once.
   reload time (to rounds in, and to ready), draw time, and for the snipers the
   zoom levels (FOV per level) and time to scope in. Frame-by-frame, the way
   the recoil timings were taken.
-- [ ] **L6. Spray patterns for every "Set Pattern" weapon**, by the procedure
+- [ ] **L6. Spray patterns for every "Set Pattern" weapon** *(partly answered 2026-09-24 from a community source, not a measurement: `reference/spray_patterns/weapon_<class>.csv` has the M4A4, Galil AR, FAMAS, unscoped SG 553 and AUG, all seven SMGs, M249, Negev and CZ75-Auto, on the AK's scale, not yet read by the game; its AK-47 and M4A1-S match the plots but for two swapped pairs of rounds each. The R8's fan fire and the XM1014 have no path to learn (Sid, 2026-09-24), and the scoped SG 553 and AUG are likely their unscoped paths scaled down by the game's scoped recoil (19 against 28, 16 against 24). Left: the G3SG1 and SCAR-20, one scoped spray each of the SG 553 and AUG to settle that, and the scale, which the 496-unit AK spray still settles; `README.md` there says how far to trust the rest)*, by the procedure
   in `reference/spray_patterns/README.md`, from 496 units at the range's wall
   so every pattern has a known scale: CZ75 Auto, R8 Revolver, XM1014, all
   seven SMGs, Galil AR, FAMAS, M4A4, SG 553 and its scope, AUG and its scope,
