@@ -61,6 +61,36 @@ class Shot:
 	## The view kick this shot applied, in degrees. Recorded for debugging;
 	## it has no bearing on where this bullet went.
 	var view_punch: Vector2
+	## Which of the trigger pull's rounds this is: 0, or a shotgun's pellet.
+	## Everything else is the trigger pull's and the same for every pellet.
+	var pellet: int = 0
+	## Where every one of the pull's rounds goes, the first being direction.
+	## Filled by Weapon.fire; empty on a shot built by hand, which is one
+	## round.
+	var pellet_directions := PackedVector3Array()
+
+	## How many rounds the trigger pull put out.
+	func pellets() -> int:
+		return maxi(pellet_directions.size(), 1)
+
+	## The pull's round `index` as a shot of its own, to trace: this one,
+	## pointed where that pellet goes.
+	func pellet_shot(index: int) -> Shot:
+		if index == pellet:
+			return self
+		var copy := Shot.new()
+		copy.origin = origin
+		copy.direction = pellet_directions[index]
+		copy.shot_index = shot_index
+		copy.timestamp_usec = timestamp_usec
+		copy.tick_fraction = tick_fraction
+		copy.inaccuracy = inaccuracy
+		copy.base_yaw = base_yaw
+		copy.base_pitch = base_pitch
+		copy.view_punch = view_punch
+		copy.pellet = index
+		copy.pellet_directions = pellet_directions
+		return copy
 
 
 ## The punch spring is integrated at no coarser than this, whatever the
@@ -458,14 +488,20 @@ func fire(
 	#
 	# This is the whole point. The pattern is the truth and it is the same
 	# every spray, which is what makes it learnable. The view only suggests it.
+	#
+	# A shotgun's pellets keep a fixed pattern, the gun's spread wide, round
+	# an aim that the rest of the cone throws (pellet_directions).
 	var spread := current_inaccuracy(state)
+	var many := data.pellets > 1
 	var direction := _spread_direction(
 		# Pattern x is degrees to the RIGHT, and yaw decreases rightward.
 		yaw_degrees - current.x,
 		pitch_degrees + current.y,
-		spread,
+		maxf(spread - data.spread, 0.0) if many else spread,
 		now_usec
 	)
+	var rounds := pellet_directions(direction) if many else PackedVector3Array([direction])
+	direction = rounds[0]
 
 	# The view gets kicked by this shot's own recoil, scaled down, and as a
 	# push on the punch velocity rather than a jump in the angle, so it rises
@@ -482,6 +518,7 @@ func fire(
 	shot.view_punch = punch
 	shot.base_yaw = yaw_degrees
 	shot.base_pitch = pitch_degrees
+	shot.pellet_directions = rounds
 
 	_snap.kick(punch * data.snap_punch_impulse_scale())
 	_hold.kick(punch * data.hold_punch_impulse_scale())
@@ -536,7 +573,36 @@ func _spread_direction(
 
 	var angle := rng.randf() * TAU
 	var radius := rng.randf() * spread_degrees
+	return _tilted(direction, angle, radius)
 
+
+## Where each of a shotgun's pellets goes from an aim: the gun's pattern
+## laid round it, the same every shot. The pattern is drawn the way a
+## round's place in the cone is, a direction and a uniform share of the
+## gun's spread, from the gun's spread seed and the pellet's number rather
+## than from when it was fired.
+##
+## CS2 fixed each shotgun's pattern in place of random pellets (Valve's
+## "Holiday Spread", December 2017; weapon_accuracy_shotgun_spread_patterns
+## is on), and only the shotguns have a spread seed. That the pattern comes
+## from the seed and that the spread sets its size is inferred; its real
+## shape is still to be read off CS2 (reference/research/combat.md, R5).
+func pellet_directions(aim: Vector3) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	var rng := RandomNumberGenerator.new()
+	for i in maxi(data.pellets, 1):
+		rng.seed = hash([data.spread_seed, i])
+		var angle := rng.randf() * TAU
+		var radius := rng.randf() * data.spread
+		out.append(_tilted(aim, angle, radius))
+	return out
+
+
+## direction turned `degrees` away from itself, towards `angle` round it
+## (0 to the right, a quarter turn up).
+static func _tilted(direction: Vector3, angle: float, degrees: float) -> Vector3:
+	if degrees <= 0.0:
+		return direction
 	var right := direction.cross(Vector3.UP)
 	if right.length_squared() < 0.0001:
 		# Looking straight up or down; any perpendicular will do.
@@ -544,7 +610,7 @@ func _spread_direction(
 	right = right.normalized()
 	var up := right.cross(direction).normalized()
 
-	var offset := (right * cos(angle) + up * sin(angle)) * tan(deg_to_rad(radius))
+	var offset := (right * cos(angle) + up * sin(angle)) * tan(deg_to_rad(degrees))
 	return (direction + offset).normalized()
 
 

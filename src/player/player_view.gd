@@ -155,8 +155,8 @@ func _on_reload_started() -> void:
 	weapon_sounds.reload()
 
 
-func _on_shot_traced(_shot: Weapon.Shot, result: Hitscan.Result) -> void:
-	if view_model != null:
+func _on_shot_traced(shot: Weapon.Shot, result: Hitscan.Result) -> void:
+	if view_model != null and shot.pellet == 0:
 		view_model.shoot()
 	if result.hitbox != null and result.hitbox.target != null:
 		weapon_sounds.hit(result.zone, result.hitbox.target, not result.hitbox.target.alive)

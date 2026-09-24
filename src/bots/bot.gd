@@ -458,8 +458,12 @@ func can_see(other: Node3D) -> bool:
 	return get_world_3d().direct_space_state.intersect_ray(query).is_empty()
 
 
-func _on_shot_traced(_shot: Weapon.Shot, result: Hitscan.Result) -> void:
+func _on_shot_traced(shot: Weapon.Shot, result: Hitscan.Result) -> void:
 	BulletImpacts.mark_in(get_tree(), result)
+	# One kick of the body a trigger pull, however many pellets it put
+	# out. (The one report a pull comes from its weapon_fire.)
+	if shot.pellet > 0:
+		return
 	# The gun's shot, added over the upper body. (CS2's third-person shoot
 	# clips are additive; played whole, as they once were, they folded the
 	# body over, and a firing bot fell as if dead with every round.)

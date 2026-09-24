@@ -165,8 +165,14 @@ Roughly in order; L1 to L3 can start at once.
 - [ ] **R4. Scopes.** Zoom levels, scoped mobility and accuracy from the
   scoped rows, the sniper unscoping after a shot, the scope overlay (L4) when
   it exists.
-- [ ] **R5. Shotguns.** Pellets per shot (Bullets), each traced and damaged
-  on its own, shorter range.
+- [x] **R5. Shotguns.** Pellets per shot (Bullets), each traced and damaged
+  on its own, shorter range. *(Done 2026-09-24 for the Nova, XM1014,
+  Sawed-Off and MAG-7, the player's and the bots': a pull fires
+  `m_nNumBullets` pellets, each its own trace, impact and hurt, in a fixed
+  pattern `m_flSpread` wide from `m_nSpreadSeed`, which the rest of the cone
+  throws whole (`Weapon.pellet_directions`, `tests/run_shotgun_checks.gd`).
+  One report a pull. The pattern's shape is inferred; the Local check in
+  `reference/research/combat.md` (R5) gives the real one.)*
 - [ ] **R6. Random recoil.** Weapons marked "Random" kick by Recoil Amount
   with the two variances rather than by a pattern file. Needs how CS turns
   those into degrees; research first. *(Researched 2026-09-24,

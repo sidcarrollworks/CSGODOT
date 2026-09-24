@@ -87,6 +87,8 @@ static func apply(data: WeaponData, weapon_class: String, alternate: bool = fals
 	data.inaccuracy_moving = _cone(get_value.call("m_flInaccuracyMove") + stand + spread)
 	data.inaccuracy_jumping = _cone(get_value.call("m_flInaccuracyJump") + stand + spread)
 	data.inaccuracy_per_shot = _cone(get_value.call("m_flInaccuracyFire"))
+	data.spread = _cone(spread)
+	data.spread_seed = int(get_value.call("m_nSpreadSeed"))
 	data.recovery_time_crouch = get_value.call("m_flRecoveryTimeCrouch")
 	data.recovery_time_stand = get_value.call("m_flRecoveryTimeStand")
 
