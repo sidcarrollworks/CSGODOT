@@ -58,6 +58,7 @@ func _run() -> void:
 	_test_a_sniper_comes_out_for_its_shot()
 	_test_a_reload_or_a_switch_takes_the_scope_down()
 	_test_noscope()
+	_test_the_zoom_sounds()
 
 	_world = Node3D.new()
 	root.add_child(_world)
@@ -271,6 +272,18 @@ func _test_noscope() -> void:
 	_check(not ak.fire(T0, 0.0, Vector3.ZERO, 0.0, 0.0, state).noscope, "an AK-47 round never is")
 
 
+func _test_the_zoom_sounds() -> void:
+	var awp := WeaponLibrary.build("weapon_awp")
+	_check_equal(WeaponSounds.zoom_stems(awp, true), PackedStringArray(["weapons/awp/zoom"]), "the AWP scopes in with its zoom (Weapon_AWP.Zoom)")
+	_check(WeaponSounds.zoom_stems(awp, false).is_empty(), "and comes out silent, as CS2 has since 22 September 2026")
+	var aug := WeaponLibrary.build("weapon_aug")
+	_check_equal(WeaponSounds.zoom_stems(aug, true), PackedStringArray(["weapons/aug/aug_zoom_in"]), "the AUG zooms in with aug_zoom_in")
+	_check_equal(WeaponSounds.zoom_stems(aug, false), PackedStringArray(["weapons/aug/aug_zoom_out"]), "and out with aug_zoom_out: it is not a sniper")
+	for weapon_class in ["weapon_ssg08", "weapon_g3sg1", "weapon_scar20", "weapon_sg556"]:
+		_check(not WeaponSounds.zoom_stems(WeaponLibrary.build(weapon_class), true).is_empty(), "%s has a zoom-in sound" % weapon_class)
+	_check(WeaponSounds.zoom_stems(WeaponLibrary.ak47(), true).is_empty(), "the AK-47 has none")
+
+
 # --- Through commands --------------------------------------------------------------
 
 ## Right click through a command on the world's tick: the scope up, a
@@ -286,6 +299,11 @@ func _test_a_player_scopes_with_right_click() -> void:
 	player.equip(WeaponLibrary.build("weapon_awp"))
 	var zooms: Array[GameEvent] = []
 	world.game.events.listen(&"weapon_zoom", func(event: GameEvent) -> void: zooms.append(event))
+	# What is heard of it: stepped by hand, no frame is drawn, so what the
+	# events noted stays noted.
+	var sounds := WeaponSounds.new()
+	world.add_child(sounds)
+	sounds.watch(player)
 	# Through the draw.
 	for i in SimClock.ticks_in(2.0):
 		world.step()
@@ -296,6 +314,8 @@ func _test_a_player_scopes_with_right_click() -> void:
 	world.step()
 	_check_equal(player.weapon.zoom_level, 1, "right click scopes it")
 	_check(zooms.size() == 1 and zooms[0].fields["userid"] == player.userid, "and says so: weapon_zoom, with who")
+	_check_equal(sounds.pending_zooms(), [PackedStringArray(["weapons/awp/zoom"])] as Array[PackedStringArray],
+		"which is heard: the AWP's zoom")
 
 	player.walks = true
 	var fastest := 0.0
@@ -309,6 +329,8 @@ func _test_a_player_scopes_with_right_click() -> void:
 	player.tap = UserCmd.ATTACK2
 	world.step()
 	_check_equal(player.weapon.zoom_level, 0, "two more clicks, through the second level and out")
+	_check_equal(sounds.pending_zooms().size(), 2, "the second level is heard going in, and coming out is not")
+	sounds.queue_free()
 	fastest = 0.0
 	for i in SimClock.ticks_in(1.5):
 		world.step()
