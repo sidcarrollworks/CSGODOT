@@ -67,6 +67,9 @@ have done it already.
 - CS2's own numbers win wherever the game has them
   (`reference/weapons/vdata.csv`, generated from the game's files); anything
   measured by hand goes in `reference/` with how it was measured.
+- A key keeps CS2's default meaning everywhere, the test range included
+  (Sid, 2026-09-24). A test or debug key goes only on a key CS2 leaves
+  unbound; `reference/binds.md` lists them and the keys still to move.
 - `assets/` holds Valve's extracted content and is never committed.
 - Pages the extraction scripts write (`reference/surfaces/`,
   `reference/animgraph/`, `reference/weapons/equipment.md` and the other

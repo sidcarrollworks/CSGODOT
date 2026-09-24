@@ -100,11 +100,11 @@ against, and off to the left a bot that shoots you when you tell it to.
 | `1` to `5`, `Q`, `G` | as everywhere: the AK-47, the Glock, the knife, the grenades, the bomb; the last thing held; drop it |
 | `R` | reload |
 | `P` | export the spray you just fired |
-| `O` | clear the impact markers, the log and the guns on the ground, and stand the dummy up |
+| `O` | clear the impact markers, the log and the guns on the ground, stand the dummy up, and hand you the bomb again |
 | `H` | draw or hide the dummy's hitboxes |
 | `K` | the dummy's armour: kevlar and helmet, kevlar, none |
 | `N` | the dummy's distance: 256, 512, 1024, 2048 units |
-| `F` | the dummy never dies: a kill is logged and it is refilled, so a whole spray registers |
+| `[` | the dummy never dies: a kill is logged and it is refilled, so a whole spray registers |
 | `M` | a wall in front of the dummy to shoot it through: a wooden door, a crate, sheet and solid metal, plaster, thin and thick concrete, none |
 | `I` | the shooter fires at you, or holds its fire |
 | `U` | the shooter's weapon: AK-47, M4A1-S, MP9 |
@@ -112,7 +112,7 @@ against, and off to the left a bot that shoots you when you tell it to.
 | `J` | you never die: a kill refills you |
 | `T` | a window on your own body and hitboxes: from the front, from the side, off |
 | `B` | the buy menu, in the green zone round the spawn ($16,000, filled again by `O`) |
-| `5`, then `Mouse 1` on site A | plant the bomb, behind the spawn; `E` looking at it defuses, `L` puts the kit on or off, and `5` once it has gone off or been defused gives you another |
+| `5`, then `Mouse 1` on site A | plant the bomb, behind the spawn; `E` looking at it defuses, `L` puts the kit on or off, and `O` gives you another |
 | `4`, then the mouse | throw a grenade: the range keeps you in an HE, a flash, a smoke and a molotov |
 
 Every bullet leaves a mark: dark on the wall, red on the dummy. The readout
@@ -140,7 +140,7 @@ character, why the game's are missing. It starts
 in kevlar and a helmet, as an opponent in a rifle round would be. Killed, it
 falls as a ragdoll, knocked the way the round was going, drops the M4A1-S it
 holds as anyone does, and two and a half seconds later stands up again where
-it was, whole. F makes it never die instead.
+it was, whole. `[` makes it never die instead.
 
 **Walls to shoot through.** M stands a wall across the dummy's lane just in
 front of it, one of CS2's surfaces at a thickness, and steps through them.

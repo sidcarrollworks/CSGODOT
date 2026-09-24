@@ -88,6 +88,7 @@ func _initialize() -> void:
 func _run() -> void:
 	_test_the_simulation_reads_only_commands()
 	_test_presses_land_at_their_instant()
+	_test_an_old_input_map_is_put_right()
 
 	_world = Node3D.new()
 	root.add_child(_world)
@@ -171,6 +172,36 @@ func _test_presses_land_at_their_instant() -> void:
 	# put every press at 0.
 	var stale := PlayerInput.tick_fraction(start + HALF_TICK, start + TICK + 100, TICK)
 	_check(is_zero_approx(stale), "measured from the tick's own start, the same click would have been at 0")
+
+
+## An input map an open editor wrote back from before the inventory: no
+## drop, and the range's never-die still on G. The keys come back as CS2
+## has them, and G does one thing.
+func _test_an_old_input_map_is_put_right() -> void:
+	var kept := {}
+	for action: StringName in [&"drop", &"dummy_immortal"]:
+		kept[action] = InputMap.action_get_events(action) if InputMap.has_action(action) else []
+	if InputMap.has_action(&"drop"):
+		InputMap.erase_action(&"drop")
+	if not InputMap.has_action(&"dummy_immortal"):
+		InputMap.add_action(&"dummy_immortal", 0.2)
+	InputMap.action_erase_events(&"dummy_immortal")
+	var g := InputEventKey.new()
+	g.physical_keycode = KEY_G
+	InputMap.action_add_event(&"dummy_immortal", g)
+	PlayerInput.ensure_actions()
+	var keys_of := func(action: StringName) -> Array:
+		return InputMap.action_get_events(action).map(func(event: InputEvent) -> int:
+			return (event as InputEventKey).physical_keycode if event is InputEventKey else -1)
+	_check(
+		keys_of.call(&"drop") == [KEY_G] and keys_of.call(&"dummy_immortal") == [KEY_BRACKETLEFT],
+		"an old input map gets drop on G and the range's never-die moved to [ (%s, %s)"
+			% [keys_of.call(&"drop"), keys_of.call(&"dummy_immortal")]
+	)
+	for action: StringName in kept:
+		InputMap.action_erase_events(action)
+		for event: InputEvent in kept[action]:
+			InputMap.action_add_event(action, event)
 
 
 # --- The world that runs the tick -------------------------------------------

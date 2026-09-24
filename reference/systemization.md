@@ -392,7 +392,10 @@ constants read; server convars that a client is sent, and client ones
 (sensitivity, crosshair). A console on the tilde key for setting them and
 for commands (`mp_warmup_end`, `mp_restartgame`, `noclip`, `give`,
 `bot_kick`, `god`), with the range's keys becoming binds to those
-commands. **Size:** medium. The registry can start small and grow.
+commands. **Size:** medium. The registry can start small and grow. The
+bind table and the range's commands came forward as roadmap item 12a
+(`reference/binds.md`, 2026-09-24); the console then runs the same
+commands.
 
 ### 11. Each map scene is also the game's setup
 
@@ -503,9 +506,10 @@ still needs a run there.
 The three are one contract, `reference/systems/contracts.md`, in
 `src/game/`, with the inventory (item 12's carrying rules), items on the
 ground, players' commands and the world's `game`, which the bomb,
-grenades and buying are built on. Left to wire into `player_sim.gd`,
-`bot.gd` and `match_state.gd` (its section 5): the shooter's id, the
-inventory in place of the one weapon, and the match's events.
+grenades and buying are built on. Wired into `player_sim.gd` and
+`bot.gd` with roadmap item 12: the shooter's id and the inventory in
+place of the one weapon. Left (its section 5): the match's events in
+`match_state.gd`.
 
 **Step 2, any time, small: one surface lookup resolved at import**
 (finding 7), which feeds CS2's per-surface friction into the movement and

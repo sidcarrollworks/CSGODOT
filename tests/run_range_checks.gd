@@ -140,10 +140,10 @@ func _run() -> void:
 	_check(
 		spray_hits == 8 and dummy.alive and dummy.hit_target.health > 0.0
 			and lines.size() >= 2 and lines[0].begins_with("KILLED  100 damage in 1 hit"),
-		"F keeps it standing: eight rounds to the head all register, each one counted as a kill (%d, %s)" % [spray_hits, lines[0] if lines.size() > 0 else ""]
+		"[ keeps it standing: eight rounds to the head all register, each one counted as a kill (%d, %s)" % [spray_hits, lines[0] if lines.size() > 0 else ""]
 	)
 	_range.toggle_immortal()
-	_check(not dummy.hit_target.immortal, "and F again lets it die")
+	_check(not dummy.hit_target.immortal, "and [ again lets it die")
 	_check(
 		_range.hitbox_source.contains("19 CS2 capsules") or _range.hitbox_source.contains("stand-in"),
 		"the readout says which hitboxes it wears (%s)" % _range.hitbox_source
