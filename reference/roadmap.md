@@ -541,7 +541,8 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
 24. **Playing the round.** *(Remote; Local records grenade lineups)* Bots on
     both sides fighting each other, buying to a plan, planting, rotating,
     retaking and defusing, throwing known smokes and flashes, getting out of
-    fire. *(CS2's stock buying done 2026-09-23: `BotBuying`, from its
+    fire. *(Smoke hiding players from bots and flashes blinding them done
+    2026-09-24: `Bot.can_see`, `Bot.is_blind`.)* *(CS2's stock buying done 2026-09-23: `BotBuying`, from its
     convars and `botprofile.db`, `reference/systems/economy.md`. A team's
     plan (full buy, force, save) is still to do, beyond CS2's own bots.)*
 
