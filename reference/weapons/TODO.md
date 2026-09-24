@@ -169,9 +169,14 @@ Roughly in order; L1 to L3 can start at once.
   on its own, shorter range.
 - [ ] **R6. Random recoil.** Weapons marked "Random" kick by Recoil Amount
   with the two variances rather than by a pattern file. Needs how CS turns
-  those into degrees; research first.
+  those into degrees; research first. *(Researched 2026-09-24,
+  `reference/research/combat.md`: every gun has a recoil seed, so
+  "Random" kicks are probably a fixed sequence; the conversion to degrees
+  is in no file and comes from a demo.)*
 - [ ] **R7. The R8's hammer.** Its first round waits on a trigger pull delay;
-  the sheet says "see note". Research first.
+  the sheet says "see note". Research first. *(Researched 2026-09-24,
+  `reference/research/combat.md`: the shot is postponed to a set tick and
+  fraction; the delay, about 0.2 s by community wikis, comes from a demo.)*
 - [ ] **R8. Slots, switching, drop and pick up.** Knife, pistol, primary;
   number keys and the scroll wheel (scroll up is jump today; ask Sid); a
   weapon on the ground; bots carrying what they bought.

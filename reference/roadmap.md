@@ -465,7 +465,7 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
 25. **Netcode.** *(Remote; Local playtests across machines)* CS2's model: the
     server decides, clients send input with sub-tick times and predict their
     own player, everyone else is drawn between snapshots, and a shot is
-    checked against what the shooter saw (up to 1 s back). Godot's ENet gives
+    checked against what the shooter saw (up to 200 ms back). Godot's ENet gives
     the transport; prediction, snapshot buffering and the rewind are built on
     it. A dedicated server build, and connecting by address. What each part
     will cost, and what to settle before it (a server that builds nothing to

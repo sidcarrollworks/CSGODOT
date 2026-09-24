@@ -473,8 +473,9 @@ marked crouch-only, jumping where a link rises past a step; roadmap item
 - A shot also carries the moment the client was looking at: which two server
   ticks it drew and how far between them (`input_history` in
   `cs_usercmd.proto`), so the server checks the hit against what the shooter
-  saw. That is CS2's lag compensation, rewinding up to 1 s
-  (`sv_maxunlag 1`).
+  saw. That is CS2's lag compensation, rewinding up to 200 ms: the
+  engine's default is `sv_maxunlag 1`, but the game's own `gameinfo.gi`
+  sets 0.200 (`reference/research/combat.md`, correction 1).
 - The client predicts its own movement and firing and corrects when the
   server disagrees. It draws everyone else between the last two snapshots it
   has, one or two ticks behind (`cl_net_buffer_ticks 0-2`, CV). Snapshots go as
