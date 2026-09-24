@@ -277,21 +277,21 @@ static func make_skybox(skybox_dir: String) -> MapImporter:
 			sky_scale = float(entity.get("scale", "16"))
 			break
 
-	var importer := MapImporter.new()
-	importer.name = "Skybox"
-	importer.source_path = map_file
-	importer.scale_factor = MapImporter.SOURCE2_VIEWER_SCALE * sky_scale
-	importer.collision_source = MapImporter.CollisionSource.NONE
-	importer.layer_textures_dir = skybox_dir
+	var sky_importer := MapImporter.new()
+	sky_importer.name = "Skybox"
+	sky_importer.source_path = map_file
+	sky_importer.scale_factor = MapImporter.SOURCE2_VIEWER_SCALE * sky_scale
+	sky_importer.collision_source = MapImporter.CollisionSource.NONE
+	sky_importer.layer_textures_dir = skybox_dir
 	# Its terrain sits at its own ground level, which is above some of the
 	# map's floors; the map must win wherever they overlap.
-	importer.behind_everything = true
+	sky_importer.behind_everything = true
 	# Scenery, not a caster: the game's skybox never shadows the map.
-	importer.cast_shadows = false
-	importer.report = false
+	sky_importer.cast_shadows = false
+	sky_importer.report = false
 	# The sky camera's point, scaled up about the map's origin, lands on it.
-	importer.position = -camera * sky_scale
-	return importer
+	sky_importer.position = -camera * sky_scale
+	return sky_importer
 
 
 func _place_player(map_file: String) -> void:

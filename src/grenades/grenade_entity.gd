@@ -50,8 +50,8 @@ var bursts: DecoyBursts
 var decoy_weapon: String = ""
 
 
-static func entity_class_for(weapon_class: String) -> String:
-	return String(ENTITY_CLASSES.get(weapon_class, "grenade_projectile"))
+static func entity_class_for(item_class: String) -> String:
+	return String(ENTITY_CLASSES.get(item_class, "grenade_projectile"))
 
 
 func tick(t: SimTick) -> void:
@@ -93,7 +93,9 @@ func _fly(t: SimTick) -> void:
 ## since the throw, at which a smoke or a decoy lying still goes off.
 func _on_rest_check(t: SimTick) -> bool:
 	var every := int(GrenadeRules.REST_CHECK_SECONDS * 1_000_000.0)
+	@warning_ignore("integer_division")
 	var checks_by_now := (t.now_usec - thrown_usec) / every
+	@warning_ignore("integer_division")
 	var checks_before := (t.now_usec - SimClock.tick_usec() - thrown_usec) / every
 	return checks_by_now > checks_before
 

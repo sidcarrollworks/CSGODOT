@@ -175,10 +175,10 @@ func _test_kill_awards() -> void:
 	}
 	var wrong := []
 	for weapon: String in awards:
-		var before := _economy.money(_ts[0])
+		var had := _economy.money(_ts[0])
 		_send(&"player_death", {"userid": _cts[0], "attacker": _ts[0], "weapon": weapon})
-		if _economy.money(_ts[0]) - before != awards[weapon]:
-			wrong.append("%s %d" % [weapon, _economy.money(_ts[0]) - before])
+		if _economy.money(_ts[0]) - had != awards[weapon]:
+			wrong.append("%s %d" % [weapon, _economy.money(_ts[0]) - had])
 	_check(wrong.is_empty(), "a kill pays the weapon's own kill award (%s)" % [wrong])
 
 	var before := _economy.money(_ts[0])

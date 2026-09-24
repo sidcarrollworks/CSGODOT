@@ -67,12 +67,12 @@ func add_player(player: Node3D, hit_target: HitTarget = null, carried: Inventory
 
 ## What a player carries; null for a userid not playing.
 func inventory(userid: int) -> Inventory:
-	var inventory: Inventory = _inventories.get(userid)
-	if inventory != null and inventory.body == null:
+	var carried: Inventory = _inventories.get(userid)
+	if carried != null and carried.body == null:
 		# A player who joined before building their hit target wears their
 		# armour on it once they have one.
-		inventory.body = roster.hit_target(userid)
-	return inventory
+		carried.body = roster.hit_target(userid)
+	return carried
 
 
 ## Answers a question about the game's state for anyone who asks it by

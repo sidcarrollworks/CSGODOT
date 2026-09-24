@@ -1087,6 +1087,7 @@ func _test_what_a_death_leaves() -> void:
 		"a T walks over the kit and leaves it")
 	var other_ct := await _new_player(game, "CT", kit.position)
 	game.roster.player(t_player).global_position = Vector3(0.0, 0.0, 3000.0)
+	@warning_ignore("integer_division")
 	for i in ItemDrops.PICKUP_CHECK_PERIOD_USEC / SimClock.tick_usec() + 1:
 		game.step(tick, space)
 		tick += 1

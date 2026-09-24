@@ -37,7 +37,7 @@ func _run() -> void:
 	_game = GameSystems.new()
 	_system = BombSystem.new([BombSite.of_box("A", SITE_BOX)])
 	_check(_system.input_of.is_valid(), "by default the bomb reads each player's command")
-	_system.input_of = func(userid: int, _player: Node3D, _inventory: Inventory) -> Dictionary:
+	_system.input_of = func(userid: int, _player_node: Node3D, _inventory: Inventory) -> Dictionary:
 		return _asks.get(userid, {})
 	_game.add_system(_system)
 	_game.events.listen_all(func(event: GameEvent) -> void: _heard.append(event))
