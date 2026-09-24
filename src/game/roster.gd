@@ -16,17 +16,17 @@ var _next: int = 0
 
 
 ## Adds a player, and returns the userid they now have.
-func add(player: Node3D, hit_target: HitTarget = null) -> int:
-	var existing := userid_of(player)
+func add(player_node: Node3D, target: HitTarget = null) -> int:
+	var existing := userid_of(player_node)
 	if existing != GameEvents.NOBODY:
 		return existing
 	var userid := _next
 	_next += 1
-	_players[userid] = player
+	_players[userid] = player_node
 	_ids.append(userid)
-	if hit_target != null:
-		_hit_targets[userid] = hit_target
-		hit_target.userid = userid
+	if target != null:
+		_hit_targets[userid] = target
+		target.userid = userid
 	return userid
 
 

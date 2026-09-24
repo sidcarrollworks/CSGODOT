@@ -72,12 +72,12 @@ func _draw() -> void:
 
 
 ## Which way a round fired at `from` came from, on the screen of a player at
-## `position` looking along `yaw_degrees`: radians clockwise from straight up,
+## `player_at` looking along `yaw_degrees`: radians clockwise from straight up,
 ## so 0 is from ahead, PI/2 from the right, PI from behind. Only the bearing
 ## counts; a shot from above or below reads by where it was fired from on the
 ## ground.
-static func screen_angle(position: Vector3, yaw_degrees: float, from: Vector3) -> float:
-	var to := from - position
+static func screen_angle(player_at: Vector3, yaw_degrees: float, from: Vector3) -> float:
+	var to := from - player_at
 	if Vector2(to.x, to.z).length_squared() < 1e-6:
 		return 0.0
 	# The game's yaw 0 looks down -Z, and yaw grows towards -X, to the left.

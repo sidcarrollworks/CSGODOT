@@ -238,10 +238,10 @@ static func display_name(weapon_class: String) -> String:
 ## game's m_nDamage at the centre, along the bell curve, nothing past its
 ## m_flRange.
 static func he_damage_at(distance: float) -> float:
-	var reach := reach(HE)
-	if distance >= reach:
+	var he_reach := reach(HE)
+	if distance >= he_reach:
 		return 0.0
-	var sigma := reach * HE_FALLOFF_SIGMA_SHARE
+	var sigma := he_reach * HE_FALLOFF_SIGMA_SHARE
 	return damage(HE) * exp(-(distance * distance) / (2.0 * sigma * sigma))
 
 

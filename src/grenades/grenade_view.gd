@@ -172,8 +172,8 @@ func _draw_fire(id: int, inferno: InfernoEntity, now: int) -> void:
 	var t := float(now) / 1_000_000.0
 	for i in count:
 		var flicker := 0.8 + 0.3 * sin(t * 13.0 + i * 1.7)
-		var basis := Basis.from_scale(Vector3(1.0, flicker, 1.0))
-		multimesh.set_instance_transform(i, Transform3D(basis, flames[i] + Vector3.UP * 20.0 * flicker))
+		var stretch := Basis.from_scale(Vector3(1.0, flicker, 1.0))
+		multimesh.set_instance_transform(i, Transform3D(stretch, flames[i] + Vector3.UP * 20.0 * flicker))
 	multimesh.visible_instance_count = count
 
 

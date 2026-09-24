@@ -202,14 +202,14 @@ func _item_button(item: String, place: int) -> Button:
 ## The game's icon for an item, where the HUD icons are extracted
 ## (scripts/extract_assets.sh hud); none, and the name alone, where not.
 static func _icon(item: String) -> Texture2D:
-	var name := item.trim_prefix("weapon_").trim_prefix("item_")
-	var path := ICON_ROOT.path_join(name + ".svg")
+	var icon_name := item.trim_prefix("weapon_").trim_prefix("item_")
+	var path := ICON_ROOT.path_join(icon_name + ".svg")
 	return load(path) as Texture2D if ResourceLoader.exists(path) else null
 
 
-func _label(size: int) -> Label:
+func _label(font_size: int) -> Label:
 	var label := Label.new()
-	label.add_theme_font_size_override("font_size", size)
+	label.add_theme_font_size_override("font_size", font_size)
 	label.add_theme_color_override("font_outline_color", Color.BLACK)
 	label.add_theme_constant_override("outline_size", 4)
 	return label

@@ -471,8 +471,25 @@ file is any `tests/run_*.gd`; it extends `tests/check_suite.gd`, which
 has the checks and the one line each file ends with for the summary.
 
 Note that GDScript's analyser warnings (shadowed variables, unused locals) only
-appear when the editor loads a script. They do not show up in a headless run,
-so if the Godot console shows any, paste them over and they will get fixed.
+appear when the editor loads a script. A headless run shows them only when
+they are turned into errors, so to list them, put a throwaway `override.cfg`
+in the project root:
+
+```
+[debug]
+
+gdscript/warnings/shadowed_variable=2
+gdscript/warnings/shadowed_variable_base_class=2
+gdscript/warnings/confusable_local_declaration=2
+gdscript/warnings/integer_division=2
+```
+
+then run each script through `godot --headless --path . --check-only --script
+<file>`, and delete `override.cfg` afterwards. As errors they fail every
+script that depends on the one they are in, so fix the first file named and
+run again. The project has none of these four; a division meant to drop the
+remainder says so with `@warning_ignore("integer_division")`. A check that
+exits with no output at all crashed on the way out; run it again.
 
 Nine files: movement, map import, dust2, models, weapons, penetration, the
 test range, the simulation and the match. Without the extracted assets 744

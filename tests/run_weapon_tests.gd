@@ -99,6 +99,7 @@ func _test_fire_rate() -> void:
 	var cycle := int(weapon.data.cycle_time * SECOND)
 
 	_check(_fire(weapon, 0) != null, "the first shot fires")
+	@warning_ignore("integer_division")
 	_check(
 		_fire(weapon, cycle / 2) == null,
 		"a second shot inside the cycle time does not fire"
@@ -119,10 +120,10 @@ func _test_semi_automatic_fires_once_a_click() -> void:
 	WeaponVData.apply(deagle, "weapon_deagle")
 	var cycle := int(deagle.cycle_time * SECOND)
 	var tick := SimClock.tick_usec()
-	var try_tick := func(weapon: Weapon, now: int, held: bool) -> Weapon.Shot:
-		weapon.trigger_held = held
-		weapon.update(float(tick) / SECOND, now, _standing())
-		return _fire(weapon, now) if held else null
+	var try_tick := func(gun: Weapon, at: int, held: bool) -> Weapon.Shot:
+		gun.trigger_held = held
+		gun.update(float(tick) / SECOND, at, _standing())
+		return _fire(gun, at) if held else null
 
 	var weapon := Weapon.new(deagle)
 	var rounds := 0
@@ -160,6 +161,7 @@ func _test_semi_automatic_fires_once_a_click() -> void:
 	weapon.press_trigger()
 	_check(_fire(weapon, cycle) != null, "a press it is told about fires it, with the trigger never read as up")
 	weapon.press_trigger()
+	@warning_ignore("integer_division")
 	_check(_fire(weapon, cycle + cycle / 2) == null, "but a press does not beat the cycle time")
 	_check(_fire(weapon, 2 * cycle) != null, "and held on until the gun is ready, it fires then")
 
@@ -1643,15 +1645,15 @@ func _test_fatal_headshot_ranges() -> void:
 		var helmet: bool = case[1]
 		var reach: float = case[2]
 		var kills := func(distance: float) -> bool:
-			var target := HitTarget.new()
-			target.build_own_hitboxes = false
-			target.wear(100.0 if helmet else 0.0, helmet)
-			target.reset()
-			target.apply_damage(
+			var dummy := HitTarget.new()
+			dummy.build_own_hitboxes = false
+			dummy.wear(100.0 if helmet else 0.0, helmet)
+			dummy.reset()
+			dummy.apply_damage(
 				data.damage_at(distance) * data.hitbox_multiplier(&"head"), &"head", data.armor_penetration
 			)
-			var dead := not target.alive
-			target.free()
+			var dead := not dummy.alive
+			dummy.free()
 			return dead
 		_check(
 			kills.call(reach - 5.0) and not kills.call(reach + 5.0),

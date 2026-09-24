@@ -507,12 +507,12 @@ func _test_a_semi_automatic_fires_once_a_click() -> void:
 	# Which ticks the button is down for, as [first, last] pairs; each goes
 	# down 0.3 into its first tick.
 	# Each part starts with a full magazine: the Deagle holds seven.
-	var run := func(clicks: Array, ticks: int) -> void:
+	var run := func(presses: Array, ticks: int) -> void:
 		player.weapon.ammo = deagle.magazine_size
 		for i in ticks:
 			var cmd := UserCmd.new()
 			cmd.tick = tick[0] + i
-			for click: Array in clicks:
+			for click: Array in presses:
 				if i == click[0]:
 					cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.ATTACK, true, 0.3, 0.0, 0.0))
 				if i >= click[0] and i <= click[1]:
@@ -541,6 +541,7 @@ func _test_a_semi_automatic_fires_once_a_click() -> void:
 	times.clear()
 	run.call([[0, 0], [6, 25]], 40)
 	var cycle := int(round(deagle.cycle_time * 1_000_000.0))
+	@warning_ignore("integer_division")
 	_check(
 		times.size() == 2 and times[1] - times[0] == cycle,
 		"a click held from before the gun is ready fires the moment it is, %d ms after the last round (%s)" % [cycle / 1000, times]
