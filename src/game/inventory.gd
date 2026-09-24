@@ -36,8 +36,8 @@ enum Can {
 ## Four grenades in all (CS2's ammo_grenade_limit_total).
 const MOST_GRENADES := 4
 ## Which grenade falls when a player dies with none in hand: the best first.
-## CS2 drops the one in hand, or else its best; which it counts as best is
-## a guess.
+## CS2 drops the one in hand, or else its best (mp_death_drop_grenade 2);
+## which it counts as best is in no file (measure).
 const GRENADE_DROP_ORDER := [
 	"weapon_molotov", "weapon_incgrenade", "weapon_hegrenade", "weapon_smokegrenade",
 	"weapon_flashbang", "weapon_decoy",
@@ -318,11 +318,13 @@ func select_last() -> bool:
 	return select(_previous)
 
 
-## Takes out and hands back what a death leaves on the ground, as CS2 does
-## (mp_death_drop_gun, _grenade, _taser, _defuser): the best gun, the grenade
-## in hand or else the best one, the Zeus and the kit. Not the C4, which the
-## bomb takes and drops itself when its carrier dies (mp_death_drop_c4). The
-## rest goes with strip(), when the player next spawns.
+## Takes out and hands back what a death leaves on the ground, as CS2's
+## competitive rules have it: the best gun (mp_death_drop_gun 1), the grenade
+## in hand or else the best one, only one (mp_death_drop_grenade 2), the
+## Zeus (mp_death_drop_taser) and the kit (mp_death_drop_defuser). Not the
+## C4, which the bomb takes and drops itself when its carrier dies
+## (mp_death_drop_c4). The rest goes with strip(), when the player next
+## spawns.
 func drops_on_death() -> Array[Entry]:
 	var out: Array[Entry] = []
 	var gun := best_gun()

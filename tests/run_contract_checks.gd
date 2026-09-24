@@ -962,15 +962,23 @@ func _test_dropping_and_picking_up() -> void:
 	_check(gun.resting and absf(gun.position.y) < 0.5, "it falls to the floor and lies there")
 	_check(gun.position.z < -40.0, "thrown forward, the way the player faced (%.0f units)" % -gun.position.z)
 
-	# The dropper stands on it at once; the other player too.
+	# The dropper stands on it; the other player too. Nobody takes it until
+	# CS2's 1.3 s have passed, and then the other player does, at the first
+	# pickup check.
+	var space := _world.get_world_3d().direct_space_state
 	game.roster.player(dropper).global_position = gun.position
 	game.roster.player(taker).global_position = gun.position
-	game.step(tick, _world.get_world_3d().direct_space_state)
-	tick += 1
 	var taker_inv := game.inventory(taker)
+	while SimClock.tick_end_usec(tick) < gun.dropped_usec + DroppedItem.NEXT_OWNER_TOUCH_USEC:
+		game.step(tick, space)
+		tick += 1
+	_check(not taker_inv.has("weapon_ak47") and not inv.has("weapon_ak47"),
+		"nobody takes it in its first 1.3 s (mp_weapon_next_owner_touch_time)")
+	game.step(tick, space)
+	tick += 1
 	_check(not inv.has("weapon_ak47"), "whoever dropped it does not take it straight back")
 	_check(taker_inv.has("weapon_ak47") and taker_inv.item_in(ItemDef.Slot.PRIMARY).weapon == ak,
-		"someone walking over it takes it, the same gun")
+		"someone walking over it takes it once 1.3 s have passed, the same gun")
 	_check_equal(ak.ammo, 13, "with the 13 rounds it had")
 	_check(heard.has("item_pickup") and game.entities.of_class("weapon_ak47").is_empty(), "item_pickup, and it is gone from the ground")
 
@@ -988,11 +996,41 @@ func _test_dropping_and_picking_up() -> void:
 	_check(not full.has("weapon_ak47") and game.entities.of_class("weapon_ak47").size() == 1,
 		"walking over a gun whose slot is full leaves it lying")
 
+	# Alone on what they dropped, the dropper takes it back after 1.5 s, at
+	# the next pickup check, 0.25 s after the first.
+	game.roster.player(taker).global_position = Vector3(0.0, 0.0, 2000.0)
+	game.roster.player(dropper).global_position = Vector3.ZERO
+	inv.select("weapon_glock")
+	game.command(dropper, "drop")
+	tick = _settle(game, tick)
+	var pistol := game.entities.of_class("weapon_glock")[0] as DroppedItem
+	game.roster.player(dropper).global_position = pistol.position
+	while SimClock.tick_end_usec(tick) < pistol.dropped_usec + DroppedItem.PREV_OWNER_TOUCH_USEC:
+		game.step(tick, space)
+		tick += 1
+	_check(not inv.has("weapon_glock"), "whoever dropped it waits 1.5 s (mp_weapon_prev_owner_touch_time)")
+	var checks_after := 0
+	while not inv.has("weapon_glock") and checks_after < 64:
+		game.step(tick, space)
+		tick += 1
+		checks_after += 1
+	_check(inv.has("weapon_glock") and SimClock.tick_end_usec(tick - 1) - pistol.dropped_usec
+			<= DroppedItem.NEXT_OWNER_TOUCH_USEC + 2 * ItemDrops.PICKUP_CHECK_PERIOD_USEC,
+		"and then takes it back at a pickup check, every 0.25 s (pickup_check_period)")
+
+	inv.add("weapon_flashbang")
+	inv.select("weapon_flashbang")
+	game.command(dropper, "drop")
+	game.step(tick)
+	tick += 1
+	_check(not inv.has("weapon_flashbang") and game.entities.of_class("weapon_flashbang").size() == 1,
+		"a grenade in hand can be dropped (mp_drop_grenade_enable)")
+
 	inv.select("weapon_knife")
 	game.command(dropper, "drop")
 	game.step(tick)
 	tick += 1
-	_check(inv.has("weapon_knife"), "the knife is never dropped")
+	_check(inv.has("weapon_knife"), "the knife is never dropped (mp_drop_knife_enable)")
 
 	inv.add("weapon_c4")
 	inv.select("weapon_c4")
@@ -1039,13 +1077,29 @@ func _test_what_a_death_leaves() -> void:
 		"a dead CT leaves the M4A4, the smoke and the kit on the ground")
 	_check(heard.has("defuser_dropped"), "and defuser_dropped says so")
 
+	var space := _world.get_world_3d().direct_space_state
 	var kit := game.entities.of_class("item_defuser")[0] as DroppedItem
 	game.roster.player(t_player).global_position = kit.position
-	game.step(tick, _world.get_world_3d().direct_space_state)
+	for i in 64 * 2:
+		game.step(tick, space)
+		tick += 1
 	_check(not game.inventory(t_player).has_defuser and game.entities.of_class("item_defuser").size() == 1,
 		"a T walks over the kit and leaves it")
-	game.entities.clear()
-	_check_equal(game.entities.size(), 0, "and a new round clears the ground")
+	var other_ct := await _new_player(game, "CT", kit.position)
+	game.roster.player(t_player).global_position = Vector3(0.0, 0.0, 3000.0)
+	for i in ItemDrops.PICKUP_CHECK_PERIOD_USEC / SimClock.tick_usec() + 1:
+		game.step(tick, space)
+		tick += 1
+	_check(game.inventory(other_ct).has_defuser and game.entities.of_class("item_defuser").is_empty()
+			and heard.has("defuser_pickup"),
+		"a CT walks over it and has a kit (defuser_pickup)")
+	game.events.send(&"round_prestart", {})
+	game.step(tick, space)
+	var lying := 0
+	for entity in game.entities.all():
+		if entity is DroppedItem:
+			lying += 1
+	_check_equal(lying, 0, "and the next round's round_prestart clears the ground")
 	for userid in game.roster.ids():
 		game.roster.player(userid).queue_free()
 		game.roster.hit_target(userid).queue_free()

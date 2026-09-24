@@ -10,13 +10,23 @@ extends RefCounted
 ## knife and never the C4 (the bomb takes that command when the C4 is in
 ## hand). Walking over an item takes it if its slot is free, as CS2 does;
 ## swapping with the one in hand (E) is left for when there is a use key.
+## What is on the ground goes at round_prestart, CS2's clean-up of the map.
+##
+## CS2's values are from its convars (SteamDatabase's DumpSource2
+## convars.txt) and game/csgo/cfg/gamemode_competitive.cfg.
 
+## mp_drop_knife_enable and mp_drop_grenade_enable.
+const DROP_KNIFE := false
+const DROP_GRENADES := true
+## How often an item on the ground looks for a player standing on it:
+## CS2's pickup_check_period, 0.25 s, so 16 ticks at 64 Hz.
+const PICKUP_CHECK_PERIOD_USEC := 250_000
 ## How near a player's feet an item has to lie to be taken, across and up:
-## a guess at CS2's pickup reach, the hull's half width and its height.
+## the hull's half width and its height. In no file (measure).
 const REACH_ACROSS := 32.0
 const REACH_UP := 72.0
-## How hard a drop throws the item forward, in units a second, and up; a
-## guess.
+## How hard a drop throws the item forward, in units a second, and up. In
+## no file (measure).
 const THROW_SPEED := 200.0
 const THROW_UP := 100.0
 
@@ -26,14 +36,16 @@ var game: GameSystems
 func attach(p_game: GameSystems) -> void:
 	game = p_game
 	game.events.listen(&"player_death", _on_death)
+	game.events.listen(&"round_prestart", _on_round_prestart)
 	game.on_command(&"drop", _on_drop)
 
 
 func tick(t: SimTick) -> void:
 	for entity in t.entities.all():
 		var item := entity as DroppedItem
-		if item == null or item.entry == null:
+		if item == null or item.entry == null or t.now_usec < item.next_pickup_check_usec:
 			continue
+		item.next_pickup_check_usec = t.now_usec + PICKUP_CHECK_PERIOD_USEC
 		for userid in t.roster.ids():
 			if _try_pickup(t, item, userid):
 				break
@@ -52,12 +64,21 @@ func _on_death(event: GameEvent) -> void:
 			game.events.send(&"defuser_dropped", {"entityid": dropped.id})
 
 
+## A new round's map has nothing on the ground; the bomb clears its own C4.
+func _on_round_prestart(_event: GameEvent) -> void:
+	for entity in game.entities.all():
+		if entity is DroppedItem:
+			entity.remove()
+
+
 func _on_drop(userid: int, _args: PackedStringArray, _t: SimTick) -> bool:
 	var inventory := game.inventory(userid)
 	if inventory == null or not _alive(userid):
 		return false
 	var held := inventory.in_hand()
 	if held == null or not held.item.droppable or held.item.item_class == "weapon_c4":
+		return false
+	if (held.item.is_grenade() and not DROP_GRENADES) or (held.item.type == "knife" and not DROP_KNIFE):
 		return false
 	var entry := inventory.remove(held.item.item_class)
 	DroppedItem.drop(game, userid, entry, _throw_velocity(userid))
