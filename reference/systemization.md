@@ -386,7 +386,10 @@ constants read; server convars that a client is sent, and client ones
 (sensitivity, crosshair). A console on the tilde key for setting them and
 for commands (`mp_warmup_end`, `mp_restartgame`, `noclip`, `give`,
 `bot_kick`, `god`), with the range's keys becoming binds to those
-commands. **Size:** medium. The registry can start small and grow.
+commands. **Size:** medium. The registry can start small and grow. The
+bind table and the range's commands came forward as roadmap item 12a
+(`reference/binds.md`, 2026-09-24); the console then runs the same
+commands.
 
 ### 11. Each map scene is also the game's setup
 

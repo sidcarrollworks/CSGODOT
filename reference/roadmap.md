@@ -27,6 +27,7 @@ Updated 2026-09-23 (later): match and round flow done (item 11).
 Updated 2026-09-23: wall penetration done (item 7, PR #31) with its two measurements added (7a, 7b); dust2's nav mesh extracted and read (PR #32), so bots can start walking it (item 22); the range fixes and your own ragdoll in (PR #30), so items 6 and 6a can start; dust2's buy zones, bomb sites and radar read (PR #34); the blood extraction and what can start now added to "Waiting on Sid" and the last section.
 Updated 2026-09-23 later: bots walk the nav mesh (item 22), to the bomb sites and back.
 Updated 2026-09-23 evening: one world runs the tick (`GameWorld`, the first part of `reference/systemization.md`'s step 1).
+Updated 2026-09-24: binds added (item 12a, planned in `reference/binds.md`): one table of keys, CS2's defaults, for the game and the test range alike.
 
 ## Part 1: what exists
 
@@ -379,7 +380,28 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
     own `Weapon`; `DroppedItem` and `ItemDrops` for dropping, picking up
     and drops on death. Left: wiring it into `player_sim.gd` in place of the
     one weapon, draw times on a switch, G in `PlayerInput`, E to swap, and
-    the dropped guns drawn.)*
+    the dropped guns drawn. G, E and the slots go in as binds, item 12a.)*
+12a. **Binds: the same keys everywhere, the test range included.** *(Remote;
+    Local wires section 5's keys through it and checks CS2's defaults; new
+    2026-09-24, Sid: "Ideally the same keys are used everywhere even in
+    testing")* One table maps a key to a command, as CS2's `bind "g"
+    "drop"`, starting from CS2's own defaults
+    (`game/csgo/cfg/user_keys_default.vcfg`) with Sid's two departures,
+    the wheel's jump and noclip on V. A `+` command is a held button in the
+    next `UserCmd`; any other goes to `game.command` or runs on the client,
+    so keys never reach the simulation. The range's and the developer's
+    actions become named commands (CS2's names where it has them: `god`,
+    `mp_warmup_end`, `give`) in a second table that uses only keys CS2
+    leaves unbound, and dust2 can load it too. Nine test keys have to move
+    because CS2 uses them: G (never-die, CS2's drop), H, T, M, U, I, Y, F3
+    and F5; and 5, Q, Z and X, the bomb's and the grenade lane's stand-ins,
+    retire when the inventory and the throw are in the player. Checks: the
+    defaults equal CS2's file, no key bound twice, every bound command
+    exists, a key gives the right button or command, and nothing else reads
+    a key. The table, the moves and each key's new place are in
+    `reference/binds.md`. Best before section 5's wiring adds G, E and Q,
+    so they go in once; rebinding waits for the settings page (26) and the
+    console (`reference/systemization.md` step 4).
 13. **Economy.** *(done 2026-09-23, Remote; wired into dust2 with the
     GameWorld; Local E1 checks three guesses)* $800 start, $16,000 cap, round
     rewards, the loss ladder that a win steps down by one, plant and defuse
@@ -476,7 +498,7 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
 
 26. **Menus and settings.** *(Remote)* Main menu, pause, host and join, team
     select, and settings for sensitivity (already in CS2's units), crosshair,
-    viewmodel, binds, audio and video.
+    viewmodel, rebinding the keys of item 12a's table, audio and video.
 27. **An exported build** *(Local)*, so a playtest does not need the editor.
     The extracted assets stay outside it.
 
@@ -534,6 +556,7 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 | Done | The equipment's extraction: the bomb and the kit, the six grenades, the default knives and the Zeus, with the game's numbers and their clips' timings (cs2-systems C3, G6, K2) | Phases 5 to 7 |
 | Hands | The systems' Local list for bots in `reference/cs2-systems.md`: read the nav mesh's analysis (N3), record grenade lineups (N2) | Phase 8 |
 | Decided | The game's own numbers win over the sheet's wherever the game has them (Sid, 2026-09-22), the Desert Eagle's jump inaccuracy included (46.75, not 378.30) | `WeaponVData`, every gun |
+| Hands | List CS2's binds on a fresh config (`key_listboundkeys`) to confirm the defaults file | Item 12a |
 | Hands | The systems' Local list in `reference/cs2-systems.md`: bomb (C1, the explosion's particles from C3, and decoding C2's damage), grenades (G1 to G5, and G6's particle and smoke textures), knife (K1), sounds (S1, S2) | Phases 4 to 7 |
 
 ---
@@ -568,7 +591,8 @@ hitboxes posed by the tick and bots as brains come before the bomb and
 grenades.
 
 What a thread can start now: the inventory and economy (items 12 and 13),
-on the match (item 11, done); from the weapons todo, the
+on the match (item 11, done); the bind table (12a), ahead of the inventory's
+keys; from the weapons todo, the
 registry of all 34 guns (R1), tracers (R10) and
 the game's recovery fields (R13), with shotguns (R5) after it; the
 third-person firing layer (item 6), then the shadow's arms (6a); and the
