@@ -1405,7 +1405,8 @@ func _test_far_materials() -> void:
 	var far := FarMaterials.build(wall, 0.0) as ShaderMaterial
 	_check(
 		far != null and far.shader != FarMaterials.SHADER
-			and far.shader.code.contains("cull_disabled") and far.shader.code.contains("far_depth(")
+			and far.shader.code.contains("cull_disabled") and far.shader.code.contains("POSITION = far_position(")
+			and not far.shader.code.contains("\tDEPTH =")
 			and (far.get_shader_parameter("albedo_color") as Color).is_equal_approx(wall.albedo_color)
 			and is_equal_approx(far.get_shader_parameter("alpha_scissor"), 0.3)
 			and is_zero_approx(far.get_shader_parameter("far_plane_depth")),
@@ -1419,11 +1420,20 @@ func _test_far_materials() -> void:
 	_check(
 		far_blend != null and far_blend.shader != BlendMaterials.SHADER
 			and far_blend.shader.code.contains(FarMaterials.INCLUDE)
-			and far_blend.shader.code.contains("void fragment() {\n\tDEPTH = far_depth(FRAGCOORD.z);")
+			and far_blend.shader.code.contains(FarMaterials.VERTEX_SQUEEZE + "void fragment() {")
+			and not far_blend.shader.code.contains("\tDEPTH =")
 			and is_equal_approx(far_blend.get_shader_parameter("blend_softness"), 0.42)
 			and is_equal_approx(far_blend.get_shader_parameter("far_plane_depth"), 1.0)
 			and FarMaterials.variant_of(BlendMaterials.SHADER) == far_blend.shader,
 		"a shader material gets a variant of its own shader with the squeeze, keeping its parameters, made once"
+	)
+	var own_vertex := Shader.new()
+	own_vertex.code = "shader_type spatial;\nvoid vertex() {\n\tPOSITION = vec4(VERTEX, 1.0);\n}\nvoid fragment() {\n}\n"
+	var own_vertex_far := FarMaterials.variant_of(own_vertex)
+	_check(
+		own_vertex_far != null and own_vertex_far.code.contains("void fragment() {\n\tDEPTH = far_depth(FRAGCOORD.z);")
+			and own_vertex_far.code.count("void vertex()") == 1,
+		"a shader that sets its own POSITION has the depth written per fragment instead"
 	)
 	var no_fragment := Shader.new()
 	no_fragment.code = "shader_type spatial;"
@@ -1442,7 +1452,7 @@ func _test_far_materials() -> void:
 		for surface in mesh_instance.mesh.get_surface_count():
 			drawn += 1
 			var material := mesh_instance.get_active_material(surface)
-			behind += 1 if material is ShaderMaterial and (material as ShaderMaterial).shader.code.contains("far_depth(") else 0
+			behind += 1 if material is ShaderMaterial and (material as ShaderMaterial).shader.code.contains(FarMaterials.INCLUDE) else 0
 	_check(
 		drawn > 0 and behind == drawn and int(importer.stats.get("behind", 0)) == drawn,
 		"behind_everything puts every drawn surface of a map on the far shaders and reports it (%d of %d)" % [behind, drawn]

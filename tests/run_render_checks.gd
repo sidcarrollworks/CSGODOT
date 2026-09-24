@@ -123,60 +123,50 @@ func _check_variants() -> void:
 		_check_equal(_state(), before, "%s is put back" % variant)
 
 
-## A material as the import makes one, with its vmat's shader and flags.
-func _material(shader: String, flags: Dictionary = {}) -> StandardMaterial3D:
-	var material := StandardMaterial3D.new()
-	material.set_meta("extras", {"vmat": {"ShaderName": shader, "IntParams": flags}})
-	return material
-
-
-func _box(parent: Node, size: float, material: Material, where: Vector3 = Vector3.ZERO) -> MeshInstance3D:
+func _box(parent: Node, size: float, part: String, where: Vector3 = Vector3.ZERO) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
 	var box := BoxMesh.new()
 	box.size = Vector3.ONE * size
 	mesh_instance.mesh = box
-	mesh_instance.material_override = material
+	mesh_instance.name = part
 	mesh_instance.position = where
 	parent.add_child(mesh_instance)
 	return mesh_instance
 
 
 func _check_occluders() -> void:
-	var world := MapOccluders.WORLD_SHADER
-	_check(MapOccluders.occludes(_material(world)), "an opaque world surface hides what is behind it")
-	_check(not MapOccluders.occludes(_material("csgo_vertexlitgeneric.vfx")), "a prop does not")
-	_check(not MapOccluders.occludes(_material(world, {"F_ALPHA_TEST": 1.0})), "an alpha-tested world surface does not")
-	_check(not MapOccluders.occludes(_material(world, {"F_TRANSLUCENT": 1.0})), "a translucent one does not")
-	_check(not MapOccluders.occludes(_material(world, {"F_OVERLAY": 1.0})), "an overlay does not")
-	var blended := _material(world)
-	blended.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_check(not MapOccluders.occludes(blended), "a blended material does not")
-	_check(not MapOccluders.occludes(null), "no material does not")
+	var skip := PackedStringArray(["playerclip", "grenadeclip"])
+	_check(MapOccluders.occludes("physics_group_concrete", skip), "a concrete hull part hides what is behind it")
+	_check(not MapOccluders.occludes("physics_group_playerclip", skip), "a player clip does not")
+	_check(not MapOccluders.occludes("physics_group_grenadeclip", skip), "a grenade clip does not")
+	_check(not MapOccluders.occludes("physics_group_Glass", skip), "glass does not, whatever its case")
+	_check(not MapOccluders.occludes("physics_group_metalgrate", skip), "a grate does not")
+	_check(not MapOccluders.occludes("physics_group_passbullets", skip), "what rounds pass through does not")
 
 	# Out of the tree, as the importer may be: scaled and turned the way
-	# the import turns a map, with its meshes a level down.
+	# the import turns a map, with its hull a level down.
 	var importer := Node3D.new()
 	importer.position = Vector3(1000.0, 0.0, 0.0)
-	var scene := Node3D.new()
-	scene.scale = Vector3.ONE * 2.0
-	scene.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
-	importer.add_child(scene)
-	var wall := _box(scene, 100.0, _material(world), Vector3(10.0, 0.0, 0.0))
-	_box(scene, 100.0, _material("csgo_vertexlitgeneric.vfx"))
-	_box(scene, 100.0, _material(world, {"F_ALPHA_TEST": 1.0}))
+	var hull := Node3D.new()
+	hull.scale = Vector3.ONE * 2.0
+	hull.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+	importer.add_child(hull)
+	var wall := _box(hull, 100.0, "physics_group_concrete", Vector3(10.0, 0.0, 0.0))
+	_box(hull, 100.0, "physics_group_playerclip")
+	_box(hull, 100.0, "physics_group_glass")
 	# Each face 2 by 2 units, 4 by 4 once scaled: its triangles are 8 square units.
-	var pebble := _box(scene, 2.0, _material(world))
+	var pebble := _box(hull, 2.0, "physics_group_rock")
 	var meshes: Array[MeshInstance3D] = []
-	for child in scene.get_children():
+	for child in hull.get_children():
 		meshes.append(child as MeshInstance3D)
 
 	var relative := MapOccluders.relative_transform(importer, wall)
-	_check((relative.origin - Vector3(20.0, 0.0, 0.0)).length() < 0.001, "a mesh's place in the importer's space takes in the scene's scale")
+	_check((relative.origin - Vector3(20.0, 0.0, 0.0)).length() < 0.001, "a part's place in the importer's space takes in the hull's scale")
 	_check((relative.basis.y - Vector3(0.0, 0.0, -2.0)).length() < 0.001, "and its turn")
-	_check_equal(MapOccluders.relative_transform(importer, pebble).basis.get_scale().x, 2.0, "and the scale down to each mesh")
+	_check_equal(MapOccluders.relative_transform(importer, pebble).basis.get_scale().x, 2.0, "and the scale down to each part")
 
-	var triangles := MapOccluders.build(importer, meshes)
-	_check_equal(triangles, 12, "only the opaque world wall occludes: its twelve triangles, the pebble's too small")
+	var triangles := MapOccluders.build(importer, meshes, skip)
+	_check_equal(triangles, 12, "only the concrete wall occludes: its twelve triangles, the pebble's too small")
 	var occluders := importer.find_children("*", "OccluderInstance3D", false, false)
 	_check_equal(occluders.size(), 1, "one occluder is added under the importer")
 	if occluders.size() == 1:
@@ -186,10 +176,10 @@ func _check_occluders() -> void:
 		for vertex in occluder.get_vertices():
 			box = AABB(vertex, Vector3.ZERO) if first else box.expand(vertex)
 			first = false
-		_check((box.get_center() - Vector3(20.0, 0.0, 0.0)).length() < 0.5, "the occluder stands where the wall is drawn")
+		_check((box.get_center() - Vector3(20.0, 0.0, 0.0)).length() < 0.5, "the occluder stands where the wall is")
 		_check_near(box.size.x, 200.0, "and is the wall's size once scaled")
 	var nothing := Node3D.new()
-	_check_equal(MapOccluders.build(nothing, [] as Array[MeshInstance3D]), 0, "no occluding surfaces, no triangles")
+	_check_equal(MapOccluders.build(nothing, [] as Array[MeshInstance3D]), 0, "no hull, no triangles")
 	_check_equal(nothing.get_child_count(), 0, "and no occluder added")
 	importer.free()
 	nothing.free()

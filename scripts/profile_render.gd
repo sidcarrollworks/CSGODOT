@@ -172,9 +172,11 @@ func _sample(frame_ms: float) -> void:
 
 
 func _add(what: String, value: float) -> void:
-	if not _samples.has(what):
-		_samples[what] = PackedFloat64Array()
-	(_samples[what] as PackedFloat64Array).append(value)
+	# A packed array comes out of a dictionary as a copy: append to it, then
+	# put it back.
+	var values: PackedFloat64Array = _samples.get(what, PackedFloat64Array())
+	values.append(value)
+	_samples[what] = values
 
 
 func _finish_variant() -> void:
@@ -204,7 +206,9 @@ func _report() -> void:
 		RenderingServer.get_video_adapter_name(), RenderingServer.get_video_adapter_api_version(),
 		ProjectSettings.get_setting("rendering/renderer/rendering_method", "forward_plus")])
 	print("- Drawn at %dx%d, %d players, %d views of %d frames each" % [
-		viewport.get_visible_rect().size.x, viewport.get_visible_rect().size.y,
+		# The window's own size: the viewport's visible rect is the stretch
+		# base (1920x1080), whatever the window is.
+		DisplayServer.window_get_size().x, DisplayServer.window_get_size().y,
 		_team_size * 2, _views.size(), _measure_frames])
 	print("- Scene: %d mesh instances, %d surfaces, %d triangles, %d materials; %d instances cast shadows (%d from both faces, %d triangles); the 3D skybox %d instances, %d triangles" % [
 		stats["instances"], stats["surfaces"], stats["triangles"], stats["materials"],

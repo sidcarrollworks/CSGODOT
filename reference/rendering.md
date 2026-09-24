@@ -42,8 +42,8 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
 | Props without lightmap UVs, players, arms | CS2's light probes, sampled in the shader | `probe_lit.gdshader`, `ProbeMaterials` |
 | Direct light | a custom `light()` on every map material, Godot's own Burley and GGX written out, so the baked light rides the sun's pass | `baked_light.gdshaderinc` |
 | Reflections | the sky only (`REFLECTION_SOURCE_SKY`), indoors too | `MapLighting.build` |
-| 3D skybox | ordinary geometry scaled up, every fragment writing its own depth to sit behind the map | `FarMaterials`, `far.gdshaderinc` |
-| Occlusion culling | on since R3, from the world's own opaque surfaces; before that, only the frustum culled | `project.godot`, `MapOccluders` |
+| 3D skybox | ordinary geometry scaled up, its depth squeezed against the far plane in the vertex shader (per fragment until R2) | `FarMaterials`, `far.gdshaderinc` |
+| Occlusion culling | on since R3, from the collision hull; before that, only the frustum culled | `project.godot`, `MapOccluders` |
 | Your own shadow | a second copy of your body, drawn into the shadow maps only | `PlayerView` |
 
 ## The suspects, most likely first (inferred, not measured)
@@ -76,7 +76,7 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
 
 ## Local items (Sid's machine)
 
-- **L1. Run the profiler.** Every result below depends on these numbers.
+- **L1. Run the profiler.** *(done 2026-09-24, under "Measured")* Every result below depends on these numbers.
   From the repo, with dust2 extracted:
 
       godot --path . --resolution 1920x1080 --script scripts/profile_render.gd -- 5
@@ -88,21 +88,21 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
   "Measured".
   If one variant takes most of the time, a RenderDoc capture of the
   baseline at that view confirms it.
-- **L2. CS2's settings at 180 frames a second.** The video settings Sid
+- **L2. CS2's settings at 180 frames a second.** *(done 2026-09-24, under "Measured")* The video settings Sid
   plays with (shadow quality, MSAA or CMAA, texture filtering, ambient
   occlusion, FidelityFX, boost player contrast), so the comparison is like
   for like.
-- **L3. What dust2's lightmaps folder holds.** In Source 2 Viewer,
+- **L3. What dust2's lightmaps folder holds.** *(done 2026-09-24: `direct_light_shadows` is there)* In Source 2 Viewer,
   `maps/de_dust2.vpk`, the `lightmaps/` folder: the file names and sizes.
   The extraction takes `irradiance` and `directional_irradiance`. If a
   baked shadow page is there as well (a name like `direct_light_shadows`),
   the static world's sun shadows can come from it (R4). This is inferred
   from Source 2's other games and has to be checked on CS2's files.
-- **L4. Which cubemaps or reflection probes dust2 ships** (the same VPK,
+- **L4. Which cubemaps or reflection probes dust2 ships** *(done 2026-09-24: one `cubemaps/env_cubemap_array`, 43 `env_combined_light_probe_volume`, no `env_cubemap`)* (the same VPK,
   and `env_cubemap` or `env_combined_light_probe_volume` in the entity
   lump), for R5.
 
-- **L5. Whether the compiled map carries its visibility.** Source 2 maps
+- **L5. Whether the compiled map carries its visibility.** *(done 2026-09-24: `world_visibility.vvis_c`, whose data block Source2Viewer-CLI 20.0 does not decode)* Source 2 maps
   are compiled with precomputed visibility, which CS2 culls with. Check
   whether Source 2 Viewer lists or exports it for dust2 (inferred, not
   checked). If it does, it could replace or back up the occluders (R3).
@@ -116,28 +116,41 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
   on Sid's go, since he decides what is researched.
 - **R1. The profiler** (`scripts/profile_render.gd`, `RenderVariants`,
   checks in `tests/run_render_checks.gd`). Done with this page.
-- **R2. The skybox's squeeze in its vertex shader**, so the early depth
-  test works again. Small, and exact: the squeeze is affine in the depth
-  the rasteriser interpolates, so it gives the same depth at every pixel.
-  Waits on L1 only to know if it is worth doing first.
+- **R2. The skybox's squeeze in its vertex shader.** *(done 2026-09-24)*
+  `far.gdshaderinc`'s `far_position` squeezes the clip position toward
+  `CLIP_SPACE_FAR`, so the early depth test throws away skybox fragments
+  behind the map. Measured before (`no_skybox`): 0.8 ms at 1080p and
+  3.2 ms at 4K. Checked by drawing through the Compatibility renderer in
+  the cloud (the map in front, the skybox behind); Forward+ needs the
+  profiler again on Sid's machine.
 - **R3. Culling.** *(Occluders built, 2026-09-24; Sid showed the whole map
   drawn from B tunnels.)* `MapOccluders` builds one `ArrayOccluder3D` at
-  load from the world's opaque surfaces (lightmapped brush work, with no
-  alpha edge, overlay or translucent layer, and no triangle under 64 square
-  units). Occlusion culling is on in `project.godot`, and the importer's
-  report gives the occluder's triangle count. How much it saves depends on
-  how finely the export splits the world into meshes, since a mesh is
-  culled only when all of its bounds are hidden. The profiler's
-  `no_occlusion` variant measures it. Still to do, if L1 calls for them:
-  splitting large world meshes into cells, visibility ranges on small
-  props, and CS2's own precomputed visibility, if the export can carry it
-  (L5).
-- **R4. Shadows split as CS2 splits them**, if L3 finds the baked page:
-  the static world's sun shadow read from it in the lightmap shader, and
-  the live shadow maps drawing only what moves (players, dropped guns,
-  grenades) over a short distance, at the quality the numbers call for.
-  Without the baked page, the fallback is fewer splits and a lower filter
-  as far as L1 shows is needed, checked by eye against Sid's screenshots.
+  load from the collision hull, leaving out player and grenade clips and
+  parts named for glass, grates, fences and foliage, and triangles under 64
+  square units. Occlusion culling is on in `project.godot`. Measured with
+  occluders from the drawn faces: the camera's pass went from about 1,170
+  draw calls to 290 (1.2M triangles to 0.4M), saving 0.2 to 0.4 ms of GPU
+  and 0.2 ms of the renderer's CPU. It does not touch the shadow passes.
+  Those occluders hid most of the map at long doors and buildings down mid
+  from top of mid: an occluder blocks from both sides, and a face drawn
+  from one side and seen from behind is invisible on screen. The hull
+  cannot do that, since a player's eye is never inside it; it needs the same
+  walk through long doors and top of mid on Sid's machine. CS2's own
+  visibility (`world_visibility.vvis`, L5) is the way to cull the shadow
+  maps too, once its data block can be read.
+- **R4. Shadows split as CS2 splits them. Next, and the biggest win.**
+  dust2 ships `direct_light_shadows` (L3): the sun's shadow from the static
+  world, baked per lightmap texel, three lights in channels 0 to 2 (which
+  channel is the sun is not recorded; compare each against the live
+  shadow). The light probe atlas has a matching `_dlshd` page for what
+  moves. So: the map stops casting into the live shadow map; its surfaces
+  multiply the sun by the baked channel; players, dropped guns and grenades
+  take the sun's shadow from the probes' `_dlshd`; and the live shadow map
+  draws only what moves, over a short distance. That takes most of the
+  6,200 shadow draw calls and 5 to 6 million triangles a frame away, which
+  measured (`no_sun_shadows`) is 2.0 ms of GPU at 1080p, 6.3 ms at 4K, and
+  1.7 ms of the renderer's CPU. Needs both files extracted (Local, one line
+  in the extraction each) and the shaders changed (Remote).
 - **R5. Reflections from the map's own cubemaps** (after L4), in place of
   the sky everywhere. This is for how it looks: specular indoors and in
   tunnels is lit by the sky now.
@@ -151,4 +164,59 @@ one so far.
 
 ## Measured
 
-Nothing yet (L1).
+Sid's machine, 2026-09-24: RTX 4070 Ti, Windows, dust2 as extracted
+2026-09-21/22, branch at 4b5f9af, occluders from the drawn faces (since
+replaced by the hull's). Each figure is a median over 8 views of 60 frames
+with ten players, from `scripts/profile_render.gd` with its sample fix
+(the first run printed zeros). At 3840x2160 the window was fullscreen.
+
+The scene: 3,775 mesh instances, 3,834 surfaces, 5.7 million triangles,
+860 materials; 3,605 instances cast shadows, 3,554 of them from both faces;
+3.1 GB of video memory, 2.2 GB of it textures.
+
+| Variant | GPU ms, 1080p | GPU ms, 4K | Render CPU ms | Draws, view / shadow |
+|---|---|---|---|---|
+| baseline | 3.07 | 10.37 | 2.31 | 309 / 6,215 |
+| no_sun_shadows | 1.02 | 4.09 | 0.59 | 296 / 0 |
+| sun_hard_edges | 2.28 | 7.19 | 2.29 | |
+| sun_filter_low | 2.10 | 6.65 | 2.32 | |
+| sun_atlas_4096 | 2.77 | 9.66 | 2.35 | |
+| sun_distance_2048 | 4.12 | 13.31 | 1.35 | 288 / 2,394 |
+| one_sided_casters | 2.92 | 10.14 | 2.35 | |
+| no_occlusion | 3.27 | 10.80 | 2.59 | 1,167 / 6,267 |
+| no_msaa | 2.69 | 8.72 | 2.35 | |
+| no_ssao | 2.85 | 9.16 | 2.35 | |
+| no_glow | 2.96 | 9.92 | 2.37 | |
+| no_fog | 3.04 | 10.18 | 2.39 | |
+| no_skybox | 2.23 | 7.13 | 2.38 | 249 / 6,315 |
+| no_players | 3.07 | 10.31 | 2.34 | |
+| half_resolution | 1.53 | 3.45 | 2.40 | |
+| all_off | 0.29 | 0.72 | 0.51 | 249 / 0 |
+
+Whole frames, with the ticks: 6.06 ms (165 a second) at 1080p with ten
+players, 4.22 ms (237) alone, and 11.2 ms (89) at 4K.
+
+What it says:
+
+- **The sun's shadows are most of the frame**: 2.0 of 3.1 ms at 1080p, 6.3
+  of 10.4 ms at 4K, and 1.7 of the renderer's 2.3 ms of CPU, all from 6,200
+  shadow draw calls and 5 to 6 million triangles against the camera's 300
+  and 0.4 million. R4 removes most of it. At 4K the soft filter alone is
+  3.7 ms and the penumbra search 3.2 ms.
+- Shortening the shadows to 2048 units cuts their draws by 60% but makes
+  the GPU slower (4.1 against 3.1 ms at 1080p, in all three runs). The
+  likely reason, inferred, not checked: each split then covers less ground
+  at the same atlas size, so a penumbra of the same width in the world
+  spans more texels, and the soft filter searches further.
+- **The skybox writing its depth costs 0.8 ms at 1080p and 3.2 ms at 4K**,
+  far more than its 166 meshes and 86,000 triangles would. R2 is the fix.
+- The frame is bound by pixels: half resolution at 4K lands on the 1080p
+  baseline. MSAA 2x is 1.7 ms at 4K and SSAO 1.2.
+- Players cost nothing measurable, and neither do fog and glow.
+
+Sid's CS2 settings (L2), from his `cs2_video.txt`: 3840x2160, **4x MSAA**,
+global shadow quality **High** with dynamic shadows from all lights,
+**anisotropic 2x**, ambient occlusion **Medium**, HDR **Quality**, shader
+detail High, FSR off, vsync on and `fps_max` 240. CS2 draws twice our MSAA
+samples at 4K, where Sid sees about 180 frames a second, so the gap is in
+the shadows and the skybox rather than in the anti-aliasing.

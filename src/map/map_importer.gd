@@ -266,10 +266,6 @@ func import_map() -> Dictionary:
 			else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		)
 
-	# Before the lightmaps take the materials over: what hides what is read
-	# from the import's own. The skybox hides nothing of the map.
-	var occluder_triangles := 0 if behind_everything else MapOccluders.build(self, solid_meshes)
-
 	var blend := BlendMaterials.apply(visible_meshes, layer_textures_dir)
 	var lightmaps := {"surfaces": 0, "props": 0, "found": false, "ambient": null}
 	var probes := {"volumes": 0, "surfaces": 0}
@@ -302,6 +298,11 @@ func import_map() -> Dictionary:
 		if not collision_meshes.is_empty() and collision_source != CollisionSource.ALL_MESHES:
 			collision_from = "collision-marked meshes"
 	var triangles := _build_collision(targets)
+	# The hull's solid parts hide what is behind them; the drawn world's
+	# faces cannot (MapOccluders says why), so without a hull nothing does.
+	var occluder_triangles := 0
+	if collision_from == "the collision hull" and not behind_everything:
+		occluder_triangles = MapOccluders.build(self, targets, player_only_hints + hull_skip_hints)
 
 	stats = {
 		"meshes": meshes.size(),
@@ -610,7 +611,7 @@ func _report_text() -> String:
 	]
 	var blend: Dictionary = stats["blend"]
 	lines.append("    blend materials: %d, on %d surfaces" % [blend["materials"], blend["blended"]])
-	lines.append("    occluders: %d triangles of the world's opaque surfaces" % stats["occluder_triangles"])
+	lines.append("    occluders: %d triangles of the collision hull" % stats["occluder_triangles"])
 	var lightmaps: Dictionary = stats["lightmaps"]
 	if lightmaps["found"]:
 		lines.append("    baked bounce light on %d surfaces, %d of them props" % [lightmaps["surfaces"], lightmaps["props"]])

@@ -19,6 +19,10 @@ uniform float roughness_factor = 1.0;
 uniform float alpha_scissor = -1.0;
 uniform bool has_normal_map = true;
 
+void vertex() {
+	POSITION = far_position(PROJECTION_MATRIX * MODELVIEW_MATRIX * vec4(VERTEX, 1.0), CLIP_SPACE_FAR);
+}
+
 void fragment() {
 	vec4 albedo = texture(albedo_texture, UV) * albedo_color;
 	vec3 orm = texture(orm_texture, UV).rgb;
@@ -34,5 +38,4 @@ void fragment() {
 		NORMAL_MAP = vec3(texture(normal_texture, UV).rg, 1.0);
 		NORMAL_MAP_DEPTH = normal_depth;
 	}
-	DEPTH = far_depth(FRAGCOORD.z);
 }

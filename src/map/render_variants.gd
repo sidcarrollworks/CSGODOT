@@ -22,14 +22,14 @@ const VARIANTS := {
 	"no_ssao": "screen-space occlusion off",
 	"no_glow": "bloom off",
 	"no_fog": "the distance haze off",
-	"no_skybox": "the 3D skybox's meshes hidden (they write depth, so nothing hides them early)",
+	"no_skybox": "the 3D skybox's meshes hidden",
 	"no_players": "every body but the camera's hidden",
 	"half_resolution": "the 3D drawn at half the width and height: fill rate against the rest",
 	"all_off": "every one of the above at once but culling and resolution: what is left is the map's geometry and materials",
 }
 
-## A far material writes its depth (far.gdshaderinc): the skybox's meshes.
-const FAR_MARK := "far_depth("
+## A far material includes the squeeze (far.gdshaderinc): the skybox's meshes.
+const FAR_MARK := "far.gdshaderinc"
 
 
 static func names() -> PackedStringArray:

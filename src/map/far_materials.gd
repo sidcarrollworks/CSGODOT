@@ -19,6 +19,7 @@ extends RefCounted
 
 const SHADER := preload("res://src/map/far.gdshader")
 const INCLUDE := "#include \"res://src/map/far.gdshaderinc\""
+const VERTEX_SQUEEZE := "void vertex() {\n\tPOSITION = far_position(PROJECTION_MATRIX * MODELVIEW_MATRIX * vec4(VERTEX, 1.0), CLIP_SPACE_FAR);\n}\n\n"
 
 static var _variants := {}  # Shader -> its far variant, and a two-sided one under a string key
 
@@ -45,9 +46,11 @@ static func apply(meshes: Array[MeshInstance3D]) -> int:
 	return surfaces
 
 
-## Which end of the depth buffer is far: Forward+ and Mobile reverse it.
+## Which end of the depth buffer is far, for a shader that writes DEPTH:
+## every renderer reverses it since Godot 4.3, Compatibility too (checked
+## 2026-09-24 by drawing through it: with 1.0 the skybox came out in front).
 static func far_plane_depth() -> float:
-	return 1.0 if RenderingServer.get_current_rendering_method() == "gl_compatibility" else 0.0
+	return 0.0
 
 
 ## A material like this one, drawn behind everything; null for a shader
@@ -86,8 +89,10 @@ static func build(material: Material, far: float) -> Material:
 
 
 ## A shader's code with the squeeze added: the include after the type line,
-## and the depth written at the top of fragment(), unconditionally, as a
-## written DEPTH has to be. Made once per shader.
+## and a vertex() that squeezes the clip position (far.gdshaderinc says why
+## there). A shader with a vertex() of its own has the depth written at the
+## top of fragment() instead, unconditionally, as a written DEPTH has to be.
+## Made once per shader.
 static func variant_of(base: Shader) -> Shader:
 	if base == null or not base.code.contains("void fragment() {"):
 		return null
@@ -97,7 +102,10 @@ static func variant_of(base: Shader) -> Shader:
 	var code := base.code
 	if not code.contains(INCLUDE):
 		code = code.replace("shader_type spatial;", "shader_type spatial;\n" + INCLUDE)
-	code = code.replace("void fragment() {", "void fragment() {\n\tDEPTH = far_depth(FRAGCOORD.z);")
+	if code.contains("void vertex()"):
+		code = code.replace("void fragment() {", "void fragment() {\n\tDEPTH = far_depth(FRAGCOORD.z);")
+	else:
+		code = code.replace("void fragment() {", VERTEX_SQUEEZE + "void fragment() {")
 	shader.code = code
 	_variants[base] = shader
 	return shader
