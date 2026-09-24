@@ -87,8 +87,23 @@ static func apply(data: WeaponData, weapon_class: String, alternate: bool = fals
 	data.inaccuracy_moving = _cone(get_value.call("m_flInaccuracyMove") + stand + spread)
 	data.inaccuracy_jumping = _cone(get_value.call("m_flInaccuracyJump") + stand + spread)
 	data.inaccuracy_per_shot = _cone(get_value.call("m_flInaccuracyFire"))
+	data.spread = _cone(spread)
+	data.spread_seed = int(get_value.call("m_nSpreadSeed"))
 	data.recovery_time_crouch = get_value.call("m_flRecoveryTimeCrouch")
 	data.recovery_time_stand = get_value.call("m_flRecoveryTimeStand")
+
+	# The scope: one value each, the same scoped or not.
+	data.zoom_fovs = PackedFloat32Array()
+	var levels: float = get_value.call("m_nZoomLevels")
+	for level in range(1, int(levels if not is_nan(levels) else 0.0) + 1):
+		data.zoom_fovs.append(get_value.call("m_nZoomFOV%d" % level))
+	data.zoom_times = PackedFloat32Array()
+	if not data.zoom_fovs.is_empty():
+		for level in 3:
+			data.zoom_times.append(get_value.call("m_flZoomTime%d" % level))
+	data.unzooms_after_shot = get_value.call("m_bUnzoomsAfterShot") == 1.0
+	data.hides_view_model_when_zoomed = get_value.call("m_bHideViewModelWhenZoomed") == 1.0
+	data.shows_crosshair = get_value.call("m_bShowCrosshair") != 0.0
 
 
 ## The game's inaccuracy (the tangent of the widest angle a round leaves the

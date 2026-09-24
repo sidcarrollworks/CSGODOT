@@ -129,7 +129,22 @@ static func build(weapon_class: String) -> WeaponData:
 	data.chest_multiplier = 1.0
 	data.stomach_multiplier = 1.25
 	data.leg_multiplier = 0.75
+	if data.zoom_levels() > 0:
+		data.scoped = scoped_of(data, row)
 	return data
+
+
+## A scoped gun's numbers with the scope up: everything as data has it, over
+## which the sheet's "(scoped)" row and the game's second values go (speed,
+## inaccuracy, recovery; damage and fire rate are the same either way).
+static func scoped_of(data: WeaponData, sheet_row: String) -> WeaponData:
+	var scoped := data.duplicate() as WeaponData
+	scoped.scoped = null
+	var scoped_row := sheet_row + " (scoped)"
+	if WeaponSheet.has(sheet_row):
+		WeaponSheet.apply(scoped, sheet_row, scoped_row if WeaponSheet.has(scoped_row) else "")
+	WeaponVData.apply(scoped, data.item_class, true)
+	return scoped
 
 
 ## CS2's English name for a gun: the sheet's, without the silencer's mode.

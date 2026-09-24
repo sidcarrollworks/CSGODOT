@@ -60,7 +60,7 @@ func _on_spawned(entity: SimEntity) -> void:
 	add_child(model)
 	_models[item.id] = model
 	_moving[item.id] = true
-	_place(item, model, 0.0, _draw_usec())
+	_place(item, model, 0.0, SimClock.draw_usec())
 
 
 func _on_removed(entity: SimEntity) -> void:
@@ -75,7 +75,7 @@ func _process(_delta: float) -> void:
 	if _moving.is_empty():
 		return
 	var fraction := clampf(Engine.get_physics_interpolation_fraction(), 0.0, 1.0)
-	var now := _draw_usec()
+	var now := SimClock.draw_usec()
 	for id: int in _moving.keys():
 		var item: DroppedItem = _items[id]
 		if _place(item, _models[id], fraction, now):
@@ -113,12 +113,6 @@ static func heading(basis: Basis) -> float:
 	if along.length() < 0.001:
 		return 0.0
 	return atan2(along.x, along.z)
-
-
-## The simulation time a frame falls at: between the last two ticks.
-static func _draw_usec() -> int:
-	var tick := SimClock.tick_usec()
-	return SimClock.now_usec() - tick + int(Engine.get_physics_interpolation_fraction() * tick)
 
 
 ## A new model of an item, and how its class lies, measured the first time.

@@ -37,7 +37,7 @@ func _process(_delta: float) -> bool:
 	print("Found: %s" % map_file)
 	print("")
 
-	# Set up the way maps/de_dust2/de_dust2.gd sets it up, so that what is
+	# Set up the way MapLoader (src/map/map_loader.gd) sets it up, so that what is
 	# reported here is what the game gets.
 	var importer := MapImporter.new()
 	importer.source_path = map_file

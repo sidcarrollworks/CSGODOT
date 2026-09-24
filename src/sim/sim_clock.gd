@@ -58,3 +58,11 @@ static func usec_at(tick: int, fraction: float) -> int:
 ## of the last one.
 static func now_usec() -> int:
 	return tick_end_usec(current_tick())
+
+
+## The simulation time a frame being drawn falls at: between the last two
+## ticks, as far as the frame is between them. For what is drawn and heard,
+## never for the simulation.
+static func draw_usec() -> int:
+	var tick := tick_usec()
+	return now_usec() - tick + int(clampf(Engine.get_physics_interpolation_fraction(), 0.0, 1.0) * tick)

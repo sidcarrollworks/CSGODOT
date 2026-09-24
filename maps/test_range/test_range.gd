@@ -238,6 +238,8 @@ func _process(_delta: float) -> void:
 	var camera := get_viewport().get_camera_3d()
 	if camera != null:
 		_crosshair.fov_degrees = camera.fov
+	# Through a sniper's scope its lines are the crosshair.
+	_crosshair.visible = not ScopeOverlay.shown_for(player)
 	_label.text = "\n".join([
 		"\n".join(_gun_readout()),
 		"impacts    %d" % _impacts.size(),
@@ -279,6 +281,7 @@ func _gun_readout() -> PackedStringArray:
 		"%s" % weapon.data.display_name,
 		"ammo       %d / %d" % [weapon.ammo, weapon.reserve],
 		"shot       %d" % weapon.shot_index(),
+		"zoom       %s" % ("none" if weapon.data.zoom_levels() == 0 else "%d of %d" % [weapon.zoom_level, weapon.data.zoom_levels()]),
 		"cone       %.3f deg  %s" % [
 			cone,
 			"ready" if weapon.is_accuracy_reset() else "recovering",
@@ -286,7 +289,7 @@ func _gun_readout() -> PackedStringArray:
 		# Moving costs nothing under a third of the weapon's top speed.
 		"speed      %.0f u/s  %s" % [
 			state.speed,
-			"accurate" if state.speed <= weapon.data.max_player_speed * Weapon.MOVING_FROM
+			"accurate" if state.speed <= weapon.max_speed() * Weapon.MOVING_FROM
 			else "moving, cone open",
 		],
 		# Side by side on purpose. The gun stops moving before the cone
@@ -1043,6 +1046,9 @@ func _build_hud() -> void:
 	# A crosshair, since aiming at a wall without one is guesswork. The centre
 	# dot is on here because this is the range where the question being asked
 	# is whether a bullet went exactly where it was aimed.
+	var scope := ScopeOverlay.new()
+	scope.player = player
+	layer.add_child(scope)
 	_crosshair = Crosshair.new()
 	_crosshair.centre_dot = true
 	layer.add_child(_crosshair)

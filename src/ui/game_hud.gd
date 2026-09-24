@@ -32,6 +32,9 @@ var userid: int = GameEvents.NOBODY
 ## CS2's buy menu (B), over the rest of the HUD; null without an economy.
 var buy_menu: BuyMenu
 
+var _crosshair: Crosshair
+## A sniper's scope, over the view while scoped in.
+var scope: ScopeOverlay
 var _health: Label
 var _armor: Label
 var _shield: Control
@@ -52,8 +55,12 @@ const NOTICE_SECONDS := 2.0
 
 
 func _ready() -> void:
-	var crosshair := Crosshair.new()
-	add_child(crosshair)
+	# The scope under the rest, so health and ammo stay readable through it.
+	scope = ScopeOverlay.new()
+	scope.player = player
+	add_child(scope)
+	_crosshair = Crosshair.new()
+	add_child(_crosshair)
 	_health = _label(Control.PRESET_BOTTOM_LEFT, Vector2(24, -56), HORIZONTAL_ALIGNMENT_LEFT, 28)
 	_shield = Control.new()
 	_shield.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
@@ -124,6 +131,7 @@ func _process(delta: float) -> void:
 			_shield.queue_redraw()
 	if player.weapon != null:
 		_ammo.text = "%d / %d" % [player.weapon.ammo, player.weapon.reserve]
+	_crosshair.visible = shows_crosshair(player)
 	_dead.visible = not player.alive
 	if not player.alive:
 		_dead.text = dead_line(player)
@@ -131,6 +139,14 @@ func _process(delta: float) -> void:
 		_show_match()
 	if _where.visible:
 		_where.text = where_line(player.global_position, player.input.yaw_degrees, player.input.pitch_degrees)
+
+
+## Whether the crosshair is drawn: not for a sniper (the game's
+## m_bShowCrosshair), whose aim is its scope, nor through the scope.
+static func shows_crosshair(who: PlayerSim) -> bool:
+	if who.weapon == null:
+		return true
+	return who.weapon.data.shows_crosshair and not ScopeOverlay.shown_for(who)
 
 
 ## Your money, and while you may buy, B and the buy time left beside it;

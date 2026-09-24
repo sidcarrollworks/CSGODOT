@@ -379,7 +379,7 @@ throughout: `mp_tagging_scale` and `sv_predictable_damage_tag_ticks` as
 constants in `PlayerSim`, `weapon_recoil_decay_coefficient` in `Weapon`,
 `mp_freezetime` and the rest in `MatchRules`, the bots' reaction and aim
 error as constants in `Bot`. The developer keys are wired by hand where
-they are used: F5 in `de_dust2.gd`, F3 in `GameHud`, V through
+they are used: F5 in `Competitive` (once `de_dust2.gd`), F3 in `GameHud`, V through
 `UserCmd.toggle_noclip`, and twelve range keys in `test_range.gd`, ten
 of them in `project.godot` but not in `scripts/setup_input_map.gd`, which
 is meant to write it.
@@ -418,6 +418,19 @@ on whatever map is loaded. A dedicated server is then a mode that loads
 the map's collision, entities and nav mesh and nothing to be seen, which is
 what the performance audit's second step asks for. **Size:** medium, more
 urgent than it looked, since netcode needs it.
+
+*(Done 2026-09-24 for competitive, roadmap item 24a.)* `MapLoader`
+(`src/map/map_loader.gd`) loads any extracted map by name, every path
+derived from it (`MapPaths`, the same paths `scripts/extract_assets.sh
+<step> <name>` writes), and reads what a game needs into `MapContents`:
+spawns, callouts, nav mesh, buy zones, bomb sites and bomb damage.
+`Competitive` (`src/modes/competitive.gd`) sets up the players, bots,
+match, systems, HUD and views on it, and knows nothing of the map beyond
+`MapContents`; `maps/play/play.tscn` puts the two together, with the map
+chosen by its `map_name` or `--map`. The bots' routes are the mode's
+(`Competitive.bot_route`), to the `BombsiteA` and `BombsiteB` callouts or
+the bomb sites' volumes. Left: the test range as a mode (it still builds
+its own player, bots and HUD), and the server mode.
 
 ### 12. The data readers each carry their own parser and paths
 
@@ -536,8 +549,9 @@ grenades (17 to 20) and netcode:**
    again without its sounds and marks (performance step 4).
 
 **Step 4, before menus and netcode: game modes apart from maps** (finding
-11), including a server mode that builds nothing to be seen (performance
-step 1), and **convars and the console** (finding 10). The convar registry
+11; *competitive done 2026-09-24, roadmap item 24a; the range as a mode
+and the server mode left*), including a server mode that builds nothing to
+be seen (performance step 1), and **convars and the console** (finding 10). The convar registry
 can start earlier, as each step above adds settings.
 
 **Step 5, when the next KV3 file is read: the shared readers** (finding

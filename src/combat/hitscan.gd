@@ -307,6 +307,7 @@ static func fire_as(
 		info.at_usec = shot.timestamp_usec
 		info.armor_penetration = data.armor_penetration
 		info.walls = result.walls.size()
+		info.noscope = shot.noscope
 		result.damage = DamageInfo.deal(target, info, shooter.events)
 		result.damage_info = info
 	return result

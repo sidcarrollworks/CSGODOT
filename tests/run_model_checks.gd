@@ -1023,7 +1023,7 @@ func _test_player_composes_kick_and_bob() -> void:
 		"and its weapon and footstep sounds, the AK's set taken up on equip"
 	)
 	if SoundBank.available():
-		player.weapon_sounds.shot()
+		player.weapon_sounds.shot("weapon_ak47")
 		_check(
 			(player.weapon_sounds.get_child(0) as AudioStreamPlayer).playing
 				and (player.weapon_sounds.get_child(0) as AudioStreamPlayer).stream is AudioStreamRandomizer,

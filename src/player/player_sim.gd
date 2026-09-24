@@ -137,7 +137,8 @@ var hit_punch := RecoilState.new()
 signal hurt(amount: float, zone: StringName, from: Vector3)
 
 
-## A round left the weapon and was traced to where it landed.
+## A round left the weapon and was traced to where it landed: each of a
+## shotgun's pellets is one (Weapon.Shot.pellet), the first being the shot.
 signal shot_traced(shot: Weapon.Shot, result: Hitscan.Result)
 ## The weapon started reloading.
 signal reload_started
@@ -670,7 +671,13 @@ func _update_weapon(cmd: UserCmd, dt: float, still: bool) -> void:
 	)
 	weapon.update(dt, now, shooter_state)
 
+	# Right clicks step a scope through its zoom levels and the trigger's
+	# presses fire, each at its own instant and in the order they came, so a
+	# round goes out at the zoom it was fired at (_zoom_by).
+	var zooms := cmd.presses(UserCmd.ATTACK2)
+	var zoomed := 0
 	for press in presses:
+		zoomed = _zoom_by(cmd, zooms, zoomed, press.when)
 		# Every press is the trigger going down afresh, which a
 		# semi-automatic gun waits for (Weapon.press_trigger).
 		weapon.press_trigger()
@@ -682,10 +689,22 @@ func _update_weapon(cmd: UserCmd, dt: float, still: bool) -> void:
 	if weapon.trigger_held and cmd.held(UserCmd.ATTACK):
 		var began := SimClock.tick_start_usec(cmd.tick)
 		var at := clampi(weapon.next_shot_usec(), began, now)
-		_try_shoot(
-			at, float(at - began) / float(SimClock.tick_usec()),
-			cmd.yaw_degrees, cmd.pitch_degrees
-		)
+		var fraction := float(at - began) / float(SimClock.tick_usec())
+		zoomed = _zoom_by(cmd, zooms, zoomed, fraction)
+		_try_shoot(at, fraction, cmd.yaw_degrees, cmd.pitch_degrees)
+	_zoom_by(cmd, zooms, zoomed, 1.0)
+
+
+## The right clicks of zooms from the from-th on that came by until (a
+## fraction of the tick), each stepping the scope at its own instant
+## (Weapon.press_zoom); the index of the first left.
+func _zoom_by(cmd: UserCmd, zooms: Array[UserCmd.SubtickStep], from: int, until: float) -> int:
+	while from < zooms.size() and zooms[from].when <= until:
+		var at := SimClock.usec_at(cmd.tick, zooms[from].when)
+		if weapon.press_zoom(at):
+			_send(&"weapon_zoom", {"userid": userid}, at)
+		from += 1
+	return from
 
 
 func _try_shoot(at_usec: int, tick_fraction: float, yaw: float, pitch: float) -> void:
@@ -709,13 +728,6 @@ func _try_shoot(at_usec: int, tick_fraction: float, yaw: float, pitch: float) ->
 	_send(&"weapon_fire", {
 		"userid": userid, "weapon": weapon.data.item_class, "silenced": silenced,
 	}, at_usec)
-	# Where it left and which way, for whoever draws its tracer.
-	var angles := PlayerInput.angles_from_direction(shot.direction)
-	_send(&"fire_bullets", {
-		"userid": userid, "weapon": weapon.data.item_class, "mode": 1 if silenced else 0,
-		"x": shot.origin.x, "y": shot.origin.y, "z": shot.origin.z,
-		"pitch": angles.y, "yaw": angles.x, "inaccuracy": tan(deg_to_rad(shot.inaccuracy)),
-	}, at_usec)
 
 	# The round is the player's: who fired it and from which side goes with
 	# its damage (Hitscan.fire_as), and every surface it meets and the hurt it
@@ -726,8 +738,20 @@ func _try_shoot(at_usec: int, tick_fraction: float, yaw: float, pitch: float) ->
 		userid, team, team_damage_scale, exclude,
 		world.game.events if is_instance_valid(world) else null
 	)
-	var result := Hitscan.fire_as(get_world_3d().direct_space_state, shot, weapon.data, shooter)
-	shot_traced.emit(shot, result)
+	# A shotgun's pellets are each traced and do their damage on their own.
+	for i in shot.pellets():
+		var pellet := shot.pellet_shot(i)
+		# Where it left and which way, for whoever draws its tracer, before
+		# the impacts it ends at.
+		var angles := PlayerInput.angles_from_direction(pellet.direction)
+		_send(&"fire_bullets", {
+			"userid": userid, "weapon": weapon.data.item_class,
+			"mode": 1 if silenced or shot.zoom_level > 0 else 0,
+			"x": shot.origin.x, "y": shot.origin.y, "z": shot.origin.z,
+			"pitch": angles.y, "yaw": angles.x, "inaccuracy": tan(deg_to_rad(shot.inaccuracy)), "pellet": i,
+		}, at_usec)
+		var result := Hitscan.fire_as(get_world_3d().direct_space_state, pellet, weapon.data, shooter)
+		shot_traced.emit(pellet, result)
 
 
 ## A grenade in hand: either attack button pulls the pin once the draw is
@@ -796,7 +820,9 @@ func _noclip_direction(cmd: UserCmd) -> Vector3:
 ## top, and friction brings a running player down to it: the slowdown is in
 ## what the player can reach, not a kick to the velocity.
 func _max_speed(cmd: UserCmd) -> float:
-	var speed := config.max_speed * velocity_modifier
+	# Scoped, the gun's scoped speed (the AWP's 100 against 200).
+	var top := weapon.max_speed() if weapon != null and weapon.zoom_level > 0 else config.max_speed
+	var speed := top * velocity_modifier
 	if is_ducked:
 		speed *= config.duck_modifier
 	elif cmd.held(UserCmd.WALK):

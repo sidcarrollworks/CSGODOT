@@ -139,7 +139,10 @@ files named:
    (`WeaponData.max_player_speed` from `ItemRegistry.weapon_data`).
 3. **Your view (`player_view.gd` or the HUD):** a `FlashOverlay` with your
    userid, on top of the HUD *(done on dust2 2026-09-23)*. The flashed ringing is a sound (below).
-4. **`bot.gd`: sight.** `can_see` adds two checks after its wall trace:
+4. **`bot.gd`: sight.** *(Done 2026-09-24, except keeping out of fire:
+   `Bot.can_see` and `Bot.is_blind`, blinded past 0.7; blinded, it fires
+   where it last saw the one it was engaging, or backs off; checks in
+   `tests/run_bot_sight_checks.gd`.)* `can_see` adds two checks after its wall trace:
    no sight when `game.query(&"smoke_length_between", [eyes, theirs], 0.0)`
    is over `GrenadeRules.BOT_MAX_VISIBLE_SMOKE_LENGTH`, and none (or firing
    wide) while `game.query(&"blind_share", [userid], 0.0)` is over a share

@@ -116,10 +116,11 @@ Weapons
 - `weapon_reload`: userid
 - `weapon_zoom`: userid
 - `bullet_impact`: userid, x, y, z
-- `fire_bullets`: userid, weapon, mode, x, y, z, pitch, yaw, inaccuracy
+- `fire_bullets`: userid, weapon, mode, x, y, z, pitch, yaw, inaccuracy, pellet
   (CS2's `CMsgTEFireBullets`, one a round between its `weapon_fire` and
   its `bullet_impact`s; the angles are the round's own, where CS2 sends
-  the aim and a seed)
+  the aim and a seed; a shotgun's pellets are a round each, numbered from
+  0, under the pull's one `weapon_fire`; mode is 1 silenced or scoped)
 
 Items
 - `item_purchase`: userid, team, loadout, weapon
@@ -230,8 +231,9 @@ Filled by the victim: `victim` (its userid), `health_taken`, `armor_taken`,
   it meets. `Hitscan.fire_at` keeps its signature and calls it with nobody
   as the shooter.
 - `player_death` is sent with what the record knows (attacker, weapon,
-  headshot, penetrated, distance, hitgroup, damage). Assists, flash
-  assists, noscope, through smoke and blind attackers are filled by
+  headshot, penetrated, noscope, distance, hitgroup, damage; noscope is
+  a round from a scoped gun fired unscoped, `Weapon.Shot.noscope`).
+  Assists, flash assists, through smoke and blind attackers are filled by
   whoever knows them later (a kill-credit system listening to
   `player_hurt`, the grenades' smoke query).
 
@@ -522,9 +524,12 @@ None of these are changed by the contract threads; this branch changes
 - `bot.gd`: *(done)* the inventory through PlayerSim, `bot.arm()` now
   handing it its starting gun; *(done 2026-09-23)* buying in freeze time
   through `buy` commands, after the `can_buy` and `money` queries
-  (`BotBuying`), and its best gun taken out. Still to do: USE and ATTACK2
-  when bots plant and throw; the `burning_at` and `smoke_length_between`
-  queries to keep out of fire and see through smoke.
+  (`BotBuying`), and its best gun taken out; *(done 2026-09-24)* the
+  `smoke_length_between` and `blind_share` queries in its sight, and
+  ATTACK2 to scope a scoped gun before it fires and to unscope while it
+  walks or backs off blinded (weapons TODO R4). Still to do: USE and
+  ATTACK2 when bots plant and throw; the `burning_at` query to keep out of
+  fire.
 - *(Done 2026-09-23.)* `match_state.gd`: sends `round_announce_warmup`,
   `begin_new_match`, `round_prestart` (handed out at once), `round_start`,
   `round_poststart`, `round_freeze_end`, `round_end` (with

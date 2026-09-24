@@ -44,10 +44,17 @@ static func fov_narrowing(world_fov: float = WORLD_FOV, view_model_fov: float = 
 	return tan(deg_to_rad(vertical_fov(world_fov) * 0.5)) / tan(deg_to_rad(vertical_fov(view_model_fov) * 0.5))
 
 
+## The narrowing the arms are drawn at under camera: its field of view is
+## the world's, a scope's included, and claim gave the arms the same.
+static func narrowing_under(camera: Camera3D) -> float:
+	return tan(deg_to_rad(camera.fov * 0.5)) / tan(deg_to_rad(vertical_fov(VIEW_MODEL_FOV) * 0.5))
+
+
 ## Makes a node's meshes draw as the view model, and stops them casting
-## shadows: in the game the arms cast none.
-static func claim(node: Node) -> void:
-	var projection := Vector2(fov_narrowing(), DEPTH_SQUEEZE)
+## shadows: in the game the arms cast none. world_fov is the camera's, in
+## CS2's degrees: a scope narrows it, and the arms keep their own 68.
+static func claim(node: Node, world_fov: float = WORLD_FOV) -> void:
+	var projection := Vector2(fov_narrowing(world_fov), DEPTH_SQUEEZE)
 	for mesh in node.find_children("*", "MeshInstance3D", true, false):
 		(mesh as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		(mesh as MeshInstance3D).set_instance_shader_parameter(&"view_model_projection", projection)
