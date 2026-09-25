@@ -1071,11 +1071,18 @@ func _test_player_composes_kick_and_bob() -> void:
 			"the twin holds what is in hand (%s), its gun cast only into the shadow maps"
 				% [player.body_shadow.holding if player.body_shadow != null else "no twin"]
 		)
+		# The twin holds what is in hand, so it moves by that item's
+		# locomotion, whose spaces sit under the variation's name
+		# (PlayerModel.holds_items); the body you look down at has the one.
+		var moving_by := String(player.body_shadow.animation_tree.get("parameters/variation/current_state")) if player.body_shadow != null else ""
+		if moving_by.is_empty():
+			moving_by = PlayerModel.VARIATION
+		var twin_speeds: Variant = player.body_shadow.animation_tree.get("parameters/%s/stand/blend_position" % moving_by) if player.body_shadow != null else null
 		_check(
 			player.body_shadow != null and player.body_shadow.global_position.is_equal_approx(player.body_model.global_position)
 				and player.body_shadow.state() == player.body_model.state()
-				and player.body_shadow.animation_tree.get("parameters/stand/blend_position") == player.body_model.animation_tree.get("parameters/stand/blend_position"),
-			"the twin stands where the body stands, moving as it moves"
+				and twin_speeds != null and twin_speeds == player.body_model.animation_tree.get("parameters/stand/blend_position"),
+			"the twin stands where the body stands, moving as it moves (%s by the %s's locomotion)" % [twin_speeds, moving_by]
 		)
 
 	# Frame one captures the rest pose; then a kick from a real shot, the
