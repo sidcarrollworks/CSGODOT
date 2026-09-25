@@ -45,9 +45,6 @@ func _test_the_font_and_style() -> void:
 	_check(HudStyle.team_colour("CT").to_html(false) == Color8(150, 200, 250).to_html(false), "the counter-terrorists' is ct-color rgb(150, 200, 250)")
 	_check(HudStyle.counter_colour("T").to_html(false) == "ead18a" and HudStyle.counter_colour("CT").to_html(false) == "b5d4ee",
 		"the team counter's are color-T #EAD18A and color-CT #B5D4EE")
-	_check(HudStyle.ring_colour("T").to_html(false) == Color8(230, 128, 42).to_html(false)
-		and HudStyle.ring_colour("CT").to_html(false) == Color8(136, 206, 245).to_html(false),
-		"the ring round the emblem is orange for the terrorists and blue for the counter-terrorists")
 	_check(HudStyle.icon("no/such/icon") == null, "a missing icon is null, for the element to draw its own")
 
 
@@ -56,7 +53,7 @@ func _test_elements_redraw_only_on_change() -> void:
 	root.add_child(cluster)
 	cluster.draw.connect(func() -> void: _redraws["cluster"] = _redraws.get("cluster", 0) + 1)
 	var show := func(clip: int) -> void:
-		cluster.show_values("T", 100, 100, true, "weapon_ak47", true, clip, 30, 90, true, false)
+		cluster.show_values("T", HudStyle.TEAMMATE_COLOURS[3], 100, 100, true, "weapon_ak47", true, clip, 30, 90, true, false)
 	show.call(30)
 	await process_frame
 	await process_frame
@@ -76,8 +73,8 @@ func _test_elements_redraw_only_on_change() -> void:
 func _test_animations_stop() -> void:
 	var cluster := HealthAmmoCenter.new()
 	root.add_child(cluster)
-	cluster.show_values("T", 100, 0, false, "", false, 0, 1, 0, true, false)
-	cluster.show_values("T", 73, 0, false, "", false, 0, 1, 0, true, false)
+	cluster.show_values("T", HudStyle.T_COLOUR, 100, 0, false, "", false, 0, 1, 0, true, false)
+	cluster.show_values("T", HudStyle.T_COLOUR, 73, 0, false, "", false, 0, 1, 0, true, false)
 	_check(cluster.is_processing() and cluster.is_animating(), "a hit throws the red copy of the health, running _process while it falls")
 	cluster._process(HealthAmmoCenter.DAMAGE_SECONDS + 0.01)
 	_check(not cluster.is_processing(), "and stops once it is gone")
@@ -112,6 +109,21 @@ func _test_numbers() -> void:
 	_check_equal(HealthAmmoCenter.reserve_icon("weapon_nova"), "hud/ammo_reserve_shotgun_shell", "the Nova's a shell")
 	_check_equal(HealthAmmoCenter.reserve_icon("weapon_usp_silencer"), "hud/ammo_reserve_magazine", "any other gun a plain magazine")
 	_check_equal(GameHud.money_text(13650), "$13650", "money reads as CS2's $13650")
+	# The ring's colour: a player's own in a match, the team's without one.
+	var state := MatchState.new()
+	var sides := ["T", "CT", "T", "T"]
+	for side: String in sides:
+		var player := PlayerSim.new()
+		player.team = side
+		state.players.append(player)
+	var third_t := GameHud.player_colour(state, state.players[3])
+	_check(third_t == HudStyle.TEAMMATE_COLOURS[2] and GameHud.player_colour(state, state.players[1]) == HudStyle.TEAMMATE_COLOURS[0],
+		"in a match each player has a colour of their team's, in the order they joined it")
+	_check(GameHud.player_colour(null, state.players[0]) == HudStyle.T_COLOUR and GameHud.player_colour(null, state.players[1]) == HudStyle.CT_COLOUR,
+		"without one, the team's own colour, as CS2's deathmatch rings the emblem")
+	for player in state.players:
+		player.free()
+	state.free()
 	_check_equal(GameHud.clock_text(61.2), "1:02", "the clock rounds its seconds up")
 
 

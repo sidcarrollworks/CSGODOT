@@ -120,8 +120,8 @@ func _process(delta: float) -> void:
 	if player.alive and player.hit_target != null:
 		var gun := player.weapon
 		var has_ammo := gun != null and gun.data.magazine_size > 0
-		health_ammo.show_values(team, roundi(player.hit_target.health), roundi(player.hit_target.armor),
-			player.hit_target.helmet, gun.data.item_class if gun != null else "",
+		health_ammo.show_values(team, player_colour(match_state, player), roundi(player.hit_target.health),
+			roundi(player.hit_target.armor), player.hit_target.helmet, gun.data.item_class if gun != null else "",
 			has_ammo, gun.ammo if has_ammo else 0, gun.data.magazine_size if has_ammo else 1,
 			gun.reserve if has_ammo else 0, gun.data.reserve_as_clips if has_ammo else true,
 			has_ammo and gun.is_reloading(SimClock.now_usec()))
@@ -160,17 +160,21 @@ static func money_text(amount: int) -> String:
 
 
 ## A player's colour among their team (CS2's cl_teammate_color_1 to 5): by
-## the order the team joined the match, the first blue; the first colour
-## where there is no match. Which colour CS2 hands whom is decided on its
-## server, so the order is this project's.
+## the order the team joined the match, the first blue. Which colour CS2
+## hands whom is decided on its server, so the order is this project's.
+## Where there is no match of teams there are no player colours, and CS2
+## shows the team's own (its deathmatch: the ring round the emblem gold for
+## a terrorist and light blue for a counter-terrorist, like the rest of the
+## HUD).
 static func player_colour(state: MatchState, who: PlayerSim) -> Color:
+	if state == null:
+		return HudStyle.team_colour(who.team)
 	var index := 0
-	if state != null:
-		for player in state.players:
-			if player == who:
-				break
-			if player.team == who.team:
-				index += 1
+	for player in state.players:
+		if player == who:
+			break
+		if player.team == who.team:
+			index += 1
 	return HudStyle.TEAMMATE_COLOURS[index % HudStyle.TEAMMATE_COLOURS.size()]
 
 
