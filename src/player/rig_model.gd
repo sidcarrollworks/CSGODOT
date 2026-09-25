@@ -47,12 +47,16 @@ var held: PackedStringArray = PackedStringArray()
 var _pins: Array[Dictionary] = []
 
 ## How far the point a model is lit from moves before its cube is sampled
-## again (light_from), in units.
-const RELIGHT_DISTANCE := 1.0
+## again (light_from), in units: a tick's run at 250 u/s, a sixth of the
+## probes' 24-unit cells.
+const RELIGHT_DISTANCE := 4.0
 var _lit_cube := PackedColorArray()
 var _lit_shadow := []
 var _lit_at := Vector3.INF
 var _lit_by: LightProbes
+## Something the light was not put on yet is shown (a gun taken in hand):
+## light_from puts it on every mesh again although it did not sample again.
+var light_due := true
 
 ## What building a body reads, kept for the next one: every scene by its
 ## path, every clip's animation by the clip's, and every directory's clips.
@@ -302,16 +306,20 @@ func use_probe_lighting() -> void:
 	if probe_lit:
 		return
 	probe_lit = true
+	light_due = true
 	for mesh in find_children("*", "MeshInstance3D", true, false):
 		_probe_light(mesh as MeshInstance3D)
 
 
 ## Lights every mesh of the model from a point in the world, through the
-## scene's light probes, if it has any. Called by whoever moves the model.
+## scene's light probes, if it has any. Called by whoever moves the model,
+## every frame.
 ##
-## The cube is sampled again only once the point has moved RELIGHT_DISTANCE:
-## sampling it is most of a twentieth of a millisecond of script, and the
-## probes are tens of units apart, so a unit's difference does not show.
+## The cube is sampled again only once the point has moved RELIGHT_DISTANCE,
+## and put on the meshes only when it was, or when something new is shown
+## (light_due): sampling it was 19 us of script and putting it on a body's
+## meshes 11 more, every frame for every body (dust2, 2026-09-25), and the
+## probes are tens of units apart, so a few units' difference does not show.
 func light_from(at: Vector3) -> void:
 	var probes := LightProbeField.find(get_tree()) if is_inside_tree() else null
 	if probes == null:
@@ -321,6 +329,10 @@ func light_from(at: Vector3) -> void:
 		_lit_shadow = probes.shadow_placement(at)
 		_lit_at = at
 		_lit_by = probes
+		light_due = true
+	if not light_due:
+		return
+	light_due = false
 	for mesh in find_children("*", "MeshInstance3D", true, false):
 		ProbeMaterials.light_instance(mesh as MeshInstance3D, _lit_cube, _lit_shadow)
 

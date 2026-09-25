@@ -128,6 +128,7 @@ Doc: `tutorials/3d/occlusion_culling.rst`, `tutorials/3d/visibility_ranges.rst`,
 - Per occludee: `GeometryInstance3D.ignore_occlusion_culling` (the docs suggest it for "a first-person view model"). `extra_cull_margin` should stay 0. `RenderingServer.instance_set_ignore_culling(rid, true)` skips frustum, occlusion and layer culling.
 - Forward+ already has a depth prepass, so the win is fewer draw calls and vertices, not less overdraw.
 - Debug: `Viewport.debug_draw = DEBUG_DRAW_OCCLUDERS` (24). At run time, toggle with `get_tree().root.use_occlusion_culling`.
+- **VisibleOnScreenNotifier3D** says whether its box (`aabb`, default `AABB(-1, -1, -1, 2, 2, 2)`, in the node's own space, so a scaled model's box is divided by its scale) is on screen: `is_on_screen()`, `screen_entered`, `screen_exited`. It is "an approximate heuristic that doesn't take walls and other occlusion into account, unless occlusion culling is used", it does not work unless `visible` is true, and `is_on_screen()` is false until a frame after it enters the tree (`classes/class_visibleonscreennotifier3d.rst`). It is a `VisualInstance3D`, so its `layers` should be those of what it stands for (inferred: `PlayerModel.step_off_tick_frames` gives it its meshes' layers, so the body your own camera leaves out is not counted as seen). Headless nothing is drawn and it is never on screen (measured, `tests/run_model_checks.gd`).
 
 ### Visibility ranges (manual HLOD)
 

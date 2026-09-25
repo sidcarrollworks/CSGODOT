@@ -410,13 +410,15 @@ func _step_move(dt: float) -> void:
 	var step := config.step_height + STAY_ON_GROUND_MIN_DELTA
 	_trace_move(Vector3.UP * step)
 	_try_player_move(dt)
-	_trace_move(Vector3.DOWN * step)
+	var landing := _trace(Vector3.DOWN * step)
 
 	var step_distance := _horizontal_distance(start_position, global_position)
 
 	# Only accept the stepped move if it landed on something walkable,
-	# otherwise we would happily "step" onto a surf ramp.
-	var landed_walkable := _ground_below_is_walkable()
+	# otherwise we would happily "step" onto a surf ramp. What it landed on
+	# is what the trace down met, as Source reads it (StepMove: the down
+	# trace's plane normal), not a trace of its own.
+	var landed_walkable := landing != null and MovementSolver.is_walkable(landing.get_normal(), config)
 
 	if step_distance > flat_distance and landed_walkable:
 		# Source takes the stepped path but keeps the FLAT move's vertical
@@ -431,15 +433,6 @@ func _step_move(dt: float) -> void:
 
 func _horizontal_distance(a: Vector3, b: Vector3) -> float:
 	return Vector2(b.x - a.x, b.z - a.z).length()
-
-
-func _ground_below_is_walkable() -> bool:
-	var collision := _trace(
-		Vector3.DOWN * GROUND_TRACE_DISTANCE, true
-	)
-	if collision == null:
-		return false
-	return MovementSolver.is_walkable(collision.get_normal(), config)
 
 
 ## Moves without any slide response, stopping at the first obstruction.

@@ -794,6 +794,7 @@ func _test_player_lands() -> void:
 ## moved the body, sv_optimizedmovement). Running in the open, four: the
 ## move, StayOnGround's two, the check. A third and a fourth running tick
 ## are counted, the first ones having started from where the body was put.
+## Stepping up a stair, seven.
 func _test_traces_a_tick() -> void:
 	_place(Vector3(0.0, 8.0, 256.0))
 	for i in SETTLE_TICKS:
@@ -811,6 +812,26 @@ func _test_traces_a_tick() -> void:
 	_check(
 		standing == 1 and running == 8 and _player.on_ground,
 		"a tick traces the hull once standing still and four times running in the open (%d, then %d in two)" % [standing, running]
+	)
+	# Up the eight-step flight, a tick that steps up traces the hull no more
+	# than the flat move that met the riser, the step up, the move, the step
+	# down, StayOnGround's two and the check: what the step landed on is what
+	# its trace down met, as Source's StepMove reads it, not a trace of its own.
+	_place(Vector3(-512.0, 8.0, -256.0 + 48.0))
+	for i in SETTLE_TICKS:
+		_step()
+	var steps := 0
+	var most := 0
+	for i in SimClock.ticks_in(1.5):
+		var was := _player.global_position.y
+		before = _player.traces
+		_step(forward)
+		if _player.global_position.y > was + 8.0:
+			steps += 1
+			most = maxi(most, _player.traces - before)
+	_check(
+		steps == 8 and most == 7,
+		"running up the flight steps up each of its eight steps, tracing the hull at most seven times a tick (%d steps, %d traces)" % [steps, most]
 	)
 	_place(Vector3(0.0, 8.0, 256.0))
 

@@ -57,6 +57,14 @@ another, which is how it is seen).
 Headless that is 145 frames a second with ten players and 117 to 128 with
 twenty, all 64 ticks a second in both.
 
+Since perf/bot-tick the bodies step their own animation
+(`PlayerModel.step_off_tick_frames`), so the profiler counts the bots'
+trees under `player_model.gd`, and "animation trees" only the ones the
+engine still steps (your view's two). Headless no camera sees a body, so
+each steps only in the frames that run no tick, fewer times than drawn:
+there, ten players' bodies and skeletons are 0.54 and 0.20 ms a frame in a
+live round.
+
 Drawn, and so not in these tables: the two lamps down dust2's lower
 tunnels (`MapLighting.add_lamps`, 2026-09-24) are Godot spot lights with
 shadows, the map's only lights besides the sun. Godot renders a positional
@@ -191,6 +199,47 @@ The averages are under CS2's. The spread is the frames that run a tick
 (7.0 ms median out of combat, 6.4 in it, against 3.5 for the rest; "Frame
 pacing"). A deathmatch has more players than these ten.
 
+### Still and moving
+
+Sid, playing dust2 from the editor (2026-09-25): 230 frames a second at a
+round's start while everyone stands in freeze time, 180 once the round
+goes live. On his machine, dust2 as played from your own spawn, 3840x2160
+fullscreen, V-Sync off and no cap, 6 seconds of freeze time and then 10 of
+the live round, each from a second in, two or three runs:
+
+| | Freeze time | Live round | Live, 95th | GPU mean |
+|---|---|---|---|---|
+| main (776ac85) | 5.49 to 5.53 ms | 5.67 to 5.82 | 9.0 to 9.25 | 4.54 |
+| perf/bot-tick | 5.24 to 5.29 ms | 5.26 to 5.31 | 8.74 to 8.77 | 4.30 |
+
+At 4K the frames that run a tick wait on the processor (7 to 8 ms) and
+the others on the graphics card (4.3 to 4.5), so what a round adds to the
+tick's frames is what shows. Headless (`profile_dust2.gd -- 5 6 round`),
+what the live round added on main: the bots' `run_command` 1.1 to 2.7 ms
+a tick (a bot's is 114 us standing and 270 to 290 moving, four fifths of
+that its movement, whose hull traces are about 42 us each on dust2's
+floor, 6 in the air); the animation trees 0.76 to 1.13 ms a frame; and
+`bot.gd`'s frame, the bots drawn between ticks and lit, 0.19 to 0.30.
+
+What perf/bot-tick changed:
+
+- A stepped move takes what it landed on from its own trace down, as
+  Source's StepMove reads that trace's plane, rather than tracing again:
+  a moving bot's tick 5.8 traces to 5.3, a tick that steps up a stair 8
+  to 7.
+- Bodies step their own animation: every frame while a camera draws them,
+  otherwise only in the frames that run no tick, or once they have waited
+  two ticks. Stepped on the tick instead, the unseen ones went into the
+  frames already held up, and the live round's 95th went from 9.1 ms to
+  10.3.
+- A body's probe light is put on its meshes only when it is sampled
+  again, now 4 units on rather than 1, or when a gun is newly shown: it
+  was 19 us sampling and 11 putting it on, every frame for every body.
+
+Headless, a live round's tick went from 3.75 to 3.91 ms to 2.91 to 3.25,
+and the frame's script from 2.03 to 2.05 to 1.14 (the bodies stepping
+less often there, as above).
+
 ### Hitches
 
 What held a frame or a tick up the first time something happened, found
@@ -245,6 +294,7 @@ workers). No buy or pickup in a match reads a model any more.
 | Frames drawn where the clock is: `physics_jitter_fix` 0, `DrawClock`, and the mouse read just before the view is placed | frame pacing | a frame that ran a tick was drawn 4.5 ms behind; flying 2.5 to 4.2 ms off a steady line to 0.6, turning 1.7 to 0.7 ("Frame pacing") |
 | Nothing built in the tick for the views, first-person clips read ahead on worker threads, the effects' shaders compiled at load and their cards sent in one buffer | perf/no-first-use-hitches | a first buy's tick 136 ms (the R8's 347), a death's dropped gun 41, the first shots' frames 18 to 35; now no frame over 20 ms ("Against CS2") |
 | Every model anyone may take in hand read before play, and the guns' legacy bodies left out at import (`weapon_model_import.gd`) | perf/read-match-guns-ahead | 32 models read where 18 were, for 123 MiB more video memory and 0.17 s more at match start (1.46 s to 1.63); no buy or pickup reads a model during a match |
+| A stepped move takes its landing from its own trace down; bodies nobody sees stepped only in frames without a tick; a body's probe light put on only when sampled again | perf/bot-tick | drawn at 4K from your spawn, the live round 5.67 to 5.82 ms a frame to 5.26 to 5.31, what freeze time now costs, and freeze time 5.5 to 5.25; the GPU 0.24 ms less ("Still and moving") |
 
 A tick at 64 costs a little more than one at 128 did: it moves everyone
 twice as far, with more to meet on the way, and holds twice the rounds and
@@ -261,6 +311,12 @@ Looked at and left:
   of one material in one body then get Godot's numbered names, which
   footsteps and penetration read, and parts in separate bodies lose Jolt's
   removal of internal edges, which only works within a body.
+- **The traces stopping Source's DIST_EPSILON (1/32 unit) short**, as
+  `move_and_collide`'s safe margin in place of Godot's 0.001. A trace that
+  starts a thirty-second clear of dust2's floor was 30 to 40 us against 45
+  to 60 touching it, but the body still stood 0.0004 off the floor with
+  the margin, not 1/32; it took 0.3 traces off a moving bot's tick, each
+  costing more, for no time saved (perf/bot-tick, 2026-09-25).
 
 ## Going online
 
@@ -318,9 +374,12 @@ air strafing most), and run_tests.gd holds it at any tick rate.
 1. A server that builds nothing to be seen: the map's collision, entities
    and nav mesh; bodies as skeletons, clips and hitboxes; no audio, decals,
    HUD or probe atlas.
-2. Animation stepped by the tick where it places hitboxes (the server; bots
-   on your own machine), and by the frame where it is only seen. The tree
-   can be stepped from run_command in manual mode.
+2. Animation stepped by the tick where it places hitboxes (the server), and
+   by the frame where it is only seen. On your own machine the bodies step
+   themselves, every frame while seen and between the ticks otherwise
+   (perf/bot-tick; stepping them on the tick there cost the frames it held
+   up, "Still and moving"). A server, drawing nothing, steps them on the
+   tick, with the history of 3.
 3. The lag-compensation history as capsule end points a tick, and rewound
    rounds tested against it in script.
 4. run_command safe to run again for prediction: no sounds, marks or events
@@ -356,6 +415,9 @@ The script's cost, headless and by system:
     godot --headless --path . --script scripts/profile_dust2.gd -- 5 3
 
 Team size 5 is ten players, and 3 is the number of five-second windows.
+`round` after them (`-- 5 6 round`) ends the warmup as it starts, so the
+windows run through freeze time, everyone still, into the live round,
+everyone moving; each window says the phase it ended in.
 Three things to know when reading it:
 
 - It runs every node's callbacks itself, so the figures are by system: the

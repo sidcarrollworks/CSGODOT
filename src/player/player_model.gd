@@ -54,6 +54,13 @@ const VARIATION := "rifle"
 const HELD_VARIATIONS := {"pistol": "pistol/_default_pistol", "knife": "knife/_default_knife"}
 const VARIATION_FADE := 0.2
 const PISTOL_FADE := 0.5
+## The box round a body, from its feet, in units, that says whether a camera
+## draws it: the hull with a held gun's reach (step_off_tick_frames).
+const SEEN_BOX := AABB(Vector3(-32.0, 0.0, -32.0), Vector3(64.0, 80.0, 64.0))
+## The most ticks an unseen body waits for a frame without a tick before it
+## steps anyway: at a frame rate near the tick rate nearly every frame runs
+## one.
+const MOST_UNSTEPPED_TICKS := 2
 ## The locomotion clips a variation's set is read for.
 const LOCOMOTION_CLIPS := ["idle_", "run_", "walk_", "crouch_", "inair_", "jump_stand"]
 ## How far the spaces reach, beyond CS2's furthest clip (225).
@@ -102,6 +109,11 @@ var held_weapon: Node3D
 var holds_items := false
 ## The item in the hand, by class; "" for none (hold()).
 var holding: String = ""
+## Stepped by itself rather than by the engine (step_off_tick_frames).
+var stepped_by_hand := false
+var _on_screen: VisibleOnScreenNotifier3D
+var _unstepped := 0.0
+var _last_physics_frame := -1
 
 ## Where in the library the held item's own clips are: WEAPON for the set the
 ## body was built with, "held_<set>_" for one taken in hand since; "" for none.
@@ -345,6 +357,7 @@ func show_held() -> void:
 			return
 		_held_models[holding] = held_weapon
 	held_weapon.visible = true
+	light_due = true
 	_update_pins()
 
 
@@ -612,6 +625,61 @@ func pose_now() -> void:
 			animation_tree.advance(0.0)
 	elif animation_player != null:
 		animation_player.advance(0.0)
+
+
+## Steps its own animation from now on rather than leaving it to every frame
+## (_process): on every frame while a camera draws it, so it moves smoothly
+## where it is looked at; otherwise only in frames that ran no tick, by the
+## time since it last moved, or once it has waited MOST_UNSTEPPED_TICKS.
+## A frame that runs a tick is the one the processor holds up, the tick
+## being most of it, while the others wait on the graphics card at 4K;
+## stepped in every frame, the bodies nobody saw added their whole
+## animation to those frames too (reference/performance.md). An unseen
+## body's pose is only its hitboxes', which a step in the frame before a
+## tick keeps as fresh. Seen means drawn on the camera layers its meshes are
+## on, walls and all (VisibleOnScreenNotifier3D, with the map's occluders);
+## headless nothing is, and every body steps between the ticks.
+func step_off_tick_frames() -> void:
+	stepped_by_hand = true
+	if animation_tree != null:
+		animation_tree.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+	elif animation_player != null:
+		animation_player.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+	var layers := 0
+	for mesh in find_children("*", "MeshInstance3D", true, false):
+		layers |= (mesh as MeshInstance3D).layers
+	_on_screen = VisibleOnScreenNotifier3D.new()
+	_on_screen.name = "OnScreen"
+	# The model works in the export's metres (its scale); the box is in units.
+	_on_screen.aabb = AABB(SEEN_BOX.position / scale.x, SEEN_BOX.size / scale.x)
+	_on_screen.layers = layers if layers != 0 else 1
+	add_child(_on_screen)
+	_last_physics_frame = Engine.get_physics_frames()
+
+
+## Whether a camera drew the body last frame (step_off_tick_frames).
+func is_seen() -> bool:
+	return _on_screen != null and _on_screen.is_on_screen()
+
+
+func _process(delta: float) -> void:
+	# Stopped, a ragdoll has the bones (set_animating).
+	if not stepped_by_hand or not is_animating():
+		return
+	var ticked := Engine.get_physics_frames() != _last_physics_frame
+	_last_physics_frame = Engine.get_physics_frames()
+	_unstepped += delta
+	if is_seen() or not ticked or _unstepped >= MOST_UNSTEPPED_TICKS * SimClock.tick_seconds():
+		step(_unstepped)
+		_unstepped = 0.0
+
+
+## Moves the animation on by delta seconds.
+func step(delta: float) -> void:
+	if animation_tree != null:
+		animation_tree.advance(delta)
+	elif animation_player != null:
+		animation_player.advance(delta)
 
 
 ## Stops the animation, for a ragdoll to have the bones, or starts it again.

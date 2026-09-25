@@ -6,15 +6,23 @@ extends SceneTree
 ## step, a run_command, a path search, a ragdoll, a side swap). It is what
 ## reference/performance.md was measured with.
 ##
-##   godot --headless --path . --script scripts/profile_dust2.gd -- [team size] [windows]
+##   godot --headless --path . --script scripts/profile_dust2.gd -- [team size] [windows] [round]
 ##
 ## Team size 5 is ten players (you and nine bots); windows are five seconds
-## each. It runs every node's callbacks itself, with a clock round each, so
+## each. With round, warmup is ended as it starts, so the windows go through
+## a round's freeze time, everyone still, and on into the round, everyone
+## moving; each window says the phase it ended in.
+##
+## It runs every node's callbacks itself, with a clock round each, so
 ## the time is by system rather than by the engine's phases: every node's
 ## _physics_process and _process, taken over as the node arrives and run in
 ## the order the engine would run them (by priority, then the tree's), and every
 ## AnimationTree, switched to manual and stepped here, the skeleton posed
 ## straight after so the hitboxes and pins that follow it are counted too.
+## The players' bodies step their own (PlayerModel.step_off_tick_frames),
+## so theirs is counted under player_model.gd, their skeletons with the
+## rest; headless nobody sees them, so they step only in frames without a
+## tick, fewer times than drawn.
 ## The world's tick it runs in the world's own order and parts (begin_tick,
 ## each player's command_for and run_command, end_tick), timing each. A node
 ## after all the tree's physics callbacks marks where they end; the step from
@@ -25,6 +33,8 @@ const WINDOW_USEC := 5_000_000
 
 var _team_size := 5
 var _windows := 3
+## End warmup at the start, and measure a round (round).
+var _round := false
 var _window := 0
 var _marker: Node
 var _started := false
@@ -51,6 +61,7 @@ func _initialize() -> void:
 		_team_size = int(args[0])
 	if args.size() >= 2:
 		_windows = int(args[1])
+	_round = args.has("round")
 	_start_usec = Time.get_ticks_usec()
 	var dust2 := (load("res://maps/de_dust2/de_dust2.tscn") as PackedScene).instantiate()
 	dust2.set("team_size", _team_size)
@@ -88,7 +99,14 @@ func _process(delta: float) -> bool:
 			continue
 		var a := Time.get_ticks_usec()
 		node.call("_process", delta)
-		_add("frame: " + _kind(node), Time.get_ticks_usec() - a)
+		var b := Time.get_ticks_usec()
+		_add("frame: " + _kind(node), b - a)
+		# A body that steps its own animation (PlayerModel.step_off_tick_frames)
+		# has its skeleton posed straight after it stepped, as a tree's below.
+		var body := node as PlayerModel
+		if body != null and body.stepped_by_hand and body._unstepped == 0.0 and body.character_rig != null:
+			body.character_rig.notification(Skeleton3D.NOTIFICATION_UPDATE_SKELETON)
+			_add("frame: skeletons posed, and the hitboxes and pins on them", Time.get_ticks_usec() - b)
 	for tree in _trees.duplicate():
 		if not is_instance_valid(tree) or not tree.is_inside_tree():
 			_trees.erase(tree)
@@ -190,6 +208,8 @@ func _begin() -> void:
 			(player as Bot).shot_traced.disconnect((player as Bot)._on_shot_traced)
 			(player as Bot).shot_traced.connect(_timed_shot.bind(player))
 	_print_objects("at the start")
+	if _round and GameWorld.current != null and GameWorld.current.match_state != null:
+		GameWorld.current.match_state.end_warmup_on_next_tick()
 	_started = true
 	_window_start = Time.get_ticks_usec()
 
@@ -252,8 +272,11 @@ func _report(now: int) -> void:
 	var seconds := (now - _window_start) / 1e6
 	var ticks := float(maxi(_ticks, 1))
 	var frames := float(maxi(_frames, 1))
-	print("\nwindow %d: %.1f frames/s, %.1f ticks/s, %.1f bots alive" % [
-		_window + 1, _frames / seconds, _ticks / seconds, _counts.get("bots alive, over the ticks", 0) / ticks,
+	var phase := ""
+	if GameWorld.current != null and GameWorld.current.match_state != null:
+		phase = ", ended in %s" % String(MatchState.Phase.keys()[GameWorld.current.match_state.phase]).to_lower()
+	print("\nwindow %d: %.1f frames/s, %.1f ticks/s, %.1f bots alive%s" % [
+		_window + 1, _frames / seconds, _ticks / seconds, _counts.get("bots alive, over the ticks", 0) / ticks, phase,
 	])
 	var keys := _sums.keys()
 	keys.sort()

@@ -1724,6 +1724,40 @@ classname                      "light_environment"
 	)
 	instance.free()
 
+	# A body lit through the scene's probes (RigModel.light_from), every
+	# frame: sampled again only once it has moved RELIGHT_DISTANCE, and put
+	# on its meshes only then, or when something new is shown (light_due).
+	var field := LightProbeField.new()
+	field.probes = probes
+	root.add_child(field)
+	var body := RigModel.new()
+	var worn := MeshInstance3D.new()
+	worn.mesh = BoxMesh.new()
+	worn.material_override = lit
+	body.add_child(worn)
+	root.add_child(body)
+	var inside := Vector3(60, 0, 60)
+	var marked := Vector3(9, 9, 9)
+	body.light_from(inside)
+	var first: Variant = worn.get_instance_shader_parameter(&"probe_py")
+	worn.set_instance_shader_parameter(&"probe_py", marked)
+	body.light_from(inside + Vector3(RigModel.RELIGHT_DISTANCE * 0.5, 0, 0))
+	var nearby: Variant = worn.get_instance_shader_parameter(&"probe_py")
+	body.light_due = true
+	body.light_from(inside + Vector3(RigModel.RELIGHT_DISTANCE * 0.5, 0, 0))
+	var due: Variant = worn.get_instance_shader_parameter(&"probe_py")
+	body.light_from(Vector3(900, 0, 0))
+	var moved: Variant = worn.get_instance_shader_parameter(&"probe_py")
+	_check(
+		first is Vector3 and _near((first as Vector3).y, 0.6) and nearby == marked
+			and due is Vector3 and _near((due as Vector3).y, 0.6)
+			and moved is Vector3 and (moved as Vector3).is_zero_approx(),
+		"a body is lit from the probes where it stands, left as it was a few units on, lit again when something new is shown, and again once it has moved (%s, %s, %s, %s)"
+			% [first, nearby, due, moved]
+	)
+	body.free()
+	field.free()
+
 
 func _near(a: float, b: float) -> bool:
 	return absf(a - b) < 0.002

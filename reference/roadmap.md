@@ -443,7 +443,10 @@ list, split into Local and Remote items, with the measurements.
   gun, and the guns' unused legacy bodies are left out at import
   (perf/read-match-guns-ahead; research/weapon-preload.md): 123 MiB more
   video memory, 0.17 s more at match start, and no model read during a
-  match. Left:
+  match. The live round no longer costs more than freeze time
+  (perf/bot-tick): from your spawn at 4K, 5.67 to 5.82 ms a frame once
+  everyone moved, now 5.26 to 5.31, where freeze time is 5.24 to 5.29
+  (performance.md, "Still and moving"). Left:
   the frames that run a tick, about 7 ms, which a cheaper tick shortens.
 - **Screen-space occlusion off.** *(done, the Godot docs audit)* It
   darkened ambient light only, which no map material took then, so it

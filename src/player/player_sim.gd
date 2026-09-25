@@ -319,6 +319,9 @@ func wear_body(weapon_model: String, drawn: bool) -> void:
 			(mesh as MeshInstance3D).layers = UNSEEN_LAYER
 			(mesh as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	if model != null:
+		# Every frame while a camera draws it, otherwise between the ticks,
+		# out of the frames the tick holds up (PlayerModel.step_off_tick_frames).
+		model.step_off_tick_frames()
 		# Posed now rather than at the next animation step, so the capsules
 		# start where the idle puts them and not on the bind pose, whose head
 		# stands seven units higher.
