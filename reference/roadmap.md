@@ -408,14 +408,17 @@ list, split into Local and Remote items, with the measurements.
   walks long doors and top of mid again)* The camera's pass went from about
   1,170 draw calls to 290.
 - **The sun's shadows as CS2 draws them (R4).** *(first tier built, PR #82;
-  Sid extracts two files and plays, rendering.md L7)* The map's shadow from
+  the pages extracted and checked 2026-09-25; Sid plays and profiles,
+  rendering.md L7)* The map's shadow from
   the sun comes from CS2's baked pages: `direct_light_shadows` on its
   surfaces, and the probe atlas's `_dlshd` on everything the probes light,
-  players, dropped guns, grenades and the bomb among them. The live shadow
+  players, dropped guns, grenades and the bomb among them. The 3D skybox
+  reads its own page. The live shadow
   map draws only what moves; drawing the map into it cost 2.0 ms of GPU at
   1080p, 6.3 ms at 4K and 1.7 ms of the renderer's CPU, from 6,200 draw
   calls a frame. Next, if the playtest wants crisper edges up close: a
-  static shadow map of the map, rendered once at load.
+  static shadow map of the map, rendered once at load, since dust2 ships
+  none (L6).
 - **Research CS2's renderer (R0), reflections from the map's cubemaps (R5)
   and CS2's video settings (R6).** *(Remote, not started)*
 
@@ -742,7 +745,7 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 | Hands | The systems' Local list in `reference/cs2-systems.md`: bomb (C1, the explosion's particles from C3, and decoding C2's damage), grenades (G1 to G5, and G6's particle and smoke textures), knife (K1), sounds (S1, S2) | Phases 4 to 7 |
 | Hands | Run `scripts/profile_render.gd` again at 1080p and 4K, and walk long doors and top of mid, on PR #78 | Rendering R2, R3 |
 | Decided | dust2's sun shadows come from CS2's baked pages, the live shadow map drawing only what moves (Sid, 2026-09-25) | Rendering R4 |
-| Hands | Extract `direct_light_shadows` and the probe atlas's `_dlshd` (`scripts/extract_assets.sh lightmaps`), run the dust2 checks, play dust2's shadows beside CS2's, and profile with `live_map_shadows`, on PR #82 (rendering.md L7) | Rendering R4 |
+| Hands | Run the dust2 checks again, play dust2's shadows beside CS2's, and profile with `live_map_shadows` and `no_visibility`, on PR #82 (rendering.md L7; the pages were extracted and checked 2026-09-25) | Rendering R4 |
 
 ---
 

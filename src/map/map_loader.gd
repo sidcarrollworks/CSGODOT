@@ -188,18 +188,23 @@ static func sky_textures(vmat: String) -> PackedStringArray:
 ## position puts the same buildings in the same places, a long way off, with
 ## the haze doing the rest. Nothing in it is solid.
 func _build_skybox() -> void:
-	skybox = make_skybox(paths.skybox_dir)
+	skybox = make_skybox(paths.skybox_dir, MapShadows.sun_channel(entities))
 	if skybox == null:
 		print("--- skybox: none (%s)" % paths.extract_command("skybox"))
 		return
 	add_child(skybox)
-	print("--- skybox: %d meshes at %.0fx" % [skybox.stats.get("meshes", 0), skybox.scale_factor / MapImporter.SOURCE2_VIEWER_SCALE])
+	print("--- skybox: %d meshes at %.0fx; the sun's shadow in it: %s" % [
+		skybox.stats.get("meshes", 0), skybox.scale_factor / MapImporter.SOURCE2_VIEWER_SCALE,
+		"CS2's baked one" if skybox.stats.get("lightmaps", {}).get("shadows", false)
+			else "none (%s)" % skybox.stats.get("sun_shadow", ""),
+	])
 
 
 ## The skybox's importer, set up and placed but not yet in the scene; null
 ## when it has not been extracted. Static so the checks build the one the
-## game does.
-static func make_skybox(skybox_dir: String) -> MapImporter:
+## game does. map_sun_channel is the channel of the map's own sun in its
+## baked shadow page (MapShadows).
+static func make_skybox(skybox_dir: String, map_sun_channel := -1) -> MapImporter:
 	var map_file := MapImporter.find_map_file(skybox_dir)
 	if map_file.is_empty():
 		return null
@@ -221,7 +226,11 @@ static func make_skybox(skybox_dir: String) -> MapImporter:
 	sky_importer.layer_textures_dir = skybox_dir
 	# Its own baked light, beside its world as the map's is: the two-layer
 	# walls take all but the sun from it, and without it are black in shade.
+	# Its sun's shadow too, from its own page, the only shadow its buildings
+	# throw, since it casts nothing live: in the channel its lump gives its
+	# sun, or the map's sun's where its lump has no sun.
 	sky_importer.lightmaps_dir = "."
+	sky_importer.sun_channel_otherwise = map_sun_channel
 	# Its terrain sits at its own ground level, which is above some of the
 	# map's floors; the map must win wherever they overlap.
 	sky_importer.behind_everything = true

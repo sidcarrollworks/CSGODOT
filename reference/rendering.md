@@ -108,12 +108,24 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
   whether Source 2 Viewer lists or exports it for dust2 (inferred, not
   checked). If it does, it could replace or back up the occluders (R3).
 
-- **L6. Whether dust2's VPK carries its SST** (R4): list `maps/de_dust2.vpk`
+- **L6. Whether dust2's VPK carries its SST** (R4). *(done 2026-09-25: it
+  does not)* List `maps/de_dust2.vpk`
   for anything named `sst`, and note its size and type. If it is there and
   Source 2 Viewer can read it, the static shadow map can be CS2's own
   rather than rendered here at load.
+  Found by Sid's local agent: nothing named `sst` in the map's VPK or the
+  skybox's (`maps/prefabs/de_dust2/de_dust2_skybox.vpk`). The shadow CS2
+  ships there is `direct_light_shadows` (9,595,615 bytes compiled; the
+  skybox's 43,059). The world nodes' meshes come in `_shadow` and
+  `_noshadow` variants (13 `..._noshadow.vmdl_c` and one
+  `n0_lr0_c1_s_cb_bl_mesh_blocklight1_shadow.vmdl_c` in the map; four
+  `_shadow` and one `_noshadow` in the skybox), which may be how CS2 marks
+  what renders into its shadows (inferred, not checked). So R4's second
+  tier, if built, is rendered here at load.
 
-- **L7. The baked shadow on dust2** (R4). Extract the two pages
+- **L7. The baked shadow on dust2** (R4). *(Extracted and checked
+  2026-09-25 at f7be422; the playtest and the profiler are still to do.)*
+  Extract the two pages
   (`scripts/extract_assets.sh lightmaps`: only the lightmaps, so dust2's
   materials stay at their extraction from before CS2's shaders moved to
   VCS 72), then run `scripts/run_tests.sh dust2`, whose shadow checks want
@@ -124,6 +136,23 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
   lamps' shadows in lower tunnels, and light at the foot of walls. Then
   run the profiler at 1080p and 4K as in L1: `baseline` against
   `live_map_shadows` is what the baking saves.
+  Found by Sid's local agent on the first run: the lightmaps and the
+  probes are the same bake as before (their SHA-256 did not change), and
+  the probes' page is 120 slices of 192 by 176, one for every six of the
+  atlas's. The map's page is an 8192-square RGBA PNG with alpha 254 or 255.
+  255 is blocked, as `MapShadows` reads it: the sun's channel is 255 over
+  73.4% of it, 0 over 18.0% and between over 8.6%; faces looking down are
+  95.1% blocked, walls facing away from the sun 94.4%, and walls facing
+  it 43.3%. The lamps' channels are 99.5% blocked. The entity lump gives
+  the sun `bakedshadowindex` 0 and the tunnel lamps 1 and 2. Godot
+  finished importing the page and crashed on its way out; a second import
+  found nothing left to do, so `import_assets` now runs a failed import
+  once more. 84 of 85 dust2 checks passed; the one that failed counted
+  the collision hull's meshes, which sit under a hidden node, as drawn
+  into the live shadow map, and now counts only what is drawn. The
+  skybox's VPK has a page of its own (512 square, one channel: R, G and B
+  alike), which the skybox now reads (R4); `scripts/extract_assets.sh
+  skybox` fetches it.
 
 ## Remote items (cloud threads)
 
@@ -214,6 +243,11 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
   - Only when both pages are there, and the probes: without the probes'
     page the players would take the sun indoors. The import report says
     which it is, and why when it is live.
+  - The 3D skybox reads its own page, in the channel its lump gives its
+    sun or else the one the map's sun has (`MapLoader.make_skybox`). It
+    needs no probes, since nothing moves in it; and it casts nothing
+    live, so until this its buildings threw no shadow at all. The game's
+    skybox line says whether it has one.
   - The lamps keep their live shadows, and their channels are unused.
   - Checked in the cloud through the Compatibility renderer: a floor in
     each shader lit where its page is clear and dark where it is blocked,
@@ -250,7 +284,8 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
   So the same three tiers here: `direct_light_shadows` for the map at any
   distance (first, since it only needs extracting); a static shadow map
   of the map rendered once at load and sampled within 2,000 units, for
-  crisp near edges (after, if the baked page looks soft up close); and
+  crisp near edges (after, if the baked page looks soft up close; dust2's
+  VPK has no SST to take it from, L6); and
   Godot's live shadow for what moves. None of it needs a change to Godot.
   The first is built. The second waits on the playtest: with the first
   alone, a player's shadow from the map comes from the probes' cells, 24

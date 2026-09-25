@@ -2060,6 +2060,36 @@ light_probe_atlas_z            0
 		"without light probes the map keeps its live shadow, and the report says it needs them (%s)" % bare.stats.get("sun_shadow", "")
 	)
 	bare.free()
+
+	# A 3D skybox takes its page without them: nothing moves in it, and it
+	# casts nothing live, so the page is all the shadow its buildings throw.
+	# Where its lump gives its sun no channel, it reads the one its map's
+	# sun has (MapLoader.make_skybox).
+	var sky := MapLoader.make_skybox(dir)
+	root.add_child(sky)
+	_check(
+		sky.stats.get("lightmaps", {}).get("shadows", false) and sky.stats.get("sun_shadow", "?") == ""
+			and _baked_layers(sky) == Vector2i(0, 1),
+		"a 3D skybox, which has no probes, takes the sun's shadow from its page all the same, and stays on its own layers"
+	)
+	sky.free()
+	var lump := FileAccess.get_file_as_string(dir.path_join(MapShadows.ENTITIES_FILE))
+	_write_text(dir.path_join(MapShadows.ENTITIES_FILE), lump.replace("light_environment", "info_target"))
+	var sunless := MapLoader.make_skybox(dir)
+	root.add_child(sunless)
+	var lit_by_map := MapLoader.make_skybox(dir, 0)
+	root.add_child(lit_by_map)
+	_check(
+		lit_by_map.stats.get("lightmaps", {}).get("shadows", false)
+			and not sunless.stats.get("lightmaps", {}).get("shadows", true)
+			and String(sunless.stats.get("sun_shadow", "")).contains("entity lump"),
+		"one whose lump has no sun reads the channel its map's sun has, and none when that has none either (%s)"
+			% sunless.stats.get("sun_shadow", "")
+	)
+	sunless.free()
+	lit_by_map.free()
+	_write_text(dir.path_join(MapShadows.ENTITIES_FILE), lump)
+
 	for slice in LightProbes.FACES * 2:
 		Image.create(4, 4, false, Image.FORMAT_RGBH).save_exr(probes_dir.path_join("%s%03d.exr" % [LightProbes.SLICE_STEM, slice]))
 	var first := _import_baked(dir)
@@ -2157,9 +2187,6 @@ light_probe_atlas_z            0
 	live_holder.free()
 
 
-## What a shader reads from the probes' sun texture at a game-space point,
-## placed as ProbeMaterials places an instance: the texture's linear filter
-## over the eight cells round the point.
 ## A mesh of small triangles facing up, one at each of these corners and
 ## reaching in toward the origin, as the export merges a prop's copies from
 ## all over a map into one mesh; its surface in the material, if given.
@@ -2184,6 +2211,9 @@ func _pieces(corners: Array[Vector3], material: Material = null) -> MeshInstance
 	return mesh_instance
 
 
+## What a shader reads from the probes' sun texture at a game-space point,
+## placed as ProbeMaterials places an instance: the texture's linear filter
+## over the eight cells round the point.
 func _shader_sun(probes: LightProbes, visibility: PackedByteArray, placement: Array, at: Vector3) -> float:
 	if placement.is_empty():
 		return 1.0
@@ -2218,12 +2248,12 @@ func _import_baked(dir: String) -> MapImporter:
 
 
 ## How many of an import's drawn meshes are on MapShadows.LAYER (x), and
-## how many are not (y).
+## how many are not (y); drawn, so not under a hidden node.
 func _baked_layers(importer: MapImporter) -> Vector2i:
 	var counts := Vector2i.ZERO
 	for node in importer.find_children("*", "MeshInstance3D", true, false):
 		var mesh := node as MeshInstance3D
-		if not mesh.visible:
+		if not mesh.is_visible_in_tree():
 			continue
 		if mesh.layers == MapShadows.LAYER:
 			counts.x += 1

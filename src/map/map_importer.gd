@@ -59,6 +59,11 @@ const SOURCE2_VIEWER_SCALE := 1.0 / 0.0254
 ## shadow of a far mountain over half the map; the game's skybox never
 ## casts onto the map at all.
 @export var cast_shadows: bool = true
+## The channel of the baked shadow page that holds the sun's shadow when
+## this map's own entity lump names none (MapShadows): a 3D skybox's may
+## not, and it is then lit by its map's sun (MapLoader.make_skybox). -1 for
+## none.
+@export var sun_channel_otherwise: int = -1
 
 ## What to multiply the export by. SOURCE2_VIEWER_SCALE for anything that came
 ## out of Source 2 Viewer; 1 for geometry already in Source units. If the
@@ -279,13 +284,19 @@ func import_map() -> Dictionary:
 		# taken only when it is there for everything the sun lights: the
 		# lightmaps' page for their surfaces, and the probes' for all they
 		# light, players included, who would otherwise take the sun indoors.
-		# Otherwise the live shadow map keeps the map, as before.
+		# Otherwise the live shadow map keeps the map, as before. A skybox
+		# has no probes and needs none, since nothing moves in it; and it
+		# casts nothing live (cast_shadows), so its page is all the shadow
+		# its buildings throw.
 		var sun_channel := MapShadows.sun_channel_at(map_dir)
+		if sun_channel < 0:
+			sun_channel = sun_channel_otherwise
 		var field_probes := LightProbes.load_for(map_dir, sun_channel)
 		if sun_channel < 0:
 			sun_shadow = "the entity lump gives the sun no channel of a baked shadow page"
 		elif not field_probes.is_loaded():
-			sun_shadow = "the baked one needs the light probes too"
+			if not behind_everything:
+				sun_shadow = "the baked one needs the light probes too"
 		elif not field_probes.has_sun_shadows():
 			sun_shadow = "no baked shadow page for the light probes; 'scripts/extract_assets.sh lightmaps' fetches it"
 			sun_channel = -1
@@ -295,7 +306,9 @@ func import_map() -> Dictionary:
 		if not lightmaps["shadows"]:
 			field_probes.sun_channel = -1
 			if sun_shadow.is_empty():
-				sun_shadow = "no baked shadow page; 'scripts/extract_assets.sh lightmaps' fetches it"
+				sun_shadow = "no baked shadow page; 'scripts/extract_assets.sh %s' fetches it" % (
+					"skybox" if behind_everything else "lightmaps"
+				)
 		# What the lightmaps did not cover, the light probes light: the props
 		# placed to be lit by them, once, where they stand; and, through the
 		# field left in the scene, whatever moves.
@@ -314,7 +327,7 @@ func import_map() -> Dictionary:
 		# What is still on Godot's own lighting would then take the sun
 		# through the map, so it goes on the probes too wherever they reach,
 		# as CS2 lights all it does not lightmap.
-		if lightmaps["shadows"]:
+		if lightmaps["shadows"] and field_probes.is_loaded():
 			probes["rest"] = ProbeMaterials.apply_rest(visible_meshes, field_probes, layer_textures_dir)
 			MapShadows.take_out_of_live_shadows(visible_meshes)
 
