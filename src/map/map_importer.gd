@@ -270,15 +270,35 @@ func import_map() -> Dictionary:
 		)
 
 	var blend := BlendMaterials.apply(visible_meshes, layer_textures_dir)
-	var lightmaps := {"surfaces": 0, "props": 0, "found": false, "ambient": null}
-	var probes := {"volumes": 0, "surfaces": 0}
+	var lightmaps := {"surfaces": 0, "props": 0, "found": false, "shadows": false, "ambient": null}
+	var probes := {"volumes": 0, "surfaces": 0, "shadows": false, "rest": 0}
+	var sun_shadow := ""
 	if not lightmaps_dir.is_empty():
 		var map_dir := source_path.get_base_dir().path_join(lightmaps_dir)
-		lightmaps = LightmapMaterials.apply(visible_meshes, map_dir, scale_factor, layer_textures_dir)
+		# The sun's shadow from the static map, as CS2 baked it (MapShadows),
+		# taken only when it is there for everything the sun lights: the
+		# lightmaps' page for their surfaces, and the probes' for all they
+		# light, players included, who would otherwise take the sun indoors.
+		# Otherwise the live shadow map keeps the map, as before.
+		var sun_channel := MapShadows.sun_channel_at(map_dir)
+		var field_probes := LightProbes.load_for(map_dir, sun_channel)
+		if sun_channel < 0:
+			sun_shadow = "the entity lump gives the sun no channel of a baked shadow page"
+		elif not field_probes.is_loaded():
+			sun_shadow = "the baked one needs the light probes too"
+		elif not field_probes.has_sun_shadows():
+			sun_shadow = "no baked shadow page for the light probes; 'scripts/extract_assets.sh lightmaps' fetches it"
+			sun_channel = -1
+		lightmaps = LightmapMaterials.apply(
+			visible_meshes, map_dir, scale_factor, layer_textures_dir, sun_channel if sun_shadow.is_empty() else -1
+		)
+		if not lightmaps["shadows"]:
+			field_probes.sun_channel = -1
+			if sun_shadow.is_empty():
+				sun_shadow = "no baked shadow page; 'scripts/extract_assets.sh lightmaps' fetches it"
 		# What the lightmaps did not cover, the light probes light: the props
 		# placed to be lit by them, once, where they stand; and, through the
 		# field left in the scene, whatever moves.
-		var field_probes := LightProbes.load_for(map_dir)
 		if field_probes.is_loaded():
 			var field := LightProbeField.new()
 			field.name = "LightProbes"
@@ -288,6 +308,15 @@ func import_map() -> Dictionary:
 			probes["surfaces"] = ProbeMaterials.apply(
 				visible_meshes, field_probes, LightmapMaterials.PROP_SHADERS, layer_textures_dir
 			)
+			probes["shadows"] = field_probes.has_sun_shadows()
+		# Its shadows baked, the map need not be drawn into the sun's live
+		# shadow map, which the sun then leaves to what moves (MapLighting).
+		# What is still on Godot's own lighting would then take the sun
+		# through the map, so it goes on the probes too wherever they reach,
+		# as CS2 lights all it does not lightmap.
+		if lightmaps["shadows"]:
+			probes["rest"] = ProbeMaterials.apply_rest(visible_meshes, field_probes, layer_textures_dir)
+			MapShadows.take_out_of_live_shadows(visible_meshes)
 
 	var behind := FarMaterials.apply(visible_meshes) if behind_everything else 0
 
@@ -323,6 +352,8 @@ func import_map() -> Dictionary:
 		"behind": behind,
 		"occluder_triangles": occluder_triangles,
 		"probes": probes,
+		# Why the sun's shadow from the map is drawn live, or "" when it is baked.
+		"sun_shadow": sun_shadow if not lightmaps["shadows"] else "",
 		"materials": materials,
 		"bounds": _bounds(meshes),
 	}
@@ -635,6 +666,13 @@ func _report_text() -> String:
 			lines.append("    light probes: %d volumes, lighting %d more prop surfaces" % [probes["volumes"], probes["surfaces"]])
 		else:
 			lines.append("    no light probes found; run 'scripts/extract_assets.sh lightmaps' for them")
+		if lightmaps["shadows"]:
+			lines.append(
+				"    the sun's shadow from the map: CS2's baked one; the live shadow map draws only what moves (%d more surfaces moved onto the probes)"
+				% probes["rest"]
+			)
+		else:
+			lines.append("    the sun's shadow from the map: live, every frame (%s)" % stats["sun_shadow"])
 		if lightmaps["ambient"] == null:
 			lines.append("    the lightmap's average is not measured yet (scripts/prepare_export.gd); the rest get the sky's light")
 	elif not lightmaps_dir.is_empty():

@@ -93,6 +93,10 @@ func _process(_delta: float) -> void:
 	visible = on_ground or seconds - _blast_at < BLAST_SECONDS
 	global_position = bomb.position
 	_body.visible = on_ground and state != C4.State.EXPLODED
+	if _body.visible:
+		# Lit from the map's light probes where it lies, which hold the map's
+		# shadow from the sun; the live shadow map no longer does.
+		ProbeMaterials.light_model(_body, _body.global_position)
 
 	if state == C4.State.PLANTED:
 		if bomb.planted_usec != _planted_usec:

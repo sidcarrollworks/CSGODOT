@@ -53,16 +53,27 @@ static var _two_sided := {}
 ## Applies the lightmaps under map_dir to every lightmapped surface of these
 ## meshes, whose vertices are still in the export's units, unit_scale map
 ## units each; a prop's decal and self-illumination come from textures_dir
-## (carry_features). Returns {"surfaces": how many, "props": how many of those
-## are props, "found": whether the maps were there, "ambient": the
-## lightmap's average light as a Color, or null if unmeasured}; without the
-## maps nothing changes.
-static func apply(meshes: Array[MeshInstance3D], map_dir: String, unit_scale: float = 1.0, textures_dir: String = "") -> Dictionary:
+## (carry_features). With the sun's channel of the map's baked shadows
+## (MapShadows.sun_channel_at), the page of them goes on too. Returns
+## {"surfaces": how many, "props": how many of those are props, "found":
+## whether the maps were there, "shadows": whether the sun's baked shadow
+## was, "ambient": the lightmap's average light as a Color, or null if
+## unmeasured}; without the maps nothing changes.
+static func apply(
+	meshes: Array[MeshInstance3D], map_dir: String, unit_scale: float = 1.0, textures_dir: String = "", sun_channel: int = -1
+) -> Dictionary:
 	var irradiance := _load(map_dir.path_join(IRRADIANCE_FILE))
 	var direction := _load(map_dir.path_join(DIRECTION_FILE))
 	if irradiance == null or direction == null:
-		return {"surfaces": 0, "props": 0, "found": false, "ambient": null}
+		return {"surfaces": 0, "props": 0, "found": false, "shadows": false, "ambient": null}
 	var lightmap_size := Vector2(irradiance.get_size())
+	var shadows: Texture2D = null
+	if sun_channel >= 0:
+		for file in MapShadows.FILES:
+			shadows = _load(map_dir.path_join(file))
+			if shadows != null:
+				break
+	var sun_mask := MapShadows.channel_mask(sun_channel if shadows != null else -1)
 
 	# Every candidate, and the world's own density to judge the props by.
 	var candidates: Array[Array] = []  # [mesh_instance, surface, material, is_prop, density, in_custom0]
@@ -112,12 +123,24 @@ static func apply(meshes: Array[MeshInstance3D], map_dir: String, unit_scale: fl
 			(material as ShaderMaterial).set_shader_parameter("lightmap_irradiance", irradiance)
 			(material as ShaderMaterial).set_shader_parameter("lightmap_direction", direction)
 			(material as ShaderMaterial).set_shader_parameter("lightmap_energy", ENERGY)
+			set_shadows(material as ShaderMaterial, shadows, sun_mask)
 			continue
 		var key := [material, in_custom0]
 		if not built.has(key):
 			built[key] = build(material as BaseMaterial3D, irradiance, direction, in_custom0, textures_dir)
+			set_shadows(built[key], shadows, sun_mask)
 		mesh_instance.set_surface_override_material(surface, built[key])
-	return {"surfaces": surfaces, "props": props, "found": true, "ambient": read_average(map_dir)}
+	return {
+		"surfaces": surfaces, "props": props, "found": true, "shadows": shadows != null, "ambient": read_average(map_dir),
+	}
+
+
+## Gives a lightmapped material the page of baked shadows and the sun's
+## channel of it (lightmap.gdshaderinc); without the page, no channel,
+## which leaves the sun to the live shadow map.
+static func set_shadows(material: ShaderMaterial, shadows: Texture2D, sun_mask: Vector4) -> void:
+	material.set_shader_parameter("lightmap_shadows", shadows)
+	material.set_shader_parameter("lightmap_sun_channel", sun_mask if shadows != null else Vector4.ZERO)
 
 
 static func is_lightmapped(description: Dictionary) -> bool:

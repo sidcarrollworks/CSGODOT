@@ -397,11 +397,15 @@ list, split into Local and Remote items, with the measurements.
 - **Occlusion culling (R3).** *(done, PR #78, from the collision hull; Sid
   walks long doors and top of mid again)* The camera's pass went from about
   1,170 draw calls to 290.
-- **The sun's shadows as CS2 draws them (R4).** *(Local extracts two files,
-  then Remote; waits on Sid's go)* dust2 ships the static map's sun shadow
-  baked (`direct_light_shadows`), and the probe atlas's `_dlshd` page for
-  what moves. The live shadows cost 2.0 ms of GPU at 1080p, 6.3 ms at 4K
-  and 1.7 ms of the renderer's CPU, from 6,200 draw calls a frame.
+- **The sun's shadows as CS2 draws them (R4).** *(first tier built, PR #N;
+  Sid extracts two files and plays, rendering.md L7)* The map's shadow from
+  the sun comes from CS2's baked pages: `direct_light_shadows` on its
+  surfaces, and the probe atlas's `_dlshd` on everything the probes light,
+  players, dropped guns, grenades and the bomb among them. The live shadow
+  map draws only what moves; drawing the map into it cost 2.0 ms of GPU at
+  1080p, 6.3 ms at 4K and 1.7 ms of the renderer's CPU, from 6,200 draw
+  calls a frame. Next, if the playtest wants crisper edges up close: a
+  static shadow map of the map, rendered once at load.
 - **Research CS2's renderer (R0), reflections from the map's cubemaps (R5)
   and CS2's video settings (R6).** *(Remote, not started)*
 
@@ -721,7 +725,8 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 | Hands | List CS2's binds on a fresh config (`key_listboundkeys`) to confirm the defaults file | Item 12a |
 | Hands | The systems' Local list in `reference/cs2-systems.md`: bomb (C1, the explosion's particles from C3, and decoding C2's damage), grenades (G1 to G5, and G6's particle and smoke textures), knife (K1), sounds (S1, S2) | Phases 4 to 7 |
 | Hands | Run `scripts/profile_render.gd` again at 1080p and 4K, and walk long doors and top of mid, on PR #78 | Rendering R2, R3 |
-| Decide | Whether dust2's sun shadows move to CS2's baked page (R4), and extract `direct_light_shadows` and the probe atlas's `_dlshd` if so | Rendering R4 |
+| Decided | dust2's sun shadows come from CS2's baked pages, the live shadow map drawing only what moves (Sid, 2026-09-25) | Rendering R4 |
+| Hands | Extract `direct_light_shadows` and the probe atlas's `_dlshd` (`scripts/extract_assets.sh lightmaps`), run the dust2 checks, play dust2's shadows beside CS2's, and profile with `live_map_shadows`, on PR #N (rendering.md L7) | Rendering R4 |
 
 ---
 

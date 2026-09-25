@@ -78,6 +78,7 @@ func _process(_delta: float) -> bool:
 		_test_lightmap_materials()
 		_test_far_materials()
 		_test_light_probes()
+		_test_baked_shadows()
 		_test_prop_features()
 		_test_lighting()
 		_spawn_player()
@@ -1694,6 +1695,444 @@ classname                      "light_environment"
 
 func _near(a: float, b: float) -> bool:
 	return absf(a - b) < 0.002
+
+
+## The sun's shadow from the static map, as CS2 baked it (MapShadows): each
+## light's channel of the shadow pages, from the entity lump; the probes'
+## page read at a point, and placed for a shader to read the same; the
+## lightmaps' page handed to the map's materials; the importer taking both
+## pages or neither; the sun leaving the map out of its live shadow map;
+## and what moves put on the probes.
+func _test_baked_shadows() -> void:
+	# As dust2's lump has them: the sun on channel 0, a lamp down lower
+	# tunnels on 1.
+	_check(
+		MapShadows.channel_of({"bakedshadowindex": "2"}) == 2 and MapShadows.channel_of({"bakelightindex": "1"}) == 1
+			and MapShadows.channel_of({}) == -1 and MapShadows.channel_of({"bakedshadowindex": "4"}) == -1,
+		"a light's channel is its bakedshadowindex, or an older map's bakelightindex, 0 to 3, and none without"
+	)
+	var lights: Array[Dictionary] = [
+		{"classname": "light_barn", "bakedshadowindex": "1"}, {"classname": "light_environment", "bakedshadowindex": "0"},
+	]
+	var lamps_only: Array[Dictionary] = [lights[0]]
+	_check(
+		MapShadows.sun_channel(lights) == 0 and MapShadows.sun_channel(lamps_only) == -1
+			and MapShadows.channel_mask(0) == Vector4(1, 0, 0, 0) and MapShadows.channel_mask(2) == Vector4(0, 0, 1, 0)
+			and MapShadows.channel_mask(-1) == Vector4.ZERO,
+		"the sun's channel is light_environment's, picked out of a texel by a one-hot mask; without a sun, no mask"
+	)
+
+	# A texel is 1 where a light is blocked; the shaders are handed how much
+	# of the sun gets through.
+	var texels := Image.create_from_data(2, 1, false, Image.FORMAT_RGBA8, PackedByteArray([255, 0, 64, 255, 0, 255, 192, 0]))
+	var grey := Image.create_from_data(2, 1, false, Image.FORMAT_L8, PackedByteArray([255, 0]))
+	var half_floats := Image.create(2, 1, false, Image.FORMAT_RGBAH)
+	half_floats.set_pixel(0, 0, Color(1, 0, 0, 1))
+	half_floats.set_pixel(1, 0, Color(0, 1, 0, 1))
+	_check(
+		LightProbes.visibility_of(texels, 0) == PackedByteArray([0, 255])
+			and LightProbes.visibility_of(texels, 1) == PackedByteArray([255, 0])
+			and LightProbes.visibility_of(texels, 2) == PackedByteArray([191, 63])
+			and LightProbes.visibility_of(texels, 3) == PackedByteArray([0, 255])
+			and LightProbes.visibility_of(grey, 0) == PackedByteArray([0, 255])
+			and LightProbes.visibility_of(half_floats, 0) == PackedByteArray([0, 255]),
+		"a shadow slice's channel becomes how much of the light gets through, from bytes, grey or half floats"
+	)
+
+	# The probes' page, on an atlas shaped like _test_light_probes': 4 by 4
+	# cells, 2 deep, an outer volume in the first two columns and an inner
+	# one in the last two.
+	var probes := LightProbes.new()
+	var atlas := PackedByteArray()
+	atlas.resize(4 * 4 * 2 * LightProbes.FACES * 6)
+	probes.set_atlas(4, 4, 2, atlas)
+	probes.volumes = [
+		{"origin": Vector3.ZERO, "mins": Vector3(-200, -200, -100), "maxs": Vector3(200, 200, 100), "atlas": Vector3(0, 0, 0), "size": Vector3(2, 4, 2), "level": 0, "voxel": 100.0},
+		{"origin": Vector3(50, 50, 0), "mins": Vector3(-50, -50, -50), "maxs": Vector3(50, 50, 50), "atlas": Vector3(2, 0, 0), "size": Vector3(2, 4, 2), "level": 1, "voxel": 50.0},
+	]
+	# Game (-60, 10, 25) is Source (25, -60, 10), in the outer box only.
+	var inside := Vector3(-60, 10, 25)
+	_check(
+		probes.sun_at(inside) == 1.0 and probes.shadow_placement(inside).is_empty() and probes.sun_texture() == null,
+		"without the page the sun is not cut, and there is nothing to place or draw"
+	)
+	var visibility := PackedByteArray()
+	for i in 4 * 4 * 2:
+		visibility.append((i * 37) % 256)
+	_check(
+		not probes.set_sun(0, PackedByteArray([1, 2, 3])) and probes.set_sun(0, visibility) and probes.has_sun_shadows(),
+		"a page the size of one band of the atlas is taken, and one of another size is not"
+	)
+	# At a cell's centre, that cell: across the atlas (x), down it (the
+	# rows, y) and up it (the slices, z).
+	_check(
+		_near(probes.sun_at(Vector3(-150, -50, -100)), 0.0) and _near(probes.sun_at(Vector3(-150, -50, 100)), 37.0 / 255.0)
+			and _near(probes.sun_at(Vector3(-50, -50, -100)), 148.0 / 255.0)
+			and _near(probes.sun_at(Vector3(-150, 50, -100)), 80.0 / 255.0),
+		"at a cell's centre the sun is that cell's, across, down and up the atlas"
+	)
+	var placement := probes.shadow_placement(inside)
+	_check(
+		placement.size() == 4 and (placement[0] as Vector4).w == 1.0
+			and (placement[2] as Vector3).is_equal_approx(Vector3(0.125, 0.125, 0.25))
+			and (placement[3] as Vector3).is_equal_approx(Vector3(0.375, 0.875, 0.75)),
+		"an instance is told its volume's block of the texture, half a cell in (%s)" % [placement]
+	)
+	# A shader reads the page from a 3D texture where its instance's
+	# placement says: at any point, what it reads must be what the probes do.
+	var worst := 0.0
+	var points: Array[Vector3] = [
+		inside, Vector3(60, 0, 60), Vector3(199, -99, 199), Vector3(-199, 99, -199), Vector3.ZERO,
+		Vector3(95, 45, 45), Vector3(-150, -50, -100), Vector3(120, 70, -30), Vector3(900, 0, 0),
+	]
+	for point in points:
+		worst = maxf(worst, absf(_shader_sun(probes, visibility, probes.shadow_placement(point), point) - probes.sun_at(point)))
+	_check(
+		worst < 1e-5,
+		"a shader placed by the probes reads the sun as they do, blended between cells and half a cell inside each volume (off by %.6f at worst)" % worst
+	)
+	var texture := probes.sun_texture()
+	_check(
+		texture != null and texture.get_width() == 4 and texture.get_height() == 4 and texture.get_depth() == 2
+			and texture.get_format() == Image.FORMAT_R8 and probes.sun_texture() == texture,
+		"the page is one 3D texture the size of a band of the atlas, a byte a cell, made once"
+	)
+
+	# An instance is handed where to read it, and without the page, told not to.
+	var lit := MeshInstance3D.new()
+	lit.mesh = BoxMesh.new()
+	lit.material_override = ProbeMaterials.build(StandardMaterial3D.new())
+	root.add_child(lit)
+	ProbeMaterials.light_instance(lit, probes.cube_at(inside), placement)
+	var given := [
+		lit.get_instance_shader_parameter(&"probe_shadow_scale"), lit.get_instance_shader_parameter(&"probe_shadow_offset"),
+		lit.get_instance_shader_parameter(&"probe_shadow_min"), lit.get_instance_shader_parameter(&"probe_shadow_max"),
+	]
+	ProbeMaterials.light_instance(lit, probes.cube_at(inside))
+	_check(
+		given == placement and lit.get_instance_shader_parameter(&"probe_shadow_scale") == Vector4.ZERO,
+		"an instance is handed its volume's placement as instance uniforms, and without one reads the whole sun"
+	)
+	lit.free()
+
+	var metal := StandardMaterial3D.new()
+	metal.metallic = 0.25
+	var textured := StandardMaterial3D.new()
+	textured.roughness_texture = PlaceholderTexture2D.new()
+	var flat := ProbeMaterials.build(metal).get_shader_parameter("orm_texture") as ImageTexture
+	_check(
+		flat != null and flat == ProbeMaterials.flat_orm(0.25) and flat != ProbeMaterials.flat_orm(1.0)
+			and flat.get_image().get_pixel(0, 0).is_equal_approx(Color(1, 1, 64.0 / 255.0))
+			and ProbeMaterials.build(textured).get_shader_parameter("orm_texture") == textured.roughness_texture,
+		"a material with no occlusion, roughness and metal texture gets one texel of its own metalness, not the shader's all-metal white"
+	)
+
+	# What moves and is not a player (a dropped gun, a grenade and its
+	# smoke, the bomb): its lit materials put on the probe shader the first
+	# time, a glow left as it is, and lit where it is, again once it moves.
+	var field := LightProbeField.new()
+	field.probes = probes
+	root.add_child(field)
+	var model := Node3D.new()
+	var paint := StandardMaterial3D.new()
+	var body := MeshInstance3D.new()
+	body.mesh = BoxMesh.new()
+	(body.mesh as BoxMesh).material = paint
+	model.add_child(body)
+	var glow := MeshInstance3D.new()
+	glow.mesh = BoxMesh.new()
+	var unshaded := StandardMaterial3D.new()
+	unshaded.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	glow.material_override = unshaded
+	model.add_child(glow)
+	var puffs := MultiMeshInstance3D.new()
+	puffs.multimesh = MultiMesh.new()
+	var puff := QuadMesh.new()
+	puff.material = StandardMaterial3D.new()
+	puffs.multimesh.mesh = puff
+	model.add_child(puffs)
+	ProbeMaterials.light_model(model, inside)
+	_check(not model.has_meta(&"probe_lit_by"), "a model not in the scene is left alone")
+	root.add_child(model)
+	ProbeMaterials.light_model(model, inside)
+	_check(
+		body.get_surface_override_material(0) == ProbeMaterials.build(paint) and glow.material_override == unshaded
+			and puffs.material_override == ProbeMaterials.build(puff.material as BaseMaterial3D)
+			and body.get_instance_shader_parameter(&"probe_shadow_scale") == placement[0]
+			and puffs.get_instance_shader_parameter(&"probe_shadow_offset") == placement[1],
+		"a model that moves goes onto the probe shader, its glow left alone, and is lit where it is, the sun's shadow too"
+	)
+	var elsewhere := Vector3(60, 0, 60)
+	ProbeMaterials.light_model(model, inside + Vector3(0.5, 0, 0))
+	var kept: Variant = model.get_meta(&"probe_lit_at")
+	ProbeMaterials.light_model(model, elsewhere)
+	_check(
+		kept == inside and model.get_meta(&"probe_lit_at") == elsewhere
+			and body.get_instance_shader_parameter(&"probe_shadow_offset") == probes.shadow_placement(elsewhere)[1],
+		"and it is lit again only once it has moved a unit"
+	)
+	model.free()
+	field.free()
+
+	# What a baked map leaves on Godot's own lighting: a lit surface where the
+	# probes reach goes on them; a glow, an additive surface, and a mesh
+	# beyond every volume stay as they are.
+	var rest: Array[MeshInstance3D] = []
+	for spec: Array in [[BaseMaterial3D.SHADING_MODE_PER_PIXEL, BaseMaterial3D.BLEND_MODE_MIX, inside],
+			[BaseMaterial3D.SHADING_MODE_UNSHADED, BaseMaterial3D.BLEND_MODE_MIX, inside],
+			[BaseMaterial3D.SHADING_MODE_PER_PIXEL, BaseMaterial3D.BLEND_MODE_ADD, inside],
+			[BaseMaterial3D.SHADING_MODE_PER_PIXEL, BaseMaterial3D.BLEND_MODE_MIX, Vector3(900, 0, 0)]]:
+		var surface := StandardMaterial3D.new()
+		surface.shading_mode = spec[0]
+		surface.blend_mode = spec[1]
+		var box := MeshInstance3D.new()
+		box.mesh = BoxMesh.new()
+		(box.mesh as BoxMesh).material = surface
+		root.add_child(box)
+		box.global_position = spec[2]
+		rest.append(box)
+	var moved := ProbeMaterials.apply_rest(rest, probes)
+	_check(
+		moved == 1 and rest[0].get_surface_override_material(0) is ShaderMaterial
+			and rest[0].get_instance_shader_parameter(&"probe_shadow_scale") == placement[0]
+			and rest[1].get_surface_override_material(0) == null and rest[2].get_surface_override_material(0) == null
+			and rest[3].get_surface_override_material(0) == null,
+		"what a baked map leaves on Godot's own lighting goes on the probes where they reach, but not a glow or an additive surface (%d moved)" % moved
+	)
+	for box in rest:
+		box.free()
+
+	# A map with the lot extracted: its lightmaps and their page of shadows,
+	# its probes' atlas without their page yet, and a lump with the sun's
+	# channel and one probe volume. Not under export_fixture, where the file
+	# search must find that map's world.gltf; and user:// outlives a run, so
+	# the probes' packs from the last one go first.
+	var dir := "user://baked_fixture"
+	var probes_dir := ProjectSettings.globalize_path(dir.path_join(LightProbes.PROBES_DIR))
+	DirAccess.make_dir_recursive_absolute(probes_dir)
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir.path_join("entities")))
+	for file in DirAccess.get_files_at(probes_dir):
+		DirAccess.remove_absolute(probes_dir.path_join(file))
+	var world := Node3D.new()
+	world.name = "World"
+	_add_mesh(world, "Wall", Vector3(64.0, 64.0, 64.0), Vector3.ZERO, VISUAL_MATERIAL)
+	_write_gltf(world, dir.path_join("world.gltf"))
+	Image.create(64, 64, false, Image.FORMAT_RGBAF).save_exr(dir.path_join(LightmapMaterials.IRRADIANCE_FILE))
+	Image.create(64, 64, false, Image.FORMAT_RGBA8).save_png(dir.path_join(LightmapMaterials.DIRECTION_FILE))
+	var page := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	page.fill(Color(1, 0, 0, 1))
+	page.save_png(dir.path_join(MapShadows.FILES[0]))
+	_write_text(dir.path_join(MapShadows.ENTITIES_FILE), """
+====1====
+classname                      "light_environment"
+bakedshadowindex               "0"
+====2====
+classname                      "env_combined_light_probe_volume"
+origin                         [ 0.0, 0.0, 0.0 ]
+box_mins                       [ -200.0, -200.0, -100.0 ]
+box_maxs                       [ 200.0, 200.0, 100.0 ]
+light_probe_size_x             2
+light_probe_size_y             4
+light_probe_size_z             2
+light_probe_atlas_x            0
+light_probe_atlas_y            0
+light_probe_atlas_z            0
+""")
+	_check(
+		MapShadows.sun_channel_at(dir) == 0 and MapShadows.sun_channel_at("user://export_fixture/nowhere") == -1,
+		"the sun's channel is read from the map's entity lump, and is none without one"
+	)
+
+	var wall := StandardMaterial3D.new()
+	wall.set_meta("extras", {"vmat": {"ShaderName": "csgo_lightmappedgeneric.vfx"}})
+	var blend := ShaderMaterial.new()
+	blend.shader = BlendMaterials.SHADER
+	blend.set_meta("extras", {"vmat": {"ShaderName": "csgo_lightmappedgeneric.vfx", "IntParams": {"F_LAYERS": 1.0}}})
+	var quads := ArrayMesh.new()
+	_add_quad(quads, wall, 100.0, 0.5)
+	_add_quad(quads, blend, 100.0, 0.5)
+	var shaded := MeshInstance3D.new()
+	shaded.mesh = quads
+	var shaded_meshes: Array[MeshInstance3D] = [shaded]
+	var with_page := LightmapMaterials.apply(shaded_meshes, dir, 1.0, "", 0)
+	var wall_lit := shaded.get_surface_override_material(0) as ShaderMaterial
+	_check(
+		with_page["shadows"] and wall_lit != null and wall_lit.get_shader_parameter("lightmap_shadows") is Texture2D
+			and wall_lit.get_shader_parameter("lightmap_sun_channel") == Vector4(1, 0, 0, 0)
+			and blend.get_shader_parameter("lightmap_shadows") is Texture2D
+			and blend.get_shader_parameter("lightmap_sun_channel") == Vector4(1, 0, 0, 0),
+		"given the sun's channel, the map's materials and its blend materials read the sun's shadow from the page"
+	)
+	var plain_wall := MeshInstance3D.new()
+	plain_wall.mesh = quads
+	var plain_meshes: Array[MeshInstance3D] = [plain_wall]
+	var without_channel := LightmapMaterials.apply(plain_meshes, dir, 1.0, "", -1)
+	var plain := plain_wall.get_surface_override_material(0) as ShaderMaterial
+	_check(
+		not without_channel["shadows"] and plain != null and plain.get_shader_parameter("lightmap_sun_channel") == Vector4.ZERO
+			and blend.get_shader_parameter("lightmap_sun_channel") == Vector4.ZERO,
+		"without it they read none, which leaves the sun to its live shadow map"
+	)
+	shaded.free()
+	plain_wall.free()
+
+	# The importer takes the baked shadow only where it is there for all the
+	# sun lights: not without the probes, which light the players, nor while
+	# they lack their page; and says why.
+	var bare := _import_baked(dir)
+	var bare_lightmaps: Dictionary = bare.stats.get("lightmaps", {})
+	_check(
+		bare_lightmaps.get("found", false) and not bare_lightmaps.get("shadows", true)
+			and _baked_layers(bare) == Vector2i(0, 1) and String(bare.stats.get("sun_shadow", "")).contains("light probes too"),
+		"without light probes the map keeps its live shadow, and the report says it needs them (%s)" % bare.stats.get("sun_shadow", "")
+	)
+	bare.free()
+	for slice in LightProbes.FACES * 2:
+		Image.create(4, 4, false, Image.FORMAT_RGBH).save_exr(probes_dir.path_join("%s%03d.exr" % [LightProbes.SLICE_STEM, slice]))
+	var first := _import_baked(dir)
+	var first_lightmaps: Dictionary = first.stats.get("lightmaps", {})
+	var first_probes: Dictionary = first.stats.get("probes", {})
+	var first_layers := _baked_layers(first)
+	_check(
+		first_lightmaps.get("found", false) and not first_lightmaps.get("shadows", true) and first_probes.get("volumes", 0) == 1
+			and not first_probes.get("shadows", true) and first_probes.get("rest", -1) == 0
+			and first_layers.x == 0 and first_layers.y > 0
+			and String(first.stats.get("sun_shadow", "")).contains("page for the light probes"),
+		"with the probes' page missing, the map keeps its live shadow, the lightmaps' page goes unused, and the report says why (%s on the baked layer, off it)" % first_layers
+	)
+	first.free()
+
+	# The probes' page: the lower slice blocked from the sun and the upper
+	# open to it, and the next light's channel the other way round.
+	for slice in 2:
+		var shadow := Image.create(4, 4, false, Image.FORMAT_RGBA8)
+		shadow.fill(Color(1, 0, 0, 1) if slice == 0 else Color(0, 1, 0, 1))
+		shadow.save_png(probes_dir.path_join("%s%03d.png" % [LightProbes.SHADOW_STEM, slice]))
+	var loaded := LightProbes.load_for(dir, 0)
+	_check(
+		loaded.has_sun_shadows() and _near(loaded.sun_at(Vector3(-150, -50, -100)), 0.0)
+			and _near(loaded.sun_at(Vector3(-150, 50, -100)), 1.0) and _near(loaded.sun_at(Vector3(-150, 0, -100)), 0.5)
+			and FileAccess.file_exists(probes_dir.path_join(LightProbes.PACKED_SHADOWS)),
+		"the probes' page is read from its slices, lowest first, and packed for next time"
+	)
+	var second := _import_baked(dir)
+	var second_lightmaps: Dictionary = second.stats.get("lightmaps", {})
+	var second_probes: Dictionary = second.stats.get("probes", {})
+	var second_layers := _baked_layers(second)
+	_check(
+		second_lightmaps.get("shadows", false) and second_probes.get("shadows", false)
+			and second_layers.x > 0 and second_layers.y == 0 and second.stats.get("sun_shadow", "?") == "",
+		"with both pages, the map's shadow is the baked one and every drawn mesh is on the layer the sun's live shadow leaves out (%s on it, off it)" % second_layers
+	)
+	var walls := second.find_children("Wall*", "MeshInstance3D", true, false)
+	var wall_on_probes := walls.size() == 1 and (walls[0] as MeshInstance3D).get_active_material(0) is ShaderMaterial \
+		and ((walls[0] as MeshInstance3D).get_active_material(0) as ShaderMaterial).get_shader_parameter("probe_energy") != null
+	_check(
+		second_probes.get("rest", 0) == 1 and wall_on_probes,
+		"and a surface the lightmaps and the props' probes left on Godot's own lighting goes on the probes, so it takes the baked shadow too"
+	)
+	second.free()
+
+	var other := LightProbes.load_for(dir, 1)
+	_check(
+		other.has_sun_shadows() and _near(other.sun_at(Vector3(-150, -50, -100)), 1.0)
+			and _near(other.sun_at(Vector3(-150, 50, -100)), 0.0),
+		"another light's channel is read from the slices again, not from the sun's pack"
+	)
+	for slice in 2:
+		DirAccess.remove_absolute(probes_dir.path_join("%s%03d.png" % [LightProbes.SHADOW_STEM, slice]))
+	var from_pack := LightProbes.load_for(dir, 1)
+	var not_packed := LightProbes.load_for(dir, 0)
+	_check(
+		from_pack.has_sun_shadows() and not not_packed.has_sun_shadows() and not_packed.sun_channel == -1
+			and not LightProbes.load_for(dir).has_sun_shadows(),
+		"a pack is read back for its own channel only, and without a page for the sun's the sun is not cut"
+	)
+	DirAccess.remove_absolute(probes_dir.path_join(LightProbes.PACKED_SHADOWS))
+	for slice in 3:
+		Image.create(4, 4, false, Image.FORMAT_RGBA8).save_png(probes_dir.path_join("%s%03d.png" % [LightProbes.SHADOW_STEM, slice]))
+	_check(
+		not LightProbes.load_for(dir, 0).has_sun_shadows(),
+		"a page of more slices than the atlas has a band is left out, with a warning, not read askew"
+	)
+
+	# The sun, told the map's shadows are baked, leaves the map's layer out
+	# of its live shadow map, and only that; and draws hard edges, keeping
+	# its size for the profiler to put back (RenderVariants).
+	var sun_entity: Array[Dictionary] = [{"classname": "light_environment", "angulardiameter": "0.25"}]
+	var baked_holder := Node3D.new()
+	root.add_child(baked_holder)
+	var baked_used := MapLighting.build(baked_holder, {}, sun_entity, "", null, true)
+	var baked_sun := baked_holder.get_node_or_null("Sun") as DirectionalLight3D
+	var live_holder := Node3D.new()
+	root.add_child(live_holder)
+	var live_used := MapLighting.build(live_holder, {}, sun_entity, "")
+	var live_sun := live_holder.get_node_or_null("Sun") as DirectionalLight3D
+	_check(
+		baked_sun != null and baked_sun.shadow_enabled and baked_sun.shadow_caster_mask == (0xFFFFFFFF & ~MapShadows.LAYER)
+			and is_zero_approx(baked_sun.light_angular_distance)
+			and is_equal_approx(float(baked_sun.get_meta(&"angular_diameter", 0.0)), 0.25)
+			and String(baked_used["shadows"]).begins_with("baked"),
+		"with the map's shadows baked, the sun's live shadow map leaves out the map's layer and only that, with hard edges"
+	)
+	_check(
+		live_sun != null and live_sun.shadow_caster_mask == 0xFFFFFFFF and is_equal_approx(live_sun.light_angular_distance, 0.25)
+			and live_used["shadows"] == "live",
+		"without them the sun's shadow map takes every layer, at the sun's own size, as before"
+	)
+	baked_holder.free()
+	live_holder.free()
+
+
+## What a shader reads from the probes' sun texture at a game-space point,
+## placed as ProbeMaterials places an instance: the texture's linear filter
+## over the eight cells round the point.
+func _shader_sun(probes: LightProbes, visibility: PackedByteArray, placement: Array, at: Vector3) -> float:
+	if placement.is_empty():
+		return 1.0
+	var scale: Vector4 = placement[0]
+	var cell := Vector3(at.z, at.x, at.y) * Vector3(scale.x, scale.y, scale.z) + (placement[1] as Vector3)
+	cell = cell.clamp(placement[2] as Vector3, placement[3] as Vector3)
+	var texel := cell * Vector3(probes.width, probes.height, probes.band) - Vector3.ONE * 0.5
+	var base := texel.floor()
+	var fraction := texel - base
+	var sun := 0.0
+	for corner in 8:
+		var step := Vector3i(corner & 1, (corner >> 1) & 1, (corner >> 2) & 1)
+		var weight := (fraction.x if step.x == 1 else 1.0 - fraction.x) \
+			* (fraction.y if step.y == 1 else 1.0 - fraction.y) \
+			* (fraction.z if step.z == 1 else 1.0 - fraction.z)
+		var x := clampi(int(base.x) + step.x, 0, probes.width - 1)
+		var y := clampi(int(base.y) + step.y, 0, probes.height - 1)
+		var z := clampi(int(base.z) + step.z, 0, probes.band - 1)
+		sun += visibility[(z * probes.height + y) * probes.width + x] / 255.0 * weight
+	return sun
+
+
+## The fixture map under dir, imported with its lightmaps, as the game does.
+func _import_baked(dir: String) -> MapImporter:
+	var importer := MapImporter.new()
+	importer.source_path = dir.path_join("world.gltf")
+	importer.collision_source = MapImporter.CollisionSource.NONE
+	importer.lightmaps_dir = "."
+	importer.report = false
+	root.add_child(importer)
+	return importer
+
+
+## How many of an import's drawn meshes are on MapShadows.LAYER (x), and
+## how many are not (y).
+func _baked_layers(importer: MapImporter) -> Vector2i:
+	var counts := Vector2i.ZERO
+	for node in importer.find_children("*", "MeshInstance3D", true, false):
+		var mesh := node as MeshInstance3D
+		if not mesh.visible:
+			continue
+		if mesh.layers == MapShadows.LAYER:
+			counts.x += 1
+		else:
+			counts.y += 1
+	return counts
 
 
 ## The lighting is a translation of the map's own numbers, so the test is

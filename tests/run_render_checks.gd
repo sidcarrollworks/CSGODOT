@@ -25,9 +25,14 @@ func _initialize() -> void:
 func _build() -> void:
 	_scene = Node3D.new()
 	root.add_child(_scene)
+	# A map whose shadows are baked, as MapLighting sets its sun: the map's
+	# layer left out of the live shadow map. Its angular size is kept apart
+	# from the entity's here, so each variant that sets it shows.
 	_sun = DirectionalLight3D.new()
 	_sun.shadow_enabled = true
-	_sun.light_angular_distance = 0.5
+	_sun.light_angular_distance = 0.25
+	_sun.set_meta(&"angular_diameter", 0.5)
+	_sun.shadow_caster_mask = 0xFFFFFFFF & ~MapShadows.LAYER
 	_sun.directional_shadow_max_distance = 8192.0
 	_scene.add_child(_sun)
 
@@ -63,6 +68,13 @@ func _check_stats() -> void:
 	_check_equal(stats["triangles"], 24, "a box is twelve triangles, two boxes 24")
 	_check_equal(stats["casting_instances"], 1, "the wall casts, the skybox does not")
 	_check_equal(stats["double_sided_casters"], 1, "the wall casts from both faces")
+	_check_equal(stats["sun_casting_instances"], 1, "and into the sun's shadow map, on a layer it takes")
+	_wall.layers = MapShadows.LAYER
+	_check_equal(
+		RenderVariants.scene_stats(_scene)["sun_casting_instances"], 0,
+		"on the layer a map with baked shadows is drawn on, it casts into the lamps' shadows only"
+	)
+	_wall.layers = 1
 	_check_equal(stats["skybox_instances"], 1, "the skybox's mesh is counted as the skybox")
 	_check_equal(stats["skybox_triangles"], 12, "the skybox's triangles")
 
@@ -73,6 +85,7 @@ func _state() -> Dictionary:
 	return {
 		"shadows": _sun.shadow_enabled,
 		"angular": _sun.light_angular_distance,
+		"casters": _sun.shadow_caster_mask,
 		"distance": _sun.directional_shadow_max_distance,
 		"casting": _wall.cast_shadow,
 		"msaa": viewport.msaa_3d,
@@ -87,6 +100,7 @@ func _state() -> Dictionary:
 
 func _check_variants() -> void:
 	var expected := {
+		"live_map_shadows": {"casters": 0xFFFFFFFF, "angular": 0.5},
 		"no_sun_shadows": {"shadows": false},
 		"sun_hard_edges": {"angular": 0.0},
 		"sun_filter_low": {},
