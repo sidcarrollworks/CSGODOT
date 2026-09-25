@@ -145,7 +145,8 @@ func _place_bots() -> void:
 ## What anyone may take in hand, read now rather than when it is bought,
 ## picked up or drawn: every item on either side's menu, the knife and the
 ## bomb, their clips, which every body takes up (the hitboxes ride them),
-## and their models. CS2 precaches every gun as the map loads
+## and their models, which a bot's body shows and your own shadow casts.
+## CS2 precaches every gun as the map loads
 ## (reference/research/weapon-preload.md); the guns no menu holds are
 ## left, since nobody can get one.
 func _prepare_holding() -> void:
