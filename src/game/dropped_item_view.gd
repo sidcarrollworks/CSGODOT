@@ -168,7 +168,7 @@ func _model_for(entry: Inventory.Entry) -> Node3D:
 		model.add_child(scene)
 		var meshes := scene.find_children("*", "MeshInstance3D", true, false)
 		for mesh: MeshInstance3D in meshes:
-			# The body for old hardware, where there is another, and a
+			# The body for legacy skins, where there is another, and a
 			# holster only a body wears.
 			if RigModel.is_spare_body(mesh, meshes) or mesh.name.ends_with("_eholster"):
 				mesh.visible = false

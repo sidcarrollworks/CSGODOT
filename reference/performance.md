@@ -216,10 +216,15 @@ buffer too, as the smoke's always did (not measured). The one hitch left in
 these runs is the profiler's own first frame, as it captures the mouse,
 and it is not recorded.
 
-Open: the other guns' models read ahead too, as the clips are. Each costs
-about 85 MB of video memory (its textures), 2.9 GB for all 34, so they are
-read only as dust2's bots may hold them (`prepare_holding`); a first pickup
-of any other gun still reads its model, in the frame after, not the tick.
+Open: the other guns' models read ahead too, as the clips are. Only the
+16 guns dust2's bots may hold are read (`prepare_holding`), so a first buy
+or pickup of another gun still reads its model, in the frame after, not the
+tick. A gun is 49 MiB of textures and 3 of mesh (not the 85 MB first
+written here: that counted upload buffers in system memory, left by reading
+all 34 at once on workers). CS2 very likely precaches every gun and streams
+their textures; `reference/research/weapon-preload.md` has what it does and
+what to do here: read every model that can appear in the match (about 290
+MiB more), and leave out each gun's hidden legacy body (14%).
 
 ## What has been done about it
 

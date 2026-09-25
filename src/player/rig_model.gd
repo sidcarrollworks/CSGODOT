@@ -495,8 +495,10 @@ static func common_suffix(paths: PackedStringArray) -> String:
 
 
 ## Whether one of a weapon's meshes is the second body its export carries
-## for old hardware (...body_legacy), left out where the weapon has another.
-## The default knives have only that one, and it is their knife.
+## (...body_legacy), left out where the weapon has another. In CS2 it is the
+## body for skins marked use_legacy_model, the old CS:GO finishes; its
+## default shows body_hd. The default knives have only the legacy one, and it
+## is their knife.
 static func is_spare_body(mesh: Node, meshes: Array) -> bool:
 	if not mesh.name.ends_with("body_legacy"):
 		return false
