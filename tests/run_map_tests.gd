@@ -1768,12 +1768,11 @@ func _test_lighting() -> void:
 				% [lamp.global_position, lamp.light_energy]
 		)
 		var full := pow(1.0 - pow((8.33 + 204.85) / lamp.spot_range, 4.0), 2.0)
-		var inner := atan(0.67 * 16.0 * 0.12)
-		var rim := (1.0 - cos(inner)) / (1.0 - cos(deg_to_rad(lamp.spot_angle)))
 		_check(
-			full > 0.94 and absf(1.0 - pow(rim, lamp.spot_angle_attenuation) - MapLighting.LAMP_EDGE_KEPT) < 0.001
+			full > 0.94 and is_equal_approx(lamp.spot_angle_attenuation, 1.0)
+				and is_equal_approx(lamp.shadow_bias, MapLighting.LAMP_SHADOW_BIAS)
 				and absf((spots[1] as SpotLight3D).light_energy - 72870.0 * 850.0 / 3000.0) < 20.0,
-			"it keeps 95% of its light out to CS2's range and inside its soft rim; the dimmer lamp is lit by its own lumens"
+			"it keeps 95% of its light out to CS2's range, fades only near its edge, and shadows at the map's scale; the dimmer lamp is lit by its own lumens"
 		)
 	lit.free()
 

@@ -56,6 +56,14 @@ another, which is how it is seen).
 Headless that is 145 frames a second with ten players and 117 to 128 with
 twenty, all 64 ticks a second in both.
 
+Drawn, and so not in these tables: the two lamps down dust2's lower
+tunnels (`MapLighting.add_lamps`, 2026-09-24) are Godot spot lights with
+shadows, the map's only lights besides the sun. Godot renders a positional
+light's shadow again only when something inside its range moves (its
+lights and shadows documentation), so they cost a shadow pass a frame while
+a player or a bot is in the tunnel and none otherwise. Not measured on the
+GPU yet.
+
 | Now and then | Cost |
 |---|---|
 | A round's holes, sounds and the shooter's body | 0.04 ms |

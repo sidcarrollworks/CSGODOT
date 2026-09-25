@@ -115,6 +115,7 @@ func _import() -> bool:
 	var crates := {"third": 0, "stickers": 0, "probes": 0}
 	var tower: ShaderMaterial = null
 	var lamp: ShaderMaterial = null
+	var lamp_casts := true
 	for node in _importer.get_child(0).find_children("*", "MeshInstance3D", true, false):
 		var mesh_instance := node as MeshInstance3D
 		for surface in mesh_instance.mesh.get_surface_count():
@@ -133,6 +134,7 @@ func _import() -> bool:
 				tower = material
 			elif surface_name == "dust_hanging_light_02_on":
 				lamp = material
+				lamp_casts = mesh_instance.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_check(
 		crates["stickers"] == 0 and crates["third"] > 0,
 		"the painted crates read the lightmap through their third UV set, never their stickers' second (%s)" % [crates]
@@ -147,6 +149,7 @@ func _import() -> bool:
 		glow is Vector3 and (glow as Vector3).x > 1.0 and lamp.get_shader_parameter("self_illum_mask") is Texture2D,
 		"the tunnels' hanging lamps glow (%s; scripts/extract_assets.sh layers)" % [glow]
 	)
+	_check(not lamp_casts, "and cast no shadow, which would put their own light in it (MapLighting.add_lamps)")
 	var probes: Dictionary = stats.get("probes", {})
 	# 943 on 2026-09-24, once the 187 props with their lightmap coordinates in a
 	# third UV set (the crates, towers and arches) moved onto the lightmap.

@@ -28,9 +28,8 @@ const SHADOW_PANCAKE := 4096.0
 ## CS2's lamps shine undimmed to their range. At 2.5 times, what reaches
 ## CS2's range keeps 95% of its light.
 const LAMP_RANGE_BEYOND := 2.5
-## How much of a lamp's light is left at the inner edge of its soft rim:
-## Godot fades a spot as 1 - rim^exponent, where CS2 is full inside the rim.
-const LAMP_EDGE_KEPT := 0.95
+## A lamp's shadow's depth bias, in units (see barn_light).
+const LAMP_SHADOW_BIAS := 1.0
 
 ## Screen-space occlusion reaches this far, in inches. Godot's default is one
 ## metre, which at this scale is one unit: nothing.
@@ -221,7 +220,7 @@ static func is_drawn_live(entity: Dictionary) -> bool:
 ## 1 / size_params.z behind the lamp, size_params.x and y wide either side
 ## there; its lumens are spread over the frustum's solid angle, 40 pi lumens
 ## a steradian at one unit, and fall off as the inverse square from the eye,
-## faded over the outer soft_x of its width. That is the unit the sun's
+## faded over its outer soft_x (a third, on dust2's). That is the unit the sun's
 ## brightness is in, so it takes SUN_ENERGY_PER_BRIGHTNESS as the sun does.
 ## Its shadow is Godot's, in place of the lightmap's baked mask. Null for an
 ## orthographic barn (size_params.z of 0), which is not built.
@@ -243,12 +242,16 @@ static func barn_light(entity: Dictionary) -> SpotLight3D:
 	# The inverse square, in units from the eye.
 	lamp.spot_attenuation = 2.0
 	lamp.spot_range = (near + float(entity.get("range", "512"))) * LAMP_RANGE_BEYOND
-	var half := atan(maxf(size.x, size.y) / near)
-	lamp.spot_angle = rad_to_deg(half)
-	var soft := clampf(float(entity.get("soft_x", "0.25")), 0.01, 0.99)
-	var inner := atan((1.0 - soft) * maxf(size.x, size.y) / near)
-	lamp.spot_angle_attenuation = log(1.0 - LAMP_EDGE_KEPT) / log((1.0 - cos(inner)) / (1.0 - cos(half)))
+	lamp.spot_angle = rad_to_deg(atan(maxf(size.x, size.y) / near))
+	# Godot's own cone fade, at its default exponent of 1: measured on a
+	# plane, it keeps the full light to about three quarters of the angle
+	# and fades over the rest, near CS2's soft third. A larger exponent
+	# darkens the whole cone (at 9, a third of the light 30 degrees in).
+	lamp.spot_angle_attenuation = 1.0
 	lamp.shadow_enabled = int(entity.get("castshadows", "1")) != 0
+	# Godot's 0.03 is for metres: at it, the walls and the floor under the
+	# tunnels' lamps shadowed themselves in stripes.
+	lamp.shadow_bias = LAMP_SHADOW_BIAS
 	lamp.transform = Transform3D(Basis.looking_at(forward, up), eye)
 	return lamp
 
