@@ -23,6 +23,13 @@ uniform sampler2D lightmap_direction : hint_default_white, filter_linear, repeat
 uniform float lightmap_energy = 0.4;
 uniform float lightmap_directional_strength = 1.0;
 
+// The static map's shadow from each light CS2 bakes one for, a channel each
+// and 1 where it is blocked (direct_light_shadows, MapShadows), and which
+// channel is the sun's. Without the page the channel is zero, which reads
+// as no shadow: the sun's live shadow map then draws the map as before.
+uniform sampler2D lightmap_shadows : hint_default_black, filter_linear_mipmap, repeat_disable;
+uniform vec4 lightmap_sun_channel = vec4(0.0);
+
 // Where a surface's lightmap coordinates are: the second UV set, or on a
 // prop whose second set is its own (F_FORCE_UV2: its decal reads it) the
 // third, which Godot imports as CUSTOM0. This include writes vertex(), so a
@@ -57,6 +64,12 @@ vec3 lightmap_indirect(vec2 uv, vec3 tangent_normal) {
 	float n_dot_l = max(dot(light, tangent_normal), 0.0);
 	float light_z = max(light.z, LIGHTMAP_DIRECTIONAL_MIN_Z);
 	return (n_dot_l * (irradiance - undirected) / light_z + undirected) * lightmap_energy;
+}
+
+// How much of the sun reaches a surface past the static map, as CS2 baked
+// it: Source 2 Viewer's lighting.slang takes one minus the sun's channel.
+float lightmap_sun(vec2 uv) {
+	return clamp(1.0 - dot(texture(lightmap_shadows, uv), lightmap_sun_channel), 0.0, 1.0);
 }
 
 // A normal map texel as a tangent-space normal, at a strength.

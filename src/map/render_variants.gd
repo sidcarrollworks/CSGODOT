@@ -11,6 +11,7 @@ extends RefCounted
 ## Every variant, in the order the profiler runs them, and what it tells.
 const VARIANTS := {
 	"baseline": "the game as it is",
+	"live_map_shadows": "the map drawn into the sun's live shadow map again, with its soft edges, as before its shadows were baked (MapShadows): what the baking saves",
 	"no_sun_shadows": "what the sun's four shadow splits cost altogether",
 	"sun_hard_edges": "the soft penumbra (the sun's angular size), the shadow maps kept",
 	"sun_filter_low": "the soft filter at its lowest rather than its highest",
@@ -26,7 +27,7 @@ const VARIANTS := {
 	"no_skybox": "the 3D skybox's meshes hidden",
 	"no_players": "every body but the camera's hidden",
 	"half_resolution": "the 3D drawn at half the width and height: fill rate against the rest",
-	"all_off": "every one of the above at once but culling and resolution: what is left is the map's geometry and materials",
+	"all_off": "every one of the above at once but culling, resolution and the live map shadows: what is left is the map's geometry and materials",
 }
 
 ## A far material includes the squeeze (far.gdshaderinc): the skybox's meshes.
@@ -45,6 +46,14 @@ static func apply(variant: String, root: Node, viewport: Viewport) -> Callable:
 	match variant:
 		"baseline":
 			return func() -> void: pass
+		"live_map_shadows":
+			if sun == null:
+				return func() -> void: pass
+			var undo: Array[Callable] = [
+				_change(sun, "shadow_caster_mask", 0xFFFFFFFF),
+				_change(sun, "light_angular_distance", float(sun.get_meta(&"angular_diameter", sun.light_angular_distance))),
+			]
+			return _together(undo)
 		"no_sun_shadows":
 			return _change(sun, "shadow_enabled", false)
 		"sun_hard_edges":
@@ -111,7 +120,7 @@ static func apply(variant: String, root: Node, viewport: Viewport) -> Callable:
 		"all_off":
 			var undo: Array[Callable] = []
 			for each in VARIANTS:
-				if not each in ["baseline", "all_off", "half_resolution", "no_occlusion", "no_visibility"]:
+				if not each in ["baseline", "all_off", "half_resolution", "no_occlusion", "no_visibility", "live_map_shadows"]:
 					undo.append(apply(each, root, viewport))
 			undo.reverse()
 			return _together(undo)
@@ -164,16 +173,20 @@ static func far_meshes(root: Node) -> Array[MeshInstance3D]:
 
 
 ## What is drawn under root, counted: mesh instances, their surfaces and
-## triangles, how many cast shadows and from both faces, the materials by
-## shader, and the skybox's share. A surface is a draw call in each pass that
-## sees it, and one more in each shadow split that does.
+## triangles, how many cast shadows and from both faces, how many of those
+## into the sun's (a map whose shadows are baked casts into the lamps' only,
+## MapShadows), the materials by shader, and the skybox's share. A surface
+## is a draw call in each pass that sees it, and one more in each shadow
+## split that does.
 static func scene_stats(root: Node) -> Dictionary:
 	var stats := {
 		"instances": 0, "surfaces": 0, "triangles": 0,
-		"casting_instances": 0, "double_sided_casters": 0, "casting_triangles": 0,
+		"casting_instances": 0, "double_sided_casters": 0, "casting_triangles": 0, "sun_casting_instances": 0,
 		"skybox_instances": 0, "skybox_triangles": 0,
 		"materials": 0, "shaders": {},
 	}
+	var sun := sun_of(root)
+	var sun_casters: int = sun.shadow_caster_mask if sun != null and sun.shadow_enabled else 0
 	var materials := {}
 	var far := {}
 	for mesh in far_meshes(root):
@@ -193,6 +206,8 @@ static func scene_stats(root: Node) -> Dictionary:
 		if mesh.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
 			stats["casting_instances"] += 1
 			stats["casting_triangles"] += triangles
+			if mesh.layers & sun_casters != 0:
+				stats["sun_casting_instances"] += 1
 		if mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED:
 			stats["double_sided_casters"] += 1
 		if far.has(mesh):

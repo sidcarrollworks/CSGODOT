@@ -168,6 +168,41 @@ func _import() -> bool:
 	)
 	_check_visibility()
 
+	# The map's shadow from the sun, as CS2 baked it (MapShadows): the
+	# lightmaps' page and the probes', the sun's channel of each, and none
+	# of the map left in the sun's live shadow map.
+	var sun_channel := MapShadows.sun_channel_at(map_file.get_base_dir())
+	_check(sun_channel == 0, "dust2's sun has channel 0 of its baked shadows, as its entity lump says (%d)" % sun_channel)
+	# Drawn ones only: the collision hull's meshes sit under a hidden node.
+	var in_live_shadows := 0
+	for node in _importer.find_children("*", "MeshInstance3D", true, false):
+		if (node as MeshInstance3D).is_visible_in_tree() and (node as MeshInstance3D).layers != MapShadows.LAYER:
+			in_live_shadows += 1
+	_check(
+		lightmaps.get("shadows", false) and probes.get("shadows", false) and in_live_shadows == 0,
+		"the map's shadow from the sun is CS2's baked one, on its surfaces and in its probes, and none of its meshes is drawn into the live shadow map (%d are; scripts/extract_assets.sh lightmaps)"
+			% in_live_shadows
+	)
+	# Down lower tunnels, under the lamp there, no sun gets in; and across
+	# the map the probes hold both sun and shade.
+	var tunnel := SourceEntities.to_game(Vector3(-1040.0, 1424.563354, 44.0))
+	var cells := Vector2i.ZERO
+	if field != null:
+		for i in 32:
+			for j in 32:
+				for k in 4:
+					var point := bounds.position + bounds.size * Vector3((i + 0.5) / 32.0, (k + 0.5) / 4.0, (j + 0.5) / 32.0)
+					if field.volume_at(point) < 0:
+						continue
+					var sun := field.sun_at(point)
+					cells += Vector2i(1 if sun > 0.9 else 0, 1 if sun < 0.1 else 0)
+	_check(
+		field != null and field.has_sun_shadows() and field.volume_at(tunnel) >= 0 and field.sun_at(tunnel) < 0.2
+			and cells.x > 0 and cells.y > 0,
+		"the probes' sun is blocked down lower tunnels (%.2f there) and the map has both sun and shade (%d points lit, %d shaded)"
+			% [field.sun_at(tunnel) if field != null else -1.0, cells.x, cells.y]
+	)
+
 	var entities_path := ProjectSettings.globalize_path(
 		map_file.get_base_dir().path_join(ENTITIES_FILE)
 	)
@@ -186,7 +221,7 @@ func _import() -> bool:
 	_check(not skybox_file.is_empty(), "the 3D skybox is there (scripts/extract_assets.sh skybox)")
 	if not skybox_file.is_empty():
 		# The skybox the game builds, placed as it places it.
-		var skybox: MapImporter = MapLoader.make_skybox(SKYBOX_DIR)
+		var skybox: MapImporter = MapLoader.make_skybox(SKYBOX_DIR, MapShadows.sun_channel(entities))
 		root.add_child(skybox)
 		# Where the sky camera is, read here on its own: scaled up about the
 		# map's origin by its own scale, it must land there.
@@ -208,6 +243,14 @@ func _import() -> bool:
 			sky_lightmaps.get("found", false) and int(sky_lightmaps.get("surfaces", 0)) >= 50,
 			"the skybox has its own baked light, so its walls are not black in shade (%d surfaces; scripts/extract_assets.sh skybox)"
 				% sky_lightmaps.get("surfaces", 0)
+		)
+		# Its buildings' shadows from the sun, which it casts none of live,
+		# from its own baked page (MapLoader.make_skybox).
+		_check(
+			sky_lightmaps.get("shadows", false),
+			"the skybox takes the sun's shadow from its own baked page%s" % (
+				"" if sky_lightmaps.get("shadows", false) else " (%s)" % skybox.stats.get("sun_shadow", "")
+			)
 		)
 		var sky_bounds: AABB = skybox.stats.get("bounds", AABB())
 		var sky_casting := 0

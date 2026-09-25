@@ -210,9 +210,9 @@ func _report() -> void:
 		# base (1920x1080), whatever the window is.
 		DisplayServer.window_get_size().x, DisplayServer.window_get_size().y,
 		_team_size * 2, _views.size(), _measure_frames])
-	print("- Scene: %d mesh instances, %d surfaces, %d triangles, %d materials; %d instances cast shadows (%d from both faces, %d triangles); the 3D skybox %d instances, %d triangles" % [
+	print("- Scene: %d mesh instances, %d surfaces, %d triangles, %d materials; %d instances cast shadows (%d from both faces, %d triangles), %d of them into the sun's; the 3D skybox %d instances, %d triangles" % [
 		stats["instances"], stats["surfaces"], stats["triangles"], stats["materials"],
-		stats["casting_instances"], stats["double_sided_casters"], stats["casting_triangles"],
+		stats["casting_instances"], stats["double_sided_casters"], stats["casting_triangles"], stats["sun_casting_instances"],
 		stats["skybox_instances"], stats["skybox_triangles"]])
 	print("- Materials by shader: %s" % stats["shaders"])
 	print("- Memory: video %.0f MB, of it textures %.0f MB and buffers %.0f MB" % [

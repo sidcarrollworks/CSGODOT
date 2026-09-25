@@ -50,6 +50,7 @@ var _pins: Array[Dictionary] = []
 ## again (light_from), in units.
 const RELIGHT_DISTANCE := 1.0
 var _lit_cube := PackedColorArray()
+var _lit_shadow := []
 var _lit_at := Vector3.INF
 var _lit_by: LightProbes
 
@@ -315,10 +316,11 @@ func light_from(at: Vector3) -> void:
 		return
 	if probes != _lit_by or at.distance_squared_to(_lit_at) >= RELIGHT_DISTANCE * RELIGHT_DISTANCE:
 		_lit_cube = probes.cube_at(at)
+		_lit_shadow = probes.shadow_placement(at)
 		_lit_at = at
 		_lit_by = probes
 	for mesh in find_children("*", "MeshInstance3D", true, false):
-		ProbeMaterials.light_instance(mesh as MeshInstance3D, _lit_cube)
+		ProbeMaterials.light_instance(mesh as MeshInstance3D, _lit_cube, _lit_shadow)
 
 
 ## Keeps a node on a bone of the character rig, every time the rig updates.

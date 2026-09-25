@@ -39,10 +39,13 @@ const OCCLUSION_RADIUS := 24.0
 ## Adds a sun and a WorldEnvironment under parent. sun is what MapImporter
 ## reports ({"basis", "color"}), or empty; entities is the parsed entity lump,
 ## or empty; sky_path is the res:// path of the sky panorama, or "";
-## bounce is the lightmap's average light (LightmapMaterials), or null.
+## bounce is the lightmap's average light (LightmapMaterials), or null;
+## baked_shadows, whether the map's shadow from the sun is CS2's baked one
+## (MapShadows), which the live shadow map then leaves to what moves.
 ## Returns what was used, for the report.
 static func build(
-	parent: Node, sun: Dictionary, entities: Array[Dictionary], sky_path: String, bounce: Variant = null
+	parent: Node, sun: Dictionary, entities: Array[Dictionary], sky_path: String, bounce: Variant = null,
+	baked_shadows: bool = false
 ) -> Dictionary:
 	var sun_entity := _first(entities, "light_environment")
 	var fog_entity := _first(entities, "env_cubemap_fog")
@@ -80,6 +83,16 @@ static func build(
 	# took it. dust2's roofs stand about 1,100 units over its streets, 1,400
 	# along its 50-degree sun; this covers any map's at any sun above 15.
 	light.directional_shadow_pancake_size = SHADOW_PANCAKE
+	light.set_meta(&"angular_diameter", light.light_angular_distance)
+	if baked_shadows:
+		# The map's own shadow is baked into its surfaces and probes, so the
+		# live shadow map leaves out the layer the map is on and draws only
+		# what moves. That is a body or smaller, whose shadow the sun's size
+		# in the sky softens by under a unit, so the soft penumbra's search,
+		# run at every pixel (3.2 ms of the frame at 3840x2160, measured
+		# with the map in the shadow map), is turned off.
+		light.shadow_caster_mask = 0xFFFFFFFF & ~MapShadows.LAYER
+		light.light_angular_distance = 0.0
 	parent.add_child(light)
 
 	var environment := Environment.new()
@@ -167,6 +180,7 @@ static func build(
 
 	return {
 		"sun_energy": light.light_energy,
+		"shadows": "baked, live for what moves" if baked_shadows else "live",
 		"lamps": lamps["built"],
 		"lamps_left_out": lamps["left_out"],
 		"ambient": "the lightmap's average" if bounce is Color else "the sky",

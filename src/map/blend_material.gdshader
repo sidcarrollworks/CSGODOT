@@ -87,4 +87,5 @@ void fragment() {
 	AO = orm.r;
 	METALLIC = 0.0;
 	baked_light = orm.r * lightmap_indirect(lightmap_uv, lightmap_tangent_normal(normal_rg, 1.0));
+	baked_sun = lightmap_sun(lightmap_uv);
 }

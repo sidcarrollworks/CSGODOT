@@ -205,3 +205,10 @@ lights_and_shadows/directional_shadow/size=8192
 lights_and_shadows/directional_shadow/soft_shadow_filter_quality=4
 anti_aliasing/quality/msaa_3d=2
 occlusion_culling/use_occlusion_culling=true
+
+[shader_globals]
+
+probe_sun_visibility={
+"type": "sampler3D",
+"value": ""
+}

@@ -56,11 +56,22 @@ import_assets() {
 	done
 
 	local started=$SECONDS
+	rm -f "$log.first"
 	if ! "$godot" --headless --path "$project" --import >"$log" 2>&1; then
-		echo "Godot's import failed. The end of $log:" >&2
-		tail -n 20 "$log" >&2
-		return 1
+		# Godot can finish an import and crash on its way out: on Sid's
+		# machine it did the first time dust2's baked shadow pages were
+		# imported (2026-09-25), and a second run found nothing left to do
+		# and exited cleanly. So it runs once more, and only a second
+		# failure is a real one.
+		mv "$log" "$log.first"
+		echo "Godot's import exited with an error; running it once more. The first run's log: $log.first" >&2
+		if ! "$godot" --headless --path "$project" --import >"$log" 2>&1; then
+			echo "Godot's import failed. The end of $log:" >&2
+			tail -n 20 "$log" >&2
+			return 1
+		fi
 	fi
 	echo "Imported in $((SECONDS - started))s."
-	grep -aE '^(ERROR|WARNING):' "$log" | grep -v 'load-time scene is not defined' | sort | uniq -c | head -n 10 || true
+	cat "$log.first" "$log" 2>/dev/null | grep -aE '^(ERROR|WARNING):' | grep -v 'load-time scene is not defined' \
+		| sort | uniq -c | head -n 10 || true
 }
