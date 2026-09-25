@@ -112,8 +112,8 @@ func _on_removed(entity: SimEntity) -> void:
 func _process(_delta: float) -> void:
 	if game == null:
 		return
-	var fraction := Engine.get_physics_interpolation_fraction()
-	var now := SimClock.draw_usec()
+	var fraction := DrawClock.fraction()
+	var now := DrawClock.usec()
 	for id: int in _entities:
 		var entity: SimEntity = _entities[id]
 		if entity is GrenadeEntity:

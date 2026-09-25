@@ -225,7 +225,7 @@ func pose_skeleton(alpha: float = -1.0) -> void:
 	if _skeleton == null or not is_instance_valid(_skeleton):
 		return
 	if alpha < 0.0:
-		alpha = clampf(Engine.get_physics_interpolation_fraction(), 0.0, 1.0)
+		alpha = DrawClock.fraction()
 	var world_to_skeleton := _skeleton.global_transform.affine_inverse()
 	for bone in _order:
 		var body: RigidBody3D = bodies[_host[bone]]

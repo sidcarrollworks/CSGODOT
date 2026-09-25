@@ -420,6 +420,13 @@ list, split into Local and Remote items, with the measurements.
   calls a frame. Next, if the playtest wants crisper edges up close: a
   static shadow map of the map, rendered once at load, since dust2 ships
   none (L6).
+- **Even frames.** *(done, 2026-09-24; Sid plays and says whether the
+  tearing is gone)* Sid saw dust2 choppy at 4K, most when turning fast. A
+  frame that runs a tick (4.5 ms with the bots) drew the world and the view
+  4.5 ms behind the rest; now each frame is drawn where the clock is
+  (`DrawClock`, `physics_jitter_fix` 0) and the mouse is read just before
+  the view is placed: turning 1.7 ms off a steady turn to 0.7, flying 2.5
+  to 4.2 ms to 0.6 (performance.md, "Frame pacing").
 - **Screen-space occlusion off.** *(done, the Godot docs audit)* It
   darkened ambient light only, which no map material takes, so it drew
   nothing and cost 0.6 to 0.95 ms a frame at 4K (rendering.md,
@@ -690,6 +697,11 @@ list, split into Local and Remote items, with the measurements.
 26. **Menus and settings.** *(Remote)* Main menu, pause, host and join, team
     select, and settings for sensitivity (already in CS2's units), crosshair,
     viewmodel, rebinding the keys of item 12a's table, audio and video.
+    Video includes, from the frame pacing work (performance.md, "Frame
+    pacing"): exclusive fullscreen, where G-Sync and FreeSync engage by
+    default, and a frame cap just under the refresh for such screens
+    (`r - r * r / 3600`, 224 at 240 Hz, about what NVIDIA Reflex sets in
+    CS2), which a fixed-refresh screen does not want.
 27. **An exported build** *(Local)*, so a playtest does not need the editor.
     The extracted assets stay outside it.
 

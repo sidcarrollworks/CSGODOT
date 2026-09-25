@@ -117,6 +117,58 @@ Memory: 1.94 GB static in a headless run, 146 MB of it the light probe
 atlas, of which the probe volumes use 48.6%. 28,000 objects and 4,600
 nodes, and no orphan nodes after fifteen seconds of fighting.
 
+## Frame pacing
+
+Sid's machine (RTX 4070 Ti, a 240 Hz screen), dust2 with ten players at
+3840x2160 fullscreen, V-Sync on (Godot's default), 2026-09-24: how evenly
+frames come, and how evenly what they draw moves.
+
+- A frame that runs a tick takes 7.4 to 7.9 ms, one that does not 3.1 to
+  3.2 (medians): the tick is about 4.5 ms of the main thread with the bots,
+  and at 210 to 230 frames a second one frame in three or four runs one.
+  Without the bots the frames that tick take 4.6 ms and the rest lock to
+  the screen's 240 Hz.
+- Godot takes its tick fraction at a frame's start, before the frame's
+  tick runs, and the mouse's movement is read then too. So a frame that ran
+  a tick drew the world and the view 4.5 ms behind the rest, and motion
+  stepped unevenly (judder), worst when turning fast. It is drawn now as
+  far between the ticks as the clock says when it is drawn (`DrawClock`,
+  with `physics_jitter_fix` 0 so the ticks keep to the clock), and the view
+  takes in the mouse's movement just before it places the camera.
+
+Against when each frame finished drawing (`RenderingServer.frame_post_draw`),
+from a straight line fitted to where the camera was drawn over five
+seconds: flying straight at 250 units a second (noclip), and turning at 600
+degrees a second with the mouse moved through Windows' own input path
+(`mouse_event`, from a compiled helper, 13,636 counts a second at
+sensitivity 2). "Uneven" is the spread of each frame's step against its
+time.
+
+| | Before | After |
+|---|---|---|
+| Flying: off a steady line | 2.5 to 4.2 ms rms, 35% uneven | 0.6 ms, 20% |
+| Turning: off a steady turn | 1.7 ms rms (1.0 degree), 65% | 0.7 ms (0.4 degree), 22% |
+
+The same with the turn fed in by script at each frame's start: 1.9 ms
+before, 0.5 after. Exclusive fullscreen with the frame rate capped just
+under the refresh took the flight from 0.46 to 0.41 ms. That cap is the
+docs' advice for a variable refresh screen with V-Sync on (G-Sync or
+FreeSync): `r - r * r / 3600`, 224 at 240 Hz, keeps frames inside the
+screen's range (`application/run/max_fps`). Sid plays CS2 with G-Sync,
+V-Sync and NVIDIA Reflex, and Reflex sets about that cap there, besides
+keeping the queue of frames short (Godot's nearest is
+`rendering/rendering_device/vsync/frame_queue_size`, 2 by default; not
+measured here). On a fixed
+refresh screen the same cap shows some frames twice, and the game cannot
+tell which screen it has, so it is a setting for the menus (item 26), not
+a default. Tearing a frame timer cannot see: the game asks for V-Sync, and
+run from the editor it plays embedded in the editor's Game view (Godot
+4.7's default), which cannot go fullscreen, where G-Sync engages by
+default.
+
+What is left is the tick's own 4.5 ms in the frame that runs it, which only
+a cheaper tick removes (the bots' movement is most of it, "Where it goes").
+
 ## What has been done about it
 
 | Change | Where | Effect |
@@ -134,6 +186,7 @@ nodes, and no orphan nodes after fifteen seconds of fighting.
 | One world runs the tick (`GameWorld`), the two path searches a tick its to give out | PR #50 | nothing, as it should: every tick's callbacks in the engine's order, main against it, 3.04, 2.97 and 2.63 ms against 3.00, 2.93 and 2.59 with ten players, window for window; with twenty, 6.75, 7.60 and 7.42 against 6.70, 7.82 and 7.65 |
 | A weapon's recoil solved once for each pattern, and the pattern read once | fix/equip-hitch | every weapon built (a gun drawn, any respawn) solved its pushes again: 15 ms, a frozen frame each time a gun was drawn, and 15 ms a player respawned at a fresh round's start; now 0.01 ms, and a draw 18 ms to 0.64 |
 | A gun's recoil numbers carried by its copies (`WeaponData`'s solved fields stored, solved as the registry builds each gun) | the Godot docs audit | every new gun (a buy, a pickup, a round's pistols) solved its weapon model's hold time again on the first tick it was held: 20 to 22 ms, more than a tick; now 1 us, and `ItemRegistry.load_all` 17 ms to 69 |
+| Frames drawn where the clock is: `physics_jitter_fix` 0, `DrawClock`, and the mouse read just before the view is placed | frame pacing | a frame that ran a tick was drawn 4.5 ms behind; flying 2.5 to 4.2 ms off a steady line to 0.6, turning 1.7 to 0.7 ("Frame pacing") |
 
 A tick at 64 costs a little more than one at 128 did: it moves everyone
 twice as far, with more to meet on the way, and holds twice the rounds and

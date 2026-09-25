@@ -238,7 +238,7 @@ func death_cam_position(centre: Vector3, yaw_degrees: float, pitch_degrees: floa
 ## or, in chase, from behind and above them the way the death camera
 ## watches your own body, turned by the mouse.
 func _spectate(watched: PlayerSim) -> void:
-	var alpha := clampf(Engine.get_physics_interpolation_fraction(), 0.0, 1.0)
+	var alpha := DrawClock.fraction()
 	var at := watched.previous_position.lerp(watched.global_position, alpha)
 	if player.observing_chase:
 		_watch(null)
@@ -409,6 +409,14 @@ func _physics_process(_delta: float) -> void:
 func _process(delta: float) -> void:
 	if camera == null:
 		return
+	# The mouse's movement since the frame began, taken in now, just before
+	# the view is placed, rather than at the next frame's start. A frame that
+	# runs a tick is drawn some 4.5 ms after it began (dust2, ten players),
+	# and a turn read only at the start stepped unevenly on every such frame:
+	# 1.7 ms off a steady turn, against 0.7 read here too (a real mouse,
+	# reference/performance.md, "Frame pacing").
+	DisplayServer.process_events()
+	Input.flush_buffered_events()
 	_follow_scope()
 	if _dead_for >= 0.0:
 		var watched := player.observing
@@ -422,7 +430,7 @@ func _process(delta: float) -> void:
 	# Between the last two simulation positions, by how far this frame falls
 	# between their ticks, so the view is smooth at any framerate rather than
 	# stepping at the 64 Hz tick.
-	var alpha := clampf(Engine.get_physics_interpolation_fraction(), 0.0, 1.0)
+	var alpha := DrawClock.fraction()
 	var interpolated := player.previous_position.lerp(player.global_position, alpha)
 
 	camera.global_position = interpolated + Vector3.UP * player.eye_height()
@@ -466,7 +474,7 @@ func _follow_scope() -> void:
 	var hidden := false
 	var sensitivity := 1.0
 	if weapon != null and weapon.data.zoom_levels() > 0:
-		fov = weapon.zoom_fov_at(SimClock.draw_usec())
+		fov = weapon.zoom_fov_at(DrawClock.usec())
 		hidden = weapon.through_scope()
 		sensitivity = weapon.data.zoom_fov(weapon.zoom_level) / ViewModelProjection.WORLD_FOV * ZOOM_SENSITIVITY_RATIO
 	player.input.zoom_sensitivity = sensitivity
@@ -505,7 +513,7 @@ func _update_viewmodel(delta: float) -> void:
 		delta, player.velocity, player.on_ground,
 		Vector2(player.input.yaw_degrees, player.input.pitch_degrees)
 	)
-	var alpha := clampf(Engine.get_physics_interpolation_fraction(), 0.0, 1.0)
+	var alpha := DrawClock.fraction()
 	var punch := player.weapon.viewmodel_punch() if player.weapon != null else Vector2.ZERO
 	var kick := player.previous_viewmodel_punch.lerp(punch, alpha)
 	viewmodel.transform = Transform3D(

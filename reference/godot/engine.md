@@ -285,7 +285,7 @@ Sources: `engine_details/architecture/core_types.rst`, `common_engine_methods_an
 ## Where the code already does this
 
 - `src/sim/game_world.gd:69`: `process_physics_priority = -1000` so the world's `_physics_process` (`:106`) runs the tick first, before the physics server step.
-- `src/sim/sim_clock.gd`: simulation time from `Engine.physics_ticks_per_second`, `Engine.get_physics_frames()` (fallback), and `Engine.get_physics_interpolation_fraction()` for draw time. The same fraction is read in `src/player/player_view.gd:241,425,508`, `src/bots/bot.gd:225`, `src/combat/ragdoll.gd:228`, `src/game/dropped_item_view.gd:77`, `src/grenades/grenade_view.gd:115`.
+- `src/sim/sim_clock.gd`: simulation time from `Engine.physics_ticks_per_second` and `Engine.get_physics_frames()` (fallback). Every view draws between ticks by `DrawClock` (`src/sim/draw_clock.gd`): the fraction from the wall clock when the frame is drawn, from where the frame's last tick stood (its start less `Engine.get_physics_interpolation_fraction()` of a tick, stamped on `SceneTree.physics_frame`).
 - `src/movement/player_body.gd:592-594`: every hull trace goes through `move_and_collide()` and is counted in `traces`; `:605-623` quadrant rays with `PhysicsRayQueryParameters3D.create` per ray.
 - `src/combat/hitscan.gd:85-224`: hitscan and penetration with `intersect_ray` and a fresh query object per ray.
 - `scripts/profile_dust2.gd`: an `extends SceneTree` script run with `--headless --script ... -- <team size> <windows>`, timing with `Time.get_ticks_usec()`, `Engine.get_process_frames()`, and `Performance.get_monitor(MEMORY_STATIC / OBJECT_COUNT / OBJECT_NODE_COUNT / OBJECT_RESOURCE_COUNT / OBJECT_ORPHAN_NODE_COUNT)`; it builds a marker node from `GDScript.new()` source to time the physics server step.
@@ -297,7 +297,7 @@ Sources: `engine_details/architecture/core_types.rst`, `common_engine_methods_an
 - No `.gdextension` file, godot-cpp checkout, SConstruct, custom build or build profile exists in the repo.
 
 Looks at odds with the docs (not verified):
-- `project.godot:188-200` does not set `physics/common/physics_jitter_fix`, so it is 0.5. The project draws between ticks with its own interpolation (`SimClock.draw_usec()`, `src/sim/sim_clock.gd:66-68`) and is heading for networked play; `classes/class_engine.rst` and `class_projectsettings.rst` recommend `0` for both cases. Worth a measured check of whether ticks drift from real time with the default (a Local check, since the effect is in frame pacing).
+- Fixed: `project.godot` left `physics/common/physics_jitter_fix` at 0.5, where the docs recommend `0` for a custom interpolation and a network game. It is 0 now, which `DrawClock` needs; measured on Sid's machine, it and `DrawClock` took the drawn motion from 2.5 to 4.2 ms off a steady line to about 0.6 (`reference/performance.md`, "Frame pacing").
 - `tests/run_model_checks.gd` times out on `Time.get_ticks_usec()` (wall clock) while waiting for tick-driven events; fine for a harness, but under `--fixed-fps` or a slow CI runner the wall-clock bounds and the tick count diverge (inferred).
 
 ## Not covered here
