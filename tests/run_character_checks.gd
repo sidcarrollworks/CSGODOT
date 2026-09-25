@@ -134,7 +134,9 @@ func _flag(lit: ShaderMaterial, name: String) -> bool:
 
 
 func _test_shader_code() -> void:
-	var code := CharacterMaterials.SHADER.code
+	# Read as ProbeMaterials.shader_for reads it: a checkout on Windows has
+	# the shader's lines end in CRLF.
+	var code := CharacterMaterials.SHADER.code.replace("\r\n", "\n")
 	_check(
 		code.contains("\tIRRADIANCE = vec4(") and not code.contains("ambient_light_disabled")
 			and code.contains("ambient_from_probes);"),
@@ -163,7 +165,7 @@ func _test_shader_code() -> void:
 func _instance_uniforms(code: String) -> PackedStringArray:
 	var names := PackedStringArray()
 	var pattern := RegEx.create_from_string("instance uniform \\w+ (\\w+)")
-	for line in code.split("\n"):
+	for line in code.replace("\r\n", "\n").split("\n"):
 		if line.begins_with("#include \""):
 			var include := load(line.trim_prefix("#include \"").trim_suffix("\"")) as ShaderInclude
 			names.append_array(_instance_uniforms(include.code) if include != null else PackedStringArray(["?"]))
