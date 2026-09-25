@@ -701,7 +701,10 @@ list, split into Local and Remote items, with the measurements.
     pacing"): exclusive fullscreen, where G-Sync and FreeSync engage by
     default, and a frame cap just under the refresh for such screens
     (`r - r * r / 3600`, 224 at 240 Hz, about what NVIDIA Reflex sets in
-    CS2), which a fixed-refresh screen does not want.
+    CS2), which a fixed-refresh screen does not want. Both are the game's
+    defaults since 2026-09-24 (`project.godot`'s window mode,
+    `PlayerView.frame_cap`), changed in Project Settings until the menus
+    carry them.
 27. **An exported build** *(Local)*, so a playtest does not need the editor.
     The extracted assets stay outside it.
 

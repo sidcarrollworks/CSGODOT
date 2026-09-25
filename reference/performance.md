@@ -158,13 +158,17 @@ screen's range (`application/run/max_fps`). Sid plays CS2 with G-Sync,
 V-Sync and NVIDIA Reflex, and Reflex sets about that cap there, besides
 keeping the queue of frames short (Godot's nearest is
 `rendering/rendering_device/vsync/frame_queue_size`, 2 by default; not
-measured here). On a fixed
-refresh screen the same cap shows some frames twice, and the game cannot
-tell which screen it has, so it is a setting for the menus (item 26), not
-a default. Tearing a frame timer cannot see: the game asks for V-Sync, and
-run from the editor it plays embedded in the editor's Game view (Godot
-4.7's default), which cannot go fullscreen, where G-Sync engages by
-default.
+measured here). Both are how
+the game starts now, as Sid plays CS2: exclusive fullscreen
+(`display/window/size/mode` 4 in `project.godot`), which also runs it out
+of the editor's embedded Game view, since embedding works only windowed
+and G-Sync by default engages only fullscreen; and the cap, worked out from
+the screen's refresh when the view starts (`PlayerView.frame_cap`),
+measured at 224 on Sid's 240 Hz screen with the turn still 0.66 ms off. On
+a fixed refresh screen the cap shows some frames twice: there, set Max FPS
+in Project Settings (`application/run/max_fps`) to the refresh or above,
+which wins over it, as CS2's `fps_max` would. Tearing a frame timer cannot
+see.
 
 What is left is the tick's own 4.5 ms in the frame that runs it, which only
 a cheaper tick removes (the bots' movement is most of it, "Where it goes").

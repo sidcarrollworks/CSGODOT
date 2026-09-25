@@ -114,6 +114,7 @@ Source: godot-docs branch 4.7 @9adca4c (2026-09-21). Read when: building or chan
 - `src/ui/crosshair.gd`: a full-rect Control with `MOUSE_FILTER_IGNORE`, drawn in `_draw()` from the centre, redrawn on value change and on `size_changed`.
 - `src/ui/scope_overlay.gd`, `src/ui/damage_indicator.gd`, `src/grenades/flash_overlay.gd` (`ColorRect`): full-rect, `IGNORE`, drawn per frame.
 - `src/ui/movement_hud.gd`: its own `CanvasLayer` with one Label.
+- `project.godot` starts the game in `WINDOW_MODE_EXCLUSIVE_FULLSCREEN` (`display/window/size/mode=4`), as the docs recommend for games; `display/window/size/mode` also decides the editor's game embedding, which works only windowed, so Play runs the game in its own fullscreen window. `PlayerView` caps the frame rate just under the screen's refresh (`frame_cap`) unless Max FPS is set.
 - `src/economy/buy_menu.gd`: a full-rect `IGNORE` root, a `PanelContainer` with `StyleBoxFlat` centred with `GROW_DIRECTION_BOTH`, VBox/HBox columns, Buttons with `FOCUS_NONE` and item icons, input in `_input`.
 
 Looks at odds with the docs (not verified in play):

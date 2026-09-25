@@ -4,12 +4,14 @@ extends SceneTree
 ## profile_dust2.gd times the script headless, this draws, so it needs the
 ## GPU and the extracted map, and runs on Sid's machine:
 ##
-##   godot --path . --resolution 1920x1080 --script scripts/profile_render.gd -- [team size] [frames]
+##   godot --path . --script scripts/profile_render.gd -- [team size] [frames] [size]
 ##
 ## Team size 5 is ten players (you and nine bots), 1 is you alone; frames is
-## how many are measured at each view (60). --resolution is Godot's own flag,
-## and 3840x2160 is the other size worth a run; the window has to fit the
-## screen, so the size actually drawn is printed with the results.
+## how many are measured at each view (60). Without a size it draws as the
+## game does, fullscreen at the screen's own size (3840x2160 on Sid's); with
+## one, such as 1920x1080, in a window that size. Godot's --resolution does
+## nothing here, as the project starts in exclusive fullscreen. The size
+## actually drawn is printed with the results.
 ##
 ## A camera of its own looks from both sides' first spawn points at eye
 ## height, four ways each (eight views, the same every run), so the map is
@@ -33,6 +35,7 @@ const EYE_HEIGHT := 64.0
 
 var _team_size := 5
 var _measure_frames := 60
+var _window_size := Vector2i.ZERO
 var _dust2: Node
 var _camera: Camera3D
 var _views: Array[Transform3D] = []
@@ -52,12 +55,17 @@ func _initialize() -> void:
 		_team_size = int(args[0])
 	if args.size() >= 2:
 		_measure_frames = maxi(1, int(args[1]))
+	if args.size() >= 3 and args[2].contains("x"):
+		_window_size = Vector2i(int(args[2].get_slice("x", 0)), int(args[2].get_slice("x", 1)))
 	if DisplayServer.get_name() == "headless":
 		printerr("profile_render draws, so it cannot run headless. Leave out --headless.")
 		quit(1)
 		return
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	Engine.max_fps = 0
+	if _window_size != Vector2i.ZERO:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+		DisplayServer.window_set_size(_window_size)
 	_dust2 = (load("res://maps/de_dust2/de_dust2.tscn") as PackedScene).instantiate()
 	_dust2.set("team_size", _team_size)
 	root.add_child(_dust2)
@@ -98,6 +106,9 @@ func _process(_delta: float) -> bool:
 
 ## A camera of its own, and the views it takes.
 func _begin() -> void:
+	# The game's view caps the frame rate under the refresh (PlayerView);
+	# measured, nothing is held back.
+	Engine.max_fps = 0
 	var viewport := root
 	RenderingServer.viewport_set_measure_render_time(viewport.get_viewport_rid(), true)
 
