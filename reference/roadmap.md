@@ -429,7 +429,10 @@ list, split into Local and Remote items, with the measurements.
   4.5 ms behind the rest; now each frame is drawn where the clock is
   (`DrawClock`, `physics_jitter_fix` 0) and the mouse is read just before
   the view is placed: turning 1.7 ms off a steady turn to 0.7, flying 2.5
-  to 4.2 ms to 0.6 (performance.md, "Frame pacing").
+  to 4.2 ms to 0.6 (performance.md, "Frame pacing"). For the tearing, the
+  game starts in exclusive fullscreen with frames held just under the
+  refresh, where G-Sync engages, as Sid plays CS2
+  (feature/fullscreen-frame-cap).
 - **Frame times against CS2's.** *(first-use hitches done,
   perf/no-first-use-hitches; Sid plays)* The goal, from Sid's CS2 at 4K
   with his settings (2026-09-25): 5.5 ms a frame walking round a

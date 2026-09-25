@@ -1,11 +1,13 @@
 extends SceneTree
 
-## Frame times on dust2 as it is played, out of combat and in it, to set
-## beside Sid's CS2 (performance.md, "Against CS2"). It draws, so it needs
-## the GPU and the extracted map, and runs on Sid's machine:
+## Frame times on dust2 in play, out of combat and in it, to set beside
+## Sid's CS2 (performance.md, "Against CS2"). It draws, so it needs the GPU
+## and the extracted map, and runs on Sid's machine:
 ##
-##   godot --path . --fullscreen --script scripts/profile_combat.gd -- [seconds]
+##   godot --path . --script scripts/profile_combat.gd -- [seconds] [as-played]
 ##
+## The game starts in exclusive fullscreen (project.godot); Godot's
+## --fullscreen would ask for plain fullscreen instead, so leave it off.
 ## seconds is how long it records (75). You ride along with a bot, at its
 ## eyes, looking where it looks and firing when it fires, so your own gun,
 ## flash, tracers and holes are in the frame with everyone else's; nothing
@@ -21,8 +23,9 @@ extends SceneTree
 ## scripts, and the rest: drawing and input) and the pipelines the renderer
 ## compiled in it; then the tick. V-Sync is off and the frame rate
 ## unlimited, so what is measured is what a frame costs; with as-played
-## after the seconds (-- 75 as-played) they are left as the project sets
-## them, so what is measured is what is seen.
+## after the seconds (-- 75 as-played) they are left as the game sets
+## them, V-Sync on and frames held just under the screen's refresh
+## (PlayerView.frame_cap), so what is measured is what is seen.
 
 const RECORD_SECONDS := 75.0
 const LOAD_MSEC := 8000
@@ -235,6 +238,10 @@ func _set_up() -> void:
 	_recorder.frame_start = frame_start
 	root.add_child(_recorder)
 	RenderingServer.viewport_set_measure_render_time(root.get_viewport_rid(), true)
+	# Your view held the frames under the refresh as it started
+	# (PlayerView.frame_cap); what a frame costs is measured without that.
+	if not _as_played:
+		Engine.max_fps = 0
 	print("window mode %d at %s, V-Sync %d, frame cap %d, %d players" % [
 		DisplayServer.window_get_mode(), str(DisplayServer.window_get_size()),
 		DisplayServer.window_get_vsync_mode(), Engine.max_fps, GameWorld.current.players.size()])

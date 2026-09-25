@@ -21,6 +21,7 @@ Source: godot-docs branch 4.7 @9adca4c (2026-09-21). Read when: building or chan
 - The content scale factor (`Window.content_scale_factor`, set at runtime via `get_tree().root`) multiplies 2D on top of the stretch. It is the player-facing "UI scale" option. `display/window/stretch/scale_mode` `"integer"` is for pixel art. Leave it `fractional`.
 - `gui/theme/default_theme_scale` (1.0) is read only at startup. At runtime use `ThemeDB.fallback_base_scale` or, better, the content scale factor.
 - The docs recommend `WINDOW_MODE_EXCLUSIVE_FULLSCREEN` over `WINDOW_MODE_FULLSCREEN` for games. It "allows Windows to reduce jitter and input lag". Plain `FULLSCREEN` leaves a 1-pixel line so Windows does not treat it as exclusive. Either mode resizes the window to the monitor without changing the video mode (`classes/class_displayserver.rst`).
+  - `project.godot` starts the game in `WINDOW_MODE_EXCLUSIVE_FULLSCREEN` (`display/window/size/mode=4`), as the docs recommend for games; `display/window/size/mode` also decides the editor's game embedding, which works only windowed, so Play runs the game in its own fullscreen window. `PlayerView` caps the frame rate just under the screen's refresh (`frame_cap`) unless Max FPS is set. Godot's `--fullscreen` command-line flag asks for `WINDOW_MODE_FULLSCREEN` even so (measured in 4.7.2: the window came up plain fullscreen with it, exclusive without), so the drawing profilers are run without it.
 - A 3D resolution scale apart from the UI is `Viewport.scaling_3d_scale` (resolution scaling). See the rendering page, not here.
 - The stretch also scales input: `InputEventMouseMotion.relative` is scaled by the content scale factor. See `input.md`.
 
@@ -114,7 +115,6 @@ Source: godot-docs branch 4.7 @9adca4c (2026-09-21). Read when: building or chan
 - `src/ui/crosshair.gd`: a full-rect Control with `MOUSE_FILTER_IGNORE`, drawn in `_draw()` from the centre, redrawn on value change and on `size_changed`.
 - `src/ui/scope_overlay.gd`, `src/ui/damage_indicator.gd`, `src/grenades/flash_overlay.gd` (`ColorRect`): full-rect, `IGNORE`, drawn per frame.
 - `src/ui/movement_hud.gd`: its own `CanvasLayer` with one Label.
-- `project.godot` starts the game in `WINDOW_MODE_EXCLUSIVE_FULLSCREEN` (`display/window/size/mode=4`), as the docs recommend for games; `display/window/size/mode` also decides the editor's game embedding, which works only windowed, so Play runs the game in its own fullscreen window. `PlayerView` caps the frame rate just under the screen's refresh (`frame_cap`) unless Max FPS is set.
 - `src/economy/buy_menu.gd`: a full-rect `IGNORE` root, a `PanelContainer` with `StyleBoxFlat` centred with `GROW_DIRECTION_BOTH`, VBox/HBox columns, Buttons with `FOCUS_NONE` and item icons, input in `_input`.
 
 Looks at odds with the docs (not verified in play):

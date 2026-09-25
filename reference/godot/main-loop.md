@@ -248,7 +248,7 @@ Docs: `tutorials/editor/command_line_tutorial.rst`, `tutorials/export/exporting_
 - Virtuals `_initialize()`, `_finalize()`, `_physics_process(delta) -> bool`, `_process(delta) -> bool`. True ends the loop.
 
 **Engine** (`classes/class_engine.rst`)
-- `physics_ticks_per_second: int = 60`, `max_physics_steps_per_frame: int = 8`, `physics_jitter_fix: float = 0.5`, `time_scale: float = 1.0` (does not scale audio), `max_fps: int = 0`.
+- `physics_ticks_per_second: int = 60`, `max_physics_steps_per_frame: int = 8`, `physics_jitter_fix: float = 0.5`, `time_scale: float = 1.0` (does not scale audio), `max_fps: int = 0` (the game sets it just under the screen's refresh as your view starts, `PlayerView.frame_cap`; ui.md).
 - `get_physics_frames()`, `get_process_frames()`, `get_frames_drawn()`, `get_physics_interpolation_fraction()`, `is_in_physics_frame()`, `is_editor_hint()`, `get_main_loop()`, `get_singleton(name)`.
 - `print_error_messages` and `print_to_stdout` switch engine output; `capture_script_backtraces` adds GDScript backtraces to logged errors.
 
