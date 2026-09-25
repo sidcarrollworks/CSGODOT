@@ -79,6 +79,7 @@ func _run() -> void:
 	_test_a_buy_from_before_the_round()
 	_test_undoing_a_purchase()
 	_test_the_menu_buys_by_keys()
+	_test_the_menu_counts_down_buying()
 	for body in _bodies.values():
 		body.free()
 	_finish("economy")
@@ -480,10 +481,11 @@ func _test_the_menu_buys_by_keys() -> void:
 	_place(t, T_SPAWN)
 	menu.open()
 	_check(menu.is_open(), "it opens in it")
-	menu._press_number(2)
+	menu._press_number(3)
 	menu._press_number(1)
 	_step()
-	_check(_game.inventory(t).has("weapon_ak47") and _economy.money(t) == 300, "3 then 2 buys the AK-47")
+	_check(_game.inventory(t).has("weapon_ak47") and _economy.money(t) == 300,
+		"4 then 2 buys the AK-47: CS2's menu has the rifles fourth, after equipment, pistols and mid-tier")
 	var behind := KeyCatcher.new()
 	root.add_child(behind)
 	for keycode in [KEY_Q, KEY_Z, KEY_X, KEY_G]:
@@ -506,6 +508,34 @@ func _test_the_menu_buys_by_keys() -> void:
 	_step()
 	menu._process(0.0)
 	_check(not menu.is_open(), "and it closes on leaving the buy zone")
+	menu.free()
+
+
+## The menu's countdown always shows a time, as CS2's does: the economy's
+## once its clock runs, and before that what is left all the same, the rest
+## of freeze time and the buy time after it, or in warmup its clock.
+func _test_the_menu_counts_down_buying() -> void:
+	_new_game(1)
+	_send(&"begin_new_match")
+	_send(&"round_start")
+	var menu := BuyMenu.new()
+	menu.economy = _economy
+	menu.userid = _ts[0]
+	_check(is_inf(menu.buy_seconds_shown()), "without a match, a buy time not yet running has no end to show")
+	var state := MatchState.new()
+	menu.match_state = state
+	state.phase = MatchState.Phase.FREEZE
+	state.phase_ends_usec = SimClock.now_usec() + 15_000_000
+	_check_near(menu.buy_seconds_shown(), 15.0 + _economy.rules.buy_seconds,
+		"in freeze time it counts the rest of freeze time and the buy time after it")
+	state.phase = MatchState.Phase.WARMUP
+	state.phase_ends_usec = SimClock.now_usec() + 90_000_000
+	_check_near(menu.buy_seconds_shown(), 90.0, "in warmup, which buying lasts, the warmup's clock")
+	state.phase = MatchState.Phase.LIVE
+	_send(&"round_freeze_end", {}, SimClock.tick_end_usec(_tick))
+	_check_near(menu.buy_seconds_shown(), _economy.buy_seconds_left(SimClock.now_usec()),
+		"and once the economy's clock runs, that")
+	state.free()
 	menu.free()
 
 

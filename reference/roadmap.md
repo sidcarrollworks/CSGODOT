@@ -558,8 +558,12 @@ list, split into Local and Remote items, with the measurements.
     `In_game_ui.webp` at 1080p and 4K, where it matches to the pixel but
     for the player's portrait and colour. Still to do: the kill feed,
     radar, scoreboard, round-end panel, the bomb's icon on the clock, the
-    kill marks over the health and the low health and ammo glow; the buy
-    menu's agent and its columns' order want a CS2 screenshot of it.)*
+    kill marks over the health and the low health and ammo glow. The buy
+    menu rebuilt 2026-09-25 to Sid's screenshots of CS2's: its columns in
+    CS2's order, CS2's word on each item, the countdown in warmup and freeze
+    time, and your agent in CS2's own pose for what is in hand or under the
+    mouse, holding it, framed by CS2's buy-menu camera. Each player's colour
+    is drawn at random for the match until a setting chooses it (item 26).)*
 
 ### Phase 5: the bomb
 

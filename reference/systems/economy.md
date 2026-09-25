@@ -66,7 +66,7 @@ The default loadout, the menu's columns (IG `flexible_loadout_slot` and
 | 1 Pistols | Glock-18 / P2000 | Dual Berettas | P250 | Tec-9 / Five-SeveN | Desert Eagle |
 | 2 Mid-Tier | Nova | XM1014 | MP5-SD | P90 | MAC-10 / MP9 |
 | 3 Rifles | Galil AR / FAMAS | AK-47 / M4A1-S | SSG 08 | SG 553 / AUG | AWP |
-| 4 Equipment | Kevlar | Kevlar + Helmet | Zeus x27 | - / Defuse Kit | |
+| 4 Equipment | Kevlar | Kevlar & Helmet | Zeus x27 | - / Defuse Kit | |
 | 5 Grenades | Flashbang | Smoke | HE | Molotov / Incendiary | Decoy |
 
 ## Guesses, and what measures them

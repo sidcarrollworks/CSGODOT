@@ -71,6 +71,10 @@ const FACES := {
 	&"bold_condensed": ["stratum2condensed-bold.otf", "Rajdhani-Bold.ttf"],
 	&"condensed": ["stratum2condensed-regular.otf", "Rajdhani-SemiBold.ttf"],
 	&"light_condensed": ["stratum2condensed-light.otf", "Rajdhani-SemiBold.ttf"],
+	# The buy menu's column titles (medium, condensed) and its item notes'
+	# last line (italic).
+	&"medium_condensed": ["stratum2condensed-medium.otf", "Rajdhani-SemiBold.ttf"],
+	&"italic": ["stratum2-regularitalic.otf", "Rajdhani-SemiBold.ttf"],
 }
 
 const IMAGES := "res://assets/hud/panorama/images"
@@ -81,7 +85,7 @@ const FALLBACK_BOLD := "res://src/ui/fonts/Rajdhani-Bold.ttf"
 static var _faces := {}
 static var _icons := {}
 static var _additive: CanvasItemMaterial
-static var _world_blur: ShaderMaterial
+static var _world_blur := {}
 
 
 static func team_colour(side: String) -> Color:
@@ -142,12 +146,16 @@ static func additive() -> CanvasItemMaterial:
 
 
 ## The material that shows the world behind a shape blurred, as Panorama's
-## world-blur does (hud_blur.gdshader). One, shared.
-static func world_blur() -> ShaderMaterial:
-	if _world_blur == null:
-		_world_blur = ShaderMaterial.new()
-		_world_blur.shader = load("res://src/ui/hud_blur.gdshader")
-	return _world_blur
+## world-blur does (hud_blur.gdshader), `level` steps down Godot's screen mip
+## chain at the base size: 4 for the HUD's panels, more for the buy menu's
+## whole screen. One per level, shared.
+static func world_blur(level: float = 4.0) -> ShaderMaterial:
+	if not _world_blur.has(level):
+		var blur := ShaderMaterial.new()
+		blur.shader = load("res://src/ui/hud_blur.gdshader")
+		blur.set_shader_parameter(&"level", level)
+		_world_blur[level] = blur
+	return _world_blur[level]
 
 
 ## Draws `texture` fitted into `box`, keeping its shape, tinted (Panorama's

@@ -812,7 +812,8 @@ extract_equipment() {
 ## the kill marks, the team counter's bot portrait and skull; not yet the
 ## radar's, the kill feed's or the death panel's), the few UI icons the HUD
 ## draws (HUD_UI_ICONS), the masks and the dot pattern its dark panels are
-## cut and textured with, and CS2's font, Stratum2. The font is not in the
+## cut and textured with, the agent's poses and CS2's word on each item for
+## the buy menu, and CS2's font, Stratum2. The font is not in the
 ## VPK: it is loose in game/csgo/panorama/fonts as one stratum2.uifont, which
 ## Source2Viewer-CLI unpacks into the family's .otf files. It writes them
 ## beside its input whatever -o says, so it is given a copy here, never the
@@ -847,7 +848,27 @@ extract_hud() {
 	cp "$uifont" "$dest/fonts/"
 	(cd "$dest/fonts" && "$S2V_BIN" -i stratum2.uifont -o . -d > /dev/null)
 	rm -f "$dest/fonts/stratum2.uifont"
-	echo "        $(find "$dest/" -name '*.svg' | wc -l | tr -d ' ') icons and masks, $(find "$dest/" -name '*.png' | wc -l | tr -d ' ') images, $(find "$dest/fonts" -name 'stratum2*' ! -name '*.import' | wc -l | tr -d ' ') font files"
+	# The agent's poses beside the buy menu, one for each gun and side and
+	# shared ones for the grenades, armour, kit, knife and bomb
+	# (animation/anims/ui_anims/buy_menu), and the breath CS2 adds over them
+	# (additive_anims/t/t_idle_layer01), exported as the other clips are,
+	# into the characters' animations.
+	local poses
+	poses="$("$S2V_BIN" -i "$PAK_VPK" -f "animation/anims/ui_anims/" -l \
+		| tr -d '\r' | sed -E 's/ CRC:[0-9a-fA-F]+ size:[0-9]+$//' \
+		| grep -E '^animation/anims/ui_anims/(buy_menu/.*|additive_anims/t/t_idle_layer01)\.vnmclip_c$' \
+		| grep -v 'vnmclip+' | paste -sd, -)"
+	require_filter "$poses" "the buy menu's poses"
+	s2v_batched "$poses" -o "$CHARACTERS_DEST" -d --gltf_export_format gltf \
+		| grep -vE '^(Preloading|Added folder|--- )' || true
+	# CS2's word on each item, for the buy menu's panel (its English strings'
+	# csgo_item_usage_desc_*): Valve's text, so kept here with the rest.
+	local strings="$dest/resource/.english"
+	mkdir -p "$strings"
+	"$S2V_BIN" -i "$PAK_VPK" -f "resource/csgo_english.txt" -o "$strings" > /dev/null
+	grep -E '"csgo_item_usage_desc_[a-z0-9_]+"' "$strings/resource/csgo_english.txt" > "$dest/resource/item_usage.txt" || true
+	rm -rf "$strings"
+	echo "        $(find "$dest/" -name '*.svg' | wc -l | tr -d ' ') icons and masks, $(find "$dest/" -name '*.png' | wc -l | tr -d ' ') images, $(find "$dest/fonts" -name 'stratum2*' ! -name '*.import' | wc -l | tr -d ' ') font files, $(wc -l < "$dest/resource/item_usage.txt" | tr -d ' ') item notes, $(find "$CHARACTERS_DEST/animation/anims/ui_anims/buy_menu" -name '*.gltf' | wc -l | tr -d ' ') poses"
 }
 
 ## The textures the guns' tracers and muzzle flashes draw with. CS2's particle

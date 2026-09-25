@@ -76,6 +76,20 @@ Godot's automatic copy of the whole screen cost 0.51 ms at 4K, which is
 why each panel copies its own part. `scripts/profile_render.gd` measures
 both again (the `sdr_2d` and `no_hud_blur` variants).
 
+The buy menu's agent (2026-09-25, dust2 at T spawn, the menu open over the
+AK-47, `viewport_get_measured_render_time_gpu` over 120 frames): its
+picture, 900 by 1080 at 1080p and 1775 by 2130 at 4K, takes 0.15 ms of the
+GPU at 1080p (4x MSAA) and 0.31 ms at 4K (2x; 0.35 with 4x), and nothing
+while the menu is shut. Its video memory is held from the first opening:
++96 MB at 1080p, +217 MB at 4K (335 with 4x, 114 with no MSAA), which is
+why a picture taller than 1440 lines gets 2x (`MSAA_4X_UP_TO`). Building
+it reads every pose of both sides and both sides' agents, 294 ms at the
+map's load with nothing read before it (less in a match, whose players have
+read the agents), so the half-time swap's build takes 2 ms; the first time
+the mouse is over a gun whose model nobody has held yet, reading the model
+takes 20 to 45 ms, which reading every holdable model before play would
+take away.
+
 What is drawn is cut down by the map's own visibility (`WorldVisibility`,
 2026-09-24), as CS2 cuts it: from T spawn 2,702 of dust2's 3,589 world
 meshes are not drawn (they still cast their shadows), and from mid 2,178.

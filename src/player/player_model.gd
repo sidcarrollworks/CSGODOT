@@ -163,7 +163,7 @@ func setup(team: String, weapon_model: String, weapon_set: String = "", holds: b
 		agent.free()
 
 	if not holds:
-		held_weapon = _attach_weapon(weapon_model)
+		held_weapon = attach_weapon(weapon_model)
 
 	scale = Vector3.ONE * MapImporter.SOURCE2_VIEWER_SCALE
 	rotation_degrees = Vector3(0.0, 180.0, 0.0)
@@ -173,8 +173,9 @@ func setup(team: String, weapon_model: String, weapon_set: String = "", holds: b
 
 ## A weapon's model beside the rig, held by its own skeleton: the locomotion
 ## clips carry no weapon rig, so its root bone is pinned on the hand's wpn
-## bone. Null when the model is not there.
-func _attach_weapon(weapon_model: String) -> Node3D:
+## bone. Null when the model is not there. The buy menu's agent, which
+## CS2's own poses stand (BuyMenuAgent), holds its items with it too.
+func attach_weapon(weapon_model: String) -> Node3D:
 	var weapon := instantiate(weapon_model) as Node3D
 	if weapon == null:
 		return null
@@ -340,7 +341,7 @@ func show_held() -> void:
 				unpin(_held_models[item_class])
 				(_held_models[item_class] as Node).queue_free()
 			_held_models.clear()
-		held_weapon = _attach_weapon(_held_model_path)
+		held_weapon = attach_weapon(_held_model_path)
 		if held_weapon == null:
 			return
 		_held_models[holding] = held_weapon

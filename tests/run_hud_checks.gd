@@ -23,6 +23,7 @@ func _initialize() -> void:
 	await _test_the_blur()
 	await _test_the_team_counter()
 	await _test_the_alert_lines()
+	await _test_the_buy_menu_agent()
 	_finish("HUD")
 
 
@@ -111,14 +112,32 @@ func _test_numbers() -> void:
 	_check_equal(GameHud.money_text(13650), "$13650", "money reads as CS2's $13650")
 	# The ring's colour: a player's own in a match, the team's without one.
 	var state := MatchState.new()
-	var sides := ["T", "CT", "T", "T"]
-	for side: String in sides:
+	var sides := ["T", "CT", "T", "T", "T", "T", "T"]
+	for i in sides.size():
 		var player := PlayerSim.new()
-		player.team = side
-		state.players.append(player)
-	var third_t := GameHud.player_colour(state, state.players[3])
-	_check(third_t == HudStyle.TEAMMATE_COLOURS[2] and GameHud.player_colour(state, state.players[1]) == HudStyle.TEAMMATE_COLOURS[0],
-		"in a match each player has a colour of their team's, in the order they joined it")
+		player.team = sides[i]
+		player.userid = 10 + i
+		state.add_player(player)
+	var t_colours := {}
+	for player in state.players.slice(0, 1) + state.players.slice(2, 6):
+		t_colours[state.colour_of(player)] = true
+	_check(t_colours.size() == 5 and state.colour_of(state.players[1]) >= 0,
+		"in a match each player draws a colour, no two alike on a team while the five last (%s)" % [t_colours.keys()])
+	_check(state.colour_of(state.players[6]) >= 0, "and a sixth on a team still gets one")
+	var draws := {}
+	for seed in 8:
+		var again := MatchState.new()
+		again.colour_seed = seed
+		var alone := PlayerSim.new()
+		alone.team = "T"
+		alone.userid = 10
+		again.add_player(alone)
+		draws[again.colour_of(alone)] = true
+		alone.free()
+		again.free()
+	_check(draws.size() > 1, "and the draw differs from match to match (%s)" % [draws.keys()])
+	_check(GameHud.player_colour(state, state.players[1]) == HudStyle.TEAMMATE_COLOURS[state.colour_of(state.players[1])],
+		"the HUD shows the colour the match drew")
 	_check(GameHud.player_colour(null, state.players[0]) == HudStyle.T_COLOUR and GameHud.player_colour(null, state.players[1]) == HudStyle.CT_COLOUR,
 		"without one, the team's own colour, as CS2's deathmatch rings the emblem")
 	for player in state.players:
@@ -251,4 +270,83 @@ func _test_the_alert_lines() -> void:
 	state.last_winner = "CT"
 	_check_equal(GameHud.alert_line(state)[0], "Counter-terrorists win", "a round's end says who won")
 	state.free()
+	await process_frame
+
+
+## The agent beside the buy menu: CS2's pose for each item as its UI graph
+## picks it, for everything the menu sells on either side; the map camera's
+## view cut down to the strip it is drawn in, with the agent in the strip;
+## and, where the poses were extracted, the agent built from them, the other
+## side's read with it, and each item's own bones where its pose puts them.
+func _test_the_buy_menu_agent() -> void:
+	_check_equal(BuyMenuAgent.pose_for("weapon_ak47", "T"), "t/t_buymenu_ak_03",
+		"a terrorist holds the AK-47 in CS2's T pose for it")
+	_check_equal(BuyMenuAgent.pose_for("weapon_m4a1", "CT"), "ct/ct_buymenu_m4a1",
+		"a counter-terrorist holds the M4A4 in the M4A1-S's pose, as CS2's graph has it")
+	_check_equal(BuyMenuAgent.pose_for("weapon_m4a1", "T"), "t/t_buymenu_m4a4", "and a terrorist in its own")
+	_check(BuyMenuAgent.pose_for("weapon_flashbang", "T") == "shared/sh_buymenu_flash"
+		and BuyMenuAgent.pose_for("weapon_flashbang", "CT") == "shared/sh_buymenu_flash",
+		"both sides share the grenades' poses")
+	_check(BuyMenuAgent.pose_for("item_kevlar", "T") == BuyMenuAgent.pose_for("item_assaultsuit", "CT"),
+		"the vest, and the vest with a helmet, share the armour's")
+	_check_equal(BuyMenuAgent.pose_for("weapon_nothing", "T"), "", "an item the graph has no pose for has none")
+	var unposed := PackedStringArray()
+	for side: String in ["T", "CT"]:
+		for item_class in Loadout.items(side):
+			if BuyMenuAgent.pose_for(item_class, side).is_empty():
+				unposed.append("%s %s" % [side, item_class])
+	_check(unposed.is_empty(), "everything the menu sells on either side has a pose (none for %s)" % ", ".join(unposed))
+
+	var screen := Vector2(1920.0, 1080.0)
+	var whole: Array = BuyMenuAgent.frustum(Rect2(Vector2.ZERO, screen), screen)
+	var height := 2.0 * BuyMenuAgent.NEAR * tan(deg_to_rad(BuyMenuAgent.FOV * 0.5))
+	_check(is_equal_approx(whole[0], height) and (whole[1] as Vector2).is_zero_approx(),
+		"over the whole screen the camera is the map's: 30 degrees from top to bottom, centred")
+	var strip := Rect2(1020.0, 0.0, 900.0, 1080.0)
+	var cut: Array = BuyMenuAgent.frustum(strip, screen)
+	_check(is_equal_approx(cut[0], height) and is_equal_approx((cut[1] as Vector2).x, (1470.0 - 960.0) * height / 1080.0)
+		and is_zero_approx((cut[1] as Vector2).y), "a strip of it sees its part of that view, moved right as the strip is")
+	var ahead := SourceEntities.to_game(BuyMenuAgent.AGENT_AT) - SourceEntities.to_game(BuyMenuAgent.CAMERA_AT)
+	var yaw := deg_to_rad(BuyMenuAgent.CAMERA_YAW)
+	var forward := SourceEntities.to_game(Vector3(cos(yaw), sin(yaw), 0.0))
+	var across := screen.x * 0.5 + ahead.dot(forward.cross(Vector3.UP)) / ahead.dot(forward) \
+		* screen.y * 0.5 / tan(deg_to_rad(BuyMenuAgent.FOV * 0.5))
+	_check(absf(across - 1397.0) < 10.0, "the map stands the agent %.0f px across, where Sid's screenshot has it (1397)" % across)
+
+	if not ResourceLoader.exists(BuyMenuAgent.pose_path(BuyMenuAgent.RIG_POSE)):
+		print("the buy menu's poses not extracted; skipping the agent's build (scripts/extract_assets.sh hud)")
+		return
+	var agent := BuyMenuAgent.new()
+	root.add_child(agent)
+	_check(agent.build("T"), "a terrorist's agent builds from CS2's poses")
+	var unread := PackedStringArray()
+	for item_class: String in BuyMenuAgent.POSES:
+		for side: String in ["T", "CT"]:
+			if not BuyMenuAgent._clips.has(BuyMenuAgent.pose_path(BuyMenuAgent.pose_for(item_class, side))):
+				unread.append("%s %s" % [side, item_class])
+	_check(unread.is_empty(), "with both sides' poses read, none left for half time (%s)" % ", ".join(unread))
+	agent.show_item("weapon_elite")
+	var elites := agent._models.get("weapon_elite") as Node3D
+	var rig := elites.find_children("*", "Skeleton3D", true, false)[0] as Skeleton3D if elites != null else null
+	var moved := func(bone_name: String) -> bool:
+		var bone := rig.find_bone(bone_name)
+		return bone >= 0 and not rig.get_bone_pose(bone).is_equal_approx(rig.get_bone_rest(bone))
+	_check(rig != null and moved.call("weapon_hand_l") and moved.call("weapon_hand_r"),
+		"the Dual Berettas go one to each hand, as their pose puts them")
+	_check(rig != null and moved.call("elite_holster"), "and their holster, which the model names otherwise, with them")
+	agent.show_item("weapon_xm1014")
+	var shotgun := agent._models.get("weapon_xm1014") as Node3D
+	var shells := shotgun.find_children("*", "Skeleton3D", true, false)[0] as Skeleton3D if shotgun != null else null
+	_check(shells != null and shells.get_bone_pose_scale(shells.find_bone("shell1")).x < 0.01,
+		"the XM1014's loaded shells go, as its pose hides them")
+	_check(not elites.visible and shotgun.visible, "only what is held shows")
+	agent.show_item("item_kevlar")
+	var shown := 0
+	for model: Variant in agent._models.values():
+		if model != null and (model as Node3D).visible:
+			shown += 1
+	var pose := (agent._tree.tree_root as AnimationNodeBlendTree).get_node(&"pose") as AnimationNodeAnimation
+	_check(shown == 0 and pose.animation == &"sh_buymenu_armor_helmet",
+		"over the armour the agent holds nothing, in the armour's pose")
+	agent.queue_free()
 	await process_frame

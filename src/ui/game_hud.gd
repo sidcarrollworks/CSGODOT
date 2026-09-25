@@ -51,6 +51,8 @@ var damage_indicator: DamageIndicator
 var _where: Label
 var _frames := FrameMeter.new()
 var _notice_left: float = 0.0
+## The side your agent in the buy menu was built for.
+var _agent_team: String = ""
 ## How long a refusal stays up, in seconds.
 const NOTICE_SECONDS := 2.0
 ## Where the line across the middle while dead starts, down from the top.
@@ -70,6 +72,20 @@ func _ready() -> void:
 	if player != null:
 		player.hurt.connect(func(_amount: float, _zone: StringName, from: Vector3) -> void:
 			damage_indicator.hit_from(from))
+	if economy != null:
+		# Under the rest of the HUD, as CS2 has it: the team counter and your
+		# money stay over the menu; what else the HUD shows goes while it is
+		# open (_process).
+		buy_menu = BuyMenu.new()
+		buy_menu.name = "BuyMenu"
+		buy_menu.economy = economy
+		buy_menu.userid = userid
+		buy_menu.match_state = match_state
+		add_child(buy_menu)
+		buy_menu.refused.connect(_on_buy_refused)
+		if player != null:
+			buy_menu.build_agent(player.team)
+			_agent_team = player.team
 	health_ammo = HealthAmmoCenter.new()
 	add_child(health_ammo)
 	money = MoneyPanel.new()
@@ -93,14 +109,6 @@ func _ready() -> void:
 	_where.add_theme_color_override("font_outline_color", Color(0, 0, 0))
 	_where.add_theme_constant_override("outline_size", 4)
 	add_child(_where)
-	if economy != null:
-		# Last, so it draws over everything else here.
-		buy_menu = BuyMenu.new()
-		buy_menu.name = "BuyMenu"
-		buy_menu.economy = economy
-		buy_menu.userid = userid
-		add_child(buy_menu)
-		buy_menu.refused.connect(_on_buy_refused)
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
@@ -116,7 +124,15 @@ func _process(delta: float) -> void:
 		_show_money(team, delta)
 	if player == null:
 		return
-	health_ammo.visible = player.alive
+	var buying := buy_menu != null and buy_menu.is_open()
+	if buy_menu != null and not buying and player.team != _agent_team:
+		# The sides swapped: your agent is the other side's now.
+		buy_menu.build_agent(player.team)
+		_agent_team = player.team
+	health_ammo.visible = player.alive and not buying
+	alert.visible = not buying
+	hint.visible = not buying
+	dead_bar.visible = not buying
 	if player.alive and player.hit_target != null:
 		var gun := player.weapon
 		var has_ammo := gun != null and gun.data.magazine_size > 0
@@ -125,7 +141,7 @@ func _process(delta: float) -> void:
 			has_ammo, gun.ammo if has_ammo else 0, gun.data.magazine_size if has_ammo else 1,
 			gun.reserve if has_ammo else 0, gun.data.reserve_as_clips if has_ammo else true,
 			has_ammo and gun.is_reloading(SimClock.now_usec()))
-	_crosshair.visible = shows_crosshair(player)
+	_crosshair.visible = shows_crosshair(player) and not buying
 	dead_bar.say("" if player.alive else dead_line(player), "", HudStyle.team_colour(team))
 	if match_state != null:
 		team_counter.show_match(match_state, player, economy, SimClock.now_usec())
@@ -159,22 +175,15 @@ static func money_text(amount: int) -> String:
 	return "$%d" % amount
 
 
-## A player's colour among their team (CS2's cl_teammate_color_1 to 5): by
-## the order the team joined the match, the first blue. Which colour CS2
-## hands whom is decided on its server, so the order is this project's.
-## Where there is no match of teams there are no player colours, and CS2
-## shows the team's own (its deathmatch: the ring round the emblem gold for
-## a terrorist and light blue for a counter-terrorist, like the rest of the
-## HUD).
+## A player's colour among their team (CS2's cl_teammate_color_1 to 5), as
+## the match drew it for them (MatchState.colour_of). Where there is no match
+## of teams there are no player colours, and CS2 shows the team's own (its
+## deathmatch: the ring round the emblem gold for a terrorist and light blue
+## for a counter-terrorist, like the rest of the HUD).
 static func player_colour(state: MatchState, who: PlayerSim) -> Color:
-	if state == null:
+	var index := state.colour_of(who) if state != null else -1
+	if index < 0:
 		return HudStyle.team_colour(who.team)
-	var index := 0
-	for player in state.players:
-		if player == who:
-			break
-		if player.team == who.team:
-			index += 1
 	return HudStyle.TEAMMATE_COLOURS[index % HudStyle.TEAMMATE_COLOURS.size()]
 
 
