@@ -198,7 +198,8 @@ Updated 2026-09-24 later: game modes apart from maps (item 24a, `reference/syste
   you are in (item 11).
 - Crosshair, health, armour, ammo, death countdown, the movement tuning
   readout, and where you stand and look in the top left (PR #25, F3 hides
-  it).
+  it), with the frame rate and the slowest frame of the last second under
+  it (`FrameMeter`, 2026-09-24; on the range and the movement course too).
 - A red arc round the crosshair on the side each hit came from (PR #27).
 - On the test range, a shooter that fires at you on B, with its weapon (U),
   your armour (Y) and never-die (J) switched, a readout of your tag and

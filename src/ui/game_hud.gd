@@ -20,7 +20,8 @@ extends CanvasLayer
 ## And, small in the top left, where you are and where you are looking,
 ## like CS2's getpos: the feet's position in units and the view's yaw and
 ## pitch in degrees, the numbers a render of the same view is set up from,
-## so a screenshot says exactly where it was taken. F3 hides it.
+## so a screenshot says exactly where it was taken; under it the frame rate
+## and the slowest frame of the last second (FrameMeter). F3 hides them.
 
 var player: PlayerController
 ## The match, where there is one; it is only read.
@@ -42,6 +43,7 @@ var _ammo: Label
 var damage_indicator: DamageIndicator
 var _dead: Label
 var _where: Label
+var _frames := FrameMeter.new()
 var _score: Label
 var _clock: Label
 var _round: Label
@@ -116,6 +118,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	_frames.frame(Time.get_ticks_usec())
 	if economy != null:
 		_show_money(delta)
 	if player == null:
@@ -138,7 +141,8 @@ func _process(delta: float) -> void:
 	if match_state != null:
 		_show_match()
 	if _where.visible:
-		_where.text = where_line(player.global_position, player.input.yaw_degrees, player.input.pitch_degrees)
+		_where.text = where_line(player.global_position, player.input.yaw_degrees, player.input.pitch_degrees) \
+			+ "\n" + _frames.line()
 
 
 ## Whether the crosshair is drawn: not for a sniper (the game's

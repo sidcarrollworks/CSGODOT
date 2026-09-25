@@ -115,6 +115,7 @@ func _run() -> void:
 	await _test_a_hit_throws_the_aim()
 	_test_the_hit_direction_on_screen()
 	await _test_the_hud_shows_hits()
+	_test_the_frame_meter()
 	_report()
 
 
@@ -1308,6 +1309,37 @@ func _test_the_hit_direction_on_screen() -> void:
 	_check(absf(turned) < 0.001, "and a round from the left is ahead once you turn to face it")
 
 
+## The frame meter, handed the times frames began: made up here, the wall
+## clock in the game. A second of 10 ms frames with one of 50 ms in it reads
+## 96 a second and 50 ms, and the next second starts over.
+func _test_the_frame_meter() -> void:
+	var meter := FrameMeter.new()
+	var now := 5000000
+	meter.frame(now)
+	for i in 50:
+		now += 10000
+		meter.frame(now)
+	_check(meter.line() == "fps -" and is_zero_approx(meter.fps), "the frame rate says nothing before a second has passed")
+	now += 50000
+	meter.frame(now)
+	while now < 5000000 + FrameMeter.WINDOW_USEC:
+		now += 10000
+		meter.frame(now)
+	# 95 frames of 10 ms and one of 50: 96 frames in exactly one second.
+	_check(
+		is_equal_approx(meter.fps, 96.0) and is_equal_approx(meter.slowest_ms, 50.0)
+			and meter.line() == "fps 96   slowest 50.0 ms",
+		"after a second, the frames in it and the slowest of them (%s)" % meter.line()
+	)
+	for i in 125:
+		now += 8000
+		meter.frame(now)
+	_check(
+		is_equal_approx(meter.fps, 125.0) and is_equal_approx(meter.slowest_ms, 8.0),
+		"and each second is counted afresh: the hitch is gone from the next (%s)" % meter.line()
+	)
+
+
 ## The HUD you play with shows your armour, and an arc for a hit that
 ## fades out.
 func _test_the_hud_shows_hits() -> void:
@@ -1338,6 +1370,10 @@ func _test_the_hud_shows_hits() -> void:
 	await process_frame
 	await process_frame
 	_check(not hud._armor.visible and not hud._shield.visible, "with no armour, no armour is shown")
+	_check(
+		hud._where.text.begins_with("pos ") and hud._where.text.get_slice("\n", 1).begins_with("fps "),
+		"under where you stand, the frame rate (%s)" % hud._where.text.c_escape()
+	)
 	hud.queue_free()
 	player.queue_free()
 	await physics_frame

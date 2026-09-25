@@ -369,8 +369,9 @@ the crosshair on the side each hit came from (`src/ui/damage_indicator.gd`),
 and three seconds dead before you are back at your spawn with a full
 magazine, on the range and in warmup. Bots do not take cover or think beyond that. In the top left the HUD says where you stand and look,
 like CS2's `getpos`: the feet's position and the view's yaw and pitch,
-which is everything needed to put a render where a screenshot was taken.
-F3 hides it.
+which is everything needed to put a render where a screenshot was taken,
+and under it the frame rate and the slowest frame of the last second (the
+range and the movement course show the same). F3 hides them.
 
 dust2 is a match, run the way CS2's server runs one (`src/match/`), with
 CS2's competitive numbers (`MatchRules`): two minutes of warmup, where you

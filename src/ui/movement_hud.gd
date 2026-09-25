@@ -12,6 +12,8 @@ extends CanvasLayer
 var _player: PlayerBody
 var _label: Label
 
+var _frames := FrameMeter.new()
+
 var _peak_speed: float = 0.0
 var _speed_at_takeoff: float = 0.0
 var _was_on_ground: bool = true
@@ -31,6 +33,7 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
+	_frames.frame(Time.get_ticks_usec())
 	if _player == null:
 		return
 
@@ -53,5 +56,6 @@ func _process(_delta: float) -> void:
 		"peak       %6.1f u/s" % _peak_speed,
 		"jump gain  %+6.1f u/s" % gained,
 		"ground     %s" % ("noclip" if _player.noclip else ("yes" if _player.on_ground else "no")),
-		"fps        %6d" % Engine.get_frames_per_second(),
+		"fps        %6d" % roundi(_frames.fps),
+		"slowest    %6.1f ms" % _frames.slowest_ms,
 	])
