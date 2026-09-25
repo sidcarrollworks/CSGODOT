@@ -34,6 +34,7 @@ const EYE_HEIGHT := 64.0
 var _team_size := 5
 var _measure_frames := 60
 var _dust2: Node
+var _reflections: MapReflections
 var _camera: Camera3D
 var _views: Array[Transform3D] = []
 var _variants := RenderVariants.names()
@@ -69,6 +70,12 @@ func _process(_delta: float) -> bool:
 	if Engine.get_process_frames() < LOAD_FRAMES:
 		return false
 	if _variant < 0:
+		# The map's reflection probes are drawn one a frame as it starts, the
+		# whole map with them (MapReflections): measured once they are done.
+		if _reflections == null:
+			_reflections = RenderVariants.reflections_of(_dust2)
+		if _reflections != null and _reflections.is_capturing():
+			return false
 		_begin()
 		_next_variant()
 		return false

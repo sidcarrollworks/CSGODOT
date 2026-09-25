@@ -37,12 +37,12 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
 | The map's shadow from the sun | CS2's baked `direct_light_shadows` on every lightmapped surface, and the probe atlas's `_dlshd` page, read at every pixel, on everything the probes light (players, props, dropped guns, grenades, smoke, the bomb); both or neither, and live where either is missing (R4) | `MapShadows`, `lightmap.gdshaderinc`, `LightProbes`, `probe_lit.gdshaderinc` |
 | Map meshes | every visible one casts from both faces (`SHADOW_CASTING_SETTING_DOUBLE_SIDED`), into the lamps' shadows only where the sun's is baked | `MapImporter`, around line 268 |
 | Anti-aliasing | MSAA 4x (`msaa_3d=2` is the enum `MSAA_4X`, not a sample count) | `project.godot` |
-| Screen-space occlusion | off: Godot's darkens ambient light only, and no map material takes any (they bring their bounce in through `light()`), so it drew nothing (Measured) | `MapLighting.build` |
+| Screen-space occlusion | off. It drew nothing when it was measured, since the map's materials brought their bounce light in through `light()` then (Measured); they hand it to Godot as its ambient light now (R5), which SSAO would darken, so turning it on is a look to judge beside CS2 | `MapLighting.build` |
 | Bloom, fog, colour adjustment | on | `MapLighting.build` |
-| Bounce light | CS2's own baked lightmaps (irradiance and direction), read in every world material's shader | `lightmap.gdshaderinc`, `LightmapMaterials` |
-| Props without lightmap UVs, players, arms | CS2's light probes, sampled in the shader | `probe_lit.gdshader`, `ProbeMaterials` |
-| Direct light | a custom `light()` on every map material, Godot's own Burley and GGX written out, so the baked light rides the sun's pass | `baked_light.gdshaderinc` |
-| Reflections | the sky only (`REFLECTION_SOURCE_SKY`), indoors too | `MapLighting.build` |
+| Bounce light | CS2's own baked lightmaps (irradiance and direction), read in every world material's shader and handed to Godot as its ambient light (`IRRADIANCE`), which keeps its reflections (R5) | `lightmap.gdshaderinc`, `baked_light.gdshaderinc`, `LightmapMaterials` |
+| Props without lightmap UVs, players, arms | CS2's light probes, read at one point for each body or prop (an ambient cube; a player's 40 units above the feet) and handed to Godot as its ambient light, as the lightmaps are | `probe_lit.gdshader`, `ProbeMaterials` |
+| Direct light | a custom `light()` on every map material, Godot's own Burley and GGX written out, so the sun's light takes its baked shadow (R4) | `baked_light.gdshaderinc` |
+| Reflections | a Godot reflection probe at each of CS2's cubemaps (dust2's 43 probe volumes), projected onto its box and drawn once as the map starts, and the sky outside them (R5); before R5, none at all | `MapReflections`, `MapImporter`, `MapLighting.build` |
 | 3D skybox | ordinary geometry scaled up, its depth squeezed against the far plane in the vertex shader (per fragment until R2) | `FarMaterials`, `far.gdshaderinc` |
 | Occlusion culling | on since R3, from the collision hull; before that, only the frustum culled | `project.godot`, `MapOccluders` |
 | Your own shadow | a second copy of your body, drawn into the shadow maps only | `PlayerView` |
@@ -153,6 +153,16 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
   skybox's VPK has a page of its own (512 square, one channel: R, G and B
   alike), which the skybox now reads (R4); `scripts/extract_assets.sh
   skybox` fetches it.
+
+- **L8. Reflections and players on dust2** (R5, R7). Nothing to extract.
+  Play dust2 beside CS2 and take pairs of screenshots from the same spots:
+  the same agent up close in the sun and in the shade (under the arch, in
+  lower tunnels), guns in hand, and anything on the map that shines.
+  Note where the shine differs, and whether the first seconds after the
+  map starts stutter while the probes are drawn. Then run the profiler at
+  1080p and 4K as in L1: `baseline` against `no_reflections` is what
+  reflecting costs, and the video memory line shows the probes' atlas.
+  The same screenshots rank what R7 takes next.
 
 ## Remote items (cloud threads)
 
@@ -292,12 +302,88 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
   units apart, so its edge crosses a body over about that much, where
   CS2 at High shadow quality takes it from the static shadow texture;
   and the page's own edges are as sharp as its texels.
-- **R5. Reflections from the map's own cubemaps** (after L4), in place of
-  the sky everywhere. This is for how it looks: specular indoors and in
-  tunnels is lit by the sky now.
+- **R5. Reflections from the map's own cubemaps** (after L4). *(The first
+  tier built, 2026-09-25: Godot's own probes where CS2's cubemaps are.
+  Waits on a playtest and the profiler, L8.)*
+  Until then nothing on the map, its props or its players reflected
+  anything, the sky included, though this page said the sky lit them:
+  every map, prop and player material turned Godot's ambient light off
+  (`ambient_light_disabled`) to bring CS2's bounce light in through
+  `light()`, and in Godot that switch takes every reflection with it
+  (Godot 4.7.2's `scene_forward_clustered.glsl`). A body in the shade had
+  no shine at all, the first of the reasons the players look flatter than
+  CS2's (R7).
+
+  What is built, the first tier:
+  - The map's materials hand their bounce light to Godot as its ambient
+    light (`IRRADIANCE`), which keeps the reflections. Godot multiplies it
+    by the occlusion and by the albedo after the decals, as `light()` did,
+    so a bullet hole still darkens it. Drawn in the Compatibility renderer
+    in a cloud thread, the four map shaders' bounce light came out as
+    before (6 of 2.07 million pixels differed, each by one step in 255,
+    which is rounding), and a smooth metal ball in a room reflected the
+    room, where it had been black. Forward+ was read from Godot's source,
+    not drawn.
+  - `MapReflections` puts a `ReflectionProbe` at each cubemap in the
+    entity lump (`env_combined_light_probe_volume`, `env_cubemap_box`,
+    `env_cubemap`): its box where the entity's is, its picture taken from
+    the entity's origin, projected onto the box and faded out over the
+    box's `edge_fade_dists`. Godot blends overlapping probes at every
+    pixel, as CS2 does, with two differences: one fade distance where CS2
+    has one for each axis (the largest is taken), and the smaller probe
+    first where CS2 goes by `indoor_outdoor_level`.
+  - Each probe is drawn once, as the map starts, with everything but the
+    players. Godot draws a probe only once a camera has it in view, and
+    one step of one probe a frame, so a camera of MapReflections' own
+    looks over them all for a frame, which lines every probe up, and the
+    map's visibility is held until they are done: nine frames a probe,
+    about 390 for dust2's 43 (2.2 s at 180 frames a second), in which the
+    whole map is drawn and a surface reflects the sky until its probe is
+    done. Drawn in the Compatibility renderer, a probe the main camera had
+    never looked at was ready the first frame it did; without that camera
+    it was not. The profiler waits for them before it measures.
+  - Godot dims a reflection where the ambient light reaching a surface is
+    faint (its specular occlusion), which stands in for CS2 scaling its
+    cubemaps by the baked light at each pixel.
+  - The profiler's `no_reflections` turns the probes and the sky's
+    reflections off: what reflecting costs.
+  - Godot's atlas of probe pictures has room for 64 (the project's
+    `reflection_count`, Godot's default) and takes all of it as the first
+    probe is drawn: about 400 MB of video memory in Forward+, about 6 MB a
+    place (read from Godot's source, not measured), which the profiler's
+    memory line will show. Scripts cannot size it for a map. A map with
+    more cubemaps than that reflects the sky in the rest, with a warning.
+
+  The second tier takes CS2's own pictures: dust2's
+  `cubemaps/env_cubemap_array` (L4), extracted and read into the probes
+  in place of Godot's, with CS2's scaling by the baked light. It needs
+  the array's layout read from Source 2 Viewer first.
 - **R6. Settings as CS2 names them.** Shadow quality, anti-aliasing and
   the rest as a menu reads them (roadmap item 26), so each player picks
   their own cost.
+- **R7. Players drawn as CS2 draws them.** Sid asked why the player
+  models look less detailed than CS2's (2026-09-25). The meshes and
+  textures are CS2's own; what differs is how they are shaded and lit.
+  Most visible first (the order inferred until screenshots of the same
+  agent in the same spot in both games compare them, L8):
+  1. No reflections at all. R5 built.
+  2. One light sample for each body. The probes are read once, 40 units
+     above the feet (`PlayerView`, `Bot`), where CS2 reads them at every
+     pixel, so its light changes from boots to head. The probes' sun
+     shadow is read at every pixel already (R4).
+  3. CS2's character shader's layers are lost in the export: cloth sheen,
+     softened skin (subsurface scattering), the eyes' own shader, rim and
+     tint masks, and detail textures (Source 2 Viewer's copy of the
+     shader). Colour, normal, roughness and metalness are kept. This
+     needs a Local list of which features the agents' materials use.
+  4. Textures compressed twice. Source 2 Viewer writes PNGs and Godot
+     compresses them again, to DXT1 or DXT5 (`write_import_settings.gd`,
+     `compress/high_quality` off), which blurs fine detail and smears the
+     roughness and metalness into each other. BC7 for the characters
+     would keep them, at a re-import on Sid's machine.
+
+  Agents extracted since CS2's 2026-09-23 update (VCS 72 shaders) may
+  also have incomplete materials.
 
 Anything that would need a change to Godot itself (a custom build or an
 engine fork) comes to Sid as a decision first. Nothing on this page needs
@@ -380,12 +466,14 @@ B site, long), measured with the feature, without it, and with it again.
   three views drawn at 1920x1080 with it and without differed in no
   pixel of the 3D.
   Godot's SSAO darkens ambient light only, and every map, prop and player
-  material has `ambient_light_disabled` and adds CS2's bounce in `light()`,
-  where it counts as direct light. It is off now. CS2's own "ambient
-  occlusion" (Sid plays it at Medium) would need Godot's `ssao_light_affect`,
-  which darkens direct light too, the sun's included, and the fade
-  distances raised from their metre defaults (50 and 300 units): a look
-  to judge beside CS2, not a setting to restore.
+  material then had `ambient_light_disabled` and added CS2's bounce in
+  `light()`, where it counts as direct light. It is off now. Since R5 the
+  bounce is Godot's ambient light, which SSAO would darken as it is.
+  Whether that looks like CS2's own "ambient occlusion" (Sid plays it at
+  Medium), with the fade distances raised from their metre defaults (50
+  and 300 units), and whether it wants `ssao_light_affect`, which darkens
+  direct light too, the sun's included, is a look to judge beside CS2,
+  not a setting to restore.
 - **The alpha branch costs nothing measurable.** `lightmapped`, `probe_lit`
   and `far` write `ALPHA_SCISSOR_THRESHOLD` inside a runtime `if`, which
   the Godot docs say makes every material on them alpha-tested. Copies of

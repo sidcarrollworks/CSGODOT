@@ -1,29 +1,33 @@
 // How the map's baked light (the lightmaps, or the light probes) reaches
-// the screen: through the light pass, not as emission.
+// the screen: its bounce as Godot's own ambient light, its sun's shadow in
+// the light pass.
 //
-// Godot runs a material's fragment() first, then paints any decals over its
-// albedo, then lights it. Emission set in fragment() is fixed before the
-// decals, so baked light carried as emission (albedo times bounce light) is
-// deaf to a bullet hole: the hole darkens the sun's share of the light and
-// not the bounce, which on a shaded wall is all of it. The light pass sees
-// the albedo as it is after the decals, and DIFFUSE_LIGHT is multiplied by
-// that albedo at the end, so the baked light is handed across in this
-// varying (set in fragment(), read in light()) and added there, once, on the
-// sun's pass. Defining light() replaces Godot's own direct lighting, so that
-// is written out below as Godot has it: Burley diffuse, Schlick-GGX
-// specular (scene_forward_lights_inc.glsl).
+// The bounce is written to IRRADIANCE in fragment(), with an alpha of 1,
+// which puts it in place of the ambient Godot would take from the
+// environment. Godot multiplies it by the occlusion (AO) and the albedo
+// after the decals have been painted over them, so a bullet hole darkens
+// it; baked light carried as emission, as it first was, was fixed before
+// the decals and deaf to a hole. And it keeps Godot's reflections. They
+// came with the ambient light, so the switch that turns that off
+// (ambient_light_disabled, which these materials used to set, bringing the
+// bounce in through light() instead) took every reflection with it, the
+// sky's and the reflection probes' (MapReflections) alike: nothing shone
+// in the shade, a player's jacket least of all (checked in Godot 4.7.2's
+// scene_forward_clustered.glsl). Godot also dims a reflection where the
+// ambient reaching a surface is faint, which is its stand-in for CS2
+// scaling its cubemaps by the baked light at each pixel.
 //
-// The cost is that the baked light rides on the sun: a scene with no
-// directional light shows none. Every map here has its sun.
-//
-// The sun's own light is cut by the static map's shadow CS2 baked, handed
-// across the same way: from the lightmap's shadow page on the map's
+// Defining light() replaces Godot's own direct lighting, so that is written
+// out below as Godot has it: Burley diffuse, Schlick-GGX specular
+// (scene_forward_lights_inc.glsl). It is here for the sun's shadow: the
+// static map's, as CS2 baked it, handed across in a varying (set in
+// fragment(), read in light()) from the lightmap's shadow page on the map's
 // surfaces (lightmap_sun), from the light probes' on what they light
 // (probe_sun). The live shadow map, in ATTENUATION, is on top of it, and
 // on a map whose shadows are baked it holds only what moves (MapShadows).
-// Every shader that includes this sets both in fragment().
+// Every shader that includes this sets IRRADIANCE and baked_sun in
+// fragment().
 
-varying vec3 baked_light;
 varying float baked_sun;
 
 float baked_schlick(float u) {
@@ -35,7 +39,6 @@ float baked_schlick(float u) {
 void light() {
 	float shadow = ATTENUATION;
 	if (LIGHT_IS_DIRECTIONAL) {
-		DIFFUSE_LIGHT += baked_light;
 		shadow *= baked_sun;
 	}
 

@@ -446,12 +446,25 @@ list, split into Local and Remote items, with the measurements.
   match. Left:
   the frames that run a tick, about 7 ms, which a cheaper tick shortens.
 - **Screen-space occlusion off.** *(done, the Godot docs audit)* It
-  darkened ambient light only, which no map material takes, so it drew
-  nothing and cost 0.6 to 0.95 ms a frame at 4K (rendering.md,
-  "Measured"). An occlusion look like CS2's would be a new setting to
-  judge beside the game.
-- **Research CS2's renderer (R0), reflections from the map's cubemaps (R5)
-  and CS2's video settings (R6).** *(Remote, not started)*
+  darkened ambient light only, which no map material took then, so it
+  drew nothing and cost 0.6 to 0.95 ms a frame at 4K (rendering.md,
+  "Measured"). The map's bounce light is Godot's ambient light since R5,
+  so an occlusion look like CS2's is a setting to judge beside the game.
+- **Reflections (R5).** *(first tier built, 2026-09-25; Sid plays and
+  profiles, rendering.md L8)* Nothing reflected anything before, not
+  even the sky: the switch that let the baked light in turned Godot's
+  reflections off with it. The map's materials now hand their baked
+  light to Godot as its ambient light, which keeps them, and a Godot
+  reflection probe sits at each of CS2's cubemaps (dust2's 43 probe
+  volumes), drawn once as the map starts. Next: CS2's own cubemap
+  pictures in place of Godot's.
+- **Players drawn as CS2 draws them (R7).** *(Remote, after L8's
+  screenshots)* Why the players look flatter than CS2's, most visible
+  first: no reflections (R5, built), one light sample for each body where
+  CS2 reads the probes at every pixel, CS2's character shader layers lost
+  in the export, and textures compressed twice.
+- **Research CS2's renderer (R0) and CS2's video settings (R6).**
+  *(Remote, not started)*
 
 ### Phase 3: split the game from the player (the ground for multiplayer)
 
@@ -782,6 +795,7 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 | Hands | Run `scripts/profile_render.gd` again at 1080p and 4K, and walk long doors and top of mid, on PR #78 | Rendering R2, R3 |
 | Decided | dust2's sun shadows come from CS2's baked pages, the live shadow map drawing only what moves (Sid, 2026-09-25) | Rendering R4 |
 | Hands | Run the dust2 checks again, play dust2's shadows beside CS2's, and profile with `live_map_shadows` and `no_visibility`, on PR #82 (rendering.md L7; the pages were extracted and checked 2026-09-25) | Rendering R4 |
+| Hands | Play dust2 beside CS2 for reflections and the players (the same agent in the same spots, in sun and shade), and profile with `no_reflections` (rendering.md L8) | Rendering R5, R7 |
 
 ---
 
