@@ -8,7 +8,9 @@ extends SceneTree
 ##   - the blend paint, in a vertex attribute Godot drops
 ##     (src/map/export_paint_channel.gd);
 ##   - the lightmap's average light, measured once for the ambient of what
-##     the lightmap does not cover (src/map/lightmap_materials.gd).
+##     the lightmap does not cover (src/map/lightmap_materials.gd);
+##   - the alpha of the player models' cloth masks, which the import would
+##     paint over them (src/player/export_character_masks.gd).
 ##
 ##   godot --headless --path . --script scripts/prepare_export.gd
 ##
@@ -22,6 +24,7 @@ const ASSETS_DIR := "res://assets"
 const OffsetFix := preload("res://src/map/export_offset_fix.gd")
 const PaintChannel := preload("res://src/map/export_paint_channel.gd")
 const Lightmaps := preload("res://src/map/lightmap_materials.gd")
+const CharacterMasks := preload("res://src/player/export_character_masks.gd")
 
 
 func _init() -> void:
@@ -38,6 +41,9 @@ func _init() -> void:
 		var painted: int = PaintChannel.fix_file(gltf)
 		if painted > 0:
 			print("blend paint: %s, %d primitives' paint kept as vertex colour" % [gltf.get_file(), painted])
+		var masks: int = CharacterMasks.fix_file(gltf)
+		if masks > 0:
+			print("cloth masks: %s, %d readied for the import" % [gltf.get_file(), masks])
 		_measure_lightmap(gltf.get_base_dir())
 	quit(0)
 

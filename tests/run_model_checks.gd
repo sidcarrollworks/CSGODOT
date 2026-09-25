@@ -188,6 +188,7 @@ func _init() -> void:
 				"%s has its %s mesh" % [path.get_file(), part]
 			)
 		scene.free()
+	_test_character_shading(agents)
 
 	_check(clips.size() >= 20, "the first-person rifle animations are there (%d found)" % clips.size())
 	var checked := 0
@@ -1387,6 +1388,13 @@ func _test_player_model() -> void:
 	var body := model.find_children("*thirdperson_body", "MeshInstance3D", true, false)
 	var arms := model.find_children("*firstperson*", "MeshInstance3D", true, false)
 	_check(not body.is_empty() and arms.is_empty(), "the third-person body is on the rig and the first-person arms are not")
+	var shaded := 0
+	for mesh in body:
+		for surface in (mesh as MeshInstance3D).mesh.get_surface_count():
+			var material := (mesh as MeshInstance3D).get_active_material(surface) as ShaderMaterial
+			if material != null and material.shader.code.contains("character_charlie("):
+				shaded += 1
+	_check(shaded > 0, "the body is drawn with CS2's character shading (%d surfaces)" % shaded)
 	var off_layer := 0
 	var all_meshes := model.find_children("*", "MeshInstance3D", true, false).filter(
 		func(mesh: Node) -> bool: return mesh.name.contains("thirdperson") or mesh.name.contains("weapon_")
@@ -1692,6 +1700,55 @@ func _test_a_body_holds_what_is_in_hand() -> void:
 	model.show_held()
 	_check(model.holding == "" and model.held_weapon == null and not glock.visible and not ak.visible, "nothing in hand: nothing shown")
 	model.free()
+
+
+## What CS2's character shader asks of each agent material, printed for a
+## render beside CS2 to go by, and whether the cloth masks it needs were
+## extracted (scripts/extract_assets.sh character-masks).
+func _test_character_shading(agents: PackedStringArray) -> void:
+	for path in agents:
+		var scene := _instantiate(path)
+		if scene == null:
+			continue
+		var seen := {}
+		var characters := 0
+		var missing := PackedStringArray()
+		for node in scene.find_children("*", "MeshInstance3D", true, false):
+			var mesh := node as MeshInstance3D
+			if mesh.mesh == null:
+				continue
+			for surface in mesh.mesh.get_surface_count():
+				var material := mesh.get_active_material(surface)
+				if material == null or seen.has(material):
+					continue
+				seen[material] = true
+				var description := BlendMaterials.vmat(material)
+				if not CharacterMaterials.is_character(description):
+					continue
+				characters += 1
+				var floats: Dictionary = description.get("FloatParams", {})
+				var mask := CharacterMaterials.mask_file(description)
+				var found := not mask.is_empty() and (
+					ResourceLoader.exists(mask) or FileAccess.file_exists(ProjectSettings.globalize_path(mask))
+				)
+				print("  %s %s: cloth %s, sheen %.3f %s, occlusion on direct light %.2f and %.2f, mask %s" % [
+					path.get_file(), String(description.get("Name", material.resource_name)).get_file(),
+					"yes" if CharacterMaterials.wants_cloth(description) else "no",
+					float(floats.get("g_flSheenScale", CharacterMaterials.SHEEN_SCALE)),
+					CharacterMaterials.sheen_tint(description).to_html(false),
+					float(floats.get("g_flAmbientOcclusionDirectDiffuse", 1.0)),
+					float(floats.get("g_flAmbientOcclusionDirectSpecular", 1.0)),
+					"found" if found else "missing",
+				])
+				if CharacterMaterials.wants_cloth(description) and not found:
+					missing.append(mask)
+		_check(characters > 0, "%s is drawn with CS2's character shader (%d materials)" % [path.get_file(), characters])
+		_check(
+			missing.is_empty(),
+			"%s: every material that asks for cloth shading has its mask (missing %s; scripts/extract_assets.sh character-masks)"
+				% [path.get_file(), missing]
+		)
+		scene.free()
 
 
 func _find(dir_path: String, prefix: String) -> PackedStringArray:

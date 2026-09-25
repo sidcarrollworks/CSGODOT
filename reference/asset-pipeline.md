@@ -154,6 +154,25 @@ What dust2 turned out to be:
   times its scale and sRGB tint, through the mask, over the colour by
   `g_flSelfIllumAlbedoFactor`, at the lightmap's energy (0.4) to sit in the
   same units as the rest of the light.
+- **The player models' cloth has no slot either.** CS2's character shader
+  (`csgo_character`) shades a material with `F_CLOTH_SHADING` as cloth
+  wherever the blue channel of its metalness texture (`g_tMetalness`) says,
+  times one less the metalness in its green: a soft sheen, brightest seen
+  edge-on, where anything else has GGX's highlight. The export reads only the
+  green, for the metalness in its ORM texture, so the agents' knits and face
+  masks shone all over (`reference/rendering.md` R7).
+  `scripts/extract_assets.sh character-masks` reads the textures' names out
+  of the agents' material descriptions and decompiles them under
+  `characters/materials/`, by the path the material names them by; the
+  `characters` step runs it too. Their alpha is a rim mask nothing here
+  draws, and the import's `process/fix_alpha_border` (on by default) would
+  paint the nearest opaque texel's colour over the masks wherever the rim
+  mask is clear, so the prepare step writes them again without it
+  (`src/player/export_character_masks.gd`), which also imports them as DXT1
+  rather than DXT5. `src/player/character.gdshader` follows Source 2
+  Viewer's implementation (`complex.frag.slang`, `common/pbr.slang`) with
+  the mask, `g_flSheenScale` and the sRGB `g_flSheenTintColor` that
+  `CharacterMaterials` hands it.
 - **A Source 2 Viewer older than CS2's shaders exports the wrong channels.**
   The glTF export asks the game's compiled shaders which channels of a
   texture feed what; CS2's update of September 2026 moved them to version 72,

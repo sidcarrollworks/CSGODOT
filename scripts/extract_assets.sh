@@ -30,6 +30,7 @@
 #   scripts/extract_assets.sh effects         # the tracers' and muzzle flashes' textures
 #   scripts/extract_assets.sh characters      # two player models and their locomotion
 #   scripts/extract_assets.sh animgraphs      # the animation graphs that drive the clips (seconds)
+#   scripts/extract_assets.sh character-masks # just the player models' cloth masks (seconds; the characters step takes them too)
 #   scripts/extract_assets.sh sounds          # the guns' and the equipment's sounds, footsteps by surface, hits
 #   scripts/extract_assets.sh all             # map + weapons + equipment + hud + effects + characters + animgraphs + sounds
 #
@@ -176,7 +177,7 @@ usage() {
 COMMAND="${1:-}"
 case "$COMMAND" in
 	list-map|map|physics|entities|nav|volumes|radar|layers|sky|skybox|lightmaps|visibility|all|paths) ;;
-	list-weapons|surfaces|weapons|weapon-animations|weapon-data|equipment|hud|effects|characters|animgraphs|sounds)
+	list-weapons|surfaces|weapons|weapon-animations|weapon-data|equipment|hud|effects|characters|character-masks|animgraphs|sounds)
 		# Not a map's own step: a map name here would be ignored, which is
 		# worse than being told.
 		if [[ $# -gt 1 ]]; then
@@ -1036,6 +1037,37 @@ extract_characters() {
 	echo "        -> $CHARACTERS_DEST/animation"
 	"$S2V_BIN" -i "$PAK_VPK" -f "$clips" -o "$CHARACTERS_DEST" -d --gltf_export_format gltf \
 		| grep -vE '^(Preloading|Added folder|--- )' || true
+
+	echo
+	# A model whose materials came through without their descriptions is
+	# still worth importing.
+	extract_character_masks || true
+}
+
+## The player models' cloth masks: the blue channel of each agent material's
+## metalness texture (g_tMetalness), which says where CS2's character shader
+## shades the material as cloth, with a sheen rather than a highlight
+## (src/player/character.gdshader). The export reads only that texture's
+## green, for the metalness, so the textures are read off the exported
+## glTFs' material descriptions and decompiled on their own, as the map's
+## layers are, landing under materials/ by the path the material names them
+## by. No model is exported again, so this needs none of CS2's shaders; the
+## prepare step drops the textures' alpha before the import
+## (src/player/export_character_masks.gd).
+extract_character_masks() {
+	require_file "$PAK_VPK"
+	local masks
+	masks="$(find "$CHARACTERS_DEST/agents" -name '*.gltf' -exec grep -ohE '"g_tMetalness" *: *"[^"]+"' {} + 2>/dev/null \
+		| sed -E 's/^"[^"]+" *: *"//; s/"$//; s/\.vtex$/.vtex_c/' | sort -u || true)"
+	if [[ -z "$masks" ]]; then
+		echo "No player model under $CHARACTERS_DEST/agents names a metalness texture." >&2
+		echo "Run 'scripts/extract_assets.sh characters' first." >&2
+		return 1
+	fi
+	echo "Extracting $(wc -l <<<"$masks" | tr -d ' ') metalness textures, for the player models' cloth masks"
+	echo "        -> $CHARACTERS_DEST/materials"
+	s2v_batched "$(paste -sd, - <<<"$masks")" -o "$CHARACTERS_DEST" -d \
+		| grep -vE '^(Preloading|Added folder|--- \[)' || true
 }
 
 ## The animation graphs: CS2's AnimGraph 2 (.vnmgraph_c, all of
@@ -1107,6 +1139,7 @@ case "$COMMAND" in
 	lightmaps) extract_lightmaps; finish ;;
 	visibility) extract_visibility ;;
 	characters) extract_characters; finish ;;
+	character-masks) extract_character_masks; finish ;;
 	animgraphs) extract_animgraphs ;;
 	weapons) extract_weapons; finish ;;
 	weapon-animations) extract_weapon_animations; finish ;;
