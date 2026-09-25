@@ -22,6 +22,11 @@ extends Node3D
 ## played on the next frame drawn (watch()). What is heard is the gun the
 ## event names, so a shot sounds as what fired it even if the hand has
 ## changed since.
+## A scope going in or out is heard the same way, from weapon_zoom: the
+## gun's zoom-in sound for each level up, its zoom-out coming out, except a
+## sniper's, which CS2 has left silent since 22 September 2026
+## (reference/research/audio-gameplay.md 1.3). Everyone near hears it, so a
+## bot's is heard too.
 ## A gun's volumes are set by ear; its sound events (.vsndevts) are not read
 ## yet (reference/research/audio.md). The hit feedback's are CS2's (FEEDBACK).
 
@@ -88,6 +93,8 @@ var shooter: PlayerSim
 var _game: GameSystems
 ## The guns fired since the last frame drawn, by weapon_fire.
 var _fired := PackedStringArray()
+## The zoom sounds to play on the next frame, by weapon_zoom, as stems.
+var _zooms: Array[PackedStringArray] = []
 ## Every gun's set, by class, read once (sets()).
 static var _sets := {}
 ## Every set's files read (all_stems()), once for every player: a gun is
@@ -121,6 +128,7 @@ func watch(p_shooter: PlayerSim) -> void:
 func _exit_tree() -> void:
 	if _game != null:
 		_game.events.unlisten(&"weapon_fire", _on_weapon_fire)
+		_game.events.unlisten(&"weapon_zoom", _on_weapon_zoom)
 		_game = null
 
 
@@ -129,6 +137,9 @@ func _process(_delta: float) -> void:
 	for item_class in _fired:
 		shot(item_class)
 	_fired.clear()
+	for stems in _zooms:
+		_play(_handling, stems, HANDLING_DB)
+	_zooms.clear()
 
 
 ## Listens to the shooter's game's weapon_fire, the one it is in now.
@@ -140,9 +151,11 @@ func _follow_game() -> void:
 		return
 	if _game != null:
 		_game.events.unlisten(&"weapon_fire", _on_weapon_fire)
+		_game.events.unlisten(&"weapon_zoom", _on_weapon_zoom)
 	_game = game
 	if _game != null:
 		_game.events.listen(&"weapon_fire", _on_weapon_fire)
+		_game.events.listen(&"weapon_zoom", _on_weapon_zoom)
 
 
 ## Handed out at the tick's end: noted, and heard on the next frame.
@@ -150,6 +163,37 @@ func _on_weapon_fire(event: GameEvent) -> void:
 	var userid: int = event.fields["userid"]
 	if is_instance_valid(shooter) and userid == shooter.userid and userid != GameEvents.NOBODY:
 		_fired.append(String(event.fields["weapon"]))
+
+
+## Handed out at the tick's end, when the scope has moved: what it sounds
+## like, by the gun in hand and where its scope is now, noted for the next
+## frame.
+func _on_weapon_zoom(event: GameEvent) -> void:
+	var userid: int = event.fields["userid"]
+	if not is_instance_valid(shooter) or userid != shooter.userid or userid == GameEvents.NOBODY:
+		return
+	var weapon := shooter.weapon
+	if weapon == null:
+		return
+	var stems := zoom_stems(weapon.data, weapon.zoom_level > 0)
+	if not stems.is_empty():
+		_zooms.append(stems)
+
+
+## A gun's zoom sound: going in (to either level) or coming out; nothing
+## coming out of a sniper's scope, which hides the arms
+## (WeaponData.hides_view_model_when_zoomed): CS2's four snipers, silent
+## unscoping since 22 September 2026.
+static func zoom_stems(data: WeaponData, going_in: bool) -> PackedStringArray:
+	if not going_in and data.hides_view_model_when_zoomed:
+		return PackedStringArray()
+	var gun: Dictionary = sets().get(data.item_class, {})
+	return (gun.get("zoom_in" if going_in else "zoom_out", PackedStringArray()) as PackedStringArray).duplicate()
+
+
+## The zoom sounds noted and not heard yet, as a copy.
+func pending_zooms() -> Array[PackedStringArray]:
+	return _zooms.duplicate()
 
 
 ## The shots noted and not heard yet, as a copy.
@@ -287,9 +331,12 @@ static func read_sets(page: String, timings: String) -> Dictionary:
 		var handling := PackedStringArray()
 		for column in [5, 6, 9]:
 			handling.append_array(_names(cells[column]))
+		var zooms := _zooms_of(_names(cells[7]))
 		out[item_class] = {
 			"fire": _in(folder, _shots(item_class, _names(cells[2]))),
 			"draw": _in(folder, _names(cells[4])),
+			"zoom_in": _in(folder, zooms[0]),
+			"zoom_out": _in(folder, zooms[1]),
 			"reload": [],
 			"_handling": handling,
 			"_folder": folder,
@@ -337,6 +384,8 @@ static func all_stems() -> PackedStringArray:
 	for gun: Dictionary in sets().values():
 		stems.append_array(gun["fire"])
 		stems.append_array(gun["draw"])
+		stems.append_array(gun["zoom_in"])
+		stems.append_array(gun["zoom_out"])
 		for part: Array in gun["reload"]:
 			stems.append_array(part[1])
 	return stems
@@ -351,6 +400,8 @@ static func _load_all() -> void:
 	for gun: Dictionary in sets().values():
 		SoundBank.randomizer_of(gun["fire"])
 		SoundBank.randomizer_of(gun["draw"])
+		SoundBank.randomizer_of(gun["zoom_in"])
+		SoundBank.randomizer_of(gun["zoom_out"])
 		for part: Array in gun["reload"]:
 			SoundBank.randomizer_of(part[1])
 	for event: StringName in FEEDBACK:
@@ -366,6 +417,22 @@ static func _names(cell: String) -> PackedStringArray:
 		if not trimmed.is_empty() and trimmed != "-":
 			out.append(trimmed)
 	return out
+
+
+## A gun's zoom files, as [in, out]: the ones named zoom_in (the AUG's,
+## the G3SG1's), or else the one named plain zoom (the AWP's, which CS2's
+## Weapon_AWP.Zoom plays going in); and the ones named zoom_out.
+static func _zooms_of(names: PackedStringArray) -> Array[PackedStringArray]:
+	var going_in := PackedStringArray()
+	var coming_out := PackedStringArray()
+	for file_name in names:
+		if file_name.contains("zoom_in"):
+			going_in.append(file_name)
+		elif file_name.contains("zoom_out"):
+			coming_out.append(file_name)
+	if going_in.is_empty() and names.has("zoom"):
+		going_in.append("zoom")
+	return [going_in, coming_out]
 
 
 ## Which of a gun's fire files are its shot: silenced for a gun that starts
