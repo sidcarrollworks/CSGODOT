@@ -22,7 +22,8 @@ about 8.5 ms of every 7.8 ms tick.
 
 ## Where it goes
 
-Headless, so a frame is its script alone: drawing comes on top.
+Headless, so a frame is its script alone: drawing comes on top
+(`reference/rendering.md` and `scripts/profile_render.gd` measure that).
 
 | A tick | 10 players | 20 players | Each player |
 |---|---|---|---|
@@ -63,6 +64,18 @@ light's shadow again only when something inside its range moves (its
 lights and shadows documentation), so they cost a shadow pass a frame while
 a player or a bot is in the tunnel and none otherwise. Not measured on the
 GPU yet.
+
+What is drawn is cut down by the map's own visibility (`WorldVisibility`,
+2026-09-24), as CS2 cuts it: from T spawn 2,702 of dust2's 3,589 world
+meshes are not drawn (they still cast their shadows), and from mid 2,178.
+The GPU's saving is not measured yet. On the CPU it is a frame's lookup of
+the camera's cluster, 4 us, and when the camera moves into another cluster,
+the meshes marked again: 0.4 to 2.9 ms at five of Sid's spots, more the more
+there is to see. Which clusters each mesh touches is worked out once, at
+load, on a worker thread (about 0.1 s there; 0.7 s when it ran on the main
+thread), and is known before the rest of the map has loaded: the load takes
+6.6 s with it and without it. Reading the file is 3 ms. None of it is on the
+tick, and nothing without a camera runs it.
 
 | Now and then | Cost |
 |---|---|

@@ -43,4 +43,5 @@ void fragment() {
 	}
 	vec3 world_normal = (INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz;
 	baked_light = orm.r * probe_ambient(world_normal);
+	baked_sun = probe_sun((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz);
 }

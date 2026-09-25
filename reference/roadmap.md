@@ -99,6 +99,20 @@ Updated 2026-09-24 later: game modes apart from maps (item 24a, `reference/syste
   way (`MapLighting.add_lamps`). After Sid found black skybox buildings,
   orange blocks on the towers and a dark lower tunnel (2026-09-24,
   `reference/asset-pipeline.md`).
+- What a frame costs to draw, measured on Sid's machine (2026-09-24,
+  `scripts/profile_render.gd`, `reference/rendering.md`): the sun's live
+  shadows are most of it. Occlusion culling from the collision hull and a
+  skybox the depth test can hide went in with it (PR #78).
+- What is drawn is what CS2 draws from where you stand: the map's own
+  visibility (`world_visibility.vvis_c`, `WorldVisibility`), read after
+  Source 2 Viewer, culls the world meshes the camera's cluster cannot see,
+  keeping their shadows. Sid found a kasbah tower at B drawn over the 3D
+  skybox's dome from T spawn, which CS2 does not draw there (2026-09-24).
+  With it, the rest of what he found then: dust2's windows, black where
+  the probes were read at the middle of a mesh merged from all over the
+  map, are lit from their own vertices; and the skybox's palm, bush, olive
+  and antenna cards, exported without their alpha, get it back at
+  extraction (`scripts/export_alpha.gd`).
 - Viewmodel arms and weapons at CS2's `viewmodel_fov`; third-person agents
   (Phoenix and SAS) on the locomotion rig, moved by CS2's own blend spaces
   (runs at 225, walks at 136, crouching at 96, kept in step) in an animation
@@ -378,6 +392,36 @@ them in order. Settled by Sid's message: the bomb is in (so dust2 plays as
 dust2), and the economy and buy menu are in. Taken as the default because
 he asked for CS2's systems: 5 v 5, with bots filling the empty places.
 
+### Rendering (new, 2026-09-24)
+
+Sid: dust2 runs poorly at 1920x1080 here, where CS2 plays it at 3840x2160
+and about 180 frames a second on his RTX 4070 Ti, and lighting and shaders
+should look and run as well as Source 2's. `reference/rendering.md` is the
+list, split into Local and Remote items, with the measurements.
+
+- **The profiler (R1).** *(done, PR #78)* Draws dust2 from eight fixed views
+  and switches one feature off at a time.
+- **The skybox behind the map by its vertices (R2).** *(done, PR #78; Sid
+  re-runs the profiler)* Writing its depth per fragment cost 0.8 ms at 1080p
+  and 3.2 ms at 4K.
+- **Occlusion culling (R3).** *(done, PR #78, from the collision hull; Sid
+  walks long doors and top of mid again)* The camera's pass went from about
+  1,170 draw calls to 290.
+- **The sun's shadows as CS2 draws them (R4).** *(first tier built, PR #82;
+  the pages extracted and checked 2026-09-25; Sid plays and profiles,
+  rendering.md L7)* The map's shadow from
+  the sun comes from CS2's baked pages: `direct_light_shadows` on its
+  surfaces, and the probe atlas's `_dlshd` on everything the probes light,
+  players, dropped guns, grenades and the bomb among them. The 3D skybox
+  reads its own page. The live shadow
+  map draws only what moves; drawing the map into it cost 2.0 ms of GPU at
+  1080p, 6.3 ms at 4K and 1.7 ms of the renderer's CPU, from 6,200 draw
+  calls a frame. Next, if the playtest wants crisper edges up close: a
+  static shadow map of the map, rendered once at load, since dust2 ships
+  none (L6).
+- **Research CS2's renderer (R0), reflections from the map's cubemaps (R5)
+  and CS2's video settings (R6).** *(Remote, not started)*
+
 ### Phase 3: split the game from the player (the ground for multiplayer)
 
 10. **Simulation apart from input and drawing.** *(done, PR #24; Sid said yes, 2026-09-22 21:57)*
@@ -602,7 +646,11 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
       cause, then Remote)* They have textures; `prepare_export` warned
       that inferno's world and skybox glTFs have a primitive with both
       blend paint and vertex colour, which it leaves alone. Unconfirmed
-      as the cause.
+      as the cause. dust2's windows were black the same way for another
+      reason (2026-09-24): a prop merged from copies all over the map was
+      lit by the probes at the middle of its box, inside a building, and
+      is now lit from its own vertices (`ProbeMaterials.cube_for`); worth
+      a look at inferno's café again.
     - *No sky panorama on inferno.* *(Remote for the warning; the fix
       waits on Source 2 Viewer)* CS2 1.41.8.3 ships VCS 72 shaders and
       Source2Viewer-CLI 20.0 reads 59 to 71, so its env_sky material
@@ -610,9 +658,11 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
       decompile and 4284 textures failed. `extract_assets.sh` should warn
       when Source 2 Viewer prints "Only VCS file versions". The same gap
       costs every colour texture exported since its alpha: dust2's 3D
-      skybox, exported again on 2026-09-24, draws its palm and bush cards
-      whole. Support is on Source 2 Viewer's master since 2026-09-23;
-      export again with the release that has it.
+      skybox, exported again on 2026-09-24, drew its palm and bush cards
+      whole. *(Done 2026-09-24 for the alpha: the extraction decompiles
+      those textures again on their own, which keeps it; the panorama
+      still waits.)* Support is on Source 2 Viewer's master since
+      2026-09-23; export again with the release that has it.
     - *The first import fails to compile `prepare_export.gd`.* *(Remote)*
       On a fresh checkout `lightmap_materials.gd:75` names `BlendMaterials`
       before any import has registered the class names, so the first
@@ -693,6 +743,9 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 | Decided | The game's own numbers win over the sheet's wherever the game has them (Sid, 2026-09-22), the Desert Eagle's jump inaccuracy included (46.75, not 378.30) | `WeaponVData`, every gun |
 | Hands | List CS2's binds on a fresh config (`key_listboundkeys`) to confirm the defaults file | Item 12a |
 | Hands | The systems' Local list in `reference/cs2-systems.md`: bomb (C1, the explosion's particles from C3, and decoding C2's damage), grenades (G1 to G5, and G6's particle and smoke textures), knife (K1), sounds (S1, S2) | Phases 4 to 7 |
+| Hands | Run `scripts/profile_render.gd` again at 1080p and 4K, and walk long doors and top of mid, on PR #78 | Rendering R2, R3 |
+| Decided | dust2's sun shadows come from CS2's baked pages, the live shadow map drawing only what moves (Sid, 2026-09-25) | Rendering R4 |
+| Hands | Run the dust2 checks again, play dust2's shadows beside CS2's, and profile with `live_map_shadows` and `no_visibility`, on PR #82 (rendering.md L7; the pages were extracted and checked 2026-09-25) | Rendering R4 |
 
 ---
 

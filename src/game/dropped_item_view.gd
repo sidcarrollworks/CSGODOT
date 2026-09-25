@@ -61,6 +61,7 @@ func _on_spawned(entity: SimEntity) -> void:
 	_models[item.id] = model
 	_moving[item.id] = true
 	_place(item, model, 0.0, SimClock.draw_usec())
+	ProbeMaterials.light_model(model, model.global_position)
 
 
 func _on_removed(entity: SimEntity) -> void:
@@ -78,8 +79,12 @@ func _process(_delta: float) -> void:
 	var now := SimClock.draw_usec()
 	for id: int in _moving.keys():
 		var item: DroppedItem = _items[id]
-		if _place(item, _models[id], fraction, now):
+		var model: Node3D = _models[id]
+		if _place(item, model, fraction, now):
 			_moving.erase(id)
+		# Lit from the map's light probes where it is, which hold the map's
+		# shadow from the sun; the live shadow map no longer does.
+		ProbeMaterials.light_model(model, model.global_position)
 
 
 ## Draws the item as the frame falls between its last two ticks: in

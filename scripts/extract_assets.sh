@@ -10,7 +10,7 @@
 # Usage:
 #   scripts/extract_assets.sh list-map        # what is inside the map's VPK
 #   scripts/extract_assets.sh list-weapons    # the gun models the weapons step takes
-#   scripts/extract_assets.sh map             # every step for one map: world, hull, entities, nav, volumes, radar, surfaces, layers, sky, skybox, lightmaps
+#   scripts/extract_assets.sh map             # every step for one map: world, hull, entities, nav, volumes, radar, surfaces, layers, sky, skybox, lightmaps, visibility
 #   scripts/extract_assets.sh physics         # just the collision hull (seconds)
 #   scripts/extract_assets.sh entities        # just the entity lump (seconds)
 #   scripts/extract_assets.sh nav             # just the nav mesh the bots walk (seconds)
@@ -20,7 +20,8 @@
 #   scripts/extract_assets.sh layers          # just the textures the glTF has no slot for: second layers, decals, glows
 #   scripts/extract_assets.sh sky             # just the sky panorama
 #   scripts/extract_assets.sh skybox          # just the 3D skybox: the far buildings and their baked light
-#   scripts/extract_assets.sh lightmaps       # just the baked bounce light
+#   scripts/extract_assets.sh lightmaps       # just the baked light: bounce light, the sun's shadow, light probes
+#   scripts/extract_assets.sh visibility      # just which parts of the map can see which (seconds)
 #   scripts/extract_assets.sh weapons         # every gun: models, first- and third-person animations
 #   scripts/extract_assets.sh weapon-animations  # just the guns' animations (a minute)
 #   scripts/extract_assets.sh weapon-data     # just the game's weapon tuning (seconds)
@@ -33,7 +34,7 @@
 #   scripts/extract_assets.sh all             # map + weapons + equipment + hud + effects + characters + animgraphs + sounds
 #
 # The steps for one map (list-map, map, physics, entities, nav, volumes,
-# radar, layers, sky, skybox, lightmaps, and all) take the map's name after
+# radar, layers, sky, skybox, lightmaps, visibility, and all) take the map's name after
 # the step, de_dust2 when there is none:
 #   scripts/extract_assets.sh map de_mirage   # all of de_mirage, into assets/maps/de_mirage
 #   scripts/extract_assets.sh nav de_inferno  # just de_inferno's nav mesh
@@ -174,7 +175,7 @@ usage() {
 
 COMMAND="${1:-}"
 case "$COMMAND" in
-	list-map|map|physics|entities|nav|volumes|radar|layers|sky|skybox|lightmaps|all|paths) ;;
+	list-map|map|physics|entities|nav|volumes|radar|layers|sky|skybox|lightmaps|visibility|all|paths) ;;
 	list-weapons|surfaces|weapons|weapon-animations|weapon-data|equipment|hud|effects|characters|animgraphs|sounds)
 		# Not a map's own step: a map name here would be ignored, which is
 		# worse than being told.
@@ -508,13 +509,50 @@ extract_layers_under() {
 		| sed -E 's/^"[^"]+" *: *"//; s/"$//; s/\.vtex$/.vtex_c/' | sort -u || true)"
 	if [[ -z "$textures" ]]; then
 		echo "No layered, decal or self-illuminated materials in $world; nothing to fetch."
+	else
+		echo "Extracting $(echo "$textures" | wc -l | tr -d ' ') second-layer, blend-mask, decal and self-illumination textures"
+		echo "        -> $dest/materials"
+		"$S2V_BIN" -i "$PAK_VPK" -f "$(echo "$textures" | paste -sd, -)" -o "$dest" -d \
+			| grep -vE '^(Preloading|Added folder|--- \[)' || true
+	fi
+	restore_alpha "$world"
+}
+
+## Puts back the alpha an export dropped from the colour of an alpha-cut or
+## translucent material (scripts/export_alpha.gd says which, and why): each
+## such texture decompiled again on its own, which keeps its alpha, over the
+## export's copy. Needs Godot to read the glTF; without it they are left as
+## they are.
+restore_alpha() {
+	local world="$1"
+	local godot
+	godot="$(find_godot)"
+	if [[ -z "$godot" ]]; then
+		echo "No Godot binary found; colour textures exported without their alpha are left so."
 		return
 	fi
-
-	echo "Extracting $(echo "$textures" | wc -l | tr -d ' ') second-layer, blend-mask, decal and self-illumination textures"
-	echo "        -> $dest/materials"
-	"$S2V_BIN" -i "$PAK_VPK" -f "$(echo "$textures" | paste -sd, -)" -o "$dest" -d \
-		| grep -vE '^(Preloading|Added folder|--- \[)' || true
+	local pairs
+	# Godot is given the glTF under res://, which reads the same on every
+	# system, and answers with the images there too.
+	pairs="$("$godot" --headless --path "$PROJECT_DIR" --script scripts/export_alpha.gd -- "res://${world#"$PROJECT_DIR"/}" 2>/dev/null \
+		| tr -d '\r' | sed -n 's/^ALPHA\t//p' || true)"
+	if [[ -z "$pairs" ]]; then
+		return
+	fi
+	local scratch
+	scratch="$(mktemp -d)"
+	echo "Restoring the alpha of $(wc -l <<<"$pairs" | tr -d ' ') colour textures the export wrote without it"
+	"$S2V_BIN" -i "$PAK_VPK" -f "$(cut -f1 <<<"$pairs" | sed 's/\.vtex$/.vtex_c/' | sort -u | paste -sd, -)" -o "$scratch" -d \
+		| grep -vE '^(Preloading|Added folder|--- \[|--- Dump)' || true
+	local vtex image restored=0
+	while IFS=$'\t' read -r vtex image; do
+		if [[ -f "$scratch/${vtex%.vtex}.png" ]]; then
+			cp "$scratch/${vtex%.vtex}.png" "$PROJECT_DIR/${image#res://}"
+			restored=$((restored + 1))
+		fi
+	done <<<"$pairs"
+	rm -rf "$scratch"
+	echo "        $restored put back over the export's copies"
 }
 
 ## The 3D skybox: the buildings and horizon beyond the playable map, which
@@ -553,8 +591,9 @@ extract_skybox() {
 	"$S2V_BIN" -i "$vpk" -f "$lump" -o "$SKYBOX_DEST" -d | grep -E '^--- Dump' || true
 	# Its own baked light, which its walls are drawn with as the map's are:
 	# without it, the two-layer walls had nothing but the sun and were black
-	# in shade. Not its light probes, which light nothing that moves there.
-	extract_baked_light "$vpk" "$SKYBOX_DEST" 'irradiance|directional_irradiance' optional
+	# in shade. Its sun's shadow with it, where it has one. Not its light
+	# probes, which light nothing that moves there.
+	extract_baked_light "$vpk" "$SKYBOX_DEST" 'irradiance|directional_irradiance|direct_light_shadows' optional
 	echo
 	extract_layers_under "$SKYBOX_DEST"
 }
@@ -585,8 +624,9 @@ extract_sky() {
 
 ## A map's baked light from its VPK into dest, keeping the path each file
 ## has in the VPK: the lightmaps named in which (a pattern of their names,
-## irradiance|directional_irradiance, and the probes' atlas where wanted).
-## With "optional" after them, a VPK that has none is passed over.
+## irradiance|directional_irradiance|direct_light_shadows, and the probes'
+## atlases where wanted). With "optional" after them, a VPK that has none is
+## passed over.
 extract_baked_light() {
 	local vpk="$1" dest="$2" which="$3" optional="${4:-}"
 	local maps
@@ -597,32 +637,58 @@ extract_baked_light() {
 	fi
 	require_filter "$maps" "the lightmaps in $(basename "$vpk")"
 	mkdir -p "$dest"
-	"$S2V_BIN" -i "$vpk" -f "$maps" -o "$dest" -d | grep -E '^--- Dump' | grep -v '_atlas_z' || true
+	"$S2V_BIN" -i "$vpk" -f "$maps" -o "$dest" -d | grep -E '^--- Dump' | grep -vE '_atlas(_dlshd)?_z' || true
 }
 
 ## The map's baked lighting. CS2 bakes the bounce light into an irradiance
 ## lightmap (8192 square, HDR, 78 MB compressed) with a companion that says
-## which way the light mostly comes from; the sun's own light it computes
-## live, so its shadow masks are not fetched. Source 2 Viewer writes the
+## which way the light mostly comes from. The sun's own light it computes
+## live, but the static map's shadow from it is baked too, into
+## direct_light_shadows: one channel per light the map bakes shadows for,
+## which the light's bakedshadowindex names (the sun's is 0 on dust2), and
+## that is what shadows the map (MapShadows). Source 2 Viewer writes the
 ## irradiance as an .exr of 300 MB, which Godot compresses back down on
 ## import.
 ## Also the light probes: one 3D atlas of ambient cubes for the whole map,
-## which decompiles to one small HDR image per depth slice (720 on dust2).
+## which decompiles to one small HDR image per depth slice (720 on dust2),
+## and the same lights' shadows at each probe in a second atlas (_dlshd,
+## one slice for each six of those), for what the lightmaps do not cover.
 ## They go in a probes/ directory with a .gdignore, so Godot does not import
-## seven hundred textures it will never draw; the game reads them itself.
+## eight hundred textures it will never draw; the game reads them itself.
 extract_lightmaps() {
-	echo "Extracting the baked lighting (a few hundred megabytes, uncompressed) and the light probes"
+	echo "Extracting the baked lighting (a few hundred megabytes, uncompressed), the sun's shadow and the light probes"
 	echo "        -> $MAP_DEST"
-	extract_baked_light "$MAP_VPK" "$MAP_DEST" 'irradiance|directional_irradiance|env_light_probe_volume_atlas'
-	find "$MAP_DEST" -name 'env_light_probe_volume_atlas_z*.exr' | while IFS= read -r slice; do
-		local probes="$(dirname "$slice")/probes"
-		mkdir -p "$probes"
-		touch "$probes/.gdignore"
-		mv "$slice" "$probes/"
-	done
-	local count
+	extract_baked_light "$MAP_VPK" "$MAP_DEST" \
+		'irradiance|directional_irradiance|direct_light_shadows|env_light_probe_volume_atlas|env_light_probe_volume_atlas_dlshd'
+	# Not those already there from an extraction before: probes/ has them.
+	find "$MAP_DEST" -not -path '*/probes/*' \( -name 'env_light_probe_volume_atlas_z*.exr' \
+		-o -name 'env_light_probe_volume_atlas_dlshd_z*.png' -o -name 'env_light_probe_volume_atlas_dlshd_z*.exr' \) \
+		| while IFS= read -r slice; do
+			local probes="$(dirname "$slice")/probes"
+			mkdir -p "$probes"
+			touch "$probes/.gdignore"
+			mv "$slice" "$probes/"
+		done
+	local count shadows
 	count="$(find "$MAP_DEST" -path '*/probes/env_light_probe_volume_atlas_z*.exr' | wc -l | tr -d ' ')"
-	echo "        light probes: $count atlas slices under lightmaps/probes/"
+	shadows="$(find "$MAP_DEST" -path '*/probes/env_light_probe_volume_atlas_dlshd_z*' | wc -l | tr -d ' ')"
+	echo "        light probes: $count atlas slices and $shadows shadow slices under lightmaps/probes/"
+}
+
+## The map's precomputed visibility: which of its parts can be seen from
+## which, so what cannot be seen from where you stand is not drawn
+## (WorldVisibility). Kept compiled, since its octree and rows are read
+## straight out of the file (4 MB on dust2), and decompiled beside it for
+## the counts and offsets its data block holds.
+extract_visibility() {
+	local visibility
+	visibility="$(find_map_resource '/world_visibility\.vvis_c$' "world_visibility.vvis_c")" || exit 1
+	mkdir -p "$MAP_DEST"
+
+	echo "Extracting $visibility"
+	echo "        -> $MAP_DEST"
+	"$S2V_BIN" -i "$MAP_VPK" -f "$visibility" -o "$MAP_DEST" | grep -E '^--- Dump' || true
+	"$S2V_BIN" -i "$MAP_VPK" -f "$visibility" -o "$MAP_DEST" -d | grep -E '^--- Dump' || true
 }
 
 extract_map() {
@@ -647,6 +713,8 @@ extract_map() {
 	extract_skybox
 	echo
 	extract_lightmaps
+	echo
+	extract_visibility
 }
 
 extract_weapons() {
@@ -1037,6 +1105,7 @@ case "$COMMAND" in
 	sky) extract_sky; finish ;;
 	skybox) extract_skybox; finish ;;
 	lightmaps) extract_lightmaps; finish ;;
+	visibility) extract_visibility ;;
 	characters) extract_characters; finish ;;
 	animgraphs) extract_animgraphs ;;
 	weapons) extract_weapons; finish ;;

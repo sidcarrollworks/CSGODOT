@@ -129,10 +129,15 @@ func _draw_grenade(grenade: GrenadeEntity, fraction: float, now: int) -> void:
 	if grenade.phase == GrenadeEntity.Phase.FLYING and not grenade.flight.at_rest:
 		# A tumble to show it flying; nothing reads it.
 		model.rotation = Vector3(grenade.age(now) * 9.0, grenade.age(now) * 4.0, 0.0)
+	# Lit from the map's light probes where it is, as a player is, and the
+	# smoke from where it popped: the probes hold the map's shadow from the
+	# sun, which the live shadow map no longer does.
+	ProbeMaterials.light_model(model, model.global_position)
 	if grenade.cloud != null:
 		if not _clouds.has(grenade.id):
 			_clouds[grenade.id] = _multimesh(_smoke_mesh, GrenadeRules.SMOKE_VOXELS)
 		_draw_cloud(_clouds[grenade.id], grenade, now)
+		ProbeMaterials.light_model(_clouds[grenade.id], grenade.position)
 
 
 func _draw_cloud(drawn: MultiMeshInstance3D, grenade: GrenadeEntity, now: int) -> void:

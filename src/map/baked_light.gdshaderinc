@@ -15,8 +15,16 @@
 //
 // The cost is that the baked light rides on the sun: a scene with no
 // directional light shows none. Every map here has its sun.
+//
+// The sun's own light is cut by the static map's shadow CS2 baked, handed
+// across the same way: from the lightmap's shadow page on the map's
+// surfaces (lightmap_sun), from the light probes' on what they light
+// (probe_sun). The live shadow map, in ATTENUATION, is on top of it, and
+// on a map whose shadows are baked it holds only what moves (MapShadows).
+// Every shader that includes this sets both in fragment().
 
 varying vec3 baked_light;
+varying float baked_sun;
 
 float baked_schlick(float u) {
 	float m = 1.0 - u;
@@ -25,8 +33,10 @@ float baked_schlick(float u) {
 }
 
 void light() {
+	float shadow = ATTENUATION;
 	if (LIGHT_IS_DIRECTIONAL) {
 		DIFFUSE_LIGHT += baked_light;
+		shadow *= baked_sun;
 	}
 
 	vec3 half_vector = normalize(VIEW + LIGHT);
@@ -39,7 +49,7 @@ void light() {
 	float fd90_minus_1 = 2.0 * l_dot_h * l_dot_h * ROUGHNESS - 0.5;
 	float fd_v = 1.0 + fd90_minus_1 * baked_schlick(n_dot_v);
 	float fd_l = 1.0 + fd90_minus_1 * baked_schlick(n_dot_l);
-	DIFFUSE_LIGHT += LIGHT_COLOR * ATTENUATION * (fd_v * fd_l * n_dot_l / PI);
+	DIFFUSE_LIGHT += LIGHT_COLOR * shadow * (fd_v * fd_l * n_dot_l / PI);
 
 	// Schlick-GGX specular, with the dielectric reflectance Godot's default
 	// SPECULAR of 0.5 gives (0.16 * 0.5 * 0.5).
@@ -54,5 +64,5 @@ void light() {
 	vec3 f0 = mix(vec3(0.04), ALBEDO, METALLIC);
 	float f90 = clamp(dot(f0, vec3(50.0 * 0.33)), METALLIC, 1.0);
 	vec3 fresnel = f0 + (f90 - f0) * baked_schlick(l_dot_h);
-	SPECULAR_LIGHT += LIGHT_COLOR * ATTENUATION * SPECULAR_AMOUNT * n_dot_l * distribution * fresnel * visibility;
+	SPECULAR_LIGHT += LIGHT_COLOR * shadow * SPECULAR_AMOUNT * n_dot_l * distribution * fresnel * visibility;
 }

@@ -166,6 +166,42 @@ func _import() -> bool:
 			and under_awning[3].r > under_awning[3].b,
 		"the field is in the scene: the sky is blue from above at B, the awning's floor warm from below at CT spawn"
 	)
+	_check_visibility()
+
+	# The map's shadow from the sun, as CS2 baked it (MapShadows): the
+	# lightmaps' page and the probes', the sun's channel of each, and none
+	# of the map left in the sun's live shadow map.
+	var sun_channel := MapShadows.sun_channel_at(map_file.get_base_dir())
+	_check(sun_channel == 0, "dust2's sun has channel 0 of its baked shadows, as its entity lump says (%d)" % sun_channel)
+	# Drawn ones only: the collision hull's meshes sit under a hidden node.
+	var in_live_shadows := 0
+	for node in _importer.find_children("*", "MeshInstance3D", true, false):
+		if (node as MeshInstance3D).is_visible_in_tree() and (node as MeshInstance3D).layers != MapShadows.LAYER:
+			in_live_shadows += 1
+	_check(
+		lightmaps.get("shadows", false) and probes.get("shadows", false) and in_live_shadows == 0,
+		"the map's shadow from the sun is CS2's baked one, on its surfaces and in its probes, and none of its meshes is drawn into the live shadow map (%d are; scripts/extract_assets.sh lightmaps)"
+			% in_live_shadows
+	)
+	# Down lower tunnels, under the lamp there, no sun gets in; and across
+	# the map the probes hold both sun and shade.
+	var tunnel := SourceEntities.to_game(Vector3(-1040.0, 1424.563354, 44.0))
+	var cells := Vector2i.ZERO
+	if field != null:
+		for i in 32:
+			for j in 32:
+				for k in 4:
+					var point := bounds.position + bounds.size * Vector3((i + 0.5) / 32.0, (k + 0.5) / 4.0, (j + 0.5) / 32.0)
+					if field.volume_at(point) < 0:
+						continue
+					var sun := field.sun_at(point)
+					cells += Vector2i(1 if sun > 0.9 else 0, 1 if sun < 0.1 else 0)
+	_check(
+		field != null and field.has_sun_shadows() and field.volume_at(tunnel) >= 0 and field.sun_at(tunnel) < 0.2
+			and cells.x > 0 and cells.y > 0,
+		"the probes' sun is blocked down lower tunnels (%.2f there) and the map has both sun and shade (%d points lit, %d shaded)"
+			% [field.sun_at(tunnel) if field != null else -1.0, cells.x, cells.y]
+	)
 
 	var entities_path := ProjectSettings.globalize_path(
 		map_file.get_base_dir().path_join(ENTITIES_FILE)
@@ -185,7 +221,7 @@ func _import() -> bool:
 	_check(not skybox_file.is_empty(), "the 3D skybox is there (scripts/extract_assets.sh skybox)")
 	if not skybox_file.is_empty():
 		# The skybox the game builds, placed as it places it.
-		var skybox: MapImporter = MapLoader.make_skybox(SKYBOX_DIR)
+		var skybox: MapImporter = MapLoader.make_skybox(SKYBOX_DIR, MapShadows.sun_channel(entities))
 		root.add_child(skybox)
 		# Where the sky camera is, read here on its own: scaled up about the
 		# map's origin by its own scale, it must land there.
@@ -208,12 +244,27 @@ func _import() -> bool:
 			"the skybox has its own baked light, so its walls are not black in shade (%d surfaces; scripts/extract_assets.sh skybox)"
 				% sky_lightmaps.get("surfaces", 0)
 		)
+		# Its buildings' shadows from the sun, which it casts none of live,
+		# from its own baked page (MapLoader.make_skybox).
+		_check(
+			sky_lightmaps.get("shadows", false),
+			"the skybox takes the sun's shadow from its own baked page%s" % (
+				"" if sky_lightmaps.get("shadows", false) else " (%s)" % skybox.stats.get("sun_shadow", "")
+			)
+		)
 		var sky_bounds: AABB = skybox.stats.get("bounds", AABB())
 		var sky_casting := 0
 		for node in skybox.find_children("*", "MeshInstance3D", true, false):
 			if (node as MeshInstance3D).visible and (node as MeshInstance3D).cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
 				sky_casting += 1
 		_check(sky_casting == 0, "the skybox casts no shadows onto the map")
+		var without_alpha: PackedStringArray = load("res://scripts/export_alpha.gd").missing_alpha(skybox_file)
+		without_alpha.append_array(load("res://scripts/export_alpha.gd").missing_alpha(map_file))
+		_check(
+			without_alpha.is_empty(),
+			"every cut or blended colour texture of the map and skybox has its alpha: the palm and bush cards are cut, not solid (%s; scripts/extract_assets.sh skybox)"
+				% ", ".join(without_alpha)
+		)
 		_check(
 			int(skybox.stats.get("behind", 0)) >= 100,
 			"and its surfaces are drawn behind the map (%d of them)" % skybox.stats.get("behind", 0)
@@ -267,6 +318,47 @@ func _import() -> bool:
 ## Which of CS2's surfaces each part of the hull is taken as for wall
 ## penetration (Penetration.surface_for), listed so a part taken as
 ## default by mistake shows, and checked to be more than one or two.
+## What CS2 draws from T spawn, where Sid stood looking at the dome by B
+## (2026-09-24): not the kasbah towers at B, which would stand in front of
+## the skybox's dome, and not most of the map; but everything around you.
+func _check_visibility() -> void:
+	var visibility := _importer.get_node_or_null("Visibility") as WorldVisibility
+	_check(
+		visibility != null and visibility.cluster_count == 4096,
+		"the map's visibility is read, 4096 clusters (scripts/extract_assets.sh visibility)"
+	)
+	if visibility == null:
+		return
+	# What is drawn before the culling: everything the import did not leave out.
+	var meshes: Array[MeshInstance3D] = []
+	for node in _importer.get_child(0).find_children("*", "MeshInstance3D", true, false):
+		if (node as MeshInstance3D).visible:
+			meshes.append(node as MeshInstance3D)
+	var eye := Vector3(-194.7, 175.0 + 64.0, -1528.5)
+	visibility.show_from(eye)
+	var towers := 0
+	var towers_drawn := 0
+	var near := 0
+	var near_drawn := 0
+	for mesh_instance in meshes:
+		var drawn := mesh_instance.visible and mesh_instance.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+		if mesh_instance.name.contains("_mudbrick_tower_02_"):
+			towers += 1
+			towers_drawn += 1 if drawn else 0
+		if (mesh_instance.global_transform * mesh_instance.get_aabb()).grow(128.0).has_point(eye):
+			near += 1
+			near_drawn += 1 if drawn else 0
+	_check(
+		towers > 0 and towers_drawn == 0,
+		"from T spawn the kasbah towers at B are not drawn, in front of the skybox's dome (%d of %d drawn)" % [towers_drawn, towers]
+	)
+	_check(
+		visibility.hidden_count() > meshes.size() * 0.5 and near > 0 and near_drawn == near,
+		"most of the map is not drawn from there (%d of %d meshes), and everything within 128 units is (%d of %d)"
+			% [visibility.hidden_count(), meshes.size(), near_drawn, near]
+	)
+
+
 func _check_penetration_surfaces() -> void:
 	var hull := _importer.find_child("Collision", true, false)
 	var surfaces := {}

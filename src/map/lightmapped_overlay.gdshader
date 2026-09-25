@@ -38,4 +38,5 @@ void fragment() {
 		tangent_normal = lightmap_tangent_normal(rg, normal_depth);
 	}
 	baked_light = orm.r * lightmap_indirect(lightmap_uv, tangent_normal);
+	baked_sun = lightmap_sun(lightmap_uv);
 }

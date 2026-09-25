@@ -78,8 +78,12 @@ func _process(_delta: float) -> bool:
 		_test_lightmap_materials()
 		_test_far_materials()
 		_test_light_probes()
+		_test_baked_shadows()
 		_test_prop_features()
 		_test_lighting()
+		_test_world_visibility()
+		_test_culled_variants()
+		_test_export_alpha()
 		_spawn_player()
 		_spawned_at_tick = Engine.get_physics_frames()
 		return false
@@ -1476,7 +1480,8 @@ func _test_far_materials() -> void:
 	var far := FarMaterials.build(wall, 0.0) as ShaderMaterial
 	_check(
 		far != null and far.shader != FarMaterials.SHADER
-			and far.shader.code.contains("cull_disabled") and far.shader.code.contains("far_depth(")
+			and far.shader.code.contains("cull_disabled") and far.shader.code.contains("POSITION = far_position(")
+			and not far.shader.code.contains("\tDEPTH =")
 			and (far.get_shader_parameter("albedo_color") as Color).is_equal_approx(wall.albedo_color)
 			and is_equal_approx(far.get_shader_parameter("alpha_scissor"), 0.3)
 			and is_zero_approx(far.get_shader_parameter("far_plane_depth")),
@@ -1490,11 +1495,38 @@ func _test_far_materials() -> void:
 	_check(
 		far_blend != null and far_blend.shader != BlendMaterials.SHADER
 			and far_blend.shader.code.contains(FarMaterials.INCLUDE)
-			and far_blend.shader.code.contains("void fragment() {\n\tDEPTH = far_depth(FRAGCOORD.z);")
 			and is_equal_approx(far_blend.get_shader_parameter("blend_softness"), 0.42)
 			and is_equal_approx(far_blend.get_shader_parameter("far_plane_depth"), 1.0)
 			and FarMaterials.variant_of(BlendMaterials.SHADER) == far_blend.shader,
 		"a shader material gets a variant of its own shader with the squeeze, keeping its parameters, made once"
+	)
+	# The blend shader's vertex() is the lightmap include's: the variant adds
+	# no second one (two do not compile) and writes no DEPTH, and the
+	# include squeezes under the far include's define, which comes first.
+	var lightmap_vertex := FarMaterials.vertex_code(BlendMaterials.SHADER.code)
+	_check(
+		lightmap_vertex.contains("#ifdef FAR_SQUEEZE") and lightmap_vertex.contains("POSITION = far_position(")
+			and not far_blend.shader.code.contains("void vertex()")
+			and not far_blend.shader.code.contains("\tDEPTH =")
+			and far_blend.shader.code.find(FarMaterials.INCLUDE) < far_blend.shader.code.find("lightmap.gdshaderinc")
+			and (load("res://src/map/far.gdshaderinc") as ShaderInclude).code.contains("#define FAR_SQUEEZE"),
+		"a shader whose vertex() is in an include squeezes there, with no second vertex() and no DEPTH"
+	)
+	var plain := Shader.new()
+	plain.code = "shader_type spatial;\nvoid fragment() {\n}\n"
+	var plain_far := FarMaterials.variant_of(plain)
+	_check(
+		plain_far != null and plain_far.code.contains(FarMaterials.VERTEX_SQUEEZE + "void fragment() {")
+			and plain_far.code.count("void vertex()") == 1 and not plain_far.code.contains("\tDEPTH ="),
+		"a shader with no vertex() anywhere is given one that squeezes"
+	)
+	var own_vertex := Shader.new()
+	own_vertex.code = "shader_type spatial;\nvoid vertex() {\n\tPOSITION = vec4(VERTEX, 1.0);\n}\nvoid fragment() {\n}\n"
+	var own_vertex_far := FarMaterials.variant_of(own_vertex)
+	_check(
+		own_vertex_far != null and own_vertex_far.code.contains("void fragment() {\n\tDEPTH = far_depth(FRAGCOORD.z);")
+			and own_vertex_far.code.count("void vertex()") == 1,
+		"a shader that sets its own POSITION has the depth written per fragment instead"
 	)
 	var no_fragment := Shader.new()
 	no_fragment.code = "shader_type spatial;"
@@ -1521,7 +1553,7 @@ func _test_far_materials() -> void:
 		for surface in mesh_instance.mesh.get_surface_count():
 			drawn += 1
 			var material := mesh_instance.get_active_material(surface)
-			behind += 1 if material is ShaderMaterial and (material as ShaderMaterial).shader.code.contains("far_depth(") else 0
+			behind += 1 if material is ShaderMaterial and (material as ShaderMaterial).shader.code.contains(FarMaterials.INCLUDE) else 0
 	_check(
 		drawn > 0 and behind == drawn and int(importer.stats.get("behind", 0)) == drawn,
 		"behind_everything puts every drawn surface of a map on the far shaders and reports it (%d of %d)" % [behind, drawn]
@@ -1594,6 +1626,34 @@ func _test_light_probes() -> void:
 	)
 	var dark := probes.cube_at(Vector3(900, 0, 0))[0]
 	_check(is_zero_approx(dark.r + dark.g + dark.b), "outside every volume the cube is dark")
+	# A mesh merged from pieces far apart, like dust2's windows: two
+	# triangles in the outer volume only, 480 units apart, with the middle
+	# of their box in the inner one. It is lit where its pieces are.
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array([
+		Vector3(-150, 0, -150), Vector3(-140, 0, -150), Vector3(-150, 0, -140),
+		Vector3(190, 0, 190), Vector3(180, 0, 190), Vector3(190, 0, 180),
+	])
+	var normals := PackedVector3Array()
+	normals.resize(6)
+	normals.fill(Vector3.UP)
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	var merged_mesh := ArrayMesh.new()
+	merged_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var merged := MeshInstance3D.new()
+	merged.mesh = merged_mesh
+	root.add_child(merged)
+	var merged_cube := ProbeMaterials.cube_for(merged, probes)
+	var middle := probes.cube_at((merged.global_transform * merged.get_aabb()).get_center())
+	_check(
+		middle[2].g > 0.0 and _near(merged_cube[2].r, 0.3) and is_zero_approx(merged_cube[2].g),
+		"a mesh too big for one point is lit from its own vertices, not from the middle of its box (%s, not %s)" % [merged_cube[2], middle[2]]
+	)
+	merged.mesh = BoxMesh.new()
+	merged.position = Vector3(60, 0, 60)
+	_check(_near(ProbeMaterials.cube_for(merged, probes)[2].g, 0.6), "and a small one from the middle of its box")
+	merged.free()
 	# volume_at keeps the boxes packed; new volumes are packed again.
 	probes.volumes = [probes.volumes[1]]
 	_check(
@@ -1666,6 +1726,540 @@ classname                      "light_environment"
 
 func _near(a: float, b: float) -> bool:
 	return absf(a - b) < 0.002
+
+
+## The sun's shadow from the static map, as CS2 baked it (MapShadows): each
+## light's channel of the shadow pages, from the entity lump; the probes'
+## page read at a point, and placed for a shader to read the same; the
+## lightmaps' page handed to the map's materials; the importer taking both
+## pages or neither; the sun leaving the map out of its live shadow map;
+## and what moves put on the probes.
+func _test_baked_shadows() -> void:
+	# As dust2's lump has them: the sun on channel 0, a lamp down lower
+	# tunnels on 1.
+	_check(
+		MapShadows.channel_of({"bakedshadowindex": "2"}) == 2 and MapShadows.channel_of({"bakelightindex": "1"}) == 1
+			and MapShadows.channel_of({}) == -1 and MapShadows.channel_of({"bakedshadowindex": "4"}) == -1,
+		"a light's channel is its bakedshadowindex, or an older map's bakelightindex, 0 to 3, and none without"
+	)
+	var lights: Array[Dictionary] = [
+		{"classname": "light_barn", "bakedshadowindex": "1"}, {"classname": "light_environment", "bakedshadowindex": "0"},
+	]
+	var lamps_only: Array[Dictionary] = [lights[0]]
+	_check(
+		MapShadows.sun_channel(lights) == 0 and MapShadows.sun_channel(lamps_only) == -1
+			and MapShadows.channel_mask(0) == Vector4(1, 0, 0, 0) and MapShadows.channel_mask(2) == Vector4(0, 0, 1, 0)
+			and MapShadows.channel_mask(-1) == Vector4.ZERO,
+		"the sun's channel is light_environment's, picked out of a texel by a one-hot mask; without a sun, no mask"
+	)
+
+	# A texel is 1 where a light is blocked; the shaders are handed how much
+	# of the sun gets through.
+	var texels := Image.create_from_data(2, 1, false, Image.FORMAT_RGBA8, PackedByteArray([255, 0, 64, 255, 0, 255, 192, 0]))
+	var grey := Image.create_from_data(2, 1, false, Image.FORMAT_L8, PackedByteArray([255, 0]))
+	var half_floats := Image.create(2, 1, false, Image.FORMAT_RGBAH)
+	half_floats.set_pixel(0, 0, Color(1, 0, 0, 1))
+	half_floats.set_pixel(1, 0, Color(0, 1, 0, 1))
+	_check(
+		LightProbes.visibility_of(texels, 0) == PackedByteArray([0, 255])
+			and LightProbes.visibility_of(texels, 1) == PackedByteArray([255, 0])
+			and LightProbes.visibility_of(texels, 2) == PackedByteArray([191, 63])
+			and LightProbes.visibility_of(texels, 3) == PackedByteArray([0, 255])
+			and LightProbes.visibility_of(grey, 0) == PackedByteArray([0, 255])
+			and LightProbes.visibility_of(half_floats, 0) == PackedByteArray([0, 255]),
+		"a shadow slice's channel becomes how much of the light gets through, from bytes, grey or half floats"
+	)
+
+	# The probes' page, on an atlas shaped like _test_light_probes': 4 by 4
+	# cells, 2 deep, an outer volume in the first two columns and an inner
+	# one in the last two.
+	var probes := LightProbes.new()
+	var atlas := PackedByteArray()
+	atlas.resize(4 * 4 * 2 * LightProbes.FACES * 6)
+	probes.set_atlas(4, 4, 2, atlas)
+	probes.volumes = [
+		{"origin": Vector3.ZERO, "mins": Vector3(-200, -200, -100), "maxs": Vector3(200, 200, 100), "atlas": Vector3(0, 0, 0), "size": Vector3(2, 4, 2), "level": 0, "voxel": 100.0},
+		{"origin": Vector3(50, 50, 0), "mins": Vector3(-50, -50, -50), "maxs": Vector3(50, 50, 50), "atlas": Vector3(2, 0, 0), "size": Vector3(2, 4, 2), "level": 1, "voxel": 50.0},
+	]
+	# Game (-60, 10, 25) is Source (25, -60, 10), in the outer box only.
+	var inside := Vector3(-60, 10, 25)
+	_check(
+		probes.sun_at(inside) == 1.0 and probes.shadow_placement(inside).is_empty() and probes.sun_texture() == null,
+		"without the page the sun is not cut, and there is nothing to place or draw"
+	)
+	var visibility := PackedByteArray()
+	for i in 4 * 4 * 2:
+		visibility.append((i * 37) % 256)
+	_check(
+		not probes.set_sun(0, PackedByteArray([1, 2, 3])) and probes.set_sun(0, visibility) and probes.has_sun_shadows(),
+		"a page the size of one band of the atlas is taken, and one of another size is not"
+	)
+	# At a cell's centre, that cell: across the atlas (x), down it (the
+	# rows, y) and up it (the slices, z).
+	_check(
+		_near(probes.sun_at(Vector3(-150, -50, -100)), 0.0) and _near(probes.sun_at(Vector3(-150, -50, 100)), 37.0 / 255.0)
+			and _near(probes.sun_at(Vector3(-50, -50, -100)), 148.0 / 255.0)
+			and _near(probes.sun_at(Vector3(-150, 50, -100)), 80.0 / 255.0),
+		"at a cell's centre the sun is that cell's, across, down and up the atlas"
+	)
+	var placement := probes.shadow_placement(inside)
+	_check(
+		placement.size() == 4 and (placement[0] as Vector4).w == 1.0
+			and (placement[2] as Vector3).is_equal_approx(Vector3(0.125, 0.125, 0.25))
+			and (placement[3] as Vector3).is_equal_approx(Vector3(0.375, 0.875, 0.75)),
+		"an instance is told its volume's block of the texture, half a cell in (%s)" % [placement]
+	)
+	# A shader reads the page from a 3D texture where its instance's
+	# placement says: at any point, what it reads must be what the probes do.
+	var worst := 0.0
+	var points: Array[Vector3] = [
+		inside, Vector3(60, 0, 60), Vector3(199, -99, 199), Vector3(-199, 99, -199), Vector3.ZERO,
+		Vector3(95, 45, 45), Vector3(-150, -50, -100), Vector3(120, 70, -30), Vector3(900, 0, 0),
+	]
+	for point in points:
+		worst = maxf(worst, absf(_shader_sun(probes, visibility, probes.shadow_placement(point), point) - probes.sun_at(point)))
+	_check(
+		worst < 1e-5,
+		"a shader placed by the probes reads the sun as they do, blended between cells and half a cell inside each volume (off by %.6f at worst)" % worst
+	)
+	var texture := probes.sun_texture()
+	_check(
+		texture != null and texture.get_width() == 4 and texture.get_height() == 4 and texture.get_depth() == 2
+			and texture.get_format() == Image.FORMAT_R8 and probes.sun_texture() == texture,
+		"the page is one 3D texture the size of a band of the atlas, a byte a cell, made once"
+	)
+
+	# An instance is handed where to read it, and without the page, told not to.
+	var lit := MeshInstance3D.new()
+	lit.mesh = BoxMesh.new()
+	lit.material_override = ProbeMaterials.build(StandardMaterial3D.new())
+	root.add_child(lit)
+	ProbeMaterials.light_instance(lit, probes.cube_at(inside), placement)
+	var given := [
+		lit.get_instance_shader_parameter(&"probe_shadow_scale"), lit.get_instance_shader_parameter(&"probe_shadow_offset"),
+		lit.get_instance_shader_parameter(&"probe_shadow_min"), lit.get_instance_shader_parameter(&"probe_shadow_max"),
+	]
+	ProbeMaterials.light_instance(lit, probes.cube_at(inside))
+	_check(
+		given == placement and lit.get_instance_shader_parameter(&"probe_shadow_scale") == Vector4.ZERO,
+		"an instance is handed its volume's placement as instance uniforms, and without one reads the whole sun"
+	)
+	lit.free()
+
+	var metal := StandardMaterial3D.new()
+	metal.metallic = 0.25
+	var textured := StandardMaterial3D.new()
+	textured.roughness_texture = PlaceholderTexture2D.new()
+	var flat := ProbeMaterials.build(metal).get_shader_parameter("orm_texture") as ImageTexture
+	_check(
+		flat != null and flat == ProbeMaterials.flat_orm(0.25) and flat != ProbeMaterials.flat_orm(1.0)
+			and flat.get_image().get_pixel(0, 0).is_equal_approx(Color(1, 1, 64.0 / 255.0))
+			and ProbeMaterials.build(textured).get_shader_parameter("orm_texture") == textured.roughness_texture,
+		"a material with no occlusion, roughness and metal texture gets one texel of its own metalness, not the shader's all-metal white"
+	)
+
+	# What moves and is not a player (a dropped gun, a grenade and its
+	# smoke, the bomb): its lit materials put on the probe shader the first
+	# time, a glow left as it is, and lit where it is, again once it moves.
+	var field := LightProbeField.new()
+	field.probes = probes
+	root.add_child(field)
+	var model := Node3D.new()
+	var paint := StandardMaterial3D.new()
+	var body := MeshInstance3D.new()
+	body.mesh = BoxMesh.new()
+	(body.mesh as BoxMesh).material = paint
+	model.add_child(body)
+	var glow := MeshInstance3D.new()
+	glow.mesh = BoxMesh.new()
+	var unshaded := StandardMaterial3D.new()
+	unshaded.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	glow.material_override = unshaded
+	model.add_child(glow)
+	var puffs := MultiMeshInstance3D.new()
+	puffs.multimesh = MultiMesh.new()
+	var puff := QuadMesh.new()
+	puff.material = StandardMaterial3D.new()
+	puffs.multimesh.mesh = puff
+	model.add_child(puffs)
+	ProbeMaterials.light_model(model, inside)
+	_check(not model.has_meta(&"probe_lit_by"), "a model not in the scene is left alone")
+	root.add_child(model)
+	ProbeMaterials.light_model(model, inside)
+	_check(
+		body.get_surface_override_material(0) == ProbeMaterials.build(paint) and glow.material_override == unshaded
+			and puffs.material_override == ProbeMaterials.build(puff.material as BaseMaterial3D)
+			and body.get_instance_shader_parameter(&"probe_shadow_scale") == placement[0]
+			and puffs.get_instance_shader_parameter(&"probe_shadow_offset") == placement[1],
+		"a model that moves goes onto the probe shader, its glow left alone, and is lit where it is, the sun's shadow too"
+	)
+	var elsewhere := Vector3(60, 0, 60)
+	ProbeMaterials.light_model(model, inside + Vector3(0.5, 0, 0))
+	var kept: Variant = model.get_meta(&"probe_lit_at")
+	ProbeMaterials.light_model(model, elsewhere)
+	_check(
+		kept == inside and model.get_meta(&"probe_lit_at") == elsewhere
+			and body.get_instance_shader_parameter(&"probe_shadow_offset") == probes.shadow_placement(elsewhere)[1],
+		"and it is lit again only once it has moved a unit"
+	)
+	model.free()
+	field.free()
+
+	# What a baked map leaves on Godot's own lighting: a lit surface where the
+	# probes reach goes on them; a glow, an additive surface, and a mesh
+	# beyond every volume stay as they are.
+	var rest: Array[MeshInstance3D] = []
+	for spec: Array in [[BaseMaterial3D.SHADING_MODE_PER_PIXEL, BaseMaterial3D.BLEND_MODE_MIX, inside],
+			[BaseMaterial3D.SHADING_MODE_UNSHADED, BaseMaterial3D.BLEND_MODE_MIX, inside],
+			[BaseMaterial3D.SHADING_MODE_PER_PIXEL, BaseMaterial3D.BLEND_MODE_ADD, inside],
+			[BaseMaterial3D.SHADING_MODE_PER_PIXEL, BaseMaterial3D.BLEND_MODE_MIX, Vector3(900, 0, 0)]]:
+		var surface := StandardMaterial3D.new()
+		surface.shading_mode = spec[0]
+		surface.blend_mode = spec[1]
+		var box := MeshInstance3D.new()
+		box.mesh = BoxMesh.new()
+		(box.mesh as BoxMesh).material = surface
+		root.add_child(box)
+		box.global_position = spec[2]
+		rest.append(box)
+	var moved := ProbeMaterials.apply_rest(rest, probes)
+	_check(
+		moved == 1 and rest[0].get_surface_override_material(0) is ShaderMaterial
+			and rest[0].get_instance_shader_parameter(&"probe_shadow_scale") == placement[0]
+			and rest[1].get_surface_override_material(0) == null and rest[2].get_surface_override_material(0) == null
+			and rest[3].get_surface_override_material(0) == null,
+		"what a baked map leaves on Godot's own lighting goes on the probes where they reach, but not a glow or an additive surface (%d moved)" % moved
+	)
+	for box in rest:
+		box.free()
+
+	# A mesh merged from pieces far apart, like dust2's windows (as in
+	# _test_light_probes): two pieces in the outer volume only, the middle of
+	# their box in the inner one. It reads the sun in the volume round its
+	# pieces, from the points its cube comes from.
+	var merged := _pieces([Vector3(-150, 0, -150), Vector3(190, 0, 190)])
+	root.add_child(merged)
+	var middle := (merged.global_transform * merged.get_aabb()).get_center()
+	_check(
+		probes.volume_at(middle) == 1 and probes.volume_holding(ProbeMaterials.light_points(merged, probes)) == 0
+			and ProbeMaterials.shadow_for(merged, probes) == probes.volume_placement(0)
+			and probes.volume_placement(0) != probes.shadow_placement(middle),
+		"a mesh merged from pieces far apart reads the sun's shadow in the volume round its pieces, not the one round its middle"
+	)
+	_check(
+		probes.volume_holding(PackedVector3Array([Vector3(60, 0, 60)])) == 1
+			and probes.volume_holding(PackedVector3Array([Vector3(60, 0, 60), Vector3(-150, 0, -150)])) == 0
+			and probes.volume_holding(PackedVector3Array([Vector3(900, 0, 0)])) == -1
+			and probes.volume_holding(PackedVector3Array()) == -1 and probes.volume_placement(-1).is_empty(),
+		"the volume holding the most points, the smaller of two holding as many, and none beyond them all"
+	)
+	ProbeMaterials.light_placed(merged, probes)
+	var merged_cube := ProbeMaterials.cube_for(merged, probes)
+	_check(
+		merged.get_instance_shader_parameter(&"probe_shadow_offset") == probes.volume_placement(0)[1]
+			and merged.get_instance_shader_parameter(&"probe_pz") == Vector3(merged_cube[4].r, merged_cube[4].g, merged_cube[4].b),
+		"and is handed that with its cube"
+	)
+	merged.free()
+	# With one piece beyond every volume the middle of its box is too, and
+	# what is left on Godot's own lighting still goes on the probes where its
+	# other piece is.
+	var reaching := _pieces([Vector3(-150, 0, -150), Vector3(1500, 0, 1500)], StandardMaterial3D.new())
+	root.add_child(reaching)
+	var reaching_middle := (reaching.global_transform * reaching.get_aabb()).get_center()
+	var reaching_moved := ProbeMaterials.apply_rest([reaching] as Array[MeshInstance3D], probes)
+	_check(
+		probes.volume_at(reaching_middle) == -1 and reaching_moved == 1
+			and reaching.get_instance_shader_parameter(&"probe_shadow_offset") == probes.volume_placement(0)[1],
+		"one whose middle no volume holds goes on the probes where its pieces are (%d moved)" % reaching_moved
+	)
+	reaching.free()
+
+	# A map with the lot extracted: its lightmaps and their page of shadows,
+	# its probes' atlas without their page yet, and a lump with the sun's
+	# channel and one probe volume. Not under export_fixture, where the file
+	# search must find that map's world.gltf; and user:// outlives a run, so
+	# the probes' packs from the last one go first.
+	var dir := "user://baked_fixture"
+	var probes_dir := ProjectSettings.globalize_path(dir.path_join(LightProbes.PROBES_DIR))
+	DirAccess.make_dir_recursive_absolute(probes_dir)
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir.path_join("entities")))
+	for file in DirAccess.get_files_at(probes_dir):
+		DirAccess.remove_absolute(probes_dir.path_join(file))
+	var world := Node3D.new()
+	world.name = "World"
+	_add_mesh(world, "Wall", Vector3(64.0, 64.0, 64.0), Vector3.ZERO, VISUAL_MATERIAL)
+	_write_gltf(world, dir.path_join("world.gltf"))
+	Image.create(64, 64, false, Image.FORMAT_RGBAF).save_exr(dir.path_join(LightmapMaterials.IRRADIANCE_FILE))
+	Image.create(64, 64, false, Image.FORMAT_RGBA8).save_png(dir.path_join(LightmapMaterials.DIRECTION_FILE))
+	var page := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	page.fill(Color(1, 0, 0, 1))
+	page.save_png(dir.path_join(MapShadows.FILES[0]))
+	_write_text(dir.path_join(MapShadows.ENTITIES_FILE), """
+====1====
+classname                      "light_environment"
+bakedshadowindex               "0"
+====2====
+classname                      "env_combined_light_probe_volume"
+origin                         [ 0.0, 0.0, 0.0 ]
+box_mins                       [ -200.0, -200.0, -100.0 ]
+box_maxs                       [ 200.0, 200.0, 100.0 ]
+light_probe_size_x             2
+light_probe_size_y             4
+light_probe_size_z             2
+light_probe_atlas_x            0
+light_probe_atlas_y            0
+light_probe_atlas_z            0
+""")
+	_check(
+		MapShadows.sun_channel_at(dir) == 0 and MapShadows.sun_channel_at("user://export_fixture/nowhere") == -1,
+		"the sun's channel is read from the map's entity lump, and is none without one"
+	)
+
+	var wall := StandardMaterial3D.new()
+	wall.set_meta("extras", {"vmat": {"ShaderName": "csgo_lightmappedgeneric.vfx"}})
+	var blend := ShaderMaterial.new()
+	blend.shader = BlendMaterials.SHADER
+	blend.set_meta("extras", {"vmat": {"ShaderName": "csgo_lightmappedgeneric.vfx", "IntParams": {"F_LAYERS": 1.0}}})
+	var quads := ArrayMesh.new()
+	_add_quad(quads, wall, 100.0, 0.5)
+	_add_quad(quads, blend, 100.0, 0.5)
+	var shaded := MeshInstance3D.new()
+	shaded.mesh = quads
+	var shaded_meshes: Array[MeshInstance3D] = [shaded]
+	var with_page := LightmapMaterials.apply(shaded_meshes, dir, 1.0, "", 0)
+	var wall_lit := shaded.get_surface_override_material(0) as ShaderMaterial
+	_check(
+		with_page["shadows"] and wall_lit != null and wall_lit.get_shader_parameter("lightmap_shadows") is Texture2D
+			and wall_lit.get_shader_parameter("lightmap_sun_channel") == Vector4(1, 0, 0, 0)
+			and blend.get_shader_parameter("lightmap_shadows") is Texture2D
+			and blend.get_shader_parameter("lightmap_sun_channel") == Vector4(1, 0, 0, 0),
+		"given the sun's channel, the map's materials and its blend materials read the sun's shadow from the page"
+	)
+	var plain_wall := MeshInstance3D.new()
+	plain_wall.mesh = quads
+	var plain_meshes: Array[MeshInstance3D] = [plain_wall]
+	var without_channel := LightmapMaterials.apply(plain_meshes, dir, 1.0, "", -1)
+	var plain := plain_wall.get_surface_override_material(0) as ShaderMaterial
+	_check(
+		not without_channel["shadows"] and plain != null and plain.get_shader_parameter("lightmap_sun_channel") == Vector4.ZERO
+			and blend.get_shader_parameter("lightmap_sun_channel") == Vector4.ZERO,
+		"without it they read none, which leaves the sun to its live shadow map"
+	)
+	shaded.free()
+	plain_wall.free()
+
+	# The importer takes the baked shadow only where it is there for all the
+	# sun lights: not without the probes, which light the players, nor while
+	# they lack their page; and says why.
+	var bare := _import_baked(dir)
+	var bare_lightmaps: Dictionary = bare.stats.get("lightmaps", {})
+	_check(
+		bare_lightmaps.get("found", false) and not bare_lightmaps.get("shadows", true)
+			and _baked_layers(bare) == Vector2i(0, 1) and String(bare.stats.get("sun_shadow", "")).contains("light probes too"),
+		"without light probes the map keeps its live shadow, and the report says it needs them (%s)" % bare.stats.get("sun_shadow", "")
+	)
+	bare.free()
+
+	# A 3D skybox takes its page without them: nothing moves in it, and it
+	# casts nothing live, so the page is all the shadow its buildings throw.
+	# Where its lump gives its sun no channel, it reads the one its map's
+	# sun has (MapLoader.make_skybox).
+	var sky := MapLoader.make_skybox(dir)
+	root.add_child(sky)
+	_check(
+		sky.stats.get("lightmaps", {}).get("shadows", false) and sky.stats.get("sun_shadow", "?") == ""
+			and _baked_layers(sky) == Vector2i(0, 1),
+		"a 3D skybox, which has no probes, takes the sun's shadow from its page all the same, and stays on its own layers"
+	)
+	sky.free()
+	var lump := FileAccess.get_file_as_string(dir.path_join(MapShadows.ENTITIES_FILE))
+	_write_text(dir.path_join(MapShadows.ENTITIES_FILE), lump.replace("light_environment", "info_target"))
+	var sunless := MapLoader.make_skybox(dir)
+	root.add_child(sunless)
+	var lit_by_map := MapLoader.make_skybox(dir, 0)
+	root.add_child(lit_by_map)
+	_check(
+		lit_by_map.stats.get("lightmaps", {}).get("shadows", false)
+			and not sunless.stats.get("lightmaps", {}).get("shadows", true)
+			and String(sunless.stats.get("sun_shadow", "")).contains("entity lump"),
+		"one whose lump has no sun reads the channel its map's sun has, and none when that has none either (%s)"
+			% sunless.stats.get("sun_shadow", "")
+	)
+	sunless.free()
+	lit_by_map.free()
+	_write_text(dir.path_join(MapShadows.ENTITIES_FILE), lump)
+
+	for slice in LightProbes.FACES * 2:
+		Image.create(4, 4, false, Image.FORMAT_RGBH).save_exr(probes_dir.path_join("%s%03d.exr" % [LightProbes.SLICE_STEM, slice]))
+	var first := _import_baked(dir)
+	var first_lightmaps: Dictionary = first.stats.get("lightmaps", {})
+	var first_probes: Dictionary = first.stats.get("probes", {})
+	var first_layers := _baked_layers(first)
+	_check(
+		first_lightmaps.get("found", false) and not first_lightmaps.get("shadows", true) and first_probes.get("volumes", 0) == 1
+			and not first_probes.get("shadows", true) and first_probes.get("rest", -1) == 0
+			and first_layers.x == 0 and first_layers.y > 0
+			and String(first.stats.get("sun_shadow", "")).contains("page for the light probes"),
+		"with the probes' page missing, the map keeps its live shadow, the lightmaps' page goes unused, and the report says why (%s on the baked layer, off it)" % first_layers
+	)
+	first.free()
+
+	# The probes' page: the lower slice blocked from the sun and the upper
+	# open to it, and the next light's channel the other way round.
+	for slice in 2:
+		var shadow := Image.create(4, 4, false, Image.FORMAT_RGBA8)
+		shadow.fill(Color(1, 0, 0, 1) if slice == 0 else Color(0, 1, 0, 1))
+		shadow.save_png(probes_dir.path_join("%s%03d.png" % [LightProbes.SHADOW_STEM, slice]))
+	var loaded := LightProbes.load_for(dir, 0)
+	_check(
+		loaded.has_sun_shadows() and _near(loaded.sun_at(Vector3(-150, -50, -100)), 0.0)
+			and _near(loaded.sun_at(Vector3(-150, 50, -100)), 1.0) and _near(loaded.sun_at(Vector3(-150, 0, -100)), 0.5)
+			and FileAccess.file_exists(probes_dir.path_join(LightProbes.PACKED_SHADOWS)),
+		"the probes' page is read from its slices, lowest first, and packed for next time"
+	)
+	var second := _import_baked(dir)
+	var second_lightmaps: Dictionary = second.stats.get("lightmaps", {})
+	var second_probes: Dictionary = second.stats.get("probes", {})
+	var second_layers := _baked_layers(second)
+	_check(
+		second_lightmaps.get("shadows", false) and second_probes.get("shadows", false)
+			and second_layers.x > 0 and second_layers.y == 0 and second.stats.get("sun_shadow", "?") == "",
+		"with both pages, the map's shadow is the baked one and every drawn mesh is on the layer the sun's live shadow leaves out (%s on it, off it)" % second_layers
+	)
+	var walls := second.find_children("Wall*", "MeshInstance3D", true, false)
+	var wall_on_probes := walls.size() == 1 and (walls[0] as MeshInstance3D).get_active_material(0) is ShaderMaterial \
+		and ((walls[0] as MeshInstance3D).get_active_material(0) as ShaderMaterial).get_shader_parameter("probe_energy") != null
+	_check(
+		second_probes.get("rest", 0) == 1 and wall_on_probes,
+		"and a surface the lightmaps and the props' probes left on Godot's own lighting goes on the probes, so it takes the baked shadow too"
+	)
+	second.free()
+
+	var other := LightProbes.load_for(dir, 1)
+	_check(
+		other.has_sun_shadows() and _near(other.sun_at(Vector3(-150, -50, -100)), 1.0)
+			and _near(other.sun_at(Vector3(-150, 50, -100)), 0.0),
+		"another light's channel is read from the slices again, not from the sun's pack"
+	)
+	for slice in 2:
+		DirAccess.remove_absolute(probes_dir.path_join("%s%03d.png" % [LightProbes.SHADOW_STEM, slice]))
+	var from_pack := LightProbes.load_for(dir, 1)
+	var not_packed := LightProbes.load_for(dir, 0)
+	_check(
+		from_pack.has_sun_shadows() and not not_packed.has_sun_shadows() and not_packed.sun_channel == -1
+			and not LightProbes.load_for(dir).has_sun_shadows(),
+		"a pack is read back for its own channel only, and without a page for the sun's the sun is not cut"
+	)
+	DirAccess.remove_absolute(probes_dir.path_join(LightProbes.PACKED_SHADOWS))
+	for slice in 3:
+		Image.create(4, 4, false, Image.FORMAT_RGBA8).save_png(probes_dir.path_join("%s%03d.png" % [LightProbes.SHADOW_STEM, slice]))
+	_check(
+		not LightProbes.load_for(dir, 0).has_sun_shadows(),
+		"a page of more slices than the atlas has a band is left out, with a warning, not read askew"
+	)
+
+	# The sun, told the map's shadows are baked, leaves the map's layer out
+	# of its live shadow map, and only that; and draws hard edges, keeping
+	# its size for the profiler to put back (RenderVariants).
+	var sun_entity: Array[Dictionary] = [{"classname": "light_environment", "angulardiameter": "0.25"}]
+	var baked_holder := Node3D.new()
+	root.add_child(baked_holder)
+	var baked_used := MapLighting.build(baked_holder, {}, sun_entity, "", null, true)
+	var baked_sun := baked_holder.get_node_or_null("Sun") as DirectionalLight3D
+	var live_holder := Node3D.new()
+	root.add_child(live_holder)
+	var live_used := MapLighting.build(live_holder, {}, sun_entity, "")
+	var live_sun := live_holder.get_node_or_null("Sun") as DirectionalLight3D
+	_check(
+		baked_sun != null and baked_sun.shadow_enabled and baked_sun.shadow_caster_mask == (0xFFFFFFFF & ~MapShadows.LAYER)
+			and is_zero_approx(baked_sun.light_angular_distance)
+			and is_equal_approx(float(baked_sun.get_meta(&"angular_diameter", 0.0)), 0.25)
+			and String(baked_used["shadows"]).begins_with("baked"),
+		"with the map's shadows baked, the sun's live shadow map leaves out the map's layer and only that, with hard edges"
+	)
+	_check(
+		live_sun != null and live_sun.shadow_caster_mask == 0xFFFFFFFF and is_equal_approx(live_sun.light_angular_distance, 0.25)
+			and live_used["shadows"] == "live",
+		"without them the sun's shadow map takes every layer, at the sun's own size, as before"
+	)
+	baked_holder.free()
+	live_holder.free()
+
+
+## A mesh of small triangles facing up, one at each of these corners and
+## reaching in toward the origin, as the export merges a prop's copies from
+## all over a map into one mesh; its surface in the material, if given.
+func _pieces(corners: Array[Vector3], material: Material = null) -> MeshInstance3D:
+	var vertices := PackedVector3Array()
+	for corner in corners:
+		var inward := Vector3(-signf(corner.x), 0.0, -signf(corner.z)) * 10.0
+		vertices.append_array([corner, corner + Vector3(inward.x, 0.0, 0.0), corner + Vector3(0.0, 0.0, inward.z)])
+	var normals := PackedVector3Array()
+	normals.resize(vertices.size())
+	normals.fill(Vector3.UP)
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	if material != null:
+		mesh.surface_set_material(0, material)
+	var mesh_instance := MeshInstance3D.new()
+	mesh_instance.mesh = mesh
+	return mesh_instance
+
+
+## What a shader reads from the probes' sun texture at a game-space point,
+## placed as ProbeMaterials places an instance: the texture's linear filter
+## over the eight cells round the point.
+func _shader_sun(probes: LightProbes, visibility: PackedByteArray, placement: Array, at: Vector3) -> float:
+	if placement.is_empty():
+		return 1.0
+	var scale: Vector4 = placement[0]
+	var cell := Vector3(at.z, at.x, at.y) * Vector3(scale.x, scale.y, scale.z) + (placement[1] as Vector3)
+	cell = cell.clamp(placement[2] as Vector3, placement[3] as Vector3)
+	var texel := cell * Vector3(probes.width, probes.height, probes.band) - Vector3.ONE * 0.5
+	var base := texel.floor()
+	var fraction := texel - base
+	var sun := 0.0
+	for corner in 8:
+		var step := Vector3i(corner & 1, (corner >> 1) & 1, (corner >> 2) & 1)
+		var weight := (fraction.x if step.x == 1 else 1.0 - fraction.x) \
+			* (fraction.y if step.y == 1 else 1.0 - fraction.y) \
+			* (fraction.z if step.z == 1 else 1.0 - fraction.z)
+		var x := clampi(int(base.x) + step.x, 0, probes.width - 1)
+		var y := clampi(int(base.y) + step.y, 0, probes.height - 1)
+		var z := clampi(int(base.z) + step.z, 0, probes.band - 1)
+		sun += visibility[(z * probes.height + y) * probes.width + x] / 255.0 * weight
+	return sun
+
+
+## The fixture map under dir, imported with its lightmaps, as the game does.
+func _import_baked(dir: String) -> MapImporter:
+	var importer := MapImporter.new()
+	importer.source_path = dir.path_join("world.gltf")
+	importer.collision_source = MapImporter.CollisionSource.NONE
+	importer.lightmaps_dir = "."
+	importer.report = false
+	root.add_child(importer)
+	return importer
+
+
+## How many of an import's drawn meshes are on MapShadows.LAYER (x), and
+## how many are not (y); drawn, so not under a hidden node.
+func _baked_layers(importer: MapImporter) -> Vector2i:
+	var counts := Vector2i.ZERO
+	for node in importer.find_children("*", "MeshInstance3D", true, false):
+		var mesh := node as MeshInstance3D
+		if not mesh.is_visible_in_tree():
+			continue
+		if mesh.layers == MapShadows.LAYER:
+			counts.x += 1
+		else:
+			counts.y += 1
+	return counts
 
 
 ## The lighting is a translation of the map's own numbers, so the test is
@@ -1817,6 +2411,266 @@ func _put_vector(bytes: PackedByteArray, at: int, value: Vector3) -> void:
 
 func _get_vector(bytes: PackedByteArray, at: int) -> Vector3:
 	return Vector3(bytes.decode_float(at), bytes.decode_float(at + 4), bytes.decode_float(at + 8))
+
+
+## A map's visibility made by hand, laid out as CS2 writes one
+## (visibility_fixture), read back and culling three meshes; then the
+## importer picking it up from beside a world glTF.
+func _test_world_visibility() -> void:
+	var fixture := _visibility_fixture()
+	var visibility := WorldVisibility.new()
+	_check(visibility.read(fixture[0], fixture[1]), "a visibility file is read")
+	_check(
+		visibility.cluster_count == 4 and visibility.row_bytes == 1
+			and visibility.max_bounds == Vector3.ONE * 4096.0,
+		"its counts and bounds come from its data block"
+	)
+	# Source's axes; the leaves are 2048 across, their cells 512.
+	_check_equal(visibility.clusters_at(Vector3(640, 640, 640)), PackedInt32Array([1]), "a point is in its leaf's cluster")
+	_check_equal(visibility.clusters_at(Vector3(2600, 640, 640)), PackedInt32Array([2]), "and the next leaf's along x in its")
+	_check(
+		visibility.clusters_at(Vector3(600, 2600, 300)) == PackedInt32Array([1])
+			and visibility.clusters_at(Vector3(1300, 2600, 300)) == PackedInt32Array([2]),
+		"a leaf split between two clusters gives each point the one whose cells it is in"
+	)
+	_check(
+		visibility.clusters_at(Vector3(640, 640, 2600)).is_empty() and visibility.clusters_at(Vector3(5000, 0, 0)).is_empty(),
+		"a point in solid or outside the map is in no cluster"
+	)
+	_check_equal(visibility.clusters_in(Vector3(100, 100, 100), Vector3(300, 300, 300)), PackedInt32Array([1]), "a box is in the clusters it touches")
+	_check_equal(visibility.clusters_in(Vector3(1800, 100, 100), Vector3(2300, 300, 300)), PackedInt32Array([1, 2]), "across two leaves, both")
+	_check(
+		visibility.clusters_in(Vector3(100, 2200, 100), Vector3(900, 2600, 500)) == PackedInt32Array([1])
+			and visibility.clusters_in(Vector3(100, 2200, 100), Vector3(1100, 2600, 500)) == PackedInt32Array([1, 2]),
+		"to the cell: in the split leaf a box takes the second cluster only once it reaches its cells"
+	)
+	_check(
+		visibility.clusters_in(Vector3(3500, 2200, 2200), Vector3(3600, 2300, 2300)).is_empty()
+			and visibility.clusters_in(Vector3(3500, 2200, 2200), Vector3(4000, 3300, 3300)) == PackedInt32Array([3]),
+		"a small box misses a cluster's cells, and one over 1024 on two axes takes its node's list, as the game does"
+	)
+	_check_equal(visibility.clusters_in(Vector3.ONE * -10.0, Vector3.ONE * 5000.0), PackedInt32Array([WorldVisibility.CATCH_ALL]), "a box over the whole map is in the catch-all cluster")
+	var from_one := visibility.row_of(PackedInt32Array([1]))
+	_check(
+		WorldVisibility.sees(from_one, 0) and WorldVisibility.sees(from_one, 2) and not WorldVisibility.sees(from_one, 3)
+			and WorldVisibility.sees(visibility.row_of(PackedInt32Array([1, 3])), 3)
+			and visibility.row_of(PackedInt32Array()).is_empty(),
+		"a cluster's row says what it sees; two clusters' rows add up"
+	)
+	var no_block := fixture[0].duplicate() as PackedByteArray
+	no_block.encode_u32(28, 0x58585858)  # The block's type, XXXX.
+	var two_clusters := (fixture[1] as String).replace("m_nBaseClusterCount = 4", "m_nBaseClusterCount = 2")
+	var refused := WorldVisibility.new()
+	_check(
+		not refused.read(no_block, fixture[1]) and not refused.read(fixture[0], two_clusters),
+		"a file without the octree's block, or with nothing to cull by, is not taken"
+	)
+	refused.free()
+
+	# Three boxes: one in the first leaf, and two in the last leaf's cluster,
+	# one of them casting no shadow (a lamp's fixture). Game (x, y, z) is
+	# Source (y, z, x).
+	var holder := Node3D.new()
+	root.add_child(holder)
+	holder.add_child(visibility)
+	var meshes: Array[MeshInstance3D] = []
+	for at: Vector3 in [Vector3(640, 640, 640), Vector3(3200, 3200, 2304), Vector3(3200, 3200, 2304)]:
+		var mesh_instance := MeshInstance3D.new()
+		var box := BoxMesh.new()
+		box.size = Vector3.ONE * 64.0
+		mesh_instance.mesh = box
+		holder.add_child(mesh_instance)
+		mesh_instance.global_position = at
+		meshes.append(mesh_instance)
+	meshes[0].cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
+	meshes[2].cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	visibility.cull(meshes)
+	visibility.show_from(Vector3(640, 640, 640))
+	_check(
+		meshes[0].cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
+			and meshes[1].cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+			and meshes[2].cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF and not meshes[2].visible
+			and visibility.hidden_count() == 2,
+		"from the first leaf, what its cluster cannot see is not drawn: its shadow stays, and one that casts none is hidden"
+	)
+	visibility.show_from(Vector3(3200, 3200, 2304))
+	_check(
+		meshes[0].cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+			and meshes[1].cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON and meshes[2].visible
+			and visibility.hidden_count() == 1,
+		"from the last, the other way about, and each is drawn as it was"
+	)
+	visibility.show_from(Vector3(-100, -100, -100))
+	_check(visibility.hidden_count() == 0, "and from outside every cluster, everything")
+	holder.free()
+
+	# The importer takes the files from beside the world glTF; a skybox's
+	# does not, being drawn from anywhere.
+	var directory := FIXTURE_PATH.get_base_dir()
+	var compiled := FileAccess.open(directory.path_join(WorldVisibility.COMPILED_FILE), FileAccess.WRITE)
+	compiled.store_buffer(fixture[0])
+	compiled.close()
+	var data := FileAccess.open(directory.path_join(WorldVisibility.DATA_FILE), FileAccess.WRITE)
+	data.store_string(fixture[1])
+	data.close()
+	_check(WorldVisibility.load_for("user://nowhere") == null, "a map without the files has no visibility")
+	var importer := _make_importer(MapImporter.CollisionSource.NONE)
+	root.add_child(importer)
+	var sky := _make_importer(MapImporter.CollisionSource.NONE)
+	sky.behind_everything = true
+	root.add_child(sky)
+	_check(
+		int(importer.stats.get("visibility_clusters", 0)) == 4 and importer.get_node_or_null("Visibility") is WorldVisibility
+			and int(sky.stats.get("visibility_clusters", -1)) == 0 and sky.get_node_or_null("Visibility") == null,
+		"an imported map culls by the visibility beside it; a skybox does not"
+	)
+	importer.free()
+	sky.free()
+	DirAccess.remove_absolute(directory.path_join(WorldVisibility.COMPILED_FILE))
+	DirAccess.remove_absolute(directory.path_join(WorldVisibility.DATA_FILE))
+
+
+## The profiler's variants on a map its visibility culls (RenderVariants,
+## WorldVisibility): casting from one face reaches a mesh hidden now as
+## well as one drawn, and is put back on both; turning the visibility off
+## draws everything until it is put back.
+func _test_culled_variants() -> void:
+	var fixture := _visibility_fixture()
+	var visibility := WorldVisibility.new()
+	_check(visibility.read(fixture[0], fixture[1]), "the visibility for the variants is read")
+	var holder := Node3D.new()
+	root.add_child(holder)
+	holder.add_child(visibility)
+	var meshes: Array[MeshInstance3D] = []
+	# One in the first leaf's cluster and one in the last's, both casting
+	# from both faces.
+	for at: Vector3 in [Vector3(640, 640, 640), Vector3(3200, 3200, 2304)]:
+		var mesh_instance := MeshInstance3D.new()
+		var box := BoxMesh.new()
+		box.size = Vector3.ONE * 64.0
+		mesh_instance.mesh = box
+		mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
+		holder.add_child(mesh_instance)
+		mesh_instance.global_position = at
+		meshes.append(mesh_instance)
+	visibility.cull(meshes)
+	visibility.show_from(Vector3(640, 640, 640))
+	var both := GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
+	var one := GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	var only := GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+	var one_sided := RenderVariants.apply("one_sided_casters", holder, root)
+	var drawn_first := meshes[0].cast_shadow == one and meshes[1].cast_shadow == only
+	visibility.show_from(Vector3(3200, 3200, 2304))
+	_check(
+		drawn_first and meshes[1].cast_shadow == one and meshes[0].cast_shadow == only,
+		"one-sided casting reaches the mesh the visibility hid, for when it is drawn"
+	)
+	one_sided.call()
+	var back_now := meshes[1].cast_shadow == both
+	visibility.show_from(Vector3(640, 640, 640))
+	_check(
+		back_now and meshes[0].cast_shadow == both and visibility.drawn_cast_shadow(meshes[1]) == both,
+		"and is put back on the one drawn and the one hidden"
+	)
+	var everything := RenderVariants.apply("no_visibility", holder, root)
+	_check(
+		visibility.hidden_count() == 0 and meshes[1].cast_shadow == both and not visibility.is_processing(),
+		"with the visibility off everything is drawn, as it was, and stays so"
+	)
+	everything.call()
+	_check(visibility.is_processing(), "put back, it culls from the camera again")
+	holder.free()
+
+
+## scripts/export_alpha.gd on a hand-written export: of the materials that
+## cut or blend by their colour's alpha, the one whose image has none is
+## listed, with the texture it came from, once; an opaque one never is.
+func _test_export_alpha() -> void:
+	var directory := "user://export_alpha_fixture"
+	DirAccess.make_dir_recursive_absolute(directory)
+	var rgb := Image.create(4, 4, false, Image.FORMAT_RGB8)
+	rgb.fill(Color(0.5, 0.25, 0.125))
+	rgb.save_png(directory.path_join("rgb.png"))
+	var rgba := Image.create(4, 4, false, Image.FORMAT_RGBA8)
+	rgba.fill(Color(0.5, 0.25, 0.125, 0.5))
+	rgba.save_png(directory.path_join("rgba.png"))
+	var material := func(mode: String, texture: int, vtex: String) -> Dictionary:
+		return {
+			"alphaMode": mode, "pbrMetallicRoughness": {"baseColorTexture": {"index": texture}},
+			"extras": {"vmat": {"TextureParams": {"g_tColor": vtex}}},
+		}
+	var gltf := {
+		"materials": [
+			material.call("MASK", 0, "materials/cut.vtex"), material.call("BLEND", 1, "materials/kept.vtex"),
+			material.call("OPAQUE", 0, "materials/solid.vtex"), material.call("MASK", 2, "materials/again.vtex"),
+		],
+		"textures": [{"source": 0}, {"source": 1}, {"source": 0}],
+		"images": [{"uri": "rgb.png"}, {"uri": "rgba.png"}],
+	}
+	_write_text(directory.path_join("world.gltf"), JSON.stringify(gltf))
+	var listed: PackedStringArray = load("res://scripts/export_alpha.gd").missing_alpha(directory.path_join("world.gltf"))
+	_check_equal(
+		listed, PackedStringArray(["materials/cut.vtex\t%s" % directory.path_join("rgb.png")]),
+		"an export's alpha-cut colour image without alpha is listed with its texture, once; one with alpha, or opaque, is not"
+	)
+
+
+## [compiled file, data block as text] of a visibility made by hand over a
+## cube 4096 across, in Source's axes: a root and its eight leaves, four
+## clusters. The first leaf (x, y and z low) is cluster 1; the next along x
+## is cluster 2; the one along y is cluster 1 in its cells with x below 1024
+## and cluster 2 in the rest; the last (all high) is cluster 3 in its cells
+## with x below 3072, and lists 3 as the clusters in it. The rest are solid.
+## Clusters 1 and 2 see each other, 3 only itself, and every one cluster 0.
+func _visibility_fixture() -> Array:
+	var block := PackedByteArray()
+	block.resize(156)
+	var none := 0xFFFFFF << 8
+	# Nodes at 0, two words each: the child or region start shifted up past
+	# the leaf bit, and the region count under the enclosed list's index.
+	var nodes := [[1 << 1, none], [0 << 1 | 1, 1 | none], [1 << 1 | 1, 1 | none], [2 << 1 | 1, 2 | none],
+		[1, none], [1, none], [1, none], [1, none], [4 << 1 | 1, 1 | 0 << 8]]
+	for i in nodes.size():
+		block.encode_u32(i * 8, nodes[i][0])
+		block.encode_u32(i * 8 + 4, nodes[i][1])
+	# Regions at 72: the cluster, and the mask's index from bit 40.
+	var regions := [1, 2, 1 | 1 << 40, 2 | 2 << 40, 3 | 1 << 40]
+	for i in regions.size():
+		block.encode_s64(72 + i * 8, regions[i])
+	# The last leaf's list at 112, its one cluster at 120.
+	block.encode_s32(112, 0)
+	block.encode_s32(116, 1)
+	block.encode_u16(120, 3)
+	# Masks at 128: every cell, the cells with x index 0 or 1, the rest.
+	var low_x := 0
+	for cell in 64:
+		if cell & 3 < 2:
+			low_x |= 1 << cell
+	block.encode_s64(128, -1)
+	block.encode_s64(136, low_x)
+	block.encode_s64(144, ~low_x)
+	# The rows at 152, a byte each.
+	for i in 4:
+		block[152 + i] = [0b1111, 0b0111, 0b0111, 0b1001][i]
+	# The header, a table of two blocks (the data block first, empty here),
+	# then the octree's.
+	var compiled := PackedByteArray()
+	compiled.resize(40)
+	compiled.encode_u32(0, 40 + block.size())
+	compiled.encode_u16(4, 12)
+	compiled.encode_u32(8, 8)
+	compiled.encode_u32(12, 2)
+	compiled.encode_u32(16, 0x41544144)  # DATA
+	compiled.encode_u32(28, 0x53565856)  # VXVS
+	compiled.encode_u32(32, 40 - 32)
+	compiled.encode_u32(36, block.size())
+	compiled.append_array(block)
+	var data := "{\n\tm_nBaseClusterCount = 4\n\tm_nPVSBytesPerCluster = 1\n"
+	data += "\tm_vMinBounds = [ 0.0, 0.0, 0.0 ]\n\tm_vMaxBounds = [ 4096.0, 4096.0, 4096.0 ]\n"
+	for sub: Array in [["m_NodeBlock", 0, 9], ["m_RegionBlock", 72, 5], ["m_EnclosedClusterListBlock", 112, 1],
+			["m_EnclosedClustersBlock", 120, 1], ["m_MasksBlock", 128, 3], ["m_nVisBlocks", 152, 4]]:
+		data += "\t%s = \n\t{\n\t\tm_nOffset = %d\n\t\tm_nElementCount = %d\n\t}\n" % sub
+	return [compiled, data + "}\n"]
 
 
 func _spawn_player() -> void:
