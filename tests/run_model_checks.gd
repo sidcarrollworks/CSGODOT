@@ -219,6 +219,7 @@ func _init() -> void:
 	ViewModelProjection.claim(_view_model)
 	_test_every_gun_builds()
 	_test_every_equipment_builds()
+	_test_guns_import_without_their_legacy_body()
 
 	_player_model = PlayerModel.new()
 	root.add_child(_player_model)
@@ -1011,7 +1012,11 @@ func _test_bot_comes_back() -> void:
 ## the weapon gives it, or the recoil work would be undone here.
 func _test_player_composes_kick_and_bob() -> void:
 	var player := (load("res://src/player/player.tscn") as PackedScene).instantiate() as PlayerController
+	# The AK-47 in hand besides the knife and pistol you spawn with.
+	player.starting_gun = WeaponLibrary.ak47()
 	root.add_child(player)
+	# What the loadout's tick changed is drawn on the next frame.
+	player.view.catch_up()
 	if player.view_model == null:
 		_check(false, "the player builds its view model")
 		player.free()
@@ -1050,15 +1055,34 @@ func _test_player_composes_kick_and_bob() -> void:
 		_check(
 			shadow_rig != null and body_casting == 0 and not shadow_meshes.is_empty() and shadow_only == shadow_meshes.size()
 				and shadow_rig.get_bone_pose_scale(shadow_rig.find_bone("head_0")).is_equal_approx(Vector3.ONE)
-				and shadow_rig.get_bone_pose_scale(shadow_rig.find_bone("arm_upper_R")).is_equal_approx(Vector3.ONE * RigModel.FOLDED),
-			"and its shadow is cast by a twin drawn only into the shadow maps, with its head and without its arms"
+				and shadow_rig.get_bone_pose_scale(shadow_rig.find_bone("arm_upper_R")).is_equal_approx(Vector3.ONE),
+			"and its shadow is cast by a twin drawn only into the shadow maps, whole, head and arms"
 		)
 		player.view._process(1.0 / 60.0)
+		var gun: Node3D = player.body_shadow.held_weapon if player.body_shadow != null else null
+		var gun_meshes := gun.find_children("*", "MeshInstance3D", true, false) if gun != null else []
+		var gun_shadow_only := 0
+		for mesh in gun_meshes:
+			if (mesh as MeshInstance3D).cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY:
+				gun_shadow_only += 1
+		_check(
+			player.body_shadow != null and player.body_shadow.holding == player.in_hand_class()
+				and gun != null and gun.visible and not gun_meshes.is_empty() and gun_shadow_only == gun_meshes.size(),
+			"the twin holds what is in hand (%s), its gun cast only into the shadow maps"
+				% [player.body_shadow.holding if player.body_shadow != null else "no twin"]
+		)
+		# The twin holds what is in hand, so it moves by that item's
+		# locomotion, whose spaces sit under the variation's name
+		# (PlayerModel.holds_items); the body you look down at has the one.
+		var moving_by := String(player.body_shadow.animation_tree.get("parameters/variation/current_state")) if player.body_shadow != null else ""
+		if moving_by.is_empty():
+			moving_by = PlayerModel.VARIATION
+		var twin_speeds: Variant = player.body_shadow.animation_tree.get("parameters/%s/stand/blend_position" % moving_by) if player.body_shadow != null else null
 		_check(
 			player.body_shadow != null and player.body_shadow.global_position.is_equal_approx(player.body_model.global_position)
 				and player.body_shadow.state() == player.body_model.state()
-				and player.body_shadow.animation_tree.get("parameters/stand/blend_position") == player.body_model.animation_tree.get("parameters/stand/blend_position"),
-			"the twin stands where the body stands, moving as it moves"
+				and twin_speeds != null and twin_speeds == player.body_model.animation_tree.get("parameters/stand/blend_position"),
+			"the twin stands where the body stands, moving as it moves (%s by the %s's locomotion)" % [twin_speeds, moving_by]
 		)
 
 	# Frame one captures the rest pose; then a kick from a real shot, the
@@ -1099,20 +1123,25 @@ func _test_player_composes_kick_and_bob() -> void:
 	)
 
 	# A view model for each thing carried, built as it comes into the
-	# inventory: a switch shows the one in hand and hides the rest, and
-	# builds nothing.
+	# inventory, on the frame after the tick it came on: a switch shows the
+	# one in hand and hides the rest, and builds nothing.
 	var carried := player.camera.find_children("ViewModel_*", "", false, false)
 	_check(carried.size() == player.inventory.entries().size(),
 		"a view model for each thing carried, the knife, the Glock and the AK-47 (%d for %d)" % [carried.size(), player.inventory.entries().size()])
 	player.inventory.add("weapon_hegrenade")
+	var in_tick := player.camera.get_node_or_null("ViewModel_weapon_hegrenade")
+	player.view.catch_up()
 	var grenade := player.camera.get_node_or_null("ViewModel_weapon_hegrenade") as ViewModel
-	_check(grenade != null and not grenade.visible and grenade.process_mode == Node.PROCESS_MODE_DISABLED,
-		"a grenade picked up has its own built there and then, hidden and still until it is taken out")
+	_check(in_tick == null and grenade != null and not grenade.visible and grenade.process_mode == Node.PROCESS_MODE_DISABLED,
+		"a grenade picked up has its own built on the next frame, not in the tick, hidden and still until it is taken out")
 	player.inventory.select("weapon_glock")
+	player.view.catch_up()
 	var glock := player.view_model
 	player.inventory.select("weapon_ak47")
+	player.view.catch_up()
 	var ak := player.view_model
 	player.inventory.select("weapon_glock")
+	player.view.catch_up()
 	_check(
 		glock != null and ak != null and glock != ak and player.view_model == glock and glock.visible
 			and glock.process_mode == Node.PROCESS_MODE_INHERIT and not ak.visible and ak.process_mode == Node.PROCESS_MODE_DISABLED
@@ -1214,6 +1243,91 @@ func _test_every_equipment_builds() -> void:
 			shown += 1
 	_check(held and shown == 1, "the third-person model holds the knife, its one mesh shown (%d)" % shown)
 	body.free()
+
+
+## Every gun's model is imported without the second body its export carries
+## for legacy skins (scripts/weapon_model_import.gd, which
+## write_import_settings.gd sets as the import script): none of the textures
+## only that body used is loaded with it. A default knife, whose only body
+## it is, keeps it.
+func _test_guns_import_without_their_legacy_body() -> void:
+	var guns: Array = (load("res://scripts/weapon_tables.gd") as GDScript).get_script_constant_map()["GUNS"]
+	var checked := 0
+	var failures := PackedStringArray()
+	for gun in guns:
+		var model := String(WeaponLibrary.look(gun[0]).get("model_path", ""))
+		if model.is_empty() or not ResourceLoader.exists(model):
+			continue
+		checked += 1
+		var legacy_only := _legacy_only_images(model)
+		var loaded := PackedStringArray()
+		for dep in ResourceLoader.get_dependencies(model):
+			var path := dep.get_slice("::", dep.get_slice_count("::") - 1)
+			if legacy_only.has(path):
+				loaded.append(path.get_file())
+		var scene := _instantiate(model)
+		var bodies := PackedStringArray()
+		for mesh: Node in (scene.find_children("*", "MeshInstance3D", true, false) if scene != null else []):
+			if mesh.name.contains("_body_"):
+				bodies.append(String(mesh.name).get_slice("_body_", 1))
+		if scene != null:
+			scene.free()
+		var script_set := ConfigFile.new()
+		script_set.load(model + ".import")
+		var imported_by: String = script_set.get_value("params", "import_script/path", "")
+		if bodies != PackedStringArray(["hd"]) or not loaded.is_empty() or imported_by != "res://scripts/weapon_model_import.gd":
+			failures.append("%s (bodies %s, legacy textures loaded %s)" % [gun[0], bodies, loaded])
+	if checked == 0:
+		print("no guns extracted; skipping the legacy-body import check")
+		return
+	_check(failures.is_empty(),
+		"every gun imports with only its HD body, none of its legacy body's textures loaded (%d guns; %s)" % [checked, "; ".join(failures)])
+	# What is not a spare body stays: each side's default knife, whose only
+	# body is the legacy one; the Dual Berettas' holster; the C4's screen.
+	var kept := {
+		String(WeaponLibrary.look("weapon_knife", "T").get("model_path", "")): "*_body_legacy",
+		String(WeaponLibrary.look("weapon_knife", "CT").get("model_path", "")): "*_body_legacy",
+		String(WeaponLibrary.look("weapon_elite").get("model_path", "")): "*_eholster",
+		String(WeaponLibrary.look("weapon_c4").get("model_path", "")): "*c4_screen*",
+	}
+	for model: String in kept:
+		if not ResourceLoader.exists(model):
+			continue
+		var scene := _instantiate(model)
+		var meshes := scene.find_children(kept[model], "MeshInstance3D", true, false) if scene != null else []
+		_check(meshes.size() == 1, "%s keeps its %s mesh (%d)" % [model.get_file(), String(kept[model]).trim_prefix("*").trim_suffix("*"), meshes.size()])
+		if scene != null:
+			scene.free()
+
+
+## The images only a model's ...body_legacy mesh uses, as res:// paths, read
+## from the glTF itself.
+static func _legacy_only_images(gltf_path: String) -> Dictionary:
+	var gltf: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(gltf_path))
+	var images_of_material := func(index: int) -> PackedStringArray:
+		var out := PackedStringArray()
+		var material: Dictionary = gltf["materials"][index]
+		var slots: Array = [material.get("normalTexture", {}), material.get("occlusionTexture", {}), material.get("emissiveTexture", {})]
+		var pbr: Dictionary = material.get("pbrMetallicRoughness", {})
+		slots.append_array([pbr.get("baseColorTexture", {}), pbr.get("metallicRoughnessTexture", {})])
+		for slot: Dictionary in slots:
+			if slot.has("index"):
+				var image: Dictionary = gltf["images"][int(gltf["textures"][int(slot["index"])]["source"])]
+				out.append(gltf_path.get_base_dir().path_join(String(image.get("uri", "")).uri_decode()).simplify_path())
+		return out
+	var legacy := {}
+	var others := {}
+	for node: Dictionary in gltf.get("nodes", []):
+		if not node.has("mesh"):
+			continue
+		var into := legacy if String(node.get("name", "")).ends_with("body_legacy") else others
+		for primitive: Dictionary in gltf["meshes"][int(node["mesh"])]["primitives"]:
+			if primitive.has("material"):
+				for image in images_of_material.call(int(primitive["material"])):
+					into[image] = true
+	for image in others:
+		legacy.erase(image)
+	return legacy
 
 
 func _test_view_model_motion() -> void:

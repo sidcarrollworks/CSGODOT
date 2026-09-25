@@ -1,7 +1,11 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://maps/play/play.gd" id="1_play"]
+[ext_resource type="Script" path="res://src/map/map_preview.gd" id="2_preview"]
 
 [node name="Dust2" type="Node3D"]
 script = ExtResource("1_play")
 map_name = "de_dust2"
+
+[node name="EditorPreview" type="Node3D" parent="."]
+script = ExtResource("2_preview")

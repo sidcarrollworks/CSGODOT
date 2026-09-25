@@ -282,9 +282,10 @@ item 6 is built.
    (`PlayerModel.hold`): each item's model kept while carried and shown in
    hand, its own set's clips added the first time, and the locomotion
    switched to the pistol's, knife's or rifle's as CS2's graph picks it
-   (`PlayerModel.variation_for`). What its bots may hold is read before
-   play (`prepare_holding`), so taking a gun in hand reads nothing from the
-   disk. Every body does it, yours unseen too, as CS2's server poses every
+   (`PlayerModel.variation_for`). Everything anyone may hold, every item on
+   either menu, the knife and the bomb, is read before play, clips and
+   models (`prepare_holding`), so taking a gun in hand reads nothing from
+   the disk. Every body does it, yours unseen too, as CS2's server poses every
    player's hitboxes with what they hold; the variation switches once the
    draw is over, as CS2's graph has it. Left: CS2 blends the weapon layer in
    model space, Godot in each bone's own, so the upper body follows the hips
@@ -296,14 +297,16 @@ item 6 is built.
    stand as if looking level (`reference/research/hitboxes-aim.md`: a
    Local measurement, then the aim stage after systemization step 8).
 
-6a. **Your shadow has no arms.** *(Remote, can start now; Sid checks it)* Sid noticed
-   2026-09-22 22:06. The shadow twin (commit f42114e) put the head back but folds the
-   arms on purpose (`SHADOW_FOLDED_BONES` in `player_view.gd`), because
-   arms in the locomotion pose would fall across the view model's. It is also
-   built with no weapon (`model.setup(team, "")`). CS2's shadow is the
-   third-person body, arms and gun included, so: unfold the arms, give the
-   shadow the weapon's world model, and pose its upper body from the
-   third-person firing layer (item 6).
+6a. **Your shadow has no arms.** *(done; Sid checks it in play)* Sid noticed
+   2026-09-22 22:06. The shadow twin now keeps its arms and holds what is in
+   hand as a bot's body does (`PlayerModel.hold`): the item's hold, draw,
+   locomotion and model, cast only into the shadow maps, with its shots and
+   reloads played on it (`PlayerView._follow_hand`). `Competitive` reads
+   every item's model before play, so a buy shows in the shadow without a
+   read from the disk. To check in play: the shadow of the arms and gun on
+   the ground, and whether it darkens the view model's arms in the sun (the
+   worry that folded them first); the upper body stands as if looking level,
+   as every body does until the aim stage (item 6).
 
 ### Phase 2: finish the shooting model
 
@@ -427,13 +430,41 @@ list, split into Local and Remote items, with the measurements.
   (`DrawClock`, `physics_jitter_fix` 0) and the mouse is read just before
   the view is placed: turning 1.7 ms off a steady turn to 0.7, flying 2.5
   to 4.2 ms to 0.6 (performance.md, "Frame pacing").
+- **Frame times against CS2's.** *(first-use hitches done,
+  perf/no-first-use-hitches; Sid plays)* The goal, from Sid's CS2 at 4K
+  with his settings (2026-09-25): 5.5 ms a frame walking round a
+  deathmatch, 9 to 10 ms once the shooting starts.
+  `scripts/profile_combat.gd` measures ours the same way: 4.4 ms and 4.2
+  on average, the 95th 7.8 and 7.1. Nothing is built in the tick for the
+  views any more, and the first buy, the first dropped gun and the first
+  shots no longer hitch (they held a tick or a frame 18 to 347 ms); no
+  frame is over 20 ms (performance.md, "Against CS2"). Every model anyone
+  can take in hand in a match is read before play, as CS2 precaches every
+  gun, and the guns' unused legacy bodies are left out at import
+  (perf/read-match-guns-ahead; research/weapon-preload.md): 123 MiB more
+  video memory, 0.17 s more at match start, and no model read during a
+  match. Left:
+  the frames that run a tick, about 7 ms, which a cheaper tick shortens.
 - **Screen-space occlusion off.** *(done, the Godot docs audit)* It
-  darkened ambient light only, which no map material takes, so it drew
-  nothing and cost 0.6 to 0.95 ms a frame at 4K (rendering.md,
-  "Measured"). An occlusion look like CS2's would be a new setting to
-  judge beside the game.
-- **Research CS2's renderer (R0), reflections from the map's cubemaps (R5)
-  and CS2's video settings (R6).** *(Remote, not started)*
+  darkened ambient light only, which no map material took then, so it
+  drew nothing and cost 0.6 to 0.95 ms a frame at 4K (rendering.md,
+  "Measured"). The map's bounce light is Godot's ambient light since R5,
+  so an occlusion look like CS2's is a setting to judge beside the game.
+- **Reflections (R5).** *(first tier built, 2026-09-25; Sid plays and
+  profiles, rendering.md L8)* Nothing reflected anything before, not
+  even the sky: the switch that let the baked light in turned Godot's
+  reflections off with it. The map's materials now hand their baked
+  light to Godot as its ambient light, which keeps them, and a Godot
+  reflection probe sits at each of CS2's cubemaps (dust2's 43 probe
+  volumes), drawn once as the map starts. Next: CS2's own cubemap
+  pictures in place of Godot's.
+- **Players drawn as CS2 draws them (R7).** *(Remote, after L8's
+  screenshots)* Why the players look flatter than CS2's, most visible
+  first: no reflections (R5, built), one light sample for each body where
+  CS2 reads the probes at every pixel, CS2's character shader layers lost
+  in the export, and textures compressed twice.
+- **Research CS2's renderer (R0) and CS2's video settings (R6).**
+  *(Remote, not started)*
 
 ### Phase 3: split the game from the player (the ground for multiplayer)
 
@@ -767,6 +798,7 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 | Hands | Run `scripts/profile_render.gd` again at 1080p and 4K, and walk long doors and top of mid, on PR #78 | Rendering R2, R3 |
 | Decided | dust2's sun shadows come from CS2's baked pages, the live shadow map drawing only what moves (Sid, 2026-09-25) | Rendering R4 |
 | Hands | Run the dust2 checks again, play dust2's shadows beside CS2's, and profile with `live_map_shadows` and `no_visibility`, on PR #82 (rendering.md L7; the pages were extracted and checked 2026-09-25) | Rendering R4 |
+| Hands | Play dust2 beside CS2 for reflections and the players (the same agent in the same spots, in sun and shade), and profile with `no_reflections` (rendering.md L8) | Rendering R5, R7 |
 
 ---
 

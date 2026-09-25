@@ -5,9 +5,10 @@
 // +X, -X, +Y, -Y, +Z, -Z, and a surface takes each by the square of its
 // normal's part along that axis, which is Valve's ambient cube.
 //
-// A material that uses this turns Godot's ambient off for itself and adds
-// the result, times its occlusion, in the light pass (baked_light.gdshaderinc),
-// at the same energy as the lightmapped surfaces.
+// A material that uses this hands the result to Godot as its ambient light
+// (IRRADIANCE), in place of the environment's, at the same energy as the
+// lightmapped surfaces; Godot multiplies it by the occlusion and the albedo
+// (baked_light.gdshaderinc).
 
 instance uniform vec3 probe_px = vec3(0.4);
 instance uniform vec3 probe_nx = vec3(0.4);

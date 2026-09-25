@@ -445,6 +445,12 @@ the map's own T spawn points (**Spawn Team** on the scene root switches sides),
 colliding with the hull the game itself collides with, player clips included
 (which stop you and not your rounds). None of the visible world is solid.
 
+The game builds the map when it runs. In the editor, the scene's
+**EditorPreview** node draws the map's geometry as it was exported (no
+lightmaps, sky or skybox), so there is something to look at in the 3D view;
+it is not saved into the scene and does nothing in the game. After a new
+extraction, press **Reload map** in its inspector.
+
 The lighting is the map's own numbers, translated (`src/map/map_lighting.gd`):
 the sun's colour, brightness and size from `light_environment`, the sky
 panorama from `env_sky`, distance haze from `env_cubemap_fog`, exposure from

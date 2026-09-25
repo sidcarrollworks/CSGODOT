@@ -339,6 +339,16 @@ func import_map() -> Dictionary:
 		visibility.name = "Visibility"
 		add_child(visibility)
 		visibility.cull(visible_meshes)
+	# Reflections where CS2 baked its cubemaps, drawn once the map is up,
+	# the visibility drawing everything until they are (MapReflections).
+	var reflections := 0
+	if not lightmaps_dir.is_empty() and not behind_everything:
+		var lump := ProjectSettings.globalize_path(
+			source_path.get_base_dir().path_join(lightmaps_dir).path_join(MapReflections.ENTITIES_FILE)
+		)
+		if FileAccess.file_exists(lump):
+			var built := MapReflections.build(self, SourceEntities.parse(lump), visibility)
+			reflections = built.probes.size() if built != null else 0
 
 	var collision_from := "the collision hull"
 	var targets: Array[MeshInstance3D] = []
@@ -373,6 +383,7 @@ func import_map() -> Dictionary:
 		"occluder_triangles": occluder_triangles,
 		"probes": probes,
 		"visibility_clusters": visibility.cluster_count if visibility != null else 0,
+		"reflection_probes": reflections,
 		# Why the sun's shadow from the map is drawn live, or "" when it is baked.
 		"sun_shadow": sun_shadow if not lightmaps["shadows"] else "",
 		"materials": materials,
@@ -708,6 +719,10 @@ func _report_text() -> String:
 		lines.append("    visibility: %d clusters; what the camera's cannot see is not drawn" % stats["visibility_clusters"])
 	elif not behind_everything:
 		lines.append("    no visibility found; run 'scripts/extract_assets.sh visibility' to draw only what can be seen")
+	if int(stats["reflection_probes"]) > 0:
+		lines.append("    reflections: %d probes where CS2's cubemaps are, drawn as the map starts" % stats["reflection_probes"])
+	elif lightmaps["found"]:
+		lines.append("    no cubemaps found in the entity lump; everything reflects the sky")
 	if stats.has("sun"):
 		var towards_sun: Vector3 = (stats["sun"]["basis"] as Basis).z
 		lines.append(

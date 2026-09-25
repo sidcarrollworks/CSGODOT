@@ -155,6 +155,31 @@ func _test_the_cards() -> void:
 		"a sprite's card is 3 units either side, square to the view"
 	)
 
+	# A frame's cards reach the batch's MultiMesh whole, in one buffer, past
+	# its first room too: each card's transform by rows, colour, rectangle.
+	var quads := EffectQuads.new()
+	root.add_child(quads)
+	var texture := ImageTexture.create_from_image(Image.create(1, 1, false, Image.FORMAT_RGBA8))
+	quads.begin()
+	for i in EffectQuads.FIRST_CAPACITY + 36:
+		quads.quad(texture, &"add", false, Transform3D(Basis.IDENTITY, Vector3(i, 2.0 * i, 3.0)),
+			Rect2(0.1, 0.2, 0.3, 0.4), Color(1.0, 0.5, 0.25, 0.75))
+	quads.finish()
+	var multimesh := (quads.get_child(0) as MultiMeshInstance3D).multimesh
+	var sent := multimesh.buffer
+	var card_70 := sent.slice(70 * EffectQuads.FLOATS, 71 * EffectQuads.FLOATS)
+	var expected := PackedFloat32Array([1.0, 0.0, 0.0, 70.0, 0.0, 1.0, 0.0, 140.0, 0.0, 0.0, 1.0, 3.0,
+		1.0, 0.5, 0.25, 0.75, 0.1, 0.2, 0.4, 0.6])
+	var same := card_70.size() == expected.size()
+	for i in mini(card_70.size(), expected.size()):
+		same = same and is_equal_approx(card_70[i], expected[i])
+	_check(
+		quads.cards() == 100 and multimesh.visible_instance_count == 100
+			and sent.size() == multimesh.instance_count * EffectQuads.FLOATS and same,
+		"a frame's 100 cards go to their batch in one buffer, past its first 64, each where it was put (%s)" % card_70
+	)
+	quads.free()
+
 
 ## A sheet as scripts/effect_textures.gd writes it: frames by fraction, a
 ## clamped sequence holding its last, a looping one going round.

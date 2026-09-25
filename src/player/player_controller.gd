@@ -54,10 +54,8 @@ func _ready() -> void:
 	view = PlayerView.new(self)
 	add_child(view)
 	killed.connect(func(_zone: StringName) -> void: died.emit())
-	# CS2's knife and pistol, and the AK-47 in hand until there is money to
-	# buy one; a match hands out its own side's rifle.
-	if starting_gun == null:
-		starting_gun = WeaponLibrary.ak47()
+	# CS2's knife and your side's pistol, the pistol in hand; anything else
+	# is bought (B), or given by whoever set starting_gun.
 	_loadout()
 
 

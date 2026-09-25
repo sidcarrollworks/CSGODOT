@@ -169,10 +169,21 @@ func _draw_fire(id: int, inferno: InfernoEntity, now: int) -> void:
 	var flames := inferno.fire.flames
 	var count := mini(flames.size(), multimesh.instance_count)
 	var t := float(now) / 1_000_000.0
+	# In one buffer, as the smoke's: a flame set at a time had the MultiMesh
+	# read back from the GPU first (EffectQuads).
+	var buffer := PackedFloat32Array()
+	buffer.resize(multimesh.instance_count * 12)
 	for i in count:
 		var flicker := 0.8 + 0.3 * sin(t * 13.0 + i * 1.7)
-		var stretch := Basis.from_scale(Vector3(1.0, flicker, 1.0))
-		multimesh.set_instance_transform(i, Transform3D(stretch, flames[i] + Vector3.UP * 20.0 * flicker))
+		var at := i * 12
+		var flame := flames[i] + Vector3.UP * 20.0 * flicker
+		buffer[at] = 1.0
+		buffer[at + 3] = flame.x
+		buffer[at + 5] = flicker
+		buffer[at + 7] = flame.y
+		buffer[at + 10] = 1.0
+		buffer[at + 11] = flame.z
+	multimesh.buffer = buffer
 	multimesh.visible_instance_count = count
 
 

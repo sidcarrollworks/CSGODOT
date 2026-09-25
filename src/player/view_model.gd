@@ -82,7 +82,7 @@ func setup(team: String, weapon_model: String, clip_set: String) -> bool:
 	if weapon != null and weapon_rig != null:
 		var meshes := weapon.find_children("*", "MeshInstance3D", true, false)
 		for mesh in meshes:
-			# The export carries two bodies, the other for old hardware (the
+			# The export carries two bodies, the other for legacy skins (the
 			# default knives carry only that one, and keep it). And the Dual
 			# Berettas carry their thigh holster, which is for the
 			# third-person body: no first-person clip poses it, and it floats
