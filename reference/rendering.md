@@ -400,14 +400,15 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
     away under `IRRADIANCE`.
   - In play with the probes hidden, the GPU mean was 3.7 ms against 4.2,
     with one frame over 20 ms (one run).
-  - The look (L8's screenshots) is still to judge; which of these trims to
-    take is Sid's call: the texture array off (0.18 ms, rougher surfaces'
-    sky reflections blurrier), fewer probes (0.1 to 0.2 ms, the rooms
-    left out reflect a larger neighbour or the sky), or no probes at all
-    and only the sky (0.45 ms). The 0.5 ms of Godot's ambient path stays
-    with any reflections that Godot draws; only the second tier, the
-    material shaders sampling CS2's own pictures with Godot's ambient off
-    again, would avoid it (not tried).
+  - Sid keeps the reflections (2026-09-25): all-metal guns such as the
+    Desert Eagle only look right with them. The trims stay options, with
+    the look still to judge (L8's screenshots): the texture array off
+    (0.18 ms, rougher surfaces' sky reflections blurrier), fewer probes
+    (0.1 to 0.2 ms, the rooms left out reflect a larger neighbour or the
+    sky), or no probes at all and only the sky (0.45 ms). The 0.5 ms of
+    Godot's ambient path stays with any reflections that Godot draws;
+    only the second tier, the material shaders sampling CS2's own
+    pictures with Godot's ambient off again, would avoid it (not tried).
 - **R6. Settings as CS2 names them.** Shadow quality, anti-aliasing and
   the rest as a menu reads them (roadmap item 26), so each player picks
   their own cost.

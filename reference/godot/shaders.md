@@ -190,7 +190,7 @@ The companion page `rendering.md` covers lights, shadows, culling, anti-aliasing
 
 - Every runtime branch is compiled, and its variables can take registers. High VGPR use slows the shader "even if all pixels evaluate to true or false in a given frame" (`internal_rendering_architecture.rst`).
 - Each `#define` that differs between materials is a separate shader version to compile. Each distinct Shader is its own pipeline set. A ShaderMaterial duplicated with other uniform values shares its shader but is another material, so it breaks batching (inferred). An instance uniform keeps one material (`class_shadermaterial.rst`).
-- Pipeline compilation, ubershaders, and the shader baker for exports are on `rendering.md`, "Shader and pipeline compilation stutter". A shader first used at run time (spawned effects, far variants built in code) compiles then.
+- Pipeline compilation, ubershaders, and the shader baker for exports are on `rendering.md`, "Shader and pipeline compilation stutter". A shader first used at run time (spawned effects, far variants built in code) compiles then, even one loaded by `preload`: measured 6.6 to 10.3 ms in the frame of its first material, until `EffectQuads` called `get_rid()` on its four as the map loads.
 
 ## Class notes
 

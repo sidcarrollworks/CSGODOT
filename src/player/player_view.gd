@@ -21,9 +21,6 @@ extends Node
 ## the arms the view model stands in for. Folding the upper arms folds the
 ## hands with them.
 const FOLDED_BONES: Array[String] = ["head_0", "neck_0", "arm_upper_L", "arm_upper_R"]
-## What the shadow does without: the arms, which would fall across the view
-## model's own from a pose that is not its.
-const SHADOW_FOLDED_BONES: Array[String] = ["arm_upper_L", "arm_upper_R"]
 
 ## How far behind the eyes the body stands, in units. The eyes are at the
 ## front of the head, over the chest; at zero the collar fills the bottom of
@@ -64,6 +61,15 @@ var view_model: ViewModel
 ## and the arms anew hitched every switch. The hidden ones are not
 ## processed, so their animations cost nothing.
 var _view_models := {}
+## What the tick changed that the view has yet to draw (catch_up): the
+## inventory, and what is in hand. Built on the tick it happened, a view
+## model read the disk and built its nodes there: a first buy or pickup of
+## a gun took 136 ms of the tick.
+var _view_models_due := false
+var _in_hand_due := false
+var _in_hand_entry: Inventory.Entry
+## The side whose first-person clips are being read ahead (_read_ahead).
+var _read_for_team := ""
 ## Planting, as last shown: the bomb's plant clip is playing.
 var _planting := false
 ## The field of view last drawn, in CS2's degrees, and the view model it
@@ -80,8 +86,10 @@ var footsteps: Footsteps
 ## world and casts no shadow; that is body_shadow's job.
 var body_model: PlayerModel
 ## Your shadow: the same model walking the same clips in the same place,
-## drawn only into the shadow maps, with its head. The body the camera sees
-## has none, and a shadow without one is a strange thing to see.
+## drawn only into the shadow maps, whole: head, arms and what is in hand,
+## held, fired and reloaded as everyone else sees you hold it, as CS2's
+## shadow is your third-person body. The body the camera sees has no head
+## or arms, and a shadow without them is a strange thing to see.
 var body_shadow: PlayerModel
 
 ## The weapon model's rest pose, captured on the first frame so the recoil,
@@ -126,7 +134,7 @@ func _ready() -> void:
 	player.add_child(footsteps)
 
 	player.equipped.connect(_on_equipped)
-	player.inventory.changed.connect(_build_view_models)
+	player.inventory.changed.connect(func() -> void: _view_models_due = true)
 	player.pin_pulled.connect(_on_pin_pulled)
 	player.grenade_released.connect(_on_grenade_released)
 	player.reload_started.connect(_on_reload_started)
@@ -136,11 +144,49 @@ func _ready() -> void:
 	player.team_changed.connect(_on_team_changed)
 
 
-## Something else in hand: its model shown, drawing, and a gun's sounds.
+## Something else in hand: its model shown, drawing, and a gun's sounds,
+## from the next frame (catch_up).
 func _on_equipped(entry: Inventory.Entry) -> void:
-	_show_in_hand(entry)
-	if entry != null and entry.weapon != null:
-		weapon_sounds.equip(entry.weapon.data)
+	_in_hand_due = true
+	_in_hand_entry = entry
+
+
+## What the tick changed, drawn now: a view model for what came into the
+## inventory, what is in hand shown, and your side's clips read ahead once
+## it is known or has changed. Once a frame, before the view is placed; a
+## check that changes the inventory calls it to see the result.
+func catch_up() -> void:
+	if _read_for_team != player.team:
+		_read_for_team = player.team
+		_read_ahead()
+	if _view_models_due:
+		_view_models_due = false
+		_build_view_models()
+	if _in_hand_due:
+		_in_hand_due = false
+		_show_in_hand(_in_hand_entry)
+		if _in_hand_entry != null and _in_hand_entry.weapon != null:
+			weapon_sounds.equip(_in_hand_entry.weapon.data)
+		_in_hand_entry = null
+
+
+## Every first-person clip of what your side might take in hand, read on
+## worker threads while the game plays, so a first buy or pickup reads
+## nothing from the disk (RigModel.read_ahead). Headless nothing is drawn,
+## and nothing is read ahead.
+func _read_ahead() -> void:
+	if DisplayServer.get_name() != "headless":
+		RigModel.read_ahead(first_person_clips(player.team))
+
+
+## The first-person clips of every item a side's player can hold, as paths.
+static func first_person_clips(team: String) -> PackedStringArray:
+	var out := PackedStringArray()
+	for def in ItemRegistry.all():
+		var clip_set := String(WeaponLibrary.look(def.item_class, team).get("clip_set", ""))
+		if not clip_set.is_empty():
+			out.append_array(RigModel.list_clips(ViewModel.clips_dir(clip_set)))
+	return out
 
 
 func _on_pin_pulled() -> void:
@@ -156,12 +202,17 @@ func _on_grenade_released(underhand: bool) -> void:
 func _on_reload_started() -> void:
 	if view_model != null:
 		view_model.play(&"reload")
+	if body_shadow != null:
+		body_shadow.play(&"reload", 0.1)
 	weapon_sounds.reload()
 
 
 func _on_shot_traced(shot: Weapon.Shot, result: Hitscan.Result) -> void:
-	if view_model != null and shot.pellet == 0:
-		view_model.shoot()
+	if shot.pellet == 0:
+		if view_model != null:
+			view_model.shoot()
+		if body_shadow != null:
+			body_shadow.fire()
 	if result.hitbox != null and result.hitbox.target != null:
 		weapon_sounds.hit(result.zone, result.hitbox.target, not result.hitbox.target.alive)
 	BulletImpacts.mark_in(get_tree(), result)
@@ -199,7 +250,9 @@ func _on_team_changed(_team: String) -> void:
 	_view_models.clear()
 	view_model = null
 	viewmodel = null
-	_show_in_hand(player.inventory.in_hand())
+	_view_models_due = true
+	_in_hand_due = true
+	_in_hand_entry = player.inventory.in_hand()
 	_show_player(player.alive)
 
 
@@ -377,23 +430,43 @@ func _follow_plant() -> void:
 func _show_body() -> void:
 	body_model = _build_body("Body", FOLDED_BONES, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
 	if body_model != null:
-		body_shadow = _build_body("BodyShadow", SHADOW_FOLDED_BONES, GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY)
+		body_shadow = _build_body("BodyShadow", [], GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY)
 
 
+## A body. The shadow's holds what is in hand (PlayerModel.hold), as a
+## bot's does; the one you look down at holds nothing, its arms folded.
 func _build_body(node_name: String, folded: Array[String], casting: GeometryInstance3D.ShadowCastingSetting) -> PlayerModel:
 	var model := PlayerModel.new()
 	model.name = node_name
+	var shadow := casting == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 	# A model only the shadow maps see needs no lighting.
-	model.probe_lit = casting != GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
-	if not model.setup(player.team, ""):
+	model.probe_lit = not shadow
+	if not model.setup(player.team, "", "", shadow):
 		model.free()
 		return null
-	model.fold_bones(PackedStringArray(folded))
+	if not folded.is_empty():
+		model.fold_bones(PackedStringArray(folded))
 	for mesh in model.find_children("*", "MeshInstance3D", true, false):
 		(mesh as MeshInstance3D).cast_shadow = casting
 	model.top_level = true
 	player.add_child(model)
 	return model
+
+
+## The shadow holds what the player holds, its model shown and cast only
+## into the shadow maps. Per frame, from what the tick left in the hand: the
+## body the hitboxes ride took it up on the tick (PlayerSim._body_holds).
+func _follow_hand() -> void:
+	if body_shadow == null or not player.alive:
+		return
+	var item_class := player.in_hand_class()
+	if body_shadow.holding != item_class:
+		body_shadow.hold(item_class, WeaponLibrary.look(item_class, player.team) if not item_class.is_empty() else {})
+	var shown := body_shadow.held_weapon
+	body_shadow.show_held()
+	if body_shadow.held_weapon != null and body_shadow.held_weapon != shown:
+		for mesh in body_shadow.held_weapon.find_children("*", "MeshInstance3D", true, false):
+			(mesh as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 
 
 ## After each tick the player has run (the world runs the tick before any
@@ -417,6 +490,7 @@ func _process(delta: float) -> void:
 	# reference/performance.md, "Frame pacing").
 	DisplayServer.process_events()
 	Input.flush_buffered_events()
+	catch_up()
 	_follow_scope()
 	if _dead_for >= 0.0:
 		var watched := player.observing
@@ -455,6 +529,7 @@ func _process(delta: float) -> void:
 	)
 
 	_follow_plant()
+	_follow_hand()
 	_update_viewmodel(delta)
 	# The arms from where the eyes are, the body from its middle.
 	if view_model != null:

@@ -48,12 +48,13 @@ const JUMP_PRESSES := [
 	{"fraction": 0.75, "subtick": false},
 ]
 
-## The speed each test hop is taken at. Above max_speed, so ground
+## How far over max_speed each test hop is taken (230 with the AK-47's 215,
+## 255 with the pistol you spawn with). Above max_speed, so ground
 ## acceleration has nothing left to add and friction is the only thing acting,
 ## which is the state you land in mid-bunny-hop. Below 1.1 * max_speed, or
 ## clamp_bunnyhop would flatten every case to the same number and hide the
 ## difference being measured.
-const SUBTICK_HOP_SPEED := 230.0
+const SUBTICK_HOP_OVER := 15.0
 
 const SUBTICK_SETTLE_TICKS := 24
 
@@ -338,7 +339,7 @@ func _phase_subtick_jump() -> void:
 		# Land into the hop carrying more than run speed, the way a chained
 		# hop does, so friction is the only thing acting on it.
 		_player.velocity.x = 0.0
-		_player.velocity.z = -SUBTICK_HOP_SPEED
+		_player.velocity.z = -(_player.config.max_speed + SUBTICK_HOP_OVER)
 		_subtick_entry_speeds.append(
 			Vector2(_player.velocity.x, _player.velocity.z).length()
 		)
@@ -444,7 +445,7 @@ func _report() -> void:
 	for i in _subtick_speeds.size():
 		hops.append("%.2f: %.2f" % [JUMP_PRESSES[i]["fraction"], _subtick_speeds[i]])
 	print("hop speed by press fraction, from %.1f u/s: %s" % [
-		SUBTICK_HOP_SPEED, ", ".join(hops)
+		_subtick_entry_speeds[0] if not _subtick_entry_speeds.is_empty() else 0.0, ", ".join(hops)
 	])
 	for weapon_name: String in _counter_strafe:
 		var r: Dictionary = _counter_strafe[weapon_name]
