@@ -427,6 +427,16 @@ list, split into Local and Remote items, with the measurements.
   (`DrawClock`, `physics_jitter_fix` 0) and the mouse is read just before
   the view is placed: turning 1.7 ms off a steady turn to 0.7, flying 2.5
   to 4.2 ms to 0.6 (performance.md, "Frame pacing").
+- **Frame times against CS2's.** *(first-use hitches done,
+  perf/no-first-use-hitches; Sid plays)* The goal, from Sid's CS2 at 4K
+  with his settings (2026-09-25): 5.5 ms a frame walking round a
+  deathmatch, 9 to 10 ms once the shooting starts.
+  `scripts/profile_combat.gd` measures ours the same way: 4.4 ms and 4.2
+  on average, the 95th 7.8 and 7.1. Nothing is built in the tick for the
+  views any more, and the first buy, the first dropped gun and the first
+  shots no longer hitch (they held a tick or a frame 18 to 347 ms); no
+  frame is over 20 ms (performance.md, "Against CS2"). Left: the frames
+  that run a tick, about 7 ms, which a cheaper tick shortens.
 - **Screen-space occlusion off.** *(done, the Godot docs audit)* It
   darkened ambient light only, which no map material takes, so it drew
   nothing and cost 0.6 to 0.95 ms a frame at 4K (rendering.md,

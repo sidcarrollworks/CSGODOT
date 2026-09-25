@@ -1012,6 +1012,8 @@ func _test_bot_comes_back() -> void:
 func _test_player_composes_kick_and_bob() -> void:
 	var player := (load("res://src/player/player.tscn") as PackedScene).instantiate() as PlayerController
 	root.add_child(player)
+	# What the loadout's tick changed is drawn on the next frame.
+	player.view.catch_up()
 	if player.view_model == null:
 		_check(false, "the player builds its view model")
 		player.free()
@@ -1099,20 +1101,25 @@ func _test_player_composes_kick_and_bob() -> void:
 	)
 
 	# A view model for each thing carried, built as it comes into the
-	# inventory: a switch shows the one in hand and hides the rest, and
-	# builds nothing.
+	# inventory, on the frame after the tick it came on: a switch shows the
+	# one in hand and hides the rest, and builds nothing.
 	var carried := player.camera.find_children("ViewModel_*", "", false, false)
 	_check(carried.size() == player.inventory.entries().size(),
 		"a view model for each thing carried, the knife, the Glock and the AK-47 (%d for %d)" % [carried.size(), player.inventory.entries().size()])
 	player.inventory.add("weapon_hegrenade")
+	var in_tick := player.camera.get_node_or_null("ViewModel_weapon_hegrenade")
+	player.view.catch_up()
 	var grenade := player.camera.get_node_or_null("ViewModel_weapon_hegrenade") as ViewModel
-	_check(grenade != null and not grenade.visible and grenade.process_mode == Node.PROCESS_MODE_DISABLED,
-		"a grenade picked up has its own built there and then, hidden and still until it is taken out")
+	_check(in_tick == null and grenade != null and not grenade.visible and grenade.process_mode == Node.PROCESS_MODE_DISABLED,
+		"a grenade picked up has its own built on the next frame, not in the tick, hidden and still until it is taken out")
 	player.inventory.select("weapon_glock")
+	player.view.catch_up()
 	var glock := player.view_model
 	player.inventory.select("weapon_ak47")
+	player.view.catch_up()
 	var ak := player.view_model
 	player.inventory.select("weapon_glock")
+	player.view.catch_up()
 	_check(
 		glock != null and ak != null and glock != ak and player.view_model == glock and glock.visible
 			and glock.process_mode == Node.PROCESS_MODE_INHERIT and not ak.visible and ak.process_mode == Node.PROCESS_MODE_DISABLED

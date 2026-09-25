@@ -169,6 +169,58 @@ default.
 What is left is the tick's own 4.5 ms in the frame that runs it, which only
 a cheaper tick removes (the bots' movement is most of it, "Where it goes").
 
+## Against CS2
+
+Sid's CS2, at 3840x2160 with his settings (G-Sync, V-Sync and Reflex) in a
+multiplayer deathmatch, 2026-09-25: 5.5 ms a frame on average walking
+round the map out of combat, 9 to 10 ms once the shooting starts. That is
+the goal.
+
+Ours, `scripts/profile_combat.gd` on the same machine, 2026-09-25: dust2,
+ten players, 3840x2160 fullscreen, V-Sync off and no cap (so a frame is
+what it costs, where CS2's is under its cap), you riding along at a bot's
+eyes and firing when it fires, and every 8 seconds from 30 on every bot put
+on the T spawn together for a fight at close range. A frame is in combat
+while anyone has fired in the last second.
+
+| | Mean | Median | 95th | 99th | Worst | GPU mean |
+|---|---|---|---|---|---|---|
+| Out of combat | 4.37 ms | 3.54 | 7.78 | 8.49 | 10.9 | 3.06 |
+| In combat | 4.23 ms | 3.70 | 7.12 | 8.27 | 14.0 | 3.09 |
+
+The averages are under CS2's. The spread is the frames that run a tick
+(7.0 ms median out of combat, 6.4 in it, against 3.5 for the rest; "Frame
+pacing"). A deathmatch has more players than these ten.
+
+### Hitches
+
+What held a frame or a tick up the first time something happened, found
+with the same run (before this work, its worst frames in combat were 28 to
+35 ms, and the first shots and every fight hitched):
+
+| What | Where | Cost | Now |
+|---|---|---|---|
+| A gun's first-person clips, the first time it came into your inventory (a buy, a pickup, a round's pistol) | the tick: the view model built as the inventory changed | 136 ms on average, the R8's 347 | read on worker threads while the game plays (`RigModel.read_ahead`, every clip of what your side can hold: 263 files, 188 ms on the workers, 34 MB), and the view model built on the next frame: 2.3 ms for the AK-47, whose model the bots had read |
+| A dropped gun's model, the first of its class (every death drops a gun) | the tick: built as the item spawned | 41 ms headless; ticks of 25 ms in the fights | built on the next frame, once a worker thread has read it |
+| The first tracer and flash: each effect shader compiled when its first material asked for it | the frame (`EffectQuads`) | 6.6 ms for add, 10.3 for lit | compiled as the map loads |
+| Each new batch of effect cards: its MultiMesh read back from the GPU when its first card was set | the frame | 2 to 4 ms a batch; the first shots' frames 7 to 18 ms | none: a batch's cards go in one buffer at the frame's end |
+
+After: no frame over 20 ms in the run, the tick's worst 5 ms (it was 25
+to 30), and the effects' frame, while any are drawn, 0.29 ms mean, 0.22
+median, 0.79 at the 95th, 2.5 most (up to 139 cards; filled a card at a
+time it was 0.26, 0.20, 0.64 and 18). The renderer compiled 3 surface
+and 7 specialization pipelines while recording, and none at draw time
+(the kind that stutters); the frames with a surface compile in them took
+under 6 ms. The molotov's flames went into one
+buffer too, as the smoke's always did (not measured). The one hitch left in
+these runs is the profiler's own first frame, as it captures the mouse,
+and it is not recorded.
+
+Open: the other guns' models read ahead too, as the clips are. Each costs
+about 85 MB of video memory (its textures), 2.9 GB for all 34, so they are
+read only as dust2's bots may hold them (`prepare_holding`); a first pickup
+of any other gun still reads its model, in the frame after, not the tick.
+
 ## What has been done about it
 
 | Change | Where | Effect |
@@ -187,6 +239,7 @@ a cheaper tick removes (the bots' movement is most of it, "Where it goes").
 | A weapon's recoil solved once for each pattern, and the pattern read once | fix/equip-hitch | every weapon built (a gun drawn, any respawn) solved its pushes again: 15 ms, a frozen frame each time a gun was drawn, and 15 ms a player respawned at a fresh round's start; now 0.01 ms, and a draw 18 ms to 0.64 |
 | A gun's recoil numbers carried by its copies (`WeaponData`'s solved fields stored, solved as the registry builds each gun) | the Godot docs audit | every new gun (a buy, a pickup, a round's pistols) solved its weapon model's hold time again on the first tick it was held: 20 to 22 ms, more than a tick; now 1 us, and `ItemRegistry.load_all` 17 ms to 69 |
 | Frames drawn where the clock is: `physics_jitter_fix` 0, `DrawClock`, and the mouse read just before the view is placed | frame pacing | a frame that ran a tick was drawn 4.5 ms behind; flying 2.5 to 4.2 ms off a steady line to 0.6, turning 1.7 to 0.7 ("Frame pacing") |
+| Nothing built in the tick for the views, first-person clips read ahead on worker threads, the effects' shaders compiled at load and their cards sent in one buffer | perf/no-first-use-hitches | a first buy's tick 136 ms (the R8's 347), a death's dropped gun 41, the first shots' frames 18 to 35; now no frame over 20 ms ("Against CS2") |
 
 A tick at 64 costs a little more than one at 128 did: it moves everyone
 twice as far, with more to meet on the way, and holds twice the rounds and
@@ -282,6 +335,18 @@ air strafing most), and run_tests.gd holds it at any tick rate.
    on a server, only their clips (their models are only seen).
 
 ## Measuring it again
+
+Frames as played, against CS2's, on Sid's machine (it draws):
+
+    godot --path . --fullscreen --script scripts/profile_combat.gd -- 75
+
+75 is the seconds recorded. Its script says what it does; the hitches it
+lists split each frame over 20 ms into its ticks, its scripts, and the
+rest (drawing and input), with the pipelines compiled in it. To find what
+in a frame's scripts is slow, wrap a suspect's `_process` with
+`Time.get_ticks_usec()` for the run, and take it out after.
+
+The script's cost, headless and by system:
 
     godot --headless --path . --script scripts/profile_dust2.gd -- 5 3
 

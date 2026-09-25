@@ -26,6 +26,10 @@ var game: GameSystems
 var _items := {}
 var _models := {}
 var _moving := {}
+## Dropped since the last frame, their models to be built in the next: the
+## tick they fell on is the simulation's, and a model built there read the
+## disk and built its nodes in it (41 ms for a class's first, dust2).
+var _arriving: Array[int] = []
 ## By class: the scene, and how it lies (the turn that puts its thinnest
 ## side down and the lift that puts its lowest point on the ground).
 var _scenes := {}
@@ -56,12 +60,32 @@ func _on_spawned(entity: SimEntity) -> void:
 	if item == null or item.entry == null:
 		return
 	_items[item.id] = item
-	var model := _model_for(item.entry)
-	add_child(model)
-	_models[item.id] = model
-	_moving[item.id] = true
-	_place(item, model, 0.0, DrawClock.usec())
-	ProbeMaterials.light_model(model, model.global_position)
+	_arriving.append(item.id)
+
+
+## The models of the items dropped since the last frame. One whose class's
+## model has not been read yet waits for a worker thread to read it
+## (RigModel.read_ahead), a frame or a few, rather than hold the frame up
+## reading it; headless, nothing is drawn, and it is read at once.
+func _build_arrived() -> void:
+	var waiting: Array[int] = []
+	for id in _arriving:
+		var item: DroppedItem = _items.get(id)
+		if item == null:
+			continue
+		if not _scenes.has(item.entry.item.item_class) and DisplayServer.get_name() != "headless":
+			var path := _model_path(item.entry)
+			RigModel.read_ahead(PackedStringArray([path]))
+			if RigModel.reading(path):
+				waiting.append(id)
+				continue
+		var model := _model_for(item.entry)
+		add_child(model)
+		_models[id] = model
+		_moving[id] = true
+		_place(item, model, 0.0, DrawClock.usec())
+		ProbeMaterials.light_model(model, model.global_position)
+	_arriving = waiting
 
 
 func _on_removed(entity: SimEntity) -> void:
@@ -73,6 +97,8 @@ func _on_removed(entity: SimEntity) -> void:
 
 
 func _process(_delta: float) -> void:
+	if not _arriving.is_empty():
+		_build_arrived()
 	if _moving.is_empty():
 		return
 	var fraction := DrawClock.fraction()
@@ -120,14 +146,19 @@ static func heading(basis: Basis) -> float:
 	return atan2(along.x, along.z)
 
 
+## Where an item's world model is: its gun's, or its row's in the tables.
+static func _model_path(entry: Inventory.Entry) -> String:
+	var path := entry.weapon.data.model_path if entry.weapon != null else ""
+	if path.is_empty():
+		path = String(WeaponLibrary.look(entry.item.item_class).get("model_path", ""))
+	return path
+
+
 ## A new model of an item, and how its class lies, measured the first time.
 func _model_for(entry: Inventory.Entry) -> Node3D:
 	var item_class := entry.item.item_class
 	if not _scenes.has(item_class):
-		var path := entry.weapon.data.model_path if entry.weapon != null else ""
-		if path.is_empty():
-			path = String(WeaponLibrary.look(item_class).get("model_path", ""))
-		_scenes[item_class] = load(path) as PackedScene if not path.is_empty() and ResourceLoader.exists(path) else null
+		_scenes[item_class] = RigModel.preload_scene(_model_path(entry))
 	var model: Node3D
 	var packed := _scenes[item_class] as PackedScene
 	if packed != null:

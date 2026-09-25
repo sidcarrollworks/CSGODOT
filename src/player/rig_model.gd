@@ -66,6 +66,8 @@ var _lit_by: LightProbes
 static var _scenes := {}
 static var _animations := {}
 static var _listed := {}
+## Scenes asked for on worker threads (read_ahead) and not yet taken up.
+static var _reading := {}
 
 
 ## Loads clips into this node: the first as the rig, the rest as animations
@@ -384,6 +386,13 @@ static func instantiate(path: String) -> Node:
 static func preload_scene(path: String) -> PackedScene:
 	var packed: PackedScene = _scenes.get(path)
 	if packed == null:
+		if _reading.has(path):
+			# Read ahead: waits only if the worker has not finished it.
+			_reading.erase(path)
+			packed = ResourceLoader.load_threaded_get(path) as PackedScene
+			if packed != null:
+				_scenes[path] = packed
+			return packed
 		if path.is_empty() or not ResourceLoader.exists(path):
 			return null
 		packed = load(path) as PackedScene
@@ -391,6 +400,28 @@ static func preload_scene(path: String) -> PackedScene:
 			return null
 		_scenes[path] = packed
 	return packed
+
+
+## Whether a worker thread is still reading this scene (read_ahead), so
+## preload_scene would wait for it.
+static func reading(path: String) -> bool:
+	return _reading.has(path) and ResourceLoader.load_threaded_get_status(path) == ResourceLoader.THREAD_LOAD_IN_PROGRESS
+
+
+## Starts reading these scenes on worker threads, for preload_scene to take
+## up later without reading the disk: a gun's first-person clips, read
+## there on the tick it was first bought or picked up, took 136 ms on
+## average, the R8's 347 (reference/performance.md). Those read or being
+## read already are left. Returns how many were started.
+static func read_ahead(paths: PackedStringArray) -> int:
+	var started := 0
+	for path in paths:
+		if path.is_empty() or _scenes.has(path) or _reading.has(path) or not ResourceLoader.exists(path):
+			continue
+		if ResourceLoader.load_threaded_request(path) == OK:
+			_reading[path] = true
+			started += 1
+	return started
 
 
 ## The clip glTFs in a directory, sorted, or only those whose names start

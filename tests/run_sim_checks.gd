@@ -86,6 +86,8 @@ func _initialize() -> void:
 
 
 func _run() -> void:
+	# First, before a check loads the bot's scene the usual way.
+	_test_a_scene_read_ahead()
 	_test_the_simulation_reads_only_commands()
 	_test_presses_land_at_their_instant()
 	_test_the_mouse_turns_as_far_at_any_window_size()
@@ -119,6 +121,24 @@ func _run() -> void:
 	_test_the_frame_meter()
 	await _test_a_frame_draws_where_the_clock_is()
 	_report()
+
+
+# --- Nothing read from the disk in the tick ---------------------------------
+
+## A scene read ahead on a worker thread (RigModel.read_ahead, which the
+## views use for what a first buy or drop would otherwise read in the tick)
+## is handed over by preload_scene as one read the usual way is: asked for
+## twice it is read once, and what cannot be read is not asked for.
+func _test_a_scene_read_ahead() -> void:
+	var path := "res://src/bots/bot.tscn"
+	var cached_before := ResourceLoader.has_cached(path)
+	var started := RigModel.read_ahead(PackedStringArray([path, path, "res://src/no_such_scene.tscn", ""]))
+	var packed := RigModel.preload_scene(path)
+	_check(
+		started == 1 and packed != null and packed.can_instantiate() and not RigModel.reading(path)
+			and RigModel.preload_scene(path) == packed and RigModel.read_ahead(PackedStringArray([path])) == 0,
+		"a scene read ahead is handed over when asked for, read once (%d started; %s cached before)" % [started, cached_before]
+	)
 
 
 # --- No keys, no wall clock -------------------------------------------------
@@ -780,8 +800,10 @@ func _test_the_hand() -> void:
 			and player.in_hand_class() == "weapon_knife" and _named(events, &"item_remove").size() == 1,
 		"G drops the AK-47 in hand, its own Weapon with its 12 rounds on the ground, item_remove, and the knife comes back to the hand"
 	)
+	_check(dropped != null and view.model_of(dropped.id) == null and view.drawn() == 0,
+		"its model is not built in the tick it fell on, which it would hold up, but on the next frame")
 	if dropped != null:
-		var aim := PlayerInput.aim_direction(player.yaw_degrees, player.pitch_degrees)
+		var aim :=PlayerInput.aim_direction(player.yaw_degrees, player.pitch_degrees)
 		var went := dropped.position - dropped.previous_position
 		var across := Vector2(went.x, went.z).length() / DT
 		_check(

@@ -155,7 +155,7 @@ Doc: `tutorials/3d/occlusion_culling.rst`, `tutorials/3d/visibility_ranges.rst`,
 
 - Set `transform_format`, `use_colors` and `use_custom_data` **before** `instance_count`. Setting `instance_count` "clears and (re)sizes the buffers", and the flags can't be set afterwards. `visible_instance_count` (-1 = all) limits drawing without reallocating.
 - `MultiMesh.buffer` (and `RenderingServer.multimesh_set_buffer(rid, buffer)`) takes 12 floats per 3D transform, plus 4 for colour, plus 4 for custom data, per instance. Transforms are row-major: `(basis.x.x, basis.y.x, basis.z.x, origin.x, basis.x.y, basis.y.y, basis.z.y, origin.y, basis.x.z, basis.y.z, basis.z.z, origin.z)`. A size mismatch renders nothing. Reading `buffer` returns a copy.
-- The per-instance setters (`set_instance_transform/color/custom_data`) are fine for thousands. The array properties (`transform_array`, `color_array`) are deprecated and "very slow".
+- The per-instance setters (`set_instance_transform/color/custom_data`) are cheap once a MultiMesh keeps a CPU copy of its instances, but the first one after the buffer is (re)allocated (a new MultiMesh, or `instance_count` changed) makes that copy, and the docs say a buffer in the engine's cache "will have to be fetched from GPU memory" (`multimesh_get_buffer`). Measured on Sid's machine (2026-09-25): each new `EffectQuads` batch's first card held the frame 2 to 4 ms; setting `buffer` whole each frame instead costs nothing extra. Fill a MultiMesh that is new or regrown each frame by `buffer`, as `EffectQuads` and `GrenadeView` do. The array properties (`transform_array`, `color_array`) are deprecated and "very slow".
 - Set `custom_aabb` (on the MultiMesh, or `GeometryInstance3D.custom_aabb` on the node) to avoid AABB recomputation. A huge AABB defeats culling, which suits batches spread over the map.
 - `set_buffer_interpolated()` / `physics_interpolation_quality` apply only with Godot's physics interpolation, which the project does not use.
 
@@ -203,6 +203,7 @@ Doc: `tutorials/performance/pipeline_compilations.rst`, `tutorials/rendering/jit
 - Monitors (they only grow): `Performance.PIPELINE_COMPILATIONS_CANVAS/MESH/SURFACE/DRAW/SPECIALIZATION` (34 to 38), or `RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_*)` (6 to 10). **Draw** during play is a stutter (and an engine bug to report). **Surface** during play means a feature was first used then. **Specialization** is background work.
 - Features that must be seen before assets load, or they compile later: the MSAA level, ReflectionProbe, separate specular (SSS), motion vectors (TAA/FSR2), normal-roughness (SSAO, SSR, SSIL, SDFGI, VoxelGI, or a shader or compositor reading it), lightmaps, VoxelGI, SDFGI, 16/32-bit shadows, and omni shadow cube or dual paraboloid.
 - Effects spawned during play (muzzle flashes, grenade clouds, new `EffectQuads` batches per texture and blend) compile when first added, unless a hidden copy was instanced during loading. "Attach a hidden version of the effect somewhere that is guaranteed to show up."
+- Before any pipeline, the shader itself: measured, a preloaded `Shader` compiled in the frame its first material was made (6.6 and 10.3 ms for two of the effect shaders). Calling `get_rid()` on it while loading moves that there (`EffectQuads._ready`). The measurement is below, after "Fixed in the docs audit".
 - Caches: `rendering/rendering_device/pipeline_cache/enable` (true, saved to disk) and `rendering/shader_compiler/shader_cache/enabled` (true). The driver keeps its own cache, which a driver update wipes. To simulate a first run, turn off the pipeline cache **and** delete the driver cache.
 - The shader baker (4.5+, per export preset: Shader Baker > Enabled) ships SPIR-V/DXIL in the PCK to speed up the first load. It doesn't remove stutter, and it can't run from a `--headless` export.
 
@@ -279,7 +280,7 @@ On main (b5d8e4d, after the docs audit), verified by grep:
 - Project settings: `project.godot` has `directional_shadow/size=8192`, `soft_shadow_filter_quality=4` (Soft High), `msaa_3d=2` (4x), `occlusion_culling/use_occlusion_culling=true` and `[shader_globals] probe_sun_visibility`.
 - Map meshes cast from both faces: `src/map/map_importer.gd:267`. The skybox importer casts nothing: `src/map/map_loader.gd:228`.
 - Layers and shadow tricks: `src/player/player_view.gd:118` (the camera leaves out `PlayerSim.UNSEEN_LAYER` = `1 << 19`), `:216` (the corpse moves between layers), `:382` (the `SHADOWS_ONLY` body copy); `src/player/player_sim.gd:319`; `src/player/view_model_projection.gd:59` (view models cast nothing); `src/combat/hitbox.gd:71`.
-- MultiMesh: `src/effects/effect_quads.gd:113` (flags set before `instance_count`, `visible_instance_count`, huge `custom_aabb`), `src/grenades/grenade_view.gd:143` (writes `buffer` directly, 12 floats per instance, row-major, which matches the documented layout).
+- MultiMesh: `src/effects/effect_quads.gd` (`_batch`: flags set before `instance_count`, `visible_instance_count`, huge `custom_aabb`; `finish`: writes `buffer` whole, 20 floats per card), `src/grenades/grenade_view.gd` (`_draw_cloud` and `_draw_fire` write `buffer` directly, 12 floats per instance, row-major, which matches the documented layout).
 - Decals: `src/combat/bullet_impacts.gd:176` (a pool of `max_holes` = 96, `cull_mask` without `RigModel.LAYER`, fades at 0).
 - Dynamic lights: `src/effects/muzzle_flashes.gd:125` (a pool, `shadow_enabled = false`), `src/bomb/c4_view.gd:59`, `src/grenades/grenade_view.gd:207` (one per event, tweened out). None casts shadows, so none adds a pipeline variant or an atlas slot.
 - Performance monitors (headless): `scripts/profile_dust2.gd:290`.
@@ -289,11 +290,12 @@ The render work (PRs #78, #82): `scripts/profile_render.gd` (`viewport_set_measu
 
 Fixed in the docs audit: the pages, `RenderVariants` and `MapLighting` said 2x MSAA and the highest soft filter (they are 4x and Soft High), and SSAO was on, drawing nothing; its `no_msaa` saving (1.7 ms at 4K) was for 4x.
 
+Measured after a first shot on Sid's machine (2026-09-25, `scripts/profile_combat.gd`): the cost was not the pipelines (a surface compile or two, in frames under 6 ms, and no draw compilations) but the shaders. A `Shader` loaded by `preload` was compiled only when its first material asked for it, in that frame: 6.6 ms for `effect_add`, 10.3 for `effect_lit`. `EffectQuads._ready` now calls `get_rid()` on each as the map loads, and the first batches cost 0.1 ms. That the RID, and the compile, wait for the first `get_rid()` is inferred from these timings. Grenade materials (`grenade_view.gd:59` and later `StandardMaterial3D.new()`) are still first made during play and not measured; check a first grenade the same way.
+
 Looks at odds with the docs (not verified on a GPU):
 - `rendering/environment/ssao/fadeout_from/to` are still 50/300: if SSAO is ever turned back on (with `ssao_light_affect`, for a look like CS2's), scale both, and SSIL's, by about 39.37.
 - `maps/test_range/test_range.gd:1092`: the hitbox SubViewport keeps the default `msaa_3d` 0 while the root is 4x. The pipeline docs say mixed MSAA levels cause stutters (test range only, minor). It also gets a 2048 positional atlas.
 - The docs disagree on whether Compatibility reverses depth (`internal_rendering_architecture.rst` says every renderer does, `renderers.rst` says Compatibility does not). `FarMaterials.far_plane_depth` is 0.0 for every renderer, after the render work drew through Compatibility and found it reversed. See `shaders.md`.
-- (inferred) New effect batches (`EffectQuads._batch`), grenade materials (`grenade_view.gd:59` and later `StandardMaterial3D.new()`) and runtime-built `ShaderMaterial`s are first instanced during play, so their pipelines may compile then. Check `PIPELINE_COMPILATIONS_SURFACE/DRAW` on Sid's machine after a first shot and grenade.
 
 ## Not covered here
 
