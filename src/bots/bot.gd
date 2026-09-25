@@ -222,7 +222,7 @@ func _process(_delta: float) -> void:
 	if model == null:
 		return
 	# Drawn as far between its last two ticks as the frame falls.
-	var alpha := clampf(Engine.get_physics_interpolation_fraction(), 0.0, 1.0)
+	var alpha := DrawClock.fraction()
 	model.show_between(previous_position, global_position, previous_yaw_degrees, yaw_degrees, alpha)
 	model.show_held()
 	if alive:

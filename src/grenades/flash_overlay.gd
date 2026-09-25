@@ -20,6 +20,6 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	var amount := 0.0
 	if game != null and viewer_id != GameEvents.NOBODY:
-		amount = float(game.query(&"blind_share", [viewer_id, SimClock.draw_usec()], 0.0))
+		amount = float(game.query(&"blind_share", [viewer_id, DrawClock.usec()], 0.0))
 	color.a = amount
 	visible = amount > 0.0

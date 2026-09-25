@@ -129,7 +129,13 @@ corrected there).
    timing: to change before the netcode (roadmap item 25).
 3. **`physics_jitter_fix` is at its default 0.5** (checked); the docs
    recommend 0 for this project's case. Needs a frame-pacing check on Sid's
-   machine. main-loop.md, physics.md, engine.md.
+   machine. main-loop.md, physics.md, engine.md. **Fixed, measured**: it is
+   0, and the views draw between ticks by `DrawClock` (the fraction from the
+   clock when the frame is drawn, since a frame that runs a tick is drawn
+   4.5 ms after Godot's fraction was taken) and take in the mouse just
+   before the camera is placed. On Sid's machine the drawn motion went from
+   2.5 to 4.2 ms off a steady line to 0.6, and a turn from 1.7 to 0.7
+   (`reference/performance.md`, "Frame pacing").
 4. **Caches hand out their own Dictionaries** (checked for
    `WeaponSheet.rows()`), against `CLAUDE.md`'s rule; also
    `weapon_vdata.gd` and `surface_properties.gd`, and a shallow

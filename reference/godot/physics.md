@@ -15,7 +15,7 @@ The 3D math (vectors, transforms, Basis, Quaternion, Plane/AABB, Source Z-up con
 - Don't scale physics bodies or collision shapes. "Godot does not currently support scaling of physics bodies or collision shapes" (`troubleshooting_physics_issues.rst`), and `CollisionObject3D` warns against non-uniform scale. Bake the scale into shape sizes or triangles, as `MapImporter._build_collision` and `Ragdoll` already do.
 - A shape resource is shared by every node that uses it. Before resizing it per instance, `duplicate()` it (troubleshooting page). `PlayerBody` does this for its hull.
 - Physics is not deterministic, "regardless of physics engine" (`physics_introduction.rst`). Anything that decides the game must come from your own tick code and queries, never from `RigidBody3D` simulation. Keep rigid bodies (ragdolls) cosmetic.
-- For CS2-style networking, set `physics/common/physics_jitter_fix` to `0`. The docs recommend `0` "within a network game" and "when using a custom physics interpolation solution" (`classes/class_engine.rst`, `class_projectsettings.rst`). The project is both, and it still has the default of 0.5 (see the code section below).
+- For CS2-style networking, set `physics/common/physics_jitter_fix` to `0`. The docs recommend `0` "within a network game" and "when using a custom physics interpolation solution" (`classes/class_engine.rst`, `class_projectsettings.rst`). The project is both, and sets 0.
 
 ## Spaces and when you may query them
 
@@ -255,7 +255,7 @@ Doc: `tutorials/physics/interpolation/*.rst`, `classes/class_engine.rst`, `class
 - `physics/common/physics_ticks_per_second` (default 60; the project uses 64) is read only at startup. At runtime use `Engine.physics_ticks_per_second`.
 - `physics/common/max_physics_steps_per_frame` (default 8; the project uses 16) is the cap on catch-up steps per rendered frame. Past it the game visibly slows. The "physics spiral of death" is the failure it guards against. The runtime version is `Engine.max_physics_steps_per_frame`.
 - `physics/common/physics_jitter_fix` (default 0.5; runtime `Engine.physics_jitter_fix`) controls how far ticks may drift from real time to smooth frame jitter. It's automatically disabled when `physics/common/physics_interpolation` is on. Set it to 0 for a custom interpolation scheme or a network game.
-- `Engine.get_physics_interpolation_fraction() -> float` is how far through the current tick a rendered frame falls. The project's own interpolation (`SimClock.draw_usec`, views, ragdoll) uses this.
+- `Engine.get_physics_interpolation_fraction() -> float` is how far through the current tick a rendered frame falls. The project's views take it on to when the frame is drawn (`DrawClock.fraction()`), since a frame that runs a tick is drawn after it.
 - Godot's built-in interpolation is `physics/common/physics_interpolation` (default `false`; runtime `SceneTree.physics_interpolation`).
   - It interpolates between the last two tick transforms, so everything is drawn 1 to 2 ticks late. The docs themselves suggest a custom scheme for internet multiplayer.
   - In 3D it's scene-side only: bodies created with the servers aren't interpolated.
@@ -398,7 +398,7 @@ See the ragdoll section. `set_param(Param, float)`/`get_param`, and `set_flag(Fl
   - Builds `RigidBody3D`s plus `ConeTwistJoint3D`s and `HingeJoint3D`s on layer 16, masking the world only.
   - Replaces damping (`DAMP_MODE_REPLACE`), uses `continuous_cd=true`, and applies gravity with `add_constant_central_force`.
   - Skips `PARAM_BIAS` on Jolt (`on_jolt()`).
-  - Draws between ticks with `Engine.get_physics_interpolation_fraction()`.
+  - Draws between ticks with `DrawClock.fraction()`.
 - Rays elsewhere:
   - `src/bots/bot.gd:514` (line of sight)
   - `src/audio/footsteps.gd:131` (surface below)
@@ -406,12 +406,11 @@ See the ragdoll section. `set_param(Param, float)`/`get_param`, and `set_flag(Fl
   - `src/game/item_drops.gd:198`, `src/game/dropped_item.gd:121`
   - `src/player/player_view.gd:229`, `src/effects/muzzle_flashes.gd:616`
 - `src/sim/game_world.gd:132`: hands `find_world_3d().direct_space_state` to `GameSystems.step` each tick.
-- `src/sim/sim_clock.gd`: tick length from `Engine.physics_ticks_per_second`; draw time from `get_physics_interpolation_fraction()`.
+- `src/sim/sim_clock.gd`: tick length from `Engine.physics_ticks_per_second`; `src/sim/draw_clock.gd`: draw time from the wall clock and where the frame's last tick stood.
 - `project.godot [physics]`: 64 ticks, 16 max steps, Jolt, the Jolt length and speed settings scaled by 39.37, gravity 0.
 
 Looks at odds with the docs (not verified):
 
-- `project.godot` doesn't set `physics/common/physics_jitter_fix`, so it's 0.5. The docs recommend 0 for network games and custom interpolation, and the project is both (its own interpolation in `SimClock.draw_usec` and the views, with CS2-style netcode planned). With 0.5, tick timing is allowed to drift from real time to hide frame jitter.
 - `src/effects/muzzle_flashes.gd:616` (`_to_ground`, reached from `ShotEffects._process` → `flashes.advance`) and `src/player/player_view.gd:229` (`death_cam_position`, reached from `_process` → `_spectate`) query `direct_space_state` in `_process`. The docs say the space is only safe in `_physics_process`. It works while physics is on the main thread (inferred), but it breaks if `physics/3d/run_on_separate_thread` is ever enabled. Both are visual-only.
 - `src/combat/ragdoll.gd:204-219` writes `angular_velocity` on every body every tick from `_physics_process`. The RigidBody3D docs advise `_integrate_forces()` for per-tick state changes. It's cosmetic, and `ragdoll.gd` documents why it does this.
 - `src/grenades/smoke_voxels.gd:239` sets `hit_from_inside = true` on a `WORLD_LAYER` ray. The docs say that flag doesn't affect concave shapes, which is what dust2's collision is. It only matters for convex or box world pieces (e.g. test-range cover), where the hit then has a zero normal. It's harmless but may not do what it reads as.

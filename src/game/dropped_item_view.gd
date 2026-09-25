@@ -60,7 +60,7 @@ func _on_spawned(entity: SimEntity) -> void:
 	add_child(model)
 	_models[item.id] = model
 	_moving[item.id] = true
-	_place(item, model, 0.0, SimClock.draw_usec())
+	_place(item, model, 0.0, DrawClock.usec())
 	ProbeMaterials.light_model(model, model.global_position)
 
 
@@ -75,8 +75,8 @@ func _on_removed(entity: SimEntity) -> void:
 func _process(_delta: float) -> void:
 	if _moving.is_empty():
 		return
-	var fraction := clampf(Engine.get_physics_interpolation_fraction(), 0.0, 1.0)
-	var now := SimClock.draw_usec()
+	var fraction := DrawClock.fraction()
+	var now := DrawClock.usec()
 	for id: int in _moving.keys():
 		var item: DroppedItem = _items[id]
 		var model: Node3D = _models[id]

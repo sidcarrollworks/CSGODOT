@@ -105,7 +105,7 @@ func _process(_delta: float) -> void:
 	_pending.clear()
 	_open.clear()
 
-	var now := SimClock.draw_usec()
+	var now := DrawClock.usec()
 	quads.begin(narrowing)
 	_draw_trails(now, camera)
 	_draw_ropes(now, eye)

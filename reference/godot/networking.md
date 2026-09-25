@@ -124,7 +124,6 @@ Looks at odds with the docs for an exported build (not verified; nothing is expo
 - `src/audio/sound_bank.gd:23,36` lists `res://assets/sounds/...` with `DirAccess` and keeps `.wav`/`.mp3`/`.ogg` names. In an export, the originals are replaced by remapped or imported files, so the listing will not find them (`classes/class_diraccess.rst`). `ResourceLoader.list_directory()` returns the editor-visible names. `src/map/map_importer.gd:190` (`_list_gltfs`, used by `MapImporter.find_map_file`) has the same problem for `.gltf`.
 - These `FileAccess` reads of non-resource files under `res://` are missing from an export unless the preset's non-resource include filter covers them: `src/weapons/weapon_library.gd:195,235` (`reference/weapons/*.md`), `src/weapons/weapon_vdata.gd:117` and `src/weapons/weapon_sheet.gd:129` (`.csv`), `src/weapons/recoil_pattern.gd:33` (`reference/spray_patterns`), `src/audio/weapon_sounds.gd:312`, `src/combat/hitbox_set.gd:70`, `src/map/map_overview.gd:35`, `src/map/source_nav_mesh.gd:179` (`.nav`), `src/map/map_loader.gd:147` and `src/combat/bullet_impacts.gd:130` (`.vmat` text), and `src/effects/sprite_sheet.gd:37` (`.sheet.json`).
 - `src/map/map_importer.gd:534` builds collision from `Mesh.get_faces()` at runtime. That is empty under "Export as dedicated server" unless those meshes are marked Keep (above).
-- `project.godot` leaves `physics/common/physics_jitter_fix` at 0.5. The docs say 0 for network games.
 
 ## Not covered here
 

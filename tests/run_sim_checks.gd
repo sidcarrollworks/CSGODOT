@@ -117,6 +117,7 @@ func _run() -> void:
 	_test_the_hit_direction_on_screen()
 	await _test_the_hud_shows_hits()
 	_test_the_frame_meter()
+	await _test_a_frame_draws_where_the_clock_is()
 	_report()
 
 
@@ -1357,6 +1358,46 @@ func _test_the_frame_meter() -> void:
 	_check(
 		is_equal_approx(meter.fps, 125.0) and is_equal_approx(meter.slowest_ms, 8.0),
 		"and each second is counted afresh: the hitch is gone from the next (%s)" % meter.line()
+	)
+
+
+## A frame is drawn as far between the ticks as the clock says when it is
+## drawn: a frame that runs a tick is drawn after it, later than Godot's
+## fraction, taken at the frame's start, says. For that the ticks keep to
+## the clock.
+func _test_a_frame_draws_where_the_clock_is() -> void:
+	_check(
+		is_zero_approx(float(ProjectSettings.get_setting("physics/common/physics_jitter_fix"))),
+		"the ticks keep to the clock (physics_jitter_fix 0)"
+	)
+	DrawClock.fraction()
+	await physics_frame
+	var grew := -1.0
+	var expected := 0.0
+	var engine_still := false
+	for attempt in 30:
+		await physics_frame
+		var first := DrawClock.fraction()
+		if first > 0.6:
+			continue
+		var engine := Engine.get_physics_interpolation_fraction()
+		# A sleep is as long as the system's timer makes it, so what passed
+		# is measured rather than assumed.
+		var started := Time.get_ticks_usec()
+		OS.delay_usec(4000)
+		var passed := Time.get_ticks_usec() - started
+		grew = DrawClock.fraction() - first
+		expected = minf(float(passed) / SimClock.tick_usec(), 1.0 - first)
+		engine_still = is_equal_approx(Engine.get_physics_interpolation_fraction(), engine)
+		break
+	_check(
+		grew > 0.2 and absf(grew - expected) < 0.05 and engine_still,
+		"a few ms on in a frame, the drawn fraction has moved on with the clock (%.2f of a tick, %.2f by the clock), where Godot's stays put" % [grew, expected]
+	)
+	var at := DrawClock.usec()
+	_check(
+		at >= SimClock.now_usec() - SimClock.tick_usec() and at <= SimClock.now_usec(),
+		"and the time drawn is between the last two ticks"
 	)
 
 

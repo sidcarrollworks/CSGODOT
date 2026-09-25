@@ -205,7 +205,7 @@ Doc: `tutorials/math/interpolation.rst`, `tutorials/physics/interpolation/physic
 
 - Linear interpolation: `a + (b - a) * t`. Use `lerp`, `Vector3.lerp`, `Transform3D.interpolate_with`, `Basis.slerp`, and `Quaternion.slerp` (never slerp Euler angles; `using_transforms.rst` shows why they take the long way round and gimbal-lock).
 - For angles as floats use `lerp_angle(from, to, weight)`, and `angle_difference(from, to)` (returns a value in [-PI, PI]). For a yaw in degrees, wrap with `wrapf(value, -180.0, 180.0)` (min inclusive, max exclusive).
-- The tick fraction for drawing is `Engine.get_physics_interpolation_fraction()`. Interpolating between the previous and current tick shows the world 1 to 2 ticks in the past, which the physics interpolation intro says outright.
+- The tick fraction for drawing is `DrawClock.fraction()` here: Godot's `Engine.get_physics_interpolation_fraction()` taken on by the wall clock to when the frame is drawn (see `main-loop.md`). Interpolating between the previous and current tick shows the world 1 to 2 ticks in the past, which the physics interpolation intro says outright.
 - `lerp(current, target, k * delta)` "smoothing" is frame-rate dependent as written in the tutorial. Keep it to visual-only code (inferred: `1 - exp(-k * delta)` makes it frame-rate independent, which `Ragdoll` uses for joint friction).
 
 ## Class notes
