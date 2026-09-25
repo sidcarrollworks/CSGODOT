@@ -156,9 +156,18 @@ From GT `panorama/layout/hud/hudteamcounter.xml`,
   `teamcounter_red_timer` to turn **red**. When that happens is decided in C++.
   **From memory** it is in the round's last seconds, and the repo's own 10 s
   warning (below) is the natural trigger. Under the timer are the two
-  **scores**, `ScoreCT` left and `ScoreT` right, each 42 px wide. The
-  left/right sides follow your team: the strings are
-  `left_side_alive`/`right_side_alive`.
+  **scores**, `ScoreCT` left and `ScoreT` right, each 42 px wide.
+  **Corrected 2026-09-25:** this note first said the sides follow your team.
+  They do not. CS2's own styles (hudteamcounter.css, decompiled from the
+  game) colour the left side's score, alive count and cards in color-CT
+  `#B5D4EE` and the right side's in color-T `#EAD18A`, whoever you play
+  (`.TeamScoreL`/`.TeamScoreR`, `.team__large_container--left`/`--right`, the
+  containers `#TeamLargeCT` and `#TeamLargeT`), and CS2's screenshot playing
+  a terrorist (`In_game_ui.webp`) has the terrorists on the right. The
+  strings `left_side_alive`/`right_side_alive` are just positions.
+  The reserve beside the ammo counts magazines for every gun whose
+  `m_bReserveAmmoAsClips` is true in scripts/weapons.vdata (all but the Nova,
+  XM1014 and Sawed-Off, which count shells): the screenshot's P90 reads 2.
 - **Bomb status.** Once the bomb is planted, `BombPlanted` (an 80 px icon
   washed `#b80000`) and `BombPlantedLines` (rings that grow 1.0 to 1.4 times and
   fade) take the timer's place. They pulse faster as the bomb nears
@@ -171,8 +180,8 @@ From GT `panorama/layout/hud/hudteamcounter.xml`,
 - **Players alive:** a big number on each side (`{d:left_side_alive}` with a
   small "ALIVE" under it: `SFUI_PlayerCount_Alive_Left:f`), and a compact
   person-icon count (`PlayerCount`).
-- **Avatars (`AvatarLargeSnippet`), one per player, your team on the left.**
-  Each has:
+- **Avatars (`AvatarLargeSnippet`), one per player, the counter-terrorists
+  on the left** (corrected 2026-09-25, above). Each has:
   - the player's colour (`cl_teammate_colors_show`, default 1; the five
     colours are `cl_teammate_color_1..5` = light blue 136,206,245 / green
     0,158,128 / yellow 241,228,65 / orange 230,128,42 / purple 189,44,150,

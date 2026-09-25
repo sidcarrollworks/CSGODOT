@@ -807,24 +807,47 @@ extract_equipment() {
 ## is drawn with), and the equipment icons, one SVG per weapon by its class
 ## less "weapon_" (with the silencers-off variants), armour, the kit, the
 ## grenades, the knife and the bomb, for the ammo display, the kill feed and
-## the buy menu. With them the rest of the HUD's images (panorama/images/hud:
-## the armour and helmet, the reserve's magazine, the team counter's bot
-## portrait and skull) and its UI icons (panorama/images/icons/ui: the team
-## emblems, the buy zone's cart), and CS2's font, Stratum2, which is not in
-## the VPK but loose in game/csgo/panorama/fonts. src/ui/hud_style.gd reads
-## them all from assets/hud/ and draws its own stand-ins where they are not.
+## the buy menu. With them the rest of the HUD's images (panorama/images/hud
+## and its teamcounter/: the armour and helmet, each gun's reserve magazine,
+## the kill marks, the team counter's bot portrait and skull; not yet the
+## radar's, the kill feed's or the death panel's), the few UI icons the HUD
+## draws (HUD_UI_ICONS), the masks and the dot pattern its dark panels are
+## cut and textured with, and CS2's font, Stratum2. The font is not in the
+## VPK: it is loose in game/csgo/panorama/fonts as one stratum2.uifont, which
+## Source2Viewer-CLI unpacks into the family's .otf files. It writes them
+## beside its input whatever -o says, so it is given a copy here, never the
+## game's own. src/ui/hud_style.gd reads it all from assets/hud/ and draws its
+## own stand-ins where something is not there.
+HUD_UI_ICONS="ct_logo_1c t_logo_1c buyzone elimination kill defuser_white alert"
+HUD_MASKS="score-time-mask.vsvg_c playercount-mask.vsvg_c top-bottom-fade-4_png.vtex_c"
 extract_hud() {
 	require_file "$PAK_VPK"
+	local uifont="$CSGO_DIR/panorama/fonts/stratum2.uifont"
+	require_file "$uifont"
 	local dest="$OUT_DIR/hud"
 	mkdir -p "$dest"
-	echo "Extracting the scope overlay, the HUD's images and icons, and its font"
+	echo "Extracting the scope overlay, the HUD's images, icons and masks, and its font"
 	echo "        -> $dest"
-	"$S2V_BIN" -i "$PAK_VPK" -f "panorama/images/hud/,panorama/images/icons/equipment/,panorama/images/icons/ui/" -o "$dest" -d \
-		| grep -vE '^(Preloading|Added folder|--- )' || true
+	local filter
+	filter="$("$S2V_BIN" -i "$PAK_VPK" -f "panorama/images/hud/" -l \
+		| tr -d '\r' | sed -E 's/ CRC:[0-9a-fA-F]+ size:[0-9]+$//' \
+		| grep -E '^panorama/images/hud/([^/]+|scope/.+|teamcounter/.+)$' | paste -sd, -)"
+	require_filter "$filter" "the HUD's images"
+	filter+=",panorama/images/icons/equipment/,panorama/images/icons/person.vsvg_c"
+	filter+=",panorama/images/backgrounds/bluedots_large_png.vtex_c"
+	local name
+	for name in $HUD_UI_ICONS; do
+		filter+=",panorama/images/icons/ui/$name.vsvg_c"
+	done
+	for name in $HUD_MASKS; do
+		filter+=",panorama/images/masks/$name"
+	done
+	s2v_batched "$filter" -o "$dest" -d | grep -vE '^(Preloading|Added folder|--- )' || true
 	mkdir -p "$dest/fonts"
-	find "$CSGO_DIR/panorama/fonts" -maxdepth 1 -iname '*stratum2*' \( -iname '*.ttf' -o -iname '*.otf' \) \
-		-exec cp {} "$dest/fonts/" \; 2>/dev/null || true
-	echo "        $(find "$dest" -name '*.svg' | wc -l | tr -d ' ') icons, $(find "$dest" -path '*scope*' -name '*.png' | wc -l | tr -d ' ') scope images, $(find "$dest/fonts" -type f | wc -l | tr -d ' ') font files"
+	cp "$uifont" "$dest/fonts/"
+	(cd "$dest/fonts" && "$S2V_BIN" -i stratum2.uifont -o . -d > /dev/null)
+	rm -f "$dest/fonts/stratum2.uifont"
+	echo "        $(find "$dest/" -name '*.svg' | wc -l | tr -d ' ') icons and masks, $(find "$dest/" -name '*.png' | wc -l | tr -d ' ') images, $(find "$dest/fonts" -name 'stratum2*' ! -name '*.import' | wc -l | tr -d ' ') font files"
 }
 
 ## The textures the guns' tracers and muzzle flashes draw with. CS2's particle

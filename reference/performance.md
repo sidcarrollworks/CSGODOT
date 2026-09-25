@@ -65,6 +65,17 @@ lights and shadows documentation), so they cost a shadow pass a frame while
 a player or a bot is in the tunnel and none otherwise. Not measured on the
 GPU yet.
 
+The HUD on the GPU (2026-09-25, dust2 at outside long with ten players,
+the render time Godot measures, alternated in blocks): 2D blended in linear
+light as CS2's HUD is (`hdr_2d`) costs 0.005 ms at 1080p and 0.02 ms at 4K;
+the blurred world behind its panels (a copy of the screen under each panel
+and Godot's blurred mipmaps of it) 0.08 ms at 1080p and 0.11 ms at 4K with
+three panels blurred (warmup: the ring, the alert, your card), about a
+third of that in a live round, where only the ring blurs. Blurring from
+Godot's automatic copy of the whole screen cost 0.51 ms at 4K, which is
+why each panel copies its own part. `scripts/profile_render.gd` measures
+both again (the `sdr_2d` and `no_hud_blur` variants).
+
 What is drawn is cut down by the map's own visibility (`WorldVisibility`,
 2026-09-24), as CS2 cuts it: from T spawn 2,702 of dust2's 3,589 world
 meshes are not drawn (they still cast their shadows), and from mid 2,178.

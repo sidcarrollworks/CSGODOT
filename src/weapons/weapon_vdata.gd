@@ -68,7 +68,8 @@ static func apply(data: WeaponData, weapon_class: String, alternate: bool = fals
 	data.magazine_size = int(get_value.call("m_iMaxClip1"))
 	# Counted in magazines, but for the shotguns loaded a shell at a time.
 	var reserve := int(get_value.call("m_nPrimaryReserveAmmoMax"))
-	data.reserve_ammo = reserve * data.magazine_size if get_value.call("m_bReserveAmmoAsClips") == 1.0 else reserve
+	data.reserve_as_clips = get_value.call("m_bReserveAmmoAsClips") == 1.0
+	data.reserve_ammo = reserve * data.magazine_size if data.reserve_as_clips else reserve
 	data.max_player_speed = get_value.call("m_flMaxSpeed")
 	# How much of a victim's speed a hit leaves is the flinch modifier.
 	data.tagging_power = 1.0 - get_value.call("m_flFlinchVelocityModifierLarge")

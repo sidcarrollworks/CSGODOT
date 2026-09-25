@@ -551,9 +551,15 @@ list, split into Local and Remote items, with the measurements.
     `HudStyle` in `src/ui/`: health, armour and ammo round the emblem at the
     bottom, rolling money with the buy zone's cart, the team counter with
     the clock, scores, players alive and a card per player, the alert bar,
-    and the buy menu restyled. Still to do: the kill feed, radar,
-    scoreboard, round-end panel and the bomb's icon on the clock. Local: a
-    screenshot beside CS2 after `scripts/extract_assets.sh hud`.)*
+    and the buy menu restyled. Built to CS2's own Panorama layouts and
+    styles, in its font (Stratum2, unpacked from the game) and icons,
+    blended additively in linear light with the world blurred behind its
+    panels as Panorama does. Local: checked on Sid's machine against
+    `In_game_ui.webp` at 1080p and 4K, where it matches to the pixel but
+    for the player's portrait and colour. Still to do: the kill feed,
+    radar, scoreboard, round-end panel, the bomb's icon on the clock, the
+    kill marks over the health and the low health and ammo glow; the buy
+    menu's agent and its columns' order want a CS2 screenshot of it.)*
 
 ### Phase 5: the bomb
 

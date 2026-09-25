@@ -32,8 +32,13 @@ extends HudElement
 
 ## buymenu.css: the body 950 px wide, a column padded 15 px each side, a card
 ## 90 px tall with 10 px under it, the column's title 28 px, a card's text
-## 14 px and the key 18 px.
+## 14 px and the key 18 px. The whole screen behind goes 95 % black
+## (.buymenu), and each column is as wide as its kind (.ccpistols 18 %,
+## .ccmidtier 22 %, .ccrifles 24 %, .ccequip and .ccgrenades 18 %), so the
+## rifles' long icons get the widest.
 const BODY_WIDTH := 950.0
+const BACKDROP := Color(0, 0, 0, 0.95)
+const COLUMN_SHARES := {"Pistols": 0.18, "Mid-Tier": 0.22, "Rifles": 0.24, "Equipment": 0.18, "Grenades": 0.18}
 const COLUMN_PADDING := 15.0
 const CARD_HEIGHT := 90.0
 const CARD_GAP := 10.0
@@ -193,16 +198,25 @@ func _refresh() -> void:
 func _layout(side: String) -> void:
 	_cards.clear()
 	var body := _body()
-	var column_width := body.size.x / Loadout.COLUMNS.size()
 	for column in Loadout.COLUMNS.size():
+		var span := _column(column, body)
 		for place in Loadout.PLACES:
 			var item := Loadout.item_at(side, column, place)
 			if item.is_empty() or not ItemRegistry.has(item):
 				continue
 			_cards[item] = Rect2(
-				body.position.x + column * column_width + COLUMN_PADDING,
+				span.position.x + COLUMN_PADDING,
 				body.position.y + HEADER_HEIGHT + TITLE_HEIGHT + place * (CARD_HEIGHT + CARD_GAP),
-				column_width - 2.0 * COLUMN_PADDING, CARD_HEIGHT)
+				span.size.x - 2.0 * COLUMN_PADDING, CARD_HEIGHT)
+
+
+## A column's share of the body, left to right.
+func _column(column: int, body: Rect2) -> Rect2:
+	var x := body.position.x
+	for before in column:
+		x += body.size.x * float(COLUMN_SHARES.get(Loadout.COLUMNS[before]["name"], 0.2))
+	var width := body.size.x * float(COLUMN_SHARES.get(Loadout.COLUMNS[column]["name"], 0.2))
+	return Rect2(x, body.position.y, width, body.size.y)
 
 
 func _body() -> Rect2:
@@ -216,6 +230,7 @@ func _draw() -> void:
 	var side := _side()
 	var colour := HudStyle.team_colour(side)
 	var body := _body()
+	draw_rect(Rect2(Vector2.ZERO, size), BACKDROP)
 	draw_rect(body.grow(12.0), BACKGROUND)
 
 	# CS2's info panel: the money, and the buy time left.
@@ -225,23 +240,22 @@ func _draw() -> void:
 		30, colour)
 	var left := "No time limit" if is_inf(seconds) else "Time left  %s" % GameHud.clock_text(seconds)
 	HudStyle.draw_text(self, Vector2(body.end.x - COLUMN_PADDING, top), left, 18, Color(1, 1, 1, 0.8),
-		HORIZONTAL_ALIGNMENT_RIGHT, false)
+		HORIZONTAL_ALIGNMENT_RIGHT, &"medium")
 	draw_line(Vector2(body.position.x, body.position.y + HEADER_HEIGHT - 12.0),
 		Vector2(body.end.x, body.position.y + HEADER_HEIGHT - 12.0), Color(1, 1, 1, 0.08), 1.0)
 
 	# Each column's key and title; the other columns dimmed once one is
 	# picked by its key, as CS2 does (brightness 0.3).
-	var column_width := body.size.x / Loadout.COLUMNS.size()
 	for column in Loadout.COLUMNS.size():
-		var x := body.position.x + column * column_width
+		var span := _column(column, body)
 		var dim := 1.0 if _picked_column < 0 or _picked_column == column else 0.3
 		var title_y := body.position.y + HEADER_HEIGHT + 22.0
-		HudStyle.draw_text(self, Vector2(x + COLUMN_PADDING, title_y), str(column + 1), 18, Color(1, 1, 1, 0.5 * dim))
-		HudStyle.draw_text(self, Vector2(x + column_width * 0.5, title_y), String(Loadout.COLUMNS[column]["name"]),
-			24, Color(1, 1, 1, dim), HORIZONTAL_ALIGNMENT_CENTER, false)
+		HudStyle.draw_text(self, Vector2(span.position.x + COLUMN_PADDING, title_y), str(column + 1), 18, Color(1, 1, 1, 0.5 * dim))
+		HudStyle.draw_text(self, Vector2(span.get_center().x, title_y), String(Loadout.COLUMNS[column]["name"]),
+			24, Color(1, 1, 1, dim), HORIZONTAL_ALIGNMENT_CENTER, &"medium")
 
 	for item: String in _cards:
-		_draw_card(item, _cards[item], colour, column_width, body)
+		_draw_card(item, _cards[item], colour, body)
 
 	# The footer: why the card under the mouse cannot be bought, or the keys.
 	var said := ""
@@ -250,14 +264,16 @@ func _draw() -> void:
 	if said.is_empty():
 		said = "Click: buy    Right-click: undo    1-5 then 1-5: buy by keys    B / Esc: close"
 	HudStyle.draw_text(self, Vector2(body.get_center().x, body.end.y - 12.0), said, 16, Color(1, 1, 1, 0.7),
-		HORIZONTAL_ALIGNMENT_CENTER, false)
+		HORIZONTAL_ALIGNMENT_CENTER, &"medium")
 
 
-func _draw_card(item: String, card: Rect2, colour: Color, column_width: float, body: Rect2) -> void:
+func _draw_card(item: String, card: Rect2, colour: Color, body: Rect2) -> void:
 	var why: StringName = _items[item][0]
 	var price: int = _items[item][1]
 	var owned: bool = _items[item][2]
-	var column := int((card.position.x - body.position.x) / column_width)
+	var column := 0
+	while column + 1 < Loadout.COLUMNS.size() and card.position.x >= _column(column + 1, body).position.x:
+		column += 1
 	var place := roundi((card.position.y - body.position.y - HEADER_HEIGHT - TITLE_HEIGHT) / (CARD_HEIGHT + CARD_GAP))
 	var dim := 1.0 if _picked_column < 0 or _picked_column == column else 0.3
 	# Owning it is not "cannot buy": it shows as owned, outlined.
@@ -278,13 +294,13 @@ func _draw_card(item: String, card: Rect2, colour: Color, column_width: float, b
 	var icon_box := Rect2(card.position + Vector2(10, card.size.y * 0.3), Vector2(card.size.x - 20.0, card.size.y * 0.45))
 	if icon != null:
 		HudStyle.draw_text(self, Vector2(card.end.x - 8.0, card.position.y + 18.0), name,
-			_fitting(name, 14, card.size.x - 34.0), text, HORIZONTAL_ALIGNMENT_RIGHT, false)
+			_fitting(name, 14, card.size.x - 34.0), text, HORIZONTAL_ALIGNMENT_RIGHT, &"medium")
 		HudStyle.draw_fitted(self, icon, icon_box, GREY_ICON if cant else Color(colour, dim))
 	else:
 		# Without CS2's icons, the name in the icon's place.
 		var fitted := _fitting(name, 20, icon_box.size.x)
-		HudStyle.draw_text(self, Vector2(icon_box.get_center().x, icon_box.get_center().y + HudStyle.cap_height(fitted, false) * 0.5),
-			name, fitted, text, HORIZONTAL_ALIGNMENT_CENTER, false)
+		HudStyle.draw_text(self, Vector2(icon_box.get_center().x, HudStyle.baseline_centred(icon_box.get_center().y, fitted, &"medium")),
+			name, fitted, text, HORIZONTAL_ALIGNMENT_CENTER, &"medium")
 	var price_colour := GREY_TEXT if cant or why == Economy.NO_MONEY else colour
 	price_colour.a *= dim
 	var price_text := "Owned" if owned and why == Economy.ALREADY_HAVE else "$%d" % price
@@ -294,7 +310,7 @@ func _draw_card(item: String, card: Rect2, colour: Color, column_width: float, b
 ## The largest size up to `wanted` at which `text` fits in `width`.
 static func _fitting(text: String, wanted: int, width: float) -> int:
 	var size := wanted
-	while size > 10 and HudStyle.font(false).get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > width:
+	while size > 10 and HudStyle.face(&"medium").get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > width:
 		size -= 1
 	return size
 

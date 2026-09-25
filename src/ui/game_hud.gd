@@ -53,6 +53,8 @@ var _frames := FrameMeter.new()
 var _notice_left: float = 0.0
 ## How long a refusal stays up, in seconds.
 const NOTICE_SECONDS := 2.0
+## Where the line across the middle while dead starts, down from the top.
+const DEAD_BAR_TOP := 580.0
 
 
 func _ready() -> void:
@@ -79,10 +81,11 @@ func _ready() -> void:
 	alert = HudAlert.new()
 	add_child(alert)
 	hint = HudAlert.new()
-	hint.up_from_bottom = alert.up_from_bottom - 70.0
+	hint.kind = HudAlert.Kind.HINT
 	add_child(hint)
 	dead_bar = HudAlert.new()
-	dead_bar.up_from_bottom = 500.0
+	dead_bar.kind = HudAlert.Kind.NOTE
+	dead_bar.top = DEAD_BAR_TOP
 	add_child(dead_bar)
 	_where = Label.new()
 	_where.position = Vector2(12, 8)
@@ -117,15 +120,18 @@ func _process(delta: float) -> void:
 	if player.alive and player.hit_target != null:
 		var gun := player.weapon
 		var has_ammo := gun != null and gun.data.magazine_size > 0
-		health_ammo.show_values(team, roundi(player.hit_target.health), roundi(player.hit_target.armor),
-			player.hit_target.helmet, has_ammo, gun.ammo if has_ammo else 0,
-			gun.data.magazine_size if has_ammo else 1, gun.reserve if has_ammo else 0)
+		health_ammo.show_values(team, player_colour(match_state, player), roundi(player.hit_target.health),
+			roundi(player.hit_target.armor), player.hit_target.helmet, gun.data.item_class if gun != null else "",
+			has_ammo, gun.ammo if has_ammo else 0, gun.data.magazine_size if has_ammo else 1,
+			gun.reserve if has_ammo else 0, gun.data.reserve_as_clips if has_ammo else true,
+			has_ammo and gun.is_reloading(SimClock.now_usec()))
 	_crosshair.visible = shows_crosshair(player)
 	dead_bar.say("" if player.alive else dead_line(player), "", HudStyle.team_colour(team))
 	if match_state != null:
 		team_counter.show_match(match_state, player, economy, SimClock.now_usec())
 		var line := alert_line(match_state)
-		alert.say(line[0], line[1], HudStyle.team_colour(team))
+		# The note under the alert gives way to a refusal's bar, which sits there.
+		alert.say(line[0], "" if hint.is_showing() else line[1], HudStyle.team_colour(team))
 	if _where.visible:
 		_where.text = where_line(player.global_position, player.input.yaw_degrees, player.input.pitch_degrees) \
 			+ "\n" + _frames.line()
@@ -151,6 +157,41 @@ func _show_money(team: String, delta: float) -> void:
 
 static func money_text(amount: int) -> String:
 	return "$%d" % amount
+
+
+## A player's colour among their team (CS2's cl_teammate_color_1 to 5): by
+## the order the team joined the match, the first blue; the first colour
+## where there is no match. Which colour CS2 hands whom is decided on its
+## server, so the order is this project's.
+static func player_colour(state: MatchState, who: PlayerSim) -> Color:
+	var index := 0
+	if state != null:
+		for player in state.players:
+			if player == who:
+				break
+			if player.team == who.team:
+				index += 1
+	return HudStyle.TEAMMATE_COLOURS[index % HudStyle.TEAMMATE_COLOURS.size()]
+
+
+## The gun a player's card shows: their primary, else their pistol; none
+## while dead.
+static func best_weapon(who: PlayerSim) -> String:
+	if not who.alive or who.inventory == null:
+		return ""
+	var best := who.inventory.best_gun()
+	return best.item_class() if best != null else ""
+
+
+## Every grenade a player carries, one class per grenade.
+static func grenades_of(who: PlayerSim) -> PackedStringArray:
+	var out := PackedStringArray()
+	if not who.alive or who.inventory == null:
+		return out
+	for entry in who.inventory.items_in(ItemDef.Slot.GRENADE):
+		for i in entry.count:
+			out.append(entry.item_class())
+	return out
 
 
 func _on_buy_refused(why: StringName) -> void:
