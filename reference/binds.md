@@ -87,7 +87,7 @@ change.
 | U | the shooter's weapon | range | `messagemode2` | moves to `-` |
 | I | the shooter fires | range | `show_loadout_toggle` | moves to `=` |
 | Y | your armour | range | `messagemode` | moves to `'` |
-| F3 | the position readout | HUD | `autobuy` | moves to F8 |
+| F3 | the position and frame-rate readout | HUD | `autobuy` | moves to F8 |
 | F5 | ends warmup (`mp_warmup_end`) | dust2 | `jpeg` | moves to F9 |
 | K | the dummy's armour | range | unbound | stays |
 | N | the dummy's distance | range | unbound | stays |

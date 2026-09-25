@@ -113,6 +113,7 @@ var _numbers: Node3D
 var _label: Label
 var _dummy_label: Label
 var _crosshair: Crosshair
+var _frames := FrameMeter.new()
 
 ## What the dummy's hitboxes are, for the readout: the game's capsules, or
 ## the stand-in boxes and why.
@@ -233,6 +234,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _process(_delta: float) -> void:
+	_frames.frame(Time.get_ticks_usec())
 	if player == null:
 		return
 	var camera := get_viewport().get_camera_3d()
@@ -243,6 +245,7 @@ func _process(_delta: float) -> void:
 	_label.text = "\n".join([
 		"\n".join(_gun_readout()),
 		"impacts    %d" % _impacts.size(),
+		_frames.line(),
 		"\n".join(shop.readout()),
 		"",
 		"1 2 3 4 5  rifle, pistol, knife, grenades, bomb   Q  the last",
