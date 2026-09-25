@@ -20,7 +20,9 @@ extends SceneTree
 ## then every frame over HITCH_MS, what was in it (its ticks, the frame's
 ## scripts, and the rest: drawing and input) and the pipelines the renderer
 ## compiled in it; then the tick. V-Sync is off and the frame rate
-## unlimited, so what is measured is what a frame costs.
+## unlimited, so what is measured is what a frame costs; with as-played
+## after the seconds (-- 75 as-played) they are left as the project sets
+## them, so what is measured is what is seen.
 
 const RECORD_SECONDS := 75.0
 const LOAD_MSEC := 8000
@@ -144,19 +146,23 @@ var _said := -1
 var _spawns: Array = []
 var _next_melee := MELEE_FROM_USEC
 var _melees := 0
+## V-Sync and the frame cap left as the project has them (as-played).
+var _as_played := false
 
 
 func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
 	if args.size() > 0 and args[0].is_valid_float():
 		_record_usec = int(args[0].to_float() * 1_000_000.0)
+	_as_played = args.has("as-played")
 
 
 func _process(_delta: float) -> bool:
 	_frames += 1
 	if _frames == 1:
-		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
-		Engine.max_fps = 0
+		if not _as_played:
+			DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+			Engine.max_fps = 0
 		root.add_child((load("res://maps/de_dust2/de_dust2.tscn") as PackedScene).instantiate())
 		_loaded_at = Time.get_ticks_msec()
 		return false
