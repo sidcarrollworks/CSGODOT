@@ -801,7 +801,7 @@ static func _mask(node: AnimationNode, tracks: Array[NodePath]) -> void:
 static func blend_space(space: Dictionary, variation: String, one_cycle: bool, clip_prefix: String = "") -> AnimationNodeBlendSpace2D:
 	var out := AnimationNodeBlendSpace2D.new()
 	out.auto_triangles = false
-	out.sync = true
+	out.sync_mode = AnimationNodeBlendSpace2D.SYNC_MODE_INDEPENDENT
 	out.min_space = Vector2.ONE * -SPACE_EXTENT
 	out.max_space = Vector2.ONE * SPACE_EXTENT
 	for point: Dictionary in space.get("points", []):
