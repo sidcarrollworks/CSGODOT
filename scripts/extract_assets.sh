@@ -26,7 +26,7 @@
 #   scripts/extract_assets.sh weapon-animations  # just the guns' animations (a minute)
 #   scripts/extract_assets.sh weapon-data     # just the game's weapon tuning (seconds)
 #   scripts/extract_assets.sh equipment       # the bomb and kit, grenades, default knives, Zeus: models and animations
-#   scripts/extract_assets.sh hud             # the scope overlay and the equipment icons
+#   scripts/extract_assets.sh hud             # the scope overlay, the HUD's icons and font
 #   scripts/extract_assets.sh effects         # the tracers' and muzzle flashes' textures
 #   scripts/extract_assets.sh characters      # two player models and their locomotion
 #   scripts/extract_assets.sh animgraphs      # the animation graphs that drive the clips (seconds)
@@ -807,16 +807,24 @@ extract_equipment() {
 ## is drawn with), and the equipment icons, one SVG per weapon by its class
 ## less "weapon_" (with the silencers-off variants), armour, the kit, the
 ## grenades, the knife and the bomb, for the ammo display, the kill feed and
-## the buy menu.
+## the buy menu. With them the rest of the HUD's images (panorama/images/hud:
+## the armour and helmet, the reserve's magazine, the team counter's bot
+## portrait and skull) and its UI icons (panorama/images/icons/ui: the team
+## emblems, the buy zone's cart), and CS2's font, Stratum2, which is not in
+## the VPK but loose in game/csgo/panorama/fonts. src/ui/hud_style.gd reads
+## them all from assets/hud/ and draws its own stand-ins where they are not.
 extract_hud() {
 	require_file "$PAK_VPK"
 	local dest="$OUT_DIR/hud"
 	mkdir -p "$dest"
-	echo "Extracting the scope overlay and the equipment icons"
+	echo "Extracting the scope overlay, the HUD's images and icons, and its font"
 	echo "        -> $dest"
-	"$S2V_BIN" -i "$PAK_VPK" -f "panorama/images/hud/scope/,panorama/images/icons/equipment/" -o "$dest" -d \
+	"$S2V_BIN" -i "$PAK_VPK" -f "panorama/images/hud/,panorama/images/icons/equipment/,panorama/images/icons/ui/" -o "$dest" -d \
 		| grep -vE '^(Preloading|Added folder|--- )' || true
-	echo "        $(find "$dest" -name '*.svg' | wc -l | tr -d ' ') icons, $(find "$dest" -path '*scope*' -name '*.png' | wc -l | tr -d ' ') scope images"
+	mkdir -p "$dest/fonts"
+	find "$CSGO_DIR/panorama/fonts" -maxdepth 1 -iname '*stratum2*' \( -iname '*.ttf' -o -iname '*.otf' \) \
+		-exec cp {} "$dest/fonts/" \; 2>/dev/null || true
+	echo "        $(find "$dest" -name '*.svg' | wc -l | tr -d ' ') icons, $(find "$dest" -path '*scope*' -name '*.png' | wc -l | tr -d ' ') scope images, $(find "$dest/fonts" -type f | wc -l | tr -d ' ') font files"
 }
 
 ## The textures the guns' tracers and muzzle flashes draw with. CS2's particle

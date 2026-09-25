@@ -540,13 +540,20 @@ list, split into Local and Remote items, with the measurements.
     default loadout, armour and the helmet, the kit, grenades, the Zeus,
     team-only weapons. On dust2 since 2026-09-23: its own buy zones (or a
     stand-in round each side's spawn where they are not extracted, which
-    the map says), your money and "B  buy" with the time left on the HUD,
+    the map says), your money and the buy zone's cart on the HUD,
     and why B does nothing when it does not open; warmup's $16,000; a gun
     bought taken in hand. Still to do: choosing another loadout (a settings
     page).
 15. **HUD for rounds.** *(Remote; the radar is extracted, `MapOverview`)*
     Money, armour, timer, score and players alive, kill feed, radar,
-    scoreboard, round-end panel.
+    scoreboard, round-end panel. *(Part done 2026-09-25: the HUD follows
+    today's CS2 layout on its own element system, `HudElement` and
+    `HudStyle` in `src/ui/`: health, armour and ammo round the emblem at the
+    bottom, rolling money with the buy zone's cart, the team counter with
+    the clock, scores, players alive and a card per player, the alert bar,
+    and the buy menu restyled. Still to do: the kill feed, radar,
+    scoreboard, round-end panel and the bomb's icon on the clock. Local: a
+    screenshot beside CS2 after `scripts/extract_assets.sh hud`.)*
 
 ### Phase 5: the bomb
 

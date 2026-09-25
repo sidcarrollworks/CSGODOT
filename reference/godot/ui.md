@@ -110,17 +110,17 @@ Source: godot-docs branch 4.7 @9adca4c (2026-09-21). Read when: building or chan
 
 ## Where the code already does this
 
-- `src/ui/game_hud.gd`: a `CanvasLayer` (default layer 1) that builds Labels in code with anchor presets, font size, colour and outline overrides. Its `_process` updates text each frame from the player, economy and match. `_draw_shield` draws the armour icon.
+- `src/ui/hud_element.gd`: the base of every HUD piece and the buy menu. One `Control` with no children that draws itself in `_draw()`; its owner hands it the frame's values as one array (`show_state`), and only a change calls `queue_redraw()`. Something that moves on its own (the money rolling, the health's red flash, an alert opening) calls `animate()`, which runs `_process` until `_advance()` returns false and then turns it off. `mouse_filter` is `IGNORE` from `_init`. New HUD pieces (item 15) should extend it.
+- `src/ui/hud_style.gd`: CS2's colours, its font (Stratum2 from `assets/hud/fonts/`, else the bundled Rajdhani under the OFL in `src/ui/fonts/`) and its icons (`assets/hud/panorama/images/...`, null when not extracted, and the element draws a stand-in). `draw_text` draws a string by its left, centre or right with CS2's soft shadow, which is how every element writes text instead of a `Label`.
+- `src/ui/game_hud.gd`: a `CanvasLayer` (default layer 1) holding the elements (`HealthAmmoCenter`, `MoneyPanel`, `TeamCounter`, three `HudAlert`s) and the crosshair, scope and damage arcs. Its `_process` reads the player, economy and match and hands each element its values. The one `Label` left is the F3 position readout.
 - `src/ui/crosshair.gd`: a full-rect Control with `MOUSE_FILTER_IGNORE`, drawn in `_draw()` from the centre, redrawn on value change and on `size_changed`.
 - `src/ui/scope_overlay.gd`, `src/ui/damage_indicator.gd`, `src/grenades/flash_overlay.gd` (`ColorRect`): full-rect, `IGNORE`, drawn per frame.
 - `src/ui/movement_hud.gd`: its own `CanvasLayer` with one Label.
-- `src/economy/buy_menu.gd`: a full-rect `IGNORE` root, a `PanelContainer` with `StyleBoxFlat` centred with `GROW_DIRECTION_BOTH`, VBox/HBox columns, Buttons with `FOCUS_NONE` and item icons, input in `_input`.
+- `src/economy/buy_menu.gd`: a `HudElement` covering the screen, the whole menu drawn in one `_draw()` and hit-tested by hand in `_gui_input` (no `Button` nodes). It sets `mouse_filter` to `STOP` only while open, and input still goes through `_input` for B, Escape and the number keys.
 
 Looks at odds with the docs (not verified in play):
-- `src/ui/game_hud.gd:270-279` (`_label`) and `:65-68` (`_shield`): `set_anchors_preset(preset)` then `position = at` **before** `add_child`. `position` is the top-left relative to the parent, so `(24, -56)` on a bottom-left anchor reads as "above the top of the screen". That it works relies on the node being outside the tree, where the parent rect is empty and position equals offset (inferred). Setting `offset_*` directly, or `set_anchors_and_offsets_preset` followed by offsets, does not depend on that order.
 - `src/ui/movement_hud.gd` is also a `CanvasLayer` on the default layer 1, like `GameHud`. Two layers with the same index draw in a non-deterministic order (`classes/class_canvaslayer.rst`). This matters only if they overlap.
 - `project.godot` sets `canvas_items` without `window/stretch/aspect`, so it is `"keep"`. Non-16:9 monitors get black bars, where the docs recommend `expand` with corner anchors for desktop games.
-- `_shield` in `game_hud.gd:65` is a bare `Control` with the default `MOUSE_FILTER_STOP`. It sits bottom-left, not under the crosshair, so it is harmless today. Set it to `IGNORE` like the others.
 
 ## Not covered here
 
