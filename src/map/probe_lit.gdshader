@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx, ambient_light_disabled;
+render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx;
 
 // A one-layer material lit by the map's light probes (probe_lit.gdshaderinc)
 // in place of Godot's ambient: for props without lightmap coordinates, and
@@ -42,6 +42,6 @@ void fragment() {
 		NORMAL_MAP_DEPTH = normal_depth;
 	}
 	vec3 world_normal = (INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz;
-	baked_light = orm.r * probe_ambient(world_normal);
+	IRRADIANCE = vec4(probe_ambient(world_normal), 1.0);
 	baked_sun = probe_sun((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz);
 }

@@ -110,12 +110,13 @@ static func build(
 	environment.background_mode = Environment.BG_SKY
 	environment.sky = sky
 
-	# Ambient, for whatever has no lightmap coordinates of its own: props
-	# the map lights by light probes, the far skybox, the players. The
-	# lightmap's average light where it has been measured, in the same
-	# units as the lightmapped surfaces read it; otherwise the sky's own
-	# light plus a warm floor. CS2 gives that bounce a colour of its own
-	# (skyambientbounce), which is what the floor is tinted with.
+	# Ambient, for whatever the map's baked light does not reach (what it
+	# reaches brings its own, IRRADIANCE, baked_light.gdshaderinc): the far
+	# skybox where it has no lightmap, and anything on Godot's own
+	# materials. The lightmap's average light where it has been measured,
+	# in the same units as the lightmapped surfaces read it; otherwise the
+	# sky's own light plus a warm floor. CS2 gives that bounce a colour of
+	# its own (skyambientbounce), which is what the floor is tinted with.
 	if bounce is Color:
 		var average: Color = bounce
 		var peak := maxf(average.r, maxf(average.g, average.b))
@@ -152,12 +153,14 @@ static func build(
 		environment.fog_aerial_perspective = 1.0
 		environment.fog_sky_affect = 0.0
 
-	# No screen-space occlusion. Godot's darkens ambient light only, and the
-	# map's, the props' and the players' materials all turn ambient light
-	# off and bring their bounce in through light() (baked_light.gdshaderinc),
-	# so it had nothing to darken: drawn with it and without, dust2 came out
-	# the same to the pixel, and it cost 0.6 to 0.95 ms a frame at 3840x2160
-	# (reference/rendering.md). The baked occlusion is in the bounce already.
+	# No screen-space occlusion. Godot's darkens ambient light only, which
+	# the map's, the props' and the players' materials took none of until
+	# their baked bounce became it (IRRADIANCE, baked_light.gdshaderinc):
+	# drawn with it and without, dust2 then came out the same to the pixel,
+	# and it cost 0.6 to 0.95 ms a frame at 3840x2160 (reference/rendering.md).
+	# Now it would darken the bounce; whether that looks like CS2's own
+	# ambient occlusion (Sid plays it at Medium) is for a comparison with the
+	# game. The baked occlusion is in the bounce already.
 
 	# A little bloom off the brightest surfaces, which is what the game has.
 	environment.glow_enabled = true

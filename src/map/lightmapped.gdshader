@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx, ambient_light_disabled;
+render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx;
 
 // A one-layer world material with the map's baked bounce light. What
 // Godot's import made of the material (colour, normal map, the roughness
@@ -41,6 +41,6 @@ void fragment() {
 		NORMAL_MAP_DEPTH = normal_depth;
 		tangent_normal = lightmap_tangent_normal(rg, normal_depth);
 	}
-	baked_light = orm.r * lightmap_indirect(lightmap_uv, tangent_normal);
+	IRRADIANCE = vec4(lightmap_indirect(lightmap_uv, tangent_normal), 1.0);
 	baked_sun = lightmap_sun(lightmap_uv);
 }
