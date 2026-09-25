@@ -99,6 +99,11 @@ Updated 2026-09-24 later: game modes apart from maps (item 24a, `reference/syste
   way (`MapLighting.add_lamps`). After Sid found black skybox buildings,
   orange blocks on the towers and a dark lower tunnel (2026-09-24,
   `reference/asset-pipeline.md`).
+- What Sid found next on dust2 (2026-09-24): its windows, black where the
+  probes were read at the middle of a mesh merged from all over the map,
+  are lit from their own vertices; and the skybox's palm, bush, olive and
+  antenna cards, exported without their alpha, get it back at extraction
+  (`scripts/export_alpha.gd`).
 - Viewmodel arms and weapons at CS2's `viewmodel_fov`; third-person agents
   (Phoenix and SAS) on the locomotion rig, moved by CS2's own blend spaces
   (runs at 225, walks at 136, crouching at 96, kept in step) in an animation
@@ -602,7 +607,11 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
       cause, then Remote)* They have textures; `prepare_export` warned
       that inferno's world and skybox glTFs have a primitive with both
       blend paint and vertex colour, which it leaves alone. Unconfirmed
-      as the cause.
+      as the cause. dust2's windows were black the same way for another
+      reason (2026-09-24): a prop merged from copies all over the map was
+      lit by the probes at the middle of its box, inside a building, and
+      is now lit from its own vertices (`ProbeMaterials.cube_for`); worth
+      a look at inferno's café again.
     - *No sky panorama on inferno.* *(Remote for the warning; the fix
       waits on Source 2 Viewer)* CS2 1.41.8.3 ships VCS 72 shaders and
       Source2Viewer-CLI 20.0 reads 59 to 71, so its env_sky material
@@ -610,9 +619,11 @@ he asked for CS2's systems: 5 v 5, with bots filling the empty places.
       decompile and 4284 textures failed. `extract_assets.sh` should warn
       when Source 2 Viewer prints "Only VCS file versions". The same gap
       costs every colour texture exported since its alpha: dust2's 3D
-      skybox, exported again on 2026-09-24, draws its palm and bush cards
-      whole. Support is on Source 2 Viewer's master since 2026-09-23;
-      export again with the release that has it.
+      skybox, exported again on 2026-09-24, drew its palm and bush cards
+      whole. *(Done 2026-09-24 for the alpha: the extraction decompiles
+      those textures again on their own, which keeps it; the panorama
+      still waits.)* Support is on Source 2 Viewer's master since
+      2026-09-23; export again with the release that has it.
     - *The first import fails to compile `prepare_export.gd`.* *(Remote)*
       On a fresh checkout `lightmap_materials.gd:75` names `BlendMaterials`
       before any import has registered the class names, so the first

@@ -80,6 +80,7 @@ func _process(_delta: float) -> bool:
 		_test_light_probes()
 		_test_prop_features()
 		_test_lighting()
+		_test_export_alpha()
 		_spawn_player()
 		_spawned_at_tick = Engine.get_physics_frames()
 		return false
@@ -1594,6 +1595,34 @@ func _test_light_probes() -> void:
 	)
 	var dark := probes.cube_at(Vector3(900, 0, 0))[0]
 	_check(is_zero_approx(dark.r + dark.g + dark.b), "outside every volume the cube is dark")
+	# A mesh merged from pieces far apart, like dust2's windows: two
+	# triangles in the outer volume only, 480 units apart, with the middle
+	# of their box in the inner one. It is lit where its pieces are.
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array([
+		Vector3(-150, 0, -150), Vector3(-140, 0, -150), Vector3(-150, 0, -140),
+		Vector3(190, 0, 190), Vector3(180, 0, 190), Vector3(190, 0, 180),
+	])
+	var normals := PackedVector3Array()
+	normals.resize(6)
+	normals.fill(Vector3.UP)
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	var merged_mesh := ArrayMesh.new()
+	merged_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var merged := MeshInstance3D.new()
+	merged.mesh = merged_mesh
+	root.add_child(merged)
+	var merged_cube := ProbeMaterials.cube_for(merged, probes)
+	var middle := probes.cube_at((merged.global_transform * merged.get_aabb()).get_center())
+	_check(
+		middle[2].g > 0.0 and _near(merged_cube[2].r, 0.3) and is_zero_approx(merged_cube[2].g),
+		"a mesh too big for one point is lit from its own vertices, not from the middle of its box (%s, not %s)" % [merged_cube[2], middle[2]]
+	)
+	merged.mesh = BoxMesh.new()
+	merged.position = Vector3(60, 0, 60)
+	_check(_near(ProbeMaterials.cube_for(merged, probes)[2].g, 0.6), "and a small one from the middle of its box")
+	merged.free()
 	# volume_at keeps the boxes packed; new volumes are packed again.
 	probes.volumes = [probes.volumes[1]]
 	_check(
@@ -1817,6 +1846,39 @@ func _put_vector(bytes: PackedByteArray, at: int, value: Vector3) -> void:
 
 func _get_vector(bytes: PackedByteArray, at: int) -> Vector3:
 	return Vector3(bytes.decode_float(at), bytes.decode_float(at + 4), bytes.decode_float(at + 8))
+
+
+## scripts/export_alpha.gd on a hand-written export: of the materials that
+## cut or blend by their colour's alpha, the one whose image has none is
+## listed, with the texture it came from, once; an opaque one never is.
+func _test_export_alpha() -> void:
+	var directory := "user://export_alpha_fixture"
+	DirAccess.make_dir_recursive_absolute(directory)
+	var rgb := Image.create(4, 4, false, Image.FORMAT_RGB8)
+	rgb.fill(Color(0.5, 0.25, 0.125))
+	rgb.save_png(directory.path_join("rgb.png"))
+	var rgba := Image.create(4, 4, false, Image.FORMAT_RGBA8)
+	rgba.fill(Color(0.5, 0.25, 0.125, 0.5))
+	rgba.save_png(directory.path_join("rgba.png"))
+	var material := func(mode: String, texture: int, vtex: String) -> Dictionary:
+		return {
+			"alphaMode": mode, "pbrMetallicRoughness": {"baseColorTexture": {"index": texture}},
+			"extras": {"vmat": {"TextureParams": {"g_tColor": vtex}}},
+		}
+	var gltf := {
+		"materials": [
+			material.call("MASK", 0, "materials/cut.vtex"), material.call("BLEND", 1, "materials/kept.vtex"),
+			material.call("OPAQUE", 0, "materials/solid.vtex"), material.call("MASK", 2, "materials/again.vtex"),
+		],
+		"textures": [{"source": 0}, {"source": 1}, {"source": 0}],
+		"images": [{"uri": "rgb.png"}, {"uri": "rgba.png"}],
+	}
+	_write_text(directory.path_join("world.gltf"), JSON.stringify(gltf))
+	var listed: PackedStringArray = load("res://scripts/export_alpha.gd").missing_alpha(directory.path_join("world.gltf"))
+	_check_equal(
+		listed, PackedStringArray(["materials/cut.vtex\t%s" % directory.path_join("rgb.png")]),
+		"an export's alpha-cut colour image without alpha is listed with its texture, once; one with alpha, or opaque, is not"
+	)
 
 
 func _spawn_player() -> void:

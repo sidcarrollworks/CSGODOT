@@ -214,6 +214,13 @@ func _import() -> bool:
 			if (node as MeshInstance3D).visible and (node as MeshInstance3D).cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
 				sky_casting += 1
 		_check(sky_casting == 0, "the skybox casts no shadows onto the map")
+		var without_alpha: PackedStringArray = load("res://scripts/export_alpha.gd").missing_alpha(skybox_file)
+		without_alpha.append_array(load("res://scripts/export_alpha.gd").missing_alpha(map_file))
+		_check(
+			without_alpha.is_empty(),
+			"every cut or blended colour texture of the map and skybox has its alpha: the palm and bush cards are cut, not solid (%s; scripts/extract_assets.sh skybox)"
+				% ", ".join(without_alpha)
+		)
 		_check(
 			int(skybox.stats.get("behind", 0)) >= 100,
 			"and its surfaces are drawn behind the map (%d of them)" % skybox.stats.get("behind", 0)
