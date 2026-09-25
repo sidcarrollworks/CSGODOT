@@ -20,3 +20,6 @@ inspect-output.txt
 *.swp
 .vscode/
 .idea/
+
+# Godot docs fetched by scripts/godot_docs.sh
+.godot-docs/
