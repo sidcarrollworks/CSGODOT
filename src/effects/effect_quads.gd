@@ -11,6 +11,12 @@ extends Node3D
 ## drawn in first person goes in a batch with the view model's projection
 ## (ViewModelProjection), so it sits where the drawn gun is, at the arms'
 ## narrowing as it is this frame: a scope changes it.
+##
+## A batch's cards go to its MultiMesh whole, in one buffer at finish().
+## Set a card at a time, a new or regrown MultiMesh first takes a copy of
+## its instances from the GPU: the first cards of each new batch held a
+## first shot's frame up 2 to 4 ms each (dust2, 4K;
+## reference/godot/rendering.md, "MultiMesh").
 
 const SHADERS := {
 	&"add": preload("res://src/effects/effect_add.gdshader"),
@@ -21,6 +27,9 @@ const SHADERS := {
 ## The most cards one batch draws; past it a frame's extra cards are left out.
 const MOST_CARDS := 4096
 const FIRST_CAPACITY := 64
+## A card's floats in the buffer: its transform (12, by rows), its colour
+## (4) and its texture rectangle (4, the custom data).
+const FLOATS := 20
 
 var _batches := {}
 var _quad := QuadMesh.new()
@@ -31,8 +40,18 @@ var _narrowing := ViewModelProjection.fov_narrowing()
 class Batch:
 	var node: MultiMeshInstance3D
 	var multimesh: MultiMesh
+	## This frame's cards, FLOATS each, as the MultiMesh takes them.
+	var data := PackedFloat32Array()
 	var count := 0
 	var first_person := false
+
+
+## Compiles the cards' shaders as the map loads. A shader is compiled the
+## first time a material asks for it, and the first tracer and flash of a
+## match did that inside their frame: 6.6 ms for add, 10.3 for lit.
+func _ready() -> void:
+	for shader: Shader in SHADERS.values():
+		shader.get_rid()
 
 
 ## Starts a frame at the arms' narrowing (ViewModelProjection.narrowing_under):
@@ -42,6 +61,7 @@ func begin(narrowing: float = ViewModelProjection.fov_narrowing()) -> void:
 	_narrowing = narrowing
 	for batch: Batch in _batches.values():
 		batch.count = 0
+		batch.data.clear()
 		if narrowed and batch.first_person:
 			_project(batch)
 
@@ -59,18 +79,27 @@ func quad(texture: Texture2D, blend: StringName, first_person: bool, xform: Tran
 	if batch.count >= MOST_CARDS:
 		return
 	if batch.count >= batch.multimesh.instance_count:
-		_grow(batch)
-	batch.multimesh.set_instance_transform(batch.count, xform)
-	batch.multimesh.set_instance_color(batch.count, color)
-	batch.multimesh.set_instance_custom_data(batch.count, Color(uv.position.x, uv.position.y, uv.end.x, uv.end.y))
+		# More room, empty; the cards so far go in with the rest at finish().
+		batch.multimesh.instance_count = mini(batch.multimesh.instance_count * 2, MOST_CARDS)
+	var b := xform.basis
+	var o := xform.origin
+	batch.data.append_array(PackedFloat32Array([
+		b.x.x, b.y.x, b.z.x, o.x, b.x.y, b.y.y, b.z.y, o.y, b.x.z, b.y.z, b.z.z, o.z,
+		color.r, color.g, color.b, color.a, uv.position.x, uv.position.y, uv.end.x, uv.end.y,
+	]))
 	batch.count += 1
 
 
-## Ends a frame: each batch draws what it was given.
+## Ends a frame: each batch draws what it was given, sent in one buffer
+## (the rest of its room zeroes).
 func finish() -> void:
 	for batch: Batch in _batches.values():
-		batch.multimesh.visible_instance_count = batch.count
 		batch.node.visible = batch.count > 0
+		if batch.count == 0:
+			continue
+		batch.data.resize(batch.multimesh.instance_count * FLOATS)
+		batch.multimesh.buffer = batch.data
+		batch.multimesh.visible_instance_count = batch.count
 
 
 ## How many cards were drawn this frame, over every batch.
@@ -140,20 +169,3 @@ func _batch(texture: Texture2D, blend: StringName, first_person: bool, ends: Arr
 func _project(batch: Batch) -> void:
 	batch.node.set_instance_shader_parameter(&"view_model_projection",
 		Vector2(_narrowing, ViewModelProjection.DEPTH_SQUEEZE))
-
-
-## Doubles a batch's room. Resizing drops what it held, which is nothing
-## worth keeping: this frame's cards so far go back in.
-func _grow(batch: Batch) -> void:
-	var kept := []
-	for i in batch.count:
-		kept.append([
-			batch.multimesh.get_instance_transform(i),
-			batch.multimesh.get_instance_color(i),
-			batch.multimesh.get_instance_custom_data(i),
-		])
-	batch.multimesh.instance_count = mini(batch.multimesh.instance_count * 2, MOST_CARDS)
-	for i in kept.size():
-		batch.multimesh.set_instance_transform(i, kept[i][0])
-		batch.multimesh.set_instance_color(i, kept[i][1])
-		batch.multimesh.set_instance_custom_data(i, kept[i][2])

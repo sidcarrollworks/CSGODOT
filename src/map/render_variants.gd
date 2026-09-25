@@ -23,6 +23,7 @@ const VARIANTS := {
 	"no_msaa": "4x MSAA off",
 	"no_glow": "bloom off",
 	"no_fog": "the distance haze off",
+	"no_reflections": "the reflection probes and the sky's reflections off (MapReflections): what reflecting costs",
 	"no_skybox": "the 3D skybox's meshes hidden",
 	"no_players": "every body but the camera's hidden",
 	"half_resolution": "the 3D drawn at half the width and height: fill rate against the rest",
@@ -101,6 +102,14 @@ static func apply(variant: String, root: Node, viewport: Viewport) -> Callable:
 			return _change(environment, "glow_enabled", false)
 		"no_fog":
 			return _change(environment, "fog_enabled", false)
+		"no_reflections":
+			# At no strength rather than hidden: a probe shown again is drawn
+			# again, and by then the map's visibility hides what the camera
+			# cannot see, which the probe would be drawn without.
+			var undo: Array[Callable] = [_change(environment, "reflected_light_source", Environment.REFLECTION_SOURCE_DISABLED)]
+			for probe in root.find_children("*", "ReflectionProbe", true, false):
+				undo.append(_change(probe, "intensity", 0.0))
+			return _together(undo)
 		"no_skybox":
 			var undo: Array[Callable] = []
 			for mesh in far_meshes(root):
@@ -136,6 +145,14 @@ static func visibility_of(root: Node) -> WorldVisibility:
 	for node in root.find_children("*", "Node", true, false):
 		if node is WorldVisibility:
 			return node as WorldVisibility
+	return null
+
+
+## The map's reflection probes (MapReflections), or null.
+static func reflections_of(root: Node) -> MapReflections:
+	for node in root.find_children("*", "Node3D", true, false):
+		if node is MapReflections:
+			return node as MapReflections
 	return null
 
 

@@ -90,18 +90,6 @@ static func resolve(side: String, short: String) -> String:
 	return ""
 
 
-## Everything a bot of a side may have in hand: the knife, the side's
-## starting pistol, and every gun a template buys for the side.
-static func may_hold(side: String) -> PackedStringArray:
-	var out := PackedStringArray(["weapon_knife", String(Inventory.STARTING_PISTOLS.get(side, ""))])
-	for template: StringName in TEMPLATES:
-		for short: String in TEMPLATES[template]:
-			var item_class := resolve(side, short)
-			if not item_class.is_empty() and not item_class in out:
-				out.append(item_class)
-	return out
-
-
 ## What to buy, in the order to ask for it. Both dice are thrown first, so
 ## the plan's randomness never depends on the money.
 static func plan(side: String, money: int, carried: Inventory, template: StringName, rng: RandomNumberGenerator) -> PackedStringArray:

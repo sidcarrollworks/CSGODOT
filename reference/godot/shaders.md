@@ -48,7 +48,7 @@ The companion page `rendering.md` covers lights, shadows, culling, anti-aliasing
   - `specular_schlick_ggx` (default), `specular_toon`, `specular_disabled`. `specular_disabled` turns off only the direct-light specular lobes; to remove reflections, write `SPECULAR = 0.0`.
 - Receiving:
   - `shadows_disabled`: the surface receives no shadows but still casts them.
-  - `ambient_light_disabled`: removes the ambient light and the radiance map.
+  - `ambient_light_disabled`: removes the ambient light and the radiance map. In 4.7.2's forward shader that takes every reflection with them, the sky's and the reflection probes' (read in `scene_forward_clustered.glsl`, rendering.md R5).
   - `fog_disabled`: no depth or volumetric fog. The docs recommend it for `blend_add` particles.
 - Space:
   - `skip_vertex_transform`: you transform `VERTEX`, `NORMAL`, `TANGENT` and `BINORMAL` yourself, using `MODELVIEW_MATRIX`.
@@ -190,7 +190,7 @@ The companion page `rendering.md` covers lights, shadows, culling, anti-aliasing
 
 - Every runtime branch is compiled, and its variables can take registers. High VGPR use slows the shader "even if all pixels evaluate to true or false in a given frame" (`internal_rendering_architecture.rst`).
 - Each `#define` that differs between materials is a separate shader version to compile. Each distinct Shader is its own pipeline set. A ShaderMaterial duplicated with other uniform values shares its shader but is another material, so it breaks batching (inferred). An instance uniform keeps one material (`class_shadermaterial.rst`).
-- Pipeline compilation, ubershaders, and the shader baker for exports are on `rendering.md`, "Shader and pipeline compilation stutter". A shader first used at run time (spawned effects, far variants built in code) compiles then.
+- Pipeline compilation, ubershaders, and the shader baker for exports are on `rendering.md`, "Shader and pipeline compilation stutter". A shader first used at run time (spawned effects, far variants built in code) compiles then, even one loaded by `preload`: measured 6.6 to 10.3 ms in the frame of its first material, until `EffectQuads` called `get_rid()` on its four as the map loads.
 
 ## Class notes
 
@@ -227,12 +227,12 @@ Main at `b5d8e4d`, after the render work (PRs #78, #82) and the docs audit.
   - `src/effects/effect_*.gdshader` include `effect_quad.gdshaderinc`, which includes `src/player/player_draw.gdshaderinc`.
   - `effect_lit.gdshader:8` does `#define LIT` before the include. It is the only preprocessor switch, and it gives exactly one extra shader, matching the docs' advice.
 - **Custom `light()`.**
-  - `src/map/baked_light.gdshaderinc:27-57` writes out Burley and Schlick-GGX, using `LIGHT_COLOR`'s PI and `SPECULAR_AMOUNT` as documented.
-  - It hands the baked light over in the varying `baked_light` (fragment→light, which the docs allow). It adds it only when `LIGHT_IS_DIRECTIONAL`.
-  - Its header says the cost: with no directional light in view, no baked light at all. Inferred on top of that: a second directional light would add it twice, and anything that drops the sun from a viewport or cull layer drops the bounce light with it.
+  - `src/map/baked_light.gdshaderinc:39-71` writes out Burley and Schlick-GGX, using `LIGHT_COLOR`'s PI and `SPECULAR_AMOUNT` as documented.
+  - It hands the sun's baked shadow over in the varying `baked_sun` (fragment→light, which the docs allow), and applies it only when `LIGHT_IS_DIRECTIONAL`.
+  - Until rendering.md R5 (2026-09-25) the baked bounce light came through `light()` too, added only for the directional light, so with no sun in view there was none, and a second sun would have added it twice. Since R5 each shader writes it to `IRRADIANCE` in `fragment()`, as Godot's ambient light, whatever lights are drawn.
   - `effect_quad.gdshaderinc:44-46` is the lit smoke's `light()`.
 - **Render modes.**
-  - Map shaders: `blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx`, plus `ambient_light_disabled` everywhere except `far.gdshader:2`. Since baked light comes in through `light()`, this is consistent (inferred for `far`: it takes ambient light).
+  - Map shaders: `blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx`. They also had `ambient_light_disabled`, all but `far.gdshader:2`, until rendering.md R5 moved their baked light to `IRRADIANCE`; the flag took every reflection with it. `far` takes the environment's ambient light.
   - Effects: `unshaded, cull_disabled, depth_draw_never, shadows_disabled, fog_disabled` with add, mix or premul blending. `effect_lit` is shaded with `diffuse_lambert, specular_disabled` and keeps fog. These match the docs' advice for additive particles.
 - **`POSITION` override for view models.**
   - `player_draw.gdshaderinc` narrows the FOV and squeezes depth by hand in clip space through the instance uniform `view_model_projection`. `probe_lit.gdshader:25` and `effect_quad.gdshaderinc:26` use it.
