@@ -397,7 +397,7 @@ list, split into Local and Remote items, with the measurements.
 - **Occlusion culling (R3).** *(done, PR #78, from the collision hull; Sid
   walks long doors and top of mid again)* The camera's pass went from about
   1,170 draw calls to 290.
-- **The sun's shadows as CS2 draws them (R4).** *(first tier built, PR #N;
+- **The sun's shadows as CS2 draws them (R4).** *(first tier built, PR #82;
   Sid extracts two files and plays, rendering.md L7)* The map's shadow from
   the sun comes from CS2's baked pages: `direct_light_shadows` on its
   surfaces, and the probe atlas's `_dlshd` on everything the probes light,
@@ -726,7 +726,7 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 | Hands | The systems' Local list in `reference/cs2-systems.md`: bomb (C1, the explosion's particles from C3, and decoding C2's damage), grenades (G1 to G5, and G6's particle and smoke textures), knife (K1), sounds (S1, S2) | Phases 4 to 7 |
 | Hands | Run `scripts/profile_render.gd` again at 1080p and 4K, and walk long doors and top of mid, on PR #78 | Rendering R2, R3 |
 | Decided | dust2's sun shadows come from CS2's baked pages, the live shadow map drawing only what moves (Sid, 2026-09-25) | Rendering R4 |
-| Hands | Extract `direct_light_shadows` and the probe atlas's `_dlshd` (`scripts/extract_assets.sh lightmaps`), run the dust2 checks, play dust2's shadows beside CS2's, and profile with `live_map_shadows`, on PR #N (rendering.md L7) | Rendering R4 |
+| Hands | Extract `direct_light_shadows` and the probe atlas's `_dlshd` (`scripts/extract_assets.sh lightmaps`), run the dust2 checks, play dust2's shadows beside CS2's, and profile with `live_map_shadows`, on PR #82 (rendering.md L7) | Rendering R4 |
 
 ---
 
