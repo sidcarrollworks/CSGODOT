@@ -728,6 +728,7 @@ func _bot_step() -> bool:
 				_test_bot_sounds()
 				_test_bullet_impacts()
 				_test_bot_wears_hitboxes()
+				_test_bot_steps_off_tick_frames()
 				_test_bot_is_hit_where_aimed()
 				_bot_phase = 1
 		1:
@@ -928,6 +929,42 @@ func _test_bot_wears_hitboxes() -> void:
 		(head.get_child(0) as CollisionShape3D).shape is CapsuleShape3D
 			and is_equal_approx(((head.get_child(0) as CollisionShape3D).shape as CapsuleShape3D).radius, 4.3),
 		"with the game's own radius"
+	)
+
+
+## A worn body steps its own animation (PlayerModel.step_off_tick_frames).
+## Headless no camera sees it, so a frame that ran a tick leaves it to the
+## next frame that did not, which steps it by both frames' time, and a body
+## left through MOST_UNSTEPPED_TICKS of frames that all ran one steps anyway.
+func _test_bot_steps_off_tick_frames() -> void:
+	var model := _bot.model
+	if model == null:
+		return
+	var mixer: AnimationMixer = model.animation_tree if model.animation_tree != null else model.animation_player
+	_check(
+		model.stepped_by_hand and mixer != null
+			and mixer.callback_mode_process == AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+			and not model.is_seen(),
+		"a worn body steps its own animation, not the engine, and headless no camera sees it"
+	)
+	var frame := 0.004
+	model._last_physics_frame = Engine.get_physics_frames() - 1
+	model._process(frame)
+	var left := model._unstepped
+	model._process(frame)
+	var after_quiet := model._unstepped
+	var ticked_frames := 0
+	while ticked_frames < 100:
+		model._last_physics_frame = Engine.get_physics_frames() - 1
+		model._process(frame)
+		ticked_frames += 1
+		if model._unstepped == 0.0:
+			break
+	var most := ceili(PlayerModel.MOST_UNSTEPPED_TICKS * SimClock.tick_seconds() / frame)
+	_check(
+		is_equal_approx(left, frame) and after_quiet == 0.0 and ticked_frames == most,
+		"a frame with a tick leaves an unseen body (%.3f s left), the next without one steps it (%.3f left), and it waits %d ticked frames at most (%d)"
+			% [left, after_quiet, most, ticked_frames]
 	)
 
 
