@@ -29,6 +29,8 @@ const NORMAL_MAP_ENABLED := 1
 const NORMAL_MAP_DISABLED := 2
 const ROUGHNESS_DISABLED := 1
 const DETECT_3D_DISABLED := 0
+## The lightmap of baked shadows (MapShadows), which is not a colour.
+const SHADOW_MASK := "direct_light_shadows"
 
 
 func _init() -> void:
@@ -104,6 +106,14 @@ func _apply(texture_path: String, is_normal_map: bool) -> bool:
 		"roughness/mode": ROUGHNESS_DISABLED,
 		"detect_3d/compress_to": DETECT_3D_DISABLED,
 	}
+	if texture_path.get_file().get_basename() == SHADOW_MASK:
+		# Each channel is a different light's shadow, which the default
+		# compression (DXT) squeezes onto one line of colours per block and
+		# so smears one light's edge into another's; BC7 keeps them apart.
+		# An unused channel reads as transparent, and the alpha border fix
+		# would paint the others' values over it.
+		wanted["compress/high_quality"] = true
+		wanted["process/fix_alpha_border"] = false
 
 	var import_path := texture_path + ".import"
 	var config := ConfigFile.new()

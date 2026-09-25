@@ -20,7 +20,7 @@
 #   scripts/extract_assets.sh layers          # just the textures the glTF has no slot for: second layers, decals, glows
 #   scripts/extract_assets.sh sky             # just the sky panorama
 #   scripts/extract_assets.sh skybox          # just the 3D skybox: the far buildings and their baked light
-#   scripts/extract_assets.sh lightmaps       # just the baked bounce light
+#   scripts/extract_assets.sh lightmaps       # just the baked light: bounce light, the sun's shadow, light probes
 #   scripts/extract_assets.sh weapons         # every gun: models, first- and third-person animations
 #   scripts/extract_assets.sh weapon-animations  # just the guns' animations (a minute)
 #   scripts/extract_assets.sh weapon-data     # just the game's weapon tuning (seconds)
@@ -553,8 +553,9 @@ extract_skybox() {
 	"$S2V_BIN" -i "$vpk" -f "$lump" -o "$SKYBOX_DEST" -d | grep -E '^--- Dump' || true
 	# Its own baked light, which its walls are drawn with as the map's are:
 	# without it, the two-layer walls had nothing but the sun and were black
-	# in shade. Not its light probes, which light nothing that moves there.
-	extract_baked_light "$vpk" "$SKYBOX_DEST" 'irradiance|directional_irradiance' optional
+	# in shade. Its sun's shadow with it, where it has one. Not its light
+	# probes, which light nothing that moves there.
+	extract_baked_light "$vpk" "$SKYBOX_DEST" 'irradiance|directional_irradiance|direct_light_shadows' optional
 	echo
 	extract_layers_under "$SKYBOX_DEST"
 }
@@ -585,8 +586,9 @@ extract_sky() {
 
 ## A map's baked light from its VPK into dest, keeping the path each file
 ## has in the VPK: the lightmaps named in which (a pattern of their names,
-## irradiance|directional_irradiance, and the probes' atlas where wanted).
-## With "optional" after them, a VPK that has none is passed over.
+## irradiance|directional_irradiance|direct_light_shadows, and the probes'
+## atlases where wanted). With "optional" after them, a VPK that has none is
+## passed over.
 extract_baked_light() {
 	local vpk="$1" dest="$2" which="$3" optional="${4:-}"
 	local maps
@@ -597,32 +599,42 @@ extract_baked_light() {
 	fi
 	require_filter "$maps" "the lightmaps in $(basename "$vpk")"
 	mkdir -p "$dest"
-	"$S2V_BIN" -i "$vpk" -f "$maps" -o "$dest" -d | grep -E '^--- Dump' | grep -v '_atlas_z' || true
+	"$S2V_BIN" -i "$vpk" -f "$maps" -o "$dest" -d | grep -E '^--- Dump' | grep -vE '_atlas(_dlshd)?_z' || true
 }
 
 ## The map's baked lighting. CS2 bakes the bounce light into an irradiance
 ## lightmap (8192 square, HDR, 78 MB compressed) with a companion that says
-## which way the light mostly comes from; the sun's own light it computes
-## live, so its shadow masks are not fetched. Source 2 Viewer writes the
+## which way the light mostly comes from. The sun's own light it computes
+## live, but the static map's shadow from it is baked too, into
+## direct_light_shadows: one channel per light the map bakes shadows for,
+## which the light's bakedshadowindex names (the sun's is 0 on dust2), and
+## that is what shadows the map (MapShadows). Source 2 Viewer writes the
 ## irradiance as an .exr of 300 MB, which Godot compresses back down on
 ## import.
 ## Also the light probes: one 3D atlas of ambient cubes for the whole map,
-## which decompiles to one small HDR image per depth slice (720 on dust2).
+## which decompiles to one small HDR image per depth slice (720 on dust2),
+## and the same lights' shadows at each probe in a second atlas (_dlshd,
+## one slice for each six of those), for what the lightmaps do not cover.
 ## They go in a probes/ directory with a .gdignore, so Godot does not import
-## seven hundred textures it will never draw; the game reads them itself.
+## eight hundred textures it will never draw; the game reads them itself.
 extract_lightmaps() {
-	echo "Extracting the baked lighting (a few hundred megabytes, uncompressed) and the light probes"
+	echo "Extracting the baked lighting (a few hundred megabytes, uncompressed), the sun's shadow and the light probes"
 	echo "        -> $MAP_DEST"
-	extract_baked_light "$MAP_VPK" "$MAP_DEST" 'irradiance|directional_irradiance|env_light_probe_volume_atlas'
-	find "$MAP_DEST" -name 'env_light_probe_volume_atlas_z*.exr' | while IFS= read -r slice; do
-		local probes="$(dirname "$slice")/probes"
-		mkdir -p "$probes"
-		touch "$probes/.gdignore"
-		mv "$slice" "$probes/"
-	done
-	local count
+	extract_baked_light "$MAP_VPK" "$MAP_DEST" \
+		'irradiance|directional_irradiance|direct_light_shadows|env_light_probe_volume_atlas|env_light_probe_volume_atlas_dlshd'
+	# Not those already there from an extraction before: probes/ has them.
+	find "$MAP_DEST" -not -path '*/probes/*' \( -name 'env_light_probe_volume_atlas_z*.exr' \
+		-o -name 'env_light_probe_volume_atlas_dlshd_z*.png' -o -name 'env_light_probe_volume_atlas_dlshd_z*.exr' \) \
+		| while IFS= read -r slice; do
+			local probes="$(dirname "$slice")/probes"
+			mkdir -p "$probes"
+			touch "$probes/.gdignore"
+			mv "$slice" "$probes/"
+		done
+	local count shadows
 	count="$(find "$MAP_DEST" -path '*/probes/env_light_probe_volume_atlas_z*.exr' | wc -l | tr -d ' ')"
-	echo "        light probes: $count atlas slices under lightmaps/probes/"
+	shadows="$(find "$MAP_DEST" -path '*/probes/env_light_probe_volume_atlas_dlshd_z*' | wc -l | tr -d ' ')"
+	echo "        light probes: $count atlas slices and $shadows shadow slices under lightmaps/probes/"
 }
 
 extract_map() {
