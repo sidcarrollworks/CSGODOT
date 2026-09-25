@@ -176,6 +176,32 @@ func volume_at(position: Vector3) -> int:
 	return best
 
 
+## The volume holding the most of these game-space points, the smallest of
+## those holding as many, so the one round them all where there is one; or
+## -1 when none holds any. For a mesh the export merged from copies all over
+## the map, which one point cannot stand for (ProbeMaterials.shadow_for).
+func volume_holding(points: PackedVector3Array) -> int:
+	if _origins.size() != volumes.size():
+		_pack_volumes()
+	var best := -1
+	var best_count := 0
+	var best_extent := INF
+	for index in _origins.size():
+		var mins := _mins[index]
+		var maxs := _maxs[index]
+		var count := 0
+		for point in points:
+			var local := Vector3(point.z, point.x, point.y) - _origins[index]
+			if local.x >= mins.x and local.y >= mins.y and local.z >= mins.z \
+					and local.x <= maxs.x and local.y <= maxs.y and local.z <= maxs.z:
+				count += 1
+		if count > best_count or (count == best_count and count > 0 and _extents[index] < best_extent):
+			best = index
+			best_count = count
+			best_extent = _extents[index]
+	return best
+
+
 func _pack_volumes() -> void:
 	_origins.clear()
 	_mins.clear()
@@ -241,8 +267,13 @@ func sun_at(position: Vector3) -> float:
 ## and most, half a cell inside the volume's block. The scale's w is 1.
 ## Empty without the shadow page or outside every volume.
 func shadow_placement(position: Vector3) -> Array:
-	var index := volume_at(position)
-	if index < 0 or not has_sun_shadows():
+	return volume_placement(volume_at(position))
+
+
+## The same for a volume by its index (volume_at, volume_holding): empty for
+## -1, or without the page.
+func volume_placement(index: int) -> Array:
+	if index < 0 or index >= volumes.size() or not has_sun_shadows():
 		return []
 	var volume := volumes[index]
 	var box_min: Vector3 = volume["origin"] + volume["mins"]

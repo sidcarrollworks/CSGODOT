@@ -10,7 +10,7 @@ extends RefCounted
 ## material, a cube per instance. Where the map's sun shadow is baked, the
 ## instance is also told where to read it (LightProbes.shadow_placement),
 ## which its shader does at every fragment. A prop is lit once, where it
-## stands; a body that moves is lit again by whoever moves it
+## stands (light_placed); a body that moves is lit again by whoever moves it
 ## (light_instance).
 
 const SHADER := preload("res://src/map/probe_lit.gdshader")
@@ -22,14 +22,25 @@ const SHADOW_PARAMETERS := [&"probe_shadow_scale", &"probe_shadow_offset", &"pro
 ## it again, in units: they are tens of units apart (RigModel.RELIGHT_DISTANCE).
 const RELIGHT_DISTANCE := 1.0
 
+## A mesh at most this far across is lit by the cube at its middle. One the
+## export merged from a prop placed all over the map is not: dust2's windows
+## are 760 units across, with the middle of their bounds inside a building,
+## where the probes are black, and every window in them came out black. Those
+## are lit by the cubes a little out from a spread of their own vertices,
+## averaged, leaving out any point no probe volume holds (light_points), and
+## read the sun's baked shadow in the volume round those points (shadow_for).
+const ONE_POINT_ACROSS := 256.0
+const SAMPLED_VERTICES := 16
+const OUT_FROM_SURFACE := 4.0
+
 static var _built := {}    # source Material -> ShaderMaterial
 static var _variants := {}  # variant key -> Shader
 static var _flat_orms := {}  # metallic, in 255ths -> a one-texel ORM texture
 
 
 ## Puts every surface of these meshes that still has a standard material
-## on the probe shader, and lights each mesh from the probes at its centre;
-## a prop's decal and self-illumination come from textures_dir
+## on the probe shader, and lights each mesh from the probes where it stands
+## (light_placed); a prop's decal and self-illumination come from textures_dir
 ## (LightmapMaterials.carry_features). Returns how many surfaces moved.
 ## Surfaces already on a shader material (the lightmapped and blended ones)
 ## are left alone.
@@ -50,16 +61,15 @@ static func apply(meshes: Array[MeshInstance3D], probes: LightProbes, only_shade
 			surfaces += 1
 			moved = true
 		if moved and probes != null:
-			var centre := (mesh_instance.global_transform * mesh_instance.get_aabb()).get_center()
-			light_instance(mesh_instance, probes.cube_at(centre), probes.shadow_placement(centre))
+			light_placed(mesh_instance, probes)
 	return surfaces
 
 
 ## Puts what is left of these meshes on Godot's own lighting onto the probe
-## shader, lit from the probes at each mesh's centre: for a map whose
-## shadows are baked, where Godot's lighting would take the sun through the
-## map (MapShadows). A mesh the probes do not reach is left as it is, and
-## so are unshaded and additive surfaces (a glow, a light shaft), which the
+## shader, each lit where it stands (light_placed): for a map whose shadows
+## are baked, where Godot's lighting would take the sun through the map
+## (MapShadows). A mesh the probes do not reach is left as it is, and so
+## are unshaded and additive surfaces (a glow, a light shaft), which the
 ## probe shader would draw as a lit, opaque colour. Returns how many
 ## surfaces moved.
 static func apply_rest(meshes: Array[MeshInstance3D], probes: LightProbes, textures_dir: String = "") -> int:
@@ -68,8 +78,8 @@ static func apply_rest(meshes: Array[MeshInstance3D], probes: LightProbes, textu
 		var mesh := mesh_instance.mesh
 		if mesh == null:
 			continue
-		var centre := (mesh_instance.global_transform * mesh_instance.get_aabb()).get_center()
-		if probes.volume_at(centre) < 0:
+		var points := light_points(mesh_instance, probes)
+		if probes.volume_holding(points) < 0:
 			continue
 		var moved := false
 		for surface in mesh.get_surface_count():
@@ -80,8 +90,74 @@ static func apply_rest(meshes: Array[MeshInstance3D], probes: LightProbes, textu
 			surfaces += 1
 			moved = true
 		if moved:
-			light_instance(mesh_instance, probes.cube_at(centre), probes.shadow_placement(centre))
+			light_instance(mesh_instance, cube_for(mesh_instance, probes, points), shadow_for(mesh_instance, probes, points))
 	return surfaces
+
+
+## Lights a mesh placed in the map from the probes where it stands: the
+## cube it is lit by (cube_for) and where its shader reads the sun's baked
+## shadow (shadow_for), both from its light points.
+static func light_placed(mesh_instance: MeshInstance3D, probes: LightProbes) -> void:
+	var points := light_points(mesh_instance, probes)
+	light_instance(mesh_instance, cube_for(mesh_instance, probes, points), shadow_for(mesh_instance, probes, points))
+
+
+## Where a placed mesh is lit from: its middle, or, for a mesh too big for
+## one point to stand for it (ONE_POINT_ACROSS), a spread of its vertices a
+## few units out along their normals, leaving out any no probe volume
+## holds; the middle again when none is left.
+static func light_points(mesh_instance: MeshInstance3D, probes: LightProbes) -> PackedVector3Array:
+	var box := mesh_instance.global_transform * mesh_instance.get_aabb()
+	var middle := PackedVector3Array([box.get_center()])
+	if box.size.length() <= ONE_POINT_ACROSS:
+		return middle
+	var mesh := mesh_instance.mesh
+	var points := PackedVector3Array()
+	@warning_ignore("integer_division")
+	var per_surface := maxi(1, SAMPLED_VERTICES / maxi(1, mesh.get_surface_count()))
+	for surface in mesh.get_surface_count():
+		var arrays := mesh.surface_get_arrays(surface)
+		var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL] if arrays[Mesh.ARRAY_NORMAL] != null else PackedVector3Array()
+		@warning_ignore("integer_division")
+		var step := maxi(1, vertices.size() / per_surface)
+		for i in range(0, vertices.size(), step):
+			var point := mesh_instance.global_transform * vertices[i]
+			if i < normals.size():
+				point += (mesh_instance.global_basis * normals[i]).normalized() * OUT_FROM_SURFACE
+			if probes.volume_at(point) >= 0:
+				points.append(point)
+	return points if not points.is_empty() else middle
+
+
+## The cube a placed mesh is lit by: the one at its light point, or the
+## average of those at its light points (light_points, worked out here
+## when not handed in).
+static func cube_for(mesh_instance: MeshInstance3D, probes: LightProbes, points := PackedVector3Array()) -> PackedColorArray:
+	if points.is_empty():
+		points = light_points(mesh_instance, probes)
+	if points.size() == 1:
+		return probes.cube_at(points[0])
+	var total := PackedColorArray()
+	total.resize(PARAMETERS.size())
+	for point in points:
+		var cube := probes.cube_at(point)
+		for face in cube.size():
+			total[face] += cube[face]
+	for face in total.size():
+		total[face] /= float(points.size())
+	return total
+
+
+## Where a placed mesh's shader reads the sun's baked shadow: in the probe
+## volume holding the most of its light points (LightProbes.volume_holding),
+## so a mesh merged from copies across the map reads the volume round all
+## of them where there is one, rather than whichever holds its middle.
+## Empty where no volume holds it, which leaves the sun uncut.
+static func shadow_for(mesh_instance: MeshInstance3D, probes: LightProbes, points := PackedVector3Array()) -> Array:
+	if points.is_empty():
+		points = light_points(mesh_instance, probes)
+	return probes.volume_placement(probes.volume_holding(points))
 
 
 ## Hands an instance the cube it stands in, and where to read the sun's
