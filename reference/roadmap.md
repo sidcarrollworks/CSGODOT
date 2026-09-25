@@ -462,10 +462,16 @@ list, split into Local and Remote items, with the measurements.
   volumes), drawn once as the map starts. Next: CS2's own cubemap
   pictures in place of Godot's.
 - **Players drawn as CS2 draws them (R7).** *(Remote, after L8's
-  screenshots)* Why the players look flatter than CS2's, most visible
-  first: no reflections (R5, built), one light sample for each body where
-  CS2 reads the probes at every pixel, CS2's character shader layers lost
-  in the export, and textures compressed twice.
+  screenshots; the cloth built, 2026-09-25, and waits on rendering.md L9)*
+  Why the players look flatter than CS2's, most visible first: no
+  reflections (R5, built), one light sample for each body where CS2 reads
+  the probes at every pixel, CS2's character shader layers lost in the
+  export, and textures compressed twice. Of the layers, cloth is built:
+  the players, your arms and the buy menu's agent are drawn with CS2's
+  cloth sheen where their materials ask for it, their occlusion darkening
+  the sun too, where they shone like plastic (Sid's buy menu screenshot,
+  2026-09-25). Left of the layers: the softened skin, the eyes, the rim
+  and tint masks, the detail textures.
 - **Research CS2's renderer (R0) and CS2's video settings (R6).**
   *(Remote, not started)*
 
@@ -799,6 +805,7 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 | Decided | dust2's sun shadows come from CS2's baked pages, the live shadow map drawing only what moves (Sid, 2026-09-25) | Rendering R4 |
 | Hands | Run the dust2 checks again, play dust2's shadows beside CS2's, and profile with `live_map_shadows` and `no_visibility`, on PR #82 (rendering.md L7; the pages were extracted and checked 2026-09-25) | Rendering R4 |
 | Hands | Play dust2 beside CS2 for reflections and the players (the same agent in the same spots, in sun and shade), and profile with `no_reflections` (rendering.md L8) | Rendering R5, R7 |
+| Hands | Extract the agents' cloth masks (`scripts/extract_assets.sh character-masks`), run the model checks, and look at the players' cloth beside CS2's in the sun, in play and in the buy menu (rendering.md L9) | Rendering R7 |
 
 ---
 

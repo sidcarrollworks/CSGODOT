@@ -111,6 +111,9 @@ The companion page `rendering.md` covers lights, shadows, culling, anti-aliasing
 - `ATTENUATION` covers both distance and shadow. `LIGHT` is the light vector in view space.
 - `LIGHT_IS_DIRECTIONAL` is true on a directional light's pass. The example in the docs also uses `LIGHT_IS_AREA`, `LIGHT_AREA_DIFFUSE_MULTIPLIER` and `LIGHT_AREA_SPECULAR_MULTIPLIER` for area lights (new in this branch).
 - `ALBEDO`, `BACKLIGHT`, `METALLIC` and `ROUGHNESS` come in read-only. Writing `ALPHA` in `light()` also makes the material transparent.
+- In Compatibility, `fragment()` works in sRGB and `light()` in linear light. Godot turns `ALBEDO` and `EMISSION` to linear after `fragment()` returns (`drivers/gles3/shaders/scene.glsl`, "Convert colors to linear", read on 4.7.2), so a `source_color` texture read in `fragment()` gives sRGB values, and `ALBEDO` in `light()` is not the value `fragment()` wrote. Forward+ and Mobile are linear in both.
+  - A colour handed from `fragment()` to `light()` in a varying and set against `ALBEDO` there has to be converted first, under `#if CURRENT_RENDERER == RENDERER_COMPATIBILITY`.
+  - Found building `src/player/character.gdshader` (2026-09-25): before its colours were converted, the ratio of the two came out above 1 and its test sphere drew about a third brighter in the cloud's Compatibility renders.
 
 ## Depth, linear depth and reverse-Z
 
@@ -231,19 +234,23 @@ Main at `b5d8e4d`, after the render work (PRs #78, #82) and the docs audit.
   - It hands the sun's baked shadow over in the varying `baked_sun` (fragment→light, which the docs allow), and applies it only when `LIGHT_IS_DIRECTIONAL`.
   - Until rendering.md R5 (2026-09-25) the baked bounce light came through `light()` too, added only for the directional light, so with no sun in view there was none, and a second sun would have added it twice. Since R5 each shader writes it to `IRRADIANCE` in `fragment()`, as Godot's ambient light, whatever lights are drawn.
   - `effect_quad.gdshaderinc:44-46` is the lit smoke's `light()`.
+  - `src/player/character.gdshader` (rendering.md R7, 2026-09-25) is the player models' `light()`: Lambert, GGX with Schlick-Smith visibility, and on cloth Charlie's sheen under Neubelt's visibility. It darkens the direct light by the occlusion texture as CS2 does. Godot's `AO_LIGHT_AFFECT` would darken the direct diffuse and specular by one amount, where CS2 has one for each.
+  - It converts its colours to linear light for the Compatibility renderer (see Light above).
 - **Render modes.**
   - Map shaders: `blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx`. They also had `ambient_light_disabled`, all but `far.gdshader:2`, until rendering.md R5 moved their baked light to `IRRADIANCE`; the flag took every reflection with it. `far` takes the environment's ambient light.
+  - `src/player/character.gdshader` has `blend_mix, depth_draw_opaque, cull_back` and no diffuse or specular mode, since its own `light()` replaces both.
   - Effects: `unshaded, cull_disabled, depth_draw_never, shadows_disabled, fog_disabled` with add, mix or premul blending. `effect_lit` is shaded with `diffuse_lambert, specular_disabled` and keeps fog. These match the docs' advice for additive particles.
 - **`POSITION` override for view models.**
-  - `player_draw.gdshaderinc` narrows the FOV and squeezes depth by hand in clip space through the instance uniform `view_model_projection`. `probe_lit.gdshader:25` and `effect_quad.gdshaderinc:26` use it.
+  - `player_draw.gdshaderinc` narrows the FOV and squeezes depth by hand in clip space through the instance uniform `view_model_projection`. `probe_lit.gdshader:25`, `src/player/character.gdshader:117` and `effect_quad.gdshaderinc:26` use it.
   - This follows the docs: the fragment keeps the true `VERTEX` for lighting.
   - 4.7's `Z_CLIP_SCALE` (vertex out) and BaseMaterial3D `fov_override` do the same job built in. They are an option if the hand-rolled version ever breaks SSAO or shadows. The docs warn that `Z_CLIP_SCALE` below 1 can upset SSAO and SSR, and the manual squeeze presumably can too (inferred).
 - **Instance uniforms.**
   - Ten on the probe-lit shader (`probe_lit.gdshaderinc:12-17` and `:31-34`: six probe values and four for its shadow page) plus `view_model_projection`, 11 in all, under the 16 limit. Adding more should be counted.
+  - Twelve on the character shader (`src/player/character.gdshader`): the probe-lit shader's 11, then `ambient_from_probes`. Godot numbers the slots in the order the uniforms are declared (`servers/rendering/shader_language.cpp`, `uniform.instance_index = instance_index++`, read on 4.7.2) and reads them by slot, so a mesh with surfaces on both shaders needs the shared ones in the same slots. The character shader's includes declare the shared ones first, in the same order, for that; `tests/run_character_checks.gd` compares the two lists.
   - `probe_lit.gdshaderinc` also reads `global uniform sampler3D probe_sun_visibility`, with the matching `[shader_globals]` entry and the matching `[shader_globals]` entry in `project.godot`. A global uniform must be in Project Settings before a shader using it is saved.
 - **Effects on MultiMesh.** `effect_quad.gdshaderinc:25` reads the UV rect from `INSTANCE_CUSTOM`, which is correct for MultiMesh custom data. Its `view_model_projection` instance uniform can only apply to the whole MultiMesh node (inferred).
 - **Conditional alpha scissor (measured: no cost).**
-  - Code: `src/map/lightmapped.gdshader:32-35`, `src/map/probe_lit.gdshader:36-39`, `src/map/far.gdshader:29-32`.
+  - Code: `src/map/lightmapped.gdshader:32-35`, `src/map/probe_lit.gdshader:36-39`, `src/map/far.gdshader:29-32`, and the same block in `src/player/character.gdshader:132-135`.
   - All three write `ALPHA` and `ALPHA_SCISSOR_THRESHOLD` inside `if (alpha_scissor >= 0.0)`. Per the docs, "if written to on any branch" is decided when the shader compiles. Every material on these shaders, including the opaque walls and floors that set `alpha_scissor < 0`, is therefore compiled as alpha-tested (inferred).
   - Alpha-tested surfaces lose the depth prepass (the discard note) and pay for the branch in registers, so a separate scissored shader or an `#ifdef ALPHA_SCISSOR` variant looked like the fix.
   - Measured in the docs audit on Sid's machine: copies of the six shaders without the branch, on all 702 opaque dust2 materials, changed the GPU's frame by at most 0.02 ms at 4K and 0.04 ms at 1080p, within the noise (`reference/rendering.md`, "Measured"). Nothing to change.

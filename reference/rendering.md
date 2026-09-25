@@ -164,6 +164,17 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
   reflecting costs, and the video memory line shows the probes' atlas.
   The same screenshots rank what R7 takes next.
 
+- **L9. Cloth on the player models** (R7).
+  `scripts/extract_assets.sh character-masks`, which takes seconds: it
+  decompiles each agent material's metalness texture and exports no
+  model, so CS2's newer shaders do not stop it. Then
+  `scripts/run_tests.sh model`, which prints which of the agents'
+  materials ask for cloth and fails where one's mask is missing. Then
+  the same agent beside CS2, up close in the sun, in play and in the buy
+  menu: the face mask's knit, the jacket and the first-person sleeves
+  should take a soft sheen towards their edges and no highlight on each
+  rib, and the creases should be dark in the sun as well as the shade.
+
 ## Remote items (cloud threads)
 
 - **R0. Research CS2's renderer**, as the research pages do: what its
@@ -396,6 +407,45 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
      tint masks, and detail textures (Source 2 Viewer's copy of the
      shader). Colour, normal, roughness and metalness are kept. This
      needs a Local list of which features the agents' materials use.
+     *(Cloth built, 2026-09-25, with three more of the shader's rules;
+     waits on L9.)* Sid's screenshot of the buy menu beside CS2's showed
+     ours shiny all over, the face mask's knit most, every rib catching
+     the sun. `src/player/character.gdshader` now draws every material
+     CS2 draws with `csgo_character`, the players', the bots' and your
+     own arms in first person (`CharacterMaterials`):
+     - Cloth, where a material asks for it (`F_CLOTH_SHADING`): the blue
+       channel of its metalness texture, times one less the metalness,
+       marks it, and there the specular is Charlie's sheen under
+       Neubelt's visibility, brightest seen edge-on, with a reflectance of
+       the tint times the albedo's square root times 0.667, and its
+       reflection of the surroundings is CS2's `EnvBRDFCloth`; GGX
+       elsewhere. The export reads only that texture's green, for the
+       metalness, so it is decompiled on its own
+       (`scripts/extract_assets.sh character-masks`, which the characters
+       step runs too); its alpha, the rim mask, is dropped before the
+       import, which would paint over the mask where the rim is clear.
+     - The occlusion darkens the direct light as well as the bounce
+       (`g_flAmbientOcclusionDirectDiffuse` and `...Specular`, 1 by
+       default); Godot darkens only the bounce, so the sun lit every
+       crease.
+     - Specular anti-aliasing: the roughness is raised to the cube root of
+       how fast the surface's own normal turns from one pixel to the next,
+       so a distant body's folds do not sparkle.
+     - Lambert diffuse, GGX with Schlick-Smith visibility, and the ambient
+       cube read at the normal-mapped normal, as CS2 has them.
+
+     The buy menu's agent, lit by a world of its own, takes it too, with
+     that world's light in place of the probes' (`RigModel.probe_lit`
+     false). Drawn in the Compatibility renderer in a cloud thread, on a
+     ribbed sphere under the buy menu's sun and sky, the highlights on the
+     ribs' crests went (its brightest pixel from white to 0.80 of it) and
+     the rest was as before, and every variant of the shader compiled;
+     Forward+ was read from Godot's source, not drawn. The formulas and
+     defaults are Source 2 Viewer's reimplementation of CS2's shaders
+     (`complex.frag.slang`, `common/pbr.slang`, `common/lighting.slang`,
+     `common/environment.slang`), not CS2's own code. Still lost: the
+     softened skin, the eyes, the rim and tint masks, the detail textures,
+     retro-reflection and anisotropic gloss.
   4. Textures compressed twice. Source 2 Viewer writes PNGs and Godot
      compresses them again, to DXT1 or DXT5 (`write_import_settings.gd`,
      `compress/high_quality` off), which blurs fine detail and smears the

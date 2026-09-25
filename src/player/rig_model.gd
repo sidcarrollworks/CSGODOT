@@ -27,7 +27,11 @@ const FOLDED := 0.001
 const LAYER := 2
 
 ## Lit by the map's light probes rather than Godot's ambient: every mesh
-## adopted goes on the probe shader, and light_from hands it a cube.
+## adopted goes on the probe shader, and light_from hands it a cube. The
+## character's own surfaces go on CS2's character shading either way
+## (CharacterMaterials), lit by the probes or, when this is false, by the
+## world's environment, which is how the buy menu's agent, in a world of
+## its own, is shaded as the players are.
 var probe_lit: bool = true
 
 var animation_player: AnimationPlayer
@@ -288,6 +292,8 @@ func adopt(mesh: MeshInstance3D, rig: Skeleton3D) -> void:
 	mesh.layers = LAYER
 	if probe_lit:
 		_probe_light(mesh)
+	else:
+		CharacterMaterials.use_environment(mesh)
 
 
 ## Puts a mesh's standard materials on the probe shader.
@@ -301,7 +307,9 @@ func _probe_light(mesh: MeshInstance3D) -> void:
 
 
 ## Puts the model on the probe shader after all, when it was built without
-## (probe_lit false): a body nobody saw that is now to be seen.
+## (probe_lit false): a body nobody saw that is now to be seen. Its
+## character surfaces, on the character shader already, take the probes'
+## light from now on.
 func use_probe_lighting() -> void:
 	if probe_lit:
 		return
@@ -309,6 +317,7 @@ func use_probe_lighting() -> void:
 	light_due = true
 	for mesh in find_children("*", "MeshInstance3D", true, false):
 		_probe_light(mesh as MeshInstance3D)
+		CharacterMaterials.use_probes(mesh as MeshInstance3D)
 
 
 ## Lights every mesh of the model from a point in the world, through the
