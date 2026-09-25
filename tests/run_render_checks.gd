@@ -94,6 +94,9 @@ func _check_variants() -> void:
 		"sun_distance_2048": {"distance": 2048.0},
 		"one_sided_casters": {"casting": GeometryInstance3D.SHADOW_CASTING_SETTING_ON},
 		"no_occlusion": {"occlusion": false},
+		# This scene has no visibility to turn off: tests/run_map_tests.gd
+		# checks it on the map's culling.
+		"no_visibility": {},
 		"no_msaa": {"msaa": Viewport.MSAA_DISABLED},
 		"no_ssao": {"ssao": false},
 		"no_glow": {"glow": false},

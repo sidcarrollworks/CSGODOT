@@ -18,6 +18,7 @@ const VARIANTS := {
 	"sun_distance_2048": "shadows out to 2048 units rather than 8192",
 	"one_sided_casters": "the map casting from its front faces only, not both",
 	"no_occlusion": "occlusion culling off (MapOccluders): what the map's walls save by hiding what is behind them",
+	"no_visibility": "the map's own visibility off (WorldVisibility): what CS2's precomputed culling saves",
 	"no_msaa": "2x MSAA off",
 	"no_ssao": "screen-space occlusion off",
 	"no_glow": "bloom off",
@@ -64,12 +65,28 @@ static func apply(variant: String, root: Node, viewport: Viewport) -> Callable:
 			return _change(sun, "directional_shadow_max_distance", 2048.0)
 		"one_sided_casters":
 			var undo: Array[Callable] = []
+			var visibility := visibility_of(root)
 			for mesh in meshes_of(root):
-				if mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED:
+				# The map's visibility sets how a mesh casts each time it draws
+				# or hides it, so a mesh it culls is changed through it: one
+				# hidden now as well, for when it is drawn.
+				if visibility != null and visibility.drawn_cast_shadow(mesh) == GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED:
+					visibility.set_drawn_cast_shadow(mesh, GeometryInstance3D.SHADOW_CASTING_SETTING_ON)
+					undo.append(visibility.set_drawn_cast_shadow.bind(mesh, GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED))
+				elif mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED:
 					undo.append(_change(mesh, "cast_shadow", GeometryInstance3D.SHADOW_CASTING_SETTING_ON))
 			return _together(undo)
 		"no_occlusion":
 			return _change(viewport, "use_occlusion_culling", false)
+		"no_visibility":
+			var visibility := visibility_of(root)
+			if visibility == null:
+				return func() -> void: pass
+			# From a point no cluster holds, everything is drawn; stopped, it
+			# stays so until put back, when it culls from the camera again.
+			visibility.set_process(false)
+			visibility.show_from(Vector3.INF)
+			return func() -> void: visibility.set_process(true)
 		"no_msaa":
 			return _change(viewport, "msaa_3d", Viewport.MSAA_DISABLED)
 		"no_ssao":
@@ -94,7 +111,7 @@ static func apply(variant: String, root: Node, viewport: Viewport) -> Callable:
 		"all_off":
 			var undo: Array[Callable] = []
 			for each in VARIANTS:
-				if not each in ["baseline", "all_off", "half_resolution", "no_occlusion"]:
+				if not each in ["baseline", "all_off", "half_resolution", "no_occlusion", "no_visibility"]:
 					undo.append(apply(each, root, viewport))
 			undo.reverse()
 			return _together(undo)
@@ -106,6 +123,14 @@ static func apply(variant: String, root: Node, viewport: Viewport) -> Callable:
 static func sun_of(root: Node) -> DirectionalLight3D:
 	var suns := root.find_children("*", "DirectionalLight3D", true, false)
 	return suns[0] as DirectionalLight3D if not suns.is_empty() else null
+
+
+## The map's own visibility culling (WorldVisibility), or null.
+static func visibility_of(root: Node) -> WorldVisibility:
+	for node in root.find_children("*", "Node", true, false):
+		if node is WorldVisibility:
+			return node as WorldVisibility
+	return null
 
 
 ## The map's environment, or null.

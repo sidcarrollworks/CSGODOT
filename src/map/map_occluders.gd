@@ -6,11 +6,14 @@ extends RefCounted
 ## Without occluders Godot culls by the camera's frustum alone, so every
 ## mesh in front of the camera is drawn: from B tunnels, the whole of long,
 ## mid and A with it. CS2 culls with visibility it precomputed when the map
-## was compiled (world_visibility.vvis, which nothing here reads yet).
-## Godot's own occlusion culling does it a frame at a time: it rasterises
-## the occluders on the CPU at a low resolution and skips any mesh whose
-## bounds are behind them. It culls the camera's pass only, not the shadow
-## maps.
+## was compiled, which WorldVisibility reads: what the camera's cluster
+## cannot see is not drawn, from anywhere in the cluster. Godot's own
+## occlusion culling does it a frame at a time: it rasterises the occluders
+## on the CPU at a low resolution and skips any mesh whose bounds are behind
+## them from where the camera stands, so it also hides some of what the
+## visibility leaves in. The two run together, and the profiler measures
+## each (RenderVariants' no_visibility and no_occlusion). The occluders cull
+## the camera's pass only, not the shadow maps.
 ##
 ## The occluders are the map's collision hull: the solid volumes the player
 ## walks against, which a player's eye can never be inside. They were first

@@ -102,7 +102,7 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
   and `env_cubemap` or `env_combined_light_probe_volume` in the entity
   lump), for R5.
 
-- **L5. Whether the compiled map carries its visibility.** *(done 2026-09-24: `world_visibility.vvis_c`, whose data block Source2Viewer-CLI 20.0 does not decode)* Source 2 maps
+- **L5. Whether the compiled map carries its visibility.** *(done 2026-09-24: `world_visibility.vvis_c`; read since PR #83 by `WorldVisibility`, which culls with it, R3)* Source 2 maps
   are compiled with precomputed visibility, which CS2 culls with. Check
   whether Source 2 Viewer lists or exports it for dust2 (inferred, not
   checked). If it does, it could replace or back up the occluders (R3).
@@ -140,9 +140,15 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
   from top of mid: an occluder blocks from both sides, and a face drawn
   from one side and seen from behind is invisible on screen. The hull
   cannot do that, since a player's eye is never inside it; it needs the same
-  walk through long doors and top of mid on Sid's machine. CS2's own
-  visibility (`world_visibility.vvis`, L5) is the way to cull the shadow
-  maps too, once its data block can be read.
+  walk through long doors and top of mid on Sid's machine. Since PR #83
+  the map is also culled by CS2's own visibility (L5, `WorldVisibility`):
+  what the camera's cluster cannot see is not drawn, 2,702 of dust2's
+  3,589 world meshes from T spawn, and each keeps its shadow. The
+  occluders still cull from where the camera stands, inside what that
+  leaves. Both run; the profiler's `no_visibility` and `no_occlusion`
+  measure what each saves, and whether both are worth keeping is Sid's
+  call on those numbers. CS2 also culls its shadow maps with the same
+  file (R4's notes), which is not built.
 - **R4. Shadows split as CS2 splits them. Next, and the biggest win.**
   dust2 ships `direct_light_shadows` (L3): the sun's shadow from the static
   world, baked per lightmap texel, three lights in channels 0 to 2 (which

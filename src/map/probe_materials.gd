@@ -7,11 +7,22 @@ extends RefCounted
 ## Every surface moves onto probe_lit.gdshader with what the import made of
 ## its material, and each mesh instance is handed the ambient cube read at
 ## its place as instance uniforms: one shader, one material per source
-## material, a cube per instance. A prop is lit once, where it stands; a
-## body that moves is lit again by whoever moves it (light_instance).
+## material, a cube per instance. A prop is lit once, where it stands
+## (cube_for); a body that moves is lit again by whoever moves it
+## (light_instance).
 
 const SHADER := preload("res://src/map/probe_lit.gdshader")
 const PARAMETERS := [&"probe_px", &"probe_nx", &"probe_py", &"probe_ny", &"probe_pz", &"probe_nz"]
+
+## A mesh at most this far across is lit by the cube at its middle. One the
+## export merged from a prop placed all over the map is not: dust2's windows
+## are 760 units across, with the middle of their bounds inside a building,
+## where the probes are black, and every window in them came out black. Those
+## are lit by the cubes a little out from a spread of their own vertices,
+## averaged, leaving out any point no probe volume holds (cube_for).
+const ONE_POINT_ACROSS := 256.0
+const SAMPLED_VERTICES := 16
+const OUT_FROM_SURFACE := 4.0
 
 static var _built := {}    # source Material -> ShaderMaterial
 static var _variants := {}  # variant key -> Shader
@@ -40,9 +51,44 @@ static func apply(meshes: Array[MeshInstance3D], probes: LightProbes, only_shade
 			surfaces += 1
 			moved = true
 		if moved and probes != null:
-			var centre := (mesh_instance.global_transform * mesh_instance.get_aabb()).get_center()
-			light_instance(mesh_instance, probes.cube_at(centre))
+			light_instance(mesh_instance, cube_for(mesh_instance, probes))
 	return surfaces
+
+
+## The cube a placed mesh is lit by: the one at its middle, or, for a mesh
+## too big for one point to stand for it (ONE_POINT_ACROSS), the average of
+## those a few units out from a spread of its vertices along their normals.
+static func cube_for(mesh_instance: MeshInstance3D, probes: LightProbes) -> PackedColorArray:
+	var box := mesh_instance.global_transform * mesh_instance.get_aabb()
+	if box.size.length() <= ONE_POINT_ACROSS:
+		return probes.cube_at(box.get_center())
+	var mesh := mesh_instance.mesh
+	var total := PackedColorArray()
+	total.resize(PARAMETERS.size())
+	var counted := 0
+	@warning_ignore("integer_division")
+	var per_surface := maxi(1, SAMPLED_VERTICES / maxi(1, mesh.get_surface_count()))
+	for surface in mesh.get_surface_count():
+		var arrays := mesh.surface_get_arrays(surface)
+		var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL] if arrays[Mesh.ARRAY_NORMAL] != null else PackedVector3Array()
+		@warning_ignore("integer_division")
+		var step := maxi(1, vertices.size() / per_surface)
+		for i in range(0, vertices.size(), step):
+			var point := mesh_instance.global_transform * vertices[i]
+			if i < normals.size():
+				point += (mesh_instance.global_basis * normals[i]).normalized() * OUT_FROM_SURFACE
+			if probes.volume_at(point) < 0:
+				continue
+			var cube := probes.cube_at(point)
+			for face in cube.size():
+				total[face] += cube[face]
+			counted += 1
+	if counted == 0:
+		return probes.cube_at(box.get_center())
+	for face in total.size():
+		total[face] /= float(counted)
+	return total
 
 
 ## Hands an instance the cube it stands in.
