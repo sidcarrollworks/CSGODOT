@@ -6,8 +6,9 @@ extends HudElement
 ## panorama/layout/hud/hudhealthammocenter.xml and
 ## panorama/styles/hud/hudhealthammocenter.css, decompiled from the game).
 ## Health on the left over its bar, with the armour's shield and number
-## beside it; the team's emblem in a ring in the middle, the ring in your
-## own player colour; the magazine on the right over its bar, and beside it
+## beside it; the team's emblem in a ring in the middle, the ring orange for
+## the terrorists and blue for the counter-terrorists (HudStyle.ring_colour);
+## the magazine on the right over its bar, and beside it
 ## the reserve, in magazines for every gun but the shotguns loaded a shell at
 ## a time (the game's m_bReserveAmmoAsClips), with the icon of that gun's
 ## magazine. A thin line joins each side to the ring, fading away from it.
@@ -89,8 +90,6 @@ const CHANGE_SECONDS := 0.1
 const RELOAD_SECONDS := 0.3
 
 var team: String = "T"
-## Your own player colour, the ring's.
-var ring_colour: Color = HudStyle.TEAMMATE_COLOURS[3]
 var health: int = 100
 var armour: int = 0
 var helmet: bool = false
@@ -123,7 +122,7 @@ func _ready() -> void:
 
 
 ## Takes this frame's numbers and redraws if any changed.
-func show_values(side: String, own_colour: Color, hp: int, armor: int, has_helmet: bool, gun: String,
+func show_values(side: String, hp: int, armor: int, has_helmet: bool, gun: String,
 		has_ammo: bool, in_clip: int, magazine_size: int, in_reserve: int, as_clips: bool, is_reloading: bool) -> void:
 	if _started:
 		if hp < health:
@@ -139,7 +138,6 @@ func show_values(side: String, own_colour: Color, hp: int, armor: int, has_helme
 			animate()
 	_started = true
 	team = side
-	ring_colour = own_colour
 	health = hp
 	armour = armor
 	helmet = has_helmet
@@ -150,7 +148,7 @@ func show_values(side: String, own_colour: Color, hp: int, armor: int, has_helme
 	reserve = in_reserve
 	reserve_as_clips = as_clips
 	reloading = is_reloading
-	show_state([side, own_colour, hp, armor, has_helmet, gun, has_ammo, in_clip, magazine, in_reserve, as_clips])
+	show_state([side, hp, armor, has_helmet, gun, has_ammo, in_clip, magazine, in_reserve, as_clips])
 
 
 func _advance(delta: float) -> bool:
@@ -313,9 +311,10 @@ func _draw_stroke(from_x: float, to_x: float, y: float, colour: Color, fades_rig
 		PackedColorArray([near, far, far, near] if fades_right else [far, near, near, far]))
 
 
-## The ring in your colour round the team's emblem in the team's.
+## The ring round the emblem, orange for the terrorists and blue for the
+## counter-terrorists, and the emblem in the team's colour.
 func _draw_ring(centre: Vector2, colour: Color) -> void:
-	draw_arc(centre, RING_OUTER - RING_BORDER * 0.5, 0.0, TAU, 96, ring_colour, RING_BORDER, true)
+	draw_arc(centre, RING_OUTER - RING_BORDER * 0.5, 0.0, TAU, 96, HudStyle.ring_colour(team), RING_BORDER, true)
 	var emblem := HudStyle.icon("icons/ui/ct_logo_1c" if team == "CT" else "icons/ui/t_logo_1c")
 	var box := Rect2(centre - Vector2.ONE * EMBLEM * 0.5, Vector2.ONE * EMBLEM)
 	if emblem != null:

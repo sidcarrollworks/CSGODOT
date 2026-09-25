@@ -120,8 +120,8 @@ func _process(delta: float) -> void:
 	if player.alive and player.hit_target != null:
 		var gun := player.weapon
 		var has_ammo := gun != null and gun.data.magazine_size > 0
-		health_ammo.show_values(team, player_colour(match_state, player), roundi(player.hit_target.health),
-			roundi(player.hit_target.armor), player.hit_target.helmet, gun.data.item_class if gun != null else "",
+		health_ammo.show_values(team, roundi(player.hit_target.health), roundi(player.hit_target.armor),
+			player.hit_target.helmet, gun.data.item_class if gun != null else "",
 			has_ammo, gun.ammo if has_ammo else 0, gun.data.magazine_size if has_ammo else 1,
 			gun.reserve if has_ammo else 0, gun.data.reserve_as_clips if has_ammo else true,
 			has_ammo and gun.is_reloading(SimClock.now_usec()))

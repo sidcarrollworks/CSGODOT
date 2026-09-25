@@ -47,6 +47,15 @@ const PANEL_TINT := Color(0, 0, 0, 0.314)
 const DAMAGE_RED := Color8(221, 0, 0)
 ## The buy zone's cart (hudmoney.css, wash-color lightgreen).
 const BUY_GREEN := Color8(144, 238, 144)
+## The ring round the team's emblem in the health and ammo cluster, by team:
+## orange for the terrorists, blue for the counter-terrorists. CS2 colours it
+## in its code (#JsCenterCircle; the css only gives it a white border). The
+## orange is the one that, added over the ring's disc, gives the ring on
+## CS2's screenshot, the palette's orange (cl_teammate_color_4); the blue is
+## that palette's blue (cl_teammate_color_1), not yet measured on a CT
+## screenshot.
+const RING_T := Color8(230, 128, 42)
+const RING_CT := Color8(136, 206, 245)
 ## Teammates' colours, in the order CS2 hands them out (cl_teammate_color_1
 ## to 5, convars.txt; the border of your card on CS2's screenshot is the
 ## fourth exactly): blue, green, yellow, orange, purple.
@@ -90,6 +99,10 @@ static func team_colour(side: String) -> Color:
 
 static func counter_colour(side: String) -> Color:
 	return COUNTER_CT if side == "CT" else COUNTER_T
+
+
+static func ring_colour(side: String) -> Color:
+	return RING_CT if side == "CT" else RING_T
 
 
 ## One of the HUD's faces (FACES): CS2's Stratum2 where it was extracted,
