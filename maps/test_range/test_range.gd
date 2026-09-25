@@ -1021,6 +1021,9 @@ func _build_dummy() -> void:
 
 func _build_player() -> void:
 	player = (load("res://src/player/player.tscn") as PackedScene).instantiate()
+	# A range to shoot on: you arrive with the AK-47 in hand, besides CS2's
+	# knife and pistol; everything else is bought (B).
+	player.starting_gun = WeaponLibrary.ak47()
 	add_child(player)
 	world.add_player(player)
 	player.place(Vector3(0.0, 8.0, 0.0), 0.0)
