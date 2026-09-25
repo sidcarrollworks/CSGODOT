@@ -453,8 +453,9 @@ list, split into Local and Remote items, with the measurements.
   drew nothing and cost 0.6 to 0.95 ms a frame at 4K (rendering.md,
   "Measured"). The map's bounce light is Godot's ambient light since R5,
   so an occlusion look like CS2's is a setting to judge beside the game.
-- **Reflections (R5).** *(first tier built, 2026-09-25; Sid plays and
-  profiles, rendering.md L8)* Nothing reflected anything before, not
+- **Reflections (R5).** *(first tier built and kept, 2026-09-25: 1.15
+  to 1.18 ms of GPU at 4K and about 500 MB, rendering.md R5; L8's
+  screenshots are left)* Nothing reflected anything before, not
   even the sky: the switch that let the baked light in turned Godot's
   reflections off with it. The map's materials now hand their baked
   light to Godot as its ambient light, which keeps them, and a Godot
@@ -803,6 +804,7 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 | Hands | The systems' Local list in `reference/cs2-systems.md`: bomb (C1, the explosion's particles from C3, and decoding C2's damage), grenades (G1 to G5, and G6's particle and smoke textures), knife (K1), sounds (S1, S2) | Phases 4 to 7 |
 | Hands | Run `scripts/profile_render.gd` again at 1080p and 4K, and walk long doors and top of mid, on PR #78 | Rendering R2, R3 |
 | Decided | dust2's sun shadows come from CS2's baked pages, the live shadow map drawing only what moves (Sid, 2026-09-25) | Rendering R4 |
+| Decided | R5's reflections stay, for 1.15 to 1.18 ms of GPU at 4K: all-metal guns such as the Desert Eagle only look right with them (Sid, 2026-09-25). The profile the R5 Hands row asks for is done; `no_reflections` does not measure it, the builds before and after R5 do (rendering.md R5) | Rendering R5 |
 | Hands | Run the dust2 checks again, play dust2's shadows beside CS2's, and profile with `live_map_shadows` and `no_visibility`, on PR #82 (rendering.md L7; the pages were extracted and checked 2026-09-25) | Rendering R4 |
 | Hands | Play dust2 beside CS2 for reflections and the players (the same agent in the same spots, in sun and shade), and profile with `no_reflections` (rendering.md L8) | Rendering R5, R7 |
 | Hands | Extract the agents' cloth masks (`scripts/extract_assets.sh character-masks`), run the model checks, and look at the players' cloth beside CS2's in the sun, in play and in the buy menu (rendering.md L9) | Rendering R7 |

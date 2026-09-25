@@ -23,7 +23,7 @@ const VARIANTS := {
 	"no_msaa": "4x MSAA off",
 	"no_glow": "bloom off",
 	"no_fog": "the distance haze off",
-	"no_reflections": "the reflection probes and the sky's reflections off (MapReflections): what reflecting costs",
+	"no_reflections": "the reflection probes at no strength and the sky's reflections off (MapReflections); not what reflecting costs, since the probes are still drawn",
 	"no_skybox": "the 3D skybox's meshes hidden",
 	"no_players": "every body but the camera's hidden",
 	"half_resolution": "the 3D drawn at half the width and height: fill rate against the rest",

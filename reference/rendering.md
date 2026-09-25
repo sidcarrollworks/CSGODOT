@@ -8,7 +8,8 @@ time spent on the renderer, so lighting and shaders look as good as Source
 `reference/performance.md` measured the script, headless, and nothing it
 lists is drawn. This page is about the drawing. It was written from the
 code on main (fcf3f80) in a cloud thread, which has no GPU and no extracted
-map, so **nothing on it has been measured yet**. The suspects below are
+map, so nothing on it was measured when it was written; each item says
+what has been since (L1's "Measured", R5's). The suspects below were
 read from the settings and shaders. `scripts/profile_render.gd` is how to
 measure them, and the first Local item is running it.
 
@@ -154,14 +155,16 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
   alike), which the skybox now reads (R4); `scripts/extract_assets.sh
   skybox` fetches it.
 
-- **L8. Reflections and players on dust2** (R5, R7). Nothing to extract.
+- **L8. Reflections and players on dust2** (R5, R7). *(The profiler half
+  done, 2026-09-25, under R5; the screenshots are left)* Nothing to extract.
   Play dust2 beside CS2 and take pairs of screenshots from the same spots:
   the same agent up close in the sun and in the shade (under the arch, in
   lower tunnels), guns in hand, and anything on the map that shines.
   Note where the shine differs, and whether the first seconds after the
   map starts stutter while the probes are drawn. Then run the profiler at
-  1080p and 4K as in L1: `baseline` against `no_reflections` is what
-  reflecting costs, and the video memory line shows the probes' atlas.
+  1080p and 4K as in L1: the baseline against the same build before R5
+  is what reflecting costs (`no_reflections` is not: R5), and the video
+  memory line shows the probes' atlas.
   The same screenshots rank what R7 takes next.
 
 - **L9. Cloth on the player models** (R7).
@@ -315,7 +318,8 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
   and the page's own edges are as sharp as its texels.
 - **R5. Reflections from the map's own cubemaps** (after L4). *(The first
   tier built, 2026-09-25: Godot's own probes where CS2's cubemaps are.
-  Waits on a playtest and the profiler, L8.)*
+  Profiled, 1.15 to 1.18 ms of GPU at 4K, and kept (Sid, 2026-09-25); L8's
+  screenshots are left.)*
   Until then nothing on the map, its props or its players reflected
   anything, the sky included, though this page said the sky lit them:
   every map, prop and player material turned Godot's ambient light off
@@ -356,8 +360,9 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
   - Godot dims a reflection where the ambient light reaching a surface is
     faint (its specular occlusion), which stands in for CS2 scaling its
     cubemaps by the baked light at each pixel.
-  - The profiler's `no_reflections` turns the probes and the sky's
-    reflections off: what reflecting costs.
+  - The profiler's `no_reflections` takes the probes to no strength and
+    the sky's reflections off. It is not what reflecting costs: probes at
+    no strength are still drawn (measured below).
   - Godot's atlas of probe pictures has room for 64 (the project's
     `reflection_count`, Godot's default) and takes all of it as the first
     probe is drawn: about 400 MB of video memory in Forward+, about 6 MB a
@@ -385,10 +390,54 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
     in the tick or the scripts, and none compiling a pipeline (1 and 7 in
     a run, against none before). Their cause is not found. The probes had
     finished drawing and the map's visibility was back on by then.
-  - The look (L8's screenshots) is still to judge. Whether it is worth
-    1.15 ms at 4K is Sid's call. Untested ways to cut it: fewer probes
-    (CS2's 43 volumes overlap, and every pixel in an overlap samples each),
-    a smaller atlas for the memory, or the second tier's pictures.
+  - Where it goes, from four fixed views (both sides' first spawn points
+    at eye height, straight ahead and turned 120 degrees), 23bd700 (main
+    just before R5) against 0a1c1ad (R5 alone). Each figure is the
+    renderer's own GPU time (`viewport_get_measured_render_time_gpu`),
+    the median of 120 frames after 30 to settle at each view, averaged
+    over the four; V-Sync off, no cap; probes left out by hiding them
+    (`visible` false). The script was a scratch one, not kept. R5 alone
+    came to 4.37 to 4.39 ms in four runs; that the profiler's eight views
+    above also gave 4.39 is a coincidence of two view sets, and so the
+    four views put R5 at 1.18 ms where the eight put it at 1.15:
+
+    | | GPU |
+    |---|---|
+    | before R5 (23bd700) | 3.21 ms |
+    | R5 as built (0a1c1ad) | 4.39 ms |
+    | its 17 probes not inside another | 4.31 ms |
+    | its 12 largest probes | 4.19 ms |
+    | its probes hidden | 3.93 ms |
+    | its probes hidden and the sky's reflections off | 3.73 ms |
+    | `sky_reflections/texture_array_reflections` false | 4.21 ms (3.74 with the probes hidden) |
+    | `specular_occlusion/enabled` false | no change |
+    | `reflection_atlas/reflection_size` 128 | no change in GPU time; the memory it saves not measured |
+
+    So the 1.18 ms is about 0.45 for the probes, 0.2 for the sky's
+    reflections (read in the shader: one radiance fetch a pixel, two with
+    the texture array), and 0.5 left with both gone: Godot's ambient path
+    itself, which `ambient_light_disabled` compiled out. Only that
+    remainder is measured. What in the path takes it is read from
+    `scene_forward_clustered.glsl` (4.7.2): the ambient and reflection code
+    the switch left out, with no probe in the cluster to walk; that the
+    larger shader also costs occupancy is inferred. It is not the
+    specular occlusion, which measured nothing. The environment's ambient
+    is a colour on dust2, so no sky sample is thrown away under
+    `IRRADIANCE`.
+  - In play with the probes hidden, the GPU mean was 3.7 ms against 4.2,
+    with one frame over 20 ms (one run).
+  - Sid keeps the reflections (2026-09-25): all-metal guns such as the
+    Desert Eagle only look right with them. The trims stay options, with
+    the look still to judge (L8's screenshots): the texture array off
+    (0.18 ms; the probes and the sky then reflect from mipmaps, which
+    Godot's docs say brings back jitter noise and upscaling artifacts),
+    fewer probes (0.1 to 0.2 ms, the rooms left out reflect a larger
+    neighbour or the sky), no probes at all and only the sky (0.45 ms),
+    or a smaller atlas (`reflection_size` 128) for video memory alone,
+    how much not yet measured against the atlas's 500 MB. The 0.5 ms of
+    Godot's ambient path stays with any reflections that Godot draws;
+    only the second tier, the material shaders sampling CS2's own
+    pictures with Godot's ambient off again, would avoid it (not tried).
 - **R6. Settings as CS2 names them.** Shadow quality, anti-aliasing and
   the rest as a menu reads them (roadmap item 26), so each player picks
   their own cost.

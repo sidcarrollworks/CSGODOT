@@ -48,7 +48,7 @@ The companion page `rendering.md` covers lights, shadows, culling, anti-aliasing
   - `specular_schlick_ggx` (default), `specular_toon`, `specular_disabled`. `specular_disabled` turns off only the direct-light specular lobes; to remove reflections, write `SPECULAR = 0.0`.
 - Receiving:
   - `shadows_disabled`: the surface receives no shadows but still casts them.
-  - `ambient_light_disabled`: removes the ambient light and the radiance map. In 4.7.2's forward shader that takes every reflection with them, the sky's and the reflection probes' (read in `scene_forward_clustered.glsl`, rendering.md R5).
+  - `ambient_light_disabled`: removes the ambient light and the radiance map. In 4.7.2's forward shader that takes every reflection with them, the sky's and the reflection probes' (read in `scene_forward_clustered.glsl`, rendering.md R5). Leaving it on costs the path itself: on dust2 at 4K, about 0.5 ms of GPU a frame with no probe shown and the sky's reflections off (measured, rendering.md R5).
   - `fog_disabled`: no depth or volumetric fog. The docs recommend it for `blend_add` particles.
 - Space:
   - `skip_vertex_transform`: you transform `VERTEX`, `NORMAL`, `TANGENT` and `BINORMAL` yourself, using `MODELVIEW_MATRIX`.
