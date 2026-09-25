@@ -503,7 +503,8 @@ static func is_spare_body(mesh: Node, meshes: Array) -> bool:
 	if not mesh.name.ends_with("body_legacy"):
 		return false
 	for other: Node in meshes:
-		if not other.name.ends_with("body_legacy"):
+		# Another body, not another mesh: the Dual Berettas' holster is not one.
+		if other != mesh and other.name.contains("_body_") and not other.name.ends_with("body_legacy"):
 			return true
 	return false
 

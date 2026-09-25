@@ -142,10 +142,12 @@ func _place_bots() -> void:
 		notes.append("Bots walk straight lines between their spawn points: the map has no nav mesh.")
 
 
-## What anyone may take in hand, read now rather than on the tick it is
-## bought, picked up or drawn: every item on either side's menu, the knife
-## and the bomb, whose clips every body takes up (the hitboxes ride them),
-## and the models of what a bot's body shows.
+## What anyone may take in hand, read now rather than when it is bought,
+## picked up or drawn: every item on either side's menu, the knife and the
+## bomb, their clips, which every body takes up (the hitboxes ride them),
+## and their models. CS2 precaches every gun as the map loads
+## (reference/research/weapon-preload.md); the guns no menu holds are
+## left, since nobody can get one.
 func _prepare_holding() -> void:
 	var body: PlayerModel = null
 	for sim: PlayerSim in world.players:
@@ -155,10 +157,9 @@ func _prepare_holding() -> void:
 	if body == null:
 		return
 	for side: String in MatchState.SIDES:
-		body.prepare_holding(BotBuying.may_hold(side), side)
 		var anyone := PackedStringArray(Loadout.items(side))
 		anyone.append_array(PackedStringArray(["weapon_knife", "weapon_c4"]))
-		body.prepare_holding(anyone, side, false)
+		body.prepare_holding(anyone, side)
 
 
 ## The route of a side's nth bot: from one of its side's spawn points to a

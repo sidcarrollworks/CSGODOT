@@ -282,9 +282,10 @@ item 6 is built.
    (`PlayerModel.hold`): each item's model kept while carried and shown in
    hand, its own set's clips added the first time, and the locomotion
    switched to the pistol's, knife's or rifle's as CS2's graph picks it
-   (`PlayerModel.variation_for`). What its bots may hold is read before
-   play (`prepare_holding`), so taking a gun in hand reads nothing from the
-   disk. Every body does it, yours unseen too, as CS2's server poses every
+   (`PlayerModel.variation_for`). Everything anyone may hold, every item on
+   either menu, the knife and the bomb, is read before play, clips and
+   models (`prepare_holding`), so taking a gun in hand reads nothing from
+   the disk. Every body does it, yours unseen too, as CS2's server poses every
    player's hitboxes with what they hold; the variation switches once the
    draw is over, as CS2's graph has it. Left: CS2 blends the weapon layer in
    model space, Godot in each bone's own, so the upper body follows the hips
@@ -435,8 +436,12 @@ list, split into Local and Remote items, with the measurements.
   on average, the 95th 7.8 and 7.1. Nothing is built in the tick for the
   views any more, and the first buy, the first dropped gun and the first
   shots no longer hitch (they held a tick or a frame 18 to 347 ms); no
-  frame is over 20 ms (performance.md, "Against CS2"). Left: the frames
-  that run a tick, about 7 ms, which a cheaper tick shortens.
+  frame is over 20 ms (performance.md, "Against CS2"). Every model anyone
+  can take in hand in a match is read before play, as CS2 precaches every
+  gun, and the guns' unused legacy bodies are left out at import
+  (perf/read-match-guns-ahead; research/weapon-preload.md): 125 MiB more
+  video memory, a shorter read, and no model read during a match. Left:
+  the frames that run a tick, about 7 ms, which a cheaper tick shortens.
 - **Screen-space occlusion off.** *(done, the Godot docs audit)* It
   darkened ambient light only, which no map material takes, so it drew
   nothing and cost 0.6 to 0.95 ms a frame at 4K (rendering.md,

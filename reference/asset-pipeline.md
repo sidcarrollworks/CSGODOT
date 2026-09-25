@@ -37,7 +37,7 @@ updates and a hardcoded one fails silently a year from now. `list-map` and
 
 | Asset | Exports? | Notes |
 |---|---|---|
-| Weapon and player models | Yes, glTF 2.0 / GLB | Geometry, materials, textures and the skeleton. Animations export automatically. |
+| Weapon and player models | Yes, glTF 2.0 / GLB | Geometry, materials, textures and the skeleton. Animations export automatically. Every gun's export carries two bodies, `body_hd` and `body_legacy` (CS2's body for skins marked `use_legacy_model`); `scripts/weapon_model_import.gd`, set as their import script by `write_import_settings.gd`, leaves the legacy one out at import, and its textures with it (14% of a gun's, `reference/research/weapon-preload.md`). |
 | dust2 world geometry | Yes, glTF | 3613 meshes, 4.5M triangles, 648 PNGs. In metres, Y-up. |
 | dust2 collision | Yes, glTF | A separate export of `world_physics.vmdl_c`: 39 meshes, 435k triangles, grouped by surface type and by what they interact with. Player clips included. |
 | dust2 entities | Yes, text | `default_ents.vents_c` decompiles to key/value text: 15 T and 15 CT spawns, bomb sites, buy zones, the sun. |

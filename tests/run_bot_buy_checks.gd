@@ -124,13 +124,30 @@ func _test_the_templates_are_spread_as_cs2s() -> void:
 	_check(absf(share - 25.0 / 147.0) < 0.01, "Rifle comes as often as botprofile.db's 25 profiles of 147 use it (%.3f)" % share)
 
 
+## What a bot may take in hand is on its side's menu: the match reads every
+## model and clip on the menus before play (Competitive._prepare_holding),
+## so nothing a bot buys is read during it.
 func _test_what_a_bot_may_hold() -> void:
-	var t := BotBuying.may_hold("T")
-	var ct := BotBuying.may_hold("CT")
+	var off_menu := PackedStringArray()
+	var bought := {}
+	for side: String in ["T", "CT"]:
+		var menu := Loadout.items(side)
+		var buys := PackedStringArray()
+		for template: StringName in BotBuying.TEMPLATES:
+			for short: String in BotBuying.TEMPLATES[template]:
+				var item_class := BotBuying.resolve(side, short)
+				if item_class.is_empty():
+					continue
+				buys.append(item_class)
+				if not item_class in menu:
+					off_menu.append("%s %s" % [side, item_class])
+		bought[side] = buys
+		if not Inventory.STARTING_PISTOLS[side] in menu:
+			off_menu.append("%s %s" % [side, Inventory.STARTING_PISTOLS[side]])
 	_check(
-		"weapon_knife" in t and "weapon_glock" in t and "weapon_ak47" in t and "weapon_awp" in t and not "weapon_famas" in t
-			and "weapon_hkp2000" in ct and "weapon_m4a1_silencer" in ct and not "weapon_ak47" in ct,
-		"what a bot may take in hand, read before play: its side's knife, pistol and every gun its templates buy"
+		off_menu.is_empty() and "weapon_ak47" in bought["T"] and "weapon_awp" in bought["T"] and not "weapon_famas" in bought["T"]
+			and "weapon_m4a1_silencer" in bought["CT"] and not "weapon_ak47" in bought["CT"],
+		"every gun a bot's templates buy, and its starting pistol, is on its side's menu, which is read before play (off it: %s)" % [off_menu]
 	)
 
 

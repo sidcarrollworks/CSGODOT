@@ -268,6 +268,11 @@ func _play_on(map: MapContents, team_size: int) -> Array:
 
 
 func _test_competitive_on_a_small_map() -> void:
+	# Whatever an earlier check read is forgotten, so what is read below is
+	# this match's own doing.
+	for side: String in MatchState.SIDES:
+		for item_class in _anyone_may_hold(side):
+			RigModel._scenes.erase(String(WeaponLibrary.look(item_class, side).get("model_path", "")))
 	var map := _small_map()
 	var played := _play_on(map, 2)
 	var scene: Node3D = played[0]
@@ -292,6 +297,17 @@ func _test_competitive_on_a_small_map() -> void:
 	var effects := mode.get_node_or_null(^"ShotEffects") as ShotEffects
 	_check(effects != null and effects.game == world.game and effects.you == mode.player, "and the rounds' tracers and the guns' flashes, as you see them")
 	_check(mode.notes.size() == 1 and mode.notes[0].contains("nav mesh"), "the only thing missing is the nav mesh (%s)" % [mode.notes])
+	# With the extracted models, everything anyone may take in hand is read
+	# before play, models and all, as CS2 precaches every gun: every item on
+	# either menu, the knife and the bomb.
+	if world.players.any(func(sim: PlayerSim) -> bool: return sim.model != null):
+		var unread := PackedStringArray()
+		for side: String in MatchState.SIDES:
+			for item_class in _anyone_may_hold(side):
+				var path := String(WeaponLibrary.look(item_class, side).get("model_path", ""))
+				if not path.is_empty() and ResourceLoader.exists(path) and not RigModel._scenes.has(path):
+					unread.append("%s %s" % [side, item_class])
+		_check(unread.is_empty(), "every model on either side's menu, the knife's and the bomb's are read before play (not read: %s)" % [unread])
 	var at_spawn := false
 	for spawn: Dictionary in T_SPAWNS:
 		at_spawn = at_spawn or Vector2(spawn["position"].x, spawn["position"].z).distance_to(
@@ -304,6 +320,14 @@ func _test_competitive_on_a_small_map() -> void:
 	_check(mode.match_state.round_number >= 1, "and without warmup the first round has begun (round %d)" % mode.match_state.round_number)
 	scene.queue_free()
 	await process_frame
+
+
+## Everything a side's player may take in hand in a match: its menu, the
+## knife and the bomb.
+static func _anyone_may_hold(side: String) -> PackedStringArray:
+	var anyone := PackedStringArray(Loadout.items(side))
+	anyone.append_array(PackedStringArray(["weapon_knife", "weapon_c4"]))
+	return anyone
 
 
 func _test_competitive_without_the_maps_buy_zones_or_a_side() -> void:

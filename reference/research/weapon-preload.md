@@ -124,13 +124,14 @@ the disk cache:
   1.04 s for all 34 on the main thread, 1.23 s one at a time on a worker.
   Nothing was measured with a cold disk cache.
 - **What can appear in a competitive match** with the default loadout: the
-  21 guns on the two buy menus, the Zeus, the grenades and the C4. At match
-  start the game reads the models of the 16 guns a bot may hold
-  (`Competitive._prepare_holding`), and only the clips of the rest. Not
-  read: the Dual Berettas, P250, Tec-9, Five-SeveN and Desert Eagle (237
-  MiB of textures, about 130 ms of `load()`), the Zeus (43 MiB) and the
-  grenades' models (about 10.7 MiB each). The other 13 guns (626 MiB)
-  cannot be bought, handed out or held by a bot.
+  21 guns on the two buy menus, the Zeus, the grenades and the C4. When
+  this was researched, the game read at match start the models of the 16
+  guns a bot may hold (`Competitive._prepare_holding`), and only the clips
+  of the rest. Not read then: the Dual Berettas, P250, Tec-9, Five-SeveN
+  and Desert Eagle (237 MiB of textures, about 130 ms of `load()`), the Zeus
+  (43 MiB) and the grenades' models (about 10.7 MiB each); all are read
+  now (below). The other 13 guns (626 MiB) cannot be bought, handed out or
+  held by a bot.
 - **Godot 4.7 has no texture streaming.** `mipmaps/limit` "is currently not
   implemented", and `process/size_limit` caps a texture once, at import
   (`importing_images.rst`). An imported `.ctex` does hold the 2048 level as
@@ -145,11 +146,31 @@ the disk cache:
    does: both menus, the Zeus and the grenades, on top of the bots' guns.
    About 290 MiB and 150 ms more. Read them with `load()` while the map
    loads or one at a time on a worker, never all at once on workers (the
-   staging buffers above).
+   staging buffers above). *(Done, perf/read-match-guns-ahead:
+   `Competitive._prepare_holding` reads the models of everything on either
+   menu, the knife and the bomb with `load()` as the match is set up, 32
+   models where it read 18.)*
 2. **Leave `body_legacy` out of the gun imports** (the per-node Skip Import
    in the `.import`'s `_subresources`, or a post-import step), keeping it
    where it is a weapon's only body (the default knives). 14% less, nothing
    visible. It touches `assets/`, so it needs a run on Sid's machine.
+   *(Done, the same branch: `scripts/weapon_model_import.gd`, a post-import
+   step that `write_import_settings.gd` sets on every weapon model, removes
+   the body `RigModel.is_spare_body` would hide. Run on Sid's machine.)*
+
+Measured on Sid's machine once dust2's match has started (the renderer's
+own counters, second of two runs, files in the disk cache):
+
+| | Textures | Mesh buffers | Everything | The read at match start |
+|---|---|---|---|---|
+| Before (18 models) | 2,544 MiB | 345 MiB | 3,417 MiB | 2.06 s |
+| Every model that can appear (32) | 2,825 MiB | 356 MiB | 3,708 MiB | 2.15 s |
+| And no legacy bodies | 2,684 MiB | 330 MiB | 3,542 MiB | 1.40 s |
+
+So every gun, grenade and piece of kit anyone can take in hand is read
+before play for 125 MiB more than before, and the read is 0.66 s shorter:
+the legacy bodies were 141 MiB of textures and 25 MiB of mesh across the
+32, and a good part of the read.
 3. **Leave the 13 guns nobody can get** until loadouts can hold them.
 4. **Streaming as CS2 does it**, small mips for every gun and the full set
    for the gun in hand (`RenderingServer.texture_replace` swaps a texture's
@@ -157,6 +178,8 @@ the disk cache:
    of its own: only if memory gets tight.
 5. A dropped gun whose model was not read is read on a worker as it falls
    (`DroppedItemView`); with (1) that no longer happens in a match.
+6. When skins arrive, the legacy-model paint kits need `body_legacy` back
+   for the guns they are on.
 
 ## What a Local check would settle
 

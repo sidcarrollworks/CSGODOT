@@ -219,6 +219,7 @@ func _init() -> void:
 	ViewModelProjection.claim(_view_model)
 	_test_every_gun_builds()
 	_test_every_equipment_builds()
+	_test_guns_import_without_their_legacy_body()
 
 	_player_model = PlayerModel.new()
 	root.add_child(_player_model)
@@ -1221,6 +1222,91 @@ func _test_every_equipment_builds() -> void:
 			shown += 1
 	_check(held and shown == 1, "the third-person model holds the knife, its one mesh shown (%d)" % shown)
 	body.free()
+
+
+## Every gun's model is imported without the second body its export carries
+## for legacy skins (scripts/weapon_model_import.gd, which
+## write_import_settings.gd sets as the import script): none of the textures
+## only that body used is loaded with it. A default knife, whose only body
+## it is, keeps it.
+func _test_guns_import_without_their_legacy_body() -> void:
+	var guns: Array = (load("res://scripts/weapon_tables.gd") as GDScript).get_script_constant_map()["GUNS"]
+	var checked := 0
+	var failures := PackedStringArray()
+	for gun in guns:
+		var model := String(WeaponLibrary.look(gun[0]).get("model_path", ""))
+		if model.is_empty() or not ResourceLoader.exists(model):
+			continue
+		checked += 1
+		var legacy_only := _legacy_only_images(model)
+		var loaded := PackedStringArray()
+		for dep in ResourceLoader.get_dependencies(model):
+			var path := dep.get_slice("::", dep.get_slice_count("::") - 1)
+			if legacy_only.has(path):
+				loaded.append(path.get_file())
+		var scene := _instantiate(model)
+		var bodies := PackedStringArray()
+		for mesh: Node in (scene.find_children("*", "MeshInstance3D", true, false) if scene != null else []):
+			if mesh.name.contains("_body_"):
+				bodies.append(String(mesh.name).get_slice("_body_", 1))
+		if scene != null:
+			scene.free()
+		var script_set := ConfigFile.new()
+		script_set.load(model + ".import")
+		var imported_by: String = script_set.get_value("params", "import_script/path", "")
+		if bodies != PackedStringArray(["hd"]) or not loaded.is_empty() or imported_by != "res://scripts/weapon_model_import.gd":
+			failures.append("%s (bodies %s, legacy textures loaded %s)" % [gun[0], bodies, loaded])
+	if checked == 0:
+		print("no guns extracted; skipping the legacy-body import check")
+		return
+	_check(failures.is_empty(),
+		"every gun imports with only its HD body, none of its legacy body's textures loaded (%d guns; %s)" % [checked, "; ".join(failures)])
+	# What is not a spare body stays: each side's default knife, whose only
+	# body is the legacy one; the Dual Berettas' holster; the C4's screen.
+	var kept := {
+		String(WeaponLibrary.look("weapon_knife", "T").get("model_path", "")): "*_body_legacy",
+		String(WeaponLibrary.look("weapon_knife", "CT").get("model_path", "")): "*_body_legacy",
+		String(WeaponLibrary.look("weapon_elite").get("model_path", "")): "*_eholster",
+		String(WeaponLibrary.look("weapon_c4").get("model_path", "")): "*c4_screen*",
+	}
+	for model: String in kept:
+		if not ResourceLoader.exists(model):
+			continue
+		var scene := _instantiate(model)
+		var meshes := scene.find_children(kept[model], "MeshInstance3D", true, false) if scene != null else []
+		_check(meshes.size() == 1, "%s keeps its %s mesh (%d)" % [model.get_file(), String(kept[model]).trim_prefix("*").trim_suffix("*"), meshes.size()])
+		if scene != null:
+			scene.free()
+
+
+## The images only a model's ...body_legacy mesh uses, as res:// paths, read
+## from the glTF itself.
+static func _legacy_only_images(gltf_path: String) -> Dictionary:
+	var gltf: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(gltf_path))
+	var images_of_material := func(index: int) -> PackedStringArray:
+		var out := PackedStringArray()
+		var material: Dictionary = gltf["materials"][index]
+		var slots: Array = [material.get("normalTexture", {}), material.get("occlusionTexture", {}), material.get("emissiveTexture", {})]
+		var pbr: Dictionary = material.get("pbrMetallicRoughness", {})
+		slots.append_array([pbr.get("baseColorTexture", {}), pbr.get("metallicRoughnessTexture", {})])
+		for slot: Dictionary in slots:
+			if slot.has("index"):
+				var image: Dictionary = gltf["images"][int(gltf["textures"][int(slot["index"])]["source"])]
+				out.append(gltf_path.get_base_dir().path_join(String(image.get("uri", "")).uri_decode()).simplify_path())
+		return out
+	var legacy := {}
+	var others := {}
+	for node: Dictionary in gltf.get("nodes", []):
+		if not node.has("mesh"):
+			continue
+		var into := legacy if String(node.get("name", "")).ends_with("body_legacy") else others
+		for primitive: Dictionary in gltf["meshes"][int(node["mesh"])]["primitives"]:
+			if primitive.has("material"):
+				for image in images_of_material.call(int(primitive["material"])):
+					into[image] = true
+	for image in others:
+		legacy.erase(image)
+	return legacy
 
 
 func _test_view_model_motion() -> void:
