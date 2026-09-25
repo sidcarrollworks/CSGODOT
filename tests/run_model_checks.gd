@@ -1458,6 +1458,38 @@ func _test_weapon_layers() -> void:
 		unheld > 0.3 and unheld < 3.0 and (at.call("hand_R") as Vector3).distance_to(hand) < 0.001,
 		"the gun's own hold moves the hands a little from the rifle locomotion's (%.2f units), not off the body" % unheld
 	)
+	# Added at full weight, as CS2's layer does: each bone of the upper body
+	# is the locomotion's pose turned by the hold's difference from the rest
+	# (rest_relative). An AnimationTree blends so by default (deterministic);
+	# an AnimationPlayer's default scales the weights to one, which would
+	# leave the upper body halfway between the locomotion and the hold.
+	var hold_clip := model.animation_player.get_animation((tree.tree_root as AnimationNodeBlendTree).get_node(&"hold_stand").animation)
+	var hold_at := float(tree.get("parameters/hold_stand/current_position"))
+	var turn := func(q: Quaternion) -> float:
+		return rad_to_deg(2.0 * acos(clampf(absf(q.normalized().w), 0.0, 1.0)))
+	var bone := -1
+	var delta := Quaternion.IDENTITY
+	for track in model.upper_body_tracks():
+		var index := hold_clip.find_track(track, Animation.TYPE_ROTATION_3D)
+		var joint := rig.find_bone(String(track.get_subname(0)))
+		if index < 0 or joint < 0:
+			continue
+		var its := rig.get_bone_rest(joint).basis.get_rotation_quaternion().inverse() * hold_clip.rotation_track_interpolate(index, hold_at)
+		if bone < 0 or turn.call(its) > turn.call(delta):
+			bone = joint
+			delta = its
+	tree.set("parameters/hold/add_amount", 0.0)
+	tree.advance(0.0)
+	var walked := rig.get_bone_pose_rotation(bone)
+	tree.set("parameters/hold/add_amount", 1.0)
+	tree.advance(0.0)
+	var held := rig.get_bone_pose_rotation(bone)
+	var off: float = turn.call((walked * delta).inverse() * held)
+	_check(
+		tree.deterministic and bone >= 0 and turn.call(delta) > 2.0 and off < 0.5,
+		"the hold is added at full strength: %s, which the hold turns %.1f degrees, is the locomotion's pose turned that far (%.2f degrees off)"
+			% [rig.get_bone_name(bone), turn.call(delta), off]
+	)
 	model.fire()
 	for step in 4:
 		tree.advance(0.05)

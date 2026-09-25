@@ -107,7 +107,8 @@ Found while reading. Items marked checked were confirmed by reading the code;
 the rest were read from code only and need checking before a fix. Each is
 written up on the page named, with file and line. The audit after (main at
 b5d8e4d) tested each and fixed 1, the WeaponData half of 4, and 6; its
-findings follow each item.
+findings follow each item (its first reading of item 7 was wrong, and is
+corrected there).
 
 1. **Mouse sensitivity at 4K is half of CS2's** (checked). `PlayerInput.handle_event`
    (`src/player/player_input.gd:128-129`) aims with `motion.relative`, and
@@ -155,10 +156,11 @@ findings follow each item.
 7. **Additive animation layers at half strength**: `AnimationTree.deterministic`
    is false while `player_model.gd` uses `Add2` and an additive `OneShot`;
    `AnimationNodeBlendSpace2D.sync` is deprecated for `sync_mode`.
-   animation.md. **Confirmed, not fixed**: in a one-bone test an `Add2` at
-   1.0 turned the bone 30 of 60 degrees with `deterministic` off, and all
-   60 with it on, wherever the base clip keys the bone. Turning it on
-   changes how missing tracks blend too, so it needs a look in play.
+   animation.md. **Wrong, corrected**: an `AnimationTree`'s `deterministic`
+   is true by default (it overrides `AnimationMixer`'s false), so the layers
+   were at full strength all along. The audit's one-bone test set the flag
+   by hand both ways and missed that; `tests/run_model_checks.gd` now checks
+   the AK-47's hold adds at full strength. The blend spaces set `sync_mode`.
 8. **Physics queried from `_process`** in `muzzle_flashes.gd` and
    `player_view.gd` (visual only; safe while physics stays on the main
    thread). physics.md.
