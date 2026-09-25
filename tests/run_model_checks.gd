@@ -1012,6 +1012,8 @@ func _test_bot_comes_back() -> void:
 ## the weapon gives it, or the recoil work would be undone here.
 func _test_player_composes_kick_and_bob() -> void:
 	var player := (load("res://src/player/player.tscn") as PackedScene).instantiate() as PlayerController
+	# The AK-47 in hand besides the knife and pistol you spawn with.
+	player.starting_gun = WeaponLibrary.ak47()
 	root.add_child(player)
 	# What the loadout's tick changed is drawn on the next frame.
 	player.view.catch_up()

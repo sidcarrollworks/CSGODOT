@@ -118,6 +118,7 @@ func _run() -> void:
 	await _test_a_hit_throws_the_aim()
 	_test_the_hit_direction_on_screen()
 	await _test_the_hud_shows_hits()
+	_test_you_spawn_with_the_knife_and_pistol()
 	_test_the_frame_meter()
 	await _test_a_frame_draws_where_the_clock_is()
 	_report()
@@ -1421,6 +1422,31 @@ func _test_a_frame_draws_where_the_clock_is() -> void:
 		at >= SimClock.now_usec() - SimClock.tick_usec() and at <= SimClock.now_usec(),
 		"and the time drawn is between the last two ticks"
 	)
+
+
+## You spawn as CS2 spawns a player: the knife and your side's pistol
+## (mp_t_default_secondary, mp_ct_default_secondary), the pistol in hand,
+## and nothing else taken in hand on the way; a rifle is bought.
+func _test_you_spawn_with_the_knife_and_pistol() -> void:
+	for side: String in ["T", "CT"]:
+		var you := (load("res://src/player/player.tscn") as PackedScene).instantiate() as PlayerController
+		you.team = side
+		var drawn := PackedStringArray()
+		you.equipped.connect(func(entry: Inventory.Entry) -> void:
+			drawn.append(entry.item.item_class if entry != null else ""))
+		_world.add_child(you)
+		var carried := PackedStringArray()
+		for entry in you.inventory.entries():
+			carried.append(entry.item.item_class)
+		carried.sort()
+		var pistol: String = Inventory.STARTING_PISTOLS[side]
+		var expected := PackedStringArray([pistol, "weapon_knife"])
+		expected.sort()
+		_check(
+			carried == expected and you.in_hand_class() == pistol and not drawn.is_empty() and drawn.count(pistol) == drawn.size(),
+			"a %s spawns with the knife and the %s, the pistol in hand, having taken nothing else in hand (carries %s, drew %s)" % [side, pistol, carried, drawn]
+		)
+		you.free()
 
 
 ## The HUD you play with shows your armour, and an arc for a hit that
