@@ -358,6 +358,26 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
   `cubemaps/env_cubemap_array` (L4), extracted and read into the probes
   in place of Godot's, with CS2's scaling by the baked light. It needs
   the array's layout read from Source 2 Viewer first.
+
+  Measured on Sid's machine (RTX 4070 Ti, 3840x2160 fullscreen,
+  2026-09-25), L8's profiler half, on the branch that integrates the open
+  performance PRs, against the same branch before R5 was merged:
+  - The profiler's baseline, the median over its eight views, went from
+    3.24 ms of GPU to 4.39 (+1.15 ms, 35% more), and video memory from
+    3,543 MB to 4,058 (textures 2,581 to 3,081 MB: the probes' atlas).
+  - `no_reflections` saved only 0.28 ms of it, so the variant does not
+    measure what reflecting costs: probes at no strength are still drawn.
+    What R5 costs is the baseline before it against the baseline after.
+  - In play (`scripts/profile_combat.gd`, two runs), the GPU mean went
+    from 3.1 ms to 4.2, the frame mean out of combat from 4.8 to 5.6 and
+    5.9, and frames of 20 to 30 ms came back, their time in drawing, not
+    in the tick or the scripts, and none compiling a pipeline (1 and 7 in
+    a run, against none before). Their cause is not found. The probes had
+    finished drawing and the map's visibility was back on by then.
+  - The look (L8's screenshots) is still to judge. Whether it is worth
+    1.15 ms at 4K is Sid's call. Untested ways to cut it: fewer probes
+    (CS2's 43 volumes overlap, and every pixel in an overlap samples each),
+    a smaller atlas for the memory, or the second tier's pictures.
 - **R6. Settings as CS2 names them.** Shadow quality, anti-aliasing and
   the rest as a menu reads them (roadmap item 26), so each player picks
   their own cost.
