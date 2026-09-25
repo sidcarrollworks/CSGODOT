@@ -1,7 +1,8 @@
 extends SceneTree
 
 ## Sets the import settings of every extracted texture, before Godot imports
-## them.
+## them, and the import script of the weapons' models
+## (weapon_model_import.gd).
 ##
 ##   godot --headless --path . --script scripts/write_import_settings.gd
 ##
@@ -31,6 +32,10 @@ const ROUGHNESS_DISABLED := 1
 const DETECT_3D_DISABLED := 0
 ## The lightmap of baked shadows (MapShadows), which is not a colour.
 const SHADOW_MASK := "direct_light_shadows"
+## The weapons' and kit's models, imported through weapon_model_import.gd,
+## which leaves out the second body a gun carries for legacy skins.
+const WEAPON_MODELS_DIR := "res://assets/weapons/weapons/models"
+const WEAPON_MODEL_IMPORT := "res://scripts/weapon_model_import.gd"
 
 
 func _init() -> void:
@@ -56,6 +61,15 @@ func _init() -> void:
 	print("texture import settings: %d textures (%d normal maps), %d updated" % [
 		textures.size(), normal_maps.size(), updated,
 	])
+
+	var models := 0
+	var models_updated := 0
+	for gltf in gltfs:
+		if gltf.begins_with(WEAPON_MODELS_DIR + "/"):
+			models += 1
+			if _apply_import_script(gltf, WEAPON_MODEL_IMPORT):
+				models_updated += 1
+	print("weapon model import script: %d models, %d updated" % [models, models_updated])
 	quit(0)
 
 
@@ -138,3 +152,22 @@ func _apply(texture_path: String, is_normal_map: bool) -> bool:
 		push_error("Could not write %s" % import_path)
 		return false
 	return dirty
+
+
+## Sets a glTF's import script, keeping its other settings. Returns true if
+## the .import file had to be written (and so the model is imported again).
+func _apply_import_script(gltf_path: String, script_path: String) -> bool:
+	var import_path := gltf_path + ".import"
+	var config := ConfigFile.new()
+	if config.load(import_path) != OK:
+		# Not imported yet: Godot fills in the rest when it imports.
+		config.set_value("remap", "importer", "scene")
+		config.set_value("remap", "type", "PackedScene")
+		config.set_value("deps", "source_file", gltf_path)
+	elif config.get_value("params", "import_script/path", "") == script_path:
+		return false
+	config.set_value("params", "import_script/path", script_path)
+	if config.save(import_path) != OK:
+		push_error("Could not write %s" % import_path)
+		return false
+	return true
