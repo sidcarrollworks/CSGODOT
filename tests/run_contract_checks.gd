@@ -522,6 +522,18 @@ func _test_weapon_data_is_a_copy() -> void:
 	one.base_damage = 1.0
 	var two := ItemRegistry.weapon_data("weapon_deagle")
 	_check(two.base_damage > 1.0, "changing one WeaponData leaves the next one handed out alone")
+	var sniper := ItemRegistry.weapon_data("weapon_awp")
+	sniper.scoped.max_player_speed = 1.0
+	_check(
+		ItemRegistry.weapon_data("weapon_awp").scoped.max_player_speed > 1.0,
+		"and its scoped numbers are its own too"
+	)
+	# Worked out on the tick a new gun was first held, they took about 20 ms.
+	var bought := ItemRegistry.weapon_data("weapon_ak47")
+	_check(
+		bought._solved_model_hold_time >= 0.0 and bought._solved_kick_up >= 0.0,
+		"a copy comes with its recoil's two solved numbers, not to work out on its first tick"
+	)
 
 
 # --- Inventories ----------------------------------------------------------

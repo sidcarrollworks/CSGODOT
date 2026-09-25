@@ -103,23 +103,29 @@ These come up on several pages; the page named has the detail.
 
 ## Code at odds with the docs (2026-09-25, main at 86e73c2)
 
-Found while reading, not fixed here: this pull request changes no code.
-Items marked checked were confirmed by reading the code; the rest were read
-from code only and need checking before a fix. Each is written up on the page
-named, with file and line.
+Found while reading. Items marked checked were confirmed by reading the code;
+the rest were read from code only and need checking before a fix. Each is
+written up on the page named, with file and line. The audit after (main at
+b5d8e4d) tested each and fixed 1, the WeaponData half of 4, and 6; its
+findings follow each item.
 
 1. **Mouse sensitivity at 4K is half of CS2's** (checked). `PlayerInput.handle_event`
    (`src/player/player_input.gd:128-129`) aims with `motion.relative`, and
    `project.godot` uses the `canvas_items` stretch mode on a 1920x1080 base,
    so at 3840x2160 each count turns half as far. The docs say to use
-   `screen_relative` for aiming. input.md.
+   `screen_relative` for aiming. input.md. **Fixed**: it aims with
+   `screen_relative`, and `tests/run_sim_checks.gd` feeds it a stretched
+   event.
 2. **Hitboxes follow the drawn pose, not the tick** (checked that
    `SkinnedHitboxes` follows `skeleton_updated` and no tree is set to manual
    outside `scripts/profile_dust2.gd`). The AnimationTree runs per rendered
    frame, and the model's transform is interpolated between ticks, so where
    a shot lands can depend on frame rate. The docs' fix is
    `callback_mode_process = ANIMATION_CALLBACK_MODE_PROCESS_MANUAL` with
-   `advance()` from the tick. animation.md.
+   `advance()` from the tick. animation.md. Deliberate for now
+   (`PlayerModel.show_between` says a round meets the body where the
+   shooter saw it), but a server's hits would then depend on its own frame
+   timing: to change before the netcode (roadmap item 25).
 3. **`physics_jitter_fix` is at its default 0.5** (checked); the docs
    recommend 0 for this project's case. Needs a frame-pacing check on Sid's
    machine. main-loop.md, physics.md, engine.md.
@@ -127,25 +133,63 @@ named, with file and line.
    `WeaponSheet.rows()`), against `CLAUDE.md`'s rule; also
    `weapon_vdata.gd` and `surface_properties.gd`, and a shallow
    `WeaponData.duplicate()` in `item_registry.gd`. gdscript.md.
+   **WeaponData fixed**: a shallow copy came back without its two lazily
+   solved recoil numbers, and working them out took 20 to 22 ms on the
+   first tick each new gun was held (more than a tick). They are stored
+   now (`@export_storage`), solved when the registry builds the gun (once
+   per set of inputs, `WeaponData._hold_times`), and the copy is deep, so
+   the AWP's scoped numbers are its own too. The Dictionary caches are
+   still latent: no caller writes to them.
 5. **Map shaders may all compile as alpha-tested**: `lightmapped`,
    `probe_lit` and `far` write `ALPHA_SCISSOR_THRESHOLD` inside a runtime
    `if`. Measure with `scripts/profile_dust2.gd` before and after any fix.
-   shaders.md.
+   shaders.md. **Measured, nothing to fix**: copies of the shaders without
+   the branch on all 702 opaque materials changed the GPU's frame by at most
+   0.02 ms at 4K (`reference/rendering.md`, "Measured").
 6. **Project settings read as the wrong thing**: `msaa_3d=2` is 4x MSAA, not
    2x; `soft_shadow_filter_quality=4` is Soft High, not the highest; SSAO fade
-   distances are still metre defaults. rendering.md.
+   distances are still metre defaults. rendering.md. **Fixed**: the pages
+   and labels say 4x and Soft High, and SSAO is off, since it drew nothing:
+   no map material takes the ambient light it darkens, and it cost 0.6 to
+   0.95 ms a frame at 4K.
 7. **Additive animation layers at half strength**: `AnimationTree.deterministic`
    is false while `player_model.gd` uses `Add2` and an additive `OneShot`;
    `AnimationNodeBlendSpace2D.sync` is deprecated for `sync_mode`.
-   animation.md.
+   animation.md. **Confirmed, not fixed**: in a one-bone test an `Add2` at
+   1.0 turned the bone 30 of 60 degrees with `deterministic` off, and all
+   60 with it on, wherever the base clip keys the bone. Turning it on
+   changes how missing tracks blend too, so it needs a look in play.
 8. **Physics queried from `_process`** in `muzzle_flashes.gd` and
    `player_view.gd` (visual only; safe while physics stays on the main
    thread). physics.md.
 9. **3D sounds start a tick late**: `AudioStreamPlayer3D.play()` waits for
    the next physics frame, and every 3D player keeps the automatic distance
-   low-pass, which CS2 does not have. audio.md.
+   low-pass, which CS2 does not have. audio.md. Confirmed: no player sets
+   `attenuation_filter_cutoff_hz` (the hit sounds' curve-driven players
+   escape the filter, their distance gain staying 1).
 10. **Export blockers for later**: `DirAccess` listings of `res://` in
     `sound_bank.gd` and `map_importer.gd`, `FileAccess` reads of `.md`,
     `.csv`, `.json`, `.vmat` files, and a dedicated-server export strips the
     meshes `map_importer.gd` builds collision from. networking.md,
-    main-loop.md.
+    main-loop.md. Also caches written into `res://assets` at run time
+    (`LightmapMaterials.write_average`, `LightProbes`' packed sun), where an
+    export cannot write.
+
+Also settled by the audit:
+
+- On Jolt a one-sided trimesh face (`ConcavePolygonShape3D`,
+  `backface_collision` off, as dust2's collision is) is never hit from
+  behind, with `hit_back_faces` true or false; a ray starting inside a box
+  with `hit_from_inside` hits at its start with a zero normal. Tested
+  headless.
+- `InputEventKey.new()` has `device` 16 (`DEVICE_ID_KEYBOARD`) in 4.7.2,
+  where the class reference says 0, so keys `PlayerInput.ensure_actions`
+  adds match the keyboard's events.
+- Nothing in the simulation uses `await`, deferred calls, timers, `Input`
+  or `Area3D` overlap lists; dead players' hitboxes leave the physics
+  layer before they are freed; every headless script returns after
+  `quit()`.
+- The warnings the editor shows by default, set to errors and checked
+  file by file: 34 in all (names that shadow built-ins such as `seed` and
+  `round`, unused parameters), none a bug, and no integer division or
+  narrowing conversion.

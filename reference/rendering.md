@@ -32,12 +32,12 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
 |---|---|---|
 | Sun shadow | 4 splits, blended, out to 8192 units, pancake 4096; where the map's shadow is baked (R4), only what moves is drawn into it: the map is on render layer 11 (`MapShadows.LAYER`), which the sun's `shadow_caster_mask` leaves out | `MapLighting.build`, `MapImporter` |
 | Sun shadow atlas | 8192 x 8192 | `project.godot` |
-| Soft shadow filter | quality 4 (Ultra, the highest) | `project.godot` |
+| Soft shadow filter | quality 4, Soft High (Ultra is 5) | `project.godot` |
 | Sun's angular size | 0 where the map's shadow is baked (R4), so no penumbra search; otherwise dust2's `angulardiameter`, which turns on Godot's soft penumbra search (PCSS) | `MapLighting.build` |
 | The map's shadow from the sun | CS2's baked `direct_light_shadows` on every lightmapped surface, and the probe atlas's `_dlshd` page, read at every pixel, on everything the probes light (players, props, dropped guns, grenades, smoke, the bomb); both or neither, and live where either is missing (R4) | `MapShadows`, `lightmap.gdshaderinc`, `LightProbes`, `probe_lit.gdshaderinc` |
 | Map meshes | every visible one casts from both faces (`SHADOW_CASTING_SETTING_DOUBLE_SIDED`), into the lamps' shadows only where the sun's is baked | `MapImporter`, around line 268 |
-| Anti-aliasing | MSAA 2x | `project.godot` |
-| Screen-space occlusion | on, radius 24, detail 0.5 | `MapLighting.build` |
+| Anti-aliasing | MSAA 4x (`msaa_3d=2` is the enum `MSAA_4X`, not a sample count) | `project.godot` |
+| Screen-space occlusion | off: Godot's darkens ambient light only, and no map material takes any (they bring their bounce in through `light()`), so it drew nothing (Measured) | `MapLighting.build` |
 | Bloom, fog, colour adjustment | on | `MapLighting.build` |
 | Bounce light | CS2's own baked lightmaps (irradiance and direction), read in every world material's shader | `lightmap.gdshaderinc`, `LightmapMaterials` |
 | Props without lightmap UVs, players, arms | CS2's light probes, sampled in the shader | `probe_lit.gdshader`, `ProbeMaterials` |
@@ -71,9 +71,9 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
    on every pixel it covers, even where the map is in front. It is exact to
    do the squeeze in the vertex shader instead (R2), which keeps early
    rejection. `no_skybox` says what it costs.
-4. **MSAA 2x in Forward+**, with SSAO and glow on top. These scale with
-   pixels, so they grow 4x at 3840x2160. `no_msaa`, `no_ssao`, `no_glow`
-   and `half_resolution` measure them.
+4. **MSAA 4x in Forward+**, with SSAO and glow on top. These scale with
+   pixels, so they grow 4x at 3840x2160. `no_msaa`, `no_ssao` (SSAO is
+   off now), `no_glow` and `half_resolution` measure them.
 
 ## Local items (Sid's machine)
 
@@ -352,12 +352,43 @@ What it says:
 - **The skybox writing its depth costs 0.8 ms at 1080p and 3.2 ms at 4K**,
   far more than its 166 meshes and 86,000 triangles would. R2 is the fix.
 - The frame is bound by pixels: half resolution at 4K lands on the 1080p
-  baseline. MSAA 2x is 1.7 ms at 4K and SSAO 1.2.
+  baseline. 4x MSAA is 1.7 ms at 4K and SSAO 1.2, for nothing on screen
+  (below).
 - Players cost nothing measurable, and neither do fog and glow.
 
 Sid's CS2 settings (L2), from his `cs2_video.txt`: 3840x2160, **4x MSAA**,
 global shadow quality **High** with dynamic shadows from all lights,
 **anisotropic 2x**, ambient occlusion **Medium**, HDR **Quality**, shader
-detail High, FSR off, vsync on and `fps_max` 240. CS2 draws twice our MSAA
-samples at 4K, where Sid sees about 180 frames a second, so the gap is in
-the shadows and the skybox rather than in the anti-aliasing.
+detail High, FSR off, vsync on and `fps_max` 240. CS2 draws the same 4x
+MSAA as here at 4K (this page read `msaa_3d=2` as 2x until the Godot docs
+audit), where Sid sees about 180 frames a second, so the gap is in the
+shadows and the skybox rather than in the anti-aliasing.
+
+### SSAO, and the map shaders' alpha branch (the Godot docs audit)
+
+Sid's machine, main at b5d8e4d (R2, R3, R4 and the map's visibility in),
+the bots hidden so each run sees the same: the GPU's time per frame, the
+median of 240 frames at each of five views (T spawn, the palms, the arch,
+B site, long), measured with the feature, without it, and with it again.
+
+| At 3840x2160 | With | Without | With again |
+|---|---|---|---|
+| SSAO | 2.67 to 4.01 ms | 2.09 to 3.06 ms | 2.67 to 4.01 ms |
+| The alpha branch on the 702 opaque map materials | 2.67 to 4.01 ms | 2.65 to 3.99 ms | 2.67 to 4.01 ms |
+
+- **SSAO cost 0.6 to 0.95 ms a frame at 4K and drew nothing**: the same
+  three views drawn at 1920x1080 with it and without differed in no
+  pixel of the 3D.
+  Godot's SSAO darkens ambient light only, and every map, prop and player
+  material has `ambient_light_disabled` and adds CS2's bounce in `light()`,
+  where it counts as direct light. It is off now. CS2's own "ambient
+  occlusion" (Sid plays it at Medium) would need Godot's `ssao_light_affect`,
+  which darkens direct light too, the sun's included, and the fade
+  distances raised from their metre defaults (50 and 300 units): a look
+  to judge beside CS2, not a setting to restore.
+- **The alpha branch costs nothing measurable.** `lightmapped`, `probe_lit`
+  and `far` write `ALPHA_SCISSOR_THRESHOLD` inside a runtime `if`, which
+  the Godot docs say makes every material on them alpha-tested. Copies of
+  the six shaders without the branch, on every opaque material, changed
+  the frame by at most 0.02 ms at 4K and 0.04 ms at 1080p, within the runs'
+  noise. Nothing to change.

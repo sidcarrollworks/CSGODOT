@@ -27,8 +27,16 @@ const SETTLE_FRACTION := 0.01
 const PUNCH_HZ := 128.0
 
 
-var _solved_kick_up: float = -1.0
-var _solved_model_hold_time: float = -1.0
+# Worked out on first use (view_kick_up, model_hold_time) and kept, stored
+# so a copy (duplicate) carries them: a plain var comes back unset in a copy,
+# and each copy worked them out again on the first tick it was held.
+@export_storage var _solved_kick_up: float = -1.0
+@export_storage var _solved_model_hold_time: float = -1.0
+
+## The model's hold times model_hold_time has worked out, by the four
+## numbers it depends on: 20 ms of script each, and 33 of the 34 guns share
+## theirs.
+static var _hold_times := {}
 
 ## A punch angle with its own velocity, damped, with a spring pulling it back
 ## to zero. Source's DecayPunchAngle.
@@ -580,6 +588,10 @@ func model_hold_punch_impulse_scale() -> float:
 func model_hold_time() -> float:
 	if _solved_model_hold_time >= 0.0:
 		return _solved_model_hold_time
+	var key := [recoil_animation_time, model_punch_snap_time, model_kick_snap_share, punch_damping_ratio]
+	if _hold_times.has(key):
+		_solved_model_hold_time = _hold_times[key]
+		return _solved_model_hold_time
 	var wanted := maxf(recoil_animation_time, 0.0001)
 	var low := model_punch_snap_time
 	var high := maxf(wanted * 4.0, low * 2.0)
@@ -596,6 +608,7 @@ func model_hold_time() -> float:
 		else:
 			high = middle
 	_solved_model_hold_time = (low + high) * 0.5
+	_hold_times[key] = _solved_model_hold_time
 	return _solved_model_hold_time
 
 

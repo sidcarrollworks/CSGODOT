@@ -37,7 +37,6 @@ func _build() -> void:
 	_scene.add_child(_sun)
 
 	_environment = Environment.new()
-	_environment.ssao_enabled = true
 	_environment.glow_enabled = true
 	_environment.fog_enabled = true
 	var world_environment := WorldEnvironment.new()
@@ -55,7 +54,7 @@ func _build() -> void:
 	_sky.material_override = FarMaterials.build(StandardMaterial3D.new(), FarMaterials.far_plane_depth())
 	_scene.add_child(_sky)
 
-	root.msaa_3d = Viewport.MSAA_2X
+	root.msaa_3d = Viewport.MSAA_4X
 	root.use_occlusion_culling = true
 
 
@@ -89,7 +88,6 @@ func _state() -> Dictionary:
 		"distance": _sun.directional_shadow_max_distance,
 		"casting": _wall.cast_shadow,
 		"msaa": viewport.msaa_3d,
-		"ssao": _environment.ssao_enabled,
 		"glow": _environment.glow_enabled,
 		"fog": _environment.fog_enabled,
 		"sky": _sky.visible,
@@ -112,7 +110,6 @@ func _check_variants() -> void:
 		# checks it on the map's culling.
 		"no_visibility": {},
 		"no_msaa": {"msaa": Viewport.MSAA_DISABLED},
-		"no_ssao": {"ssao": false},
 		"no_glow": {"glow": false},
 		"no_fog": {"fog": false},
 		"no_skybox": {"sky": false},
@@ -121,7 +118,7 @@ func _check_variants() -> void:
 		"all_off": {
 			"shadows": false, "angular": 0.0, "distance": 2048.0,
 			"casting": GeometryInstance3D.SHADOW_CASTING_SETTING_ON, "msaa": Viewport.MSAA_DISABLED,
-			"ssao": false, "glow": false, "fog": false, "sky": false,
+			"glow": false, "fog": false, "sky": false,
 		},
 	}
 	var before := _state()

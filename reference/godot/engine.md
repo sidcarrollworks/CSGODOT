@@ -291,7 +291,7 @@ Sources: `engine_details/architecture/core_types.rst`, `common_engine_methods_an
 - `scripts/profile_dust2.gd`: an `extends SceneTree` script run with `--headless --script ... -- <team size> <windows>`, timing with `Time.get_ticks_usec()`, `Engine.get_process_frames()`, and `Performance.get_monitor(MEMORY_STATIC / OBJECT_COUNT / OBJECT_NODE_COUNT / OBJECT_RESOURCE_COUNT / OBJECT_ORPHAN_NODE_COUNT)`; it builds a marker node from `GDScript.new()` source to time the physics server step.
 - `scripts/run_tests.sh`, `scripts/common.sh:54,59`: `--headless --path ... --import`, then `--headless --path ... --script tests/run_*.gd`; `.github/workflows/tests.yml` uses the official 4.7.2 Linux editor binary.
 - `maps/play/play.gd`: map name from `OS.get_cmdline_user_args()` then `OS.get_cmdline_args()`.
-- `src/ui/movement_hud.gd`: `Engine.get_frames_per_second()`.
+- `src/ui/frame_meter.gd` (`FrameMeter`): the game HUD's, the range's and the movement course's frame rate, counted from `Time.get_ticks_usec()` a frame, with the slowest frame of each second (it replaced `Engine.get_frames_per_second()`).
 - `src/map/far_materials.gd`: `RenderingServer.get_current_rendering_method()`.
 - `project.godot [physics]`: `common/physics_ticks_per_second=64`, `common/max_physics_steps_per_frame=16`, `3d/physics_engine="Jolt Physics"`; nothing sets `3d/run_on_separate_thread` or the render thread model, so both stay on the main thread.
 - No `.gdextension` file, godot-cpp checkout, SConstruct, custom build or build profile exists in the repo.

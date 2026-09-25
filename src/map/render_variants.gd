@@ -14,14 +14,13 @@ const VARIANTS := {
 	"live_map_shadows": "the map drawn into the sun's live shadow map again, with its soft edges, as before its shadows were baked (MapShadows): what the baking saves",
 	"no_sun_shadows": "what the sun's four shadow splits cost altogether",
 	"sun_hard_edges": "the soft penumbra (the sun's angular size), the shadow maps kept",
-	"sun_filter_low": "the soft filter at its lowest rather than its highest",
+	"sun_filter_low": "the soft filter at its lowest rather than Soft High",
 	"sun_atlas_4096": "a 4096 shadow atlas rather than 8192",
 	"sun_distance_2048": "shadows out to 2048 units rather than 8192",
 	"one_sided_casters": "the map casting from its front faces only, not both",
 	"no_occlusion": "occlusion culling off (MapOccluders): what the map's walls save by hiding what is behind them",
 	"no_visibility": "the map's own visibility off (WorldVisibility): what CS2's precomputed culling saves",
-	"no_msaa": "2x MSAA off",
-	"no_ssao": "screen-space occlusion off",
+	"no_msaa": "4x MSAA off",
 	"no_glow": "bloom off",
 	"no_fog": "the distance haze off",
 	"no_skybox": "the 3D skybox's meshes hidden",
@@ -98,8 +97,6 @@ static func apply(variant: String, root: Node, viewport: Viewport) -> Callable:
 			return func() -> void: visibility.set_process(true)
 		"no_msaa":
 			return _change(viewport, "msaa_3d", Viewport.MSAA_DISABLED)
-		"no_ssao":
-			return _change(environment, "ssao_enabled", false)
 		"no_glow":
 			return _change(environment, "glow_enabled", false)
 		"no_fog":

@@ -2313,7 +2313,14 @@ func _test_lighting() -> void:
 				and used["sky"].contains("stand-in"),
 			"with no panorama on disk the sky is procedural, and the report says so"
 		)
-		_check(environment.ssao_enabled and environment.glow_enabled, "occlusion and glow are on")
+		var ambient_lit: Array[String] = []
+		for shader: Shader in [LightmapMaterials.OPAQUE_SHADER, ProbeMaterials.SHADER, BlendMaterials.SHADER, LightmapMaterials.OVERLAY_SHADER]:
+			if not shader.code.contains("ambient_light_disabled"):
+				ambient_lit.append(shader.resource_path)
+		_check(
+			environment.glow_enabled and not environment.ssao_enabled and ambient_lit.is_empty(),
+			"glow is on, and screen-space occlusion off: it darkens ambient light, which the map's materials take none of (%s)" % [ambient_lit]
+		)
 	_check(
 		used["lamps"] == 0 and holder.find_children("*", "SpotLight3D", true, false).is_empty(),
 		"a lump without live lamps lights none"

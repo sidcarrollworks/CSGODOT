@@ -114,16 +114,23 @@ static func buyable(team: String) -> Array[ItemDef]:
 	return out
 
 
-## A gun's WeaponData (WeaponLibrary.build), a copy of its own, or null for
-## anything else. Every gun's is built by load_all(), so none is read from disk
-## in a tick.
+## A gun's WeaponData (WeaponLibrary.build), a copy of its own, its scoped
+## numbers and arrays included, or null for anything else. Every gun's is
+## built by load_all(), so none is read from disk in a tick, and its recoil
+## solved then: a copy carries the answers, where working them out took
+## about 20 ms on the first tick each new gun was held.
 static func weapon_data(item_class: String) -> WeaponData:
 	var def := item(item_class)
 	if def == null or not def.is_gun:
 		return null
 	if not _weapon_data.has(item_class):
-		_weapon_data[item_class] = WeaponLibrary.build(item_class)
-	return (_weapon_data[item_class] as WeaponData).duplicate()
+		var built := WeaponLibrary.build(item_class)
+		if built != null:
+			built.model_hold_time()
+			built.view_kick_up()
+		_weapon_data[item_class] = built
+	var cached := _weapon_data[item_class] as WeaponData
+	return cached.duplicate(true) as WeaponData if cached != null else null
 
 
 ## Reads everything the registry hands out, each gun's WeaponData included:

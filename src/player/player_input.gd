@@ -127,8 +127,11 @@ static func ensure_actions() -> void:
 func handle_event(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		var motion := event as InputEventMouseMotion
-		yaw_degrees -= motion.relative.x * sensitivity * zoom_sensitivity * CS_YAW_PER_COUNT
-		pitch_degrees -= motion.relative.y * sensitivity * zoom_sensitivity * CS_YAW_PER_COUNT
+		# The mouse's own movement on the screen: relative is scaled with the
+		# 2D (the canvas_items stretch halves it in a 3840x2160 window), which
+		# would turn the view half as far as CS2 at the same sensitivity.
+		yaw_degrees -= motion.screen_relative.x * sensitivity * zoom_sensitivity * CS_YAW_PER_COUNT
+		pitch_degrees -= motion.screen_relative.y * sensitivity * zoom_sensitivity * CS_YAW_PER_COUNT
 		pitch_degrees = clampf(pitch_degrees, -PITCH_LIMIT, PITCH_LIMIT)
 		return
 
