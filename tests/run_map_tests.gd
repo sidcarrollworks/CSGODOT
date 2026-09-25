@@ -78,6 +78,7 @@ func _process(_delta: float) -> bool:
 		_test_lightmap_materials()
 		_test_far_materials()
 		_test_light_probes()
+		_test_prop_features()
 		_test_lighting()
 		_spawn_player()
 		_spawned_at_tick = Engine.get_physics_frames()
@@ -1257,6 +1258,10 @@ func _test_lightmap_materials() -> void:
 	pattern.set_meta("extras", {"vmat": {"ShaderName": "csgo_vertexlitgeneric.vfx"}})
 	var sticker := StandardMaterial3D.new()
 	sticker.set_meta("extras", {"vmat": {"ShaderName": "csgo_vertexlitgeneric.vfx", "IntParams": {"F_FORCE_UV2": 1.0}}})
+	# dust2's kasbah towers: the second UV set the dirt decal's, the
+	# lightmap's coordinates in a third.
+	var tower := StandardMaterial3D.new()
+	tower.set_meta("extras", {"vmat": {"ShaderName": "csgo_vertexlitgeneric.vfx", "IntParams": {"F_FORCE_UV2": 1.0}}})
 	var effect := StandardMaterial3D.new()
 	effect.set_meta("extras", {"vmat": {"ShaderName": "csgo_effects.vfx"}})
 	var blend := ShaderMaterial.new()
@@ -1275,8 +1280,9 @@ func _test_lightmap_materials() -> void:
 	# leaves collapsed onto one texel; the pattern at 3.2, a model's own UV
 	# set by its density; the effect charted but not lightmappable; a blend
 	# material charted like the world; a wall with no second UV set at all;
-	# and a sticker whose UV set is charted like a lightmap's but whose
-	# material says F_FORCE_UV2, the model's own.
+	# a sticker whose UV set is charted like a lightmap's but whose
+	# material says F_FORCE_UV2, the model's own; and a tower whose own set
+	# is dense and whose third is charted like the world's.
 	var mesh := ArrayMesh.new()
 	_add_quad(mesh, wall, 100.0, 0.5)
 	_add_quad(mesh, sign, 100.0, 0.5)
@@ -1287,6 +1293,7 @@ func _test_lightmap_materials() -> void:
 	_add_quad(mesh, blend, 100.0, 0.5)
 	_add_quad(mesh, wall, 100.0, -1.0)
 	_add_quad(mesh, sticker, 100.0, 0.5)
+	_add_quad(mesh, tower, 20.0, 1.0, 0.1)
 	var instance := MeshInstance3D.new()
 	instance.mesh = mesh
 	var meshes: Array[MeshInstance3D] = [instance]
@@ -1297,6 +1304,11 @@ func _test_lightmap_materials() -> void:
 			and LightmapMaterials.chart_density(mesh, 3, 1.0, Vector2(64, 64)) == 0.0,
 		"a surface's lightmap density is measured in texels a unit, and is zero when collapsed"
 	)
+	_check(
+		LightmapMaterials.has_third_uv(mesh, 9) and not LightmapMaterials.has_third_uv(mesh, 8)
+			and is_equal_approx(LightmapMaterials.chart_density(mesh, 9, 1.0, Vector2(64, 64), true), 0.32),
+		"a third UV set (CUSTOM0) is found, and measured like the second"
+	)
 
 	var without := LightmapMaterials.apply(meshes, "user://export_fixture/nowhere")
 	_check(
@@ -1306,8 +1318,8 @@ func _test_lightmap_materials() -> void:
 
 	var result := LightmapMaterials.apply(meshes, dir)
 	_check(
-		result["found"] and result["surfaces"] == 5 and result["props"] == 2,
-		"with them, the world's surfaces and the charted and collapsed props are lit by them (%d surfaces, %d props)"
+		result["found"] and result["surfaces"] == 6 and result["props"] == 3,
+		"with them, the world's surfaces, the charted and collapsed props and the tower are lit by them (%d surfaces, %d props)"
 			% [result["surfaces"], result["props"]]
 	)
 	var lit := instance.get_surface_override_material(0) as ShaderMaterial
@@ -1322,6 +1334,13 @@ func _test_lightmap_materials() -> void:
 			and instance.get_surface_override_material(7) == null
 			and instance.get_surface_override_material(8) == null,
 		"the wall on the opaque shader, the sign on the blended one, the plank lit; the pattern, effect, unmapped wall and sticker not"
+	)
+	var tower_lit := instance.get_surface_override_material(9) as ShaderMaterial
+	_check(
+		tower_lit != null and tower_lit.shader == LightmapMaterials.OPAQUE_SHADER
+			and tower_lit.get_shader_parameter("lightmap_uv_in_custom0") == true
+			and lit != null and lit.get_shader_parameter("lightmap_uv_in_custom0") == false,
+		"the tower reads the lightmap through its third UV set, the wall through its second"
 	)
 	_check(
 		LightmapMaterials.uses_own_uv2(BlendMaterials.vmat(sticker)) and not LightmapMaterials.uses_own_uv2(BlendMaterials.vmat(plank)),
@@ -1376,8 +1395,9 @@ func _test_lightmap_materials() -> void:
 
 ## A square of side units on its own surface of mesh with this material,
 ## its second UV set spanning uv2_extent of the lightmap (0 collapses it
-## onto one texel, below 0 leaves it out).
-func _add_quad(mesh: ArrayMesh, material: Material, side: float, uv2_extent: float) -> void:
+## onto one texel, below 0 leaves it out), and a third, in CUSTOM0 as
+## Godot imports one, spanning custom0_extent where that is not below 0.
+func _add_quad(mesh: ArrayMesh, material: Material, side: float, uv2_extent: float, custom0_extent: float = -1.0) -> void:
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array([
@@ -1388,8 +1408,59 @@ func _add_quad(mesh: ArrayMesh, material: Material, side: float, uv2_extent: flo
 	if uv2_extent >= 0.0:
 		var e := uv2_extent
 		arrays[Mesh.ARRAY_TEX_UV2] = PackedVector2Array([Vector2(0, 0), Vector2(e, 0), Vector2(e, e), Vector2(0, e)])
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var flags := 0
+	if custom0_extent >= 0.0:
+		var c := custom0_extent
+		arrays[Mesh.ARRAY_CUSTOM0] = PackedFloat32Array([0, 0, c, 0, c, c, 0, c])
+		flags = Mesh.ARRAY_CUSTOM_RG_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, flags)
 	mesh.surface_set_material(mesh.get_surface_count() - 1, material)
+
+
+## What CS2's prop shaders add that the glTF has no slot for, carried from
+## the vmat onto the lightmapped and probe-lit materials with the textures
+## the layers step fetched: the dirt decal down a kasbah tower, multiplied
+## in through its own second UV set, and a hanging lamp's self-illumination.
+func _test_prop_features() -> void:
+	var dir := "user://export_fixture/features"
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir.path_join("materials/props")))
+	Image.create(4, 4, false, Image.FORMAT_RGBA8).save_png(dir.path_join("materials/props/dirt.png"))
+	Image.create(4, 4, false, Image.FORMAT_RGBA8).save_png(dir.path_join("materials/props/glow.png"))
+	var tower := StandardMaterial3D.new()
+	tower.set_meta("extras", {"vmat": {
+		"ShaderName": "csgo_vertexlitgeneric.vfx",
+		"IntParams": {"F_FORCE_UV2": 1.0, "F_DECAL_TEXTURE": 1.0, "F_DECAL_BLEND_MODE": 1.0},
+		"TextureParams": {"g_tDecal": "materials/props/dirt.vtex"},
+	}})
+	var lamp := StandardMaterial3D.new()
+	lamp.set_meta("extras", {"vmat": {
+		"ShaderName": "csgo_vertexlitgeneric.vfx",
+		"IntParams": {"F_SELF_ILLUM": 1.0},
+		"FloatParams": {"g_flSelfIllumBrightness": 2.975, "g_flSelfIllumScale": 1.0, "g_flSelfIllumAlbedoFactor": 1.0},
+		"VectorParams": {"g_vSelfIllumTint": [1.0, 1.0, 0.882353, 0.0]},
+		"TextureParams": {"g_tSelfIllumMask": "materials/props/glow.vtex"},
+	}})
+	var lightmap := ImageTexture.create_from_image(Image.create(4, 4, false, Image.FORMAT_RGBAF))
+	var tower_lit := LightmapMaterials.build(tower, lightmap, lightmap, true, dir)
+	_check(
+		tower_lit.get_shader_parameter("decal_texture") is Texture2D and tower_lit.get_shader_parameter("decal_mode") == 1
+			and tower_lit.get_shader_parameter("decal_on_uv2") == true,
+		"a tower's dirt decal is multiplied in through its own second UV set"
+	)
+	var lamp_lit := ProbeMaterials.build(lamp, dir)
+	var tint := Color(1.0, 1.0, 0.882353).srgb_to_linear()
+	var glow: Variant = lamp_lit.get_shader_parameter("self_illum_color")
+	_check(
+		glow is Vector3 and (glow as Vector3).is_equal_approx(Vector3(tint.r, tint.g, tint.b) * pow(2.0, 2.975) * LightmapMaterials.ENERGY)
+			and lamp_lit.get_shader_parameter("self_illum_mask") is Texture2D
+			and is_equal_approx(lamp_lit.get_shader_parameter("self_illum_albedo_factor"), 1.0),
+		"a lamp glows: 2 to its brightness, in its tint, at the lightmap's energy, through its mask, over its colour (%s)" % [glow]
+	)
+	var bare := LightmapMaterials.build(tower, lightmap, lightmap, true, "user://export_fixture/nowhere")
+	_check(
+		bare.get_shader_parameter("decal_mode") == null and bare.get_shader_parameter("self_illum_color") == null,
+		"without the textures extracted neither is set, and the shader's defaults leave the surface as it was"
+	)
 
 
 ## Drawn behind everything: every material becomes one that squeezes its
@@ -1420,12 +1491,30 @@ func _test_far_materials() -> void:
 	_check(
 		far_blend != null and far_blend.shader != BlendMaterials.SHADER
 			and far_blend.shader.code.contains(FarMaterials.INCLUDE)
-			and far_blend.shader.code.contains(FarMaterials.VERTEX_SQUEEZE + "void fragment() {")
-			and not far_blend.shader.code.contains("\tDEPTH =")
 			and is_equal_approx(far_blend.get_shader_parameter("blend_softness"), 0.42)
 			and is_equal_approx(far_blend.get_shader_parameter("far_plane_depth"), 1.0)
 			and FarMaterials.variant_of(BlendMaterials.SHADER) == far_blend.shader,
 		"a shader material gets a variant of its own shader with the squeeze, keeping its parameters, made once"
+	)
+	# The blend shader's vertex() is the lightmap include's: the variant adds
+	# no second one (two do not compile) and writes no DEPTH, and the
+	# include squeezes under the far include's define, which comes first.
+	var lightmap_vertex := FarMaterials.vertex_code(BlendMaterials.SHADER.code)
+	_check(
+		lightmap_vertex.contains("#ifdef FAR_SQUEEZE") and lightmap_vertex.contains("POSITION = far_position(")
+			and not far_blend.shader.code.contains("void vertex()")
+			and not far_blend.shader.code.contains("\tDEPTH =")
+			and far_blend.shader.code.find(FarMaterials.INCLUDE) < far_blend.shader.code.find("lightmap.gdshaderinc")
+			and (load("res://src/map/far.gdshaderinc") as ShaderInclude).code.contains("#define FAR_SQUEEZE"),
+		"a shader whose vertex() is in an include squeezes there, with no second vertex() and no DEPTH"
+	)
+	var plain := Shader.new()
+	plain.code = "shader_type spatial;\nvoid fragment() {\n}\n"
+	var plain_far := FarMaterials.variant_of(plain)
+	_check(
+		plain_far != null and plain_far.code.contains(FarMaterials.VERTEX_SQUEEZE + "void fragment() {")
+			and plain_far.code.count("void vertex()") == 1 and not plain_far.code.contains("\tDEPTH ="),
+		"a shader with no vertex() anywhere is given one that squeezes"
 	)
 	var own_vertex := Shader.new()
 	own_vertex.code = "shader_type spatial;\nvoid vertex() {\n\tPOSITION = vec4(VERTEX, 1.0);\n}\nvoid fragment() {\n}\n"
@@ -1438,6 +1527,14 @@ func _test_far_materials() -> void:
 	var no_fragment := Shader.new()
 	no_fragment.code = "shader_type spatial;"
 	_check(FarMaterials.variant_of(no_fragment) == null, "a shader with no fragment function is left alone")
+	var card := StandardMaterial3D.new()
+	card.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	var opaque := StandardMaterial3D.new()
+	_check(
+		is_equal_approx((FarMaterials.build(card, 0.0) as ShaderMaterial).get_shader_parameter("alpha_scissor"), FarMaterials.BLENDED_CUT)
+			and is_equal_approx((FarMaterials.build(opaque, 0.0) as ShaderMaterial).get_shader_parameter("alpha_scissor"), -1.0),
+		"a blended material behind everything is cut at its edge, not drawn solid (the skybox's palm cards); an opaque one is not cut"
+	)
 
 	# The importer, asked to: every drawn surface of the fixture.
 	var importer := _make_importer(MapImporter.CollisionSource.NONE)
@@ -1651,7 +1748,61 @@ func _test_lighting() -> void:
 			"with no panorama on disk the sky is procedural, and the report says so"
 		)
 		_check(environment.ssao_enabled and environment.glow_enabled, "occlusion and glow are on")
+	_check(
+		used["lamps"] == 0 and holder.find_children("*", "SpotLight3D", true, false).is_empty(),
+		"a lump without live lamps lights none"
+	)
 	holder.free()
+
+	# dust2's two lamps down lower tunnels, which CS2 lights as it draws
+	# (stationary: directlight 3, a baked shadow index), and one of its CT
+	# spawn lamps, baked whole into the lightmap (directlight 1), as the
+	# entity lump has them; and a live light of a kind not built.
+	var tunnel := {
+		"classname": "light_barn", "origin": "[ -1040.0, 1424.563354, 84.561882 ]", "angles": "[ 89.999985, 0.0, 0.0 ]",
+		"color": "[ 255, 184, 123 ]", "brightness_lumens": "3000.0", "brightnessscale": "1.0", "range": "204.848007",
+		"directlight": "3", "bakedshadowindex": "1", "castshadows": "1", "size_params": "[ 16.0, 16.0, 0.12 ]",
+		"soft_x": "0.33", "soft_y": "0.33", "enabled": "true",
+	}
+	var dimmer := tunnel.duplicate()
+	dimmer["origin"] = "[ -691.999939, 1424.563354, 88.312721 ]"
+	dimmer["brightness_lumens"] = "850.0"
+	dimmer["bakedshadowindex"] = "2"
+	var baked := tunnel.duplicate()
+	baked["origin"] = "[ 325.308746, 2371.635986, 31.464579 ]"
+	baked["directlight"] = "1"
+	baked.erase("bakedshadowindex")
+	var rect := {"classname": "light_rect", "directlight": "3", "bakedshadowindex": "3", "size_params": "[ 6.0, 10.0, 0.15 ]"}
+	var lamp_entities: Array[Dictionary] = [tunnel, dimmer, baked, rect]
+	var lit := Node3D.new()
+	root.add_child(lit)
+	var lamps := MapLighting.add_lamps(lit, lamp_entities)
+	var spots := lit.find_children("*", "SpotLight3D", true, false)
+	_check(lamps["built"] == 2 and lamps["left_out"] == 1 and spots.size() == 2,
+		"the two live lamps are lit, the baked one left to the lightmap, the rect light counted as left out (%s)" % [lamps])
+	if spots.size() == 2:
+		var lamp := spots[0] as SpotLight3D
+		# CS2's frustum: its eye 1 / 0.12 = 8.33 units above the lamp, 16
+		# units either side there, 62.49 degrees off its axis, a solid angle
+		# of 3.6213 steradians; 40 pi x 3000 lumens over that, at the sun's
+		# scale, is 72,870 at one unit.
+		_check(
+			lamp.global_position.is_equal_approx(Vector3(1424.563354, 84.561882 + 1.0 / 0.12, -1040.0))
+				and (-lamp.global_basis.z).is_equal_approx(Vector3.DOWN)
+				and is_equal_approx(lamp.spot_angle, rad_to_deg(atan(16.0 * 0.12)))
+				and absf(lamp.light_energy - 72870.0) < 50.0 and is_equal_approx(lamp.spot_attenuation, 2.0)
+				and lamp.light_color.is_equal_approx(Color8(255, 184, 123)) and lamp.shadow_enabled,
+			"a barn is a shadowed spot from its frustum's eye, straight down, 62.5 degrees wide, falling off as the square (%s, %.0f)"
+				% [lamp.global_position, lamp.light_energy]
+		)
+		var full := pow(1.0 - pow((8.33 + 204.85) / lamp.spot_range, 4.0), 2.0)
+		_check(
+			full > 0.94 and is_equal_approx(lamp.spot_angle_attenuation, 1.0)
+				and is_equal_approx(lamp.shadow_bias, MapLighting.LAMP_SHADOW_BIAS)
+				and absf((spots[1] as SpotLight3D).light_energy - 72870.0 * 850.0 / 3000.0) < 20.0,
+			"it keeps 95% of its light out to CS2's range, fades only near its edge, and shadows at the map's scale; the dimmer lamp is lit by its own lumens"
+		)
+	lit.free()
 
 	# With the lightmap's average measured, that is the ambient instead, at
 	# the lightmapped surfaces' own energy.

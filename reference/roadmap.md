@@ -92,6 +92,13 @@ Updated 2026-09-24 later: game modes apart from maps (item 24a, `reference/syste
   PR #21), entity lump, blend layers, sky, 3D skybox.
 - Lighting from the map's own numbers: sun, fog, exposure, the baked
   lightmaps for bounce light, light probes for props, players and arms.
+  The 3D skybox lit by its own lightmaps, the props with a decal UV set
+  (the kasbah towers, arches, crates) by the map's through their third
+  UV set, and the props' decals and glow; and the two lamps down lower
+  tunnels, which CS2 lights as it draws rather than bakes, lit the same
+  way (`MapLighting.add_lamps`). After Sid found black skybox buildings,
+  orange blocks on the towers and a dark lower tunnel (2026-09-24,
+  `reference/asset-pipeline.md`).
 - What a frame costs to draw, measured on Sid's machine (2026-09-24,
   `scripts/profile_render.gd`, `reference/rendering.md`): the sun's live
   shadows are most of it. Occlusion culling from the collision hull and a
@@ -628,7 +635,11 @@ list, split into Local and Remote items, with the measurements.
       Source2Viewer-CLI 20.0 reads 59 to 71, so its env_sky material
       (`materials/skybox/test/s2_de_inferno_sky01.vmat_c`) did not
       decompile and 4284 textures failed. `extract_assets.sh` should warn
-      when Source 2 Viewer prints "Only VCS file versions".
+      when Source 2 Viewer prints "Only VCS file versions". The same gap
+      costs every colour texture exported since its alpha: dust2's 3D
+      skybox, exported again on 2026-09-24, draws its palm and bush cards
+      whole. Support is on Source 2 Viewer's master since 2026-09-23;
+      export again with the release that has it.
     - *The first import fails to compile `prepare_export.gd`.* *(Remote)*
       On a fresh checkout `lightmap_materials.gd:75` names `BlendMaterials`
       before any import has registered the class names, so the first

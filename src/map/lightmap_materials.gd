@@ -13,10 +13,12 @@ extends RefCounted
 ## The world's own geometry is always lightmapped. A prop is lightmapped
 ## when it was placed so: its second UV set is then laid out as charts at
 ## the map's texel density, or, for a prop the map lights by light probes,
-## collapsed onto one texel of its own that holds that light. Other props
-## carry their model's own second UV set, which their material says with
-## F_FORCE_UV2 (a decal or a tint mask reads it), or none; those are lit
-## by the light probes instead (ProbeMaterials).
+## collapsed onto one texel of its own that holds that light. A prop whose
+## material says F_FORCE_UV2 carries its model's own second UV set (a decal
+## or a tint mask reads it), and its lightmap coordinates, where it has any,
+## in a third, which Godot imports as CUSTOM0: dust2's kasbah towers and
+## arches. The props with neither are lit by the light probes instead
+## (ProbeMaterials).
 
 const OPAQUE_SHADER := preload("res://src/map/lightmapped.gdshader")
 const OVERLAY_SHADER := preload("res://src/map/lightmapped_overlay.gdshader")
@@ -50,11 +52,12 @@ static var _two_sided := {}
 
 ## Applies the lightmaps under map_dir to every lightmapped surface of these
 ## meshes, whose vertices are still in the export's units, unit_scale map
-## units each. Returns {"surfaces": how many, "props": how many of those
+## units each; a prop's decal and self-illumination come from textures_dir
+## (carry_features). Returns {"surfaces": how many, "props": how many of those
 ## are props, "found": whether the maps were there, "ambient": the
 ## lightmap's average light as a Color, or null if unmeasured}; without the
 ## maps nothing changes.
-static func apply(meshes: Array[MeshInstance3D], map_dir: String, unit_scale: float = 1.0) -> Dictionary:
+static func apply(meshes: Array[MeshInstance3D], map_dir: String, unit_scale: float = 1.0, textures_dir: String = "") -> Dictionary:
 	var irradiance := _load(map_dir.path_join(IRRADIANCE_FILE))
 	var direction := _load(map_dir.path_join(DIRECTION_FILE))
 	if irradiance == null or direction == null:
@@ -62,7 +65,7 @@ static func apply(meshes: Array[MeshInstance3D], map_dir: String, unit_scale: fl
 	var lightmap_size := Vector2(irradiance.get_size())
 
 	# Every candidate, and the world's own density to judge the props by.
-	var candidates: Array[Array] = []  # [mesh_instance, surface, material, is_prop, density]
+	var candidates: Array[Array] = []  # [mesh_instance, surface, material, is_prop, density, in_custom0]
 	var world_densities := PackedFloat32Array()
 	for mesh_instance in meshes:
 		var mesh := mesh_instance.mesh as ArrayMesh
@@ -77,12 +80,13 @@ static func apply(meshes: Array[MeshInstance3D], map_dir: String, unit_scale: fl
 			var is_prop := shader in PROP_SHADERS
 			if not (is_prop or shader in WORLD_SHADERS):
 				continue
-			if is_prop and uses_own_uv2(description):
+			var in_custom0 := is_prop and uses_own_uv2(description)
+			if in_custom0 and not has_third_uv(mesh, surface):
 				continue
-			var density := chart_density(mesh, surface, unit_scale, lightmap_size)
+			var density := chart_density(mesh, surface, unit_scale, lightmap_size, in_custom0)
 			if not is_prop and density > 0.0:
 				world_densities.append(density)
-			candidates.append([mesh_instance, surface, material, is_prop, density])
+			candidates.append([mesh_instance, surface, material, is_prop, density, in_custom0])
 	var world_median := DEFAULT_DENSITY
 	if not world_densities.is_empty():
 		world_densities.sort()
@@ -97,6 +101,7 @@ static func apply(meshes: Array[MeshInstance3D], map_dir: String, unit_scale: fl
 		var surface: int = candidate[1]
 		var material: Material = candidate[2]
 		var density: float = candidate[4]
+		var in_custom0: bool = candidate[5]
 		if candidate[3]:
 			if density > 0.0 and (density < world_median / DENSITY_BELOW or density > world_median * DENSITY_ABOVE):
 				continue
@@ -108,9 +113,10 @@ static func apply(meshes: Array[MeshInstance3D], map_dir: String, unit_scale: fl
 			(material as ShaderMaterial).set_shader_parameter("lightmap_direction", direction)
 			(material as ShaderMaterial).set_shader_parameter("lightmap_energy", ENERGY)
 			continue
-		if not built.has(material):
-			built[material] = build(material as BaseMaterial3D, irradiance, direction)
-		mesh_instance.set_surface_override_material(surface, built[material])
+		var key := [material, in_custom0]
+		if not built.has(key):
+			built[key] = build(material as BaseMaterial3D, irradiance, direction, in_custom0, textures_dir)
+		mesh_instance.set_surface_override_material(surface, built[key])
 	return {"surfaces": surfaces, "props": props, "found": true, "ambient": read_average(map_dir)}
 
 
@@ -125,16 +131,35 @@ static func uses_own_uv2(description: Dictionary) -> bool:
 	return int((description.get("IntParams", {}) as Dictionary).get("F_FORCE_UV2", 0)) != 0
 
 
-## How densely a surface's second UV set covers the lightmap, in texels per
-## unit of its edges, over a sample of its triangles: the median, leaving
-## out triangles collapsed onto one texel. Zero when every sampled triangle
-## is, or when there is nothing to measure.
-static func chart_density(mesh: Mesh, surface: int, unit_scale: float, lightmap_size: Vector2) -> float:
+## Whether a surface has a third UV set: two floats a vertex in CUSTOM0,
+## which is how Godot imports the glTF's TEXCOORD_2.
+static func has_third_uv(mesh: ArrayMesh, surface: int) -> bool:
+	var format := mesh.surface_get_format(surface)
+	if format & Mesh.ARRAY_FORMAT_CUSTOM0 == 0:
+		return false
+	return (format >> Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT) & Mesh.ARRAY_FORMAT_CUSTOM_MASK == Mesh.ARRAY_CUSTOM_RG_FLOAT
+
+
+## How densely a surface's lightmap coordinates (its second UV set, or its
+## third with in_custom0) cover the lightmap, in texels per unit of its
+## edges, over a sample of its triangles: the median, leaving out triangles
+## collapsed onto one texel. Zero when every sampled triangle is, or when
+## there is nothing to measure.
+static func chart_density(mesh: Mesh, surface: int, unit_scale: float, lightmap_size: Vector2, in_custom0: bool = false) -> float:
 	var arrays := mesh.surface_get_arrays(surface)
-	if arrays[Mesh.ARRAY_TEX_UV2] == null or arrays[Mesh.ARRAY_VERTEX] == null:
+	var coordinates: Variant = arrays[Mesh.ARRAY_CUSTOM0 if in_custom0 else Mesh.ARRAY_TEX_UV2]
+	if coordinates == null or arrays[Mesh.ARRAY_VERTEX] == null:
 		return 0.0
 	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-	var uv2: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV2]
+	var uv2 := PackedVector2Array()
+	if in_custom0:
+		var pairs: PackedFloat32Array = coordinates
+		@warning_ignore("integer_division")
+		uv2.resize(pairs.size() / 2)
+		for i in uv2.size():
+			uv2[i] = Vector2(pairs[i * 2], pairs[i * 2 + 1])
+	else:
+		uv2 = coordinates
 	var index: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
 	@warning_ignore("integer_division")
 	var triangles := index.size() / 3 if not index.is_empty() else vertices.size() / 3
@@ -162,7 +187,9 @@ static func chart_density(mesh: Mesh, surface: int, unit_scale: float, lightmap_
 
 ## A lightmapped material carrying over what the import made of a standard
 ## one: its textures, colour, cut and sidedness.
-static func build(material: BaseMaterial3D, irradiance: Texture2D, direction: Texture2D) -> ShaderMaterial:
+static func build(
+	material: BaseMaterial3D, irradiance: Texture2D, direction: Texture2D, in_custom0: bool = false, textures_dir: String = ""
+) -> ShaderMaterial:
 	var blended := material.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA \
 		or material.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
 	var lit := ShaderMaterial.new()
@@ -185,9 +212,41 @@ static func build(material: BaseMaterial3D, irradiance: Texture2D, direction: Te
 	lit.set_shader_parameter("lightmap_irradiance", irradiance)
 	lit.set_shader_parameter("lightmap_direction", direction)
 	lit.set_shader_parameter("lightmap_energy", ENERGY)
+	lit.set_shader_parameter("lightmap_uv_in_custom0", in_custom0)
+	carry_features(lit, BlendMaterials.vmat(material), textures_dir)
 	# Kept for whoever reads the material later.
 	lit.set_meta("extras", material.get_meta("extras", {}))
 	return lit
+
+
+## Carries what CS2's prop shaders add that the glTF has no slot for onto a
+## material drawn with prop_features.gdshaderinc: the decal over its colour
+## and its self-illumination, from the material's description (its vmat),
+## with the textures the layers step fetched under textures_dir. Without
+## them, nothing changes.
+static func carry_features(lit: ShaderMaterial, description: Dictionary, textures_dir: String) -> void:
+	var flags: Dictionary = description.get("IntParams", {})
+	var textures: Dictionary = description.get("TextureParams", {})
+	var floats: Dictionary = description.get("FloatParams", {})
+	var own_uv2 := uses_own_uv2(description)
+	if int(flags.get("F_DECAL_TEXTURE", 0)) != 0:
+		var decal := BlendMaterials.load_texture(textures_dir, textures.get("g_tDecal"))
+		if decal != null:
+			lit.set_shader_parameter("decal_texture", decal)
+			lit.set_shader_parameter("decal_mode", int(flags.get("F_DECAL_BLEND_MODE", 0)))
+			lit.set_shader_parameter("decal_on_uv2", own_uv2 or int(flags.get("g_bUseSecondaryUvForDecal", 0)) != 0)
+	if int(flags.get("F_SELF_ILLUM", 0)) != 0:
+		var mask := BlendMaterials.load_texture(textures_dir, textures.get("g_tSelfIllumMask"))
+		if mask != null:
+			var tint: Array = (description.get("VectorParams", {}) as Dictionary).get("g_vSelfIllumTint", [1.0, 1.0, 1.0])
+			# The tint is read as sRGB; the brightness is a power of two.
+			var colour := Color(float(tint[0]), float(tint[1]), float(tint[2])).srgb_to_linear()
+			var brightness := float(floats.get("g_flSelfIllumBrightness", 0.0))
+			var strength := pow(2.0, brightness) * float(floats.get("g_flSelfIllumScale", 1.0)) * ENERGY
+			lit.set_shader_parameter("self_illum_mask", mask)
+			lit.set_shader_parameter("self_illum_color", Vector3(colour.r, colour.g, colour.b) * strength)
+			lit.set_shader_parameter("self_illum_albedo_factor", float(floats.get("g_flSelfIllumAlbedoFactor", 0.0)))
+			lit.set_shader_parameter("self_illum_on_uv2", own_uv2 or int(flags.get("g_bUseSecondaryUvForSelfIllum", 0)) != 0)
 
 
 ## The lightmapped shader for a material: the blended one for an alpha

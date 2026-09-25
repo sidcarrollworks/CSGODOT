@@ -8,13 +8,18 @@
 // 3840x2160 (reference/rendering.md). It is the same depth at every pixel
 // either way: the squeeze is affine in the depth the rasteriser
 // interpolates (z over w), so doing it at the corners is exact.
-// far_depth stays for a shader whose vertex() sets POSITION already.
+// A shader has one vertex(), so one that has its own brought in by an
+// include (lightmap.gdshaderinc) squeezes there, under FAR_SQUEEZE, which
+// this defines ahead of it (FarMaterials.variant_of); far_depth stays for
+// a shader whose vertex() sets POSITION already.
 //
 // The fragment keeps a thousandth of its distance from the far plane, so
 // the parts of a far scene still sort among themselves while anything of
-// the near scene, at any depth, lands in front. Which end of the buffer is
-// far depends on the renderer: Forward+ and Mobile reverse it (far is 0),
-// Compatibility does not (far is 1); the material is told.
+// the near scene, at any depth, lands in front. Every renderer reverses
+// the depth buffer since Godot 4.3, Compatibility included, so far is 0
+// (FarMaterials.far_plane_depth); the material is told.
+
+#define FAR_SQUEEZE
 
 uniform float far_plane_depth = 0.0;
 const float FAR_DEPTH_KEEP = 0.001;

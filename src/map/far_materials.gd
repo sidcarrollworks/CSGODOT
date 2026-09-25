@@ -20,6 +20,8 @@ extends RefCounted
 const SHADER := preload("res://src/map/far.gdshader")
 const INCLUDE := "#include \"res://src/map/far.gdshaderinc\""
 const VERTEX_SQUEEZE := "void vertex() {\n\tPOSITION = far_position(PROJECTION_MATRIX * MODELVIEW_MATRIX * vec4(VERTEX, 1.0), CLIP_SPACE_FAR);\n}\n\n"
+## Where a blended material's edge is cut, drawn behind everything.
+const BLENDED_CUT := 0.5
 
 static var _variants := {}  # Shader -> its far variant, and a two-sided one under a string key
 
@@ -80,8 +82,12 @@ static func build(material: Material, far: float) -> Material:
 	lit.set_shader_parameter("roughness_factor", base.roughness)
 	lit.set_shader_parameter(
 		"alpha_scissor",
-		base.alpha_scissor_threshold
-		if base.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR else -1.0
+		base.alpha_scissor_threshold if base.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+		# A blended edge is cut instead: the squeeze is written in the
+		# opaque pass, and at the skybox's distance a cut edge looks the
+		# same. Drawn opaque, the palms' tree cards were solid triangles.
+		else BLENDED_CUT if base.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED
+		else -1.0
 	)
 	lit.set_shader_parameter("far_plane_depth", far)
 	lit.set_meta("extras", base.get_meta("extras", {}))
@@ -90,9 +96,11 @@ static func build(material: Material, far: float) -> Material:
 
 ## A shader's code with the squeeze added: the include after the type line,
 ## and a vertex() that squeezes the clip position (far.gdshaderinc says why
-## there). A shader with a vertex() of its own has the depth written at the
-## top of fragment() instead, unconditionally, as a written DEPTH has to be.
-## Made once per shader.
+## there). A shader whose vertex() comes from an include squeezes in it
+## when the include says FAR_SQUEEZE (lightmap.gdshaderinc does), since a
+## shader has only one. Any other vertex() of its own has the depth written
+## at the top of fragment() instead, unconditionally, as a written DEPTH has
+## to be. Made once per shader.
 static func variant_of(base: Shader) -> Shader:
 	if base == null or not base.code.contains("void fragment() {"):
 		return null
@@ -102,13 +110,33 @@ static func variant_of(base: Shader) -> Shader:
 	var code := base.code
 	if not code.contains(INCLUDE):
 		code = code.replace("shader_type spatial;", "shader_type spatial;\n" + INCLUDE)
-	if code.contains("void vertex()"):
-		code = code.replace("void fragment() {", "void fragment() {\n\tDEPTH = far_depth(FRAGCOORD.z);")
-	else:
+	var vertex := vertex_code(code)
+	if vertex.is_empty():
 		code = code.replace("void fragment() {", VERTEX_SQUEEZE + "void fragment() {")
+	elif not vertex.contains("#ifdef FAR_SQUEEZE"):
+		code = code.replace("void fragment() {", "void fragment() {\n\tDEPTH = far_depth(FRAGCOORD.z);")
 	shader.code = code
 	_variants[base] = shader
 	return shader
+
+
+## The code a shader's vertex() is in: its own, or that of the include
+## that brings it in, looked for through includes of includes; empty when
+## it has none.
+static func vertex_code(code: String) -> String:
+	if code.contains("void vertex()"):
+		return code
+	for line in code.split("\n"):
+		var stripped := line.strip_edges()
+		if not stripped.begins_with("#include"):
+			continue
+		var path := stripped.trim_prefix("#include").strip_edges().trim_prefix("\"").trim_suffix("\"")
+		var include := load(path) as ShaderInclude if ResourceLoader.exists(path) else null
+		if include != null:
+			var found := vertex_code(include.code)
+			if not found.is_empty():
+				return found
+	return ""
 
 
 static func _two_sided(base: Shader) -> Shader:
