@@ -102,7 +102,7 @@ its animation 93 us a frame against 87 (one body, headless, AK and Glock).
 | dust2 loaded to the first frame | 4.8 s (5.1 with twenty players), before its bots' guns were read |
 | The first body of each kind (its ~80 scenes read) | 240 ms; every one after, 2.7 ms |
 | The first body that holds what is in hand (the pistol's and knife's locomotion read too) | 210 ms more; every one after, 4.6 ms |
-| Everything anyone may take in hand, read before play (`prepare_holding`: every item on either side's menu, the knife and the bomb, clips and models, 32 models; 2026-09-25, drawn, second run) | 1.40 s with the disk's cache warm (it was 2.06 s for the bots' 18 models and the rest's clips, before the guns' legacy bodies were left out); 125 MiB more video memory than then |
+| Everything anyone may take in hand, read before play (`prepare_holding`: every item on either side's menu, the knife and the bomb, clips and models, 32 models, the guns' legacy bodies left out at import; 2026-09-25, drawn, the mean of three runs after one to warm up) | 1.63 s with the disk's cache warm, against 1.46 s when it read the bots' 18 models and only the rest's clips; 123 MiB more video memory than then |
 | Every gun's sounds (`WeaponSounds`: 334 files, from `sounds.md` and `timings.csv`) | 0.39 s warm, 2.3 s cold |
 | Bullet-hole textures, and every sound set | 270 ms, and 120 to 570 ms (the disk's cache warm or cold) |
 | The tracers' and flashes' textures (`ShotEffects.prepare`; the flames' sheets are 4096 by 2048, and the first flash of a fight reading one held its frame up 12 ms) | 25 to 30 ms |
@@ -219,8 +219,8 @@ Every model anyone can take in hand in a match is read before play now, as
 CS2 precaches every gun (`reference/research/weapon-preload.md`): both
 menus, the Zeus, the grenades, the knife and the bomb, 32 models, where the
 16 guns dust2's bots may hold were read before. With each gun's hidden
-legacy body left out at import, that is 125 MiB more video memory than
-before and a shorter read (the "Once" table). A gun is 42 MiB of textures
+legacy body left out at import, that is 123 MiB more video memory than
+before and 0.17 s more at match start (the "Once" table). A gun is 42 MiB of textures
 and 3 of mesh without it (not the 85 MB first written here: that counted
 upload buffers in system memory, left by reading all 34 at once on
 workers). No buy or pickup in a match reads a model any more.
@@ -244,7 +244,7 @@ workers). No buy or pickup in a match reads a model any more.
 | A gun's recoil numbers carried by its copies (`WeaponData`'s solved fields stored, solved as the registry builds each gun) | the Godot docs audit | every new gun (a buy, a pickup, a round's pistols) solved its weapon model's hold time again on the first tick it was held: 20 to 22 ms, more than a tick; now 1 us, and `ItemRegistry.load_all` 17 ms to 69 |
 | Frames drawn where the clock is: `physics_jitter_fix` 0, `DrawClock`, and the mouse read just before the view is placed | frame pacing | a frame that ran a tick was drawn 4.5 ms behind; flying 2.5 to 4.2 ms off a steady line to 0.6, turning 1.7 to 0.7 ("Frame pacing") |
 | Nothing built in the tick for the views, first-person clips read ahead on worker threads, the effects' shaders compiled at load and their cards sent in one buffer | perf/no-first-use-hitches | a first buy's tick 136 ms (the R8's 347), a death's dropped gun 41, the first shots' frames 18 to 35; now no frame over 20 ms ("Against CS2") |
-| Every model anyone may take in hand read before play, and the guns' legacy bodies left out at import (`weapon_model_import.gd`) | perf/read-match-guns-ahead | 32 models read where 18 were, for 125 MiB more video memory, and the read 2.06 s to 1.40; no buy or pickup reads a model during a match |
+| Every model anyone may take in hand read before play, and the guns' legacy bodies left out at import (`weapon_model_import.gd`) | perf/read-match-guns-ahead | 32 models read where 18 were, for 123 MiB more video memory and 0.17 s more at match start (1.46 s to 1.63); no buy or pickup reads a model during a match |
 
 A tick at 64 costs a little more than one at 128 did: it moves everyone
 twice as far, with more to meet on the way, and holds twice the rounds and

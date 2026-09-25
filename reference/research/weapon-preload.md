@@ -157,20 +157,6 @@ the disk cache:
    *(Done, the same branch: `scripts/weapon_model_import.gd`, a post-import
    step that `write_import_settings.gd` sets on every weapon model, removes
    the body `RigModel.is_spare_body` would hide. Run on Sid's machine.)*
-
-Measured on Sid's machine once dust2's match has started (the renderer's
-own counters, second of two runs, files in the disk cache):
-
-| | Textures | Mesh buffers | Everything | The read at match start |
-|---|---|---|---|---|
-| Before (18 models) | 2,544 MiB | 345 MiB | 3,417 MiB | 2.06 s |
-| Every model that can appear (32) | 2,825 MiB | 356 MiB | 3,708 MiB | 2.15 s |
-| And no legacy bodies | 2,684 MiB | 330 MiB | 3,542 MiB | 1.40 s |
-
-So every gun, grenade and piece of kit anyone can take in hand is read
-before play for 125 MiB more than before, and the read is 0.66 s shorter:
-the legacy bodies were 141 MiB of textures and 25 MiB of mesh across the
-32, and a good part of the read.
 3. **Leave the 13 guns nobody can get** until loadouts can hold them.
 4. **Streaming as CS2 does it**, small mips for every gun and the full set
    for the gun in hand (`RenderingServer.texture_replace` swaps a texture's
@@ -180,6 +166,25 @@ the legacy bodies were 141 MiB of textures and 25 MiB of mesh across the
    (`DroppedItemView`); with (1) that no longer happens in a match.
 6. When skins arrive, the legacy-model paint kits need `body_legacy` back
    for the guns they are on.
+
+Measured for (1) and (2) on Sid's machine once dust2's match has started:
+the renderer's own counters, and `Competitive._prepare_holding` timed
+around its call (a temporary print), drawn, the files in the disk cache;
+one run to warm up, then three, whose mean is given (their spread was 70
+to 130 ms).
+
+| | Textures | Mesh buffers | Everything | The read at match start |
+|---|---|---|---|---|
+| Before: the bots' 18 models, the rest's clips | 2,545 MiB | 345 MiB | 3,418 MiB | 1.46 s |
+| Every model that can appear (32) | 2,826 MiB | 356 MiB | 3,709 MiB | 1.67 s |
+| And no legacy bodies | 2,683 MiB | 330 MiB | 3,541 MiB | 1.63 s |
+
+So every gun, grenade and piece of kit anyone can take in hand is read
+before play for 123 MiB more video memory and 0.17 s more at match start.
+The legacy bodies were 143 MiB of textures and 25 MiB of mesh across the
+32; leaving them out barely shortens the read (0.04 s, within the spread).
+One run each first gave 2.06, 2.15 and 1.40 s: run-to-run spread, not the
+change.
 
 ## What a Local check would settle
 

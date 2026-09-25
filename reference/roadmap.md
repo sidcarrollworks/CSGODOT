@@ -439,8 +439,9 @@ list, split into Local and Remote items, with the measurements.
   frame is over 20 ms (performance.md, "Against CS2"). Every model anyone
   can take in hand in a match is read before play, as CS2 precaches every
   gun, and the guns' unused legacy bodies are left out at import
-  (perf/read-match-guns-ahead; research/weapon-preload.md): 125 MiB more
-  video memory, a shorter read, and no model read during a match. Left:
+  (perf/read-match-guns-ahead; research/weapon-preload.md): 123 MiB more
+  video memory, 0.17 s more at match start, and no model read during a
+  match. Left:
   the frames that run a tick, about 7 ms, which a cheaper tick shortens.
 - **Screen-space occlusion off.** *(done, the Godot docs audit)* It
   darkened ambient light only, which no map material takes, so it drew
