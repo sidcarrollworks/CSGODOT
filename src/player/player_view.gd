@@ -21,9 +21,6 @@ extends Node
 ## the arms the view model stands in for. Folding the upper arms folds the
 ## hands with them.
 const FOLDED_BONES: Array[String] = ["head_0", "neck_0", "arm_upper_L", "arm_upper_R"]
-## What the shadow does without: the arms, which would fall across the view
-## model's own from a pose that is not its.
-const SHADOW_FOLDED_BONES: Array[String] = ["arm_upper_L", "arm_upper_R"]
 
 ## How far behind the eyes the body stands, in units. The eyes are at the
 ## front of the head, over the chest; at zero the collar fills the bottom of
@@ -80,8 +77,10 @@ var footsteps: Footsteps
 ## world and casts no shadow; that is body_shadow's job.
 var body_model: PlayerModel
 ## Your shadow: the same model walking the same clips in the same place,
-## drawn only into the shadow maps, with its head. The body the camera sees
-## has none, and a shadow without one is a strange thing to see.
+## drawn only into the shadow maps, whole: head, arms and what is in hand,
+## held, fired and reloaded as everyone else sees you hold it, as CS2's
+## shadow is your third-person body. The body the camera sees has no head
+## or arms, and a shadow without them is a strange thing to see.
 var body_shadow: PlayerModel
 
 ## The weapon model's rest pose, captured on the first frame so the recoil,
@@ -156,12 +155,17 @@ func _on_grenade_released(underhand: bool) -> void:
 func _on_reload_started() -> void:
 	if view_model != null:
 		view_model.play(&"reload")
+	if body_shadow != null:
+		body_shadow.play(&"reload", 0.1)
 	weapon_sounds.reload()
 
 
 func _on_shot_traced(shot: Weapon.Shot, result: Hitscan.Result) -> void:
-	if view_model != null and shot.pellet == 0:
-		view_model.shoot()
+	if shot.pellet == 0:
+		if view_model != null:
+			view_model.shoot()
+		if body_shadow != null:
+			body_shadow.fire()
 	if result.hitbox != null and result.hitbox.target != null:
 		weapon_sounds.hit(result.zone, result.hitbox.target, not result.hitbox.target.alive)
 	BulletImpacts.mark_in(get_tree(), result)
@@ -377,23 +381,43 @@ func _follow_plant() -> void:
 func _show_body() -> void:
 	body_model = _build_body("Body", FOLDED_BONES, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
 	if body_model != null:
-		body_shadow = _build_body("BodyShadow", SHADOW_FOLDED_BONES, GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY)
+		body_shadow = _build_body("BodyShadow", [], GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY)
 
 
+## A body. The shadow's holds what is in hand (PlayerModel.hold), as a
+## bot's does; the one you look down at holds nothing, its arms folded.
 func _build_body(node_name: String, folded: Array[String], casting: GeometryInstance3D.ShadowCastingSetting) -> PlayerModel:
 	var model := PlayerModel.new()
 	model.name = node_name
+	var shadow := casting == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 	# A model only the shadow maps see needs no lighting.
-	model.probe_lit = casting != GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
-	if not model.setup(player.team, ""):
+	model.probe_lit = not shadow
+	if not model.setup(player.team, "", "", shadow):
 		model.free()
 		return null
-	model.fold_bones(PackedStringArray(folded))
+	if not folded.is_empty():
+		model.fold_bones(PackedStringArray(folded))
 	for mesh in model.find_children("*", "MeshInstance3D", true, false):
 		(mesh as MeshInstance3D).cast_shadow = casting
 	model.top_level = true
 	player.add_child(model)
 	return model
+
+
+## The shadow holds what the player holds, its model shown and cast only
+## into the shadow maps. Per frame, from what the tick left in the hand: the
+## body the hitboxes ride took it up on the tick (PlayerSim._body_holds).
+func _follow_hand() -> void:
+	if body_shadow == null or not player.alive:
+		return
+	var item_class := player.in_hand_class()
+	if body_shadow.holding != item_class:
+		body_shadow.hold(item_class, WeaponLibrary.look(item_class, player.team) if not item_class.is_empty() else {})
+	var shown := body_shadow.held_weapon
+	body_shadow.show_held()
+	if body_shadow.held_weapon != null and body_shadow.held_weapon != shown:
+		for mesh in body_shadow.held_weapon.find_children("*", "MeshInstance3D", true, false):
+			(mesh as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 
 
 ## After each tick the player has run (the world runs the tick before any
@@ -455,6 +479,7 @@ func _process(delta: float) -> void:
 	)
 
 	_follow_plant()
+	_follow_hand()
 	_update_viewmodel(delta)
 	# The arms from where the eyes are, the body from its middle.
 	if view_model != null:

@@ -145,7 +145,7 @@ func _place_bots() -> void:
 ## What anyone may take in hand, read now rather than on the tick it is
 ## bought, picked up or drawn: every item on either side's menu, the knife
 ## and the bomb, whose clips every body takes up (the hitboxes ride them),
-## and the models of what a bot's body shows.
+## and their models, which a bot's body shows and your own shadow casts.
 func _prepare_holding() -> void:
 	var body: PlayerModel = null
 	for sim: PlayerSim in world.players:
@@ -158,7 +158,7 @@ func _prepare_holding() -> void:
 		body.prepare_holding(BotBuying.may_hold(side), side)
 		var anyone := PackedStringArray(Loadout.items(side))
 		anyone.append_array(PackedStringArray(["weapon_knife", "weapon_c4"]))
-		body.prepare_holding(anyone, side, false)
+		body.prepare_holding(anyone, side)
 
 
 ## The route of a side's nth bot: from one of its side's spawn points to a

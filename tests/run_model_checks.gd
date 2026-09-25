@@ -1050,10 +1050,22 @@ func _test_player_composes_kick_and_bob() -> void:
 		_check(
 			shadow_rig != null and body_casting == 0 and not shadow_meshes.is_empty() and shadow_only == shadow_meshes.size()
 				and shadow_rig.get_bone_pose_scale(shadow_rig.find_bone("head_0")).is_equal_approx(Vector3.ONE)
-				and shadow_rig.get_bone_pose_scale(shadow_rig.find_bone("arm_upper_R")).is_equal_approx(Vector3.ONE * RigModel.FOLDED),
-			"and its shadow is cast by a twin drawn only into the shadow maps, with its head and without its arms"
+				and shadow_rig.get_bone_pose_scale(shadow_rig.find_bone("arm_upper_R")).is_equal_approx(Vector3.ONE),
+			"and its shadow is cast by a twin drawn only into the shadow maps, whole, head and arms"
 		)
 		player.view._process(1.0 / 60.0)
+		var gun: Node3D = player.body_shadow.held_weapon if player.body_shadow != null else null
+		var gun_meshes := gun.find_children("*", "MeshInstance3D", true, false) if gun != null else []
+		var gun_shadow_only := 0
+		for mesh in gun_meshes:
+			if (mesh as MeshInstance3D).cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY:
+				gun_shadow_only += 1
+		_check(
+			player.body_shadow != null and player.body_shadow.holding == player.in_hand_class()
+				and gun != null and gun.visible and not gun_meshes.is_empty() and gun_shadow_only == gun_meshes.size(),
+			"the twin holds what is in hand (%s), its gun cast only into the shadow maps"
+				% [player.body_shadow.holding if player.body_shadow != null else "no twin"]
+		)
 		_check(
 			player.body_shadow != null and player.body_shadow.global_position.is_equal_approx(player.body_model.global_position)
 				and player.body_shadow.state() == player.body_model.state()

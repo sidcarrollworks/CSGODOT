@@ -296,14 +296,16 @@ item 6 is built.
    stand as if looking level (`reference/research/hitboxes-aim.md`: a
    Local measurement, then the aim stage after systemization step 8).
 
-6a. **Your shadow has no arms.** *(Remote, can start now; Sid checks it)* Sid noticed
-   2026-09-22 22:06. The shadow twin (commit f42114e) put the head back but folds the
-   arms on purpose (`SHADOW_FOLDED_BONES` in `player_view.gd`), because
-   arms in the locomotion pose would fall across the view model's. It is also
-   built with no weapon (`model.setup(team, "")`). CS2's shadow is the
-   third-person body, arms and gun included, so: unfold the arms, give the
-   shadow the weapon's world model, and pose its upper body from the
-   third-person firing layer (item 6).
+6a. **Your shadow has no arms.** *(done; Sid checks it in play)* Sid noticed
+   2026-09-22 22:06. The shadow twin now keeps its arms and holds what is in
+   hand as a bot's body does (`PlayerModel.hold`): the item's hold, draw,
+   locomotion and model, cast only into the shadow maps, with its shots and
+   reloads played on it (`PlayerView._follow_hand`). `Competitive` reads
+   every item's model before play, so a buy shows in the shadow without a
+   read from the disk. To check in play: the shadow of the arms and gun on
+   the ground, and whether it darkens the view model's arms in the sun (the
+   worry that folded them first); the upper body stands as if looking level,
+   as every body does until the aim stage (item 6).
 
 ### Phase 2: finish the shooting model
 
