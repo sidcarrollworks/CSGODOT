@@ -261,8 +261,11 @@ func import_map() -> Dictionary:
 				visible_meshes.append(mesh_instance)
 				solid_meshes.append(mesh_instance)
 	for mesh_instance in visible_meshes:
+		# A lamp's glowing fixture encloses its bulb, so casting it would put
+		# the lamp's light (MapLighting.add_lamps) in its own shadow; CS2's
+		# baked shadow leaves the fixture out.
 		mesh_instance.cast_shadow = (
-			GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED if cast_shadows
+			GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED if cast_shadows and not _glows(mesh_instance)
 			else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		)
 
@@ -271,7 +274,7 @@ func import_map() -> Dictionary:
 	var probes := {"volumes": 0, "surfaces": 0}
 	if not lightmaps_dir.is_empty():
 		var map_dir := source_path.get_base_dir().path_join(lightmaps_dir)
-		lightmaps = LightmapMaterials.apply(visible_meshes, map_dir, scale_factor)
+		lightmaps = LightmapMaterials.apply(visible_meshes, map_dir, scale_factor, layer_textures_dir)
 		# What the lightmaps did not cover, the light probes light: the props
 		# placed to be lit by them, once, where they stand; and, through the
 		# field left in the scene, whatever moves.
@@ -282,7 +285,9 @@ func import_map() -> Dictionary:
 			field.probes = field_probes
 			add_child(field)
 			probes["volumes"] = field_probes.volumes.size()
-			probes["surfaces"] = ProbeMaterials.apply(visible_meshes, field_probes, LightmapMaterials.PROP_SHADERS)
+			probes["surfaces"] = ProbeMaterials.apply(
+				visible_meshes, field_probes, LightmapMaterials.PROP_SHADERS, layer_textures_dir
+			)
 
 	var behind := FarMaterials.apply(visible_meshes) if behind_everything else 0
 
@@ -473,6 +478,16 @@ func _classify(mesh_instance: MeshInstance3D) -> Kind:
 	if _matches_any(names, non_solid_material_hints):
 		return Kind.NON_SOLID
 	return Kind.SOLID
+
+
+## Whether any of a mesh's surfaces glows: a self-illuminated material
+## (F_SELF_ILLUM), which on a map is a lamp's fixture.
+func _glows(mesh_instance: MeshInstance3D) -> bool:
+	for surface in mesh_instance.mesh.get_surface_count():
+		var flags: Dictionary = _vmat(mesh_instance.get_active_material(surface)).get("IntParams", {})
+		if int(flags.get("F_SELF_ILLUM", 0)) != 0:
+			return true
+	return false
 
 
 ## The vmat description Source 2 Viewer attaches to a material, or empty.

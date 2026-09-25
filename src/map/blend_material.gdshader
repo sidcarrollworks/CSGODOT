@@ -86,5 +86,5 @@ void fragment() {
 	ROUGHNESS = mix(orm.g, second.a, weight);
 	AO = orm.r;
 	METALLIC = 0.0;
-	baked_light = orm.r * lightmap_indirect(UV2, lightmap_tangent_normal(normal_rg, 1.0));
+	baked_light = orm.r * lightmap_indirect(lightmap_uv, lightmap_tangent_normal(normal_rg, 1.0));
 }

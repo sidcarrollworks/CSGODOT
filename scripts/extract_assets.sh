@@ -17,9 +17,9 @@
 #   scripts/extract_assets.sh volumes         # just the buy zones, bomb sites and callouts' volumes, and the baked bomb damage
 #   scripts/extract_assets.sh radar           # just the radar image and where it lies
 #   scripts/extract_assets.sh surfaces        # just CS2's surfaces: parents, friction, penetration (seconds)
-#   scripts/extract_assets.sh layers          # just the blend materials' second layers
+#   scripts/extract_assets.sh layers          # just the textures the glTF has no slot for: second layers, decals, glows
 #   scripts/extract_assets.sh sky             # just the sky panorama
-#   scripts/extract_assets.sh skybox          # just the 3D skybox: the far buildings
+#   scripts/extract_assets.sh skybox          # just the 3D skybox: the far buildings and their baked light
 #   scripts/extract_assets.sh lightmaps       # just the baked bounce light
 #   scripts/extract_assets.sh weapons         # every gun: models, first- and third-person animations
 #   scripts/extract_assets.sh weapon-animations  # just the guns' animations (a minute)
@@ -500,15 +500,18 @@ extract_layers_under() {
 		exit 1
 	fi
 
+	# Every texture a material names that the glTF has no slot for: the two-
+	# layer materials' second layer and blend mask (BlendMaterials), and the
+	# props' decal and self-illumination mask (prop_features.gdshaderinc).
 	local textures
-	textures="$(grep -oE '"g_t(Layer2Color|Layer2NormalRoughness|BlendModulation)" *: *"[^"]+"' "$world" \
+	textures="$(grep -oE '"g_t(Layer2Color|Layer2NormalRoughness|BlendModulation|Decal|SelfIllumMask)" *: *"[^"]+"' "$world" \
 		| sed -E 's/^"[^"]+" *: *"//; s/"$//; s/\.vtex$/.vtex_c/' | sort -u || true)"
 	if [[ -z "$textures" ]]; then
-		echo "No layered materials in $world; nothing to fetch."
+		echo "No layered, decal or self-illuminated materials in $world; nothing to fetch."
 		return
 	fi
 
-	echo "Extracting $(echo "$textures" | wc -l | tr -d ' ') second-layer and blend-mask textures"
+	echo "Extracting $(echo "$textures" | wc -l | tr -d ' ') second-layer, blend-mask, decal and self-illumination textures"
 	echo "        -> $dest/materials"
 	"$S2V_BIN" -i "$PAK_VPK" -f "$(echo "$textures" | paste -sd, -)" -o "$dest" -d \
 		| grep -vE '^(Preloading|Added folder|--- \[)' || true
@@ -548,6 +551,10 @@ extract_skybox() {
 	local lump
 	lump="$(find_map_resource '/entities/default_ents\.vents_c$' "default_ents.vents_c" "$vpk")" || exit 1
 	"$S2V_BIN" -i "$vpk" -f "$lump" -o "$SKYBOX_DEST" -d | grep -E '^--- Dump' || true
+	# Its own baked light, which its walls are drawn with as the map's are:
+	# without it, the two-layer walls had nothing but the sun and were black
+	# in shade. Not its light probes, which light nothing that moves there.
+	extract_baked_light "$vpk" "$SKYBOX_DEST" 'irradiance|directional_irradiance' optional
 	echo
 	extract_layers_under "$SKYBOX_DEST"
 }
@@ -576,6 +583,23 @@ extract_sky() {
 		| grep -vE '^(Preloading|Added folder|--- \[)' || true
 }
 
+## A map's baked light from its VPK into dest, keeping the path each file
+## has in the VPK: the lightmaps named in which (a pattern of their names,
+## irradiance|directional_irradiance, and the probes' atlas where wanted).
+## With "optional" after them, a VPK that has none is passed over.
+extract_baked_light() {
+	local vpk="$1" dest="$2" which="$3" optional="${4:-}"
+	local maps
+	maps="$(list_paths "$vpk" | grep -E "/lightmaps/($which)\\.vtex_c\$" | paste -sd, - || true)"
+	if [[ -z "$maps" && "$optional" == optional ]]; then
+		echo "No lightmaps in $(basename "$vpk")."
+		return
+	fi
+	require_filter "$maps" "the lightmaps in $(basename "$vpk")"
+	mkdir -p "$dest"
+	"$S2V_BIN" -i "$vpk" -f "$maps" -o "$dest" -d | grep -E '^--- Dump' | grep -v '_atlas_z' || true
+}
+
 ## The map's baked lighting. CS2 bakes the bounce light into an irradiance
 ## lightmap (8192 square, HDR, 78 MB compressed) with a companion that says
 ## which way the light mostly comes from; the sun's own light it computes
@@ -587,13 +611,9 @@ extract_sky() {
 ## They go in a probes/ directory with a .gdignore, so Godot does not import
 ## seven hundred textures it will never draw; the game reads them itself.
 extract_lightmaps() {
-	local maps
-	maps="$(list_paths "$MAP_VPK" | grep -E '/lightmaps/(irradiance|directional_irradiance|env_light_probe_volume_atlas)\.vtex_c$' | paste -sd, - || true)"
-	require_filter "$maps" "the lightmaps"
-	mkdir -p "$MAP_DEST"
 	echo "Extracting the baked lighting (a few hundred megabytes, uncompressed) and the light probes"
 	echo "        -> $MAP_DEST"
-	"$S2V_BIN" -i "$MAP_VPK" -f "$maps" -o "$MAP_DEST" -d | grep -E '^--- Dump' | grep -v '_atlas_z' || true
+	extract_baked_light "$MAP_VPK" "$MAP_DEST" 'irradiance|directional_irradiance|env_light_probe_volume_atlas'
 	find "$MAP_DEST" -name 'env_light_probe_volume_atlas_z*.exr' | while IFS= read -r slice; do
 		local probes="$(dirname "$slice")/probes"
 		mkdir -p "$probes"

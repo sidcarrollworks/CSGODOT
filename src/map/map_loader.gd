@@ -79,9 +79,9 @@ func _ready() -> void:
 		self, importer.stats.get("sun", {}), entities, sky,
 		importer.stats.get("lightmaps", {}).get("ambient")
 	)
-	print("--- lighting: sun energy %.2f, exposure %.2f, sky from %s, fog %s, ambient from %s" % [
+	print("--- lighting: sun energy %.2f, exposure %.2f, sky from %s, fog %s, ambient from %s, %d lamps lit live" % [
 		lighting["sun_energy"], lighting["exposure"], lighting["sky"], "on" if lighting["fog"] else "off",
-		lighting["ambient"],
+		lighting["ambient"], lighting["lamps"],
 	])
 	_build_skybox()
 	_read_contents(entities_path)
@@ -218,6 +218,9 @@ static func make_skybox(skybox_dir: String) -> MapImporter:
 	sky_importer.scale_factor = MapImporter.SOURCE2_VIEWER_SCALE * sky_scale
 	sky_importer.collision_source = MapImporter.CollisionSource.NONE
 	sky_importer.layer_textures_dir = skybox_dir
+	# Its own baked light, beside its world as the map's is: the two-layer
+	# walls take all but the sun from it, and without it are black in shade.
+	sky_importer.lightmaps_dir = "."
 	# Its terrain sits at its own ground level, which is above some of the
 	# map's floors; the map must win wherever they overlap.
 	sky_importer.behind_everything = true

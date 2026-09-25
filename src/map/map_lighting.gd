@@ -3,10 +3,11 @@ extends RefCounted
 
 ## Lights a map the way the map says it should be lit.
 ##
-## Everything here is the cheap kind of lighting: one sun, the map's own sky
-## panorama, fog, tone mapping and screen-space occlusion. Nothing is baked
-## and no global illumination runs. The numbers come from the map's entity
-## lump (light_environment, env_cubemap_fog, post_processing_volume), so this
+## Everything here is the cheap kind of lighting: one sun, the few lamps CS2
+## lights as it draws (add_lamps), the map's own sky panorama, fog, tone
+## mapping and screen-space occlusion. Nothing is baked and no global
+## illumination runs. The numbers come from the map's entity lump
+## (light_environment, the lamps, env_cubemap_fog, post_processing_volume), so this
 ## is a translation of what CS2 does with them rather than a look picked by
 ## eye; where Godot has no equivalent, the nearest thing is used and said so.
 ##
@@ -21,6 +22,14 @@ const SUN_ENERGY_PER_BRIGHTNESS := 0.7
 
 ## How far towards the sun a shadow split reaches, in units (see build).
 const SHADOW_PANCAKE := 4096.0
+
+## A lamp's light (add_lamps) reaches this far past where CS2 stops it:
+## Godot fades a light out over its whole range, as (1 - (d/r)^4)^2, where
+## CS2's lamps shine undimmed to their range. At 2.5 times, what reaches
+## CS2's range keeps 95% of its light.
+const LAMP_RANGE_BEYOND := 2.5
+## A lamp's shadow's depth bias, in units (see barn_light).
+const LAMP_SHADOW_BIAS := 1.0
 
 ## Screen-space occlusion reaches this far, in inches. Godot's default is one
 ## metre, which at this scale is one unit: nothing.
@@ -154,14 +163,97 @@ static func build(
 	world_environment.name = "Atmosphere"
 	world_environment.environment = environment
 	parent.add_child(world_environment)
+	var lamps := add_lamps(parent, entities)
 
 	return {
 		"sun_energy": light.light_energy,
+		"lamps": lamps["built"],
+		"lamps_left_out": lamps["left_out"],
 		"ambient": "the lightmap's average" if bounce is Color else "the sky",
 		"sky": "the map's panorama" if panorama != null else "a procedural stand-in",
 		"fog": environment.fog_enabled,
 		"exposure": environment.tonemap_exposure,
 	}
+
+
+## The map's lamps CS2 lights as it draws rather than baking them into the
+## lightmap: a stationary light (directlight 3, or a baked shadow index)
+## leaves only its bounce light and a shadow mask there, and a dynamic one
+## (directlight 2) nothing. On dust2 those are the two lamps down lower
+## tunnels; its other lamps are baked whole (directlight 1), so their light
+## is already in the lightmap. A barn light (light_barn) is built as Source 2
+## Viewer shades one (SceneLight, lighting.barn.slang), each is its own node
+## under parent; the other kinds, which dust2 has none of live, are counted
+## in "left_out". Returns {"built", "left_out"}.
+static func add_lamps(parent: Node, entities: Array[Dictionary]) -> Dictionary:
+	var built := 0
+	var left_out := 0
+	for entity in entities:
+		var classname := String(entity.get("classname", ""))
+		if not classname.begins_with("light_") or classname == "light_environment" or not is_drawn_live(entity):
+			continue
+		var lamp: Light3D = barn_light(entity) if classname == "light_barn" else null
+		if lamp == null:
+			left_out += 1
+			continue
+		lamp.name = "Lamp%d" % built
+		parent.add_child(lamp)
+		built += 1
+	return {"built": built, "left_out": left_out}
+
+
+## Whether CS2 lights a light as it draws, stationary or dynamic, rather than
+## baking it: Source 2 Viewer's SceneLight.GetCost. A light that is off, or
+## has no direct light, is neither.
+static func is_drawn_live(entity: Dictionary) -> bool:
+	if String(entity.get("enabled", "true")) in ["false", "0"]:
+		return false
+	var direct := int(entity.get("directlight", "2"))
+	if direct == 0:
+		return false
+	if direct != 1:
+		return true
+	return int(entity.get("bakedshadowindex", entity.get("bakelightindex", "-1"))) >= 0
+
+
+## A light_barn as a spot light. CS2's is a frustum whose eye sits
+## 1 / size_params.z behind the lamp, size_params.x and y wide either side
+## there; its lumens are spread over the frustum's solid angle, 40 pi lumens
+## a steradian at one unit, and fall off as the inverse square from the eye,
+## faded over its outer soft_x (a third, on dust2's). That is the unit the sun's
+## brightness is in, so it takes SUN_ENERGY_PER_BRIGHTNESS as the sun does.
+## Its shadow is Godot's, in place of the lightmap's baked mask. Null for an
+## orthographic barn (size_params.z of 0), which is not built.
+static func barn_light(entity: Dictionary) -> SpotLight3D:
+	var size := SourceEntities.vector(String(entity.get("size_params", "")))
+	if size.x <= 0.0 or size.y <= 0.0 or size.z <= 0.0:
+		return null
+	var near := 1.0 / size.z
+	var turn := BrushVolume.source_basis(SourceEntities.vector(String(entity.get("angles", "[ 0, 0, 0 ]"))))
+	var forward := SourceEntities.to_game(turn.x).normalized()
+	var up := SourceEntities.to_game(turn.z).normalized()
+	var eye := SourceEntities.to_game(SourceEntities.vector(String(entity.get("origin", "[ 0, 0, 0 ]")))) - forward * near
+	var solid_angle := 4.0 * asin(size.x * size.y / sqrt((size.x * size.x + near * near) * (size.y * size.y + near * near)))
+	var lumens := float(entity.get("brightness_lumens", "224")) * float(entity.get("brightnessscale", "1"))
+
+	var lamp := SpotLight3D.new()
+	lamp.light_color = _colour(entity.get("color", ""), Color.WHITE)
+	lamp.light_energy = 40.0 * PI * lumens / solid_angle * SUN_ENERGY_PER_BRIGHTNESS
+	# The inverse square, in units from the eye.
+	lamp.spot_attenuation = 2.0
+	lamp.spot_range = (near + float(entity.get("range", "512"))) * LAMP_RANGE_BEYOND
+	lamp.spot_angle = rad_to_deg(atan(maxf(size.x, size.y) / near))
+	# Godot's own cone fade, at its default exponent of 1: measured on a
+	# plane, it keeps the full light to about three quarters of the angle
+	# and fades over the rest, near CS2's soft third. A larger exponent
+	# darkens the whole cone (at 9, a third of the light 30 degrees in).
+	lamp.spot_angle_attenuation = 1.0
+	lamp.shadow_enabled = int(entity.get("castshadows", "1")) != 0
+	# Godot's 0.03 is for metres: at it, the walls and the floor under the
+	# tunnels' lamps shadowed themselves in stripes.
+	lamp.shadow_bias = LAMP_SHADOW_BIAS
+	lamp.transform = Transform3D(Basis.looking_at(forward, up), eye)
+	return lamp
 
 
 static func _first(entities: Array[Dictionary], classname: String) -> Dictionary:
