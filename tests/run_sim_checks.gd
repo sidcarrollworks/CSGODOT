@@ -121,6 +121,7 @@ func _run() -> void:
 	_test_you_spawn_with_the_knife_and_pistol()
 	_test_the_frame_meter()
 	await _test_a_frame_draws_where_the_clock_is()
+	_test_frames_are_held_under_the_refresh()
 	_report()
 
 
@@ -1382,6 +1383,24 @@ func _test_the_frame_meter() -> void:
 		is_equal_approx(meter.fps, 125.0) and is_equal_approx(meter.slowest_ms, 8.0),
 		"and each second is counted afresh: the hitch is gone from the next (%s)" % meter.line()
 	)
+
+
+## The game starts in exclusive fullscreen with V-Sync, where G-Sync and
+## FreeSync engage, and holds its frames just under the screen's refresh,
+## as NVIDIA Reflex holds CS2's. Headless nothing is drawn, so nothing is
+## held (the players built above have their views).
+func _test_frames_are_held_under_the_refresh() -> void:
+	_check(
+		int(ProjectSettings.get_setting("display/window/size/mode")) == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
+			and int(ProjectSettings.get_setting("display/window/vsync/vsync_mode", 1)) == DisplayServer.VSYNC_ENABLED,
+		"the game starts in exclusive fullscreen, V-Sync on"
+	)
+	_check(
+		PlayerView.frame_cap(240.0) == 224 and PlayerView.frame_cap(144.0) == 138 and PlayerView.frame_cap(60.0) == 59
+			and PlayerView.frame_cap(0.0) == 0 and PlayerView.frame_cap(-1.0) == 0,
+		"frames held just under the refresh: 224 at 240 Hz, 138 at 144, 59 at 60, none when it is not known"
+	)
+	_check(Engine.max_fps == 0, "and headless, no cap (%d)" % Engine.max_fps)
 
 
 ## A frame is drawn as far between the ticks as the clock says when it is

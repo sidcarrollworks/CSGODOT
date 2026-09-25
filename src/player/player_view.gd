@@ -113,6 +113,13 @@ func _init(p_player: PlayerController) -> void:
 
 
 func _ready() -> void:
+	# Frames held just under the screen's refresh, as NVIDIA Reflex holds
+	# CS2's with G-Sync and V-Sync on: inside a variable refresh screen's
+	# range, V-Sync never has to hold one back (the Godot docs' advice for
+	# G-Sync and FreeSync). A Max FPS set in Project Settings wins, as
+	# CS2's fps_max would; headless, nothing is drawn to hold.
+	if Engine.max_fps == 0 and DisplayServer.get_name() != "headless":
+		Engine.max_fps = frame_cap(DisplayServer.screen_get_refresh_rate())
 	camera = player.camera
 	if camera != null:
 		camera.top_level = true
@@ -270,6 +277,15 @@ func _show_corpse(shown: bool) -> void:
 		(mesh as MeshInstance3D).cast_shadow = (
 			GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shown else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		)
+
+
+## The frames a second to hold to on a screen of this refresh rate: just
+## under it, by the Godot docs' rule for variable refresh with V-Sync on
+## (224 at 240 Hz, 138 at 144). 0, no cap, when the rate is not known.
+static func frame_cap(refresh_hz: float) -> int:
+	if refresh_hz <= 0.0:
+		return 0
+	return roundi(refresh_hz - refresh_hz * refresh_hz / 3600.0)
 
 
 ## Where the death camera sits, from the body's middle: back along where

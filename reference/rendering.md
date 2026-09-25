@@ -81,9 +81,13 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
 - **L1. Run the profiler.** *(done 2026-09-24, under "Measured")* Every result below depends on these numbers.
   From the repo, with dust2 extracted:
 
-      godot --path . --resolution 1920x1080 --script scripts/profile_render.gd -- 5
-      godot --path . --resolution 3840x2160 --script scripts/profile_render.gd -- 5
-      godot --path . --resolution 1920x1080 --script scripts/profile_render.gd -- 1
+      godot --path . --script scripts/profile_render.gd -- 5 60 1920x1080
+      godot --path . --script scripts/profile_render.gd -- 5
+      godot --path . --script scripts/profile_render.gd -- 1 60 1920x1080
+
+  Without a size it draws as the game starts, in exclusive fullscreen at
+  the screen's own size (3840x2160 here); with one, in a window that size.
+  Godot's `--resolution` does nothing since the project starts fullscreen.
 
   Each takes about 20 seconds after the map loads and prints a Markdown
   table. Paste all three into the thread, or into this page under

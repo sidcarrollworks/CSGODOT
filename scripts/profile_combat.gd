@@ -1,11 +1,13 @@
 extends SceneTree
 
-## Frame times on dust2 as it is played, out of combat and in it, to set
-## beside Sid's CS2 (performance.md, "Against CS2"). It draws, so it needs
-## the GPU and the extracted map, and runs on Sid's machine:
+## Frame times on dust2 in play, out of combat and in it, to set beside
+## Sid's CS2 (performance.md, "Against CS2"). It draws, so it needs the GPU
+## and the extracted map, and runs on Sid's machine:
 ##
-##   godot --path . --fullscreen --script scripts/profile_combat.gd -- [seconds]
+##   godot --path . --script scripts/profile_combat.gd -- [seconds] [as-played]
 ##
+## The game starts in exclusive fullscreen (project.godot); Godot's
+## --fullscreen would ask for plain fullscreen instead, so leave it off.
 ## seconds is how long it records (75). You ride along with a bot, at its
 ## eyes, looking where it looks and firing when it fires, so your own gun,
 ## flash, tracers and holes are in the frame with everyone else's; nothing
@@ -20,7 +22,10 @@ extends SceneTree
 ## then every frame over HITCH_MS, what was in it (its ticks, the frame's
 ## scripts, and the rest: drawing and input) and the pipelines the renderer
 ## compiled in it; then the tick. V-Sync is off and the frame rate
-## unlimited, so what is measured is what a frame costs.
+## unlimited, so what is measured is what a frame costs; with as-played
+## after the seconds (-- 75 as-played) they are left as the game sets
+## them, V-Sync on and frames held just under the screen's refresh
+## (PlayerView.frame_cap), so what is measured is what is seen.
 
 const RECORD_SECONDS := 75.0
 const LOAD_MSEC := 8000
@@ -144,19 +149,23 @@ var _said := -1
 var _spawns: Array = []
 var _next_melee := MELEE_FROM_USEC
 var _melees := 0
+## V-Sync and the frame cap left as the project has them (as-played).
+var _as_played := false
 
 
 func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
 	if args.size() > 0 and args[0].is_valid_float():
 		_record_usec = int(args[0].to_float() * 1_000_000.0)
+	_as_played = args.has("as-played")
 
 
 func _process(_delta: float) -> bool:
 	_frames += 1
 	if _frames == 1:
-		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
-		Engine.max_fps = 0
+		if not _as_played:
+			DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+			Engine.max_fps = 0
 		root.add_child((load("res://maps/de_dust2/de_dust2.tscn") as PackedScene).instantiate())
 		_loaded_at = Time.get_ticks_msec()
 		return false
@@ -229,6 +238,10 @@ func _set_up() -> void:
 	_recorder.frame_start = frame_start
 	root.add_child(_recorder)
 	RenderingServer.viewport_set_measure_render_time(root.get_viewport_rid(), true)
+	# Your view held the frames under the refresh as it started
+	# (PlayerView.frame_cap); what a frame costs is measured without that.
+	if not _as_played:
+		Engine.max_fps = 0
 	print("window mode %d at %s, V-Sync %d, frame cap %d, %d players" % [
 		DisplayServer.window_get_mode(), str(DisplayServer.window_get_size()),
 		DisplayServer.window_get_vsync_mode(), Engine.max_fps, GameWorld.current.players.size()])
