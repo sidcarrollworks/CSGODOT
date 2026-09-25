@@ -107,6 +107,11 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
   whether Source 2 Viewer lists or exports it for dust2 (inferred, not
   checked). If it does, it could replace or back up the occluders (R3).
 
+- **L6. Whether dust2's VPK carries its SST** (R4): list `maps/de_dust2.vpk`
+  for anything named `sst`, and note its size and type. If it is there and
+  Source 2 Viewer can read it, the static shadow map can be CS2's own
+  rather than rendered here at load.
+
 ## Remote items (cloud threads)
 
 - **R0. Research CS2's renderer**, as the research pages do: what its
@@ -149,8 +154,40 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
   draws only what moves, over a short distance. That takes most of the
   6,200 shadow draw calls and 5 to 6 million triangles a frame away, which
   measured (`no_sun_shadows`) is 2.0 ms of GPU at 1080p, 6.3 ms at 4K, and
-  1.7 ms of the renderer's CPU. Needs both files extracted (Local, one line
-  in the extraction each) and the shaders changed (Remote).
+  1.7 ms of the renderer's CPU. At 4K most of that is the soft filter run
+  on every pixel (3.2 to 3.7 ms), not the drawing, and a static shadow
+  read from a texture needs no such filter. Needs both files extracted
+  (Local, one line in the extraction each) and the shaders changed
+  (Remote).
+
+  How CS2 does it, from its own current files (SteamDatabase's
+  GameTracking-CS2 at 760e69c, 2026-09-24: `DumpSource2/convars.txt` and
+  the strings of `client.dll` and `scenesystem.dll`). The names are Valve's;
+  what they do is read from their descriptions and log lines, not tested:
+  - Mixed shadows (`lb_mixed_shadows`, `lb_enable_baked_shadows`): baked
+    shadows for what does not move, live ones for what does.
+  - A static shadow texture, "SST": the static map rendered from the sun
+    once, not every frame. `client.dll` logs "SST data (%s) found in %s.vpk
+    for current video settings, loading...", so it ships with the map, one
+    per shadow setting. It reaches 2,000 units (`csm_sst_max_visible_dist`),
+    and objects are flagged whether they "CAN_RENDER_INTO_SST". Beyond it,
+    the baked `direct_light_shadows`.
+  - The live cascades draw static objects only in the cascades a setting
+    names (`lb_csm_override_staticgeo_cascades`), skip anything under 10
+    texels in the shadow map (`lb_sun_csm_size_cull_threshold_texels`), and
+    test the sun against precomputed visibility (`r_csgo_enable_sunlight_check`,
+    and `m_nSunVisibilityCluster` in `world_visibility.vvis`, L5).
+  - Other lights ("Dynamic shadows: All", which Sid plays with) are cheap
+    for the same reasons: each light's shadow map is sized by how large it
+    is on screen (`lb_dynamic_shadow_resolution_base` 1024, "Shadowmap size
+    of a screen sized light"), and it draws only what precomputed
+    visibility says it reaches (`sc_barnlight_enable_precomputed_vis`).
+
+  So the same three tiers here: `direct_light_shadows` for the map at any
+  distance (first, since it only needs extracting); a static shadow map
+  of the map rendered once at load and sampled within 2,000 units, for
+  crisp near edges (after, if the baked page looks soft up close); and
+  Godot's live shadow for what moves. None of it needs a change to Godot.
 - **R5. Reflections from the map's own cubemaps** (after L4), in place of
   the sky everywhere. This is for how it looks: specular indoors and in
   tunnels is lit by the sky now.
