@@ -1,0 +1,176 @@
+# Godot 4.7: skeletons and animation
+
+Source: godot-docs branch 4.7 @9adca4c (2026-09-21). Read when: changing `PlayerModel`, `RigModel` or `ViewModel`, the AnimationTree built from CS2's blend spaces, hitboxes on bones (`SkinnedHitboxes`), ragdolls (`Ragdoll`), view-model pins, or making animation run on the server tick.
+
+What CS2's clips and graphs are is in `reference/asset-pipeline.md` (the rows for view model, third-person model, first-person body, deaths and flinches, animation graphs, clip timings) and `reference/animgraph2.md`. This page is what Godot does with them.
+
+## Rules for this project
+
+- Anything the server decides from a pose (hitboxes today, lag-compensated hitboxes later) must be posed on the tick. Set that mixer's `callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL` and call `advance(tick_seconds)` from the `GameWorld` tick. The default is `ANIMATION_CALLBACK_MODE_PROCESS_IDLE` (1): a pose that advances per rendered frame, so it depends on frame rate (`classes/class_animationmixer.rst`).
+- Do not read a hitbox's bone from a transform the view interpolates between ticks. `Skeleton3D.get_bone_global_pose()` is relative to the skeleton; the world transform comes from the skeleton's node, so interpolating that node moves the hitboxes with it.
+- Do not rely on `Skeleton3D.skeleton_updated` inside a tick. Skeleton updates are deferred, "called only once per frame in a deferred process" (`NOTIFICATION_UPDATE_SKELETON`), so the signal fires after the tick, not after `advance()`. After a manual `advance()`, read `get_bone_global_pose()` straight away and place the hitboxes yourself (inferred: it returns the pose the mixer set, before any modifiers).
+- Treat every `AnimationNode` in a `tree_root` as shared between the trees that use it: "animation nodes are just resources, so they are shared between all instances using them. Setting values in the nodes directly will affect all instances" (`tutorials/animation/animation_tree.rst`). Per-instance state goes through `animation_tree.set("parameters/...")`. Setting `xfade_time` or `AnimationNodeAnimation.animation` on a node is only safe while each model builds its own tree, as `PlayerModel._build_tree` does now.
+- Duplicate imported `Animation`s and `AnimationLibrary`s before changing them per model. Every instance of an imported scene shares them (see `import.md` on PackedScene). `RigModel.load_clips` duplicates the library; the `Animation`s inside that shallow copy are still shared.
+- Use `AnimationNodeBlendSpace2D.sync_mode`, not `sync`. `sync` is deprecated in 4.7; `sync = true` is `SYNC_MODE_INDEPENDENT`. `SYNC_MODE_CYCLIC_MUTABLE` is the built-in way to keep loops of different lengths in phase, which is what CS2's one-sync-event-per-clip does.
+- Before trusting an additive layer, check the mixer's `deterministic` setting. With `deterministic = false` (the default), "if AnimationNodeAdd2 blends two nodes with the amount 1.0, then total weight is 2.0 but it will be normalized ... equal to AnimationNodeBlend2 with the amount 0.5".
+- Ragdolls: in 4.x `PhysicalBone3D`s sit under a `PhysicalBoneSimulator3D` (a `SkeletonModifier3D`) under the `Skeleton3D`. `Skeleton3D.physical_bones_start_simulation()` and its siblings are deprecated. The project's own `Ragdoll` (plain `RigidBody3D`s and joints, unscaled) is a deliberate alternative; see Ragdolls.
+- Never use root motion to move a player. Movement is the project's collide-and-slide on the tick; the docs' root-motion examples feed `move_and_slide`, which the project does not use.
+
+## The pieces
+
+`tutorials/animation/animation_tree.rst`, `classes/class_animationmixer.rst`, `classes/class_animationplayer.rst`, `classes/class_animationtree.rst`, `engine_details/file_formats/tscn.rst`
+
+- `AnimationMixer` is the base of `AnimationPlayer` and `AnimationTree`. It holds the `AnimationLibrary`s, blends, and applies the result to the nodes under `root_node` (default `NodePath("..")`).
+- Libraries: a mixer has a default library keyed `""`, whose clips are named plainly (`"idle"`). Clips in a library added under a name are `"lib/idle"`. `add_animation_library(name, library)`, `get_animation_library("")`, `get_animation(name)` (null and an error if missing), `has_animation(name)`.
+- `AnimationTree` in 4.x is itself an `AnimationMixer`. It can take libraries directly (`add_animation_library`) instead of pointing `anim_player` at a player, which is what `PlayerModel` does. When a tree drives a player's nodes, "several properties and methods of the corresponding AnimationPlayer will not function as expected": play everything through the tree and leave the player inactive (`PlayerModel` sets `animation_player.active = false`).
+- 4.x removed the Godot 3 names: `AnimationPlayer.playback_process_mode`, `AnimationTree.process_mode` and `set_process_callback()` are now `AnimationMixer.callback_mode_process`, and `AnimationProcessCallback` is deprecated in favour of `AnimationCallbackModeProcess`. `AnimationPlayer.get_root()`/`set_root()` are deprecated for `root_node`. Transform tracks are split into position, rotation and scale tracks (see Animation).
+- **Godot 4 bone poses include the rest.** In Godot 3 a pose was relative to the rest; in 4 "it includes Bone Rest" (`tutorials/assets_pipeline/retargeting_3d_skeletons.rst`). An animation's bone keys are absolute local transforms. When blending, a clip that lacks a bone's track counts as that bone at its rest. That is why CS2's additive clips (bare differences) fold the body, and why `PlayerModel.rest_relative` re-expresses them against the rest.
+
+## Process modes, `advance()`, and determinism
+
+`classes/class_animationmixer.rst`, `classes/class_skeleton3d.rst`, `classes/class_skeletonmodifier3d.rst`
+
+- `callback_mode_process` (`AnimationCallbackModeProcess`): `ANIMATION_CALLBACK_MODE_PROCESS_PHYSICS` = 0 (internal physics process, so 64 Hz here), `ANIMATION_CALLBACK_MODE_PROCESS_IDLE` = 1 (**default**), `ANIMATION_CALLBACK_MODE_PROCESS_MANUAL` = 2 ("Do not process animation. Use advance()").
+- `advance(delta: float)` advances the mixer by `delta` seconds and applies the result. It works in any mode; in MANUAL it is the only thing that moves the mixer. `PHYSICS` mode runs in the node's internal physics notification, so its order against `GameWorld._physics_process` is not something to rely on (inferred). MANUAL with `advance(SimClock` tick length`)` called from the tick is the only mode whose timing the project controls.
+- A fresh tree's first `advance(0)` only builds caches and poses nothing (measured in this repo: `PlayerModel.pose_now` advances three times for a tree with variations).
+- `AnimationPlayer.play()` does not pose at once: "The animation will be updated the next time the AnimationPlayer is processed ... To perform the update immediately, call advance(0)." Calling `play()` with the clip already playing resumes it, it does not restart (`RigModel.play` uses `seek(0.0, true)` to re-fire).
+- `AnimationPlayer.seek(seconds, update = false, update_only = false)`: with `update` false the pose applies at the next process. Events between the old and new time are skipped. Seeking to the end does not emit `animation_finished`; `advance()` does.
+- `animation_finished`/`animation_started` are not emitted for looping clips.
+- One-shot and transition **requests are cleared "on the next process frame"**: `parameters/X/request` goes back to `ONE_SHOT_REQUEST_NONE`, `transition_request` to empty, `TimeSeek` `seek_request` to -1. With a MANUAL mixer the "process frame" is your `advance()` (inferred). Set the request, then advance.
+- `deterministic` (default **false**): true means weights are not normalised and the result accumulates onto an initial value (0, or the `RESET` clip if there is one), so total weight 0 gives `RESET`, and a missing track counts as its initial value. False means weights are normalised to 1.0 and a missing track is ignored. The Add2/Sub2/Add3 or weight-over-1.0 warning applies to false.
+- Blending's initial value for skeleton position, rotation and scale tracks is the bone rest. For other properties it is 0, or the first key of that track in `RESET`. Rotation tracks with `INTERPOLATION_LINEAR_ANGLE`/`CUBIC_ANGLE` "prevent rotations greater than 180 degrees from the initial value as blended animation": rests near the middle of a joint's range blend best.
+- `callback_mode_discrete` = 1 (RECESSIVE) on AnimationPlayer, and the docs call `ANIMATION_CALLBACK_MODE_DISCRETE_FORCE_CONTINUOUS` (2) "the default behavior for AnimationTree". It only matters for discrete value tracks, not bone tracks.
+- `callback_mode_method` = 0 (DEFERRED): method-track calls are batched and made after the animation step. Never let a method or audio track in a clip decide game state; clip events (reload add-ammo and so on) come from `reference/weapons/timings.csv` on the tick.
+- `audio_max_polyphony` = 32 per player driven by an audio track (unused here).
+- Skeleton modifiers have their own clock: `Skeleton3D.modifier_callback_mode_process` = 1 (IDLE), with PHYSICS = 0 and MANUAL = 2, and `Skeleton3D.advance(delta)` for manual. The delta "is temporarily accumulated in the Skeleton3D, and the deferred process uses the accumulated value". Modifiers always run after the mixer: "If there is an AnimationMixer, a modification always performs after playback process of the AnimationMixer."
+- The order within a frame: the mixer sets poses, then in the deferred skeleton update the modifiers run in child order, `SkeletonModifier3D.modification_processed` fires after each, then `Skeleton3D.skeleton_updated` ("the final pose ... will be applied to the skin"). `get_bone_pose()`/`get_bone_global_pose()` return "the pose you set to the skeleton in the process". Modifier results are only visible inside `modification_processed`. `Skeleton3D.pose_updated` is not fired during the update.
+- Cost: every mixer in MANUAL mode costs its `advance()` on the tick. With ten players that is ten tree evaluations per tick. Measure with `scripts/profile_dust2.gd`, which already takes trees over in MANUAL mode for its timings.
+
+## AnimationTree nodes
+
+`tutorials/animation/animation_tree.rst`, `classes/class_animationnode*.rst`
+
+- Parameters are read and written as `animation_tree.set("parameters/<node path>/<param>", v)` or `animation_tree["parameters/..."]`. Nested blend trees add path segments (`parameters/stand/cycle/scale`). Names used in the docs and the repo: OneShot `request`, `active` (read-only), `internal_active`; Transition `transition_request`, `current_state`, `current_index`; Blend2 `blend_amount`; Add2 `add_amount`; TimeScale `scale`; TimeSeek `seek_request`; BlendSpace2D `blend_position`; StateMachine `playback` (an `AnimationNodeStateMachinePlayback`). Every node exposes read-only `current_length`, `current_position` and `current_delta`, taken from the previous process.
+- **AnimationNodeBlendTree**: `add_node(name, node, position = Vector2(0, 0))`, `connect_node(input_node, input_index, output_node)` (the *first* argument receives), `disconnect_node(input_node, input_index)`, `get_node(name)`, `has_node`, `remove_node`, `rename_node`. The output node is named `output` and is created automatically. An output feeds one input only.
+- **AnimationNodeAnimation**: `animation` (StringName in the mixer's libraries), `play_mode` (FORWARD/BACKWARD), `advance_on_start` = false. With `use_custom_timeline` = true: `timeline_length`, `stretch_time_scale` (scale the clip to exactly one cycle of `timeline_length`), `start_offset` (which foot first), `loop_mode` (overrides the clip's). Note: "If the Animation.loop_mode isn't set to looping, the Animation.track_set_interpolation_loop_wrap() option will not be respected."
+- **AnimationNodeSync** (base of Add2/Add3/Blend2/Blend3/OneShot/Sub2/Transition): `sync` = false, which freezes an input at weight 0; true keeps it advancing.
+- **AnimationNodeOneShot**: `ONE_SHOT_REQUEST_NONE/FIRE/ABORT/FADE_OUT` = 0 to 3; `mix_mode` BLEND (0) or ADD (1); `fadein_time` = 0, `fadeout_time` = 0 (the node "transitions the current state after the fading has finished"), `fadein_curve`/`fadeout_curve`, `autorestart` = false with `autorestart_delay` = 1.0 and `autorestart_random_delay`, `break_loop_at_end`, `abort_on_reset`.
+- **AnimationNodeTransition**: `input_count`, `set_input_name(i, name)` (inherited from AnimationNode), `xfade_time` = 0, `xfade_curve`, `allow_transition_to_self` = false, `set_input_reset(i, bool)`, `set_input_as_auto_advance(i, bool)`, `set_input_break_loop_at_end`. `current_state` changes "immediately after the cross-fade begins".
+- **AnimationNodeBlend2**: linear by `blend_amount` in [0, 1]. **AnimationNodeAdd2**: `in` + `add` × `add_amount` (above 1 amplifies, below 0 inverts). Both are Sync nodes and take filters.
+- **Filters** (any node that has them): `filter_enabled = true`, `set_filter_path(NodePath("Skeleton3D:bone"), true)`. `FilterAction`: `FILTER_IGNORE`/`PASS`/`STOP`/`BLEND`. This is how the upper-body masks work.
+- **AnimationNodeTimeScale**: `scale` param; 0 pauses, negative reverses. **AnimationNodeTimeSeek**: `seek_request` in seconds; it breaks cyclic sync for clips of different lengths.
+- **AnimationNodeBlendSpace2D**: `add_blend_point(node, pos, at_index = -1, name = &"")` (pass a name: empty names "will be deprecated"), `auto_triangles` = true, `add_triangle(x, y, z, at_index = -1)` for hand triangulation (CS2's own triangles, as `PlayerModel.blend_space` does), `min_space` = (-1, -1), `max_space` = (1, 1), `snap`, `blend_mode` (INTERPOLATED 0, DISCRETE 1, DISCRETE_CARRY 2), **`sync_mode`** (`SYNC_MODE_NONE` 0 default: inactive clips frozen; `INDEPENDENT` 1: they advance at weight 0, the old `sync = true`; `CYCLIC_MUTABLE` 2: all time-scaled to a shared cycle computed from the blend weights, so a lone clip plays at normal speed; `CYCLIC_CONSTANT` 3: all complete one cycle in `cyclic_length` seconds). Cyclic modes need every point to be an `AnimationNodeAnimation` "with a finite, immutable length", or they are ignored with a warning.
+- **AnimationNodeStateMachine**: `parameters/playback` → `AnimationNodeStateMachinePlayback.travel(state)` (A* over transitions; teleports if there is no path). The machine must be running (`start()` or a transition from Start). Transitions switch Immediate, Sync or At End, with `xfade_time`, `reset`, `priority`, and advance mode Disabled/Enabled/Auto. `advance_condition` is a true-only bool parameter; `advance_expression` is evaluated by `Expression` against `advance_expression_base_node`. `state_machine_type` ROOT/NESTED/GROUPED. The project uses a blend tree of Transitions instead, which keeps every decision in code.
+- Root motion: `root_motion_track` (a bone path), `get_root_motion_position()`/`rotation()`/`scale()` and the `*_accumulator()` versions. The CS2 world locomotion clips have no root motion track (asset-pipeline.md), and the project must not use it anyway.
+
+## Animation resources and their format
+
+`classes/class_animation.rst`, `engine_details/file_formats/tscn.rst`, `tutorials/animation/animation_track_types.rst`
+
+- Track types: `TYPE_VALUE` 0, `TYPE_POSITION_3D` 1, `TYPE_ROTATION_3D` 2, `TYPE_SCALE_3D` 3, `TYPE_BLEND_SHAPE` 4, `TYPE_METHOD` 5, `TYPE_BEZIER` 6, `TYPE_AUDIO` 7, `TYPE_ANIMATION` 8. Bone tracks are position, rotation or scale tracks with path `NodePath("Skeleton3D:bone_name")` (`track_get_path(i).get_subname(0)` is the bone).
+- Interpolation: NEAREST 0, LINEAR 1, CUBIC 2, LINEAR_ANGLE 3, CUBIC_ANGLE 4. The 3D tracks have no per-key easing (all keys linear unless the track is nearest or cubic).
+- Loop: `loop_mode` LOOP_NONE 0, LOOP_LINEAR 1, LOOP_PINGPONG 2; `length` = 1.0 default. Keys outside [0, length] may be ignored.
+- Sampling without playing: `position_track_interpolate(track, time_sec, backward = false) -> Vector3`, `rotation_track_interpolate -> Quaternion`, `scale_track_interpolate -> Vector3`, `value_track_interpolate`, `blend_shape_track_interpolate`, `bezier_track_interpolate`. These are the tools for posing a hitbox set at an arbitrary time on the server without a node tree (inferred use).
+- Lookup and editing: `find_track(path, type)`, `track_get_type`, `track_get_key_count`, `copy_track(i, to_animation)`, `remove_track`, `position_track_insert_key(i, t, v)` and siblings, `track_is_compressed`.
+- Markers (4.4+): `add_marker(name, time)`, `get_marker_time`, `get_next_marker`, `has_marker`. `AnimationPlayer.play_section_with_markers()` plays between two. CS2's clip events (at fractions of the clip) could be carried as markers (a choice).
+- `compress(page_size = 8192, fps = 120, split_tolerance = 4.0)` is lossy, in place, and makes tracks uneditable. It saves memory on long imported clips.
+- Text format: `resource_name`, `length`, `loop_mode`, `step` (editor only), then `tracks/<i>/type` ("value", "position_3d", "rotation_3d", "scale_3d", "blend_shape", "method", "bezier", "audio", "animation"), `tracks/<i>/imported`, `enabled`, `path`, `interp` (0 to 4), `loop_wrap`, `keys`. For 3D tracks `keys` is a flat `PackedFloat32Array(T, E, X, Y, Z, ...)` (rotation adds W), with E the transition, always 1. For value tracks it is `{"times": PackedFloat32Array, "transitions": PackedFloat32Array, "update": 0|1|2, "values": [...]}` (update: continuous, discrete, capture).
+- `RESET` is a one-frame clip holding default values. The mixer uses it as the initial value when `deterministic` is true. `reset_on_save` (editor only) saves the scene with `RESET` applied.
+
+## Skeleton3D
+
+`classes/class_skeleton3d.rst`, `engine_details/file_formats/tscn.rst`
+
+- A bone's parent index is always lower than its own (`set_bone_parent` requires `parent_idx < bone_idx`). `add_bone(name) -> int`: names must be unique and non-empty, without `:` or `/`. `RigModel._add_bone_from` adds bones this way.
+- Pose and rest: `get_bone_rest(i)`, `get_bone_global_rest(i)`, `set_bone_rest(i, t)`, `get_bone_pose(i)`, `get_bone_pose_position/rotation/scale(i)` and setters, `set_bone_pose(i, t)`, `reset_bone_pose(i)`, `reset_bone_poses()`, `localize_rests()`, `show_rest_only`.
+- "Global pose" is relative to the skeleton node, not the world: `world = skeleton.global_transform * skeleton.get_bone_global_pose(i)`. `set_bone_global_pose(i, t)` recalculates dirty poses each call ("performance will deteriorate"). For many bones, compute local poses and use `set_bone_pose`.
+- `find_bone(name) -> int` (-1 if missing), `get_bone_name`, `get_bone_parent`, `get_bone_children`, `get_parentless_bones`, `get_bone_count`, `get_version()` (bumped on hierarchy change: use it to invalidate cached bone indices), `set_bone_enabled`.
+- `motion_scale` = 1.0 multiplies position tracks. `animate_physical_bones` is deprecated.
+- `set_bone_global_pose_override`, `clear_bones_global_pose_override`, `get_bone_global_pose_no_override`, `force_update_all_bone_transforms` and `physical_bones_*` are all deprecated: use a `SkeletonModifier3D`.
+- Skins: `MeshInstance3D.skeleton` (NodePath, usually `..`) plus `skin` (a `Skin`: inverse bind matrices, by bone name when named binds are used, else by index). `register_skin(skin)` and `create_skin_from_rest_transforms()`. Moving a mesh to another skeleton, as `RigModel.adopt` does, means pointing `skeleton` at the new rig. With named binds (the editor import's default) the bone indices may differ.
+
+## Attaching things to bones
+
+`classes/class_boneattachment3d.rst`, `classes/class_modifierbonetarget3d.rst`
+
+- `BoneAttachment3D`: a child of the `Skeleton3D` (or `use_external_skeleton` with `external_skeleton`), `bone_name`/`bone_idx`, `override_pose` = false. It follows the bone in `on_skeleton_update()`, the deferred update. With `override_pose` true it writes the bone "interruptively ... using signals due to the old design" and may conflict with modifiers. Its transform includes the skeleton's scale. The model here is scaled 39.37, so a physics shape under it would be scaled too, which physics shapes do not take (this is why `SkinnedHitboxes` stands unscaled).
+- `ModifierBoneTarget3D` (4.7): the same as a `SkeletonModifier3D`, updated in the modifier cycle, meant as a target for other modifiers.
+- The project pins by hand on `skeleton_updated` (`RigModel._update_pins`, `ViewModel.pin`) because the weapon rig is a separate skeleton pinned to the arm rig's `wpn` bone.
+
+## Skeleton modifiers in 4.7
+
+`classes/class_skeletonmodifier3d.rst` and each subclass's page
+
+- Base: a child of a `Skeleton3D`, `active` = true, `influence` = 1.0 (the skeleton blends by it; a modifier writes its full result). Override `_process_modification_with_delta(delta)` (`_process_modification()` is deprecated) for a custom one. It can be called with delta 0 outside process "immediately after initialization". Also `_skeleton_changed`, `_validate_bone_names`, `get_skeleton()`, and signal `modification_processed`. Children run in tree order.
+- Built in: `LookAtModifier3D` (bone looks at `target_node`, with `forward_axis` = +Z, `primary_rotation_axis` = Y, `use_secondary_rotation`, `use_angle_limitation`, time-based `duration`/`transition_type`/`ease_type`, `origin_from`; parent-bone modifiers must come above child-bone ones), `AimModifier3D` (simpler, no limits), `CopyTransformModifier3D` and `ConvertTransformModifier3D` (from `BoneConstraint3D`: reference bone to apply bone, relative and additive options, per-index `settings/<i>/...`), `TwoBoneIK3D` (pole-target two-bone IK, deterministic), `ChainIK3D` → `IterateIK3D` → `FABRIK3D`/`CCDIK3D`/`JacobianIK3D`, and `SplineIK3D`, `SpringBoneSimulator3D` ("will likely not behave as expected" when scaled), `LimitAngularVelocityModifier3D`, `BoneTwistDisperser3D`, `RetargetModifier3D` (drives a child skeleton from the parent's pose, overwriting mapped bones), `PhysicalBoneSimulator3D`, and XR ones. `SkeletonIK3D` is deprecated.
+- A modifier's result exists only in the deferred skeleton update, so nothing on the tick sees it (see Process modes). asset-pipeline.md records a `SkeletonModifier3D` losing "to the clip's track in 4.7's update order" for bone folding. That is consistent with modifiers running after the mixer only if the modifier was not under the skeleton, or was inactive (not verified).
+
+## Ragdolls
+
+`tutorials/physics/ragdoll_system.rst`, `classes/class_physicalbonesimulator3d.rst`, `classes/class_physicalbone3d.rst`, `classes/class_skeleton3d.rst`
+
+- 4.x layout: `Skeleton3D` → `PhysicalBoneSimulator3D` → one `PhysicalBone3D` per simulated bone, each with its `CollisionShape3D`s. The simulator is a `SkeletonModifier3D`, so its `influence` blends ragdoll against animation (1.0 is full ragdoll).
+- `PhysicalBoneSimulator3D.physical_bones_start_simulation(bones: Array[StringName] = [])` (bone names, not node names; unknown names are silently ignored), `physical_bones_stop_simulation()`, `is_simulating_physics()`, `physical_bones_add_collision_exception(rid)`/`remove_...`. The same methods on `Skeleton3D` are deprecated and drive an internal virtual simulator kept for old scenes.
+- For a ray to hit a `PhysicalBone3D`, the simulator's `active` must be true and `get_bone_id()` must be ≥ 0.
+- `PhysicalBone3D` (a `PhysicsBody3D`): `joint_type` NONE/PIN (**default** in the editor's generated skeleton, "leads to crumpling")/CONE/HINGE/SLIDER/6DOF, `joint_offset`, `joint_rotation`, `body_offset`, `mass` = 1, `friction` = 1, `bounce` = 0, `gravity_scale` = 1.0 × `physics/3d/default_gravity`, `linear_damp`/`angular_damp` with `DAMP_MODE_COMBINE`/`REPLACE`, `can_sleep`, `apply_impulse(impulse, position)`, `apply_central_impulse`, `_integrate_forces`. The docs advise cones of 20 to 90 degrees swing and 20 to 45 twist, and hinges for elbows and knees, and to drop small bones (fingers, utility bones) since each body costs.
+- Two facts against using it here as is: the project sets `physics/3d/default_gravity = 0.0` (movement applies its own 800 units/s²), so `gravity_scale` does nothing and gravity would have to be applied in `_integrate_forces` or as a constant force. And physics bodies and shapes take no scale, while the character model is scaled 39.37 from metres (inferred: a `PhysicalBone3D` under the scaled skeleton inherits that scale).
+- The project's `Ragdoll` builds unscaled `RigidBody3D`s from the hitbox capsules on layer 16, joins them with `ConeTwistJoint3D`/`HingeJoint3D`, steps them in `_physics_process`, and poses the skeleton per frame with `set_bone_global_pose`. That matches the docs' joint advice. The per-bone `set_bone_global_pose` calls are the costly form the Skeleton3D docs warn about (a few dozen bones per corpse, per frame).
+- Ragdolls are cosmetic in CS2 and here: they run on the client, per frame, and must not feed the tick.
+
+## Importing skeletal assets
+
+`tutorials/assets_pipeline/importing_3d_scenes/import_configuration.rst`, `tutorials/assets_pipeline/retargeting_3d_skeletons.rst`, `classes/class_resourceimporterscene.rst`
+
+- The imported scene has an `AnimationPlayer` holding the clips in its default library, a `Skeleton3D` per armature, and `MeshInstance3D`s with `skeleton` and `skin`.
+- Import options that change clips: `animation/fps` = 30 (the bake rate), `animation/remove_immutable_tracks` = true (constant tracks dropped, which is why CS2's constant scale tracks can vanish), `animation/trimming` = false, `animation/import_rest_as_RESET` = false, and the name suffix `loop`/`cycle` sets `loop_mode`. The runtime `GLTFDocument.generate_scene(state, bake_fps = 30, trimming = false, remove_immutable_tracks = true)` has the same defaults.
+- Retargeting (`BoneMap` + `SkeletonProfile`/`SkeletonProfileHumanoid`, set in the Advanced dialog's Retarget section) renames bones, drops unmapped or position tracks, and fixes rests at import. It is not needed here: CS2's agent, rig and weapon bone names match (asset-pipeline.md). Animations target bones by `NodePath` and name, so a clip only plays on a skeleton at the same path with the same bone names. The retargeting page stresses that sharing clips needs matching rests too, which the project checked for the world rig.
+
+## Class notes
+
+**AnimationMixer**: `active` = true; `callback_mode_process` = 1 (IDLE); `callback_mode_method` = 0; `callback_mode_discrete` = 1; `deterministic` = false; `root_node` = `..`; `root_motion_track` = ""; `root_motion_local` = false; `audio_max_polyphony` = 32; `reset_on_save` (editor). Methods: `advance(delta)`, `add_animation_library`, `get_animation_library`, `remove_animation_library`, `rename_animation_library`, `get_animation`, `has_animation`, `get_animation_list`, `find_animation`, `find_animation_library`, `capture(name, duration, trans_type = 0, ease_type = 0)`, `clear_caches()` (it "may not notice if a node disappears"). Signals: `animation_started`/`animation_finished` (not for loops), `mixer_applied`, `mixer_updated`, `caches_cleared`.
+
+**AnimationPlayer**: `play(name = &"", custom_blend = -1, custom_speed = 1.0, from_end = false)`, `play_backwards`, `play_section(...)`, `play_section_with_markers(...)`, `play_with_capture(...)`, `pause()`, `stop(keep_state = false)` (resets the position to 0), `seek(seconds, update = false, update_only = false)`, `queue(name)` (never plays after a looping clip), `set_blend_time(from, to, sec)`, `playback_default_blend_time` = 0.0, `speed_scale` = 1.0, `current_animation`, `assigned_animation`, `current_animation_position`, `is_playing()`, `is_animation_active()`, `get_playing_speed()`, `playback_auto_capture` = true (only acts on clips with capture tracks).
+
+**AnimationTree**: `tree_root: AnimationRootNode`, `anim_player: NodePath` = "", `advance_expression_base_node` = ".". Signal `animation_player_changed`. `get_process_callback`/`set_process_callback` are deprecated.
+
+**AnimationLibrary**: `add_animation(name, animation) -> Error`, `get_animation`, `has_animation`, `remove_animation`, `rename_animation`, `get_animation_list`, `get_animation_list_size`. Signals: `animation_added`, `animation_removed`, `animation_renamed`, `animation_changed`.
+
+**Animation**: see "Animation resources".
+
+**AnimationNode** (base): `filter_enabled`, `set_filter_path(path, enable)`, `is_path_filtered`, `add_input(name)`, `remove_input`, `set_input_name(i, name)`, `get_input_count`, `find_input`, `get_parameter`/`set_parameter` (local memory, since "resources can be reused in multiple trees"). `_process()` for GDScript nodes is deprecated and "mostly useless".
+
+**AnimationNodeAnimation**, **AnimationNodeOneShot**, **AnimationNodeTransition**, **AnimationNodeBlend2**, **AnimationNodeAdd2**, **AnimationNodeBlendSpace2D**, **AnimationNodeTimeScale**, **AnimationNodeStateMachine**, **AnimationNodeBlendTree**: see "AnimationTree nodes".
+
+**Skeleton3D**: see Skeleton3D; plus `modifier_callback_mode_process` = 1 and `advance(delta)` for modifiers; signals `skeleton_updated`, `pose_updated`, `rest_updated`, `bone_list_changed`, `bone_enabled_changed`; `NOTIFICATION_UPDATE_SKELETON` = 50.
+
+**SkeletonModifier3D**, **LookAtModifier3D**, **BoneConstraint3D**: see "Skeleton modifiers".
+
+**BoneAttachment3D**: `bone_name` = "", `bone_idx` = -1, `override_pose` = false, `use_external_skeleton` = false, `external_skeleton`, `get_skeleton()`, `on_skeleton_update()`.
+
+**PhysicalBoneSimulator3D**, **PhysicalBone3D**: see Ragdolls.
+
+**SkeletonProfile / BoneMap**: a profile names the bones a humanoid (or custom) rig should have, and a `BoneMap` maps profile names to a skeleton's bones. They are import-time tools used by the scene importer's Retarget options.
+
+**Skin**: the bind data (`MeshInstance3D.skin`). `Skeleton3D.register_skin(skin) -> SkinReference`.
+
+## Where the code already does this
+
+- `src/player/player_model.gd`: builds the `AnimationTree` in code (`_build_tree` 397-435: `add_animation_library(&"", ...)`, `root_node`, `tree_root`, `animation_player.active = false`). Blend spaces with CS2's triangles (`blend_space` 801-817), Transitions, Blend2, Add2 (`hold`), OneShots (`action`, `gun_action`, and `shoot` with `MIX_MODE_ADD`), a TimeScale `cycle` paced by `cycle_length`, filters (`_mask` 792-795), `pose_now` (609-615, three `advance(0.0)`), `rest_relative` (358-).
+- `src/player/rig_model.gd`: library duplicate before renaming (110-113), `fold_bones` removing scale tracks from per-model clip copies (167-191), `play()` re-firing with `seek(0.0, true)` (194-224), mesh adoption onto another skeleton (`adopt` 268), adding missing bones (`_add_bone_from` 358-371), pins on `skeleton_updated` (106).
+- `src/player/view_model.gd:93-94`: pins the weapon skeleton to `wpn`.
+- `src/combat/skinned_hitboxes.gd`: capsules follow bones on `skeleton_updated` (51-52, 82-89) using `skeleton.global_transform * get_bone_global_pose()`.
+- `src/combat/ragdoll.gd`: RigidBody3D and joint ragdoll, posing with `set_bone_global_pose` (224-235), animation stopped via `PlayerModel.set_animating(false)`.
+- `scripts/profile_dust2.gd:204-207`: puts every `AnimationTree` into `ANIMATION_CALLBACK_MODE_PROCESS_MANUAL` and advances it itself.
+- Looks at odds, not verified: hitboxes, which the server's hitscan traces against, are posed by an `AnimationTree` left in IDLE mode (no `callback_mode_process` set in `player_model.gd`) and placed from the model node's transform, which `PlayerModel.show_between` (447-449, called from `bot.gd:224-226` in `_process`) interpolates between ticks. So where a round hits depends on the frame rate and the render interpolation, not only on the tick. `player_sim.gd:101-103` states the intent ("as CS2's server animates every player for their hitboxes"). The fix direction: MANUAL mode advanced on the tick, hitboxes placed from the tick's transform, the drawn model separate or interpolated after.
+- Looks at odds, not verified: `player_model.gd:804` sets the deprecated `AnimationNodeBlendSpace2D.sync = true`; in 4.7 that is `sync_mode = SYNC_MODE_INDEPENDENT`.
+- Looks at odds, not verified: `player_model.gd:771` (`AnimationNodeAdd2` "hold") and `:783` (`OneShot.MIX_MODE_ADD` "shoot") run with `deterministic` at its default false, which the AnimationMixer docs say normalises Add2 at 1.0 to the equivalent of a Blend2 at 0.5. Check whether the held-gun idle and shot layers come out at half strength.
+- `rig_model.gd:117` and `player_model.gd:156` set `loop_mode` on `Animation`s that are still shared through the library's shallow duplicate. It is harmless while every model wants the same loop mode.
+
+## Not covered here
+
+- The editor's animation panel, onion skinning, Bezier editing, cutout and 2D skeletons (`tutorials/animation/introduction.rst`, `cutout_animation.rst`, `2d_skeletons.rst`), and playing videos and making movies (`playing_videos.rst`, `creating_movies.rst`).
+- `AnimationNodeStateMachineTransition` and `AnimationNodeStateMachinePlayback` members in full (`classes/class_animationnodestatemachine*.rst`), and `AnimationNodeBlendSpace1D`, `Blend3`, `Add3`, `Sub2` and `AnimationNodeExtension` (`classes/`).
+- IK solver settings in detail (`classes/class_twoboneik3d.rst`, `class_fabrik3d.rst`, `class_ccdik3d.rst`, `class_jacobianik3d.rst`, `class_splineik3d.rst`) and `SpringBoneSimulator3D`.
+- Joints and rigid bodies in general, and Jolt specifics (`tutorials/physics/`), for the project's `Ragdoll`.
+- Blend shapes (`TYPE_BLEND_SHAPE`, `MeshInstance3D.set_blend_shape_value`): CS2's agents do not rely on them here.
+- The `Tween` class, for UI-side motion.

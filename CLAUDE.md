@@ -49,6 +49,16 @@ and Local checks listed at the end of its page where they concern the
 feature. When nothing covers the feature, say so in the plan or pull request
 before building, so Sid can decide whether to have it researched first.
 
+Before writing code against a Godot API, read `reference/godot/README.md`
+and the page it names for the task: what the Godot 4.7 docs say about each
+engine system this project uses, the classes' exact members, and the
+mistakes the docs warn about (metre defaults in an inch-scaled world,
+shared containers, querying physics outside the tick). Trust those pages
+and the docs over memory of older Godot versions. For anything they leave
+out, `scripts/godot_docs.sh` fetches the full docs into `.godot-docs/` to
+search. When a change finds a page wrong or missing something, correct it
+in the same pull request.
+
 ## What the code holds to
 
 - Source units (1 unit = 1 inch), a fixed 64 Hz tick, and the project's own
