@@ -220,7 +220,7 @@ The companion page `rendering.md` covers lights, shadows, culling, anti-aliasing
 
 ## Where the code already does this
 
-Main is at `86e73c2`. Branches named where they differ.
+Main at `b5d8e4d`, after the render work (PRs #78, #82) and the docs audit.
 
 - **Includes.** All includes use absolute `res://` paths, so the runtime-built far shaders resolve them.
   - `src/map/lightmapped.gdshader`, `probe_lit.gdshader`, `blend_material.gdshader`, `lightmapped_overlay.gdshader` and `far.gdshader` include `lightmap`, `baked_light`, `prop_features`, `probe_lit` and `far`.
@@ -239,24 +239,16 @@ Main is at `86e73c2`. Branches named where they differ.
   - This follows the docs: the fragment keeps the true `VERTEX` for lighting.
   - 4.7's `Z_CLIP_SCALE` (vertex out) and BaseMaterial3D `fov_override` do the same job built in. They are an option if the hand-rolled version ever breaks SSAO or shadows. The docs warn that `Z_CLIP_SCALE` below 1 can upset SSAO and SSR, and the manual squeeze presumably can too (inferred).
 - **Instance uniforms.**
-  - Main: six vec3 probe values (`probe_lit.gdshaderinc:12-17`) plus `view_model_projection`, 7 in all.
-  - Branch `origin/claude/baked-sun-shadows-rid6x7`: 10 plus 1, still under the 16 limit. Adding more should be counted.
-  - The same branch adds `global uniform sampler3D probe_sun_visibility` and the matching `[shader_globals]` entry in `project.godot`. A global uniform must be in Project Settings before a shader using it is saved.
+  - Ten on the probe-lit shader (`probe_lit.gdshaderinc:12-17` and `:31-34`: six probe values and four for its shadow page) plus `view_model_projection`, 11 in all, under the 16 limit. Adding more should be counted.
+  - `probe_lit.gdshaderinc` also reads `global uniform sampler3D probe_sun_visibility`, with the matching `[shader_globals]` entry and the matching `[shader_globals]` entry in `project.godot`. A global uniform must be in Project Settings before a shader using it is saved.
 - **Effects on MultiMesh.** `effect_quad.gdshaderinc:25` reads the UV rect from `INSTANCE_CUSTOM`, which is correct for MultiMesh custom data. Its `view_model_projection` instance uniform can only apply to the whole MultiMesh node (inferred).
-- **Conditional alpha scissor (looks at odds, not verified).**
+- **Conditional alpha scissor (measured: no cost).**
   - Code: `src/map/lightmapped.gdshader:32-35`, `src/map/probe_lit.gdshader:36-39`, `src/map/far.gdshader:29-32`.
   - All three write `ALPHA` and `ALPHA_SCISSOR_THRESHOLD` inside `if (alpha_scissor >= 0.0)`. Per the docs, "if written to on any branch" is decided when the shader compiles. Every material on these shaders, including the opaque walls and floors that set `alpha_scissor < 0`, is therefore compiled as alpha-tested (inferred).
-  - Alpha-tested surfaces lose the depth prepass (the discard note) and pay for the branch in registers.
-  - The fix the docs point to: a separate scissored shader, or an `#ifdef ALPHA_SCISSOR` variant, for the few cut-out materials. Measure with `scripts/profile_dust2.gd` before and after.
-- **`far.gdshader` writes `DEPTH` (main).**
-  - `src/map/far.gdshader:37` has `DEPTH = far_depth(FRAGCOORD.z);`.
-  - `src/map/far_materials.gd:106` pastes the same line into the start of every `fragment()` it rebuilds, at run time. It is written unconditionally, so it meets the "all branches" rule.
-  - Inferred GPU fact: writing depth from a fragment disables early depth rejection for that draw.
-  - The branch moves the squeeze to the vertex stage instead (`far_position(clip, CLIP_SPACE_FAR)` in `far.gdshaderinc`). That keeps early-Z and matches the docs' `CLIP_SPACE_FAR` built-in.
-- **`far_plane_depth` from GDScript (looks at odds, not verified).**
-  - `src/map/far_materials.gd:52` returns 1.0 under `gl_compatibility` and 0.0 otherwise, and `far.gdshaderinc` reads it as a uniform.
-  - The shader can learn this itself from `CLIP_SPACE_FAR` or `CURRENT_RENDERER`, with no uniform.
-  - The claim "Compatibility does not reverse" is where the docs disagree. The branch measured reverse-Z and set it to 0.0, and main has not been checked under Compatibility.
+  - Alpha-tested surfaces lose the depth prepass (the discard note) and pay for the branch in registers, so a separate scissored shader or an `#ifdef ALPHA_SCISSOR` variant looked like the fix.
+  - Measured in the docs audit on Sid's machine: copies of the six shaders without the branch, on all 702 opaque dust2 materials, changed the GPU's frame by at most 0.02 ms at 4K and 0.04 ms at 1080p, within the noise (`reference/rendering.md`, "Measured"). Nothing to change.
+- **The 3D skybox's depth squeeze is in the vertex stage** (R2). `far.gdshader` and the variants `FarMaterials.variant_of` builds set `POSITION = far_position(clip, CLIP_SPACE_FAR)`, which keeps early depth rejection; writing `DEPTH` per fragment, as before, cost 0.8 ms at 1080p. A shader with a `vertex()` of its own still gets `DEPTH = far_depth(FRAGCOORD.z)` at the top of `fragment()`, unconditionally, so it meets the "all branches" rule.
+- **`far_plane_depth`** is 0.0 for every renderer (`FarMaterials.far_plane_depth`), after the render work drew through Compatibility and found it reversed too, where the docs disagree (see Depth above). Only the per-fragment path reads it.
 - **Runtime-built shaders.**
   - `far_materials.gd:97-108` (`variant_of`) builds a new `Shader` from `base.code` with string replaces, and caches it per base shader in `_variants`.
   - Because `Shader.code` is the user code, `#include` lines survive, and they are absolute, so they resolve.

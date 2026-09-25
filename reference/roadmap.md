@@ -420,6 +420,11 @@ list, split into Local and Remote items, with the measurements.
   calls a frame. Next, if the playtest wants crisper edges up close: a
   static shadow map of the map, rendered once at load, since dust2 ships
   none (L6).
+- **Screen-space occlusion off.** *(done, the Godot docs audit)* It
+  darkened ambient light only, which no map material takes, so it drew
+  nothing and cost 0.6 to 0.95 ms a frame at 4K (rendering.md,
+  "Measured"). An occlusion look like CS2's would be a new setting to
+  judge beside the game.
 - **Research CS2's renderer (R0), reflections from the map's cubemaps (R5)
   and CS2's video settings (R6).** *(Remote, not started)*
 

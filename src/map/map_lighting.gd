@@ -4,8 +4,8 @@ extends RefCounted
 ## Lights a map the way the map says it should be lit.
 ##
 ## Everything here is the cheap kind of lighting: one sun, the few lamps CS2
-## lights as it draws (add_lamps), the map's own sky panorama, fog, tone
-## mapping and screen-space occlusion. Nothing is baked and no global
+## lights as it draws (add_lamps), the map's own sky panorama, fog and tone
+## mapping. Nothing is baked and no global
 ## illumination runs. The numbers come from the map's entity lump
 ## (light_environment, the lamps, env_cubemap_fog, post_processing_volume), so this
 ## is a translation of what CS2 does with them rather than a look picked by
@@ -30,10 +30,6 @@ const SHADOW_PANCAKE := 4096.0
 const LAMP_RANGE_BEYOND := 2.5
 ## A lamp's shadow's depth bias, in units (see barn_light).
 const LAMP_SHADOW_BIAS := 1.0
-
-## Screen-space occlusion reaches this far, in inches. Godot's default is one
-## metre, which at this scale is one unit: nothing.
-const OCCLUSION_RADIUS := 24.0
 
 
 ## Adds a sun and a WorldEnvironment under parent. sun is what MapImporter
@@ -70,8 +66,9 @@ static func build(
 	# dust2 is about 5,000 units across, so from anywhere on it this reaches
 	# the far side; the far buildings beyond that are the skybox's. The
 	# shadow map is 8192 square (project settings) to keep the near split
-	# sharp over that range, and the soft filter at its highest, or the
-	# penumbra of the sun's quarter degree comes out as dither.
+	# sharp over that range, and the soft filter at Soft High (quality 4
+	# of 5, project settings), or the penumbra of the sun's quarter degree
+	# comes out as dither.
 	light.directional_shadow_max_distance = 8192.0
 	# How far towards the sun each split's shadow map reaches before what
 	# is beyond is squashed flat onto its edge ("pancaked"). The default is
@@ -155,11 +152,12 @@ static func build(
 		environment.fog_aerial_perspective = 1.0
 		environment.fog_sky_affect = 0.0
 
-	# Contact shadows in corners and under props, the cheap way.
-	environment.ssao_enabled = true
-	environment.ssao_radius = OCCLUSION_RADIUS
-	environment.ssao_intensity = 2.0
-	environment.ssao_detail = 0.5
+	# No screen-space occlusion. Godot's darkens ambient light only, and the
+	# map's, the props' and the players' materials all turn ambient light
+	# off and bring their bounce in through light() (baked_light.gdshaderinc),
+	# so it had nothing to darken: drawn with it and without, dust2 came out
+	# the same to the pixel, and it cost 0.6 to 0.95 ms a frame at 3840x2160
+	# (reference/rendering.md). The baked occlusion is in the bounce already.
 
 	# A little bloom off the brightest surfaces, which is what the game has.
 	environment.glow_enabled = true

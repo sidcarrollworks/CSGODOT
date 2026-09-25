@@ -88,6 +88,7 @@ func _initialize() -> void:
 func _run() -> void:
 	_test_the_simulation_reads_only_commands()
 	_test_presses_land_at_their_instant()
+	_test_the_mouse_turns_as_far_at_any_window_size()
 	_test_an_old_input_map_is_put_right()
 
 	_world = Node3D.new()
@@ -174,6 +175,25 @@ func _test_presses_land_at_their_instant() -> void:
 	# put every press at 0.
 	var stale := PlayerInput.tick_fraction(start + HALF_TICK, start + TICK + 100, TICK)
 	_check(is_zero_approx(stale), "measured from the tick's own start, the same click would have been at 0")
+
+
+## The view turns by the mouse's movement on the screen, CS2's 0.022 degrees
+## a count times the sensitivity, whatever the window's size: in a
+## 3840x2160 window the stretch halves the motion's relative, and aiming by
+## it turned half as far.
+func _test_the_mouse_turns_as_far_at_any_window_size() -> void:
+	var input := PlayerInput.new()
+	input.sensitivity = 2.0
+	var motion := InputEventMouseMotion.new()
+	motion.screen_relative = Vector2(100.0, -50.0)
+	motion.relative = motion.screen_relative * 0.5
+	input.handle_event(motion)
+	_check(
+		is_equal_approx(input.yaw_degrees, -100.0 * 2.0 * PlayerInput.CS_YAW_PER_COUNT)
+			and is_equal_approx(input.pitch_degrees, 50.0 * 2.0 * PlayerInput.CS_YAW_PER_COUNT),
+		"100 counts right and 50 up at sensitivity 2 turn the view 4.4 degrees and 2.2, stretched window or not (%.2f, %.2f)"
+			% [input.yaw_degrees, input.pitch_degrees]
+	)
 
 
 ## An input map an open editor wrote back from before the inventory: no

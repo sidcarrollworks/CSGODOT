@@ -133,6 +133,7 @@ nodes, and no orphan nodes after fifteen seconds of fighting.
 | 64 ticks a second, and everything drawn between ticks | PR #46 | a second of simulation 0.36 s to 0.21 with ten players, 0.76 to 0.52 with twenty; twenty players headless from 57 to 81 frames a second to 117 to 128 |
 | One world runs the tick (`GameWorld`), the two path searches a tick its to give out | PR #50 | nothing, as it should: every tick's callbacks in the engine's order, main against it, 3.04, 2.97 and 2.63 ms against 3.00, 2.93 and 2.59 with ten players, window for window; with twenty, 6.75, 7.60 and 7.42 against 6.70, 7.82 and 7.65 |
 | A weapon's recoil solved once for each pattern, and the pattern read once | fix/equip-hitch | every weapon built (a gun drawn, any respawn) solved its pushes again: 15 ms, a frozen frame each time a gun was drawn, and 15 ms a player respawned at a fresh round's start; now 0.01 ms, and a draw 18 ms to 0.64 |
+| A gun's recoil numbers carried by its copies (`WeaponData`'s solved fields stored, solved as the registry builds each gun) | the Godot docs audit | every new gun (a buy, a pickup, a round's pistols) solved its weapon model's hold time again on the first tick it was held: 20 to 22 ms, more than a tick; now 1 us, and `ItemRegistry.load_all` 17 ms to 69 |
 
 A tick at 64 costs a little more than one at 128 did: it moves everyone
 twice as far, with more to meet on the way, and holds twice the rounds and

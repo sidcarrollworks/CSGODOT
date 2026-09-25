@@ -201,7 +201,7 @@ Docs: `tutorials/performance/using_multiple_threads.rst`, `tutorials/performance
   - `threading/worker_pool/max_threads` defaults to -1 (one per logical core); `threading/worker_pool/low_priority_thread_ratio` 0.3.
 - `Thread`: `start(callable, priority := Thread.PRIORITY_NORMAL) -> Error`, `wait_to_finish()` (required), `is_alive()`, `is_started()`, static `Thread.is_main_thread()`, static `Thread.set_thread_safety_checks_enabled(enabled)`. Creating a thread is slow; make them once, up front.
 - `Mutex` is reentrant: `lock()`, `try_lock() -> bool`, `unlock()` (once per lock). `Semaphore` starts at 0: `post(count := 1)`, `wait()`, `try_wait() -> bool`.
-- None of these are used in the project today. A tick must give the same result every run, so any threaded work in the simulation would have to join before the tick continues (inferred).
+- The project uses one: `WorldVisibility.cull` sorts the map's meshes into CS2's visibility clusters on a `WorkerThreadPool` task while the rest of the map loads, draws everything until it is done, and waits on it before its first use and before it is freed. Nothing in the simulation is threaded. A tick must give the same result every run, so any threaded work in the simulation would have to join before the tick continues (inferred).
 
 ## Command line and headless runs
 
