@@ -290,6 +290,13 @@ func import_map() -> Dictionary:
 			)
 
 	var behind := FarMaterials.apply(visible_meshes) if behind_everything else 0
+	# What cannot be seen from where the camera is, is not drawn, as CS2
+	# does. A skybox is drawn from anywhere, so it keeps everything.
+	var visibility := WorldVisibility.load_for(source_path.get_base_dir()) if not behind_everything else null
+	if visibility != null:
+		visibility.name = "Visibility"
+		add_child(visibility)
+		visibility.cull(visible_meshes)
 
 	var collision_from := "the collision hull"
 	var targets: Array[MeshInstance3D] = []
@@ -317,6 +324,7 @@ func import_map() -> Dictionary:
 		"lightmaps": lightmaps,
 		"behind": behind,
 		"probes": probes,
+		"visibility_clusters": visibility.cluster_count if visibility != null else 0,
 		"materials": materials,
 		"bounds": _bounds(meshes),
 	}
@@ -638,6 +646,10 @@ func _report_text() -> String:
 			% (blend["missing"] as PackedStringArray).size()
 		)
 		lines.append("    Run 'scripts/extract_assets.sh layers' to fetch them.")
+	if int(stats["visibility_clusters"]) > 0:
+		lines.append("    visibility: %d clusters; what the camera's cannot see is not drawn" % stats["visibility_clusters"])
+	elif not behind_everything:
+		lines.append("    no visibility found; run 'scripts/extract_assets.sh visibility' to draw only what can be seen")
 	if stats.has("sun"):
 		var towards_sun: Vector3 = (stats["sun"]["basis"] as Basis).z
 		lines.append(

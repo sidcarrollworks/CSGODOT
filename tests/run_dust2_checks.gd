@@ -166,6 +166,7 @@ func _import() -> bool:
 			and under_awning[3].r > under_awning[3].b,
 		"the field is in the scene: the sky is blue from above at B, the awning's floor warm from below at CT spawn"
 	)
+	_check_visibility()
 
 	var entities_path := ProjectSettings.globalize_path(
 		map_file.get_base_dir().path_join(ENTITIES_FILE)
@@ -274,6 +275,47 @@ func _import() -> bool:
 ## Which of CS2's surfaces each part of the hull is taken as for wall
 ## penetration (Penetration.surface_for), listed so a part taken as
 ## default by mistake shows, and checked to be more than one or two.
+## What CS2 draws from T spawn, where Sid stood looking at the dome by B
+## (2026-09-24): not the kasbah towers at B, which would stand in front of
+## the skybox's dome, and not most of the map; but everything around you.
+func _check_visibility() -> void:
+	var visibility := _importer.get_node_or_null("Visibility") as WorldVisibility
+	_check(
+		visibility != null and visibility.cluster_count == 4096,
+		"the map's visibility is read, 4096 clusters (scripts/extract_assets.sh visibility)"
+	)
+	if visibility == null:
+		return
+	# What is drawn before the culling: everything the import did not leave out.
+	var meshes: Array[MeshInstance3D] = []
+	for node in _importer.get_child(0).find_children("*", "MeshInstance3D", true, false):
+		if (node as MeshInstance3D).visible:
+			meshes.append(node as MeshInstance3D)
+	var eye := Vector3(-194.7, 175.0 + 64.0, -1528.5)
+	visibility.show_from(eye)
+	var towers := 0
+	var towers_drawn := 0
+	var near := 0
+	var near_drawn := 0
+	for mesh_instance in meshes:
+		var drawn := mesh_instance.visible and mesh_instance.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+		if mesh_instance.name.contains("_mudbrick_tower_02_"):
+			towers += 1
+			towers_drawn += 1 if drawn else 0
+		if (mesh_instance.global_transform * mesh_instance.get_aabb()).grow(128.0).has_point(eye):
+			near += 1
+			near_drawn += 1 if drawn else 0
+	_check(
+		towers > 0 and towers_drawn == 0,
+		"from T spawn the kasbah towers at B are not drawn, in front of the skybox's dome (%d of %d drawn)" % [towers_drawn, towers]
+	)
+	_check(
+		visibility.hidden_count() > meshes.size() * 0.5 and near > 0 and near_drawn == near,
+		"most of the map is not drawn from there (%d of %d meshes), and everything within 128 units is (%d of %d)"
+			% [visibility.hidden_count(), meshes.size(), near_drawn, near]
+	)
+
+
 func _check_penetration_surfaces() -> void:
 	var hull := _importer.find_child("Collision", true, false)
 	var surfaces := {}

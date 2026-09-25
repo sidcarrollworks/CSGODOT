@@ -10,7 +10,7 @@
 # Usage:
 #   scripts/extract_assets.sh list-map        # what is inside the map's VPK
 #   scripts/extract_assets.sh list-weapons    # the gun models the weapons step takes
-#   scripts/extract_assets.sh map             # every step for one map: world, hull, entities, nav, volumes, radar, surfaces, layers, sky, skybox, lightmaps
+#   scripts/extract_assets.sh map             # every step for one map: world, hull, entities, nav, volumes, radar, surfaces, layers, sky, skybox, lightmaps, visibility
 #   scripts/extract_assets.sh physics         # just the collision hull (seconds)
 #   scripts/extract_assets.sh entities        # just the entity lump (seconds)
 #   scripts/extract_assets.sh nav             # just the nav mesh the bots walk (seconds)
@@ -21,6 +21,7 @@
 #   scripts/extract_assets.sh sky             # just the sky panorama
 #   scripts/extract_assets.sh skybox          # just the 3D skybox: the far buildings and their baked light
 #   scripts/extract_assets.sh lightmaps       # just the baked bounce light
+#   scripts/extract_assets.sh visibility      # just which parts of the map can see which (seconds)
 #   scripts/extract_assets.sh weapons         # every gun: models, first- and third-person animations
 #   scripts/extract_assets.sh weapon-animations  # just the guns' animations (a minute)
 #   scripts/extract_assets.sh weapon-data     # just the game's weapon tuning (seconds)
@@ -33,7 +34,7 @@
 #   scripts/extract_assets.sh all             # map + weapons + equipment + hud + effects + characters + animgraphs + sounds
 #
 # The steps for one map (list-map, map, physics, entities, nav, volumes,
-# radar, layers, sky, skybox, lightmaps, and all) take the map's name after
+# radar, layers, sky, skybox, lightmaps, visibility, and all) take the map's name after
 # the step, de_dust2 when there is none:
 #   scripts/extract_assets.sh map de_mirage   # all of de_mirage, into assets/maps/de_mirage
 #   scripts/extract_assets.sh nav de_inferno  # just de_inferno's nav mesh
@@ -174,7 +175,7 @@ usage() {
 
 COMMAND="${1:-}"
 case "$COMMAND" in
-	list-map|map|physics|entities|nav|volumes|radar|layers|sky|skybox|lightmaps|all|paths) ;;
+	list-map|map|physics|entities|nav|volumes|radar|layers|sky|skybox|lightmaps|visibility|all|paths) ;;
 	list-weapons|surfaces|weapons|weapon-animations|weapon-data|equipment|hud|effects|characters|animgraphs|sounds)
 		# Not a map's own step: a map name here would be ignored, which is
 		# worse than being told.
@@ -662,6 +663,22 @@ extract_lightmaps() {
 	echo "        light probes: $count atlas slices under lightmaps/probes/"
 }
 
+## The map's precomputed visibility: which of its parts can be seen from
+## which, so what cannot be seen from where you stand is not drawn
+## (WorldVisibility). Kept compiled, since its octree and rows are read
+## straight out of the file (4 MB on dust2), and decompiled beside it for
+## the counts and offsets its data block holds.
+extract_visibility() {
+	local visibility
+	visibility="$(find_map_resource '/world_visibility\.vvis_c$' "world_visibility.vvis_c")" || exit 1
+	mkdir -p "$MAP_DEST"
+
+	echo "Extracting $visibility"
+	echo "        -> $MAP_DEST"
+	"$S2V_BIN" -i "$MAP_VPK" -f "$visibility" -o "$MAP_DEST" | grep -E '^--- Dump' || true
+	"$S2V_BIN" -i "$MAP_VPK" -f "$visibility" -o "$MAP_DEST" -d | grep -E '^--- Dump' || true
+}
+
 extract_map() {
 	extract_world
 	echo
@@ -684,6 +701,8 @@ extract_map() {
 	extract_skybox
 	echo
 	extract_lightmaps
+	echo
+	extract_visibility
 }
 
 extract_weapons() {
@@ -1074,6 +1093,7 @@ case "$COMMAND" in
 	sky) extract_sky; finish ;;
 	skybox) extract_skybox; finish ;;
 	lightmaps) extract_lightmaps; finish ;;
+	visibility) extract_visibility ;;
 	characters) extract_characters; finish ;;
 	animgraphs) extract_animgraphs ;;
 	weapons) extract_weapons; finish ;;

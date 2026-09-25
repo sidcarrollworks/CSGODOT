@@ -99,11 +99,16 @@ Updated 2026-09-24 later: game modes apart from maps (item 24a, `reference/syste
   way (`MapLighting.add_lamps`). After Sid found black skybox buildings,
   orange blocks on the towers and a dark lower tunnel (2026-09-24,
   `reference/asset-pipeline.md`).
-- What Sid found next on dust2 (2026-09-24): its windows, black where the
-  probes were read at the middle of a mesh merged from all over the map,
-  are lit from their own vertices; and the skybox's palm, bush, olive and
-  antenna cards, exported without their alpha, get it back at extraction
-  (`scripts/export_alpha.gd`).
+- What is drawn is what CS2 draws from where you stand: the map's own
+  visibility (`world_visibility.vvis_c`, `WorldVisibility`), read after
+  Source 2 Viewer, culls the world meshes the camera's cluster cannot see,
+  keeping their shadows. Sid found a kasbah tower at B drawn over the 3D
+  skybox's dome from T spawn, which CS2 does not draw there (2026-09-24).
+  With it, the rest of what he found then: dust2's windows, black where
+  the probes were read at the middle of a mesh merged from all over the
+  map, are lit from their own vertices; and the skybox's palm, bush, olive
+  and antenna cards, exported without their alpha, get it back at
+  extraction (`scripts/export_alpha.gd`).
 - Viewmodel arms and weapons at CS2's `viewmodel_fov`; third-person agents
   (Phoenix and SAS) on the locomotion rig, moved by CS2's own blend spaces
   (runs at 225, walks at 136, crouching at 96, kept in step) in an animation

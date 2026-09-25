@@ -80,6 +80,7 @@ func _process(_delta: float) -> bool:
 		_test_light_probes()
 		_test_prop_features()
 		_test_lighting()
+		_test_world_visibility()
 		_test_export_alpha()
 		_spawn_player()
 		_spawned_at_tick = Engine.get_physics_frames()
@@ -1848,6 +1849,123 @@ func _get_vector(bytes: PackedByteArray, at: int) -> Vector3:
 	return Vector3(bytes.decode_float(at), bytes.decode_float(at + 4), bytes.decode_float(at + 8))
 
 
+## A map's visibility made by hand, laid out as CS2 writes one
+## (visibility_fixture), read back and culling three meshes; then the
+## importer picking it up from beside a world glTF.
+func _test_world_visibility() -> void:
+	var fixture := _visibility_fixture()
+	var visibility := WorldVisibility.new()
+	_check(visibility.read(fixture[0], fixture[1]), "a visibility file is read")
+	_check(
+		visibility.cluster_count == 4 and visibility.row_bytes == 1
+			and visibility.max_bounds == Vector3.ONE * 4096.0,
+		"its counts and bounds come from its data block"
+	)
+	# Source's axes; the leaves are 2048 across, their cells 512.
+	_check_equal(visibility.clusters_at(Vector3(640, 640, 640)), PackedInt32Array([1]), "a point is in its leaf's cluster")
+	_check_equal(visibility.clusters_at(Vector3(2600, 640, 640)), PackedInt32Array([2]), "and the next leaf's along x in its")
+	_check(
+		visibility.clusters_at(Vector3(600, 2600, 300)) == PackedInt32Array([1])
+			and visibility.clusters_at(Vector3(1300, 2600, 300)) == PackedInt32Array([2]),
+		"a leaf split between two clusters gives each point the one whose cells it is in"
+	)
+	_check(
+		visibility.clusters_at(Vector3(640, 640, 2600)).is_empty() and visibility.clusters_at(Vector3(5000, 0, 0)).is_empty(),
+		"a point in solid or outside the map is in no cluster"
+	)
+	_check_equal(visibility.clusters_in(Vector3(100, 100, 100), Vector3(300, 300, 300)), PackedInt32Array([1]), "a box is in the clusters it touches")
+	_check_equal(visibility.clusters_in(Vector3(1800, 100, 100), Vector3(2300, 300, 300)), PackedInt32Array([1, 2]), "across two leaves, both")
+	_check(
+		visibility.clusters_in(Vector3(100, 2200, 100), Vector3(900, 2600, 500)) == PackedInt32Array([1])
+			and visibility.clusters_in(Vector3(100, 2200, 100), Vector3(1100, 2600, 500)) == PackedInt32Array([1, 2]),
+		"to the cell: in the split leaf a box takes the second cluster only once it reaches its cells"
+	)
+	_check(
+		visibility.clusters_in(Vector3(3500, 2200, 2200), Vector3(3600, 2300, 2300)).is_empty()
+			and visibility.clusters_in(Vector3(3500, 2200, 2200), Vector3(4000, 3300, 3300)) == PackedInt32Array([3]),
+		"a small box misses a cluster's cells, and one over 1024 on two axes takes its node's list, as the game does"
+	)
+	_check_equal(visibility.clusters_in(Vector3.ONE * -10.0, Vector3.ONE * 5000.0), PackedInt32Array([WorldVisibility.CATCH_ALL]), "a box over the whole map is in the catch-all cluster")
+	var from_one := visibility.row_of(PackedInt32Array([1]))
+	_check(
+		WorldVisibility.sees(from_one, 0) and WorldVisibility.sees(from_one, 2) and not WorldVisibility.sees(from_one, 3)
+			and WorldVisibility.sees(visibility.row_of(PackedInt32Array([1, 3])), 3)
+			and visibility.row_of(PackedInt32Array()).is_empty(),
+		"a cluster's row says what it sees; two clusters' rows add up"
+	)
+	var no_block := fixture[0].duplicate() as PackedByteArray
+	no_block.encode_u32(28, 0x58585858)  # The block's type, XXXX.
+	var two_clusters := (fixture[1] as String).replace("m_nBaseClusterCount = 4", "m_nBaseClusterCount = 2")
+	var refused := WorldVisibility.new()
+	_check(
+		not refused.read(no_block, fixture[1]) and not refused.read(fixture[0], two_clusters),
+		"a file without the octree's block, or with nothing to cull by, is not taken"
+	)
+	refused.free()
+
+	# Three boxes: one in the first leaf, and two in the last leaf's cluster,
+	# one of them casting no shadow (a lamp's fixture). Game (x, y, z) is
+	# Source (y, z, x).
+	var holder := Node3D.new()
+	root.add_child(holder)
+	holder.add_child(visibility)
+	var meshes: Array[MeshInstance3D] = []
+	for at: Vector3 in [Vector3(640, 640, 640), Vector3(3200, 3200, 2304), Vector3(3200, 3200, 2304)]:
+		var mesh_instance := MeshInstance3D.new()
+		var box := BoxMesh.new()
+		box.size = Vector3.ONE * 64.0
+		mesh_instance.mesh = box
+		holder.add_child(mesh_instance)
+		mesh_instance.global_position = at
+		meshes.append(mesh_instance)
+	meshes[0].cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
+	meshes[2].cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	visibility.cull(meshes)
+	visibility.show_from(Vector3(640, 640, 640))
+	_check(
+		meshes[0].cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
+			and meshes[1].cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+			and meshes[2].cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF and not meshes[2].visible
+			and visibility.hidden_count() == 2,
+		"from the first leaf, what its cluster cannot see is not drawn: its shadow stays, and one that casts none is hidden"
+	)
+	visibility.show_from(Vector3(3200, 3200, 2304))
+	_check(
+		meshes[0].cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+			and meshes[1].cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON and meshes[2].visible
+			and visibility.hidden_count() == 1,
+		"from the last, the other way about, and each is drawn as it was"
+	)
+	visibility.show_from(Vector3(-100, -100, -100))
+	_check(visibility.hidden_count() == 0, "and from outside every cluster, everything")
+	holder.free()
+
+	# The importer takes the files from beside the world glTF; a skybox's
+	# does not, being drawn from anywhere.
+	var directory := FIXTURE_PATH.get_base_dir()
+	var compiled := FileAccess.open(directory.path_join(WorldVisibility.COMPILED_FILE), FileAccess.WRITE)
+	compiled.store_buffer(fixture[0])
+	compiled.close()
+	var data := FileAccess.open(directory.path_join(WorldVisibility.DATA_FILE), FileAccess.WRITE)
+	data.store_string(fixture[1])
+	data.close()
+	_check(WorldVisibility.load_for("user://nowhere") == null, "a map without the files has no visibility")
+	var importer := _make_importer(MapImporter.CollisionSource.NONE)
+	root.add_child(importer)
+	var sky := _make_importer(MapImporter.CollisionSource.NONE)
+	sky.behind_everything = true
+	root.add_child(sky)
+	_check(
+		int(importer.stats.get("visibility_clusters", 0)) == 4 and importer.get_node_or_null("Visibility") is WorldVisibility
+			and int(sky.stats.get("visibility_clusters", -1)) == 0 and sky.get_node_or_null("Visibility") == null,
+		"an imported map culls by the visibility beside it; a skybox does not"
+	)
+	importer.free()
+	sky.free()
+	DirAccess.remove_absolute(directory.path_join(WorldVisibility.COMPILED_FILE))
+	DirAccess.remove_absolute(directory.path_join(WorldVisibility.DATA_FILE))
+
+
 ## scripts/export_alpha.gd on a hand-written export: of the materials that
 ## cut or blend by their colour's alpha, the one whose image has none is
 ## listed, with the texture it came from, once; an opaque one never is.
@@ -1879,6 +1997,64 @@ func _test_export_alpha() -> void:
 		listed, PackedStringArray(["materials/cut.vtex\t%s" % directory.path_join("rgb.png")]),
 		"an export's alpha-cut colour image without alpha is listed with its texture, once; one with alpha, or opaque, is not"
 	)
+
+
+## [compiled file, data block as text] of a visibility made by hand over a
+## cube 4096 across, in Source's axes: a root and its eight leaves, four
+## clusters. The first leaf (x, y and z low) is cluster 1; the next along x
+## is cluster 2; the one along y is cluster 1 in its cells with x below 1024
+## and cluster 2 in the rest; the last (all high) is cluster 3 in its cells
+## with x below 3072, and lists 3 as the clusters in it. The rest are solid.
+## Clusters 1 and 2 see each other, 3 only itself, and every one cluster 0.
+func _visibility_fixture() -> Array:
+	var block := PackedByteArray()
+	block.resize(156)
+	var none := 0xFFFFFF << 8
+	# Nodes at 0, two words each: the child or region start shifted up past
+	# the leaf bit, and the region count under the enclosed list's index.
+	var nodes := [[1 << 1, none], [0 << 1 | 1, 1 | none], [1 << 1 | 1, 1 | none], [2 << 1 | 1, 2 | none],
+		[1, none], [1, none], [1, none], [1, none], [4 << 1 | 1, 1 | 0 << 8]]
+	for i in nodes.size():
+		block.encode_u32(i * 8, nodes[i][0])
+		block.encode_u32(i * 8 + 4, nodes[i][1])
+	# Regions at 72: the cluster, and the mask's index from bit 40.
+	var regions := [1, 2, 1 | 1 << 40, 2 | 2 << 40, 3 | 1 << 40]
+	for i in regions.size():
+		block.encode_s64(72 + i * 8, regions[i])
+	# The last leaf's list at 112, its one cluster at 120.
+	block.encode_s32(112, 0)
+	block.encode_s32(116, 1)
+	block.encode_u16(120, 3)
+	# Masks at 128: every cell, the cells with x index 0 or 1, the rest.
+	var low_x := 0
+	for cell in 64:
+		if cell & 3 < 2:
+			low_x |= 1 << cell
+	block.encode_s64(128, -1)
+	block.encode_s64(136, low_x)
+	block.encode_s64(144, ~low_x)
+	# The rows at 152, a byte each.
+	for i in 4:
+		block[152 + i] = [0b1111, 0b0111, 0b0111, 0b1001][i]
+	# The header, a table of two blocks (the data block first, empty here),
+	# then the octree's.
+	var compiled := PackedByteArray()
+	compiled.resize(40)
+	compiled.encode_u32(0, 40 + block.size())
+	compiled.encode_u16(4, 12)
+	compiled.encode_u32(8, 8)
+	compiled.encode_u32(12, 2)
+	compiled.encode_u32(16, 0x41544144)  # DATA
+	compiled.encode_u32(28, 0x53565856)  # VXVS
+	compiled.encode_u32(32, 40 - 32)
+	compiled.encode_u32(36, block.size())
+	compiled.append_array(block)
+	var data := "{\n\tm_nBaseClusterCount = 4\n\tm_nPVSBytesPerCluster = 1\n"
+	data += "\tm_vMinBounds = [ 0.0, 0.0, 0.0 ]\n\tm_vMaxBounds = [ 4096.0, 4096.0, 4096.0 ]\n"
+	for sub: Array in [["m_NodeBlock", 0, 9], ["m_RegionBlock", 72, 5], ["m_EnclosedClusterListBlock", 112, 1],
+			["m_EnclosedClustersBlock", 120, 1], ["m_MasksBlock", 128, 3], ["m_nVisBlocks", 152, 4]]:
+		data += "\t%s = \n\t{\n\t\tm_nOffset = %d\n\t\tm_nElementCount = %d\n\t}\n" % sub
+	return [compiled, data + "}\n"]
 
 
 func _spawn_player() -> void:
