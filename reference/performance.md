@@ -182,6 +182,12 @@ eyes and firing when it fires, and every 8 seconds from 30 on every bot put
 on the T spawn together for a fight at close range. A frame is in combat
 while anyone has fired in the last second.
 
+These are from before R5's reflections, which Sid keeps (2026-09-25).
+They add 1.15 to 1.18 ms of GPU at 4K, and in play took the GPU mean
+from 3.1 ms to 4.2 and the frame mean out of combat from 4.8 to 5.6 and
+5.9, with frames of 20 to 30 ms back, their time in drawing, the cause
+not found (reference/rendering.md, R5).
+
 | | Mean | Median | 95th | 99th | Worst | GPU mean |
 |---|---|---|---|---|---|---|
 | Out of combat | 4.37 ms | 3.54 | 7.78 | 8.49 | 10.9 | 3.06 |
@@ -204,7 +210,7 @@ with the same run (before this work, its worst frames in combat were 28 to
 | The first tracer and flash: each effect shader compiled when its first material asked for it | the frame (`EffectQuads`) | 6.6 ms for add, 10.3 for lit | compiled as the map loads |
 | Each new batch of effect cards: its MultiMesh read back from the GPU when its first card was set | the frame | 2 to 4 ms a batch; the first shots' frames 7 to 18 ms | none: a batch's cards go in one buffer at the frame's end |
 
-After: no frame over 20 ms in the run, the tick's worst 5 ms (it was 25
+After, before R5: no frame over 20 ms in the run, the tick's worst 5 ms (it was 25
 to 30), and the effects' frame, while any are drawn, 0.29 ms mean, 0.22
 median, 0.79 at the 95th, 2.5 most (up to 139 cards; filled a card at a
 time it was 0.26, 0.20, 0.64 and 18). The renderer compiled 3 surface
