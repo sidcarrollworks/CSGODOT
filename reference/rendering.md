@@ -374,10 +374,40 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
     in the tick or the scripts, and none compiling a pipeline (1 and 7 in
     a run, against none before). Their cause is not found. The probes had
     finished drawing and the map's visibility was back on by then.
-  - The look (L8's screenshots) is still to judge. Whether it is worth
-    1.15 ms at 4K is Sid's call. Untested ways to cut it: fewer probes
-    (CS2's 43 volumes overlap, and every pixel in an overlap samples each),
-    a smaller atlas for the memory, or the second tier's pictures.
+  - Where it goes, from four fixed views (both sides' first spawn points,
+    two ways each), GPU medians averaged over the views, main against R5
+    alone:
+
+    | | GPU |
+    |---|---|
+    | main, before R5 | 3.21 ms |
+    | R5 as built | 4.39 ms |
+    | its 17 probes not inside another | 4.31 ms |
+    | its 12 largest probes | 4.19 ms |
+    | its probes hidden | 3.93 ms |
+    | its probes hidden and the sky's reflections off | 3.73 ms |
+    | `sky_reflections/texture_array_reflections` false | 4.21 ms (3.74 with the probes hidden) |
+    | `specular_occlusion/enabled` false | no change |
+    | `reflection_atlas/reflection_size` 128 | no change (memory only) |
+
+    So the 1.18 ms is about 0.45 for the probes, 0.2 for the sky's
+    reflections (one radiance fetch a pixel, two with the texture array),
+    and 0.5 for Godot's ambient path itself, which `ambient_light_disabled`
+    skipped: the probe cluster's walk, the specular occlusion and the
+    combining, in `scene_forward_clustered.glsl` (4.7.2, read); that the
+    shader's larger size also costs it occupancy is inferred. The
+    environment's ambient is a colour on dust2, so no sky sample is thrown
+    away under `IRRADIANCE`.
+  - In play with the probes hidden, the GPU mean was 3.7 ms against 4.2,
+    with one frame over 20 ms (one run).
+  - The look (L8's screenshots) is still to judge; which of these trims to
+    take is Sid's call: the texture array off (0.18 ms, rougher surfaces'
+    sky reflections blurrier), fewer probes (0.1 to 0.2 ms, the rooms
+    left out reflect a larger neighbour or the sky), or no probes at all
+    and only the sky (0.45 ms). The 0.5 ms of Godot's ambient path stays
+    with any reflections that Godot draws; only the second tier, the
+    material shaders sampling CS2's own pictures with Godot's ambient off
+    again, would avoid it (not tried).
 - **R6. Settings as CS2 names them.** Shadow quality, anti-aliasing and
   the rest as a menu reads them (roadmap item 26), so each player picks
   their own cost.
