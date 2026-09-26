@@ -511,7 +511,11 @@ and the spectator versions.
   been planted", "counter-terrorists win", "fire in the hole"), the buy
   sound, the 10-second warning.
 - **S2.** The sound event files (`soundevents/*.vsndevts_c`) with the game's
-  volumes and distances, which today are set by ear.
+  volumes and distances, which today are set by ear. *(Remote now, and done
+  2026-09-26: GameTracking-CS2 carries them as text, and
+  `scripts/sound_events.sh` generates `reference/sounds/sound_events.json`,
+  which `SoundEvents` plays. The sounds already built still use their levels
+  by ear until each moves onto it.)*
 
 **Remote:** play them from the systems above through `SoundBank`.
 

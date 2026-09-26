@@ -266,6 +266,13 @@ of the game's bullet holes there and the sound of that surface taking it
 (`src/combat/bullet_impacts.gd`). Without `sounds` extracted the game is
 silent, the walls unmarked, and everything else works.
 
+CS2's own sound events, the volume, distance curve, mixgroup, limits and
+layers of every sound, are a table generated from the game's text files
+(`reference/sounds/`, by `scripts/sound_events.sh`), and `SoundEvents`
+(`src/audio/sound_events.gd`) plays any of them the way CS2's sound stack
+does, on the bus of its mixgroup (`default_bus_layout.tres`). New sounds
+are built on it; the ones above still carry levels set by ear.
+
 ## Lighting
 
 The lighting is the map's own numbers, translated (`src/map/map_lighting.gd`):
