@@ -254,7 +254,7 @@ issue done here and on the page in the same pull request.
 | 20 | A click as the magazine nears empty (CS2's `Default.NearlyEmpty`) | On the shared sound player, the threshold provisional | Measure the threshold in CS2 | After 19's groundwork |
 | 21 | Round sounds (start, end, planted, ten seconds, announcer) | The cues from `reference/research/audio-round.md` | Extract the UI, music and announcer; listen | 16, after 19's groundwork |
 | 22 | Looking down shows the vest where CS2 shows legs | More of the body you see folded away, the shadow and bots whole | Beside CS2 | 6a |
-| 23 | The distant hill missing (the 3D skybox past the camera's far plane, dropped before its depth squeeze can help) | Far meshes kept in the frustum, and a squeeze that keeps them inside the far plane | The view beside CS2; the cost | R2 |
+| 23 | The distant hill missing (the 3D skybox past the camera's far plane, dropped before its depth squeeze can help) | *(done: `FarMaterials.CULL_BOX`, `far_position`)* Far meshes kept in the frustum, and a squeeze that keeps them inside the far plane | The view beside CS2; the cost | R2 |
 
 ### Phase 1: make being shot feel like CS2
 

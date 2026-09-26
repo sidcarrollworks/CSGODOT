@@ -77,6 +77,7 @@ func _process(_delta: float) -> bool:
 		_test_blend_materials()
 		_test_lightmap_materials()
 		_test_far_materials()
+		_test_far_squeeze()
 		_test_light_probes()
 		_test_baked_shadows()
 		_test_prop_features()
@@ -1559,7 +1560,135 @@ func _test_far_materials() -> void:
 		drawn > 0 and behind == drawn and int(importer.stats.get("behind", 0)) == drawn,
 		"behind_everything puts every drawn surface of a map on the far shaders and reports it (%d of %d)" % [behind, drawn]
 	)
+	# The skybox's terrain runs out to half a million units, past the far
+	# plane: each mesh is kept in every frustum so the CPU never drops it.
+	var kept := 0
+	var meshes := 0
+	for node in importer.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := node as MeshInstance3D
+		if not mesh_instance.visible or mesh_instance.mesh == null:
+			continue
+		meshes += 1
+		kept += 1 if mesh_instance.custom_aabb == FarMaterials.CULL_BOX else 0
+	_check(
+		meshes > 0 and kept == meshes
+			and FarMaterials.CULL_BOX.has_point(Vector3.ONE * 1e6) and FarMaterials.CULL_BOX.has_point(Vector3.ONE * -1e6),
+		"behind_everything keeps every mesh of a map in view past any far plane (%d of %d)" % [kept, meshes]
+	)
 	importer.free()
+
+
+## The squeeze (far.gdshaderinc's far_position) as the GPU does it, on the
+## player's camera, in both clip conventions: Forward+ and Mobile (reversed,
+## 0 to 1, far at 0) and Compatibility (reversed, -1 to 1, far at -1). Every
+## distance out to a million units lands inside the far plane, farther parts
+## nearer it, and the map in front of the skybox (issue 23 of
+## reference/playtest-2026-09-25.md: the hill past the far plane was cut).
+func _test_far_squeeze() -> void:
+	var code := (load("res://src/map/far.gdshaderinc") as ShaderInclude).code
+	_check(
+		code.contains("clip.z = far * clip.w + far_eye_depth(projection, far) * FAR_DEPTH_KEEP;")
+			and code.contains("vec4 eye = projection * vec4(0.0, 0.0, 0.0, 1.0);")
+			and code.contains("return eye.z - far * eye.w;")
+			and code.contains("const float FAR_DEPTH_KEEP = 0.001;"),
+		"the shader squeezes as these checks do"
+	)
+	for shader_path in ["res://src/map/far.gdshader", "res://src/map/lightmap.gdshaderinc"]:
+		var text: String = (load(shader_path) as Resource).get(&"code")
+		_check(
+			text.contains("far_position(PROJECTION_MATRIX * MODELVIEW_MATRIX * vec4(VERTEX, 1.0), CLIP_SPACE_FAR, PROJECTION_MATRIX)"),
+			"%s squeezes with the projection it draws with" % shader_path.get_file()
+		)
+	_check(
+		FarMaterials.VERTEX_SQUEEZE.contains("CLIP_SPACE_FAR, PROJECTION_MATRIX)"),
+		"the vertex() given to a shader without one squeezes the same way"
+	)
+
+	const NEAR := 0.5  # ViewModelProjection.NEAR, the player's camera
+	const FAR := 16384.0  # player_view.gd's camera.far
+	const KEEP := 0.001
+	var distances: Array[float] = []
+	var d := 1.0
+	while d <= 1e6:
+		distances.append(d)
+		d *= 1.25
+	for convention: String in ["Forward+", "Compatibility"]:
+		var far_z := 0.0 if convention == "Forward+" else -1.0
+		var near_z := 1.0
+		# The eye's clip depth from the far plane (far_eye_depth), in
+		# float64; the GPU's float32 is checked on what it rasterises.
+		var eye_depth := _reversed_clip(0.0, NEAR, FAR, far_z)[0]
+		var inside := true
+		var ordered := true
+		var old_offset := NAN
+		var matches_old := true
+		var last := INF
+		for distance in distances:
+			var clip := _reversed_clip(distance, NEAR, FAR, far_z)
+			var squeezed := (far_z * clip[1] + eye_depth * KEEP) / clip[1]
+			# As the GPU has it: the clip depth in 32 bits, over w.
+			var z32 := _float32(far_z * clip[1] + eye_depth * KEEP)
+			var w32 := _float32(clip[1])
+			var depth32 := _float32(z32 / w32)
+			if convention == "Forward+":
+				inside = inside and depth32 > far_z and squeezed < near_z
+				ordered = ordered and depth32 < last
+			else:
+				# Clip depth -w plus the slab: far off it rounds onto the far
+				# plane itself, which the clip test keeps, so it is drawn but
+				# no longer sorts among its own parts (see far.gdshaderinc).
+				inside = inside and z32 >= -w32 and squeezed > far_z and squeezed < near_z
+				ordered = ordered and squeezed < last
+			last = depth32 if convention == "Forward+" else squeezed
+			if distance < FAR:
+				# The old squeeze, a thousandth of the depth from the far
+				# plane: inside the far plane the new one is it plus a
+				# constant, so the far parts sort among themselves as before.
+				var old := far_z + (clip[0] / clip[1] - far_z) * KEEP
+				if is_nan(old_offset):
+					old_offset = squeezed - old
+				matches_old = matches_old and absf(squeezed - old - old_offset) < 1e-12
+		_check(inside, "%s: a far part from 1 to 1,000,000 units away is drawn inside the far plane" % convention)
+		_check(
+			ordered,
+			"%s: farther far parts lie nearer the far plane%s" % [
+				convention, ", in 32-bit depth too" if convention == "Forward+" else ""
+			]
+		)
+		_check(
+			matches_old and absf(old_offset - eye_depth * KEEP / FAR) < 1e-12,
+			"%s: inside the far plane it is the old squeeze moved by a constant" % convention
+		)
+		# The map in front: anything of it up to 8,192 units away (dust2's
+		# longest sight line is under 6,000) beats a skybox part 32 units
+		# away or more; a reversed depth buffer keeps the greater depth.
+		var map_wins := true
+		for map_distance: float in [1.0, 64.0, 1024.0, 4096.0, 8192.0]:
+			var map_clip := _reversed_clip(map_distance, NEAR, FAR, far_z)
+			for sky_distance: float in [32.0, 512.0, 16384.0, 520733.0]:
+				var sky_clip := _reversed_clip(sky_distance, NEAR, FAR, far_z)
+				map_wins = map_wins and map_clip[0] / map_clip[1] > (far_z * sky_clip[1] + eye_depth * KEEP) / sky_clip[1]
+		_check(map_wins, "%s: the map up to 8,192 units away is in front of the skybox from 32 units out" % convention)
+
+
+## A point's clip depth and w, in that order, at a distance in front of a
+## perspective camera, in float64 (Godot's Projection is 32-bit): OpenGL's
+## depth, -1 at the near plane to 1 at the far, reversed as every renderer
+## has it, and in Forward+ and Mobile (far_z 0) taken to 0 to 1.
+func _reversed_clip(distance: float, near: float, far: float, far_z: float) -> PackedFloat64Array:
+	var z := (far + near) / (far - near) * distance - 2.0 * far * near / (far - near)
+	var w := distance
+	if far_z == 0.0:
+		return PackedFloat64Array([-0.5 * z + 0.5 * w, w])
+	return PackedFloat64Array([-z, w])
+
+
+## A float64 as the GPU holds it, in 32 bits.
+func _float32(value: float) -> float:
+	var bytes := PackedByteArray()
+	bytes.resize(4)
+	bytes.encode_float(0, value)
+	return bytes.decode_float(0)
 ## The light probes on a hand-made atlas: two volumes, one inside the
 ## other, each face band a colour of its own, so a point's cube says which
 ## volume and which face it read; then a material lit from one.
