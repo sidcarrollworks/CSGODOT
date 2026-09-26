@@ -70,6 +70,8 @@ Doc: `classes/class_physicsdirectspacestate3d.rst`, `classes/class_physicsshapeq
   - `normal` is "of the query shape at the intersection point, pointing away from the intersecting object".
   - A miss returns an empty dict. It ignores `motion`.
 - `collide_shape(parameters, max_results: int = 32) -> Array[Vector3]`: contact points in pairs. The first of each pair is on the query shape, the second on the space's shape. It ignores `motion`.
+  - (measured on Jolt, 4.7.2, headless) From the first point of a pair to the second is the way out of the surface, and its length is how deep the shape is in, plus `margin`: `margin` grows the query shape, so a shape a gap `g` above a floor, within the margin, gives pairs `margin - g` long.
+  - (measured) Only a shape that is in a surface gets its whole manifold: a box lying 0.05 above a floor with `margin=0.25` gives one or two pairs, while the same box touching it gives all four corners. `DroppedItem._contacts` takes each surface found as a plane and the hull's corners near it as the contacts, so a body does not rock on the one or two points.
 - `intersect_shape(parameters, max_results: int = 32) -> Array[Dictionary]`: each entry has `collider`, `collider_id`, `rid`, `shape`. There are no points or normals. It ignores `motion`.
 - `intersect_point(PhysicsPointQueryParameters3D, max_results: int = 32) -> Array[Dictionary]`: each entry has `collider`, `collider_id`, `rid`, `shape`. The docs say it "checks whether a point is inside any solid shape". A `ConcavePolygonShape3D` has no volume, so (inferred) a point inside a trimesh room isn't "inside" it.
 - `max_results` exists "to save processing time". Keep it as low as the use allows.
@@ -391,6 +393,7 @@ See the ragdoll section. `set_param(Param, float)`/`get_param`, and `set_flag(Fl
   - `_find_exit()` finds a wall's far side by casting back from depth with `hit_back_faces=false` and `hit_from_inside=false`.
   - `_surface_name()` maps a shape index back to the node name.
 - `src/grenades/grenade_flight.gd:120-160`: `_sweep()` runs `cast_motion` on a sphere and then `get_rest_info` at `from + motion * unsafe`, and reads `collider_id` through `instance_from_id`.
+- `src/game/dropped_item.gd`: a dropped item's convex hull (`ItemPhysics`) swept with `cast_motion` then `get_rest_info`, its contacts from `collide_shape` with a margin, answered with impulses in script, never a `RigidBody3D`.
 - `src/map/map_importer.gd:524-560`: builds world collision as `ConcavePolygonShape3D`s (faces baked with the mesh transform, no scale) under one `StaticBody3D` per layer, with `collision_mask=0`.
 - `src/map/brush_volume.gd`: convex pieces for Area3D volumes. `contains()` tests `Plane.distance_to` in script.
 - `src/combat/hitbox.gd`, `src/combat/skinned_hitboxes.gd`, `src/combat/hit_target.gd`: hitbox `Area3D`s on layer 4 with capsules or boxes. Their layer is set to 0 when inactive.

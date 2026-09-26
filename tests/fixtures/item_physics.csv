@@ -1,0 +1,2 @@
+item_class,model,bone,surface,mass,linear_damping,angular_damping,volume,centre_of_mass,inertia,held_bone,points,game_volume,game_centre_of_mass,hull_frame
+weapon_ak47,fixture,weapon_offset,WeaponRifle,4.5,0,0,180,0 4 12,75.3333 75.75 1.08333 0 0 0,0 1 -6 0 0 0 1,-1.5 3 -3;-1.5 3 27;-1.5 5 -3;-1.5 5 27;1.5 3 -3;1.5 3 27;1.5 5 -3;1.5 5 27,180,0 4 12,model

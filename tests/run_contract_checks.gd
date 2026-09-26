@@ -939,10 +939,24 @@ func _new_player(game: GameSystems, team: String, at: Vector3) -> int:
 	return game.add_player(node, body)
 
 
-## Steps game until nothing is falling, at most a few seconds' worth.
+## Restarts a dropped item's waits from the tick about to run.
+static func _dropped_now(item: DroppedItem, tick: int) -> void:
+	item.dropped_usec = SimClock.tick_start_usec(tick)
+	item.next_pickup_check_usec = item.dropped_usec + mini(DroppedItem.PREV_OWNER_TOUCH_USEC, DroppedItem.NEXT_OWNER_TOUCH_USEC)
+
+
+## The height of a dropped item's lowest hull corner.
+static func _lowest(item: DroppedItem) -> float:
+	var lowest := INF
+	for point in item.physics().points:
+		lowest = minf(lowest, (item.model_transform() * point).y)
+	return lowest
+
+
+## Steps game until nothing is falling, at most as long as an item may.
 func _settle(game: GameSystems, tick: int) -> int:
 	var space := _world.get_world_3d().direct_space_state
-	for i in 64 * 3:
+	for i in DroppedItem.MOST_MOVING_USEC / SimClock.tick_usec() + 1:
 		game.step(tick, space)
 		tick += 1
 		var falling := false
@@ -1001,13 +1015,16 @@ func _test_dropping_and_picking_up() -> void:
 		floor_body.queue_free()
 		return
 	var gun := lying[0] as DroppedItem
-	_check(gun.resting and absf(gun.position.y) < 0.5, "it falls to the floor and lies there")
+	_check(gun.resting and absf(_lowest(gun)) < 0.5, "it falls to the floor and lies there, its hull's lowest corner on it (%.2f)" % _lowest(gun))
 	_check(gun.position.z < -40.0, "thrown forward, the way the player faced (%.0f units)" % -gun.position.z)
 
 	# The dropper stands on it; the other player too. Nobody takes it until
 	# CS2's 1.3 s have passed, and then the other player does, at the first
 	# pickup check.
 	var space := _world.get_world_3d().direct_space_state
+	# A thrown gun can take longer than the waits to come to rest; they are
+	# counted here from where it lies, as if it had been dropped there.
+	_dropped_now(gun, tick)
 	game.roster.player(dropper).global_position = gun.position
 	game.roster.player(taker).global_position = gun.position
 	var taker_inv := game.inventory(taker)
@@ -1046,6 +1063,7 @@ func _test_dropping_and_picking_up() -> void:
 	game.command(dropper, "drop")
 	tick = _settle(game, tick)
 	var pistol := game.entities.of_class("weapon_glock")[0] as DroppedItem
+	_dropped_now(pistol, tick)
 	game.roster.player(dropper).global_position = pistol.position
 	while SimClock.tick_end_usec(tick) < pistol.dropped_usec + DroppedItem.PREV_OWNER_TOUCH_USEC:
 		game.step(tick, space)

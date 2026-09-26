@@ -25,6 +25,7 @@
 #   scripts/extract_assets.sh weapons         # every gun: models, first- and third-person animations
 #   scripts/extract_assets.sh weapon-animations  # just the guns' animations (a minute)
 #   scripts/extract_assets.sh weapon-data     # just the game's weapon tuning (seconds)
+#   scripts/extract_assets.sh weapon-physics  # just the items' physics blocks: bone, mass, damping (seconds)
 #   scripts/extract_assets.sh equipment       # the bomb and kit, grenades, default knives, Zeus: models and animations
 #   scripts/extract_assets.sh hud             # the scope overlay, the HUD's icons and font
 #   scripts/extract_assets.sh effects         # the tracers' and muzzle flashes' textures
@@ -177,7 +178,7 @@ usage() {
 COMMAND="${1:-}"
 case "$COMMAND" in
 	list-map|map|physics|entities|nav|volumes|radar|layers|sky|skybox|lightmaps|visibility|all|paths) ;;
-	list-weapons|surfaces|weapons|weapon-animations|weapon-data|equipment|hud|effects|characters|character-masks|animgraphs|sounds)
+	list-weapons|surfaces|weapons|weapon-animations|weapon-data|weapon-physics|equipment|hud|effects|characters|character-masks|animgraphs|sounds)
 		# Not a map's own step: a map name here would be ignored, which is
 		# worse than being told.
 		if [[ $# -gt 1 ]]; then
@@ -754,6 +755,7 @@ extract_weapons() {
 		--gltf_textures_adapt
 
 	extract_weapon_data
+	extract_weapon_physics
 	extract_weapon_animations
 }
 
@@ -799,6 +801,7 @@ extract_equipment() {
 		-f "animation/anims/viewmodel/equipment/,animation/anims/viewmodel/grenade/,animation/anims/viewmodel/knife/_default_knife/,animation/anims/viewmodel/knife/knife_default_t/,animation/anims/viewmodel/pistol/pistol_taser/,animation/anims/world/equipment/c4/,animation/anims/world/shared/defuse/" \
 		-e vnmclip_c -b DATA > "$clip_data" 2>/dev/null || true
 
+	extract_weapon_physics
 	write_weapon_tables
 }
 
@@ -917,6 +920,24 @@ extract_weapon_data() {
 	echo "Reading the game's weapon tuning"
 	echo "        -> $dest/weapons.vdata.txt"
 	"$S2V_BIN" -i "$PAK_VPK" -f "scripts/weapons.vdata_c" -b DATA > "$dest/weapons.vdata.txt" 2>/dev/null || true
+}
+
+## Every world model's physics block (PHYS), as text: the bone its hull is
+## bound to and that bone's bind pose, the mass, the damping and the
+## surface, for reference/weapons/physics.csv (ItemPhysics; the hull itself
+## is the *_physics.gltf the weapons and equipment steps write beside each
+## model). One pass over weapons/models/, a few seconds. Each block ends in
+## the cloth data (m_pFeModel on, about 36 MB over every model), which
+## nothing reads, so only what comes before it is kept.
+extract_weapon_physics() {
+	require_file "$PAK_VPK"
+	local dest="$OUT_DIR/weapons/weapons/models"
+	mkdir -p "$dest"
+	echo "Reading the items' physics blocks"
+	echo "        -> $dest/physics_data.txt"
+	"$S2V_BIN" -i "$PAK_VPK" -f "weapons/models/" -e vmdl_c -b PHYS 2>/dev/null \
+		| awk '/^\[[0-9]+\/[0-9]+\] /{keep=1} /^[[:space:]]*m_pFeModel/{keep=0} keep' \
+		> "$dest/physics_data.txt" || true
 }
 
 ## The guns' animations, beside the characters' where the view model and the
@@ -1196,6 +1217,7 @@ case "$COMMAND" in
 	weapons) extract_weapons; finish ;;
 	weapon-animations) extract_weapon_animations; finish ;;
 	weapon-data) extract_weapon_data; write_weapon_tables ;;
+	weapon-physics) extract_weapon_physics; write_weapon_tables ;;
 	equipment) extract_equipment; finish ;;
 	hud) extract_hud; finish ;;
 	effects) extract_effects; finish ;;

@@ -1,0 +1,97 @@
+[1/2] weapons/models/fixture/weapon_fixture.vmdl_c
+<!-- kv3 encoding:text:version{e21c7f3c-8a33-41c5-9977-a76d3a32aa0d} format:generic:version{7412167c-06e9-4698-aff2-e63eb59037e7} -->
+{
+	m_nFlags = 0
+	m_nRefCounter = 0
+	m_bonesHash = [ 2718281828 ]
+	m_boneNames = 
+	[
+		"weapon_offset",
+	]
+	m_indexNames = [  ]
+	m_indexHash = [  ]
+	m_bindPose = 
+	[
+		[ 1.000000, 0.000000, 0.000000, 1.000000, 0.000000, 1.000000, 0.000000, 0.000000, 0.000000, 0.000000, 1.000000, 2.000000 ],
+	]
+	m_parts = 
+	[
+		{
+			m_nFlags = 0
+			m_flMass = 4.500000
+			m_rnShape = 
+			{
+				m_spheres = [  ]
+				m_capsules = [  ]
+				m_hulls = 
+				[
+					{
+						m_nCollisionAttributeIndex = 0
+						m_nSurfacePropertyIndex = 0
+						m_UserFriendlyName = ""
+						m_Hull = 
+						{
+							m_vCentroid = [ 12.000000, 0.000000, 4.000000 ]
+							m_flMaxAngularRadius = 15.200000
+							m_Bounds = 
+							{
+								m_vMinBounds = [ -3.000000, -1.500000, 3.000000 ]
+								m_vMaxBounds = [ 27.000000, 1.500000, 5.000000 ]
+							}
+							m_flVolume = 180.000000
+							m_flSurfaceArea = 312.000000
+							m_VertexPositions = #[ 00 00 40 C0 00 00 C0 BF ]
+						}
+					},
+				]
+				m_meshes = [  ]
+			}
+			m_nCollisionAttributeIndex = 0
+			m_flLinearDamping = 0.000000
+			m_flAngularDamping = 0.000000
+			m_bOverrideMassCenter = false
+			m_vMassCenterOverride = [ 0.000000, 0.000000, 0.000000 ]
+		},
+	]
+	m_surfacePropertyHashes = [ 756963221 ]
+	m_collisionAttributes = 
+	[
+		{
+			m_CollisionGroup = 0
+			m_CollisionGroupString = "default"
+		},
+	]
+	m_debugPartNames = [  ]
+	m_embeddedKeyvalues = ""
+	m_pFeModel = 
+	{
+		m_CtrlHash = [ 1, 2, 3 ]
+		m_Ropes = [ 9, 9, 9 ]
+[2/2] weapons/models/glock18/weapon_pist_glock18.vmdl_c
+{
+	m_boneNames = [ "weapon_offset" ]
+	m_bindPose = [ [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0 ] ]
+	m_parts = 
+	[
+		{
+			m_flMass = 3.000000
+			m_rnShape = 
+			{
+				m_hulls = 
+				[
+					{
+						m_nSurfacePropertyIndex = 0
+						m_Hull = 
+						{
+							m_vCentroid = [ 2.0, 0.0, 1.0 ]
+							m_flVolume = 20.0
+						}
+					},
+				]
+			}
+			m_flLinearDamping = 0.0
+			m_flAngularDamping = 10.0
+		},
+	]
+	m_surfacePropertyHashes = [ 491248572 ]
+}

@@ -2,27 +2,33 @@ class_name DroppedItemView
 extends Node3D
 
 ## What is seen of the items on the ground (DroppedItem): each one's world
-## model leaving the hand, turning as it flies, and, once it has come to
-## rest, tipping over onto its thinnest side, the way it was heading. It
-## only reads the game's entities, and draws them per frame between the
-## tick before and the last, as the players are drawn.
+## model leaving the hand, turning as it flies, and lying as it came to
+## rest, drawn where the simulation's body is (ItemPhysics.Hull.model_of:
+## the body is the centre of mass, the model is drawn about it). It only
+## reads the game's entities, and draws them per frame between the tick
+## before and the last, as the players are drawn; it makes up nothing of
+## how an item lies.
 ##
 ## A model is the game's own (scripts/extract_assets.sh weapons and
-## equipment) and a grey box where it has not been extracted. Each class's
-## model is read once and its size measured then (lying()).
+## equipment) and a grey box where it has not been extracted. A model is
+## posed in its 'dropped' clip, or 'dropped_empty' for an empty gun, where
+## it has one (the Dual Berettas' lays the two pistols side by side), and
+## drawn by the bone its hull is bound to, so a clip that moves the root
+## bone does not move the gun off its body.
 
 ## The stand-in's size, in units, where there is no model: longest along
-## its +Z, as a gun is.
-const STAND_IN := Vector3(4.0, 3.0, 24.0)
-## How long an item takes to tip over onto its side once it has come to
-## rest, in seconds of simulation time. By eye.
-const SETTLE_SECONDS := 0.2
+## its +Z, as a gun is. The stand-in's body is the same box
+## (ItemPhysics.STAND_IN).
+const STAND_IN := ItemPhysics.STAND_IN
+## The clips a world model lies in, loaded or empty.
+const DROPPED_CLIP := "dropped"
+const DROPPED_EMPTY_CLIP := "dropped_empty"
 
 var game: GameSystems
 
-## By entity id: the item and its drawn model, and those still moving or
-## settling, which are placed every frame; one lying still is placed once
-## more, where it lies, and left.
+## By entity id: the item and its drawn model, and those still moving,
+## which are placed every frame; one lying still is placed once more, where
+## it lies, and left.
 var _items := {}
 var _models := {}
 var _moving := {}
@@ -30,10 +36,11 @@ var _moving := {}
 ## tick they fell on is the simulation's, and a model built there read the
 ## disk and built its nodes in it (41 ms for a class's first, dust2).
 var _arriving: Array[int] = []
-## By class: the scene, and how it lies (the turn that puts its thinnest
-## side down and the lift that puts its lowest point on the ground).
+## By class: the scene.
 var _scenes := {}
-var _lying := {}
+## By entity id: how far the pose moved the hull's bone off its rest, taken
+## out again where the model is drawn.
+var _pose_fix := {}
 
 
 ## Starts drawing a game's items on the ground, those there already too.
@@ -83,14 +90,16 @@ func _build_arrived() -> void:
 		add_child(model)
 		_models[id] = model
 		_moving[id] = true
-		_place(item, model, 0.0, DrawClock.usec())
-		ProbeMaterials.light_model(model, model.global_position)
+		_pose_fix[id] = pose(model, item)
+		_place(item, model, 0.0)
+		ProbeMaterials.light_model(model, item.position)
 	_arriving = waiting
 
 
 func _on_removed(entity: SimEntity) -> void:
 	_items.erase(entity.id)
 	_moving.erase(entity.id)
+	_pose_fix.erase(entity.id)
 	if _models.has(entity.id):
 		(_models[entity.id] as Node).queue_free()
 		_models.erase(entity.id)
@@ -102,48 +111,72 @@ func _process(_delta: float) -> void:
 	if _moving.is_empty():
 		return
 	var fraction := DrawClock.fraction()
-	var now := DrawClock.usec()
 	for id: int in _moving.keys():
 		var item: DroppedItem = _items[id]
 		var model: Node3D = _models[id]
-		if _place(item, model, fraction, now):
+		if _place(item, model, fraction):
 			_moving.erase(id)
 		# Lit from the map's light probes where it is, which hold the map's
-		# shadow from the sun; the live shadow map no longer does.
-		ProbeMaterials.light_model(model, model.global_position)
+		# shadow from the sun; the live shadow map no longer does. Sampled
+		# at the centre of mass, the middle of what is drawn.
+		ProbeMaterials.light_model(model, item.previous_position.lerp(item.position, fraction))
 
 
-## Draws the item as the frame falls between its last two ticks: in
-## flight, where and how it was turning; at rest, tipping over onto its
-## side. True once it lies as it will stay.
-func _place(item: DroppedItem, model: Node3D, fraction: float, now_usec: int) -> bool:
-	if not item.resting:
-		model.transform = Transform3D(
-			item.previous_basis.slerp(item.basis, fraction),
-			item.previous_position.lerp(item.position, fraction)
-		)
-		return false
-	var lying: Transform3D = _lying[item.entry.item.item_class]
-	var down := Transform3D(Basis(Vector3.UP, heading(item.basis)) * lying.basis, item.position + lying.origin)
-	var settled := clampf(float(now_usec - item.rested_usec) / (SETTLE_SECONDS * 1_000_000.0), 0.0, 1.0)
-	var t := smoothstep(0.0, 1.0, settled)
-	model.transform = Transform3D(
-		item.basis.slerp(down.basis, t),
-		item.position.lerp(down.origin, t)
+## Draws the item as the frame falls between its last two ticks. True once
+## it lies still, drawn where it lies.
+func _place(item: DroppedItem, model: Node3D, fraction: float) -> bool:
+	var body := Transform3D(
+		item.previous_basis.slerp(item.basis, fraction).orthonormalized(),
+		item.previous_position.lerp(item.position, fraction)
 	)
-	return settled >= 1.0
+	if item.resting:
+		body = Transform3D(item.basis, item.position)
+	model.transform = item.physics().model_of(body) * (_pose_fix.get(item.id, Transform3D.IDENTITY) as Transform3D)
+	return item.resting
 
 
-## The way an item points along the ground, as a turn about the up axis
-## from +Z: where its muzzle points, or its top when the muzzle points
-## straight up or down.
-static func heading(basis: Basis) -> float:
-	var along := Vector3(basis.z.x, 0.0, basis.z.z)
-	if along.length() < 0.2:
-		along = Vector3(basis.y.x, 0.0, basis.y.z)
-	if along.length() < 0.001:
-		return 0.0
-	return atan2(along.x, along.z)
+## Poses a model in its dropped clip, where it has one, and says how to
+## draw it so the bone its hull is bound to stays where it rests: the
+## transform, in the model's space, from the posed bone back to its rest.
+static func pose(model: Node3D, item: DroppedItem) -> Transform3D:
+	var players := model.find_children("*", "AnimationPlayer", true, false)
+	if players.is_empty():
+		return Transform3D.IDENTITY
+	var player := players[0] as AnimationPlayer
+	var empty := item.entry != null and item.entry.weapon != null and item.entry.weapon.ammo <= 0
+	var clip := _clip_named(player, DROPPED_EMPTY_CLIP if empty else DROPPED_CLIP)
+	if clip.is_empty() and empty:
+		clip = _clip_named(player, DROPPED_CLIP)
+	if clip.is_empty():
+		return Transform3D.IDENTITY
+	player.play(clip)
+	player.seek(0.0, true)
+	player.pause()
+	var skeletons := model.find_children("*", "Skeleton3D", true, false)
+	var bone_name := item.physics().bone
+	if skeletons.is_empty() or bone_name.is_empty():
+		return Transform3D.IDENTITY
+	var skeleton := skeletons[0] as Skeleton3D
+	var bone := skeleton.find_bone(bone_name)
+	if bone < 0:
+		return Transform3D.IDENTITY
+	var to_model := Transform3D.IDENTITY
+	var node: Node = skeleton
+	while node != model and node is Node3D:
+		to_model = (node as Node3D).transform * to_model
+		node = node.get_parent()
+	var rest := to_model * skeleton.get_bone_global_rest(bone)
+	var posed := to_model * skeleton.get_bone_global_pose(bone)
+	return rest * posed.affine_inverse()
+
+
+## The animation of a player called name, or ending in it after a library's
+## prefix; empty if none.
+static func _clip_named(player: AnimationPlayer, name: String) -> String:
+	for clip in player.get_animation_list():
+		if clip == name or String(clip).ends_with("/" + name):
+			return clip
+	return ""
 
 
 ## Where an item's world model is: its gun's, or its row's in the tables.
@@ -154,7 +187,7 @@ static func _model_path(entry: Inventory.Entry) -> String:
 	return path
 
 
-## A new model of an item, and how its class lies, measured the first time.
+## A new model of an item.
 func _model_for(entry: Inventory.Entry) -> Node3D:
 	var item_class := entry.item.item_class
 	if not _scenes.has(item_class):
@@ -182,14 +215,13 @@ func _model_for(entry: Inventory.Entry) -> Node3D:
 		box.material_override = paint
 		model = Node3D.new()
 		model.add_child(box)
-	if not _lying.has(item_class):
-		_lying[item_class] = lying(model)
 	return model
 
 
 ## How a model lies on the ground: turned so its thinnest side is down, and
 ## lifted so its lowest point is at the ground, as a transform whose basis is
-## the turn and whose origin is the lift.
+## the turn and whose origin is the lift. The dropped bomb's (C4View); a
+## dropped item lies as its body came to rest.
 static func lying(model: Node3D) -> Transform3D:
 	var box := bounds(model)
 	var turn := Basis.IDENTITY

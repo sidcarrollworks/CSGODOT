@@ -1,7 +1,8 @@
 extends SceneTree
 
 ## Writes reference/weapons/models.md, sounds.md, timings.md (with
-## timings.csv), vdata.md (with vdata.csv) and equipment.md from what
+## timings.csv), vdata.md (with vdata.csv), equipment.md and physics.md
+## (with physics.csv, scripts/weapon_physics_table.gd) from what
 ## scripts/extract_assets.sh extracted, so the code that picks a gun's model,
 ## clips and sounds, times its draw and reload, and reads what the weapon sheet
 ## lacks, can be written on a machine without the assets; and the same for the
@@ -42,6 +43,7 @@ const SECOND_VALUE_ROWS := {
 	"G3SG1": "G3SG1 (scoped)", "SCAR-20": "SCAR-20 (scoped)",
 }
 const OUT_DIR := "res://reference/weapons"
+const PhysicsTable := preload("res://scripts/weapon_physics_table.gd")
 
 ## Per class: the sheet row, the model's folder, the first-person and
 ## third-person clip sets (under viewmodel/ and world/), the skeleton, the
@@ -148,10 +150,84 @@ func _initialize() -> void:
 		_gaps.append("the equipment (scripts/extract_assets.sh equipment): %s" % EQUIPMENT_CLIP_DATA)
 	else:
 		_write(OUT_DIR.path_join("equipment.md"), _equipment_page(source, date, vdata, equipment_clips))
+	_write_physics(source, date)
 	print("weapon tables: %d guns and %d pieces of equipment, %d gaps, written to %s" % [GUNS.size(), EQUIPMENT.size(), _gaps.size(), OUT_DIR])
 	for gap in _gaps:
 		print("  missing: ", gap)
 	quit(0)
+
+
+## Each droppable item's body: physics.csv and physics.md, once the
+## weapon-physics step has dumped the PHYS blocks.
+func _write_physics(source: String, date: String) -> void:
+	var dump := PhysicsTable.read_dump(PhysicsTable.DUMP)
+	if dump.is_empty():
+		_gaps.append("item physics (scripts/extract_assets.sh weapon-physics): %s" % PhysicsTable.DUMP)
+		return
+	var classes := PackedStringArray()
+	for gun in GUNS:
+		classes.append(gun[0])
+	for item in EQUIPMENT:
+		if not String(item[0]).begins_with("weapon_knife"):
+			classes.append(item[0])
+	var rows := []
+	var gaps := PackedStringArray()
+	for item_class in classes:
+		var model := String(WeaponLibrary.look(item_class).get("model_path", ""))
+		var hull_path := model.get_basename() + "_physics.gltf"
+		var key := model.trim_prefix("res://assets/weapons/").get_basename() + ".vmdl_c"
+		if model.is_empty() or not FileAccess.file_exists(hull_path):
+			gaps.append("%s: no physics hull at %s" % [item_class, hull_path])
+			continue
+		if not dump.has(key):
+			gaps.append("%s: no PHYS block for %s in the dump" % [item_class, key])
+			continue
+		var hull := _gltf_scene(hull_path)
+		var drawn := _gltf_scene(model)
+		var triangles := PhysicsTable.triangles_of(hull) if hull != null else PackedVector3Array()
+		var bounds := AABB()
+		var held := Transform3D.IDENTITY
+		if drawn != null:
+			bounds = PhysicsTable.bounds_of(PhysicsTable.triangles_of(drawn))
+			held = _root_bone_rest(drawn)
+		var row := PhysicsTable.row(item_class, model.trim_prefix(WEAPONS_ROOT + "/"), dump[key], triangles, bounds, held)
+		if row.is_empty():
+			gaps.append("%s: the hull in %s has no volume" % [item_class, hull_path])
+		else:
+			rows.append(row)
+		for scene in [hull, drawn]:
+			if scene != null:
+				scene.free()
+	_write(OUT_DIR.path_join("physics.csv"), PhysicsTable.csv(rows))
+	_write(OUT_DIR.path_join("physics.csv.import"), _keep_import(OUT_DIR.path_join("physics.csv")))
+	_write(OUT_DIR.path_join("physics.md"), PhysicsTable.page(rows, source, date, gaps))
+	for gap in gaps:
+		_gaps.append(gap)
+
+
+## A glTF file as a scene, read straight from the file (not the import).
+static func _gltf_scene(path: String) -> Node:
+	var document := GLTFDocument.new()
+	var state := GLTFState.new()
+	if document.append_from_file(ProjectSettings.globalize_path(path), state) != OK:
+		return null
+	return document.generate_scene(state)
+
+
+## Where a model's root bone rests in the model's space, in inches: what
+## PlayerModel.attach_weapon pins on the hand.
+static func _root_bone_rest(scene: Node) -> Transform3D:
+	var skeletons := scene.find_children("*", "Skeleton3D", true, false)
+	if skeletons.is_empty() or (skeletons[0] as Skeleton3D).get_bone_count() == 0:
+		return Transform3D.IDENTITY
+	var skeleton := skeletons[0] as Skeleton3D
+	var to_scene := Transform3D.IDENTITY
+	var node: Node = skeleton
+	while node != scene and node is Node3D:
+		to_scene = (node as Node3D).transform * to_scene
+		node = node.get_parent()
+	var rest := to_scene * skeleton.get_bone_global_rest(0)
+	return Transform3D(rest.basis, rest.origin * PhysicsTable.SCALE)
 
 
 func _models_page(source: String, date: String) -> String:
