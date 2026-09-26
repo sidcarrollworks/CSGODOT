@@ -245,7 +245,7 @@ issue done here and on the page in the same pull request.
 | 11 | Geometry flickering (the sky's brushes used as occluders) | The sky's brushes out of the occluders | Confirm with occlusion off; walk R3's spots | R3 |
 | 12 | Zigzag stripes on the kasbah towers (Godot's mesh LODs break the third UV set's lightmap) | No LODs, or LODs that keep that UV set, on those props | Look, profile | |
 | 13 | White eyes | CS2's eye shader on the character shader | Extract the eye textures; beside CS2 | R7 |
-| 14 | Recoil on the AK-47 and M4A1-S only | The 15 more patterns already in `reference/spray_patterns/`, solved at load; a provisional kick for the rest | Spray the rest in CS2 (TODO L6); the R6 demo | 8 |
+| 14 | Recoil on the AK-47 and M4A1-S only | *(done 2026-09-26)* The 15 more patterns already in `reference/spray_patterns/`, solved at load; a provisional kick for the rest | Spray the rest in CS2 (TODO L6); the R6 demo | 8 |
 | 15 | Mouse wheel down to the next weapon | CS2's `invnext` | Its order in CS2 | 12a, after 16 |
 | 16 | A quick switch cuts the draw short | The draw restarted on every switch, as CS2's graph does | Whether CS2 reloads during a draw | 12 |
 | 17 | Running into a jump snaps to the air pose | The take-off from CS2's graph | Extract the jump clips; regenerate the tables | 6 |

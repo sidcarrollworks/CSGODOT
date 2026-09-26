@@ -118,7 +118,9 @@ static func buyable(team: String) -> Array[ItemDef]:
 ## numbers and arrays included, or null for anything else. Every gun's is
 ## built by load_all(), so none is read from disk in a tick, and its recoil
 ## solved then: a copy carries the answers, where working them out took
-## about 20 ms on the first tick each new gun was held.
+## about 20 ms on the first tick each new gun was held, and the pushes along
+## its pattern are kept by pattern (RecoilState.solve_impulses) for every
+## Weapon built of it.
 static func weapon_data(item_class: String) -> WeaponData:
 	var def := item(item_class)
 	if def == null or not def.is_gun:
@@ -128,6 +130,10 @@ static func weapon_data(item_class: String) -> WeaponData:
 		if built != null:
 			built.model_hold_time()
 			built.view_kick_up()
+			# The pushes along its pattern, which every Weapon built of it
+			# takes a copy of: the M249's 100 rounds and the Negev's 150
+			# would otherwise be solved in the tick of the first buy.
+			built.recoil_impulses()
 		_weapon_data[item_class] = built
 	var cached := _weapon_data[item_class] as WeaponData
 	return cached.duplicate(true) as WeaponData if cached != null else null

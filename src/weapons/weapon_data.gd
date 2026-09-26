@@ -38,6 +38,9 @@ const PUNCH_HZ := 128.0
 ## theirs.
 static var _hold_times := {}
 
+## provisional_kick_per_magnitude, once worked out.
+static var _kick_per_magnitude := -1.0
+
 ## A punch angle with its own velocity, damped, with a spring pulling it back
 ## to zero. Source's DecayPunchAngle.
 ##
@@ -229,6 +232,20 @@ const UNZOOMED_FOV := ViewModelProjection.WORLD_FOV
 ## that correcting it is one number against a reference spray, rather than
 ## thirty rows edited by hand. See reference/spray_patterns/README.md.
 @export var recoil_scale: float = 1.0
+
+## CS2's own recoil numbers for the gun (weapons.vdata's m_flRecoilMagnitude,
+## m_flRecoilMagnitudeVariance, m_flRecoilAngle, m_flRecoilAngleVariance and
+## m_nRecoilSeed, through WeaponVData): the silenced or scoped ones on a copy
+## that is carried that way. How CS2 turns them into degrees is in no file
+## (reference/research/combat.md R6), so they are used only where a gun has
+## no pattern: its view kick is sized by recoil_magnitude against the
+## AK-47's (view_kick_up), and leans sideways by recoil_seed when
+## recoil_angle_variance is not zero (Weapon). The AK-47's magnitude is 30.
+@export var recoil_magnitude: float = 0.0
+@export var recoil_magnitude_variance: float = 0.0
+@export var recoil_angle: float = 0.0
+@export var recoil_angle_variance: float = 0.0
+@export var recoil_seed: int = 0
 
 
 
@@ -680,8 +697,18 @@ func accuracy_reset_threshold() -> float:
 ## front-loaded and its sideways steps are not, so the view punched hard for
 ## the first two rounds and then did nothing but sway. A gun does not stop
 ## recoiling halfway through a magazine.
+##
+## A gun with no pattern has no climb to solve against. Its kick is
+## PROVISIONAL (playtest 2026-09-25, issue 14): the AK-47's per-round kick
+## scaled by the two guns' recoil magnitudes in CS2's file, so a Deagle
+## (48.2) kicks 1.6 times the AK (30) and a Glock (18) 0.6 times. That the
+## kick goes with the magnitude is inferred, not measured; the CS2 demo in
+## weapons TODO R6 replaces it.
 func view_kick_up() -> float:
 	if _solved_kick_up >= 0.0:
+		return _solved_kick_up
+	if recoil_pattern.is_empty():
+		_solved_kick_up = maxf(recoil_magnitude, 0.0) * provisional_kick_per_magnitude()
 		return _solved_kick_up
 	var climb := 0.0
 	for i in recoil_pattern.size():
@@ -697,6 +724,26 @@ func view_kick_up() -> float:
 ## Degrees sideways per round.
 func view_kick_side() -> float:
 	return view_kick_up() * view_kick_side_ratio
+
+
+## The AK-47's per-round view kick for each unit of its recoil magnitude,
+## which the guns without a pattern are sized by (view_kick_up). Worked out
+## once.
+static func provisional_kick_per_magnitude() -> float:
+	if _kick_per_magnitude < 0.0:
+		var ak := WeaponLibrary.ak47()
+		_kick_per_magnitude = ak.view_kick_up() / ak.recoil_magnitude if ak.recoil_magnitude > 0.0 else 0.0
+	return _kick_per_magnitude
+
+
+## The pushes that carry the bullets along the pattern (RecoilState), as
+## Weapon uses them: solved once for each pattern and rate of fire, and a copy
+## handed out. Empty for a gun with no pattern.
+func recoil_impulses() -> PackedVector2Array:
+	var pattern := PackedVector2Array()
+	for i in recoil_pattern.size():
+		pattern.append(recoil_offset(i))
+	return RecoilState.solve_impulses(pattern, cycle_time)
 
 
 ## How high the punch would peak over a magazine held down, per degree of

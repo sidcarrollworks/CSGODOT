@@ -12,7 +12,9 @@ extends RefCounted
 ## game stores as something else; everything else it has, the game overrides,
 ## because the sheet was typed in by hand. What neither carries is set here:
 ##
-## - the spray patterns, read off CS2 spray plots Sid supplied on 2026-09-21;
+## - the spray patterns: the AK-47's and M4A1-S's read off CS2 spray plots
+##   Sid supplied on 2026-09-21, 15 more from a community tool
+##   (reference/spray_patterns/README.md);
 ## - how long the weapon model's recoil takes to settle, from his
 ##   frame-by-frame capture of CS2 on 2026-09-22;
 ## - the stomach and leg multipliers, x1.25 and x0.75 as on every rifle in CS.
@@ -98,10 +100,12 @@ static func has(weapon_class: String) -> bool:
 ## Any gun by its CS2 class name, as a fresh WeaponData: the game's numbers
 ## (WeaponVData), the sheet's landing and ladder, and its model and clips
 ## from what the extraction lists (models.md). The AK-47 and M4A1-S are the
-## hand-built ones, with their spray patterns and measured recoil. For the
-## rest, what neither file carries is left as it is on every WeaponData:
-## no spray pattern (the pattern is a straight climb of nothing until one is
-## read off a plot, weapons TODO L6), and the AK-47's recoil settling time.
+## hand-built ones, with their spray patterns from Sid's plots and measured
+## recoil. The rest take their spray pattern from reference/spray_patterns/
+## where one is there (pattern_of: 15 guns), and the AK-47's recoil settling
+## time; the 17 with no pattern kick the view by a provisional amount sized
+## from the game's recoil magnitude (WeaponData.view_kick_up), and their
+## bullets do not climb (weapons TODO L6 and R6).
 ## The M4A1-S and USP-S are carried silenced, as CS2 hands them out. Null
 ## for a class that is not a gun.
 static func build(weapon_class: String) -> WeaponData:
@@ -129,9 +133,22 @@ static func build(weapon_class: String) -> WeaponData:
 	data.chest_multiplier = 1.0
 	data.stomach_multiplier = 1.25
 	data.leg_multiplier = 0.75
+	# Before the scoped copy, so the SG 553's and AUG's carry it too.
+	data.recoil_pattern = pattern_of(weapon_class)
 	if data.zoom_levels() > 0:
 		data.scoped = scoped_of(data, row)
 	return data
+
+
+## A gun's spray pattern from reference/spray_patterns/<class>.csv, where
+## there is one: the 15 read from the community tool (the README says how far
+## to trust them), on ak47.csv's scale. Empty for the 17 guns with none; they
+## get the provisional kick (WeaponData.view_kick_up) and no bullet path.
+static func pattern_of(weapon_class: String) -> PackedVector2Array:
+	var path := RecoilPattern.PATTERN_DIR.path_join("%s.csv" % weapon_class)
+	if not FileAccess.file_exists(path):
+		return PackedVector2Array()
+	return RecoilPattern.load_pattern(weapon_class)
 
 
 ## A scoped gun's numbers with the scope up: everything as data has it, over

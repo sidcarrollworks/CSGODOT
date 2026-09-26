@@ -104,8 +104,8 @@ static func solve_impulses(pattern: PackedVector2Array, cycle_time: float) -> Pa
 	for i in range(pattern.size() - 1):
 		var target := pattern[i + 1]
 		var push := (target - state.value) / maxf(cycle_time, 0.0001)
-		for iteration in 20:
-			var landed := _landing(state, push, cycle_time)
+		var landed := _landing(state, push, cycle_time)
+		for iteration in 40:
 			var miss := target - landed
 			if miss.length() < 0.000001:
 				break
@@ -115,10 +115,29 @@ static func solve_impulses(pattern: PackedVector2Array, cycle_time: float) -> Pa
 			var det := dx.x * dy.y - dy.x * dx.y
 			if absf(det) < 0.0000001:
 				break
-			push += Vector2(
+			var step := Vector2(
 				(dy.y * miss.x - dy.x * miss.y) / det,
 				(-dx.y * miss.x + dx.x * miss.y) / det
 			)
+			# A step that misses by more is halved until it does not. From
+			# rest, a small push is all eaten by the linear decay, so the
+			# slope there is near flat and a full step flies off: the CZ75's
+			# second round, 2 degrees in one, never came back without this.
+			var tried := push + step
+			var tried_landed := _landing(state, tried, cycle_time)
+			var better := false
+			for halving in 30:
+				if (target - tried_landed).length() < miss.length():
+					better = true
+					break
+				step *= 0.5
+				tried = push + step
+				tried_landed = _landing(state, tried, cycle_time)
+			if not better:
+				# As close as single-precision angles get.
+				break
+			push = tried
+			landed = tried_landed
 		impulses.append(push)
 		state.velocity += push
 		state.advance(cycle_time)
