@@ -28,6 +28,10 @@ func _initialize() -> void:
 
 
 func _run() -> void:
+	# The tree takes nodes in from its first frame on: added in _initialize,
+	# the loader has not read the map yet, and the check skipped as if dust2
+	# were not extracted.
+	await process_frame
 	var loader := MapLoader.new()
 	loader.map_name = "de_dust2"
 	root.add_child(loader)
