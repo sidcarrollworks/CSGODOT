@@ -249,7 +249,9 @@ func is_playing(id: int) -> bool:
 
 ## What is playing or waiting, for checks and debugging: one dictionary a
 ## voice, {id, event, source, position, started, stopped, gain, pitch,
-## bus, has_player}. The position is the source's, before the event's offset.
+## bus, has_player, player, remaining}. The position is the source's, before
+## the event's offset; player is its AudioStreamPlayer(3D), or null; remaining
+## is the seconds until it is over by itself (INF for a loop).
 func voices() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	for voice in _voices:
@@ -259,7 +261,8 @@ func voices() -> Array[Dictionary]:
 			"id": voice.id, "event": voice.event.name, "source": voice.source, "position": voice.position,
 			"started": voice.started, "stopped": voice.stopped_at >= 0.0,
 			"gain": voice.gain, "bus": bus_for(voice.event.mixgroup),
-			"has_player": voice.player != null, "pitch": voice.pitch,
+			"has_player": voice.player != null, "player": voice.player, "pitch": voice.pitch,
+			"remaining": voice.ends_at - _now,
 		})
 	return result
 

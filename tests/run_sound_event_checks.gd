@@ -251,17 +251,22 @@ func _test_the_player() -> void:
 		var played := sounds.start("Weapon_AK47.Single", Vector3(100, 0, 0), 11)
 		var voice := _by_id(sounds, played)
 		_check(bool(voice.get("has_player", false)), "with the extraction a shot has a player")
-		var player: Node = null
-		for child in sounds.get_children():
-			if child is AudioStreamPlayer3D:
-				player = child
-		_check(player != null and player.bus == &"Weapons", "on its mixgroup's bus")
+		# The voice's own player: the shot's distant layer has one too, on
+		# WeaponsDistant.
+		var player: Node = voice.get("player")
+		_check(player != null and player.get("bus") == &"Weapons", "on its mixgroup's bus")
 	else:
 		_check_equal(sounds.get_child_count(), 0, "without the extraction nothing plays, and the rules still run")
 		print("The sounds are not extracted (scripts/extract_assets.sh sounds): the check of a played file is left out.")
-	sounds.advance(2.0)
-	sounds.advance(0.5)
-	_check(sounds.voices().is_empty() or sounds.voices().all(func(v): return v.event == "Molotov.Throw.Loop" or v.event == "Music.WonRound.valve_cs2_01"), "short sounds are gone after their time")
+	# Past the longest file actually playing (or kept without one), only
+	# loops are left.
+	var longest := 0.0
+	for voice in sounds.voices():
+		if not is_inf(float(voice.remaining)):
+			longest = maxf(longest, float(voice.remaining))
+	sounds.advance(longest + 0.01)
+	sounds.advance(0.01)
+	_check(sounds.voices().all(func(v): return is_inf(float(v.remaining))), "short sounds are gone after their time (%.2f s), loops left" % longest)
 	world.queue_free()
 	await process_frame
 
