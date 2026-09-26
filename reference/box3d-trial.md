@@ -309,6 +309,15 @@ changed from **0.0012 to 2.1997 inches for the AK-47**, and from
 reproductions through the player command path, not measurements of CS2
 or human acceptance of the resulting reaction.
 
+One bounded contact limitation remains: v0.4.3's `get_contacts()` flattens
+all manifolds for one collider into a point list with only the last
+manifold's normal. In a diagnostic combining floor and wall in one
+concave mesh, a Glock against the wall received only the wall normal,
+so the grounded redirection did not apply and motion was 0.36 inches.
+A six-inch curb case redirected correctly and moved 3.40 inches. Open
+floors and ramps pass the checks above; mixed floor/wall contacts still
+need a per-manifold support solution.
+
 Human acceptance of the corrected bullet reaction and release
 orientation is still pending. The initial positive Box3D feedback
 preceded both bullet follow-ups. The branch remains an experiment;
