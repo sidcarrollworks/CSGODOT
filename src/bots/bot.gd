@@ -10,7 +10,8 @@ extends PlayerSim
 ## a low ceiling and jumping up where it rises past a step; in straight lines
 ## between the route's points where it has none. It makes way for its own
 ## side (BotSteering): it follows a teammate going its way, steps aside for
-## one coming at it, and backs off out of a doorway one hull wide when it has
+## one coming at it once they have bumped, backed up and tried again (as
+## Sid saw CS2's do), and backs off out of a doorway one hull wide when it has
 ## the higher userid; held up otherwise, it wiggles, then jumps, but never at
 ## a teammate. It can be shot: it wears
 ## the model's own hitboxes on its bones, goes limp and falls the way the last round
@@ -171,8 +172,10 @@ var _stuck_since: int = -1
 var _stuck_spot := Vector3.ZERO
 var _wiggle_side: int = 0
 var _wiggle_until: int = -1
-## How it made way for a teammate last tick (BotSteering's modes).
+## How it made way for a teammate last tick (BotSteering's modes), and
+## the stage it is at in making way.
 var steering: int = BotSteering.CLEAR
+var _steer_memory := BotSteering.Memory.new()
 ## The way its path goes, which it faces while BotSteering walks it
 ## another way (aside, or backing off).
 var _face_way := Vector3.ZERO
@@ -457,10 +460,12 @@ func _way_on(cmd: UserCmd, _delta: float) -> Vector3:
 	var friends := _friends()
 	if not makes_way:
 		friends = [PackedVector3Array(), PackedVector3Array(), PackedInt32Array()]
-	var steer := BotSteering.steer(global_position, way, userid, friends[0], friends[1], friends[2], nav_mesh)
+	var steer := BotSteering.steer(
+		global_position, way, userid, friends[0], friends[1], friends[2], nav_mesh, _steer_memory, cmd.tick
+	)
 	steering = steer.mode
 	way = steer.way
-	if steer.mode == BotSteering.FOLLOW or steer.mode == BotSteering.WAIT or steer.mode == BotSteering.YIELD:
+	if steer.mode in [BotSteering.FOLLOW, BotSteering.WAIT, BotSteering.YIELD, BotSteering.BACK_UP, BotSteering.RETRY]:
 		# Held up by a teammate on purpose: not stuck.
 		_forget_speeds()
 		return way
@@ -532,6 +537,7 @@ func _arrive() -> void:
 	_path = null
 	_no_way_to = -1
 	_forget_speeds()
+	_steer_memory.reset()
 
 
 ## Its own side's living players but itself, as BotSteering reads them:
@@ -750,6 +756,7 @@ func respawn() -> void:
 	_path = null
 	_no_way_to = -1
 	_forget_speeds()
+	_steer_memory.reset()
 	velocity = Vector3.ZERO
 	_forget_hits()
 	_get_up()
@@ -772,6 +779,7 @@ func spawn_at(spawn_position: Vector3, yaw: float, fresh: bool = false) -> void:
 	_path = null
 	_no_way_to = -1
 	_forget_speeds()
+	_steer_memory.reset()
 	if route.is_empty():
 		return
 	var nearest := 0

@@ -826,6 +826,10 @@ the fields in the table above are the same.
   which is `m_avgVel[10]`.
 - **Getting out:** "Random wiggle", then "Add random jump after a short
   duration" (`m_wiggleTimer`, `m_stuckJumpTimer`).
+- **Seen in CS2 by Sid** (2026-09-26, primary, by eye): "When colliding
+  they first seem to back up and go forward again, if you are still in the
+  way they will try moving forward and to the side." `BotSteering` follows
+  that order.
 - **Not in the slides or any file:** how far ahead a friend counts as in the
   way, how far aside a bot steps, how long it wiggles, how long before it
   jumps, and the window of the average. The code marks each as a choice;

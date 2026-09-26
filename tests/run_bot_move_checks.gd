@@ -1,7 +1,9 @@
 extends "res://tests/check_suite.gd"
 
 ## Checks that bots make way for their own side (BotSteering, and the bot's
-## stuck handling): two teammates meeting head-on in a corridor, at a
+## stuck handling), the way Sid saw CS2's do it (on till they bump, back
+## up, forward again, then forward and to the side): two teammates meeting
+## head-on in a corridor, at a
 ## diagonal, in a corridor with just room to pass, and in a doorway one hull
 ## wide all get past each other without jumping at each other; a bot
 ## follows a slower teammate rather than hopping into it, and walks round
@@ -127,6 +129,31 @@ func _test_the_steering_by_itself() -> void:
 	)
 	var standing := BotSteering.steer(here, north, 5, ahead, PackedVector3Array([Vector3.ZERO]), PackedInt32Array([2]), slot)
 	_check(standing.mode == BotSteering.YIELD, "and the same for a friend standing there, so two held up never both wait")
+	# With a memory, as a bot keeps one: on until they bump, back up, forward
+	# again, and aside only if the friend is still in the way (Sid, from
+	# CS2, 2026-09-26).
+	var memory := BotSteering.Memory.new()
+	var coming_at := PackedVector3Array([Vector3(0.0, 0.0, 100.0)])
+	var ids := PackedInt32Array([2])
+	var not_yet := BotSteering.steer(here, north, 1, ahead, coming_at, ids, null, memory, 0)
+	var bump := PackedVector3Array([Vector3(0.0, 0.0, -34.0)])
+	var backs := BotSteering.steer(here, north, 1, bump, coming_at, ids, null, memory, 1)
+	var back_ticks := roundi(BotSteering.BACK_UP_SECONDS / SimClock.tick_seconds())
+	var still_backing := BotSteering.steer(here, north, 1, PackedVector3Array(), none, PackedInt32Array(), null, memory, back_ticks)
+	var again := BotSteering.steer(here, north, 1, ahead, coming_at, ids, null, memory, back_ticks + 1)
+	var aside_now := BotSteering.steer(here, north, 1, bump, coming_at, ids, null, memory, back_ticks + 2)
+	_check(
+		not_yet.mode == BotSteering.CLEAR and not_yet.way.is_equal_approx(north)
+			and backs.mode == BotSteering.BACK_UP and backs.way.is_equal_approx(-north)
+			and still_backing.mode == BotSteering.BACK_UP
+			and again.mode == BotSteering.RETRY and again.way.is_equal_approx(north)
+			and aside_now.mode == BotSteering.SIDESTEP and aside_now.way.x > 0.0,
+		"a friend coming at it: on until they bump, back up, forward again, then aside while it is still in the way (%d, %d, %d, %d, %d)"
+			% [not_yet.mode, backs.mode, still_backing.mode, again.mode, aside_now.mode]
+	)
+	var gone := BotSteering.steer(here, north, 1, PackedVector3Array(), none, PackedInt32Array(), null, memory, back_ticks + 3)
+	_check(gone.mode == BotSteering.CLEAR and memory.stage == BotSteering.WALKING_ON, "and once the friend is out of the way it starts afresh")
+
 	var wide := _mesh_of([[Vector3(-100.0, 0.0, 200.0), Vector3(100.0, 0.0, -200.0)]], [])
 	_check(
 		BotSteering.steer(here, north, 5, ahead, coming, PackedInt32Array([2]), wide).mode == BotSteering.SIDESTEP,
@@ -161,6 +188,16 @@ func _test_head_on_in_a_corridor() -> void:
 		"head-on in a corridor, both get to the other end within 1.5 s of one walking it alone (%s ticks, alone %d)" % [arrived, lone_ticks]
 	)
 	_check(meeting["jumps"] == [0, 0], "neither jumps (%s)" % [meeting["jumps"]])
+	var in_order := true
+	for modes: Dictionary in meeting["modes"]:
+		var order: Array = modes.keys()
+		in_order = in_order and order.has(BotSteering.BACK_UP) and order.has(BotSteering.SIDESTEP) \
+			and order.find(BotSteering.BACK_UP) < order.find(BotSteering.RETRY) \
+			and order.find(BotSteering.RETRY) < order.find(BotSteering.SIDESTEP)
+	_check(
+		in_order,
+		"each backs up when they bump, goes forward again, then steps aside, as CS2's bots do (modes in order: %s)" % [meeting["modes"]]
+	)
 	_check(
 		meeting["longest_stall"] < SimClock.ticks_in(0.5),
 		"and neither stands still for half a second (the longest %d ticks)" % meeting["longest_stall"]
