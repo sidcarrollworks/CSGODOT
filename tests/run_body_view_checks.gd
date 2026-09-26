@@ -68,11 +68,22 @@ func _stand_in() -> RigModel:
 
 
 func _test_chest_folds() -> void:
+	_test_fold(false)
+	# A body is folded before it enters the tree, and adopting its meshes
+	# can read the rig's global poses first (CharacterEyes aims the eyes at
+	# once): the fold must show all the same.
+	_test_fold(true)
+
+
+func _test_fold(read_first: bool) -> void:
 	var model := _stand_in()
 	var skeleton := model.character_rig
 	var shared := model.animation_player.get_animation(&"idle")
+	if read_first:
+		for bone in skeleton.get_bone_count():
+			skeleton.get_bone_global_pose(bone)
 	model.fold_bones(PackedStringArray(PlayerView.FOLDED_BONES))
-	skeleton.force_update_all_bone_transforms()
+	var when := " (its poses read before the fold)" if read_first else ""
 
 	var folded := func(bone_name: String) -> bool:
 		return skeleton.get_bone_global_pose(skeleton.find_bone(bone_name)).basis.get_scale().x < 0.01
@@ -87,18 +98,18 @@ func _test_chest_folds() -> void:
 			seen_above.append(bone_name)
 	_check(
 		seen_above.is_empty(),
-		"the seen body folds everything resting above the chest"
-			if seen_above.is_empty() else "the seen body leaves these above the chest: %s" % [seen_above]
+		"the seen body folds everything resting above the chest" + when
+			if seen_above.is_empty() else "the seen body leaves these above the chest%s: %s" % [when, seen_above]
 	)
 	_check(
 		folded.call("spine_3") and folded.call("jiggle_primary") and folded.call("clavicle_L")
 			and folded.call("scapula_L") and folded.call("head_0") and folded.call("arm_upper_R") and folded.call("hand_R"),
-		"the vest's bones (spine_3, the chest's jiggle bone, the clavicles and scapulas) fold, the head and arms with them"
+		"the vest's bones (spine_3, the chest's jiggle bone, the clavicles and scapulas) fold, the head and arms with them" + when
 	)
 	_check(
 		whole.call("pelvis") and whole.call("spine_0") and whole.call("spine_1")
 			and whole.call("leg_upper_L") and whole.call("ankle_L") and whole.call("leg_lower_R") and whole.call("ankle_R"),
-		"the waist, legs and boots stay whole"
+		"the waist, legs and boots stay whole" + when
 	)
 
 	# The clips put every bone's scale back each frame; the folded bone's
@@ -109,6 +120,6 @@ func _test_chest_folds() -> void:
 		own != shared and own.find_track(NodePath("Skeleton3D:spine_2"), Animation.TYPE_SCALE_3D) == -1
 			and own.find_track(NodePath("Skeleton3D:pelvis"), Animation.TYPE_SCALE_3D) >= 0
 			and shared.find_track(NodePath("Skeleton3D:spine_2"), Animation.TYPE_SCALE_3D) >= 0,
-		"the seen body's clips lose the chest's scale track, and the clips other bodies share keep it"
+		"the seen body's clips lose the chest's scale track, and the clips other bodies share keep it" + when
 	)
 	model.free()

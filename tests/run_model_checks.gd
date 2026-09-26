@@ -1077,6 +1077,9 @@ func _test_player_composes_kick_and_bob() -> void:
 		# Issue 22 of the playtest of 2026-09-25: from the chest up folds,
 		# the waist and legs stay. A bone left whole that rests above the
 		# chest (a jiggle bone hung off spine_1, say) would still be seen.
+		# Only bones something drawn is weighted to: the weapon bones hang
+		# off root_motion, above the chest, and the seen body holds nothing.
+		var weighted := _weighted_bones(player.body_model, rig)
 		var chest := rig.find_bone("spine_2")
 		var chest_height := rig.get_bone_global_rest(chest).origin.y if chest >= 0 else INF
 		var unfolded_above: Array[String] = []
@@ -1088,7 +1091,7 @@ func _test_player_composes_kick_and_bob() -> void:
 				under_chest = up == chest
 				up = rig.get_bone_parent(up)
 			var folded := rig.get_bone_global_pose(bone).basis.get_scale().x < 0.01
-			if not folded and not under_chest and rig.get_bone_global_rest(bone).origin.y > chest_height:
+			if not folded and not under_chest and weighted.has(bone) and rig.get_bone_global_rest(bone).origin.y > chest_height:
 				unfolded_above.append(rig.get_bone_name(bone))
 			if folded != under_chest:
 				folded_below.append(rig.get_bone_name(bone))
@@ -1102,7 +1105,7 @@ func _test_player_composes_kick_and_bob() -> void:
 		)
 		_check(
 			unfolded_above.is_empty(),
-			"and nothing left whole rests above the chest"
+			"and nothing drawn and left whole rests above the chest"
 				if unfolded_above.is_empty() else "these bones rest above the chest and are not folded: %s" % [unfolded_above]
 		)
 		var shadow_rig: Skeleton3D = player.body_shadow.character_rig if player.body_shadow != null else null
@@ -1845,3 +1848,24 @@ func _has(names: PackedStringArray, fragment: String) -> bool:
 
 func _report() -> void:
 	_finish("model")
+
+
+## The bones of rig that some vertex of model's meshes is weighted to.
+func _weighted_bones(model: Node, rig: Skeleton3D) -> Dictionary:
+	var weighted := {}
+	for node in model.find_children("*", "MeshInstance3D", true, false):
+		var mesh := node as MeshInstance3D
+		if mesh.mesh == null or mesh.skin == null or mesh.get_node_or_null(mesh.skeleton) != rig:
+			continue
+		var binds := {}
+		for bind in mesh.skin.get_bind_count():
+			var bone_name := mesh.skin.get_bind_name(bind)
+			binds[bind] = rig.find_bone(bone_name) if bone_name != "" else mesh.skin.get_bind_bone(bind)
+		for surface in mesh.mesh.get_surface_count():
+			var arrays := mesh.mesh.surface_get_arrays(surface)
+			var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES] if arrays[Mesh.ARRAY_BONES] != null else PackedInt32Array()
+			var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS] if arrays[Mesh.ARRAY_WEIGHTS] != null else PackedFloat32Array()
+			for i in mini(bones.size(), weights.size()):
+				if weights[i] > 0.0 and binds.has(bones[i]):
+					weighted[binds[bones[i]]] = true
+	return weighted

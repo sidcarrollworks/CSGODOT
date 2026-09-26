@@ -191,6 +191,12 @@ func fold_bones(bone_names: PackedStringArray) -> void:
 		var index := character_rig.find_bone(bone_name)
 		if index >= 0:
 			character_rig.set_bone_pose_scale(index, Vector3.ONE * FOLDED)
+			# Out of the tree, as a body is when it is folded, setting a pose
+			# does not mark the bone's global pose stale, so a global pose
+			# something read before (a mesh adopted onto the rig) would be
+			# kept, the fold unseen. Setting the bone enabled marks it and
+			# its children stale in or out of the tree.
+			character_rig.set_bone_enabled(index, character_rig.is_bone_enabled(index))
 	# Swapping the clips under a playing animation stops it.
 	if idle != &"":
 		play(idle)
