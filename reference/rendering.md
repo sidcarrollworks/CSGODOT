@@ -228,9 +228,12 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
   camera still. dust2's sky brushes (`physics_sky`, slabs of them hanging
   over mid) were occluders, and the rooftops and A sign behind their edges
   flickered from top of mid; `MapOccluders.NOT_DRAWN` has left them out
-  since 2026-09-26. Where the hull stands wider than what is drawn, the
-  same can happen at a real wall's edge; if it does, the playtest page's
-  issue 11 lists the choices.
+  since 2026-09-26, which fixes top of mid. Where the hull stands wider
+  than what is drawn, the same happens at a real wall's edge: lower mid
+  still flickers with the sky left out (the playtest page, "Confirmed on
+  Sid's machine", 11). Shrinking the occluders or turning Godot's
+  occlusion culling off beside `WorldVisibility` is Sid's call on the
+  `no_occlusion` numbers.
 - **R4. Shadows split as CS2 splits them.** *(The first tier built,
   2026-09-25: the map's shadow from CS2's baked pages. Waits on the
   extraction and a playtest, L7.)*
