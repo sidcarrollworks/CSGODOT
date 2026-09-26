@@ -10,8 +10,11 @@ extends "res://tests/check_suite.gd"
 ##   godot --headless --path . --script tests/run_body_view_checks.gd
 
 
-func _init() -> void:
+func _initialize() -> void:
 	_test_chest_folds()
+	_test_look_down()
+	await _test_arch_bends_forward()
+	await _test_arch_over_the_clips()
 	_finish("body-view")
 
 
@@ -22,6 +25,7 @@ func _init() -> void:
 func _stand_in() -> RigModel:
 	var model := RigModel.new()
 	var skeleton := Skeleton3D.new()
+	skeleton.name = "Skeleton3D"
 	model.add_child(skeleton)
 	model.character_rig = skeleton
 	var clip := Animation.new()
@@ -121,5 +125,92 @@ func _test_fold(read_first: bool) -> void:
 			and own.find_track(NodePath("Skeleton3D:pelvis"), Animation.TYPE_SCALE_3D) >= 0
 			and shared.find_track(NodePath("Skeleton3D:spine_2"), Animation.TYPE_SCALE_3D) >= 0,
 		"the seen body's clips lose the chest's scale track, and the clips other bodies share keep it" + when
+	)
+	model.free()
+
+
+## Looking down leans the body from nothing, level or looking up, to all of
+## it straight down.
+func _test_look_down() -> void:
+	_check(
+		PlayerView.look_down(0.0) == 0.0 and PlayerView.look_down(45.0) == 0.0
+			and is_equal_approx(PlayerView.look_down(-89.0), 1.0)
+			and PlayerView.look_down(-30.0) > 0.0 and PlayerView.look_down(-30.0) < PlayerView.look_down(-60.0),
+		"the lean grows as the view looks down, none level or looking up, all of it straight down"
+	)
+	_check(
+		PlayerView.LOOK_DOWN_ARCH > 0.0 and PlayerView.LOOK_DOWN_LEAN > 0.0,
+		"looking down both tips the body back and bends its back forward"
+	)
+	# A view at yaw 0 looks down -Z; at yaw 90 degrees, down -X.
+	var ok := true
+	for yaw_degrees: float in [0.0, 90.0, 217.0]:
+		var yaw := deg_to_rad(yaw_degrees)
+		var ahead := Basis.from_euler(Vector3(0.0, yaw, 0.0)) * Vector3.FORWARD
+		var top := PlayerView.lean(yaw, -89.0) * Vector3.UP
+		ok = ok and top.dot(ahead) < -0.3 and top.y > 0.9 and PlayerView.lean(yaw, 10.0).is_equal_approx(Basis.IDENTITY)
+		ok = ok and is_equal_approx(PlayerView.view_right(yaw).dot(ahead), 0.0) and PlayerView.view_right(yaw).cross(ahead).y > 0.9
+	_check(ok, "looking straight down tips the body's top back, away from where the view faces, whichever way it faces")
+
+
+## The stand-in faces -Z with +X its right, as a view at yaw 0 does. In the
+## tree, where the arch runs: out of it a pose set is not seen in the
+## global poses (RigModel.fold_bones).
+func _test_arch_bends_forward() -> void:
+	var model := _stand_in()
+	var skeleton := model.character_rig
+	root.add_child(model)
+	await process_frame
+	var chest := skeleton.find_bone("spine_2")
+	var pelvis := skeleton.get_bone_global_pose(skeleton.find_bone("pelvis"))
+	var ankle := skeleton.get_bone_global_pose(skeleton.find_bone("ankle_L")).origin
+	var chest_before := skeleton.get_bone_global_pose(chest).origin
+	LookDownArch.bend(skeleton, Vector3.RIGHT, 60.0)
+	var chest_after := skeleton.get_bone_global_pose(chest).origin
+	_check(
+		chest_after.z < chest_before.z - 0.05 and chest_after.y < chest_before.y,
+		"the back bends forward and down over the legs (chest from %s to %s)" % [chest_before, chest_after]
+	)
+	_check(
+		skeleton.get_bone_global_pose(skeleton.find_bone("pelvis")).is_equal_approx(pelvis)
+			and skeleton.get_bone_global_pose(skeleton.find_bone("ankle_L")).origin.is_equal_approx(ankle),
+		"the pelvis and legs stay where the clip has them"
+	)
+	var lower := skeleton.get_bone_global_pose(skeleton.find_bone("spine_1")).basis.get_rotation_quaternion()
+	_check_near(
+		rad_to_deg(Quaternion.IDENTITY.angle_to(lower)), 60.0,
+		"the bend is shared by spine_0 and spine_1, all of it by spine_1"
+	)
+	model.free()
+
+
+## In the tree, the bend lands after the clips, which key every bone's
+## rotation each frame: the modifier runs in the skeleton's update after
+## them, and its result is read where it is, in modification_processed.
+func _test_arch_over_the_clips() -> void:
+	var model := _stand_in()
+	var skeleton := model.character_rig
+	var clip := model.animation_player.get_animation(&"idle")
+	for bone_name in LookDownArch.BONES:
+		var track := clip.add_track(Animation.TYPE_ROTATION_3D)
+		clip.track_set_path(track, NodePath("Skeleton3D:%s" % bone_name))
+		clip.rotation_track_insert_key(track, 0.0, Quaternion.IDENTITY)
+	clip.loop_mode = Animation.LOOP_LINEAR
+	var arch := LookDownArch.new()
+	skeleton.add_child(arch)
+	arch.axis_world = Vector3.RIGHT
+	arch.degrees = 60.0
+	var seen := []
+	arch.modification_processed.connect(func() -> void:
+		seen.append(skeleton.get_bone_global_pose(skeleton.find_bone("spine_2")).origin)
+	)
+	root.add_child(model)
+	model.animation_player.play(&"idle")
+	for frame in 4:
+		await process_frame
+	var upright := Vector3(0, 1.09 + 0.08 + 0.1 + 0.07, 0)
+	_check(
+		not seen.is_empty() and (seen.back() as Vector3).z < -0.05 and (seen.back() as Vector3).y < upright.y,
+		"in the tree the bend lands over the playing clip (chest at %s)" % [seen.back() if not seen.is_empty() else "never updated"]
 	)
 	model.free()

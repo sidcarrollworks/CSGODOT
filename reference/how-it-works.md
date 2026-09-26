@@ -159,6 +159,8 @@ there, belt and legs, walking the same clips as a bot's, with your shadow
 on the ground: the third-person model folded away from the chest up
 (`RigModel.fold_bones` on spine_2), since the camera sits inside the head,
 the view model stands in for the arms, and CS2 shows no chest looking down.
+Looking down it tips back about its feet and its lower back bends forward
+(`LookDownArch`), so the view feels like the back arching over the legs.
 The shadow is cast by a twin of that model drawn only into the shadow maps,
 whole, so the shadow has a head and arms.
 
