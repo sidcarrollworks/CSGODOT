@@ -119,6 +119,7 @@ func _process(_delta: float) -> bool:
 		(_course.get("world") as GameWorld).remove_player(_player as PlayerSim)
 		_test_creep_stops()
 		_test_traces_a_tick()
+		_test_air_action()
 		return false
 
 	_phase_tick += 1
@@ -832,6 +833,60 @@ func _test_traces_a_tick() -> void:
 	_check(
 		steps == 8 and most == 7,
 		"running up the flight steps up each of its eight steps, tracing the hull at most seven times a tick (%d steps, %d traces)" % [steps, most]
+	)
+	_place(Vector3(0.0, 8.0, 256.0))
+
+
+## What the body tells its animation of the air (CS2's air_action and
+## air_height_above_ground): a jump, then its landing; walking off a box,
+## a fall. In the air one ray a tick finds the height above the
+## ground, the same as the feet's height over the flat floor; on the ground
+## none.
+func _test_air_action() -> void:
+	_place(Vector3(0.0, 8.0, 256.0))
+	for i in SETTLE_TICKS:
+		_step()
+	var floor_y := _player.global_position.y
+	var rays := _player.ground_rays
+	_step()
+	var standing_rays := _player.ground_rays - rays
+	_step(Vector3.ZERO, true)
+	var jumped := _player.air_action
+	var jumped_at := _player.air_action_usec
+	var heights_ok := true
+	var airborne_ticks := 0
+	rays = _player.ground_rays
+	var landed_after := -1
+	for i in SimClock.ticks_in(1.0):
+		_step()
+		if _player.on_ground:
+			landed_after = i
+			break
+		airborne_ticks += 1
+		var above := _player.global_position.y - floor_y
+		var expected := above if above <= PlayerBody.AIR_HEIGHT_REACH else INF
+		heights_ok = heights_ok and (is_equal_approx(_player.height_above_ground, expected) if expected < INF else _player.height_above_ground == INF)
+	_check(
+		standing_rays == 0 and jumped == PlayerBody.AIR_JUMP and jumped_at == SimClock.now_usec()
+			and landed_after > 0 and _player.air_action == PlayerBody.AIR_LAND and is_zero_approx(_player.height_above_ground)
+			and heights_ok and _player.ground_rays - rays == airborne_ticks,
+		"a jump reports its take-off, then its landing; in the air one ray a tick gives the height above the floor, and none on the ground (%s, %d airborne ticks, %d rays)" % [jumped, airborne_ticks, _player.ground_rays - rays]
+	)
+	# Off the lowest jump gauge, a 32-unit box, too high a drop for
+	# StayOnGround to hold: a fall.
+	_place(Vector3(-1024.0, 40.0, 0.0))
+	for i in SETTLE_TICKS:
+		_step()
+	var on_top := _player.on_ground and _player.global_position.y > 31.0
+	var fell := PlayerBody.NO_AIR_ACTION
+	for i in SimClock.ticks_in(1.0):
+		_step(Vector3(1.0, 0.0, 0.0))
+		if not _player.on_ground:
+			fell = _player.air_action
+			break
+	_check(
+		on_top and fell == PlayerBody.AIR_START_FALL,
+		"walking off a box reports a fall, not a jump (%s)" % fell
 	)
 	_place(Vector3(0.0, 8.0, 256.0))
 

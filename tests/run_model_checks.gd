@@ -131,6 +131,8 @@ func _init() -> void:
 	_test_view_model_motion()
 	_test_hitbox_set_parsing()
 	_test_nm_graph()
+	_test_air_rules()
+	_test_air_tree()
 	_test_sound_sets()
 	_check(
 		BulletImpacts.surface_for("physics_group_sand") == "sand" and BulletImpacts.surface_for("physics_group_wood_crate") == "wood"
@@ -389,6 +391,280 @@ func _test_nm_graph() -> void:
 			for i in mini(values.size(), points.size()):
 				same = same and is_equal_approx(float(values[i][0]), float(points[i]["x"])) and is_equal_approx(float(values[i][1]), float(points[i]["y"]))
 	_check(same, "reference/animgraph/locomotion.json is what the graphs say (scripts/animgraph_tables.gd writes it)")
+
+
+## CS2's InAir as the body plays it, in the parts that need no clips: what
+## plays when, the cross-fades, the landing's pose by height, the eased
+## crouch, the tree's shape from locomotion.json, and the curve read from
+## the table once the graph tables carry it. No assets needed.
+func _test_air_rules() -> void:
+	var table := PlayerModel.read_locomotion()
+	var tree := PlayerModel.build_tree(table, PlayerModel.VARIATION)
+	var places := {}
+	var jump_stand := tree.get_node(&"jump_stand") as AnimationNodeBlendSpace2D if tree != null and tree.has_node(&"jump_stand") else null
+	if jump_stand != null:
+		for i in jump_stand.get_blend_point_count():
+			places[(jump_stand.get_blend_point_node(i) as AnimationNodeAnimation).animation] = jump_stand.get_blend_point_position(i)
+	var jump_crouch := tree.get_node(&"jump_crouch") as AnimationNodeBlendSpace2D if tree != null and tree.has_node(&"jump_crouch") else null
+	var air_state := tree.get_node(&"air_state") as AnimationNodeTransition if tree != null and tree.has_node(&"air_state") else null
+	_check(
+		jump_stand != null and jump_stand.get_blend_point_count() == 5 and places.get(&"jump_stand", Vector2.ONE) == Vector2.ZERO
+			and places.get(&"jump_n", Vector2.ZERO) == Vector2(225, 0) and places.get(&"jump_e", Vector2.ZERO) == Vector2(0, -225)
+			and jump_crouch != null and jump_crouch.get_blend_point_count() == 5 and jump_crouch.get_blend_point_position(1).length() == 96.0
+			and air_state != null and air_state.get_input_name(0) == "jump" and air_state.get_input_name(1) == "landing"
+			and tree.get_node(&"land_pose_stand") is AnimationNodeTimeSeek and tree.get_node(&"land_hold_stand") is AnimationNodeTimeScale
+			and tree.get_node(&"land_pose_crouch") is AnimationNodeTimeSeek and tree.get_node(&"land_hold_crouch") is AnimationNodeTimeScale
+			and tree.get_node(&"jump_start") is AnimationNodeTimeSeek,
+		"the air is CS2's InAir: the take-off's five clips at CS2's places standing (225) and crouched (96), then the landing spaces held at a time (%s)" % [places]
+	)
+	var varied := PlayerModel.build_varied_tree(table, [PlayerModel.VARIATION] + PlayerModel.HELD_VARIATIONS.keys())
+	var every := varied != null
+	for variation: String in PlayerModel.HELD_VARIATIONS:
+		var locomotion := varied.get_node(StringName(variation)) as AnimationNodeBlendTree if every else null
+		every = every and locomotion != null and locomotion.has_node(&"air_state") and locomotion.has_node(&"jump_stand") \
+			and ((locomotion.get_node(&"jump_stand") as AnimationNodeBlendSpace2D).get_blend_point_node(1) as AnimationNodeAnimation).animation == StringName(variation + "_jump_n")
+	_check(every, "and every variation has its own take-off, its own clips in it")
+	var fallback := PlayerModel.build_tree(table, PlayerModel.VARIATION, {"jump_stand": true, "jump_e": true})
+	var fell_back := fallback.get_node(&"jump_stand") as AnimationNodeBlendSpace2D
+	var played := {}
+	for i in fell_back.get_blend_point_count():
+		played[(fell_back.get_blend_point_node(i) as AnimationNodeAnimation).animation] = true
+	_check(
+		played.keys().size() == 2 and played.has(&"jump_stand") and played.has(&"jump_e"),
+		"a take-off clip not extracted plays jump_stand in its place (%s)" % [played.keys()]
+	)
+	_check(
+		PlayerModel.is_air_clip("inair_n") and PlayerModel.is_air_clip("jump_stand") and PlayerModel.is_air_clip("pistol_inair_crouch_w")
+			and PlayerModel.is_air_clip("knife_jump_n") and not PlayerModel.is_air_clip("run_n") and not PlayerModel.is_air_clip("pistol_idle"),
+		"the take-off and landing clips, and only they, are the air's, which never loop"
+	)
+	var second := 1_000_000
+	_check(
+		PlayerModel.air_state(PlayerBody.AIR_JUMP, 0, second / 4, 0.4) == "jump"
+			and PlayerModel.air_state(PlayerBody.AIR_JUMP, 0, second / 2, 0.4) == "landing"
+			and PlayerModel.air_state(PlayerBody.AIR_START_FALL, 0, 0, 0.4) == "landing"
+			and PlayerModel.air_state(PlayerBody.NO_AIR_ACTION, 0, 0, 0.4) == "landing",
+		"a jump plays its take-off until it is done and then the landing; a fall goes straight to the landing"
+	)
+	_check(
+		is_equal_approx(PlayerModel.into_air_fade(PlayerBody.AIR_JUMP), 0.1) and is_equal_approx(PlayerModel.into_air_fade(PlayerBody.AIR_START_FALL), 0.3)
+			and is_equal_approx(PlayerModel.TO_GROUND, 0.2),
+		"into the air in CS2's 0.1 s from a jump and 0.3 s from a fall, and back to the ground in 0.2 s"
+	)
+	var curve := PlayerModel.LANDING_CURVE
+	_check(
+		is_equal_approx(PlayerModel.landing_share(0.0, curve), 1.0) and is_equal_approx(PlayerModel.landing_share(5.8, curve), 1.0)
+			and is_equal_approx(PlayerModel.landing_share(27.9, curve), 0.5) and is_zero_approx(PlayerModel.landing_share(50.0, curve))
+			and is_zero_approx(PlayerModel.landing_share(INF, curve)),
+		"the landing is posed by height: feet down (the clip's end) up to 5.8 units, tucked (its start) from 50, straight between"
+	)
+	_check(
+		is_equal_approx(PlayerModel.eased_crouch(0.0, 1.0, 0.1), 0.5) and is_equal_approx(PlayerModel.eased_crouch(0.0, 1.0, 0.3), 1.0)
+			and is_equal_approx(PlayerModel.eased_crouch(1.0, 0.0, 0.05), 0.75),
+		"the air's crouch is eased over CS2's 0.2 s"
+	)
+	# Whatever reference/animgraph/locomotion.json carries (CS2's own curve,
+	# once the tables are regenerated), the landing must still run from
+	# tucked high up to feet down near the ground.
+	var ours := PlayerModel.landing_curve(table)
+	var ours_crouched := PlayerModel.landing_curve(table, true)
+	_check(
+		PlayerModel.landing_share(0.0, ours) >= 0.9 and PlayerModel.landing_share(INF, ours) <= 0.1
+			and PlayerModel.landing_share(0.0, ours_crouched) >= 0.9 and PlayerModel.landing_share(INF, ours_crouched) <= 0.1,
+		"the landing's curves from the tables, standing and crouched, pose the feet down at the ground and tucked out of reach (%s; %s)" % [ours, ours_crouched]
+	)
+	# CS2's own poses leave their input range unset (FLT_MAX to -FLT_MAX),
+	# and its crouched ones have a curve of their own.
+	var unset := PlayerModel.landing_curve({"values": [
+		{"node": 10, "kind": "FloatCurve", "input": "air_height_above_ground", "points": [[0.0, 1.0], [5.8, 1.0], [50.0, 0.0]]},
+		{"node": 11, "kind": "FloatCurve", "input": "air_height_above_ground", "points": [[2.54, 1.0], [15.53, 0.66], [50.0, 0.0]]},
+		{"node": 12, "kind": "AnimationPose", "path": "SM/InAir/SM/landing_blend/inair_stand2", "input_node": 10, "from": 3.4028234663852882e+38, "to": -3.4028234663852882e+38},
+		{"node": 13, "kind": "AnimationPose", "path": "SM/InAir/SM/landing_blend/inair_crouch_stand2", "input_node": 11, "from": 3.4028234663852882e+38, "to": -3.4028234663852882e+38},
+	]}, false)
+	var unset_crouched := PlayerModel.landing_curve({"values": [
+		{"node": 11, "kind": "FloatCurve", "input": "air_height_above_ground", "points": [[2.54, 1.0], [15.53, 0.66], [50.0, 0.0]]},
+		{"node": 12, "kind": "AnimationPose", "path": "SM/InAir/SM/landing_blend/inair_stand2", "input_node": 10, "from": 3.4028234663852882e+38, "to": -3.4028234663852882e+38},
+		{"node": 13, "kind": "AnimationPose", "path": "SM/InAir/SM/landing_blend/inair_crouch_stand2", "input_node": 11, "from": 3.4028234663852882e+38, "to": -3.4028234663852882e+38},
+	]}, true)
+	_check(
+		unset == [Vector2(0, 1), Vector2(5.8, 1), Vector2(50, 0)] and unset_crouched == [Vector2(2.54, 1), Vector2(15.53, 0.66), Vector2(50, 0)],
+		"an unset input range takes the curve as the share itself, and the crouched landing reads its own curve (%s; %s)" % [unset, unset_crouched]
+	)
+	var dump_tracks := Animation.new()
+	for track_path in ["Rig/Skeleton3D:ankle_L", "Rig/weapon/Skeleton3D:weapon", "Rig/Skeleton3D:pelvis"]:
+		var track := dump_tracks.add_track(Animation.TYPE_ROTATION_3D)
+		dump_tracks.track_set_path(track, NodePath(track_path))
+	var kept := PlayerModel.body_tracks_only(dump_tracks, "Rig/Skeleton3D")
+	_check(
+		kept.get_track_count() == 2 and dump_tracks.get_track_count() == 3,
+		"a clip keeps only the body's tracks, not the gun rig's the jump additives carry (%d of 3)" % kept.get_track_count()
+	)
+	var from_table := PlayerModel.landing_curve({"values": [
+		{"node": 10, "kind": "FloatCurve", "input": "air_height_above_ground", "points": [[40.0, 0.0], [4.0, 2.0]]},
+		{"node": 11, "kind": "AnimationPose", "path": "SM/InAir/SM/landing_blend/inair_n", "input_node": 10, "from": 0.0, "to": 2.0},
+	]})
+	_check(
+		from_table == [Vector2(4.0, 1.0), Vector2(40.0, 0.0)] and PlayerModel.landing_curve({}) == PlayerModel.LANDING_CURVE,
+		"the landing's curve comes from the graph tables once they carry it, through the pose's input range, sorted by height; its default otherwise (%s)" % [from_table]
+	)
+	var graph := NmGraph.from_text("""{
+	m_nRootNodeIdx = 4
+	m_controlParameterIDs = [ "air_height_above_ground" ]
+	m_virtualParameterIDs = [  ]
+	m_virtualParameterNodeIndices = [  ]
+	m_nodePaths = [ "air_height_above_ground", "SM/landing_blend/Curve", "SM/landing_blend/Spring", "SM/landing_blend/Pose Curve", "SM/landing_blend/inair_n" ]
+	m_resources = [ resource:"animation/anims/world/rifle/_default_rifle/inair_n_rifle.vnmclip" ]
+	m_nodes =
+	[
+		{ _class = "CNmControlParameterFloatNode::CDefinition" m_nNodeIdx = 0 },
+		{ _class = "CNmFloatCurveNode::CDefinition" m_nNodeIdx = 1 m_nInputValueNodeIdx = 0 m_curve = { m_spline = [ [ 10.0, 0.0 ], [ 40.0, 50.0 ] ] m_tangents = [  ] m_vDomainMins = [ 10.0, 0.0 ] m_vDomainMaxs = [ 40.0, 50.0 ] } },
+		{ _class = "CNmFloatSpringNode::CDefinition" m_nNodeIdx = 2 m_flStartValue = 0.0 m_flHertz = 5.0 m_flDampingRatio = 1.0 m_nInputValueNodeIdx = 1 m_bUseStartValue = false },
+		{ _class = "CNmFloatCurveNode::CDefinition" m_nNodeIdx = 3 m_nInputValueNodeIdx = 0 m_curve = { m_spline = [ { m_vPos = [ 5.8, 1.0 ] }, { m_vPos = [ 50.0, 0.0 ] } ] } },
+		{ _class = "CNmAnimationPoseNode::CDefinition" m_nNodeIdx = 4 m_nPoseTimeValueNodeIdx = 3 m_nDataSlotIdx = 0 m_inputTimeRemapRange = { m_flMin = 0.0 m_flMax = 1.0 } m_flUserSpecifiedTime = 0.0 m_bUseFramesAsInput = false },
+	]
+}""")
+	var values := graph.value_nodes()
+	var kinds := values.map(func(value: Dictionary) -> String: return String(value["kind"]))
+	_check(
+		graph.curve_points(1) == [Vector2(10, 0), Vector2(40, 50)] and graph.curve_points(3) == [Vector2(5.8, 1.0), Vector2(50, 0)]
+			and graph.expression(2) == "a curve of air_height_above_ground (10 to 0, 40 to 50) on a 5 Hz spring, damping 1"
+			and graph.summary(4) == "a pose from inair_n_rifle at the share of the clip given by a curve of air_height_above_ground (5.8 to 1, 50 to 0)"
+			and kinds == ["FloatCurve", "FloatCurve", "FloatSpring", "AnimationPose"] and int(values[3]["input_node"]) == 3
+			and values[0]["points"] == [[10.0, 0.0], [40.0, 50.0]] and is_equal_approx(float(values[2]["hertz"]), 5.0),
+		"the graph tables write out CS2's curves, springs and poses: a curve's points, a spring's rate and damping, what times a pose (%s; %s)" % [graph.expression(2), graph.summary(4)]
+	)
+	var fixture := {"values": values}
+	fixture["values"][3]["path"] = "SM/InAir/SM/landing_blend/inair_n"
+	_check(
+		PlayerModel.landing_curve(fixture) == [Vector2(5.8, 1.0), Vector2(50, 0)],
+		"and the body reads the landing's pose curve from what they write"
+	)
+
+
+## The air played through a real tree, on clips made up here, each keeping
+## a number on a node that says which clip is playing and where in it: the
+## take-off's 100 plus its time, the landing's its time, the ground's -1.
+## The body is driven as the simulation drives it. No assets needed.
+func _test_air_tree() -> void:
+	var table := PlayerModel.read_locomotion()
+	var library := AnimationLibrary.new()
+	var names := {}
+	for space: Dictionary in table.get("blend_spaces", []):
+		for point: Dictionary in space.get("points", []):
+			names[String(PlayerModel.clip_name(point, PlayerModel.VARIATION))] = true
+	for clip_name: String in names:
+		if clip_name.begins_with("jump_") and clip_name not in ["jump_stand", "jump_crouch_stand"]:
+			continue
+		var length := 0.4 if clip_name.begins_with("jump_") else (0.33 if clip_name.begins_with("inair_") else 1.0)
+		var base := 100.0 if clip_name.begins_with("jump_") else (0.0 if clip_name.begins_with("inair_") else -1.0)
+		var clip := Animation.new()
+		clip.length = length
+		var track := clip.add_track(Animation.TYPE_VALUE)
+		clip.track_set_path(track, NodePath("Bone:position:y"))
+		clip.track_insert_key(track, 0.0, base)
+		clip.track_insert_key(track, length, base + (length if base >= 0.0 else 0.0))
+		library.add_animation(StringName(clip_name), clip)
+	# The jump additives, which keep a number of their own, on x: 1000
+	# while one is added in full.
+	for additive in [PlayerModel.jump_additive("rifle", false, false), PlayerModel.jump_additive("rifle", true, false)]:
+		var clip := Animation.new()
+		clip.length = 0.3
+		var track := clip.add_track(Animation.TYPE_VALUE)
+		clip.track_set_path(track, NodePath("Bone:position:x"))
+		clip.track_insert_key(track, 0.0, 1000.0)
+		clip.track_insert_key(track, 0.3, 1000.0)
+		library.add_animation(additive, clip)
+	var model := PlayerModel.new()
+	var rig := Node3D.new()
+	var bone := Node3D.new()
+	bone.name = "Bone"
+	rig.add_child(bone)
+	var player := AnimationPlayer.new()
+	player.add_animation_library(&"", library)
+	rig.add_child(player)
+	model.add_child(rig)
+	model.animation_player = player
+	model.idle = &"idle"
+	root.add_child(model)
+	model._build_tree(PackedStringArray())
+	var tree := model.animation_tree
+	if tree == null:
+		_check(false, "a body builds its tree on made-up clips")
+		model.free()
+		return
+	tree.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+	# The tree's workings on the curve this check knows; the curve CS2's
+	# tables give is checked in _test_air_rules.
+	model._landing_curves = {"stand": PlayerModel.LANDING_CURVE, "crouch": PlayerModel.LANDING_CURVE}
+	var now := SimClock.now_usec()
+	var at := func() -> float: return bone.position.y
+	var run := Vector3(0, 0, -240)
+	model.update_motion(run, 0.0, 0.0, true)
+	model.pose_now()
+	tree.advance(0.3)
+	var on_ground: float = at.call()
+	# Stepped in frames, as a body is drawn: a cross-fade shows from the
+	# frame after the one it was asked in, a one-shot's fade in from the one
+	# after that.
+	var frames := func(seconds: float) -> void:
+		for i in roundi(seconds * 100.0):
+			tree.advance(0.01)
+	model.update_motion(run, 0.0, 0.0, false, PlayerBody.AIR_JUMP, now, 20.0)
+	frames.call(0.15)
+	var taking_off: float = at.call()
+	var added := bone.position.x
+	var fade := (tree.tree_root as AnimationNodeBlendTree).get_node(&"ground") as AnimationNodeTransition
+	_check(
+		PlayerModel.jump_additive("rifle", true, true) == &"jump_additive_crouch_land_rifle" and PlayerModel.jump_additive("knife", false, false) == &"jump_additive_start"
+			and added > 100.0 and (tree.tree_root as AnimationNodeBlendTree).get_node(&"jump_add_clip").animation == &"jump_additive_start_rifle",
+		"CS2's jump additive is added over the body as it takes off, the variation's own (%.1f, %s)" % [added, (tree.tree_root as AnimationNodeBlendTree).get_node(&"jump_add_clip").animation]
+	)
+	_check(
+		is_equal_approx(on_ground, -1.0) and taking_off > 100.0 and taking_off < 100.25
+			and tree.get("parameters/air_state/current_state") == "jump" and is_equal_approx(fade.xfade_time, 0.1),
+		"a jump fades into the take-off in 0.1 s, the clip from its start (%.3f, then %.3f 0.15 s on)" % [on_ground, taking_off]
+	)
+	model.update_motion(run, 0.0, 0.0, false, PlayerBody.AIR_JUMP, now - 450_000, 27.9)
+	tree.advance(0.0)
+	var landing: float = at.call()
+	tree.advance(0.1)
+	tree.advance(0.1)
+	var still: float = at.call()
+	_check(
+		tree.get("parameters/air_state/current_state") == "landing" and absf(landing - 0.165) < 0.01 and absf(still - landing) < 0.001,
+		"once the take-off is done the landing is posed halfway through at 27.9 units up, and stays there between ticks (%.3f, %.3f)" % [landing, still]
+	)
+	model.update_motion(run, 0.0, 0.0, false, PlayerBody.AIR_JUMP, now - 450_000, 2.0)
+	tree.advance(0.0)
+	var low: float = at.call()
+	_check(absf(low - 0.33) < 0.01, "and near the ground at the end, the feet down (%.3f)" % low)
+	model.update_motion(run, 0.0, 0.0, false, PlayerBody.AIR_JUMP, now - 10_000, 20.0)
+	tree.advance(0.0)
+	var again: float = at.call()
+	_check(
+		again >= 100.0 and again < 100.02 and tree.get("parameters/air_state/current_state") == "jump",
+		"a jump straight from the landing starts the take-off again from the top (%.3f)" % again
+	)
+	model.update_motion(run, 0.0, 0.0, true, PlayerBody.AIR_LAND, now, 0.0)
+	_check(
+		(tree.tree_root as AnimationNodeBlendTree).get_node(&"jump_add_clip").animation == &"jump_additive_land_rifle",
+		"and the land additive as it comes down"
+	)
+	frames.call(0.1)
+	var landing_half: float = at.call()
+	frames.call(0.15)
+	var landed: float = at.call()
+	model.update_motion(run, 0.0, 0.0, false, PlayerBody.AIR_START_FALL, now, INF)
+	frames.call(0.15)
+	var falling: float = at.call()
+	frames.call(0.2)
+	var fallen: float = at.call()
+	_check(
+		absf(landing_half + 0.335) < 0.08 and is_equal_approx(landed, -1.0) and is_equal_approx(fade.xfade_time, 0.3)
+			and absf(falling + 0.5) < 0.06 and absf(fallen) < 0.01 and tree.get("parameters/air_state/current_state") == "landing",
+		"back on the ground in 0.2 s, half way at 0.1; off a ledge, 0.3 s into the landing, tucked with the ground out of reach (%.3f, %.3f, %.3f, %.3f)" % [landing_half, landed, falling, fallen]
+	)
+	model.free()
 
 
 ## CS2's hitbox set is text; the test is that the fields come out of it and
@@ -1531,6 +1807,30 @@ func _test_player_model() -> void:
 		model.state() == &"air" and tree.get("parameters/ground/current_state") == "air"
 			and is_equal_approx(((tree.tree_root as AnimationNodeBlendTree).get_node(&"ground") as AnimationNodeTransition).xfade_time, PlayerModel.TO_AIR),
 		"off the ground, it cross-fades to the air in CS2's 0.1 s"
+	)
+	# A run-jump: the take-off lifts the feet over its 0.4 s, where a fade
+	# straight to the air's tucked pose lifted them about 18 units in 0.1.
+	model.update_motion(Vector3(0, 0, 240), 180.0, 0.0, true)
+	tree.advance(0.5)
+	var feet_at := func() -> float:
+		var root_y := (rig.global_transform * rig.get_bone_global_pose(rig.find_bone("root_motion"))).origin.y
+		return ((rig.global_transform * rig.get_bone_global_pose(ankle)).origin.y
+			+ (rig.global_transform * rig.get_bone_global_pose(rig.find_bone("ankle_R"))).origin.y) * 0.5 - root_y
+	var feet_before: float = feet_at.call()
+	model.update_motion(Vector3(0, 0, 240), 180.0, 0.0, false, PlayerBody.AIR_JUMP, SimClock.now_usec(), 30.0)
+	var tenth := 0.0
+	var most := 0.0
+	for step in SimClock.ticks_in(0.4):
+		tree.advance(SimClock.tick_seconds())
+		var risen: float = feet_at.call() - feet_before
+		most = maxf(most, risen)
+		if step == SimClock.ticks_in(0.1) - 1:
+			tenth = risen
+	_check(
+		tree.get("parameters/air_state/current_state") == "jump" and tenth < 0.6 * most
+			and animations.get_animation(&"inair_n").loop_mode == Animation.LOOP_NONE
+			and animations.get_animation(&"jump_stand").loop_mode == Animation.LOOP_NONE,
+		"running into a jump, the take-off lifts the feet over 0.4 s, not in the first tenth (%.1f units by 0.1 s of %.1f), and no air clip loops" % [tenth, most]
 	)
 	model.play(&"death_chest_a", 0.05)
 	model.update_motion(Vector3(0, 0, 240), 180.0, 0.0, true)
