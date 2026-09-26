@@ -4,7 +4,8 @@ CS2 recreated in Godot 4.7. Read by every agent that works on this repo:
 Sid's local agents on his machine, and the cloud threads of his Claude
 project. Both change the same files, often on the same day, so these are
 the rules that let them do it without breaking each other's work. The
-README says what the game is and how it is built.
+README says what the game is;
+`reference/how-it-works.md` says how it is built.
 
 ## How work reaches main
 
