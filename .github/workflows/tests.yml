@@ -41,5 +41,9 @@ jobs:
           mv ~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64 ~/godot/godot
           chmod +x ~/godot/godot
 
+      - name: Install pinned Box3D addon
+        shell: pwsh
+        run: ./scripts/install_box3d.ps1
+
       - name: Run the tests
         run: GODOT=~/godot/godot scripts/run_tests.sh

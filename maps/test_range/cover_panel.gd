@@ -29,6 +29,9 @@ const SIZE := Vector2(128.0, 160.0)
 ## How far in front of the dummy it stands.
 const IN_FRONT := 64.0
 
+## The range mirrors these editable shapes into its optional drop solver.
+signal collision_changed
+
 var index: int = 0
 var _mesh: MeshInstance3D
 var _collision: CollisionShape3D
@@ -58,6 +61,8 @@ func _ready() -> void:
 ## Stands it in front of a spot, across a lane that runs down -Z.
 func stand_before(target: Vector3) -> void:
 	global_position = Vector3(target.x, SIZE.y * 0.5, target.z + IN_FRONT)
+	if standing():
+		collision_changed.emit()
 
 
 func next() -> void:
@@ -72,6 +77,7 @@ func show_choice(at: int) -> void:
 	# Off is no collision at all, so the lane is as it always was.
 	_collision.disabled = not up
 	if not up:
+		collision_changed.emit()
 		return
 	var thickness: float = choice["thickness"]
 	var size := Vector3(SIZE.x, SIZE.y, thickness)
@@ -81,6 +87,7 @@ func show_choice(at: int) -> void:
 	_collision.name = "physics_group_%s" % choice["surface"]
 	_sign.text = describe()
 	_sign.position = Vector3(0.0, SIZE.y * 0.5 + 12.0, thickness * 0.5 + 0.2)
+	collision_changed.emit()
 
 
 func standing() -> bool:

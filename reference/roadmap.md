@@ -256,6 +256,16 @@ issue done here and on the page in the same pull request.
 | 22 | Looking down shows the vest where CS2 shows legs | **Done:** the seen body folds from spine_2 up, the shadow and bots whole | Beside CS2 | 6a |
 | 23 | The distant hill missing (the 3D skybox past the camera's far plane, dropped before its depth squeeze can help) | *(done: `FarMaterials.CULL_BOX`, `far_position`)* Far meshes kept in the frustum, and a squeeze that keeps them inside the far plane | The view beside CS2; the cost | R2 |
 
+**Dropped-gun physics trial (2026-09-26, Sid).** After further dropped-gun
+jitter, Sid requested a Box3D branch and chose dropped guns first.
+`codex/box3d-dropped-guns` compares the existing GDScript solver over Jolt
+queries with Box3D rigid bodies using the same item hulls. The request
+supersedes the earlier general recommendation in `research/box3d.md` for
+this limited experiment. **Branch implementation and local headless cost
+comparison are done.** Setup, scope and measurements are tracked in
+[box3d-trial.md](box3d-trial.md). Four AWP settling checks still fail;
+visual acceptance and the quality decision remain open before adoption.
+
 ### Phase 1: make being shot feel like CS2
 
 This was the unfinished half of hit registration. Items 1 to 4 are in (PR

@@ -26,6 +26,7 @@ func _run() -> void:
 	root.add_child(_range)
 	for i in 8:
 		await physics_frame
+	await _test_native_cover_changes()
 
 	var dummy: Bot = _range.dummy
 	_check(dummy != null and dummy.holds_fire and dummy.target == null and dummy.route.is_empty(),
@@ -170,6 +171,52 @@ func _run() -> void:
 	_check(target.armor == 100.0, "a reset puts back what it was given to wear, not what is left of it")
 
 	_report()
+
+
+## The range's adjustable wall must change in the native collision mirror
+## too. Short rays stay within its lane and do not meet the back wall.
+func _test_native_cover_changes() -> void:
+	var adapter: Box3DDrops = _range.world.game.drop_physics
+	if not is_instance_valid(adapter):
+		return
+	var cover: CoverPanel = _range.cover
+	var target: Vector3 = _range.dummy_position()
+	var centre := cover.global_position
+	_check(not _native_cover_ray(adapter, centre).get("hit", false),
+		"disabled range cover is absent from Box3D collision")
+	cover.show_choice(1)
+	await process_frame
+	await process_frame
+	var hit := _native_cover_ray(adapter, centre)
+	_check(hit.get("hit", false)
+		and absf((hit.get("position", Vector3.ZERO) as Vector3).z / Box3DDrops.METRES_PER_UNIT - centre.z - 2.0) < 0.05,
+		"enabling range cover adds its four-inch panel to Box3D collision")
+	cover.show_choice(2)
+	await process_frame
+	await process_frame
+	hit = _native_cover_ray(adapter, centre)
+	_check(hit.get("hit", false)
+		and absf((hit.get("position", Vector3.ZERO) as Vector3).z / Box3DDrops.METRES_PER_UNIT - centre.z - 6.0) < 0.05,
+		"changing range cover thickness updates the Box3D surface")
+	cover.stand_before(target + Vector3(0.0, 0.0, 128.0))
+	await process_frame
+	await process_frame
+	_check(not _native_cover_ray(adapter, centre).get("hit", false)
+		and _native_cover_ray(adapter, cover.global_position).get("hit", false),
+		"moving range cover removes the old Box3D shape and adds it at the new lane distance")
+	cover.show_choice(0)
+	await process_frame
+	await process_frame
+	_check(not _native_cover_ray(adapter, cover.global_position).get("hit", false),
+		"disabling range cover removes it from Box3D collision")
+	cover.stand_before(target)
+
+
+func _native_cover_ray(adapter: Box3DDrops, centre: Vector3) -> Dictionary:
+	return adapter.native_world.call(&"raycast",
+		(centre + Vector3(0.0, 0.0, 32.0)) * Box3DDrops.METRES_PER_UNIT,
+		(centre - Vector3(0.0, 0.0, 32.0)) * Box3DDrops.METRES_PER_UNIT,
+		Hitscan.WORLD_LAYER, Box3DDrops.ITEM_LAYER)
 
 
 ## A ragdoll on a small skeleton of its own, in metres under a node scaled

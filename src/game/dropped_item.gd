@@ -117,6 +117,11 @@ var ground_normal := Vector3.ZERO
 ## one more for the corners it lands on, none at rest.
 var queries: int = 0
 
+## A restored or externally woken body must resume its view's interpolation.
+signal motion_started
+## A restored snapshot must also replace the native body's state.
+var physics_revision: int = 0
+
 
 func _init(p_entry: Inventory.Entry = null, p_owner_id: int = GameEvents.NOBODY, p_position := Vector3.ZERO, p_velocity := Vector3.ZERO) -> void:
 	super(p_entry.item.item_class if p_entry != null else "", p_owner_id, p_position)
@@ -172,6 +177,8 @@ func can_be_taken_by(userid: int, now_usec: int) -> bool:
 
 func tick(t: SimTick) -> void:
 	previous_basis = basis
+	if is_instance_valid(t.game.drop_physics):
+		return
 	if resting:
 		return
 	if t.space == null:
@@ -469,6 +476,7 @@ func save_state() -> Dictionary:
 
 func load_state(state: Dictionary) -> void:
 	super(state)
+	physics_revision += 1
 	velocity = state.get("velocity", velocity)
 	basis = state.get("basis", basis)
 	previous_basis = state.get("previous_basis", previous_basis)
@@ -481,6 +489,9 @@ func load_state(state: Dictionary) -> void:
 	slow_from = state.get("slow_from", slow_from)
 	slow_basis = state.get("slow_basis", slow_basis)
 	ground_normal = state.get("ground_normal", ground_normal)
+	# A view may have stopped updating this item after it slept. Redraw
+	# a restored pose once, or resume interpolation if it is moving again.
+	motion_started.emit()
 	var def := ItemRegistry.item(state.get("item", ""))
 	if def == null:
 		return
