@@ -172,9 +172,9 @@ func setup(team: String, weapon_model: String, weapon_set: String = "", holds: b
 	if agent != null:
 		for mesh in agent.find_children("*thirdperson*", "MeshInstance3D", true, false):
 			adopt(mesh, character_rig)
-		agent.free()
 		# The arms', thighs' and head's twist bones, which the clips do not key.
-		TwistModifier.attach(character_rig, AGENTS.get(team, AGENTS["T"]))
+		TwistModifier.attach(character_rig, AGENTS.get(team, AGENTS["T"]), TwistModifier.skeleton_of(agent))
+		agent.free()
 
 	if not holds:
 		held_weapon = attach_weapon(weapon_model)

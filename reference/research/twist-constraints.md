@@ -117,15 +117,27 @@ does not matter; `relative_origin` does not matter.
 
 ## Where ours differs, and why
 
-- **The turned bone keeps its rest.** Source 2 Viewer sets the bone's
-  rotation in its parent to the twist alone; ours sets it to its rest times
-  the twist. The two agree when the twist bone's rest is unturned in its
-  parent, which a bone laid along its forearm is (*Inferred*); where it is
-  not, ours still leaves the bone at rest when nothing twists. Our rig also
-  adds a twist bone under its nearest ancestor that is present, composing
-  the rest along the skipped bones (`RigModel._add_bone_from`), and keeping
-  that rest keeps the bone where the skin expects it. The asset checks
-  print any twist bone whose rest is turned.
+- **The turned bone's rotation is the twist alone,** as Source 2 Viewer
+  sets it, not its rest times the twist. The first build kept the rest;
+  Sid's asset run (2026-09-26) found that CS2's twist-bone rests already
+  carry the twist the bind pose measures, so the twist alone lands each
+  twist bone on its rest at the bind pose, within 0.7 degrees on both
+  agents.
+- **A constraint is left out where our rig parents its bones otherwise
+  than the agent.** A constraint measures its target in the target's parent
+  and sets its bone in the bone's parent, both as the agent's skeleton has
+  them. The view model's rig (`viewmodel.vnmskel`) hangs `arm_upper_*`
+  under `armUpperStraighten_0_*`, below the forearm, not under the clavicle,
+  so there the four upper-arm constraints measured about 159 degrees at the
+  bind pose and wrung those twist bones (Sid's asset run, 2026-09-26).
+  `TwistModifier.setup` takes the agent's own skeleton and drops any
+  constraint whose target or bone the rig parents differently: on the view
+  model the four upper-arm ones, keeping the four forearm ones. **Not
+  researched:** how CS2 twists the first-person upper arm. The view
+  model's skeleton has its own helper bones (`armUpperStraighten_*`), and
+  its own `.vnmskel` or graph may pose them; until that is read, the
+  first-person upper-arm twist bones stay rigid on their parents, as they
+  were before this change.
 - **The twist is unwrapped before the weight.** Source 2 Viewer unwraps
   the weighted angle against the last frame, so a half-weighted bone jumps
   when its target passes half a turn. Ours unwraps the target's twist first,
@@ -154,10 +166,10 @@ beyond CS2's own behaviour.
 ## What a Local check would settle
 
 - With the agents and the knife extracted, `scripts/run_tests.sh twist`:
-  each agent's 13 constraints read, no capsule on a twist bone, no twist
-  measured at the bind pose (this confirms `relative_angles` is what the
-  followed bone's rest is measured from), and `arm_lower_R_TWIST1` turning
-  as far as `hand_R` twists in the knife's idle.
+  each agent's 13 constraints read, no capsule on a twist bone, every twist
+  bone on its rest at the bind pose, no upper-arm constraint on the view
+  model, and `arm_lower_R_TWIST1` turning as far as `hand_R` twists in the
+  knife's idle.
 - The knife's idle, draw and inspect and the AK's, on the T and CT arms,
   beside CS2's.
 - The cost per frame in `scripts/profile_dust2.gd` with ten bots.

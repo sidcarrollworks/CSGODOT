@@ -246,6 +246,20 @@ func _test_modifier() -> void:
 	modifier = TwistModifier.new()
 	_check_equal(modifier.setup(rig, missing), 3, "one whose bone is not on the rig is left out")
 	modifier.free()
+	# The agent's own skeleton hangs the hand under the forearm; a rig that
+	# hangs it elsewhere cannot take the hand's constraints.
+	var source := _arm()
+	var elsewhere := _arm()
+	elsewhere.set_bone_parent(elsewhere.find_bone("hand_L"), 0)
+	modifier = TwistModifier.new()
+	_check_equal(modifier.setup(elsewhere, TwistConstraints.parse(DESCRIPTION), source), 1,
+		"with the model's own skeleton given, constraints on a bone the rig parents otherwise are left out")
+	modifier.free()
+	modifier = TwistModifier.new()
+	_check_equal(modifier.setup(rig, TwistConstraints.parse(DESCRIPTION), source), 4, "and where it parents them alike, all are taken")
+	modifier.free()
+	source.free()
+	elsewhere.free()
 	modifier = TwistModifier.new()
 	modifier.setup(rig, TwistConstraints.parse(DESCRIPTION))
 
@@ -420,19 +434,26 @@ func _finish_view_model() -> void:
 	var modifier := rig.get_node_or_null("Twist") as TwistModifier
 	_check(modifier != null and modifier.count() >= 4, "the knife's arms take the agent's arm constraints (%d)" % (modifier.count() if modifier != null else 0))
 	if modifier != null:
-		# At the bind pose every followed bone measures no twist, or the
-		# offsets are not what the bones' rests are measured from.
+		# At the bind pose each twist bone lands on its own rest: CS2's rests
+		# carry the twist the bind pose measures. A constraint on a bone the
+		# rig parents otherwise than the agent (the view model's upper arms)
+		# was left out, or it would be held about 159 degrees wrung.
 		var worst := 0.0
-		for i in modifier._targets.size():
-			var at_rest := rig.get_bone_rest(modifier._targets[i]).basis.get_rotation_quaternion()
-			worst = maxf(worst, absf(rad_to_deg(TwistConstraints.twist_angle(modifier._inverse_offsets[i] * at_rest, modifier._input_axes[i]))))
-		_check(worst < 1.0, "at the bind pose no constraint measures a twist (worst %.2f degrees)" % worst)
-		var turned := PackedStringArray()
+		var worst_bone := ""
+		for bone in rig.get_bone_count():
+			rig.set_bone_pose_rotation(bone, rig.get_bone_rest(bone).basis.get_rotation_quaternion())
+		modifier.apply(rig)
 		for i in modifier._bones.size():
-			var rest := rad_to_deg(modifier._rests[i].get_angle())
-			if rest > 1.0:
-				turned.append("%s %.1f" % [rig.get_bone_name(modifier._bones[i]), rest])
-		print("twist bones whose rest is turned in their parent: %s" % (", ".join(turned) if not turned.is_empty() else "none"))
+			var rest := rig.get_bone_rest(modifier._bones[i]).basis.get_rotation_quaternion()
+			var off := rad_to_deg((rest.inverse() * rig.get_bone_pose_rotation(modifier._bones[i])).get_angle())
+			if off > worst:
+				worst = off
+				worst_bone = rig.get_bone_name(modifier._bones[i])
+		_check(worst < 1.0, "at the bind pose every twist bone lands on its rest (worst %.2f degrees, %s)" % [worst, worst_bone])
+		var upper := false
+		for i in modifier._bones.size():
+			upper = upper or rig.get_bone_name(modifier._bones[i]).to_lower().begins_with("arm_upper")
+		_check(not upper, "the view model's upper arms, parented unlike the agent's, take no constraint")
 		_view_model.play(&"idle")
 		_view_model.animation_player.advance(0.5)
 		var hand := rig.find_bone("hand_R")
@@ -441,9 +462,9 @@ func _finish_view_model() -> void:
 		if hand >= 0 and index >= 0:
 			var measured := rad_to_deg(TwistConstraints.twist_angle(modifier._inverse_offsets[index] * rig.get_bone_pose_rotation(hand), 0))
 			modifier.apply(rig)
-			var turn := rad_to_deg((modifier._rests[index].inverse() * rig.get_bone_pose_rotation(twist1)).get_angle())
+			var turn := rad_to_deg(rig.get_bone_pose_rotation(twist1).get_angle())
 			_check(
-				absf(measured) > 30.0 and absf(absf(measured) - turn) < 1.0,
+				absf(absf(measured) - turn) < 1.0,
 				"in the knife's idle arm_lower_R_TWIST1 turns as far as hand_R twists (%.1f and %.1f degrees)" % [measured, turn]
 			)
 	_view_model.queue_free()
