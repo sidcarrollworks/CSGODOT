@@ -78,12 +78,14 @@ func _ready() -> void:
 	var lighting := MapLighting.build(
 		self, importer.stats.get("sun", {}), entities, sky,
 		importer.stats.get("lightmaps", {}).get("ambient"),
-		importer.stats.get("lightmaps", {}).get("shadows", false)
+		importer.stats.get("lightmaps", {}).get("shadows", false),
+		MapPostProcessing.load_file(MapLighting.post_processing_file(entities, paths.map_dir))
 	)
 	print("--- lighting: sun energy %.2f, shadows %s, exposure %.2f, sky from %s, fog %s, ambient from %s, %d lamps lit live" % [
 		lighting["sun_energy"], lighting["shadows"], lighting["exposure"], lighting["sky"], "on" if lighting["fog"] else "off",
 		lighting["ambient"], lighting["lamps"],
 	])
+	print("--- grade: %s; post-processing: %s" % [lighting["grade"], lighting["post_processing"]])
 	_build_skybox()
 	_read_contents(entities_path)
 

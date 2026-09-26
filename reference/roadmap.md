@@ -241,7 +241,7 @@ issue done here and on the page in the same pull request.
 | 7 | The xbox tarp far too dark (its lightmap read from the wrong UV set) | The UV set for `csgo_environment`, and its tint | `extract_assets.sh layers`; an xbox shot in CS2 | After 12 |
 | 8 | Wrists wrung on the knife (the forearm twist bones are never posed) | CS2's tilt-twist constraints from the agents' `.vmdl` on the drawn arms, after the maths is written up | Beside CS2 | 6 |
 | 9 | A see-through seam in a wall (Godot's vertex compression) | The map imported without it | Reimport, look, profile | After 12 |
-| 10 | Too saturated and contrasty against CS2 | CS2's grade (its Hable curve and the map's post-processing file), behind a switch | Extract the file, recalibrate by patches | R0 |
+| 10 | Too saturated and contrasty against CS2 | *Done:* CS2's grade (its Hable curve and the map's post-processing file), behind a switch (`--grade cs2`) | Extract the file, recalibrate by patches | R0 |
 | 11 | Geometry flickering (the sky's brushes used as occluders) | The sky's brushes out of the occluders | Confirm with occlusion off; walk R3's spots | R3 |
 | 12 | Zigzag stripes on the kasbah towers (Godot's mesh LODs break the third UV set's lightmap) | No LODs, or LODs that keep that UV set, on those props | Look, profile | |
 | 13 | White eyes | CS2's eye shader on the character shader | Extract the eye textures; beside CS2 | R7 |

@@ -10,7 +10,7 @@
 # Usage:
 #   scripts/extract_assets.sh list-map        # what is inside the map's VPK
 #   scripts/extract_assets.sh list-weapons    # the gun models the weapons step takes
-#   scripts/extract_assets.sh map             # every step for one map: world, hull, entities, nav, volumes, radar, surfaces, layers, sky, skybox, lightmaps, visibility
+#   scripts/extract_assets.sh map             # every step for one map: world, hull, entities, nav, volumes, radar, surfaces, layers, sky, skybox, lightmaps, visibility, postprocessing
 #   scripts/extract_assets.sh physics         # just the collision hull (seconds)
 #   scripts/extract_assets.sh entities        # just the entity lump (seconds)
 #   scripts/extract_assets.sh nav             # just the nav mesh the bots walk (seconds)
@@ -22,6 +22,7 @@
 #   scripts/extract_assets.sh skybox          # just the 3D skybox: the far buildings and their baked light
 #   scripts/extract_assets.sh lightmaps       # just the baked light: bounce light, the sun's shadow, light probes
 #   scripts/extract_assets.sh visibility      # just which parts of the map can see which (seconds)
+#   scripts/extract_assets.sh postprocessing  # just the map's colour grade: its curve, bloom and colour table (seconds)
 #   scripts/extract_assets.sh weapons         # every gun: models, first- and third-person animations
 #   scripts/extract_assets.sh weapon-animations  # just the guns' animations (a minute)
 #   scripts/extract_assets.sh weapon-data     # just the game's weapon tuning (seconds)
@@ -35,7 +36,7 @@
 #   scripts/extract_assets.sh all             # map + weapons + equipment + hud + effects + characters + animgraphs + sounds
 #
 # The steps for one map (list-map, map, physics, entities, nav, volumes,
-# radar, layers, sky, skybox, lightmaps, visibility, and all) take the map's name after
+# radar, layers, sky, skybox, lightmaps, visibility, postprocessing, and all) take the map's name after
 # the step, de_dust2 when there is none:
 #   scripts/extract_assets.sh map de_mirage   # all of de_mirage, into assets/maps/de_mirage
 #   scripts/extract_assets.sh nav de_inferno  # just de_inferno's nav mesh
@@ -176,7 +177,7 @@ usage() {
 
 COMMAND="${1:-}"
 case "$COMMAND" in
-	list-map|map|physics|entities|nav|volumes|radar|layers|sky|skybox|lightmaps|visibility|all|paths) ;;
+	list-map|map|physics|entities|nav|volumes|radar|layers|sky|skybox|lightmaps|visibility|postprocessing|all|paths) ;;
 	list-weapons|surfaces|weapons|weapon-animations|weapon-data|equipment|hud|effects|characters|character-masks|animgraphs|sounds)
 		# Not a map's own step: a map name here would be ignored, which is
 		# worse than being told.
@@ -692,6 +693,47 @@ extract_visibility() {
 	"$S2V_BIN" -i "$MAP_VPK" -f "$visibility" -o "$MAP_DEST" -d | grep -E '^--- Dump' || true
 }
 
+## The map's colour grade: the post-processing file (.vpost) its
+## post_processing_volume names, which holds the filmic curve's numbers, the
+## bloom's, and a 32-cube colour table every other layer is baked into.
+## Decompiled, it is KV3 text with the table beside it as a .raw file (8-bit
+## RGB); MapPostProcessing reads them, and ColourGrade draws with them. The
+## entity lump says which file, so that runs first. The file is looked for
+## in the map's VPK, then the game's main one. A vpost is data, not a
+## shader, so CS2's newer shader format does not stop Source 2 Viewer.
+extract_postprocessing() {
+	local entities
+	entities="$(find "$MAP_DEST" -name 'default_ents.vents' 2>/dev/null | head -n 1)"
+	if [[ -z "$entities" ]]; then
+		echo "No entity lump under $MAP_DEST to read the post-processing file from." >&2
+		echo "Run 'scripts/extract_assets.sh entities $MAP_NAME' first." >&2
+		exit 1
+	fi
+	local files
+	files="$(tr -d '\r' < "$entities" | grep -E '^[[:space:]]*postprocessing ' \
+		| sed -E 's/^[[:space:]]*postprocessing +//; s/"//g; s/[[:space:]]+$//; s/(\.vpost)(_c)?$/\1_c/' \
+		| grep -E '\.vpost_c$' | sort -u || true)"
+	if [[ -z "$files" ]]; then
+		echo "No post_processing_volume in $entities names a file; the map is graded with the defaults."
+		return
+	fi
+	mkdir -p "$MAP_DEST"
+	local listing file vpk
+	listing="$(list_paths "$MAP_VPK")"
+	while IFS= read -r file; do
+		vpk="$PAK_VPK"
+		if grep -qixF "$file" <<<"$listing"; then
+			vpk="$MAP_VPK"
+		fi
+		echo "Extracting $file from $(basename "$vpk")"
+		echo "        -> $MAP_DEST"
+		"$S2V_BIN" -i "$vpk" -f "$file" -o "$MAP_DEST" -d | grep -E '^--- Dump' || true
+		if [[ ! -f "$MAP_DEST/${file%_c}" ]]; then
+			echo "$file did not come out of $(basename "$vpk"); the map is graded with the defaults." >&2
+		fi
+	done <<<"$files"
+}
+
 extract_map() {
 	extract_world
 	echo
@@ -716,6 +758,8 @@ extract_map() {
 	extract_lightmaps
 	echo
 	extract_visibility
+	echo
+	extract_postprocessing
 }
 
 extract_weapons() {
@@ -1190,6 +1234,7 @@ case "$COMMAND" in
 	skybox) extract_skybox; finish ;;
 	lightmaps) extract_lightmaps; finish ;;
 	visibility) extract_visibility ;;
+	postprocessing) extract_postprocessing ;;
 	characters) extract_characters; finish ;;
 	character-masks) extract_character_masks; finish ;;
 	animgraphs) extract_animgraphs ;;
