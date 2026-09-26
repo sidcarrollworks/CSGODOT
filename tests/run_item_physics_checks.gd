@@ -168,6 +168,11 @@ func _check_floor() -> void:
 	_check(results["rested"] == 4, "and every throw comes to rest (%d of 4)" % results["rested"])
 	_check(results["resting_queries"] == 0, "a gun at rest takes no queries")
 	_check(results["most_queries"] <= 6, "and one moving at most %d a tick" % results["most_queries"])
+	# As Sid saw guns land in CS2 (DroppedItem.MOST_SPIN): one bounce, a
+	# second of an inch or two at most, heavy; never cartwheeling along.
+	_check(results["highest_bounce"] < 8.0 and results["most_bounces"] <= 2,
+		"each bounces off the floor at most twice by more than an inch (%d), never higher than 8 inches (%.1f)" % [results["most_bounces"], results["highest_bounce"]])
+	_check(results["slowest_rest"] < 3.0, "and lies still within 3 seconds, not the %d second cap (%.2f s)" % [DroppedItem.MOST_MOVING_USEC / 1_000_000, results["slowest_rest"]])
 	floor_body.queue_free()
 	await physics_frame
 
@@ -320,16 +325,22 @@ func _check_the_real_table() -> void:
 ## corner's height above the surfaces, less than zero inside), how many
 ## came to rest, and at rest the lowest corner's height, how flat it lies
 ## against normal, the most queries a moving tick took and those a resting
-## one takes.
+## one takes; and once it first touches, how often it leaves the surface
+## by more than an inch, how high at most, and the longest a throw took to
+## rest.
 func _throws(depth_of: Callable, count: int, normal := Vector3.UP) -> Dictionary:
 	var space := _world.get_world_3d().direct_space_state
 	var game := GameSystems.new()
-	var out := {"worst": INF, "rested": 0, "lowest_at_rest": -INF, "aligned": 1.0, "most_queries": 0, "resting_queries": 0}
+	var out := {"worst": INF, "rested": 0, "lowest_at_rest": -INF, "aligned": 1.0, "most_queries": 0, "resting_queries": 0,
+		"most_bounces": 0, "highest_bounce": 0.0, "slowest_rest": 0.0}
 	for throw in count:
 		var yaw := throw * 1.7
 		var turn := Basis(Vector3.UP, yaw)
 		var item := DroppedItem.drop_from(game, 1, _entry(GUN), Transform3D(turn, Vector3(0.0, 50.0 + throw * 10.0, 0.0)),
 			turn * Vector3(0.0, 75.0, 290.0), turn * Vector3(2.0 + throw, 0.5, 0.0))
+		var touched := false
+		var up := false
+		var bounces := 0
 		for tick in DroppedItem.MOST_MOVING_USEC / SimClock.tick_usec() + 2:
 			var before := item.queries
 			item.tick(SimTick.new(game, tick + 1, space))
@@ -338,7 +349,18 @@ func _throws(depth_of: Callable, count: int, normal := Vector3.UP) -> Dictionary
 			for point in item.physics().points:
 				lowest = minf(lowest, depth_of.call(item.model_transform() * point))
 			out["worst"] = minf(out["worst"], lowest)
+			# A bounce: the lowest corner rising past an inch, then falling.
+			if lowest < DroppedItem.CONTACT_MARGIN:
+				touched = true
+				up = false
+			elif touched and lowest > 1.0 and not up:
+				up = true
+				bounces += 1
+			if touched:
+				out["highest_bounce"] = maxf(out["highest_bounce"], lowest)
 			if item.resting:
+				out["most_bounces"] = maxi(out["most_bounces"], bounces)
+				out["slowest_rest"] = maxf(out["slowest_rest"], (item.rested_usec - item.dropped_usec) / 1_000_000.0)
 				out["rested"] += 1
 				out["lowest_at_rest"] = maxf(out["lowest_at_rest"], lowest)
 				# The fixture is a box: lying flat, one of its axes is along

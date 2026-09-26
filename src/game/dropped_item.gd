@@ -21,7 +21,7 @@ extends SimEntity
 ## and moves, its hull swept along the move (cast_motion, then get_rest_info
 ## for what it met), never a point. A gun that lands on its muzzle tumbles
 ## about its centre of mass and falls flat; on a slope it lies along the
-## slope. Once it has stayed slow for a while it sleeps: a resting item
+## slope. Once it has stayed put for a while it sleeps: a resting item
 ## takes no queries at all. Its queries are counted (queries) as the
 ## player's traces are.
 ##
@@ -63,16 +63,24 @@ const MOST_CONTACTS := 16
 ## How many sweeps a tick's move may take: one, and one more for each
 ## surface met in it.
 const MOST_SWEEPS := 3
-## It sleeps once it has touched something and moved slower than this, in
-## units a second, and turned slower than this, in radians a second, for
-## this long. CS2's thresholds are in no file (measure).
-const SLEEP_SPEED := 3.0
-const SLEEP_SPIN := 0.2
+## It sleeps once it has touched something every tick for this long and in
+## that time stayed within SLEEP_DRIFT units of where it was and
+## SLEEP_TURN radians of how it lay. Where it is, not how fast it goes: a
+## gun lying on the floor takes a tick's gravity before its contacts take
+## it back out, and rocks by a hair between them, so its speed at any one
+## tick says little. CS2's thresholds are in no file (measure).
 const SLEEP_USEC := 250_000
-## The fastest it turns, in radians a second: Jolt's own default
-## (max_angular_velocity, 15 turns a second), which also keeps a tick's turn
-## under three quarters of a radian. CS2's is in no file (measure).
-const MOST_SPIN := 47.12
+const SLEEP_DRIFT := 0.25
+const SLEEP_TURN := 0.035
+## The fastest it turns, in radians a second: about two turns a second.
+## CS2's is in no file. Sid watched guns land in CS2 (2026-09-26): most
+## bounce once, a small one sometimes a second time by an inch or two, a
+## Glock thrown right up to 6 to 8 inches, and they feel heavy. With
+## Jolt's own default (max_angular_velocity, 15 turns a second) a gun
+## landing on an edge or an end spun up to it and cartwheeled and rolled
+## along the floor, hopping a dozen times; at this it bounces once, rocks
+## and lies down, as the checks measure.
+const MOST_SPIN := 12.0
 ## However it moves, it sleeps this long after the drop, so a body caught
 ## rocking in a corner does not cost queries for the rest of the round.
 const MOST_MOVING_USEC := 8_000_000
@@ -96,8 +104,11 @@ var dropped_usec: int = 0
 ## When ItemDrops next looks for someone standing on it: first when anyone
 ## may take it, then every pickup check period.
 var next_pickup_check_usec: int = 0
-## Since when it has been touching something and slow; -1 while it is not.
+## Since when it has been touching something and staying put, and where
+## it was and how it lay then; -1 while it is not.
 var slow_since_usec: int = -1
+var slow_from := Vector3.ZERO
+var slow_basis := Basis.IDENTITY
 ## The last surface it touched, as the world's normal there (zero if none
 ## yet): what it lies on once at rest.
 var ground_normal := Vector3.ZERO
@@ -409,15 +420,17 @@ static func _surface_value(surface: String, column: String, fallback: float) -> 
 	return fallback if is_nan(value) else value
 
 
-## Asleep once it has touched something and stayed slow for SLEEP_USEC, or
+## Asleep once it has touched something and stayed put for SLEEP_USEC, or
 ## once MOST_MOVING_USEC have gone by.
 func _settle(now_usec: int, touching: bool) -> void:
-	var slow := touching and velocity.length() < SLEEP_SPEED and angular_velocity.length() < SLEEP_SPIN
-	if not slow:
+	if not touching:
 		slow_since_usec = -1
-	elif slow_since_usec < 0:
+	elif slow_since_usec < 0 or position.distance_to(slow_from) > SLEEP_DRIFT \
+			or (slow_basis.inverse() * basis).get_rotation_quaternion().get_angle() > SLEEP_TURN:
 		slow_since_usec = now_usec
-	if (slow and now_usec - slow_since_usec >= SLEEP_USEC) or now_usec - dropped_usec >= MOST_MOVING_USEC:
+		slow_from = position
+		slow_basis = basis
+	if (slow_since_usec >= 0 and now_usec - slow_since_usec >= SLEEP_USEC) or now_usec - dropped_usec >= MOST_MOVING_USEC:
 		_rest(now_usec)
 
 
@@ -443,6 +456,8 @@ func save_state() -> Dictionary:
 	state["dropped_usec"] = dropped_usec
 	state["next_pickup_check_usec"] = next_pickup_check_usec
 	state["slow_since_usec"] = slow_since_usec
+	state["slow_from"] = slow_from
+	state["slow_basis"] = slow_basis
 	state["ground_normal"] = ground_normal
 	return state
 
@@ -458,6 +473,8 @@ func load_state(state: Dictionary) -> void:
 	dropped_usec = state.get("dropped_usec", dropped_usec)
 	next_pickup_check_usec = state.get("next_pickup_check_usec", next_pickup_check_usec)
 	slow_since_usec = state.get("slow_since_usec", slow_since_usec)
+	slow_from = state.get("slow_from", slow_from)
+	slow_basis = state.get("slow_basis", slow_basis)
 	ground_normal = state.get("ground_normal", ground_normal)
 	var def := ItemRegistry.item(state.get("item", ""))
 	if def == null:
