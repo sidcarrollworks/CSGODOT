@@ -31,8 +31,21 @@ const DIRECTION_FILE := "lightmaps/directional_irradiance.png"
 const AVERAGE_FILE := "lightmaps/average.json"
 
 ## The lightmap is in the game's units; this is the scale into Godot's,
-## alongside the sun as MapLighting sets it (see lightmap.gdshaderinc).
+## alongside the sun as MapLighting sets it (see lightmap.gdshaderinc), under
+## the ACES grade, where it was fitted by eye. Under CS2's own grade
+## (ColourGrade) the game's units are Godot's, CS2_ENERGY: fitted at long
+## doors against Sid's CS2 screenshot, it put the sunlit and shaded ground
+## and the sunlit plaster within 1% of the game's (reference/
+## playtest-2026-09-25.md, issue 10). energy() gives the one in use.
 const ENERGY := 0.4
+const CS2_ENERGY := 1.0
+
+
+## The scale the baked light takes under the grade mode (ColourGrade.mode()
+## unless given).
+static func energy(mode: String = "") -> float:
+	var grade := mode if mode in ColourGrade.MODES else ColourGrade.mode()
+	return CS2_ENERGY if grade == "cs2" else ENERGY
 
 const WORLD_SHADERS := ["csgo_lightmappedgeneric.vfx", "csgo_static_overlay.vfx"]
 const PROP_SHADERS := ["csgo_vertexlitgeneric.vfx", "csgo_foliage.vfx", "csgo_complex.vfx", "csgo_environment.vfx"]
@@ -131,7 +144,7 @@ static func apply(
 			# A blend material, which reads the same lightmap uniforms.
 			(material as ShaderMaterial).set_shader_parameter("lightmap_irradiance", irradiance)
 			(material as ShaderMaterial).set_shader_parameter("lightmap_direction", direction)
-			(material as ShaderMaterial).set_shader_parameter("lightmap_energy", ENERGY)
+			(material as ShaderMaterial).set_shader_parameter("lightmap_energy", energy())
 			set_shadows(material as ShaderMaterial, shadows, sun_mask)
 			continue
 		var key := [material, in_custom0]
@@ -283,7 +296,7 @@ static func build(
 		)
 	lit.set_shader_parameter("lightmap_irradiance", irradiance)
 	lit.set_shader_parameter("lightmap_direction", direction)
-	lit.set_shader_parameter("lightmap_energy", ENERGY)
+	lit.set_shader_parameter("lightmap_energy", energy())
 	lit.set_shader_parameter("lightmap_uv_in_custom0", in_custom0)
 	carry_features(lit, BlendMaterials.vmat(material), textures_dir)
 	# Kept for whoever reads the material later.
@@ -314,7 +327,7 @@ static func carry_features(lit: ShaderMaterial, description: Dictionary, texture
 			# The tint is read as sRGB; the brightness is a power of two.
 			var colour := Color(float(tint[0]), float(tint[1]), float(tint[2])).srgb_to_linear()
 			var brightness := float(floats.get("g_flSelfIllumBrightness", 0.0))
-			var strength := pow(2.0, brightness) * float(floats.get("g_flSelfIllumScale", 1.0)) * ENERGY
+			var strength := pow(2.0, brightness) * float(floats.get("g_flSelfIllumScale", 1.0)) * energy()
 			lit.set_shader_parameter("self_illum_mask", mask)
 			lit.set_shader_parameter("self_illum_color", Vector3(colour.r, colour.g, colour.b) * strength)
 			lit.set_shader_parameter("self_illum_albedo_factor", float(floats.get("g_flSelfIllumAlbedoFactor", 0.0)))

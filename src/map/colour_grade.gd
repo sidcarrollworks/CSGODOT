@@ -4,8 +4,9 @@ extends RefCounted
 ## CS2's colour grade on Godot's Environment: its filmic curve and its
 ## colour-correction table, from the map's post-processing file
 ## (MapPostProcessing), in place of the ACES and saturation MapLighting
-## picked by eye. Behind a switch (mode) until Sid has judged it against the
-## game (reference/playtest-2026-09-25.md, issue 10).
+## picked by eye. The default since Sid judged it against the game
+## (2026-09-26); ACES stays the other mode (reference/playtest-2026-09-25.md,
+## issue 10).
 ##
 ## Source 2 grades a frame in this order (Source 2 Viewer's reimplementation,
 ## post_processing.frag.slang; reference/research/cs2-post-processing.md):
@@ -25,7 +26,7 @@ extends RefCounted
 ## Godot's own, so nothing here runs per frame.
 
 ## The mode MapLighting grades with unless told otherwise.
-const DEFAULT_MODE := "aces"
+const DEFAULT_MODE := "cs2"
 const MODES: PackedStringArray = ["aces", "cs2"]
 ## The project setting that picks the mode; the command line's --grade
 ## overrides it.

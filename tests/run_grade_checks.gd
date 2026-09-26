@@ -5,9 +5,11 @@ extends "res://tests/check_suite.gd"
 ## table Godot is handed, sampled here the way Godot 4.7.2's tonemap.glsl
 ## samples it, against CS2's chain worked through directly; the reader, on
 ## small made-up files in both of Source 2 Viewer's forms (no Valve data is
-## committed); and the Environment MapLighting builds in each mode, the
-## default unchanged. Whether the grade looks like CS2 needs dust2's own file
-## and a GPU: that is Sid's (reference/playtest-2026-09-25.md, issue 10).
+## committed); and the Environment MapLighting builds in each mode, CS2's
+## the default since Sid judged it (2026-09-26), with the sun and the bounce
+## in the game's own units under it. Whether the grade looks like CS2 needs
+## dust2's own file and a GPU: that is Sid's (reference/playtest-2026-09-25.md,
+## issue 10).
 
 const SCRATCH := "user://grade_checks"
 
@@ -334,8 +336,9 @@ func _check_reader() -> void:
 		"times 2 to the power of the compensation")
 
 
-## MapLighting's Environment in each mode: the default unchanged, CS2's on
-## the linear tone mapper with the table, and each put back by the other.
+## MapLighting's Environment in each mode: ACES as it was, CS2's on the
+## linear tone mapper with the table, each put back by the other, and the sun
+## and the bounce in each mode's units.
 func _check_environment() -> void:
 	var entities: Array[Dictionary] = [
 		{"classname": "light_environment", "brightness": "2.5"},
@@ -361,8 +364,23 @@ func _check_environment() -> void:
 	)
 	_check_equal(cs2_used["grade"], "cs2", "CS2's grade when asked for")
 	_check(cs2.tonemap_mode == Environment.TONE_MAPPER_LINEAR, "CS2's: the linear tone mapper, the curve being in the table")
-	_check_near(cs2.tonemap_exposure * 1000.0, exposure * pow(2.0, 0.4192) / 3.9996 * 1000.0,
-		"its exposure: the window's middle, the file's bias, over the white point")
+	_check_near(cs2.tonemap_exposure * 1000.0, exposure * MapLighting.CS2_EXPOSURE_FIT * pow(2.0, 0.4192) / 3.9996 * 1000.0,
+		"its exposure: the window's middle times the fit at long doors, the file's bias, over the white point")
+	var aces_sun := aces_holder.get_node("Sun") as DirectionalLight3D
+	var cs2_sun := cs2_holder.get_node("Sun") as DirectionalLight3D
+	_check(
+		is_equal_approx(aces_sun.light_energy, 2.5 * MapLighting.SUN_ENERGY_PER_BRIGHTNESS)
+			and is_equal_approx(cs2_sun.light_energy, 2.5 * MapLighting.CS2_SUN_ENERGY_PER_BRIGHTNESS),
+		"the sun at the brightness times 0.7 under ACES, as fitted there, and as it is under CS2's (%.3f, %.3f)"
+			% [aces_sun.light_energy, cs2_sun.light_energy]
+	)
+	_check(
+		is_equal_approx(LightmapMaterials.energy("aces"), LightmapMaterials.ENERGY)
+			and is_equal_approx(LightmapMaterials.energy("cs2"), LightmapMaterials.CS2_ENERGY)
+			and is_equal_approx(MapLighting.sun_energy_per_brightness("aces"), MapLighting.SUN_ENERGY_PER_BRIGHTNESS)
+			and is_equal_approx(MapLighting.sun_energy_per_brightness("cs2"), MapLighting.CS2_SUN_ENERGY_PER_BRIGHTNESS),
+		"the bounce and the sun follow the grade asked for"
+	)
 	_check(cs2.adjustment_color_correction is ImageTexture3D, "its table is the colour correction")
 	_check(is_equal_approx(cs2.adjustment_saturation, 1.0) and is_equal_approx(cs2.adjustment_brightness, 1.0),
 		"no saturation or brightness of Godot's own")
@@ -386,8 +404,9 @@ func _check_environment() -> void:
 
 
 func _check_mode() -> void:
-	_check_equal(ProjectSettings.get_setting(ColourGrade.SETTING), "aces", "the switch is off in project.godot")
-	_check_equal(ColourGrade.mode(PackedStringArray()), "aces", "so ACES is the grade unless asked")
+	_check_equal(ProjectSettings.get_setting(ColourGrade.SETTING), "cs2", "project.godot grades as CS2 does")
+	_check_equal(ColourGrade.mode(PackedStringArray()), "cs2", "so CS2's is the grade unless asked")
+	_check_equal(ColourGrade.mode(PackedStringArray(["--grade", "aces"])), "aces", "--grade aces asks for the old one")
 	_check_equal(ColourGrade.mode(PackedStringArray(["--grade", "cs2"])), "cs2", "--grade cs2 asks for CS2's")
 	_check_equal(ColourGrade.mode(PackedStringArray(["--map", "de_dust2", "--grade=cs2"])), "cs2", "--grade=cs2 too")
-	_check_equal(ColourGrade.mode(PackedStringArray(["--grade", "sepia"])), "aces", "a grade there is not is passed over")
+	_check_equal(ColourGrade.mode(PackedStringArray(["--grade", "sepia"])), "cs2", "a grade there is not is passed over")

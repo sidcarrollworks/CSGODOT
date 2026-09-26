@@ -283,7 +283,7 @@ static func build(material: BaseMaterial3D, textures_dir: String = "") -> Shader
 			material.alpha_scissor_threshold
 			if material.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR else -1.0
 		)
-	lit.set_shader_parameter("probe_energy", LightmapMaterials.ENERGY)
+	lit.set_shader_parameter("probe_energy", LightmapMaterials.energy())
 	LightmapMaterials.carry_features(lit, description, textures_dir)
 	if character:
 		CharacterMaterials.carry(lit, description, textures_dir)
