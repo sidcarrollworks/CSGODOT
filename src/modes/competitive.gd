@@ -5,7 +5,8 @@ extends Node3D
 ## sides, a match of MR12 rounds after warmup (MatchRules), and the game's
 ## systems a match plays with (money and buying in the map's buy zones, the
 ## bomb on its sites, grenades), with the HUD and what is seen and heard of
-## them. F5 ends warmup, as mp_warmup_end does.
+## them. F5 ends warmup, as mp_warmup_end does. practice() turns it into
+## Practice: the same game with no bots and a warmup that does not end.
 ##
 ## It reads the map only through MapContents: spawn points, buy zones, bomb
 ## sites, callouts and the nav mesh. MapLoader fills that from an extracted
@@ -32,6 +33,17 @@ extends Node3D
 ## spawn points as they did before they had the nav mesh. Without the nav
 ## mesh they keep to their spawn points, where a straight line is safe.
 @export var bots_walk_to_sites: bool = true
+
+## Whether bots fill every place you do not take. Practice plays without
+## them.
+@export var with_bots: bool = true
+
+## Whether warmup's clock stands still, so warmup lasts until F5 ends it
+## (mp_warmup_pausetimer 1, MatchRules.warmup_paused). Practice pauses it.
+@export var warmup_paused: bool = false
+
+## The line Practice shows in the top left.
+const PRACTICE_NOTE := "Practice: no bots; warmup does not end; F5 starts the rounds."
 
 ## How far round a side's spawn points the stand-in buy zone reaches, where
 ## the map's own zones have not been extracted.
@@ -64,10 +76,21 @@ var notes: PackedStringArray = []
 var _sites := PackedVector3Array()
 
 
+## Practice, a departure from CS2 (whose offline practice is a match with
+## bots you choose): competitive's whole game, money, buying, the bomb and
+## grenades, with no bots and a warmup that lasts until F5, which then starts
+## the rounds as it does in competitive. Set before start.
+func practice() -> void:
+	with_bots = false
+	warmup_paused = true
+
+
 ## Sets the game up on a map, in a world, once this node is in the scene.
 func start(game_world: GameWorld, map_contents: MapContents) -> void:
 	world = game_world
 	map = map_contents
+	if not with_bots and warmup_paused:
+		notes.append(PRACTICE_NOTE)
 	_place_player()
 	_place_bots()
 	_prepare_holding()
@@ -114,6 +137,8 @@ func _place_player() -> void:
 ## route (bot_route) from wherever the match spawns it; without the nav mesh
 ## they walk straight lines between their side's spawn points.
 func _place_bots() -> void:
+	if not with_bots:
+		return
 	if map.nav_mesh != null and bots_walk_to_sites:
 		_sites = site_floors(map.nav_mesh, map.places, map.bomb_sites)
 		if _sites.is_empty():
@@ -235,6 +260,7 @@ func _start_match() -> void:
 	match_state.name = "Match"
 	match_state.rules = MatchRules.new()
 	match_state.rules.warmup_seconds = warmup_seconds
+	match_state.rules.warmup_paused = warmup_paused
 	match_state.spawns = map.spawns
 	add_child(match_state)
 	# Everyone in the world plays in it, and the world runs it after them.
