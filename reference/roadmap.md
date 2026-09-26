@@ -221,7 +221,7 @@ Items marked **(Sid)** need Sid's machine or a decision from him.
 
 ### Playtest of 2026-09-25 (dust2)
 
-Sid played dust2 and sent 22 issues. `reference/playtest-2026-09-25.md`
+Sid played dust2 and sent 23 issues. `reference/playtest-2026-09-25.md`
 has each one investigated: what Sid saw, the cause (verified or inferred),
 what already covers it, the plan, and its Remote and Local parts. Its top
 gives the order for cloud threads (which can run side by side and which
@@ -254,6 +254,7 @@ issue done here and on the page in the same pull request.
 | 20 | A click as the magazine nears empty (CS2's `Default.NearlyEmpty`) | On the shared sound player, the threshold provisional | Measure the threshold in CS2 | After 19's groundwork |
 | 21 | Round sounds (start, end, planted, ten seconds, announcer) | The cues from `reference/research/audio-round.md` | Extract the UI, music and announcer; listen | 16, after 19's groundwork |
 | 22 | Looking down shows the vest where CS2 shows legs | More of the body you see folded away, the shadow and bots whole | Beside CS2 | 6a |
+| 23 | The distant hill missing (the 3D skybox past the camera's far plane, dropped before its depth squeeze can help) | Far meshes kept in the frustum, and a squeeze that keeps them inside the far plane | The view beside CS2; the cost | R2 |
 
 ### Phase 1: make being shot feel like CS2
 
@@ -851,7 +852,7 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 
 | | What | Unblocks |
 |---|---|---|
-| Hands | The playtest's Local work, batched (`reference/playtest-2026-09-25.md`, "Sid's machine, batched") | Playtest issues 1 to 22 |
+| Hands | The playtest's Local work, batched (`reference/playtest-2026-09-25.md`, "Sid's machine, batched") | Playtest issues 1 to 23 |
 | Hands | Spray a wall in CS2 from 496 units | Item 8 |
 | Hands | Measure jump height, crouch-jump reach, dead-strafe feel | Movement check |
 | Hands | Check on the range that the shooting bot stays upright while firing, and that the dummy's ragdoll and your own settle without spinning (PR #30) | Confirms PR #30 |
