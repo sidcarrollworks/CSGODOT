@@ -364,8 +364,8 @@ func _show_player(shown: bool) -> void:
 			body.visible = shown
 
 
-## Shows the model of what is in hand, drawing it, and hides the rest; lets
-## go of the models of what is no longer carried.
+## Shows the model of what is in hand, drawing it from the start, and puts
+## the rest away; lets go of the models of what is no longer carried.
 func _show_in_hand(entry: Inventory.Entry) -> void:
 	_build_view_models()
 	var shown: ViewModel = _view_models.get(entry.item.item_class) if entry != null else null
@@ -377,17 +377,14 @@ func _show_in_hand(entry: Inventory.Entry) -> void:
 			_let_go(model)
 			_view_models.erase(item_class)
 			continue
-		model.visible = false
-		model.process_mode = Node.PROCESS_MODE_DISABLED
+		model.put_away()
 	view_model = shown
 	# And it rides the recoil.
 	viewmodel = shown
 	_planting = false
 	if shown == null:
 		return
-	shown.process_mode = Node.PROCESS_MODE_INHERIT
-	shown.visible = player.alive
-	shown.play(&"draw")
+	shown.deploy(player.alive)
 
 
 ## A model for everything carried that has none, hidden until it is taken

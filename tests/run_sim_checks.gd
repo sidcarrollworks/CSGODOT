@@ -119,6 +119,7 @@ func _run() -> void:
 	_test_the_hit_direction_on_screen()
 	await _test_the_hud_shows_hits()
 	_test_you_spawn_with_the_knife_and_pistol()
+	_test_a_switch_draws_from_the_start()
 	_test_the_frame_meter()
 	await _test_a_frame_draws_where_the_clock_is()
 	_test_frames_are_held_under_the_refresh()
@@ -1466,6 +1467,104 @@ func _test_you_spawn_with_the_knife_and_pistol() -> void:
 			"a %s spawns with the knife and the %s, the pistol in hand, having taken nothing else in hand (carries %s, drew %s)" % [side, pistol, carried, drawn]
 		)
 		you.free()
+
+
+## A quick switch draws from the start every time, as CS2's graph does
+## (reference/playtest-2026-09-25.md, issue 16): a model put away part way
+## through its draw holds none of it, and taking it up again, or drawing it
+## again while in hand, rewinds the draw. No assets needed: the models are
+## built by hand, with a 1 s draw and an idle, and hung on a player's view.
+func _test_a_switch_draws_from_the_start() -> void:
+	var model := _hand_built_view_model()
+	_world.add_child(model)
+	var clips := model.animation_player
+	model.deploy(true)
+	clips.advance(0.3)
+	var part_way := clips.current_animation_position
+	model.put_away()
+	var stopped := not clips.is_playing() and not model.visible \
+		and model.process_mode == Node.PROCESS_MODE_DISABLED
+	model.deploy(true)
+	_check(
+		is_equal_approx(part_way, 0.3) and stopped
+			and model.visible and model.process_mode == Node.PROCESS_MODE_INHERIT
+			and clips.current_animation == &"draw" and clips.is_playing()
+			and is_zero_approx(clips.current_animation_position),
+		"a model put away 0.3 s into its draw is stopped, and taken up again draws from the start (at %.2f s)" % clips.current_animation_position
+	)
+	clips.advance(0.5)
+	model.deploy(false)
+	_check(
+		clips.current_animation == &"draw" and is_zero_approx(clips.current_animation_position) and not model.visible,
+		"drawn again while its draw is running, it rewinds; a dead player's is drawn hidden"
+	)
+	model.free()
+
+	# The same through the player's view, 1-2-1 within a draw: the first
+	# item's second draw starts from its start, not 0.3 s in.
+	var player := (load("res://src/player/player.tscn") as PackedScene).instantiate() as PlayerController
+	_world.add_child(player)
+	player.view.catch_up()
+	# The knife and pistol you spawn with, a model built by hand for each.
+	var carried: Array[ViewModel] = []
+	for entry in player.inventory.entries():
+		var made := _hand_built_view_model()
+		made.name = "ViewModel_%s" % entry.item.item_class
+		player.camera.add_child(made)
+		made.put_away()
+		player.view._view_models[entry.item.item_class] = made
+		carried.append(made)
+	var classes := player.inventory.entries().map(func(entry: Inventory.Entry) -> String: return entry.item.item_class)
+	if carried.size() < 2:
+		_check(false, "a player spawns with two things to switch between (%s)" % [classes])
+		player.free()
+		return
+	# The first switch goes to something not already in hand, so it draws.
+	if classes[0] == player.inventory.in_hand_class():
+		classes.reverse()
+		carried.reverse()
+	var first: ViewModel = carried[0]
+	var second: ViewModel = carried[1]
+	player.inventory.select(classes[0])
+	player.view.catch_up()
+	first.animation_player.advance(0.3)
+	var part_way_first := first.animation_player.current_animation_position
+	player.inventory.select(classes[1])
+	player.view.catch_up()
+	var second_drawing := second.animation_player.current_animation == &"draw" and second.visible \
+		and not first.visible and not first.animation_player.is_playing()
+	player.inventory.select(classes[0])
+	player.view.catch_up()
+	_check(
+		is_equal_approx(part_way_first, 0.3) and second_drawing
+			and player.view_model == first and first.visible and not second.visible
+			and first.animation_player.current_animation == &"draw"
+			and is_zero_approx(first.animation_player.current_animation_position),
+		"switching %s, %s, %s within a draw: the second draws, and the first's second draw starts from the start (at %.2f s)"
+			% [classes[0], classes[1], classes[0], first.animation_player.current_animation_position]
+	)
+	player.free()
+
+
+## A view model with no assets: an AnimationPlayer holding a 1 s draw that
+## plays once and a looping idle, standing in for a clip set.
+func _hand_built_view_model() -> ViewModel:
+	var model := ViewModel.new()
+	var clips := AnimationPlayer.new()
+	model.add_child(clips)
+	var library := AnimationLibrary.new()
+	var draw := Animation.new()
+	draw.length = 1.0
+	library.add_animation(&"draw", draw)
+	var idle := Animation.new()
+	idle.length = 1.0
+	idle.loop_mode = Animation.LOOP_LINEAR
+	library.add_animation(&"idle", idle)
+	clips.add_animation_library(&"", library)
+	model.animation_player = clips
+	model.one_shots = PackedStringArray(["draw"])
+	model.idle = &"idle"
+	return model
 
 
 ## The HUD you play with shows your armour, and an arc for a hit that

@@ -1728,6 +1728,28 @@ func _test_a_body_holds_what_is_in_hand() -> void:
 	model.hold("weapon_glock", WeaponLibrary.look("weapon_glock", "T"))
 	model.show_held()
 	_check(model.held_weapon == glock and glock.visible and not ak.visible, "the Glock again: the same model, shown again")
+	# Glock, AK-47, Glock within a draw (reference/playtest-2026-09-25.md,
+	# issue 16): the Glock's draw fires again from its start, and the body's
+	# switch to the pistol's locomotion waits for this draw, not the first.
+	model.hold("weapon_ak47", WeaponLibrary.look("weapon_ak47", "T"))
+	model.show_held()
+	tree.advance(0.1)
+	model.hold("weapon_glock", WeaponLibrary.look("weapon_glock", "T"))
+	model.show_held()
+	var glock_draw := model.weapon_clip(&"draw")
+	if glock_draw == &"":
+		print("the Glock-18's third-person set has no draw; skipping the quick switch's body check")
+	else:
+		var due := SimClock.now_usec() + int(model.animation_player.get_animation(glock_draw).length * 1_000_000.0)
+		var switch_due := model._switch_at_usec
+		var pending := model._pending_variation
+		tree.advance(0.05)
+		var action := (tree.tree_root as AnimationNodeBlendTree).get_node(&"gun_action_clip") as AnimationNodeAnimation
+		_check(
+			action.animation == glock_draw and bool(tree.get("parameters/gun_action/active"))
+				and pending == "pistol" and absi(switch_due - due) < 20_000,
+			"Glock, AK-47, Glock within a draw: the Glock's draw plays again, and the pistol's locomotion waits for it (%s, %s)" % [action.animation, pending]
+		)
 	model.hold("weapon_hegrenade", WeaponLibrary.look("weapon_hegrenade", "T"))
 	model._switch_at_usec = SimClock.now_usec()
 	model.update_motion(Vector3.ZERO, 0.0, 0.0, true)
