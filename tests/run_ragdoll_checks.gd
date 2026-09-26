@@ -530,7 +530,9 @@ func _test_the_agent() -> void:
 	var ground := _floor("ramp")
 	var surface := _surface("ramp")
 	var model := (load(AGENT) as PackedScene).instantiate() as Node3D
+	# As PlayerModel stands it: scaled to units, turned to face -Z.
 	model.scale = Vector3.ONE * SCALE
+	model.rotation_degrees = Vector3(0.0, 180.0, 0.0)
 	_world.add_child(model)
 	var skeleton := model.find_children("*", "Skeleton3D", true, false)[0] as Skeleton3D
 	var into := _deepest(skeleton, shapes, surface) - FEET_IN
