@@ -339,6 +339,11 @@ func is_drawing(now_usec: int) -> bool:
 	return now_usec < _drawn_usec
 
 
+## When the draw is over, in the simulation's microseconds.
+func drawn_usec() -> int:
+	return _drawn_usec
+
+
 ## The trigger went down afresh. Call it for every press, before firing the
 ## round it asks for.
 ##
@@ -669,8 +674,11 @@ func fire(
 	return shot
 
 
+## Starts a reload at now_usec. Not during the draw: in CS2 the pull-out
+## finishes before a reload starts (Sid, 2026-09-26; PlayerSim keeps a press
+## made during it for when it ends).
 func start_reload(now_usec: int) -> bool:
-	if reserve <= 0 or ammo >= data.magazine_size or is_reloading(now_usec):
+	if reserve <= 0 or ammo >= data.magazine_size or is_reloading(now_usec) or is_drawing(now_usec):
 		return false
 	_reloading_until_usec = now_usec + int(data.reload_time * 1_000_000.0)
 	# Reloading takes the scope down, and it stays down.

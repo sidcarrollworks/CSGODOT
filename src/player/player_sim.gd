@@ -204,6 +204,9 @@ var _spawn_set: bool = false
 ## before).
 var _held_class: String = ""
 var _drawn_until_usec: int = 0
+## R pressed while the gun was being drawn: the reload starts as the draw
+## ends, as CS2's does (Sid, 2026-09-26), and a switch drops it.
+var _reload_after_draw: bool = false
 ## A grenade in hand with its pin out, and the attack buttons held while it
 ## is: which of them say how hard it goes when they are let go.
 var _pin_pulled: bool = false
@@ -460,6 +463,7 @@ func _draw(entry: Inventory.Entry) -> void:
 	_held_class = entry.item.item_class if entry != null else ""
 	weapon = held_weapon
 	_pin_pulled = false
+	_reload_after_draw = false
 	if held_weapon != null:
 		config.max_speed = held_weapon.data.max_player_speed
 	else:
@@ -598,9 +602,20 @@ func _run(cmd: UserCmd, dt: float) -> void:
 	pitch_degrees = cmd.pitch_degrees
 	_recover_from_hits(dt)
 
+	# R during the draw is kept, and the reload starts the moment the draw
+	# is over: CS2 finishes the pull-out first.
 	var reload := cmd.first_press(UserCmd.RELOAD)
-	if reload != null and weapon != null:
-		if weapon.start_reload(SimClock.usec_at(cmd.tick, reload.when)):
+	if weapon != null:
+		var reload_at := -1
+		if reload != null:
+			reload_at = SimClock.usec_at(cmd.tick, reload.when)
+			if weapon.is_drawing(reload_at):
+				_reload_after_draw = true
+				reload_at = -1
+		if reload_at < 0 and _reload_after_draw and not weapon.is_drawing(SimClock.tick_end_usec(cmd.tick)):
+			_reload_after_draw = false
+			reload_at = weapon.drawn_usec()
+		if reload_at >= 0 and weapon.start_reload(reload_at):
 			reload_started.emit()
 			_send(&"weapon_reload", {"userid": userid})
 
