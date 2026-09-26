@@ -303,8 +303,8 @@ effects are for C1 to measure.
   `bot_defer_to_human_items 1` and `bot_defer_to_human_goals 1`, and the convar dump
   describes the first as "If nonzero and there is a human on the team, the bots will not get
   scenario items". So a human T gets it whenever there is one; a bot only on a side of bots.
-  Whether it also stops a bot's touch pickup of a dropped bomb is **Inferred** from that
-  description; the game builds it that way until a Local check says otherwise. `CCSPlayerPawn.m_fLastGivenBombTime` may mean the
+  It also stops a bot's touch pickup of a bomb a living human T dropped, and warmup hands
+  out no bomb (both seen in CS2 by Sid, 2026-09-26). `CCSPlayerPawn.m_fLastGivenBombTime` may mean the
   choice leans away from whoever had it last (**Inferred** from the name alone; not
   confirmed). Warmup carries a drop policy (`mp_warmup_items_drop_policy` 247, where bit 2
   is c4).

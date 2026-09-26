@@ -36,9 +36,9 @@ extends Resource
 ## own names, at competitive's 1 (game/csgo/cfg/gamemode_competitive.cfg in
 ## GameTracking-CS2; the convar: "If nonzero and there is a human on the
 ## team, the bots will not get scenario items"). With a living human T, the
-## round hands the bomb to a human and never to a bot. That a bot also
-## leaves a dropped bomb for them is inferred from the description, not
-## seen in CS2 (a Local check, playtest-2026-09-25.md issue 18).
+## round hands the bomb to a human and never to a bot, and a bot leaves a
+## dropped bomb for them (Sid saw CS2 do so, 2026-09-26:
+## playtest-2026-09-25.md issue 18).
 @export var bot_defer_to_human_items: bool = true
 ## The same for the round's goals: with a human on the team, the bots leave
 ## the plant to them. Bots have no bomb goals yet (roadmap 24 is to read

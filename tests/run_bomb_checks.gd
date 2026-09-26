@@ -304,8 +304,8 @@ func _test_dropped_by_choice() -> void:
 
 
 ## CS2's bot_defer_to_human_items: with a human T alive, a bot walking
-## over the dropped bomb leaves it for them (inferred from the convar's
-## description; a Local check in CS2).
+## over the dropped bomb leaves it for them (seen in CS2 by Sid,
+## 2026-09-26).
 func _test_bots_leave_it_to_a_human() -> void:
 	_check(C4Rules.new().bot_defer_to_human_items and C4Rules.new().bot_defer_to_human_goals,
 		"the bots defer to a human, as competitive's config sets them")

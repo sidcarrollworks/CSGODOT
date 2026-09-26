@@ -81,8 +81,8 @@ GameWorld's tick after the players and the match, and:
   the tick): a human one when there is one, since competitive sets
   `bot_defer_to_human_items 1` (`C4Rules`, `BombSystem.may_be_given`, read
   from `PlayerSim.is_bot`); a bot only on a side of bots. While a human T
-  lives, bots also leave a dropped bomb for them (inferred from the
-  convar's description; playtest-2026-09-25.md issue 18). It allows plants from `round_freeze_end` to `round_end`, and
+  lives, bots also leave a dropped bomb for them (seen in CS2 by Sid,
+  2026-09-26; playtest-2026-09-25.md issue 18). It allows plants from `round_freeze_end` to `round_end`, and
   clears it on `round_prestart`. With no match (the range) plants are
   always allowed.
 
