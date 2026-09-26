@@ -13,8 +13,9 @@ what has been since (L1's "Measured", R5's). The suspects below were
 read from the settings and shaders. `scripts/profile_render.gd` is how to
 measure them, and the first Local item is running it.
 
-No page in `reference/research/` covers CS2's renderer. Item R0 below
-proposes one.
+No page in `reference/research/` covers CS2's renderer as a whole. Item
+R0 below proposes one; its post-processing (the grade) is covered by
+`reference/research/cs2-post-processing.md` (R8).
 
 ## The budget
 
@@ -39,7 +40,7 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
 | Map meshes | every visible one casts from both faces (`SHADOW_CASTING_SETTING_DOUBLE_SIDED`), into the lamps' shadows only where the sun's is baked | `MapImporter`, around line 268 |
 | Anti-aliasing | MSAA 4x (`msaa_3d=2` is the enum `MSAA_4X`, not a sample count) | `project.godot` |
 | Screen-space occlusion | off. It drew nothing when it was measured, since the map's materials brought their bounce light in through `light()` then (Measured); they hand it to Godot as its ambient light now (R5), which SSAO would darken, so turning it on is a look to judge beside CS2 | `MapLighting.build` |
-| Bloom, fog, colour adjustment | on | `MapLighting.build` |
+| Bloom, fog, colour adjustment | on: ACES, saturation 1.15, glow 0.4; CS2's own grade (`ColourGrade`, R8) behind `--grade cs2` | `MapLighting.build` |
 | Bounce light | CS2's own baked lightmaps (irradiance and direction), read in every world material's shader and handed to Godot as its ambient light (`IRRADIANCE`), which keeps its reflections (R5) | `lightmap.gdshaderinc`, `baked_light.gdshaderinc`, `LightmapMaterials` |
 | Props without lightmap UVs, players, arms | CS2's light probes, read at one point for each body or prop (an ambient cube; a player's 40 units above the feet) and handed to Godot as its ambient light, as the lightmaps are | `probe_lit.gdshader`, `ProbeMaterials` |
 | Direct light | a custom `light()` on every map material, Godot's own Burley and GGX written out, so the sun's light takes its baked shadow (R4) | `baked_light.gdshaderinc` |
@@ -77,6 +78,15 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
    off now), `no_glow` and `half_resolution` measure them.
 
 ## Local items (Sid's machine)
+
+- **L10. CS2's grade on dust2** (R8). `scripts/extract_assets.sh
+  postprocessing` (seconds; the load report's "--- grade" line then names
+  the file and what it holds), then play with `--grade cs2` and compare
+  with `other_grade` in the profiler or by switching the setting. Then the
+  recalibration in issue 10's plan, step 5: the sun and the bounce in CS2's
+  own units first, then the patch method at the long doors spot and B
+  site. Measure the GPU only if a compositor pass is ever added; the table
+  itself is one texture read in the tone-map pass Godot runs anyway.
 
 - **L1. Run the profiler.** *(done 2026-09-24, under "Measured")* Every result below depends on these numbers.
   From the repo, with dust2 extracted:
@@ -188,7 +198,9 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
   compiled maps carry for lighting (lightmap pages, probes, cubemaps), its
   shadow settings and what each draws, its anti-aliasing, its tone mapper,
   and what players criticise in it, from CS2's current files first. Waits
-  on Sid's go, since he decides what is researched.
+  on Sid's go, since he decides what is researched. The tone mapper and the
+  rest of its post-processing are done, for issue 10 of the playtest:
+  `reference/research/cs2-post-processing.md`.
 - **R1. The profiler** (`scripts/profile_render.gd`, `RenderVariants`,
   checks in `tests/run_render_checks.gd`). Done with this page.
 - **R2. The skybox's squeeze in its vertex shader.** *(done 2026-09-24)*
@@ -538,6 +550,14 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
 Anything that would need a change to Godot itself (a custom build or an
 engine fork) comes to Sid as a decision first. Nothing on this page needs
 one so far.
+
+- **R8. CS2's colour grade** (issue 10 of `reference/playtest-2026-09-25.md`).
+  *(Built 2026-09-26, behind a switch.)* `MapPostProcessing` reads the map's
+  vpost; `ColourGrade` bakes Source 2's curve (after its 2.8 scale) and the
+  file's table into one 64-cubed 3D texture on Godot's LINEAR tone mapper,
+  within 1.2/255 of the chain Source 2 Viewer reimplements
+  (`tests/run_grade_checks.gd`). Off by default (`csgodot/rendering/colour_grade`
+  "aces"); `--grade cs2` turns it on. Waits on L10.
 
 ## Measured
 

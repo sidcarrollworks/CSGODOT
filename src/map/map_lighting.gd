@@ -37,15 +37,18 @@ const LAMP_SHADOW_BIAS := 1.0
 ## or empty; sky_path is the res:// path of the sky panorama, or "";
 ## bounce is the lightmap's average light (LightmapMaterials), or null;
 ## baked_shadows, whether the map's shadow from the sun is CS2's baked one
-## (MapShadows), which the live shadow map then leaves to what moves.
+## (MapShadows), which the live shadow map then leaves to what moves;
+## post, the map's post-processing file (MapPostProcessing), or null for
+## Source 2 Viewer's defaults; grade, "aces" or "cs2" (ColourGrade), or ""
+## for what the switch says (ColourGrade.mode).
 ## Returns what was used, for the report.
 static func build(
 	parent: Node, sun: Dictionary, entities: Array[Dictionary], sky_path: String, bounce: Variant = null,
-	baked_shadows: bool = false
+	baked_shadows: bool = false, post: MapPostProcessing = null, grade: String = ""
 ) -> Dictionary:
 	var sun_entity := _first(entities, "light_environment")
 	var fog_entity := _first(entities, "env_cubemap_fog")
-	var post_entity := _first(entities, "post_processing_volume")
+	var post_entity := post_processing_volume(entities)
 
 	var light := DirectionalLight3D.new()
 	light.name = "Sun"
@@ -173,6 +176,16 @@ static func build(
 	environment.adjustment_enabled = true
 	environment.adjustment_saturation = 1.15
 
+	# CS2's own grade, from the map's post-processing file, is behind a
+	# switch until it has been judged against the game (ColourGrade). Both
+	# are kept on the environment, so the render profiler's other_grade can
+	# swap one for the other (RenderVariants).
+	environment.set_meta(&"grade_aces", ColourGrade.current(environment))
+	environment.set_meta(&"grade_post", post if post != null else MapPostProcessing.load_file(""))
+	environment.set_meta(&"grade_exposure", cs2_exposure(post_entity))
+	var mode := grade if grade in ColourGrade.MODES else ColourGrade.mode()
+	ColourGrade.use(environment, mode)
+
 	var world_environment := WorldEnvironment.new()
 	world_environment.name = "Atmosphere"
 	world_environment.environment = environment
@@ -187,7 +200,9 @@ static func build(
 		"ambient": "the lightmap's average" if bounce is Color else "the sky",
 		"sky": "the map's panorama" if panorama != null else "a procedural stand-in",
 		"fog": environment.fog_enabled,
-		"exposure": environment.tonemap_exposure,
+		"exposure": environment.tonemap_exposure if mode != "cs2" else float(environment.get_meta(&"grade_exposure")),
+		"grade": mode,
+		"post_processing": (environment.get_meta(&"grade_post") as MapPostProcessing).summary(),
 	}
 
 
@@ -269,6 +284,49 @@ static func barn_light(entity: Dictionary) -> SpotLight3D:
 	lamp.shadow_bias = LAMP_SHADOW_BIAS
 	lamp.transform = Transform3D(Basis.looking_at(forward, up), eye)
 	return lamp
+
+
+## The exposure CS2's grade starts from, before its file's bias: the middle
+## of the volume's auto-exposure window (Source 2 Viewer's defaults, 0.25 and
+## 8, where it gives none), or 1 where its exposure control is off, times 2
+## to the power of its compensation in stops (post_processing_volume in
+## game/core/postprocessing.fgd; PostProcessRenderer.CalculateTonemapScalar).
+## CS2 adapts inside that window; dust2's is 0.925 to 1.1, so the middle is
+## within 9% of wherever it settles.
+static func cs2_exposure(volume: Dictionary) -> float:
+	var exposure := 1.0
+	if not volume.is_empty() and String(volume.get("enableexposure", "1")) not in ["0", "false"]:
+		exposure = (float(volume.get("minexposure", "0.25")) + float(volume.get("maxexposure", "8"))) * 0.5
+	return exposure * pow(2.0, float(volume.get("exposurecompensation", "0")))
+
+
+## The map's post_processing_volume that grades it wherever you stand: the
+## master one, or the first if none is marked; empty for none. (CS2 blends
+## in the others inside their volumes; nothing here does yet.)
+static func post_processing_volume(entities: Array[Dictionary]) -> Dictionary:
+	var volume := {}
+	for entity in entities:
+		if entity.get("classname", "") != "post_processing_volume":
+			continue
+		if String(entity.get("master", "0")) in ["1", "true"]:
+			return entity
+		if volume.is_empty():
+			volume = entity
+	return volume
+
+
+## The map's post-processing file, by the path it has in the game under
+## map_dir (scripts/extract_assets.sh postprocessing), from its
+## post_processing_volume; "" where the map names none.
+static func post_processing_file(entities: Array[Dictionary], map_dir: String) -> String:
+	var volume := post_processing_volume(entities)
+	# A compiled lump types the reference: resource_name:"lighting/...vpost".
+	var file := String(volume.get("postprocessing", ""))
+	var typed := file.find(":\"")
+	if typed >= 0:
+		file = file.substr(typed + 1)
+	file = file.trim_prefix("\"").trim_suffix("\"").trim_suffix("_c")
+	return "" if file.is_empty() else map_dir.path_join(file)
 
 
 static func _first(entities: Array[Dictionary], classname: String) -> Dictionary:

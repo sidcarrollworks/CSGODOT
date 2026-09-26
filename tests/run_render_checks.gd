@@ -42,6 +42,13 @@ func _build() -> void:
 	_environment.glow_enabled = true
 	_environment.fog_enabled = true
 	_environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
+	# Graded as MapLighting grades a map: ACES, with CS2's grade kept beside
+	# it for other_grade (tests/run_grade_checks.gd checks the grades).
+	_environment.tonemap_mode = Environment.TONE_MAPPER_ACES
+	_environment.set_meta(&"grade_aces", ColourGrade.current(_environment))
+	_environment.set_meta(&"grade_post", MapPostProcessing.load_file(""))
+	_environment.set_meta(&"grade_exposure", 1.0)
+	_environment.set_meta(&"grade", "aces")
 	var world_environment := WorldEnvironment.new()
 	world_environment.environment = _environment
 	_scene.add_child(world_environment)
@@ -96,6 +103,7 @@ func _state() -> Dictionary:
 		"casting": _wall.cast_shadow,
 		"msaa": viewport.msaa_3d,
 		"glow": _environment.glow_enabled,
+		"tonemap": _environment.tonemap_mode,
 		"fog": _environment.fog_enabled,
 		"reflections": _environment.reflected_light_source,
 		"probe": _probe.intensity,
@@ -125,6 +133,8 @@ func _check_variants() -> void:
 		# This scene has no HUD to unblur: tests/run_hud_checks.gd checks it.
 		"no_hud_blur": {},
 		"no_glow": {"glow": false},
+		# Source 2 Viewer's defaults have no bloom.
+		"other_grade": {"tonemap": Environment.TONE_MAPPER_LINEAR, "glow": false},
 		"no_fog": {"fog": false},
 		"no_reflections": {"reflections": Environment.REFLECTION_SOURCE_DISABLED, "probe": 0.0},
 		"no_skybox": {"sky": false},

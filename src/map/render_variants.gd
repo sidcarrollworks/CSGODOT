@@ -24,12 +24,13 @@ const VARIANTS := {
 	"sdr_2d": "2D blended in sRGB rather than in linear light (project.godot's hdr_2d, which the HUD needs to blend as CS2's does)",
 	"no_hud_blur": "the HUD's panels without the blurred world behind them (HudElement's screen copies)",
 	"no_glow": "bloom off",
+	"other_grade": "the other colour grade: CS2's curve and table from the map's post-processing (ColourGrade) on a map graded with ACES, ACES on one graded with CS2's; for looks, beside the game, more than for time",
 	"no_fog": "the distance haze off",
 	"no_reflections": "the reflection probes at no strength and the sky's reflections off (MapReflections); not what reflecting costs, since the probes are still drawn",
 	"no_skybox": "the 3D skybox's meshes hidden",
 	"no_players": "every body but the camera's hidden",
 	"half_resolution": "the 3D drawn at half the width and height: fill rate against the rest",
-	"all_off": "every one of the above at once but culling, resolution and the live map shadows: what is left is the map's geometry and materials",
+	"all_off": "every one of the above at once but culling, resolution, the live map shadows and the grade: what is left is the map's geometry and materials",
 }
 
 ## A far material includes the squeeze (far.gdshaderinc): the skybox's meshes.
@@ -117,6 +118,12 @@ static func apply(variant: String, root: Node, viewport: Viewport) -> Callable:
 			return _change(environment, "glow_enabled", false)
 		"no_fog":
 			return _change(environment, "fog_enabled", false)
+		"other_grade":
+			if environment == null or not environment.has_meta(&"grade"):
+				return func() -> void: pass
+			var before := String(environment.get_meta(&"grade"))
+			ColourGrade.use(environment, "aces" if before == "cs2" else "cs2")
+			return func() -> void: ColourGrade.use(environment, before)
 		"no_reflections":
 			# At no strength rather than hidden: a probe shown again is drawn
 			# again, and by then the map's visibility hides what the camera
@@ -141,7 +148,7 @@ static func apply(variant: String, root: Node, viewport: Viewport) -> Callable:
 		"all_off":
 			var undo: Array[Callable] = []
 			for each in VARIANTS:
-				if not each in ["baseline", "all_off", "half_resolution", "no_occlusion", "no_visibility", "live_map_shadows"]:
+				if not each in ["baseline", "all_off", "half_resolution", "no_occlusion", "no_visibility", "live_map_shadows", "other_grade"]:
 					undo.append(apply(each, root, viewport))
 			undo.reverse()
 			return _together(undo)
