@@ -1225,6 +1225,9 @@ func _test_bot_steps_off_tick_frames() -> void:
 		"a worn body steps its own animation, not the engine, and headless no camera sees it"
 	)
 	var frame := 0.004
+	# The frames before this one may have left time unstepped (a frame that
+	# ran a tick); start from none, so the counts below are this check's.
+	model._unstepped = 0.0
 	model._last_physics_frame = Engine.get_physics_frames() - 1
 	model._process(frame)
 	var left := model._unstepped
