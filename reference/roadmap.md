@@ -233,7 +233,7 @@ issue done here and on the page in the same pull request.
 | # | Issue | Remote | Local | With |
 |---|---|---|---|---|
 | 1 | A mode chosen at start: Competitive, or Practice with no bots. Until then, Team Size 0 on `de_dust2.tscn` (not committed) plays it alone | A picker, `--mode`, Practice as Competitive with no bots and a warmup that does not end | Try it in fullscreen | 24a, 26 |
-| 2 | Dropped guns sink into slopes, the magazine goes through the floor, they turn about the wrong point | **Done:** a body on CS2's own hull (one convex hull a gun, mass 3 to 6, from the game's physics), swept against the floor; checks on a one-sided trimesh | `extract_assets.sh weapon-physics` and commit `physics.csv`; look on T spawn's ramp | 12 |
+| 2 | Dropped guns sink into slopes, the magazine goes through the floor, they turn about the wrong point | **Done (#117):** a body on CS2's own hull (one convex hull a gun, mass 3 to 6, from the game's physics), swept against the floor; checks on a one-sided trimesh | `extract_assets.sh weapon-physics` and commit `physics.csv`; look on T spawn's ramp | 12 |
 | 3 | E picks up what you look at, swapping out what is in that slot | The use search (CS2's 80 units, a cone), the swap, one precedence with the bomb | See in CS2 what E takes and from how far | 12, after 2 |
 | 4 | Ragdoll legs through the floor, joints bending too far | Start clear of the floor, CS2's own shapes (in the agents' `.vmdl`), joint limits; checks on a one-sided trimesh | Dump CS2's joints; deaths on the ramp | Housekeeping |
 | 5 | Bots hover over T spawn's ramp in freeze time (the hull rests on the uphill edge; there is no foot IK) | Research, then draw-only foot IK and a ground fit | CS2's feet on the ramp | After 17 |
