@@ -1793,7 +1793,8 @@ func _test_a_body_holds_what_is_in_hand() -> void:
 
 ## What CS2's character shader asks of each agent material, printed for a
 ## render beside CS2 to go by, and whether the cloth masks it needs were
-## extracted (scripts/extract_assets.sh character-masks).
+## extracted (scripts/extract_assets.sh character-masks), and for a material
+## that draws eyes, its eye textures and the bones CharacterEyes aims by.
 func _test_character_shading(agents: PackedStringArray) -> void:
 	for path in agents:
 		var scene := _instantiate(path)
@@ -1801,6 +1802,7 @@ func _test_character_shading(agents: PackedStringArray) -> void:
 			continue
 		var seen := {}
 		var characters := 0
+		var eyed := false
 		var missing := PackedStringArray()
 		for node in scene.find_children("*", "MeshInstance3D", true, false):
 			var mesh := node as MeshInstance3D
@@ -1831,10 +1833,34 @@ func _test_character_shading(agents: PackedStringArray) -> void:
 				])
 				if CharacterMaterials.wants_cloth(description) and not found:
 					missing.append(mask)
+				if CharacterMaterials.wants_eyes(description):
+					eyed = true
+					var files := PackedStringArray([
+						CharacterMaterials.eye_file(description, CharacterMaterials.EYE_ALBEDO),
+						CharacterMaterials.eye_file(description, CharacterMaterials.EYE_ALBEDO, true),
+						CharacterMaterials.eye_file(description, CharacterMaterials.EYE_MASK),
+					])
+					var absent := PackedStringArray()
+					for file in files:
+						if file.is_empty() or not (ResourceLoader.exists(file) or FileAccess.file_exists(ProjectSettings.globalize_path(file))):
+							absent.append(file)
+					print("    eyes: radius %.3f, iris %.3f, pupil %.3f, walleye %.3f and %.3f, textures %s" % [
+						float(floats.get("g_flEyeBallRadius1", 0.0)), float(floats.get("g_flEyeIrisSize1", 1.0)),
+						float(floats.get("g_flEyePupilSize1", 0.0)), float(floats.get("g_flEyeBallWalleyeL1", 0.0)),
+						float(floats.get("g_flEyeBallWalleyeR1", 0.0)), "found" if absent.is_empty() else "missing",
+					])
+					missing.append_array(absent)
+		if eyed:
+			var bones := PackedStringArray()
+			for skeleton in scene.find_children("*", "Skeleton3D", true, false):
+				for bone in [CharacterEyes.LEFT, CharacterEyes.RIGHT, CharacterEyes.TARGET]:
+					if (skeleton as Skeleton3D).find_bone(bone) >= 0 and not bone in bones:
+						bones.append(bone)
+			_check(bones.size() == 3, "%s draws eyes and has the bones they are aimed by (%s)" % [path.get_file(), bones])
 		_check(characters > 0, "%s is drawn with CS2's character shader (%d materials)" % [path.get_file(), characters])
 		_check(
 			missing.is_empty(),
-			"%s: every material that asks for cloth shading has its mask (missing %s; scripts/extract_assets.sh character-masks)"
+			"%s: every material that asks for cloth shading has its mask, and every one that draws eyes its eye textures (missing %s; scripts/extract_assets.sh character-masks)"
 				% [path.get_file(), missing]
 		)
 		scene.free()
