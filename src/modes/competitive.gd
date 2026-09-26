@@ -55,6 +55,7 @@ var match_state: MatchState
 var economy: Economy
 var bomb_system: BombSystem
 var grenade_system: GrenadeSystem
+var round_report: RoundReport
 var bots: Array[Bot] = []
 var hud: GameHud
 ## What is missing from the game, one line each; the scene shows them.
@@ -77,6 +78,7 @@ func start(game_world: GameWorld, map_contents: MapContents) -> void:
 	hud.player = player as PlayerController
 	hud.match_state = match_state
 	hud.economy = economy
+	hud.round_report = round_report
 	hud.userid = (player as PlayerSim).userid
 	add_child(hud)
 	_add_views()
@@ -268,6 +270,9 @@ func _add_systems() -> void:
 	# In a match a grenade does CS2's share to the thrower's own side.
 	grenade_system.team_damage_scale = GrenadeRules.TEAM_DAMAGE_IN_MATCH
 	world.game.add_system(grenade_system)
+	# The round's MVP and fun fact, for the win panel.
+	round_report = RoundReport.new()
+	world.game.add_system(round_report)
 
 
 ## The map's buy zones. Without them, a stand-in box round each side's spawn

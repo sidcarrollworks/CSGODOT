@@ -9,7 +9,10 @@ extends CanvasLayer
 ## cart while you may buy (MoneyPanel); in a match, the clock, the scores,
 ## who is alive and a card for each player at the top in the middle
 ## (TeamCounter), and a bar over the cluster saying what part of the match
-## it is (HudAlert: warmup, the round's announcement, who won). A red arc
+## it is (HudAlert: warmup, the round's announcement, half time); from a
+## round's end to the next round, CS2's win panel under the team counter,
+## ROUND WON or ROUND LOST with the round's fun fact and its MVP (WinPanel,
+## read from the RoundReport). A red arc
 ## round the crosshair on the side each hit came from; when dead, a bar
 ## across the middle counting down to the respawn or saying whom you are
 ## watching; and CS2's buy menu on B, over the rest. The rest of a round's
@@ -32,6 +35,9 @@ var match_state: MatchState
 ## asked for purchases through the menu.
 var economy: Economy
 var userid: int = GameEvents.NOBODY
+## The server's word on the last round (its MVP and fun fact), where there is
+## a match; only read.
+var round_report: RoundReport
 ## CS2's buy menu (B), over the rest of the HUD; null without an economy.
 var buy_menu: BuyMenu
 
@@ -41,6 +47,8 @@ var scope: ScopeOverlay
 var health_ammo: HealthAmmoCenter
 var money: MoneyPanel
 var team_counter: TeamCounter
+## ROUND WON or ROUND LOST, with the fun fact and the MVP, at a round's end.
+var win_panel: WinPanel
 ## What part of the match it is, over the health and ammo.
 var alert: HudAlert
 ## Why B would not open the menu, for a moment, under the alert.
@@ -94,6 +102,8 @@ func _ready() -> void:
 	team_counter = TeamCounter.new()
 	team_counter.visible = match_state != null
 	add_child(team_counter)
+	win_panel = WinPanel.new()
+	add_child(win_panel)
 	alert = HudAlert.new()
 	add_child(alert)
 	hint = HudAlert.new()
@@ -145,12 +155,42 @@ func _process(delta: float) -> void:
 	dead_bar.say("" if player.alive else dead_line(player), "", HudStyle.team_colour(team))
 	if match_state != null:
 		team_counter.show_match(match_state, player, economy, SimClock.now_usec())
+		_show_win_panel(team)
+		win_panel.visible = not buying
 		var line := alert_line(match_state)
 		# The note under the alert gives way to a refusal's bar, which sits there.
 		alert.say(line[0], "" if hint.is_showing() else line[1], HudStyle.team_colour(team))
 	if _where.visible:
 		_where.text = where_line(player.global_position, player.input.yaw_degrees, player.input.pitch_degrees) \
 			+ "\n" + _frames.line()
+
+
+## The win panel from a round's end until the next starts: who won as you
+## see it, the fun fact (or, without one, why the round ended) and the MVP.
+func _show_win_panel(team: String) -> void:
+	if match_state.phase != MatchState.Phase.ROUND_END:
+		win_panel.show_round("")
+		return
+	var winner := match_state.last_winner
+	var report: Dictionary = round_report.last if round_report != null else {}
+	var roster: Roster = round_report.game.roster if round_report != null and round_report.game != null else null
+	var fact := WinPanel.fun_fact_text(String(report.get("funfact_token", "")),
+		name_of(roster, int(report.get("funfact_player", GameEvents.NOBODY))), int(report.get("funfact_data1", 0)))
+	if fact.is_empty():
+		fact = WinPanel.reason_text(GameEvents.round_end_reason(match_state.last_reason))
+	var mvp := int(report.get("mvp", GameEvents.NOBODY))
+	var mvp_node: Node = roster.player(mvp) if roster != null and mvp != GameEvents.NOBODY else null
+	win_panel.show_round(WinPanel.title_for(winner, team), winner, team != winner, fact,
+		name_of(roster, mvp) if mvp_node != null else "", WinPanel.mvp_reason_text(int(report.get("mvp_reason", 0))),
+		roster.team_of(mvp) if mvp_node != null else winner, mvp_node is Bot)
+
+
+## A player's name as the HUD shows it: their node's; empty for nobody.
+static func name_of(roster: Roster, who: int) -> String:
+	if roster == null or who == GameEvents.NOBODY:
+		return ""
+	var node := roster.player(who)
+	return str(node.name) if node != null else ""
 
 
 ## Whether the crosshair is drawn: not for a sniper (the game's
@@ -255,8 +295,10 @@ static func alert_line(state: MatchState) -> PackedStringArray:
 			return PackedStringArray([announced if not announced.is_empty() else round_name,
 				round_name if not announced.is_empty() else ""])
 		MatchState.Phase.ROUND_END:
-			return PackedStringArray(["%s win" % side_name(state.last_winner),
-				"Half time: the sides swap" if state.swapping_next() else ""])
+			# Who won is the win panel's (WinPanel); the alert says only
+			# that the sides swap.
+			if state.swapping_next():
+				return PackedStringArray(["Half time", "The sides swap"])
 		MatchState.Phase.OVER:
 			if state.winner.is_empty():
 				return PackedStringArray(["Draw", "%d to %d" % [state.score("T"), state.score("CT")]])

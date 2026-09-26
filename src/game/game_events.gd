@@ -107,6 +107,14 @@ const SCHEMA := {
 	&"round_end": {"winner": "", "reason": "", "message": "", "legacy": 0, "player_count": 0, "nomusic": 0},
 	&"round_officially_ended": {},
 	&"round_mvp": {"userid": NOBODY, "reason": 0, "value": 0, "nomusic": 0},
+	## What the win panel shows of the round besides who won: one fun fact
+	## (a csgo_english.txt token with its '#', the player it names and its
+	## numbers). CS2's timer and final_event keys stay at their defaults.
+	&"cs_win_panel_round": {
+		"show_timer_defend": false, "show_timer_attack": false, "timer_time": 0, "final_event": 0,
+		"funfact_token": "", "funfact_player": NOBODY, "funfact_data1": 0, "funfact_data2": 0,
+		"funfact_data3": 0,
+	},
 	## What CS2 announces of a round as it starts (MatchState.announce_round).
 	&"round_announce_match_start": {},
 	&"round_announce_last_round_half": {},

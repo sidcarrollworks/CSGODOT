@@ -641,13 +641,22 @@ list, split into Local and Remote items, with the measurements.
     panels as Panorama does. Local: checked on Sid's machine against
     `In_game_ui.webp` at 1080p and 4K, where it matches to the pixel but
     for the player's portrait and colour. Still to do: the kill feed,
-    radar, scoreboard, round-end panel, the bomb's icon on the clock, the
+    radar, scoreboard, the bomb's icon on the clock, the
     kill marks over the health and the low health and ammo glow. The buy
     menu rebuilt 2026-09-25 to Sid's screenshots of CS2's: its columns in
     CS2's order, CS2's word on each item, the countdown in warmup and freeze
     time, and your agent in CS2's own pose for what is in hand or under the
     mouse, holding it, framed by CS2's buy-menu camera. Each player's colour
     is drawn at random for the match until a setting chooses it (item 26).)*
+    *(Round-end panel done 2026-09-26: CS2's win panel from its own
+    hudwinpanel layout, styles and strings, ROUND WON or ROUND LOST with the
+    round's fun fact and the MVP's band (`WinPanel`), from what the server
+    now says on round_end, round_mvp and cs_win_panel_round (`RoundReport`
+    in `src/match/`, which picks the MVP and the fun fact by the
+    community's rules until CS2's are measured). Left: the glitch video, the
+    MVP's 3D agent on the band, the damage under dead enemies' cards (the
+    report keeps it, `RoundReport.damage_between`) and the team income line
+    in the chat. Local: a round won and lost beside CS2's at 1080p.)*
 
 ### Phase 5: the bomb
 

@@ -268,7 +268,7 @@ func _test_the_alert_lines() -> void:
 	_check_equal(GameHud.alert_line(state)[0], "", "a live round has no alert")
 	state.phase = MatchState.Phase.ROUND_END
 	state.last_winner = "CT"
-	_check_equal(GameHud.alert_line(state)[0], "Counter-terrorists win", "a round's end says who won")
+	_check_equal(GameHud.alert_line(state)[0], "", "a round's end leaves who won to the win panel")
 	state.free()
 	await process_frame
 
