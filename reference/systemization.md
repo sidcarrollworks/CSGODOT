@@ -429,8 +429,11 @@ match, systems, HUD and views on it, and knows nothing of the map beyond
 `MapContents`; `maps/play/play.tscn` puts the two together, with the map
 chosen by its `map_name` or `--map`. The bots' routes are the mode's
 (`Competitive.bot_route`), to the `BombsiteA` and `BombsiteB` callouts or
-the bomb sites' volumes. Left: the test range as a mode (it still builds
-its own player, bots and HUD), and the server mode.
+the bomb sites' volumes. Practice, competitive with no bots and a warmup
+that does not end, is `Competitive.practice()`, chosen at start by
+`game_mode`, `--mode` or a picker (roadmap 24c, 2026-09-26). Left: the test
+range as a mode (it still builds its own player, bots and HUD), and the
+server mode.
 
 ### 12. The data readers each carry their own parser and paths
 

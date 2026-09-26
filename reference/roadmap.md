@@ -232,7 +232,7 @@ issue done here and on the page in the same pull request.
 
 | # | Issue | Remote | Local | With |
 |---|---|---|---|---|
-| 1 | A mode chosen at start: Competitive, or Practice with no bots. Until then, Team Size 0 on `de_dust2.tscn` (not committed) plays it alone | A picker, `--mode`, Practice as Competitive with no bots and a warmup that does not end | Try it in fullscreen | 24a, 26 |
+| 1 | A mode chosen at start: Competitive, or Practice with no bots | **Done** (2026-09-26, 24c): a picker, `--mode`, Practice as Competitive with no bots and a warmup that does not end | Try it in fullscreen | 24a, 24c, 26 |
 | 2 | Dropped guns sink into slopes, the magazine goes through the floor, they turn about the wrong point | A body on CS2's own hull (one convex hull a gun, mass 3 to 6, from the game's physics), swept against the floor; checks on a one-sided trimesh | Dump the guns' hulls; look on T spawn's ramp | 12 |
 | 3 | E picks up what you look at, swapping out what is in that slot | The use search (CS2's 80 units, a cone), the swap, one precedence with the bomb | See in CS2 what E takes and from how far | 12, after 2 |
 | 4 | Ragdoll legs through the floor, joints bending too far | Start clear of the floor, CS2's own shapes (in the agents' `.vmdl`), joint limits; checks on a one-sided trimesh | Dump CS2's joints; deaths on the ramp | Housekeeping |
@@ -783,6 +783,20 @@ list, split into Local and Remote items, with the measurements.
       before any import has registered the class names, so the first
       `map <name>` skips the lightmap average (`average.json`) until the
       next import. Loading `BlendMaterials` by path there should fix it.
+24c. **A mode chosen at start: Competitive or Practice.** *(Remote done
+    2026-09-26; Local below; playtest issue 1)* `maps/play/play.gd` takes
+    `game_mode` (Ask, Competitive, Practice) and `--mode competitive|practice`
+    on the command line, which wins. Ask shows a picker (`ModePicker`,
+    `src/modes/mode_picker.gd`) before the map loads when the scene is the
+    one being played on a screen; added under something else (the profilers,
+    which now set Competitive, and the checks) or headless, it plays
+    Competitive. Practice is `Competitive.practice()`: no bots and a warmup
+    that stands still (`MatchRules.warmup_paused`, CS2's
+    `mp_warmup_pausetimer 1`), so warmup's money, buying and respawns last
+    until F5 starts the rounds. A departure from CS2, whose offline practice
+    is a match with bots you choose. **Local:** play `de_dust2.tscn` in
+    exclusive fullscreen, choose each mode, and say whether Practice has
+    what testing needs. Roadmap 26's main menu replaces the picker.
 
 25. **Netcode.** *(Remote; Local playtests across machines)* CS2's model: the
     server decides, clients send input with sub-tick times and predict their

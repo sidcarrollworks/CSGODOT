@@ -3,9 +3,10 @@ extends "res://tests/check_suite.gd"
 ## Checks maps apart from modes: every path of a map derived from its name,
 ## as the extraction script writes them (dust2's exactly as they always
 ## were); the sky found from the map's own sky material; the map chosen by
-## --map; competitive set up on a small map built here, with spawn points,
-## buy zones and bomb sites given directly; and the bots' way to the bomb
-## sites on a map whose callouts are not named BombsiteA and BombsiteB.
+## --map; the mode chosen by --mode, the scene's game_mode or the picker;
+## competitive and practice set up on a small map built here, with spawn
+## points, buy zones and bomb sites given directly; and the bots' way to the
+## bomb sites on a map whose callouts are not named BombsiteA and BombsiteB.
 ##
 ##   godot --headless --path . --script tests/run_map_mode_checks.gd
 ##
@@ -23,6 +24,8 @@ const CT_SPAWNS := [
 
 ## Where the sky check writes its stand-in extraction.
 const SKY_DIR := "user://map_mode_checks_sky"
+## Where the picker checks keep the last choice, apart from the game's own.
+const PICKER_FILE := "user://map_mode_checks_picker.cfg"
 
 
 func _initialize() -> void:
@@ -33,6 +36,7 @@ func _run() -> void:
 	_test_paths_from_a_name()
 	_test_the_extraction_script_agrees()
 	_test_the_map_from_the_command_line()
+	_test_the_mode_from_the_command_line()
 	_test_the_sky_from_the_maps_own_material()
 	_test_site_floors_from_callouts_or_volumes()
 	# The tree takes nodes in from its first frame on.
@@ -40,6 +44,9 @@ func _run() -> void:
 	await physics_frame
 	await _test_competitive_on_a_small_map()
 	await _test_competitive_without_the_maps_buy_zones_or_a_side()
+	await _test_practice_on_a_small_map()
+	_test_the_picker()
+	await _test_the_scene_plays_the_mode_chosen()
 	_finish("map-mode")
 
 
@@ -115,7 +122,15 @@ func _test_the_map_from_the_command_line() -> void:
 	var dust2 := scene.instantiate()
 	_check(dust2 is PlayScene and dust2.get("map_name") == "de_dust2", "maps/de_dust2/de_dust2.tscn is the play scene set to de_dust2")
 	_check(dust2.get("team_size") == 5, "and still takes a team size, as scripts/profile_dust2.gd sets it")
+	_check(dust2.get("game_mode") == "Ask", "and asks for the mode as it starts")
 	dust2.free()
+
+
+func _test_the_mode_from_the_command_line() -> void:
+	_check_equal(PlayScene.mode_from_args(PackedStringArray(["--mode", "practice"]), "Ask"), "Practice", "--mode practice chooses Practice")
+	_check_equal(PlayScene.mode_from_args(PackedStringArray(["--map", "de_dust2", "--mode=Competitive"]), "Ask"), "Competitive", "--mode=Competitive, in any case, chooses Competitive")
+	_check_equal(PlayScene.mode_from_args(PackedStringArray(["--mode"]), "Practice"), "Practice", "--mode with no name leaves the scene's mode")
+	_check_equal(PlayScene.mode_from_args(PackedStringArray(), "Ask"), "Ask", "without --mode the scene's own game_mode stands")
 
 
 # --- The sky -------------------------------------------------------------------
@@ -247,7 +262,7 @@ func _small_map() -> MapContents:
 
 ## A scene as maps/play/play.tscn builds one, on the map given, with the
 ## floor under it; returns [the scene, the world, the mode].
-func _play_on(map: MapContents, team_size: int) -> Array:
+func _play_on(map: MapContents, team_size: int, practice: bool = false, warmup_seconds: float = 0.0) -> Array:
 	var scene := Node3D.new()
 	root.add_child(scene)
 	var floor_body := StaticBody3D.new()
@@ -261,7 +276,9 @@ func _play_on(map: MapContents, team_size: int) -> Array:
 	scene.add_child(world)
 	var mode := Competitive.new()
 	mode.team_size = team_size
-	mode.warmup_seconds = 0.0
+	mode.warmup_seconds = warmup_seconds
+	if practice:
+		mode.practice()
 	scene.add_child(mode)
 	mode.start(world, map)
 	return [scene, world, mode]
@@ -352,3 +369,90 @@ func _test_competitive_without_the_maps_buy_zones_or_a_side() -> void:
 	_check(mode.hud != null, "and the HUD all the same")
 	(played[0] as Node).queue_free()
 	await process_frame
+
+
+# --- Practice, the picker and the scene ------------------------------------------
+
+## Practice: competitive's game with no bots, and a warmup that lasts until
+## F5 ends it. Its warmup here is 16 ticks, so it would have run out.
+func _test_practice_on_a_small_map() -> void:
+	var map := _small_map()
+	var played := _play_on(map, 5, true, 0.25)
+	var world: GameWorld = played[1]
+	var mode: Competitive = played[2]
+	_check(world.players.size() == 1 and world.players[0] == mode.player, "Practice has you and nobody else")
+	_check(mode.bots.is_empty() and not world.players.any(func(sim: PlayerSim) -> bool: return sim is Bot), "and no bot on either side")
+	_check(mode.match_state != null and mode.economy != null and mode.bomb_system != null and mode.grenade_system != null,
+		"with the match, money and buying, the bomb and grenades")
+	_check(mode.notes.has(Competitive.PRACTICE_NOTE), "and says what Practice is in the top left (%s)" % [mode.notes])
+	var userid := (mode.player as PlayerSim).userid
+	for i in 40:
+		await physics_frame
+	var ticks_of_warmup := int(ceil(0.25 * Engine.physics_ticks_per_second))
+	_check(world.tick > ticks_of_warmup, "more ticks than warmup lasts have run (%d)" % world.tick)
+	_check_equal(mode.match_state.phase, MatchState.Phase.WARMUP, "and it is still warmup")
+	_check_near(mode.match_state.seconds_left(SimClock.now_usec()), 0.25, "with its clock standing where it started")
+	_check_equal(mode.economy.money(userid), mode.economy.rules.warmup_money, "on warmup's money")
+	mode.match_state.end_warmup_on_next_tick()
+	for i in 4:
+		await physics_frame
+	_check_equal(mode.match_state.round_number, 1, "F5 (end_warmup_on_next_tick) starts round 1")
+	_check(mode.bots.is_empty(), "still alone")
+	(played[0] as Node).queue_free()
+	await process_frame
+
+
+## The picker, headless: 1 and 2 choose, Enter takes the highlight, and the
+## last choice is highlighted next time.
+func _test_the_picker() -> void:
+	DirAccess.remove_absolute(PICKER_FILE)
+	var picker := ModePicker.new()
+	picker.settings_file = PICKER_FILE
+	root.add_child(picker)
+	_check_equal(picker.highlighted, 0, "with nothing chosen before, Competitive is highlighted")
+	var chosen: Array[String] = []
+	picker.chosen.connect(func(mode_name: String) -> void: chosen.append(mode_name))
+	_check(picker.handle_key(_key(KEY_2)), "2 is the picker's")
+	_check_equal(chosen, [ "Practice" ] as Array[String], "and chooses Practice")
+	_check(picker.is_queued_for_deletion(), "and the picker goes")
+	picker.handle_key(_key(KEY_1))
+	_check_equal(chosen.size(), 1, "it chooses once")
+
+	picker = ModePicker.new()
+	picker.settings_file = PICKER_FILE
+	root.add_child(picker)
+	_check_equal(picker.highlighted, 1, "the next time, the last choice is highlighted")
+	chosen.clear()
+	picker.chosen.connect(func(mode_name: String) -> void: chosen.append(mode_name))
+	_check(not picker.handle_key(_key(KEY_F5)), "a key it does not use passes through")
+	picker.handle_key(_key(KEY_DOWN))
+	picker.handle_key(_key(KEY_ENTER))
+	_check_equal(chosen, ["Competitive"] as Array[String], "down moves the highlight round to Competitive, and Enter takes it")
+	DirAccess.remove_absolute(PICKER_FILE)
+
+
+func _key(keycode: Key) -> InputEventKey:
+	var key := InputEventKey.new()
+	key.keycode = keycode
+	key.pressed = true
+	return key
+
+
+## The play scene added under root, as the profilers add it: Ask plays
+## Competitive without a picker, since it is not the scene being played, and
+## game_mode Practice plays Practice. On a map that was never extracted, so
+## it loads at once here and on Sid's machine alike.
+func _test_the_scene_plays_the_mode_chosen() -> void:
+	for asked: String in ["Ask", "Practice"]:
+		var scene := (load("res://maps/play/play.tscn") as PackedScene).instantiate() as PlayScene
+		scene.map_name = "de_never_extracted"
+		scene.game_mode = asked
+		root.add_child(scene)
+		await process_frame
+		var expected := "Competitive" if asked == "Ask" else "Practice"
+		_check(scene.picker == null and scene.find_children("*", "ModePicker", true, false).is_empty(),
+			"game_mode %s, added under root: no picker" % asked)
+		_check(scene.mode != null and scene.mode.name == expected and scene.mode.with_bots == (expected == "Competitive"),
+			"game_mode %s plays %s" % [asked, expected])
+		scene.queue_free()
+		await process_frame
