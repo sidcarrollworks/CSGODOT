@@ -188,8 +188,9 @@ var _jump_seconds := {}
 var _landing_seconds := {}
 ## The air action the jump additive was last played for, by its time.
 var _additive_for_usec := -1
-## The landing's pose by height (LANDING_CURVE, or the table's).
-var _landing_curve: Array[Vector2] = LANDING_CURVE
+## The landing's pose by height, standing and crouched (LANDING_CURVE, or
+## the table's), by "stand" and "crouch".
+var _landing_curves := {}
 ## The death being held, if any.
 var _dead: StringName = &""
 
@@ -522,7 +523,7 @@ func _build_tree(weapon_clips: PackedStringArray) -> void:
 		_rings[at] = rings
 		_jump_seconds[at] = float(lengths.get(clip_prefix + JUMP_FALLBACK, JUMP_SECONDS))
 		_landing_seconds[at] = float(lengths.get(clip_prefix + "inair_stand", LANDING_SECONDS))
-	_landing_curve = landing_curve(table)
+	_landing_curves = {"stand": landing_curve(table, false), "crouch": landing_curve(table, true)}
 	animation_tree = AnimationTree.new()
 	animation_tree.name = "Animation"
 	animation_player.get_parent().add_child(animation_tree)
@@ -658,8 +659,10 @@ func _apply_locomotion(at: String) -> void:
 	animation_tree.set(path + "jump/blend_amount", _crouch_eased)
 	animation_tree.set(path + "cycle/scale", 1.0 / cycle_length(_rings[at], _speeds.length(), _crouch))
 	# The landing clips stand still at the time the height gives.
-	animation_tree.set(path + "land_hold/scale", 0.0)
-	animation_tree.set(path + "land_pose/seek_request", landing_share(_height, _landing_curve) * float(_landing_seconds.get(at, LANDING_SECONDS)))
+	for side: String in ["stand", "crouch"]:
+		var curve: Array[Vector2] = _landing_curves.get(side, LANDING_CURVE)
+		animation_tree.set(path + "land_hold_" + side + "/scale", 0.0)
+		animation_tree.set(path + "land_pose_" + side + "/seek_request", landing_share(_height, curve) * float(_landing_seconds.get(at, LANDING_SECONDS)))
 	if _air_action == PlayerBody.AIR_JUMP and int(_jump_started.get(at, -1)) != _air_action_usec:
 		# A new jump: the take-off from its start.
 		_jump_started[at] = _air_action_usec
@@ -719,20 +722,30 @@ static func eased_crouch(from: float, to: float, seconds: float) -> float:
 
 ## The landing's pose curve from the table (scripts/animgraph_tables.gd
 ## writes the graph's curves once it has them): the curve that sets the time
-## of the landing clips' poses, by height, mapped through their input range
-## to a share of the clip. LANDING_CURVE where the table has none.
-static func landing_curve(table: Dictionary) -> Array[Vector2]:
+## of the standing or crouched landing clips' poses, by height, mapped
+## through their input range to a share of the clip. CS2's own leave that
+## range unset (FLT_MAX to -FLT_MAX), which Esoterica's AnimationPoseNode
+## takes as the curve giving the share itself. Straight between the points:
+## the crouched curve's tangents are CS2's spline ones, which this leaves
+## out (within a few hundredths of the clip; inferred). LANDING_CURVE where
+## the table has none.
+static func landing_curve(table: Dictionary, crouched: bool = false) -> Array[Vector2]:
 	var values := {}
 	for value: Dictionary in table.get("values", []):
 		values[int(value.get("node", -1))] = value
 	for value: Dictionary in table.get("values", []):
-		if String(value.get("kind", "")) != "AnimationPose" or not String(value.get("path", "")).contains("/InAir/"):
+		if String(value.get("kind", "")) != "AnimationPose" or not String(value.get("path", "")).contains("/InAir/") \
+				or String(value.get("path", "")).get_file().contains("crouch") != crouched:
 			continue
 		var curve: Dictionary = values.get(int(value.get("input_node", -1)), {})
 		if String(curve.get("kind", "")) != "FloatCurve" or not String(curve.get("input", "")).contains("air_height_above_ground"):
 			continue
 		var from := float(value.get("from", 0.0))
 		var span := float(value.get("to", 1.0)) - from
+		if span <= 0.0 or absf(from) > 1e30:
+			# Unset: the curve gives the share.
+			from = 0.0
+			span = 1.0
 		var out: Array[Vector2] = []
 		for point: Array in curve.get("points", []):
 			out.append(Vector2(float(point[0]), clampf((float(point[1]) - from) / span if not is_zero_approx(span) else 0.0, 0.0, 1.0)))
@@ -1015,8 +1028,8 @@ static func build_varied_tree(table: Dictionary, variations: Array, available: D
 ## One variation's locomotion in a tree: the standing and crouched spaces
 ## mixed by the crouch under the cycle's time scale; CS2's InAir (air_state):
 ## the take-off's standing and crouched spaces (jump), started from the top
-## by jump_start, and the landing's (air), held (land_hold) at the time
-## land_pose seeks; the ground and the air cross-faded (ground). available
+## by jump_start, and the landing's standing and crouched (air), each held
+## (land_hold_stand) at the time its land_pose_stand seeks; the ground and the air cross-faded (ground). available
 ## has the clips there are, by name: a take-off point whose clip is not
 ## there plays the variation's JUMP_FALLBACK (with it empty, each point
 ## keeps its own). False when the table lacks a space.
@@ -1035,13 +1048,16 @@ static func _add_locomotion(tree: AnimationNodeBlendTree, table: Dictionary, var
 	tree.connect_node(&"cycle", 0, &"move")
 	tree.add_node(&"air_stand", blend_space(spaces[&"air_stand"], variation, false, clip_prefix))
 	tree.add_node(&"air_crouch", blend_space(spaces[&"air_crouch"], variation, false, clip_prefix))
+	# Standing and crouched each posed at its own curve's time, as CS2
+	# times them.
+	for side: String in ["stand", "crouch"]:
+		tree.add_node(StringName("land_hold_" + side), AnimationNodeTimeScale.new())
+		tree.connect_node(StringName("land_hold_" + side), 0, StringName("air_" + side))
+		tree.add_node(StringName("land_pose_" + side), AnimationNodeTimeSeek.new())
+		tree.connect_node(StringName("land_pose_" + side), 0, StringName("land_hold_" + side))
 	tree.add_node(&"air", _blend2())
-	tree.connect_node(&"air", 0, &"air_stand")
-	tree.connect_node(&"air", 1, &"air_crouch")
-	tree.add_node(&"land_hold", AnimationNodeTimeScale.new())
-	tree.connect_node(&"land_hold", 0, &"air")
-	tree.add_node(&"land_pose", AnimationNodeTimeSeek.new())
-	tree.connect_node(&"land_pose", 0, &"land_hold")
+	tree.connect_node(&"air", 0, &"land_pose_stand")
+	tree.connect_node(&"air", 1, &"land_pose_crouch")
 	var fallback := StringName(clip_prefix + JUMP_FALLBACK)
 	for space_name: StringName in [&"jump_stand", &"jump_crouch"]:
 		var space := blend_space(spaces[space_name], variation, false, clip_prefix)
@@ -1057,7 +1073,7 @@ static func _add_locomotion(tree: AnimationNodeBlendTree, table: Dictionary, var
 	tree.connect_node(&"jump_start", 0, &"jump")
 	tree.add_node(&"air_state", _transition(["jump", "landing"]))
 	tree.connect_node(&"air_state", 0, &"jump_start")
-	tree.connect_node(&"air_state", 1, &"land_pose")
+	tree.connect_node(&"air_state", 1, &"air")
 	tree.add_node(&"ground", _transition(["ground", "air"]))
 	tree.connect_node(&"ground", 0, &"cycle")
 	tree.connect_node(&"ground", 1, &"air_state")

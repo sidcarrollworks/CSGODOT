@@ -412,7 +412,8 @@ func _test_air_rules() -> void:
 			and places.get(&"jump_n", Vector2.ZERO) == Vector2(225, 0) and places.get(&"jump_e", Vector2.ZERO) == Vector2(0, -225)
 			and jump_crouch != null and jump_crouch.get_blend_point_count() == 5 and jump_crouch.get_blend_point_position(1).length() == 96.0
 			and air_state != null and air_state.get_input_name(0) == "jump" and air_state.get_input_name(1) == "landing"
-			and tree.get_node(&"land_pose") is AnimationNodeTimeSeek and tree.get_node(&"land_hold") is AnimationNodeTimeScale
+			and tree.get_node(&"land_pose_stand") is AnimationNodeTimeSeek and tree.get_node(&"land_hold_stand") is AnimationNodeTimeScale
+			and tree.get_node(&"land_pose_crouch") is AnimationNodeTimeSeek and tree.get_node(&"land_hold_crouch") is AnimationNodeTimeScale
 			and tree.get_node(&"jump_start") is AnimationNodeTimeSeek,
 		"the air is CS2's InAir: the take-off's five clips at CS2's places standing (225) and crouched (96), then the landing spaces held at a time (%s)" % [places]
 	)
@@ -466,9 +467,28 @@ func _test_air_rules() -> void:
 	# once the tables are regenerated), the landing must still run from
 	# tucked high up to feet down near the ground.
 	var ours := PlayerModel.landing_curve(table)
+	var ours_crouched := PlayerModel.landing_curve(table, true)
 	_check(
-		PlayerModel.landing_share(0.0, ours) >= 0.9 and PlayerModel.landing_share(INF, ours) <= 0.1,
-		"the landing's curve from the tables poses the feet down at the ground and tucked out of reach (%s)" % [ours]
+		PlayerModel.landing_share(0.0, ours) >= 0.9 and PlayerModel.landing_share(INF, ours) <= 0.1
+			and PlayerModel.landing_share(0.0, ours_crouched) >= 0.9 and PlayerModel.landing_share(INF, ours_crouched) <= 0.1,
+		"the landing's curves from the tables, standing and crouched, pose the feet down at the ground and tucked out of reach (%s; %s)" % [ours, ours_crouched]
+	)
+	# CS2's own poses leave their input range unset (FLT_MAX to -FLT_MAX),
+	# and its crouched ones have a curve of their own.
+	var unset := PlayerModel.landing_curve({"values": [
+		{"node": 10, "kind": "FloatCurve", "input": "air_height_above_ground", "points": [[0.0, 1.0], [5.8, 1.0], [50.0, 0.0]]},
+		{"node": 11, "kind": "FloatCurve", "input": "air_height_above_ground", "points": [[2.54, 1.0], [15.53, 0.66], [50.0, 0.0]]},
+		{"node": 12, "kind": "AnimationPose", "path": "SM/InAir/SM/landing_blend/inair_stand2", "input_node": 10, "from": 3.4028234663852882e+38, "to": -3.4028234663852882e+38},
+		{"node": 13, "kind": "AnimationPose", "path": "SM/InAir/SM/landing_blend/inair_crouch_stand2", "input_node": 11, "from": 3.4028234663852882e+38, "to": -3.4028234663852882e+38},
+	]}, false)
+	var unset_crouched := PlayerModel.landing_curve({"values": [
+		{"node": 11, "kind": "FloatCurve", "input": "air_height_above_ground", "points": [[2.54, 1.0], [15.53, 0.66], [50.0, 0.0]]},
+		{"node": 12, "kind": "AnimationPose", "path": "SM/InAir/SM/landing_blend/inair_stand2", "input_node": 10, "from": 3.4028234663852882e+38, "to": -3.4028234663852882e+38},
+		{"node": 13, "kind": "AnimationPose", "path": "SM/InAir/SM/landing_blend/inair_crouch_stand2", "input_node": 11, "from": 3.4028234663852882e+38, "to": -3.4028234663852882e+38},
+	]}, true)
+	_check(
+		unset == [Vector2(0, 1), Vector2(5.8, 1), Vector2(50, 0)] and unset_crouched == [Vector2(2.54, 1), Vector2(15.53, 0.66), Vector2(50, 0)],
+		"an unset input range takes the curve as the share itself, and the crouched landing reads its own curve (%s; %s)" % [unset, unset_crouched]
 	)
 	var dump_tracks := Animation.new()
 	for track_path in ["Rig/Skeleton3D:ankle_L", "Rig/weapon/Skeleton3D:weapon", "Rig/Skeleton3D:pelvis"]:
@@ -575,7 +595,7 @@ func _test_air_tree() -> void:
 	tree.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 	# The tree's workings on the curve this check knows; the curve CS2's
 	# tables give is checked in _test_air_rules.
-	model._landing_curve = PlayerModel.LANDING_CURVE
+	model._landing_curves = {"stand": PlayerModel.LANDING_CURVE, "crouch": PlayerModel.LANDING_CURVE}
 	var now := SimClock.now_usec()
 	var at := func() -> float: return bone.position.y
 	var run := Vector3(0, 0, -240)
