@@ -47,10 +47,13 @@ const NEXT_OWNER_TOUCH_USEC := 1_300_000
 ## start in it (a shape the sweep starts in is not met at all).
 const CONTACT_MARGIN := 0.25
 const SKIN := 0.05
-## Under this speed into a surface nothing bounces: the project's own Jolt
-## bounce_velocity_threshold (1 m/s, project.godot). CS2's is in no file
-## (measure).
-const BOUNCE_SPEED := 39.37
+## Under this speed into a surface nothing bounces, in units a second
+## (2.5 m/s). CS2's is in no file. Sid watched guns land in CS2 (2026-09-26):
+## most bounce once, a small one sometimes a second time by an inch or two,
+## a Glock thrown right up to 6 to 8 inches, and they feel heavy. At Jolt's
+## 1 m/s (project.godot) a long gun rocking from end to end after landing
+## kept bouncing off each end; at this, what bounces is the landing.
+const BOUNCE_SPEED := 100.0
 ## How two surfaces combine, in no file (measure): the product of the
 ## elasticities, so a gun (weapon, 0.95) on concrete (0.2) keeps 0.19 of
 ## its speed into the floor, and the geometric mean of the frictions.
@@ -72,15 +75,12 @@ const MOST_SWEEPS := 3
 const SLEEP_USEC := 250_000
 const SLEEP_DRIFT := 0.25
 const SLEEP_TURN := 0.035
-## The fastest it turns, in radians a second: about two turns a second.
-## CS2's is in no file. Sid watched guns land in CS2 (2026-09-26): most
-## bounce once, a small one sometimes a second time by an inch or two, a
-## Glock thrown right up to 6 to 8 inches, and they feel heavy. With
-## Jolt's own default (max_angular_velocity, 15 turns a second) a gun
-## landing on an edge or an end spun up to it and cartwheeled and rolled
-## along the floor, hopping a dozen times; at this it bounces once, rocks
-## and lies down, as the checks measure.
-const MOST_SPIN := 12.0
+## The fastest it turns, in radians a second: Jolt's own default
+## (max_angular_velocity, 15 turns a second), which also keeps a tick's turn
+## under three quarters of a radian. CS2's is in no file (measure). Two
+## turns a second instead kept long guns from cartwheeling but took the
+## Glock's bounce with it: a small gun landing on an edge turns fast.
+const MOST_SPIN := 47.12
 ## However it moves, it sleeps this long after the drop, so a body caught
 ## rocking in a corner does not cost queries for the rest of the round.
 const MOST_MOVING_USEC := 8_000_000
@@ -113,8 +113,8 @@ var slow_basis := Basis.IDENTITY
 ## yet): what it lies on once at rest.
 var ground_normal := Vector3.ZERO
 ## Physics queries it has made, all told: two a tick in flight, three a
-## tick touching something and one more for each surface a move meets,
-## none at rest.
+## tick touching something, one more for each surface a move meets and
+## one more for the corners it lands on, none at rest.
 var queries: int = 0
 
 
@@ -213,8 +213,13 @@ func tick(t: SimTick) -> void:
 			# the move into this surface stops.
 			velocity -= normal * minf(velocity.dot(normal), 0.0)
 		else:
-			# A new impact, on the one point it lands on.
-			_resolve([{"point": hit["point"], "normal": normal, "depth": 0.0}], hull, String(hit["surface"]), dt)
+			# A new impact, on every corner it lands on: a gun landing flat
+			# bounces as a whole, where the one point the sweep gives would
+			# only turn it about that point.
+			var landed: Array = _contacts(t.space, hull)
+			if landed.is_empty():
+				landed = [{"point": hit["point"], "normal": normal, "depth": 0.0}]
+			_resolve(landed, hull, String(hit["surface"]), dt)
 		touching = true
 		position += normal * SKIN
 		motion = velocity * dt * (1.0 - safe)

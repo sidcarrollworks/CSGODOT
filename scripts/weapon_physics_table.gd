@@ -21,8 +21,10 @@ extends RefCounted
 ## the model's origin. The glTF is in metres with glTF x = Source y, y =
 ## Source z and z = Source x; the PHYS block is in Source's axes and inches.
 ## Whether the glTF's hull already sits where the bone's bind pose puts it
-## is settled per model, by which of the two fits the drawn model's bounds
-## (the hull_frame column says which).
+## is settled per model, by which of the two puts the average of the
+## hull's corners on the game's centroid, which is that average (the
+## hull_frame column says which); by the drawn model's bounds only where
+## the game gives no centroid.
 
 ## The PHYS dump the weapon-physics step writes.
 const DUMP := "res://assets/weapons/weapons/models/physics_data.txt"
@@ -350,6 +352,16 @@ static func unique_points(points: PackedVector3Array) -> PackedVector3Array:
 	return out
 
 
+## The average of a hull's distinct corners: what the game's m_vCentroid
+## is (not the centre of mass, which is the volume's).
+static func corner_average(points: PackedVector3Array) -> Vector3:
+	var corners := unique_points(points)
+	var sum := Vector3.ZERO
+	for point in corners:
+		sum += point
+	return sum / corners.size() if not corners.is_empty() else Vector3.ZERO
+
+
 ## The box round a set of points.
 static func bounds_of(points: PackedVector3Array) -> AABB:
 	if points.is_empty():
@@ -371,20 +383,29 @@ static func misfit(a: AABB, b: AABB) -> float:
 ## (held_bone). Empty where the hull has no volume.
 static func row(item_class: String, model: String, phys: Dictionary, triangles: PackedVector3Array, drawn: AABB, held_bone: Transform3D) -> Dictionary:
 	var bind: Transform3D = phys.get("bind", Transform3D.IDENTITY)
+	var centroid: Vector3 = phys.get("game_centroid", Vector3(NAN, NAN, NAN))
+	if not is_nan(centroid.x):
+		# The game's centroid is in the bone's space.
+		centroid = bind * centroid
 	var frame := "model"
 	var placed := triangles
-	if drawn.size != Vector3.ZERO and not bind.is_equal_approx(Transform3D.IDENTITY):
+	if not bind.is_equal_approx(Transform3D.IDENTITY):
 		var bound := bind * triangles
-		if misfit(bounds_of(bound), drawn) < misfit(bounds_of(triangles), drawn):
+		# The game's centroid is the average of the hull's corners (it
+		# matches ours to a thousandth of an inch on every hull placed
+		# right), so it says where the hull sits; the drawn model's bounds,
+		# which the thin parts a convex hull leaves out and a posed model's
+		# parts throw off, only where the game gives none.
+		if not is_nan(centroid.x):
+			if corner_average(bound).distance_to(centroid) < corner_average(triangles).distance_to(centroid):
+				placed = bound
+				frame = "bone"
+		elif drawn.size != Vector3.ZERO and misfit(bounds_of(bound), drawn) < misfit(bounds_of(triangles), drawn):
 			placed = bound
 			frame = "bone"
 	var mass := mass_properties(placed)
 	if float(mass["volume"]) <= 0.0:
 		return {}
-	var centroid: Vector3 = phys.get("game_centroid", Vector3(NAN, NAN, NAN))
-	if not is_nan(centroid.x):
-		# The game's centroid is in the bone's space.
-		centroid = bind * centroid
 	var surface := SurfaceProperties.by_hash(int(phys.get("surface_hash", -1)))
 	var q := held_bone.basis.get_rotation_quaternion()
 	return {
@@ -422,7 +443,7 @@ static func page(rows: Array, source: String, date: String, gaps: PackedStringAr
 		"",
 		"Written by `scripts/weapon_tables.gd` (`scripts/weapon_physics_table.gd`) on %s from %s: the physics hull beside each world model (`*_physics.gltf`, from `scripts/extract_assets.sh weapons` and `equipment`) and the model's PHYS block (`scripts/extract_assets.sh weapon-physics`). Do not edit by hand. `physics.csv` beside it is what `ItemPhysics` reads; the hull's corners are there." % [date, source],
 		"",
-		"Positions are in the world model's axes (+Z the muzzle, +Y the top, +X the gun's left), in inches from the model's origin. The volume and centre of mass are reckoned from the hull's triangles; the game's own are beside them as a check. The inertia is for a mass of 1, about the centre of mass. The frame says whether the exported hull already sat on the model (model) or was placed by its bone's bind pose (bone), whichever fits the drawn model's bounds.",
+		"Positions are in the world model's axes (+Z the muzzle, +Y the top, +X the gun's left), in inches from the model's origin. The volume and centre of mass are reckoned from the hull's triangles; the game's volume is beside ours as a check, and its centroid beside our centre of mass, though the game's is the average of the hull's corners, not the centre of the volume. The inertia is for a mass of 1, about the centre of mass. The frame says whether the exported hull already sat on the model (model) or was placed by its bone's bind pose (bone), whichever puts the corners' average on the game's centroid.",
 		"",
 		"| Class | Bone | Surface | Mass | Angular damping | Volume (game's) | Centre of mass (game's) | Frame |",
 		"|---|---|---|---|---|---|---|---|",

@@ -40,7 +40,7 @@ RERL REDI DATA PHYS AGRP
 						m_UserFriendlyName = ""
 						m_Hull = 
 						{
-							m_vCentroid = [ 12.000000, 0.000000, 4.000000 ]
+							m_vCentroid = [ 11.000000, 0.000000, 2.000000 ]
 							m_flMaxAngularRadius = 15.200000
 							m_Bounds = 
 							{
