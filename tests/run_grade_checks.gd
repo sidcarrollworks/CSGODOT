@@ -24,6 +24,8 @@ func _initialize() -> void:
 	_check_curve()
 	_check_table(MapPostProcessing.load_file(""), "the defaults")
 	_check_table(_warm(), "a warm table and a curve of the file's own")
+	_check_near_linear()
+	_check_table(_near_linear(), "dust2's own curve")
 	_check_reader()
 	_check_environment()
 	_check_mode()
@@ -71,6 +73,39 @@ func _warm() -> MapPostProcessing:
 				post.lut[at + 1] = roundi(j / 31.0 * 255.0)
 				post.lut[at + 2] = roundi((0.05 + 0.8 * k / 31.0) * 255.0)
 	return post
+
+
+## dust2's own curve, as Sid's machine read it from
+## de_dust2_prefab.vpost (2026-09-26): no shoulder, a linear part of 0.0009,
+## the toe 1 over 1, white 1.648926, no bias. Six numbers, not Valve's data
+## as such; its table is left out (the identity here).
+func _near_linear() -> MapPostProcessing:
+	var post := MapPostProcessing.new()
+	post.has_tonemap = true
+	post.tonemap = MapPostProcessing.DEFAULT_TONEMAP.duplicate()
+	post.tonemap["m_flExposureBias"] = 0.0
+	post.tonemap["m_flShoulderStrength"] = 0.0
+	post.tonemap["m_flLinearStrength"] = 0.0009
+	post.tonemap["m_flLinearAngle"] = 0.0009
+	post.tonemap["m_flToeStrength"] = 1.0
+	post.tonemap["m_flToeNum"] = 1.0
+	post.tonemap["m_flToeDenom"] = 1.0
+	post.tonemap["m_flWhitePoint"] = 1.648926
+	return post
+
+
+## With no shoulder and the toe at 1 over 1, the curve is negative all the
+## way and nearly a straight line, which the division by its white turns
+## into scene / W, clipped at W: the look is left to the table.
+func _check_near_linear() -> void:
+	var tonemap := _near_linear().tonemap
+	_check(ColourGrade.hable(1.0, tonemap) < 0.0 and ColourGrade.hable(4.6, tonemap) < 0.0, "dust2's curve is negative, as its numbers make it")
+	for scene in [0.05, 0.2, 0.5, 1.0, 1.5]:
+		_check(absf(ColourGrade.display(scene, tonemap) - scene / 1.648926) < 0.003,
+			"dust2's curve shows %.2f as nearly %.2f / W (%.4f)" % [scene, scene, ColourGrade.display(scene, tonemap)])
+	_check_near(ColourGrade.display(2.0, tonemap), 1.0, "and clips past W")
+	var grey := ColourGrade.scene_for(ColourGrade.MIDDLE_GREY, tonemap)
+	_check(absf(grey - 0.18 * 1.648926) < 0.002, "its middle grey is 0.18 W")
 
 
 ## The table built for post, sampled as Godot samples it, against CS2's
@@ -286,6 +321,11 @@ func _check_reader() -> void:
 		"res://assets/maps/de_dust2/lighting/postprocessing/de_dust2_prefab/de_dust2_prefab.vpost",
 		"the map's file is the master volume's, under the map's directory")
 	_check_equal(MapLighting.post_processing_file([] as Array[Dictionary], "res://x"), "", "no volume, no file")
+	var typed: Array[Dictionary] = [{"classname": "post_processing_volume",
+		"postprocessing": 'resource_name:"lighting/postprocessing/de_dust2_prefab/de_dust2_prefab.vpost"'}]
+	_check_equal(MapLighting.post_processing_file(typed, "res://assets/maps/de_dust2"),
+		"res://assets/maps/de_dust2/lighting/postprocessing/de_dust2_prefab/de_dust2_prefab.vpost",
+		"a compiled lump's typed reference loses its resource_name: prefix")
 	_check_near(MapLighting.cs2_exposure({}), 1.0, "no volume: CS2's exposure is 1")
 	_check_near(MapLighting.cs2_exposure({"minexposure": "0.925", "maxexposure": "1.1"}), 1.0125, "the middle of the window")
 	_check_near(MapLighting.cs2_exposure({"minexposure": "0.925", "maxexposure": "1.1", "enableexposure": "0"}), 1.0,

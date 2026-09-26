@@ -694,7 +694,8 @@ extract_visibility() {
 }
 
 ## The map's colour grade: the post-processing file (.vpost) its
-## post_processing_volume names, which holds the filmic curve's numbers, the
+## post_processing_volume names (as resource_name:"lighting/...vpost" in
+## a compiled lump, whose type prefix is dropped), which holds the filmic curve's numbers, the
 ## bloom's, and a 32-cube colour table every other layer is baked into.
 ## Decompiled, it is KV3 text with the table beside it as a .raw file (8-bit
 ## RGB); MapPostProcessing reads them, and ColourGrade draws with them. The
@@ -711,7 +712,7 @@ extract_postprocessing() {
 	fi
 	local files
 	files="$(tr -d '\r' < "$entities" | grep -E '^[[:space:]]*postprocessing ' \
-		| sed -E 's/^[[:space:]]*postprocessing +//; s/"//g; s/[[:space:]]+$//; s/(\.vpost)(_c)?$/\1_c/' \
+		| sed -E 's/^[[:space:]]*postprocessing +//; s/^[a-z_]+://; s/"//g; s/[[:space:]]+$//; s/(\.vpost)(_c)?$/\1_c/' \
 		| grep -E '\.vpost_c$' | sort -u || true)"
 	if [[ -z "$files" ]]; then
 		echo "No post_processing_volume in $entities names a file; the map is graded with the defaults."

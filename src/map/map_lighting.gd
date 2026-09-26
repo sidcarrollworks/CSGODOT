@@ -320,7 +320,12 @@ static func post_processing_volume(entities: Array[Dictionary]) -> Dictionary:
 ## post_processing_volume; "" where the map names none.
 static func post_processing_file(entities: Array[Dictionary], map_dir: String) -> String:
 	var volume := post_processing_volume(entities)
-	var file := String(volume.get("postprocessing", "")).trim_suffix("_c")
+	# A compiled lump types the reference: resource_name:"lighting/...vpost".
+	var file := String(volume.get("postprocessing", ""))
+	var typed := file.find(":\"")
+	if typed >= 0:
+		file = file.substr(typed + 1)
+	file = file.trim_prefix("\"").trim_suffix("\"").trim_suffix("_c")
 	return "" if file.is_empty() else map_dir.path_join(file)
 
 
