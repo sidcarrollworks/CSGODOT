@@ -103,6 +103,7 @@ func _state() -> Dictionary:
 		"sky": _sky.visible,
 		"scale": viewport.scaling_3d_scale,
 		"occlusion": viewport.use_occlusion_culling,
+		"hdr_2d": viewport.use_hdr_2d,
 	}
 
 
@@ -120,6 +121,9 @@ func _check_variants() -> void:
 		# checks it on the map's culling.
 		"no_visibility": {},
 		"no_msaa": {"msaa": Viewport.MSAA_DISABLED},
+		"sdr_2d": {"hdr_2d": false},
+		# This scene has no HUD to unblur: tests/run_hud_checks.gd checks it.
+		"no_hud_blur": {},
 		"no_glow": {"glow": false},
 		"no_fog": {"fog": false},
 		"no_reflections": {"reflections": Environment.REFLECTION_SOURCE_DISABLED, "probe": 0.0},
@@ -129,7 +133,7 @@ func _check_variants() -> void:
 		"all_off": {
 			"shadows": false, "angular": 0.0, "distance": 2048.0,
 			"casting": GeometryInstance3D.SHADOW_CASTING_SETTING_ON, "msaa": Viewport.MSAA_DISABLED,
-			"glow": false, "fog": false, "sky": false,
+			"hdr_2d": false, "glow": false, "fog": false, "sky": false,
 			"reflections": Environment.REFLECTION_SOURCE_DISABLED, "probe": 0.0,
 		},
 	}

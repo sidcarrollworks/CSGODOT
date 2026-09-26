@@ -148,6 +148,10 @@ class Punch:
 
 @export var magazine_size: int = 30
 @export var reserve_ammo: int = 90
+## Whether the game counts the reserve in magazines (m_bReserveAmmoAsClips),
+## which is how the HUD shows it: every gun but the shotguns loaded a shell
+## at a time, whose reserve reads in shells.
+@export var reserve_as_clips: bool = true
 
 ## How long a reload takes.
 @export var reload_time: float = 2.5

@@ -156,9 +156,18 @@ From GT `panorama/layout/hud/hudteamcounter.xml`,
   `teamcounter_red_timer` to turn **red**. When that happens is decided in C++.
   **From memory** it is in the round's last seconds, and the repo's own 10 s
   warning (below) is the natural trigger. Under the timer are the two
-  **scores**, `ScoreCT` left and `ScoreT` right, each 42 px wide. The
-  left/right sides follow your team: the strings are
-  `left_side_alive`/`right_side_alive`.
+  **scores**, `ScoreCT` left and `ScoreT` right, each 42 px wide.
+  **Corrected 2026-09-25:** this note first said the sides follow your team.
+  They do not. CS2's own styles (hudteamcounter.css, decompiled from the
+  game) colour the left side's score, alive count and cards in color-CT
+  `#B5D4EE` and the right side's in color-T `#EAD18A`, whoever you play
+  (`.TeamScoreL`/`.TeamScoreR`, `.team__large_container--left`/`--right`, the
+  containers `#TeamLargeCT` and `#TeamLargeT`), and CS2's screenshot playing
+  a terrorist (`In_game_ui.webp`) has the terrorists on the right. The
+  strings `left_side_alive`/`right_side_alive` are just positions.
+  The reserve beside the ammo counts magazines for every gun whose
+  `m_bReserveAmmoAsClips` is true in scripts/weapons.vdata (all but the Nova,
+  XM1014 and Sawed-Off, which count shells): the screenshot's P90 reads 2.
 - **Bomb status.** Once the bomb is planted, `BombPlanted` (an 80 px icon
   washed `#b80000`) and `BombPlantedLines` (rings that grow 1.0 to 1.4 times and
   fade) take the timer's place. They pulse faster as the bomb nears
@@ -171,8 +180,8 @@ From GT `panorama/layout/hud/hudteamcounter.xml`,
 - **Players alive:** a big number on each side (`{d:left_side_alive}` with a
   small "ALIVE" under it: `SFUI_PlayerCount_Alive_Left:f`), and a compact
   person-icon count (`PlayerCount`).
-- **Avatars (`AvatarLargeSnippet`), one per player, your team on the left.**
-  Each has:
+- **Avatars (`AvatarLargeSnippet`), one per player, the counter-terrorists
+  on the left** (corrected 2026-09-25, above). Each has:
   - the player's colour (`cl_teammate_colors_show`, default 1; the five
     colours are `cl_teammate_color_1..5` = light blue 136,206,245 / green
     0,158,128 / yellow 241,228,65 / orange 230,128,42 / purple 189,44,150,
@@ -487,6 +496,56 @@ game.gameevents):
 - `round_mvp`'s `musickitmvps`, `nomusic` and `musickitid` (not needed)
 - `player_avenged_teammate`, `bomb_beep`
 - `enter_bombzone`/`exit_bombzone` (the radar and hint)
+
+## A10. The buy menu's agent
+
+Read 2026-09-25 from the installed game with Source 2 Viewer (`-d`), not
+from GT; built in `src/economy/buy_menu_agent.gd`.
+
+- **The panel.** `panorama/layout/buymenu.xml` puts a
+  `MapPlayerPreviewPanel` under the whole menu, full screen (`.buymenu-agent`
+  is 100 % by 100 %): `map="ui/buy_menu"`, `camera="cam_buymenu"`,
+  `playername="vanity_character"`, `animgraphcharactermode="buy-menu"`,
+  `game-background="true"` (the game drawn behind the agent) and
+  `pin-fov="vertical"` (the camera's field of view spans the screen's
+  height, whatever its shape). `.buymenu` itself is `rgba(0, 0, 0, 0.95)`.
+- **The map** (`game/csgo/maps/ui/buy_menu.vpk`,
+  `maps/ui/buy_menu/entities/default_ents.vents`). `cam_buymenu`, a
+  `point_camera_vertical_fov`: at (-60, -136, 28), angles (0, 90, 0),
+  vertical field of view 30, znear 4. The agent (`csgo_player_previewmodel`
+  `vanity_character`): at (-27.14, 16.05, -22.30), yaw 255. One
+  `light_environment`: brightness 2.3, colour 245 238 232, angles (54.18,
+  87.80, -0.25), sky 211 226 248 at 0.96, bounce 151 151 151, baked
+  (directlight 1: its light reaches the agent through the map's probes).
+  An `env_cubemap_box` with `materials/fx/inspect_agents_custom_cubemap.vtex`.
+  The menu's post-processing (`lighting/postprocessing/effects/in_buy_menu.vpost`)
+  has no layers, and its colour table is the identity.
+- **The poses** (`animation/graphs/ui/uimodel.vnmgraph`, its BuyMenu
+  state). A CT and a T state machine, each item's state entered on
+  `weapon_type`, the item's class (`kevlar_vest` and `kevlar_and_helmet`
+  share the armour's, `weapon_defuse_kit` is the kit, the knife state takes
+  every knife but `weapon_knife_push`), every transition 0 s. Each state
+  plays one single-frame clip from `animation/anims/ui_anims/buy_menu/`
+  (`ct/`, `t/`, `shared/` for the grenades, armour, kit, knife and bomb).
+  The CT's M4A4 state plays `ct_buymenu_m4a1`, the M4A1-S's
+  (`ct_buymenu_m4a4` is in the files, unused). Over every pose the state adds
+  `ui_anims/additive_anims/t/t_idle_layer01`, a 7.1 s breath, for both
+  sides, and a Snap Weapon node puts the item in the hand. The table is
+  `BuyMenuAgent.POSES`.
+- **The item's own bones.** The clips carry the item's rig too, rooted at
+  the scene's origin. A single-handed item's root snaps to the hand's `wpn`
+  bone. In the two-handed items' poses (the Molotov and its lighter, the
+  Shadow Daggers) `wpn` sits at the origin in the root's own frame, and the
+  item's `weapon_hand_r` and `_l` land on the body's hands to the
+  millimetre. Some clips move the item's parts: the Dual Berettas one to
+  each hand and their holster (`eholster`, which the model calls
+  `elite_holster`) out of sight, the R8's loader aside, the XM1014's loaded
+  shells scaled to nothing, the bomb's offset in the hand.
+- **Measured** on Sid's screenshots of the menu (2026-09-25, 2000 by 1125,
+  scaled to 1920 by 1080): the agent's head top 182 down and the AK-47's
+  muzzle 1752 across, where the map's camera puts them; the world behind
+  lightly blurred (a sign's letters still read), nothing in it darker than
+  about 30 or brighter than about 68 of 255.
 
 ---
 

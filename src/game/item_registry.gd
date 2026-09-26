@@ -44,7 +44,7 @@ const EQUIPMENT_NAMES := {
 }
 const WORN := {
 	"item_kevlar": {"name": "Kevlar Vest", "price": 650},
-	"item_assaultsuit": {"name": "Kevlar + Helmet", "price": 1000},
+	"item_assaultsuit": {"name": "Kevlar & Helmet", "price": 1000},
 	"item_defuser": {"name": "Defuse Kit", "price": 400},
 }
 

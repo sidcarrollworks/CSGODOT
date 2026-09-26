@@ -21,6 +21,8 @@ const VARIANTS := {
 	"no_occlusion": "occlusion culling off (MapOccluders): what the map's walls save by hiding what is behind them",
 	"no_visibility": "the map's own visibility off (WorldVisibility): what CS2's precomputed culling saves",
 	"no_msaa": "4x MSAA off",
+	"sdr_2d": "2D blended in sRGB rather than in linear light (project.godot's hdr_2d, which the HUD needs to blend as CS2's does)",
+	"no_hud_blur": "the HUD's panels without the blurred world behind them (HudElement's screen copies)",
 	"no_glow": "bloom off",
 	"no_fog": "the distance haze off",
 	"no_reflections": "the reflection probes at no strength and the sky's reflections off (MapReflections); not what reflecting costs, since the probes are still drawn",
@@ -98,6 +100,19 @@ static func apply(variant: String, root: Node, viewport: Viewport) -> Callable:
 			return func() -> void: visibility.set_process(true)
 		"no_msaa":
 			return _change(viewport, "msaa_3d", Viewport.MSAA_DISABLED)
+		"sdr_2d":
+			return _change(viewport, "use_hdr_2d", false)
+		"no_hud_blur":
+			var undo: Array[Callable] = []
+			for element in root.find_children("*", "Control", true, false):
+				if not element is HudElement:
+					continue
+				for surface in element.get_children(true):
+					if surface is BackBufferCopy:
+						undo.append(_change(surface, "copy_mode", BackBufferCopy.COPY_MODE_DISABLED))
+					elif surface.name == &"Blur":
+						undo.append(_change(surface, "visible", false))
+			return _together(undo)
 		"no_glow":
 			return _change(environment, "glow_enabled", false)
 		"no_fog":

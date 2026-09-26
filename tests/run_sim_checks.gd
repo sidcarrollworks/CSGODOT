@@ -1480,8 +1480,8 @@ func _test_the_hud_shows_hits() -> void:
 	await process_frame
 	await process_frame
 	_check(
-		hud._armor.visible and hud._armor.text == "100" and hud._shield.visible and not hud.damage_indicator.showing(),
-		"the HUD shows 100 armour and no hits (%s)" % hud._armor.text
+		hud.health_ammo.armour == 100 and hud.health_ammo.health == 100 and not hud.damage_indicator.showing(),
+		"the HUD shows 100 armour and no hits (%d)" % hud.health_ammo.armour
 	)
 	await physics_frame
 	await physics_frame
@@ -1489,15 +1489,15 @@ func _test_the_hud_shows_hits() -> void:
 	await process_frame
 	await process_frame
 	_check(
-		result.hitbox != null and hud.damage_indicator.showing() == 1 and hud._armor.text != "100",
-		"a hit puts an arc round the crosshair, and the armour it wore down shows (%s, %d arcs)" % [hud._armor.text, hud.damage_indicator.showing()]
+		result.hitbox != null and hud.damage_indicator.showing() == 1 and hud.health_ammo.armour < 100,
+		"a hit puts an arc round the crosshair, and the armour it wore down shows (%d, %d arcs)" % [hud.health_ammo.armour, hud.damage_indicator.showing()]
 	)
 	hud.damage_indicator._process(DamageIndicator.SHOW_SECONDS + 0.1)
 	_check(hud.damage_indicator.showing() == 0, "and the arc is gone %.1f s later" % DamageIndicator.SHOW_SECONDS)
 	player.hit_target.wear(0.0, false)
 	await process_frame
 	await process_frame
-	_check(not hud._armor.visible and not hud._shield.visible, "with no armour, no armour is shown")
+	_check(hud.health_ammo.armour == 0, "with no armour, no armour is shown")
 	_check(
 		hud._where.text.begins_with("pos ") and hud._where.text.get_slice("\n", 1).begins_with("fps "),
 		"under where you stand, the frame rate (%s)" % hud._where.text.c_escape()

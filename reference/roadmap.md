@@ -584,13 +584,30 @@ list, split into Local and Remote items, with the measurements.
     default loadout, armour and the helmet, the kit, grenades, the Zeus,
     team-only weapons. On dust2 since 2026-09-23: its own buy zones (or a
     stand-in round each side's spawn where they are not extracted, which
-    the map says), your money and "B  buy" with the time left on the HUD,
+    the map says), your money and the buy zone's cart on the HUD,
     and why B does nothing when it does not open; warmup's $16,000; a gun
     bought taken in hand. Still to do: choosing another loadout (a settings
     page).
 15. **HUD for rounds.** *(Remote; the radar is extracted, `MapOverview`)*
     Money, armour, timer, score and players alive, kill feed, radar,
-    scoreboard, round-end panel.
+    scoreboard, round-end panel. *(Part done 2026-09-25: the HUD follows
+    today's CS2 layout on its own element system, `HudElement` and
+    `HudStyle` in `src/ui/`: health, armour and ammo round the emblem at the
+    bottom, rolling money with the buy zone's cart, the team counter with
+    the clock, scores, players alive and a card per player, the alert bar,
+    and the buy menu restyled. Built to CS2's own Panorama layouts and
+    styles, in its font (Stratum2, unpacked from the game) and icons,
+    blended additively in linear light with the world blurred behind its
+    panels as Panorama does. Local: checked on Sid's machine against
+    `In_game_ui.webp` at 1080p and 4K, where it matches to the pixel but
+    for the player's portrait and colour. Still to do: the kill feed,
+    radar, scoreboard, round-end panel, the bomb's icon on the clock, the
+    kill marks over the health and the low health and ammo glow. The buy
+    menu rebuilt 2026-09-25 to Sid's screenshots of CS2's: its columns in
+    CS2's order, CS2's word on each item, the countdown in warmup and freeze
+    time, and your agent in CS2's own pose for what is in hand or under the
+    mouse, holding it, framed by CS2's buy-menu camera. Each player's colour
+    is drawn at random for the match until a setting chooses it (item 26).)*
 
 ### Phase 5: the bomb
 

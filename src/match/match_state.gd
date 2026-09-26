@@ -131,6 +131,18 @@ var _bomb_planted := false
 ## events happen inside the tick like everything else.
 var _warmup_end_asked := false
 
+## How many player colours there are: CS2's cl_teammate_color_1 to 5, which
+## the HUD draws a teammate's card and your ring round the emblem in.
+const PLAYER_COLOURS := 5
+## Each player's colour on their team, as an index into the five. CS2 lets a
+## player choose theirs in its main menu; until there is one here, each is
+## drawn at random as they join, from those nobody on their team has yet
+## (Sid, 2026-09-25).
+var _colours := {}
+## The draw's seed: new each match, so the colours differ from one to the
+## next.
+var colour_seed: int = randi()
+
 
 func _ready() -> void:
 	if rules == null:
@@ -145,11 +157,38 @@ func add_player(player: PlayerSim) -> void:
 	player.team_damage_scale = rules.friendly_fire_bullets if rules != null else 1.0
 	player.freeze_cam_seconds = rules.freeze_cam_seconds if rules != null else 2.0
 	_give_spawn_armor(player)
+	_draw_colour(player)
 
 
 ## Someone leaves the match: out of the game altogether (GameWorld).
 func remove_player(player: PlayerSim) -> void:
 	players.erase(player)
+	_colours.erase(player)
+
+
+## A player's colour on their team, 0 to PLAYER_COLOURS - 1; -1 for someone
+## not in the match.
+func colour_of(player: PlayerSim) -> int:
+	return int(_colours.get(player, -1))
+
+
+## Draws a player's colour from those their team has not taken (any of the
+## five once all are).
+func _draw_colour(player: PlayerSim) -> void:
+	var taken := {}
+	for other in players:
+		if other != player and other.team == player.team and _colours.has(other):
+			taken[_colours[other]] = true
+	var free: Array[int] = []
+	for colour in PLAYER_COLOURS:
+		if not taken.has(colour):
+			free.append(colour)
+	if free.is_empty():
+		for colour in PLAYER_COLOURS:
+			free.append(colour)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash([colour_seed, player.userid, players.size()])
+	_colours[player] = free[rng.randi_range(0, free.size() - 1)]
 
 
 ## Starts the match: warmup, where there is one, or the first round.

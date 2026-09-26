@@ -18,18 +18,30 @@ extends SceneTree
 ## The sky panorama comes as an .exr and gets the same treatment; VRAM
 ## compression of an HDR image is BC6H, which is what a sky wants.
 ##
+## The HUD's images (scripts/extract_assets.sh hud) are drawn in 2D, on the
+## 1920x1080 base size stretched to the window, so they stay lossless (block
+## compression smears a mask's edge and a faint pattern), with mipmaps for a
+## window smaller than the base size; CS2's SVG icons are rasterized at twice
+## their size, so they are sharp at 4K. The HUD's fonts are imported as
+## multichannel signed distance fields: one set of glyphs serves every size
+## and window, and the printable ASCII is drawn at import, so a number's
+## first appearance in a match rasterizes nothing (reference/godot/ui.md).
+##
 ## Godot keeps a texture's settings in a .import file next to it, and reimports
 ## when that file changes, so this writes those. Only [params] is touched; an
 ## existing file keeps its uid. Safe to run repeatedly: a file that is already
 ## right is not rewritten, and so is not reimported.
 
 const ASSETS_DIR := "res://assets"
+const HUD_DIR := "res://assets/hud/"
 
+const LOSSLESS := 0
 const VRAM_COMPRESSED := 2
 const NORMAL_MAP_ENABLED := 1
 const NORMAL_MAP_DISABLED := 2
 const ROUGHNESS_DISABLED := 1
 const DETECT_3D_DISABLED := 0
+const SVG_SCALE := 2.0
 ## The lightmap of baked shadows (MapShadows), which is not a colour.
 const SHADOW_MASK := "direct_light_shadows"
 ## The weapons' and kit's models, imported through weapon_model_import.gd,
@@ -45,7 +57,8 @@ func _init() -> void:
 
 	var textures := PackedStringArray()
 	var gltfs := PackedStringArray()
-	_walk(ASSETS_DIR, textures, gltfs)
+	var fonts := PackedStringArray()
+	_walk(ASSETS_DIR, textures, gltfs, fonts)
 
 	# Which images are normal maps is a fact about the materials, not the
 	# filenames: 24 of dust2's 168 normal maps do not have "normal" in the name.
@@ -57,9 +70,12 @@ func _init() -> void:
 	for texture in textures:
 		if _apply(texture, normal_maps.has(texture)):
 			updated += 1
+	for font in fonts:
+		if _apply_font(font):
+			updated += 1
 
-	print("texture import settings: %d textures (%d normal maps), %d updated" % [
-		textures.size(), normal_maps.size(), updated,
+	print("texture import settings: %d textures (%d normal maps), %d fonts, %d updated" % [
+		textures.size(), normal_maps.size(), fonts.size(), updated,
 	])
 
 	var models := 0
@@ -73,18 +89,22 @@ func _init() -> void:
 	quit(0)
 
 
-func _walk(dir_path: String, textures: PackedStringArray, gltfs: PackedStringArray) -> void:
+func _walk(dir_path: String, textures: PackedStringArray, gltfs: PackedStringArray, fonts: PackedStringArray) -> void:
 	for file in DirAccess.get_files_at(dir_path):
 		var extension := file.get_extension().to_lower()
 		if extension in ["png", "jpg", "jpeg", "exr", "hdr"]:
 			textures.append(dir_path.path_join(file))
+		elif extension == "svg" and dir_path.path_join(file).begins_with(HUD_DIR):
+			textures.append(dir_path.path_join(file))
+		elif extension in ["otf", "ttf"]:
+			fonts.append(dir_path.path_join(file))
 		elif extension == "gltf":
 			gltfs.append(dir_path.path_join(file))
 	for subdirectory in DirAccess.get_directories_at(dir_path):
 		# What Godot will not import needs no settings (the light probes).
 		if FileAccess.file_exists(dir_path.path_join(subdirectory).path_join(".gdignore")):
 			continue
-		_walk(dir_path.path_join(subdirectory), textures, gltfs)
+		_walk(dir_path.path_join(subdirectory), textures, gltfs, fonts)
 
 
 func _collect_normal_maps(gltf_path: String, out: Dictionary) -> void:
@@ -120,7 +140,11 @@ func _apply(texture_path: String, is_normal_map: bool) -> bool:
 		"roughness/mode": ROUGHNESS_DISABLED,
 		"detect_3d/compress_to": DETECT_3D_DISABLED,
 	}
-	if texture_path.get_file().get_basename() == SHADOW_MASK:
+	if texture_path.begins_with(HUD_DIR):
+		wanted["compress/mode"] = LOSSLESS
+		if texture_path.get_extension().to_lower() == "svg":
+			wanted["svg/scale"] = SVG_SCALE
+	elif texture_path.get_file().get_basename() == SHADOW_MASK:
 		# Each channel is a different light's shadow, which the default
 		# compression (DXT) squeezes onto one line of colours per block and
 		# so smears one light's edge into another's; BC7 keeps them apart.
@@ -128,16 +152,38 @@ func _apply(texture_path: String, is_normal_map: bool) -> bool:
 		# would paint the others' values over it.
 		wanted["compress/high_quality"] = true
 		wanted["process/fix_alpha_border"] = false
+	return _write(texture_path, "texture", "CompressedTexture2D", wanted)
 
-	var import_path := texture_path + ".import"
+
+## A font as a multichannel signed distance field, with the printable ASCII
+## drawn at import (Godot's "pre-render configuration"; for a distance field
+## the size is the field's own, whatever size the text is drawn at).
+func _apply_font(font_path: String) -> bool:
+	var ascii := []
+	for code in range(32, 127):
+		ascii.append(code)
+	return _write(font_path, "font_data_dynamic", "FontFile", {
+		"multichannel_signed_distance_field": true,
+		"msdf_pixel_range": 8,
+		"msdf_size": 48,
+		"generate_mipmaps": false,
+		"preload": [{"name": "ASCII", "chars": ascii, "glyphs": [], "size": Vector2i(48, 0)}],
+	})
+
+
+## Writes `wanted` into the [params] of `source_path`'s .import file, creating
+## it for `importer` and `type` if Godot has not imported it yet. Returns true
+## if the file had to be written.
+func _write(source_path: String, importer: String, type: String, wanted: Dictionary) -> bool:
+	var import_path := source_path + ".import"
 	var config := ConfigFile.new()
 	var dirty := false
 	if config.load(import_path) != OK:
 		# Not imported yet. This much is enough for Godot to take the settings
 		# from here; it fills in the rest, uid included, when it imports.
-		config.set_value("remap", "importer", "texture")
-		config.set_value("remap", "type", "CompressedTexture2D")
-		config.set_value("deps", "source_file", texture_path)
+		config.set_value("remap", "importer", importer)
+		config.set_value("remap", "type", type)
+		config.set_value("deps", "source_file", source_path)
 		dirty = true
 
 	for key: String in wanted:
