@@ -300,6 +300,16 @@ func _test_the_bomb_carrier() -> void:
 	counter.show_match(state, enemy, null, 0, bomb)
 	_check(carrying.call().is_empty(), "the other side's cards never show it")
 	_check(TeamCounter.C4_WASH == Color8(255, 255, 95), "washed CS2's yellow")
+	_check(
+		Rect2(0.0, 0.0, TeamCounter.CARD, TeamCounter.CARD).encloses(TeamCounter.C4_BOX)
+			and TeamCounter.C4_BOX.position.x > TeamCounter.CARD * 0.5 and TeamCounter.C4_BOX.position.y > TeamCounter.CARD * 0.5,
+		"in the portrait's lower right, as on Sid's CS2 screenshot"
+	)
+	_check(
+		TeamCounter.C4_ROW.position.y > TeamCounter.GUN_ROW.end.y and TeamCounter.C4_ROW.end.y < TeamCounter.TOP + TeamCounter.COLUMN_HEIGHT
+			and absf(TeamCounter.C4_ROW.get_center().x - TeamCounter.CARD * 0.5) < 1.0,
+		"and again in the column, centred under the gun"
+	)
 
 	_check_equal(GameHud.bomb_hint(C4.State.NONE, C4.NOBODY, bomb, you.userid), "",
 		"handed it at a round's start, no hint: the card says so")

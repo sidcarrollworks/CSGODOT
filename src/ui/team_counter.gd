@@ -28,8 +28,9 @@ extends HudElement
 ## down time (warmup, freeze time, its end), or while you are dead, your
 ## team's cards stretch down over a darkening column with each one's money
 ## and best gun (snippet-equipment-info). Whoever on your team carries the
-## bomb has CS2's C4 icon on their card, washed yellow 255,255,95, at all
-## times (round-hud-bots.md A3); the other side's cards never show it.
+## bomb has CS2's C4 icon on their portrait, washed yellow 255,255,95, at
+## all times, and a white one in their column in the down time
+## (round-hud-bots.md A3); the other side's cards never show it.
 ##
 ## GameHud gives it the match each frame; it redraws only when something it
 ## shows changed (HudElement).
@@ -98,11 +99,16 @@ const DEFAULT_PORTRAIT := {"T": Color8(145, 109, 65), "CT": Color8(114, 137, 163
 ## opaque at the top, fading in its curve to nothing at the bottom (the
 ## mask's image read at eighths).
 const FADE_4 := [1.0, 0.953, 0.886, 0.804, 0.702, 0.58, 0.443, 0.141, 0.0]
-## The carrier's C4 icon: CS2's wash (.Avatar__C4), and where on the card.
-## The research has the wash, not the place, so the lower right corner of
-## the portrait, 20 px, is a guess to set beside CS2 (playtest issue 18).
+## The carrier's C4: on the portrait, washed yellow (.Avatar__C4), and
+## again in white in the equipment column under the gun. Both boxes are
+## measured from Sid's CS2 screenshot of 2026-09-26 at 2 px a unit (a
+## carrier's card in a pistol round: playtest-2026-09-25.md issue 18): on
+## the portrait from its top left corner, in the column from the element's
+## top, as MONEY_BASELINE is. That card had no grenades or armour; where
+## the column's C4 goes with them is not yet seen.
 const C4_WASH := Color8(255, 255, 95)
-const C4_BOX := Rect2(CARD - 22.0, CARD - 16.0, 20.0, 14.0)
+const C4_BOX := Rect2(37.0, 33.5, 11.5, 15.5)
+const C4_ROW := Rect2(21.0, 149.0, 11.5, 14.5)
 
 ## One player's card, as the frame's state gives it.
 class Card:
@@ -347,6 +353,14 @@ func _draw_card(on: CanvasItem, x: float, card: Card) -> void:
 			continue
 		var box := Rect2(x + CARD * 0.5 + row_width * 0.5 - (n + 1) * NADE_WIDTH, NADE_ROW_TOP, NADE_WIDTH, ROW)
 		_draw_shadowed(on, icon, box)
+	if card.bomb:
+		var c4 := HudStyle.item_icon("weapon_c4")
+		var row := Rect2(C4_ROW.position + Vector2(x, 0.0), C4_ROW.size)
+		if c4 != null:
+			_draw_shadowed(on, c4, row)
+		else:
+			HudStyle.draw_text(on, Vector2(row.get_center().x, row.end.y - 3.0), "C4", 11, Color.WHITE,
+				HORIZONTAL_ALIGNMENT_CENTER, &"bold", shadow, 1)
 	if card.armour > 0:
 		var armour := HudStyle.icon("hud/teamcounter/armor_helmet" if card.helmet else "hud/teamcounter/armor")
 		if armour != null:
@@ -354,8 +368,9 @@ func _draw_card(on: CanvasItem, x: float, card: Card) -> void:
 			_draw_shadowed(on, armour, Rect2(x + (CARD - 20.0) * 0.5, top, 20.0, ROW))
 
 
-## The carrier's mark: CS2's C4 icon washed yellow, or where it was not
-## extracted (scripts/extract_assets.sh hud), a yellow block lettered C4.
+## The carrier's mark on the portrait: CS2's C4 icon washed yellow, or where
+## it was not extracted (scripts/extract_assets.sh hud), a yellow block
+## lettered C4.
 func _draw_c4(on: CanvasItem, box: Rect2) -> void:
 	var c4 := HudStyle.item_icon("weapon_c4")
 	if c4 != null:
