@@ -15,8 +15,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/idle_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/idle_rifle"
 					},
+					"kind": "Clip",
 					"lasts": 1.0,
 					"name": "idle_stand",
+					"node": 240,
 					"speed": 0.167,
 					"x": 0.0,
 					"y": 0.0
@@ -28,8 +30,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/run_n_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/run_n_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "run_n",
+					"node": 241,
 					"speed": 1.0,
 					"x": 225.0,
 					"y": 0.0
@@ -41,8 +45,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/run_ne_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/run_ne_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "run_ne",
+					"node": 242,
 					"speed": 1.0,
 					"x": 159.0,
 					"y": -159.0
@@ -54,8 +60,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/run_e_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/run_e_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "run_e",
+					"node": 243,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": -225.0
@@ -67,8 +75,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/run_se_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/run_se_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "run_se",
+					"node": 244,
 					"speed": 1.0,
 					"x": -159.0,
 					"y": -159.0
@@ -80,8 +90,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/run_s_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/run_s_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "run_s",
+					"node": 245,
 					"speed": 1.0,
 					"x": -225.0,
 					"y": 0.0
@@ -93,8 +105,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/run_sw_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/run_sw_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "run_sw",
+					"node": 246,
 					"speed": 1.0,
 					"x": -159.0,
 					"y": 159.0
@@ -106,8 +120,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/run_w_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/run_w_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "run_w",
+					"node": 247,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": 225.0
@@ -119,8 +135,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/run_nw_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/run_nw_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "run_nw",
+					"node": 248,
 					"speed": 1.0,
 					"x": 159.0,
 					"y": 159.0
@@ -132,8 +150,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/walk_n_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/walk_n_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "walk_n",
+					"node": 249,
 					"speed": 1.0,
 					"x": 136.0,
 					"y": 0.0
@@ -145,8 +165,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/walk_ne_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/walk_ne_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "walk_ne",
+					"node": 250,
 					"speed": 1.0,
 					"x": 96.0,
 					"y": -96.0
@@ -158,8 +180,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/walk_e_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/walk_e_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "walk_e",
+					"node": 251,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": -136.0
@@ -171,8 +195,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/walk_se_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/walk_se_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "walk_se",
+					"node": 252,
 					"speed": 1.0,
 					"x": -96.0,
 					"y": -96.0
@@ -184,8 +210,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/walk_s_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/walk_s_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "walk_s",
+					"node": 253,
 					"speed": 1.0,
 					"x": -136.0,
 					"y": 0.0
@@ -197,8 +225,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/walk_sw_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/walk_sw_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "walk_sw",
+					"node": 254,
 					"speed": 1.0,
 					"x": -96.0,
 					"y": 96.0
@@ -210,8 +240,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/walk_w_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/walk_w_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "walk_w",
+					"node": 255,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": 136.0
@@ -223,8 +255,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/walk_nw_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/walk_nw_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "walk_nw",
+					"node": 256,
 					"speed": 1.0,
 					"x": 96.0,
 					"y": 96.0
@@ -368,8 +402,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/idle_crouch_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/idle_crouch_rifle"
 					},
+					"kind": "Clip",
 					"lasts": 1.0,
 					"name": "idle_crouch",
+					"node": 259,
 					"speed": 0.167,
 					"x": 0.0,
 					"y": 0.0
@@ -381,8 +417,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/crouch_n_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/crouch_n_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "crouch_n",
+					"node": 260,
 					"speed": 1.0,
 					"x": 96.0,
 					"y": 0.0
@@ -394,8 +432,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/crouch_ne_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/crouch_ne_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "crouch_ne",
+					"node": 261,
 					"speed": 1.0,
 					"x": 67.0,
 					"y": -67.0
@@ -407,8 +447,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/crouch_e_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/crouch_e_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "crouch_e",
+					"node": 262,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": -96.0
@@ -420,8 +462,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/crouch_se_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/crouch_se_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "crouch_se",
+					"node": 263,
 					"speed": 1.0,
 					"x": -67.0,
 					"y": -67.0
@@ -433,8 +477,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/crouch_s_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/crouch_s_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "crouch_s",
+					"node": 264,
 					"speed": 1.0,
 					"x": -96.0,
 					"y": 0.0
@@ -446,8 +492,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/crouch_sw_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/crouch_sw_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "crouch_sw",
+					"node": 265,
 					"speed": 1.0,
 					"x": -67.0,
 					"y": 67.0
@@ -459,8 +507,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/crouch_w_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/crouch_w_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "crouch_w",
+					"node": 266,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": 96.0
@@ -472,8 +522,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/crouch_nw_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/crouch_nw_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "crouch_nw",
+					"node": 267,
 					"speed": 1.0,
 					"x": 67.0,
 					"y": 67.0
@@ -537,8 +589,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_stand_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_stand_rifle"
 					},
+					"kind": "AnimationPose",
 					"lasts": -1.0,
 					"name": "inair_stand2",
+					"node": 694,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": 0.0
@@ -550,8 +604,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_n_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_n_rifle"
 					},
+					"kind": "AnimationPose",
 					"lasts": -1.0,
 					"name": "inair_n2",
+					"node": 696,
 					"speed": 1.0,
 					"x": 225.0,
 					"y": 0.0
@@ -563,8 +619,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_e_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_e_rifle"
 					},
+					"kind": "AnimationPose",
 					"lasts": -1.0,
 					"name": "inair_e2",
+					"node": 697,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": -225.0
@@ -576,8 +634,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_s_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_s_rifle"
 					},
+					"kind": "AnimationPose",
 					"lasts": -1.0,
 					"name": "inair_s2",
+					"node": 698,
 					"speed": 1.0,
 					"x": -225.0,
 					"y": 0.0
@@ -589,8 +649,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_w_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_w_rifle"
 					},
+					"kind": "AnimationPose",
 					"lasts": -1.0,
 					"name": "inair_w2",
+					"node": 699,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": 225.0
@@ -634,8 +696,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_stand_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_stand_rifle"
 					},
+					"kind": "AnimationPose",
 					"lasts": -1.0,
 					"name": "inair_crouch_stand2",
+					"node": 701,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": 0.0
@@ -647,8 +711,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_n_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_n_rifle"
 					},
+					"kind": "AnimationPose",
 					"lasts": -1.0,
 					"name": "inair_crouch_n2",
+					"node": 703,
 					"speed": 1.0,
 					"x": 96.0,
 					"y": 0.0
@@ -660,8 +726,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_e_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_e_rifle"
 					},
+					"kind": "AnimationPose",
 					"lasts": -1.0,
 					"name": "inair_crouch_e2",
+					"node": 704,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": -96.0
@@ -673,8 +741,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_s_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_s_rifle"
 					},
+					"kind": "AnimationPose",
 					"lasts": -1.0,
 					"name": "inair_crouch_s2",
+					"node": 705,
 					"speed": 1.0,
 					"x": -96.0,
 					"y": 0.0
@@ -686,8 +756,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_w_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_w_rifle"
 					},
+					"kind": "AnimationPose",
 					"lasts": -1.0,
 					"name": "inair_crouch_w2",
+					"node": 706,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": 96.0
@@ -731,8 +803,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_stand_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_stand_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "InAir_stand",
+					"node": 709,
 					"speed": 0.5,
 					"x": 0.0,
 					"y": 0.0
@@ -744,8 +818,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_n_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_n_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "InAir_n",
+					"node": 710,
 					"speed": 0.5,
 					"x": 225.0,
 					"y": 0.0
@@ -757,8 +833,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_e_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_e_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "InAir_e",
+					"node": 711,
 					"speed": 0.5,
 					"x": 0.0,
 					"y": -225.0
@@ -770,8 +848,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_s_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_s_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "InAir_s",
+					"node": 712,
 					"speed": 0.5,
 					"x": -225.0,
 					"y": 0.0
@@ -783,8 +863,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_w_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_w_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "InAir_w",
+					"node": 713,
 					"speed": 0.5,
 					"x": 0.0,
 					"y": 225.0
@@ -828,8 +910,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_stand_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_stand_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "InAir_crouch_stand",
+					"node": 715,
 					"speed": 0.5,
 					"x": 0.0,
 					"y": 0.0
@@ -841,8 +925,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_n_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_n_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "InAir_crouch_n",
+					"node": 716,
 					"speed": 0.5,
 					"x": 96.0,
 					"y": 0.0
@@ -854,8 +940,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_e_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_e_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "InAir_crouch_e",
+					"node": 717,
 					"speed": 0.5,
 					"x": 0.0,
 					"y": -96.0
@@ -867,8 +955,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_s_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_s_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "InAir_crouch_s",
+					"node": 718,
 					"speed": 0.5,
 					"x": -96.0,
 					"y": 0.0
@@ -880,8 +970,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_w_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_w_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "InAir_crouch_w",
+					"node": 719,
 					"speed": 0.5,
 					"x": 0.0,
 					"y": 96.0
@@ -925,8 +1017,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/jump_stand_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/jump_stand_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "jump_stand",
+					"node": 725,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": 0.0
@@ -938,8 +1032,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/jump_n_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/jump_n_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "jump_n",
+					"node": 726,
 					"speed": 1.0,
 					"x": 225.0,
 					"y": 0.0
@@ -951,8 +1047,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/jump_e_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/jump_e_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "jump_e",
+					"node": 727,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": -225.0
@@ -964,8 +1062,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/jump_s_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/jump_s_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "jump_s",
+					"node": 728,
 					"speed": 1.0,
 					"x": -225.0,
 					"y": 0.0
@@ -977,8 +1077,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/jump_w_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/jump_w_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "jump_w",
+					"node": 729,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": 225.0
@@ -1022,8 +1124,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/jump_crouch_stand_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/jump_crouch_stand_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "jump_crouch_stand",
+					"node": 731,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": 0.0
@@ -1035,8 +1139,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/jump_crouch_n_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/jump_crouch_n_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "jump_crouch_n",
+					"node": 732,
 					"speed": 1.0,
 					"x": 96.0,
 					"y": 0.0
@@ -1048,8 +1154,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/jump_crouch_e_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/jump_crouch_e_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "jump_crouch_e",
+					"node": 733,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": -96.0
@@ -1061,8 +1169,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/jump_crouch_s_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/jump_crouch_s_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "jump_crouch_s",
+					"node": 734,
 					"speed": 1.0,
 					"x": -96.0,
 					"y": 0.0
@@ -1074,8 +1184,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/jump_crouch_w_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/jump_crouch_w_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "jump_crouch_w",
+					"node": 735,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": 96.0
@@ -1119,8 +1231,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_stand_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_stand_rifle"
 					},
+					"kind": "AnimationPose",
 					"lasts": -1.0,
 					"name": "inair_stand2",
+					"node": 747,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": 0.0
@@ -1132,8 +1246,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_n_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_n_rifle"
 					},
+					"kind": "AnimationPose",
 					"lasts": -1.0,
 					"name": "inair_n2",
+					"node": 749,
 					"speed": 1.0,
 					"x": 225.0,
 					"y": 0.0
@@ -1145,8 +1261,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_e_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_e_rifle"
 					},
+					"kind": "AnimationPose",
 					"lasts": -1.0,
 					"name": "inair_e2",
+					"node": 750,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": -225.0
@@ -1158,8 +1276,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_s_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_s_rifle"
 					},
+					"kind": "AnimationPose",
 					"lasts": -1.0,
 					"name": "inair_s2",
+					"node": 751,
 					"speed": 1.0,
 					"x": -225.0,
 					"y": 0.0
@@ -1171,8 +1291,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_w_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_w_rifle"
 					},
+					"kind": "AnimationPose",
 					"lasts": -1.0,
 					"name": "inair_w2",
+					"node": 752,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": 225.0
@@ -1216,8 +1338,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_stand_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_stand_rifle"
 					},
+					"kind": "AnimationPose",
 					"lasts": -1.0,
 					"name": "inair_crouch_stand2",
+					"node": 754,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": 0.0
@@ -1229,8 +1353,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_n_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_n_rifle"
 					},
+					"kind": "AnimationPose",
 					"lasts": -1.0,
 					"name": "inair_crouch_n2",
+					"node": 756,
 					"speed": 1.0,
 					"x": 96.0,
 					"y": 0.0
@@ -1242,8 +1368,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_e_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_e_rifle"
 					},
+					"kind": "AnimationPose",
 					"lasts": -1.0,
 					"name": "inair_crouch_e2",
+					"node": 757,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": -96.0
@@ -1255,8 +1383,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_s_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_s_rifle"
 					},
+					"kind": "AnimationPose",
 					"lasts": -1.0,
 					"name": "inair_crouch_s2",
+					"node": 758,
 					"speed": 1.0,
 					"x": -96.0,
 					"y": 0.0
@@ -1268,8 +1398,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_w_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_w_rifle"
 					},
+					"kind": "AnimationPose",
 					"lasts": -1.0,
 					"name": "inair_crouch_w2",
+					"node": 759,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": 96.0
@@ -1313,8 +1445,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_stand_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_stand_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "InAir_stand",
+					"node": 762,
 					"speed": 0.5,
 					"x": 0.0,
 					"y": 0.0
@@ -1326,8 +1460,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_n_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_n_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "InAir_n",
+					"node": 763,
 					"speed": 0.5,
 					"x": 225.0,
 					"y": 0.0
@@ -1339,8 +1475,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_e_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_e_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "InAir_e",
+					"node": 764,
 					"speed": 0.5,
 					"x": 0.0,
 					"y": -225.0
@@ -1352,8 +1490,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_s_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_s_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "InAir_s",
+					"node": 765,
 					"speed": 0.5,
 					"x": -225.0,
 					"y": 0.0
@@ -1365,8 +1505,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_w_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_w_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "InAir_w",
+					"node": 766,
 					"speed": 0.5,
 					"x": 0.0,
 					"y": 225.0
@@ -1410,8 +1552,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_stand_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_stand_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "InAir_crouch_stand",
+					"node": 768,
 					"speed": 0.5,
 					"x": 0.0,
 					"y": 0.0
@@ -1423,8 +1567,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_n_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_n_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "InAir_crouch_n",
+					"node": 769,
 					"speed": 0.5,
 					"x": 96.0,
 					"y": 0.0
@@ -1436,8 +1582,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_e_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_e_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "InAir_crouch_e",
+					"node": 770,
 					"speed": 0.5,
 					"x": 0.0,
 					"y": -96.0
@@ -1449,8 +1597,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_s_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_s_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "InAir_crouch_s",
+					"node": 771,
 					"speed": 0.5,
 					"x": -96.0,
 					"y": 0.0
@@ -1462,8 +1612,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/inair_crouch_w_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/inair_crouch_w_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "InAir_crouch_w",
+					"node": 772,
 					"speed": 0.5,
 					"x": 0.0,
 					"y": 96.0
@@ -1507,8 +1659,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/jump_stand_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/jump_stand_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "jump_stand",
+					"node": 776,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": 0.0
@@ -1520,8 +1674,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/jump_n_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/jump_n_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "jump_n",
+					"node": 777,
 					"speed": 1.0,
 					"x": 225.0,
 					"y": 0.0
@@ -1533,8 +1689,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/jump_e_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/jump_e_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "jump_e",
+					"node": 778,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": -225.0
@@ -1546,8 +1704,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/jump_s_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/jump_s_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "jump_s",
+					"node": 779,
 					"speed": 1.0,
 					"x": -225.0,
 					"y": 0.0
@@ -1559,8 +1719,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/jump_w_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/jump_w_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "jump_w",
+					"node": 780,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": 225.0
@@ -1604,8 +1766,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/jump_crouch_stand_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/jump_crouch_stand_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "jump_crouch_stand",
+					"node": 782,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": 0.0
@@ -1617,8 +1781,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/jump_crouch_n_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/jump_crouch_n_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "jump_crouch_n",
+					"node": 783,
 					"speed": 1.0,
 					"x": 96.0,
 					"y": 0.0
@@ -1630,8 +1796,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/jump_crouch_e_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/jump_crouch_e_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "jump_crouch_e",
+					"node": 784,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": -96.0
@@ -1643,8 +1811,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/jump_crouch_s_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/jump_crouch_s_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "jump_crouch_s",
+					"node": 785,
 					"speed": 1.0,
 					"x": -96.0,
 					"y": 0.0
@@ -1656,8 +1826,10 @@
 						"pistol": "animation/anims/world/pistol/_default_pistol/jump_crouch_w_pistol",
 						"rifle": "animation/anims/world/rifle/_default_rifle/jump_crouch_w_rifle"
 					},
+					"kind": "Clip",
 					"lasts": -1.0,
 					"name": "jump_crouch_w",
+					"node": 786,
 					"speed": 1.0,
 					"x": 0.0,
 					"y": 96.0
@@ -1687,8 +1859,1086 @@
 			]
 		}
 	],
-	"cs2": "CS2 1.41.8.3",
+	"cs2": "CS2 1.41.8.5",
 	"source": "animation/graphs/worldmodel/worldmodel_locomotion.vnmgraph",
+	"values": [
+		{
+			"input": "air_height_above_ground",
+			"input_node": 3,
+			"kind": "FloatCurve",
+			"node": 691,
+			"path": "SM/InAir/SM/landing_blend/Float Curve",
+			"points": [
+				[
+					10.0,
+					0.0
+				],
+				[
+					40.0,
+					50.0
+				]
+			],
+			"tangents": [
+				{
+					"m_nIncomingTangent": "CURVE_TANGENT_LINEAR",
+					"m_nOutgoingTangent": "CURVE_TANGENT_LINEAR"
+				},
+				{
+					"m_nIncomingTangent": "CURVE_TANGENT_LINEAR",
+					"m_nOutgoingTangent": "CURVE_TANGENT_LINEAR"
+				}
+			]
+		},
+		{
+			"input": "air_height_above_ground",
+			"input_node": 3,
+			"kind": "FloatCurve",
+			"node": 695,
+			"path": "SM/InAir/SM/landing_blend/Float Curve",
+			"points": [
+				[
+					0.0,
+					1.0
+				],
+				[
+					5.81295013427734,
+					1.0
+				],
+				[
+					50.0,
+					0.0
+				]
+			],
+			"tangents": [
+				{
+					"m_nIncomingTangent": "CURVE_TANGENT_LINEAR",
+					"m_nOutgoingTangent": "CURVE_TANGENT_LINEAR"
+				},
+				{
+					"m_nIncomingTangent": "CURVE_TANGENT_LINEAR",
+					"m_nOutgoingTangent": "CURVE_TANGENT_LINEAR"
+				},
+				{
+					"m_nIncomingTangent": "CURVE_TANGENT_LINEAR",
+					"m_nOutgoingTangent": "CURVE_TANGENT_LINEAR"
+				}
+			]
+		},
+		{
+			"input": "air_height_above_ground",
+			"input_node": 3,
+			"kind": "FloatCurve",
+			"node": 702,
+			"path": "SM/InAir/SM/landing_blend/Float Curve",
+			"points": [
+				[
+					2.53999996185303,
+					1.0
+				],
+				[
+					4.26999998092651,
+					0.920000016689301
+				],
+				[
+					9.25,
+					0.829999983310699
+				],
+				[
+					15.5299997329712,
+					0.660000026226044
+				],
+				[
+					50.0,
+					0.0
+				]
+			],
+			"tangents": [
+				{
+					"m_nIncomingTangent": "CURVE_TANGENT_FREE",
+					"m_nOutgoingTangent": "CURVE_TANGENT_SPLINE"
+				},
+				{
+					"m_nIncomingTangent": "CURVE_TANGENT_SPLINE",
+					"m_nOutgoingTangent": "CURVE_TANGENT_SPLINE"
+				},
+				{
+					"m_nIncomingTangent": "CURVE_TANGENT_LINEAR",
+					"m_nOutgoingTangent": "CURVE_TANGENT_LINEAR"
+				},
+				{
+					"m_nIncomingTangent": "CURVE_TANGENT_LINEAR",
+					"m_nOutgoingTangent": "CURVE_TANGENT_LINEAR"
+				},
+				{
+					"m_nIncomingTangent": "CURVE_TANGENT_LINEAR",
+					"m_nOutgoingTangent": "CURVE_TANGENT_LINEAR"
+				}
+			]
+		},
+		{
+			"input": "air_height_above_ground",
+			"input_node": 3,
+			"kind": "FloatCurve",
+			"node": 744,
+			"path": "SM/landing_blend/Float Curve",
+			"points": [
+				[
+					10.0,
+					0.0
+				],
+				[
+					40.0,
+					50.0
+				]
+			],
+			"tangents": [
+				{
+					"m_nIncomingTangent": "CURVE_TANGENT_LINEAR",
+					"m_nOutgoingTangent": "CURVE_TANGENT_LINEAR"
+				},
+				{
+					"m_nIncomingTangent": "CURVE_TANGENT_LINEAR",
+					"m_nOutgoingTangent": "CURVE_TANGENT_LINEAR"
+				}
+			]
+		},
+		{
+			"input": "air_height_above_ground",
+			"input_node": 3,
+			"kind": "FloatCurve",
+			"node": 748,
+			"path": "SM/landing_blend/Float Curve",
+			"points": [
+				[
+					0.0,
+					1.0
+				],
+				[
+					5.81295013427734,
+					1.0
+				],
+				[
+					50.0,
+					0.0
+				]
+			],
+			"tangents": [
+				{
+					"m_nIncomingTangent": "CURVE_TANGENT_LINEAR",
+					"m_nOutgoingTangent": "CURVE_TANGENT_LINEAR"
+				},
+				{
+					"m_nIncomingTangent": "CURVE_TANGENT_LINEAR",
+					"m_nOutgoingTangent": "CURVE_TANGENT_LINEAR"
+				},
+				{
+					"m_nIncomingTangent": "CURVE_TANGENT_LINEAR",
+					"m_nOutgoingTangent": "CURVE_TANGENT_LINEAR"
+				}
+			]
+		},
+		{
+			"input": "air_height_above_ground",
+			"input_node": 3,
+			"kind": "FloatCurve",
+			"node": 755,
+			"path": "SM/landing_blend/Float Curve",
+			"points": [
+				[
+					2.53999996185303,
+					1.0
+				],
+				[
+					4.26999998092651,
+					0.920000016689301
+				],
+				[
+					9.25,
+					0.829999983310699
+				],
+				[
+					15.5299997329712,
+					0.660000026226044
+				],
+				[
+					50.0,
+					0.0
+				]
+			],
+			"tangents": [
+				{
+					"m_nIncomingTangent": "CURVE_TANGENT_FREE",
+					"m_nOutgoingTangent": "CURVE_TANGENT_SPLINE"
+				},
+				{
+					"m_nIncomingTangent": "CURVE_TANGENT_SPLINE",
+					"m_nOutgoingTangent": "CURVE_TANGENT_SPLINE"
+				},
+				{
+					"m_nIncomingTangent": "CURVE_TANGENT_LINEAR",
+					"m_nOutgoingTangent": "CURVE_TANGENT_LINEAR"
+				},
+				{
+					"m_nIncomingTangent": "CURVE_TANGENT_LINEAR",
+					"m_nOutgoingTangent": "CURVE_TANGENT_LINEAR"
+				},
+				{
+					"m_nIncomingTangent": "CURVE_TANGENT_LINEAR",
+					"m_nOutgoingTangent": "CURVE_TANGENT_LINEAR"
+				}
+			]
+		},
+		{
+			"damping": 1.0,
+			"hertz": 5.0,
+			"input": "a curve of air_height_above_ground (10 to 0, 40 to 50)",
+			"input_node": 691,
+			"kind": "FloatSpring",
+			"node": 690,
+			"path": "SM/InAir/SM/landing_blend/Float Spring",
+			"start": 50.0,
+			"uses_start": true
+		},
+		{
+			"damping": 1.2,
+			"hertz": 5.0,
+			"input": "a curve of air_height_above_ground (10 to 0, 40 to 50)",
+			"input_node": 744,
+			"kind": "FloatSpring",
+			"node": 743,
+			"path": "SM/landing_blend/Float Spring",
+			"start": 50.0,
+			"uses_start": true
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/idle_crouch_rifle",
+			"fixed": 0.0,
+			"frames": true,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": -1,
+			"kind": "AnimationPose",
+			"node": 42,
+			"path": "SM/Ground/Standing/PlantAndTurn/SM/E2W/idle_crouch",
+			"time": "at 0",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/idle_crouch_rifle",
+			"fixed": 0.0,
+			"frames": true,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": -1,
+			"kind": "AnimationPose",
+			"node": 60,
+			"path": "SM/Ground/Standing/PlantAndTurn/SM/W2E/idle_crouch",
+			"time": "at 0",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/idle_crouch_rifle",
+			"fixed": 0.0,
+			"frames": true,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": -1,
+			"kind": "AnimationPose",
+			"node": 86,
+			"path": "SM/Ground/Standing/PlantAndTurn/SM/N2S_complex/SM/N2S/idle_crouch",
+			"time": "at 0",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/idle_crouch_rifle",
+			"fixed": 0.0,
+			"frames": true,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": -1,
+			"kind": "AnimationPose",
+			"node": 119,
+			"path": "SM/Ground/Standing/PlantAndTurn/SM/N2S_complex/SM/Force_pose/SM/N2S_force_vanilla_response/idle_crouch",
+			"time": "at 0",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/idle_crouch_rifle",
+			"fixed": 0.0,
+			"frames": true,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": -1,
+			"kind": "AnimationPose",
+			"node": 137,
+			"path": "SM/Ground/Standing/PlantAndTurn/SM/N2S_complex/SM/Force_pose/SM/N2S_force_crossleg_response/idle_crouch",
+			"time": "at 0",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/idle_crouch_rifle",
+			"fixed": 0.0,
+			"frames": true,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": -1,
+			"kind": "AnimationPose",
+			"node": 164,
+			"path": "SM/Ground/Standing/PlantAndTurn/SM/S2N_complex/SM/S2N/idle_crouch",
+			"time": "at 0",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/idle_crouch_rifle",
+			"fixed": 0.0,
+			"frames": true,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": -1,
+			"kind": "AnimationPose",
+			"node": 185,
+			"path": "SM/Ground/Standing/PlantAndTurn/SM/S2N_complex/SM/force_pose/SM/S2N_force_crossleg_response/idle_crouch",
+			"time": "at 0",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/idle_crouch_rifle",
+			"fixed": 0.0,
+			"frames": true,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": -1,
+			"kind": "AnimationPose",
+			"node": 203,
+			"path": "SM/Ground/Standing/PlantAndTurn/SM/S2N_complex/SM/force_pose/SM/S2N_force_vanilla_response/idle_crouch",
+			"time": "at 0",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/idle_rifle",
+			"fixed": 0.0,
+			"frames": true,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": -1,
+			"kind": "AnimationPose",
+			"node": 221,
+			"path": "SM/Ground/Standing/Idle/SM/default/idle_stand",
+			"time": "at 0",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/idle_crouch_rifle",
+			"fixed": 0.0,
+			"frames": true,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": -1,
+			"kind": "AnimationPose",
+			"node": 222,
+			"path": "SM/Ground/Standing/Idle/SM/default/idle_crouch",
+			"time": "at 0",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/idle_rifle",
+			"fixed": 0.0,
+			"frames": true,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": -1,
+			"kind": "AnimationPose",
+			"node": 227,
+			"path": "SM/Ground/Standing/Idle/SM/bomb_plant/idle_stand",
+			"time": "at 0",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/idle_crouch_rifle",
+			"fixed": 0.0,
+			"frames": true,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": -1,
+			"kind": "AnimationPose",
+			"node": 228,
+			"path": "SM/Ground/Standing/Idle/SM/bomb_plant/idle_crouch",
+			"time": "at 0",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/idle_crouch_rifle",
+			"fixed": 0.0,
+			"frames": true,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": -1,
+			"kind": "AnimationPose",
+			"node": 347,
+			"path": "SM/Ground/Standing/Starts/idle_crouch",
+			"time": "at 0",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/idle_crouch_rifle",
+			"fixed": 0.0,
+			"frames": true,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": -1,
+			"kind": "AnimationPose",
+			"node": 367,
+			"path": "SM/Ground/Standing/PlantAndTurnWalks/SM/E2W/idle_crouch",
+			"time": "at 0",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/idle_crouch_rifle",
+			"fixed": 0.0,
+			"frames": true,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": -1,
+			"kind": "AnimationPose",
+			"node": 385,
+			"path": "SM/Ground/Standing/PlantAndTurnWalks/SM/W2E/idle_crouch",
+			"time": "at 0",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/idle_crouch_rifle",
+			"fixed": 0.0,
+			"frames": true,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": -1,
+			"kind": "AnimationPose",
+			"node": 411,
+			"path": "SM/Ground/Standing/PlantAndTurnWalks/SM/N2S_complex/SM/N2S/idle_crouch",
+			"time": "at 0",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/idle_crouch_rifle",
+			"fixed": 0.0,
+			"frames": true,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": -1,
+			"kind": "AnimationPose",
+			"node": 444,
+			"path": "SM/Ground/Standing/PlantAndTurnWalks/SM/N2S_complex/SM/Force_pose/SM/N2S_force_vanilla_response/idle_crouch",
+			"time": "at 0",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/idle_crouch_rifle",
+			"fixed": 0.0,
+			"frames": true,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": -1,
+			"kind": "AnimationPose",
+			"node": 462,
+			"path": "SM/Ground/Standing/PlantAndTurnWalks/SM/N2S_complex/SM/Force_pose/SM/N2S_force_crossleg_response/idle_crouch",
+			"time": "at 0",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/idle_crouch_rifle",
+			"fixed": 0.0,
+			"frames": true,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": -1,
+			"kind": "AnimationPose",
+			"node": 489,
+			"path": "SM/Ground/Standing/PlantAndTurnWalks/SM/S2N_complex/SM/S2N/idle_crouch",
+			"time": "at 0",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/idle_crouch_rifle",
+			"fixed": 0.0,
+			"frames": true,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": -1,
+			"kind": "AnimationPose",
+			"node": 510,
+			"path": "SM/Ground/Standing/PlantAndTurnWalks/SM/S2N_complex/SM/force_pose/SM/S2N_force_crossleg_response/idle_crouch",
+			"time": "at 0",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/idle_crouch_rifle",
+			"fixed": 0.0,
+			"frames": true,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": -1,
+			"kind": "AnimationPose",
+			"node": 528,
+			"path": "SM/Ground/Standing/PlantAndTurnWalks/SM/S2N_complex/SM/force_pose/SM/S2N_force_vanilla_response/idle_crouch",
+			"time": "at 0",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/ladder_facing_fast_neg135_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 13,
+			"kind": "AnimationPose",
+			"node": 634,
+			"path": "SM/Ladder/Standing/front/Neg135",
+			"time": "at the share of the clip given by ladder_cycle (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/ladder_facing_fast_neg90_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 13,
+			"kind": "AnimationPose",
+			"node": 635,
+			"path": "SM/Ladder/Standing/front/Neg90",
+			"time": "at the share of the clip given by ladder_cycle (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/ladder_facing_fast_neg45_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 13,
+			"kind": "AnimationPose",
+			"node": 636,
+			"path": "SM/Ladder/Standing/front/Neg45",
+			"time": "at the share of the clip given by ladder_cycle (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/ladder_facing_fast_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 13,
+			"kind": "AnimationPose",
+			"node": 637,
+			"path": "SM/Ladder/Standing/front/0",
+			"time": "at the share of the clip given by ladder_cycle (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/ladder_facing_fast_45_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 13,
+			"kind": "AnimationPose",
+			"node": 638,
+			"path": "SM/Ladder/Standing/front/45",
+			"time": "at the share of the clip given by ladder_cycle (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/ladder_facing_fast_90_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 13,
+			"kind": "AnimationPose",
+			"node": 639,
+			"path": "SM/Ladder/Standing/front/90",
+			"time": "at the share of the clip given by ladder_cycle (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/ladder_facing_fast_135_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 13,
+			"kind": "AnimationPose",
+			"node": 640,
+			"path": "SM/Ladder/Standing/front/135",
+			"time": "at the share of the clip given by ladder_cycle (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/ladder_back_fast_135_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 13,
+			"kind": "AnimationPose",
+			"node": 644,
+			"path": "SM/Ladder/Standing/back/135",
+			"time": "at the share of the clip given by ladder_cycle (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/ladder_back_fast_90_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 13,
+			"kind": "AnimationPose",
+			"node": 645,
+			"path": "SM/Ladder/Standing/back/90",
+			"time": "at the share of the clip given by ladder_cycle (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/ladder_back_fast_45_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 13,
+			"kind": "AnimationPose",
+			"node": 646,
+			"path": "SM/Ladder/Standing/back/45",
+			"time": "at the share of the clip given by ladder_cycle (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/ladder_back_fast_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 13,
+			"kind": "AnimationPose",
+			"node": 647,
+			"path": "SM/Ladder/Standing/back/0",
+			"time": "at the share of the clip given by ladder_cycle (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/ladder_back_fast_neg45_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 13,
+			"kind": "AnimationPose",
+			"node": 648,
+			"path": "SM/Ladder/Standing/back/Neg45",
+			"time": "at the share of the clip given by ladder_cycle (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/ladder_back_fast_neg90_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 13,
+			"kind": "AnimationPose",
+			"node": 649,
+			"path": "SM/Ladder/Standing/back/Neg90",
+			"time": "at the share of the clip given by ladder_cycle (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/ladder_back_fast_neg135_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 13,
+			"kind": "AnimationPose",
+			"node": 650,
+			"path": "SM/Ladder/Standing/back/Neg135",
+			"time": "at the share of the clip given by ladder_cycle (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/ladder_facing_crouch_neg135_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 13,
+			"kind": "AnimationPose",
+			"node": 661,
+			"path": "SM/Ladder/Crouched/front/Neg135",
+			"time": "at the share of the clip given by ladder_cycle (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/ladder_facing_crouch_neg90_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 13,
+			"kind": "AnimationPose",
+			"node": 662,
+			"path": "SM/Ladder/Crouched/front/Neg90",
+			"time": "at the share of the clip given by ladder_cycle (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/ladder_facing_crouch_neg45_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 13,
+			"kind": "AnimationPose",
+			"node": 663,
+			"path": "SM/Ladder/Crouched/front/Neg45",
+			"time": "at the share of the clip given by ladder_cycle (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/ladder_facing_crouch_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 13,
+			"kind": "AnimationPose",
+			"node": 664,
+			"path": "SM/Ladder/Crouched/front/0",
+			"time": "at the share of the clip given by ladder_cycle (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/ladder_facing_crouch_45_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 13,
+			"kind": "AnimationPose",
+			"node": 665,
+			"path": "SM/Ladder/Crouched/front/45",
+			"time": "at the share of the clip given by ladder_cycle (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/ladder_facing_crouch_90_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 13,
+			"kind": "AnimationPose",
+			"node": 666,
+			"path": "SM/Ladder/Crouched/front/90",
+			"time": "at the share of the clip given by ladder_cycle (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/ladder_facing_crouch_135_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 13,
+			"kind": "AnimationPose",
+			"node": 667,
+			"path": "SM/Ladder/Crouched/front/135",
+			"time": "at the share of the clip given by ladder_cycle (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/ladder_back_crouch_135_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 13,
+			"kind": "AnimationPose",
+			"node": 671,
+			"path": "SM/Ladder/Crouched/back/135",
+			"time": "at the share of the clip given by ladder_cycle (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/ladder_back_crouch_90_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 13,
+			"kind": "AnimationPose",
+			"node": 672,
+			"path": "SM/Ladder/Crouched/back/90",
+			"time": "at the share of the clip given by ladder_cycle (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/ladder_back_crouch_45_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 13,
+			"kind": "AnimationPose",
+			"node": 673,
+			"path": "SM/Ladder/Crouched/back/45",
+			"time": "at the share of the clip given by ladder_cycle (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/ladder_back_crouch_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 13,
+			"kind": "AnimationPose",
+			"node": 674,
+			"path": "SM/Ladder/Crouched/back/0",
+			"time": "at the share of the clip given by ladder_cycle (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/ladder_back_crouch_neg45_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 13,
+			"kind": "AnimationPose",
+			"node": 675,
+			"path": "SM/Ladder/Crouched/back/neg45",
+			"time": "at the share of the clip given by ladder_cycle (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/ladder_back_crouch_neg90_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 13,
+			"kind": "AnimationPose",
+			"node": 676,
+			"path": "SM/Ladder/Crouched/back/Neg90",
+			"time": "at the share of the clip given by ladder_cycle (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/ladder_back_crouch_neg135_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 13,
+			"kind": "AnimationPose",
+			"node": 677,
+			"path": "SM/Ladder/Crouched/back/Neg135",
+			"time": "at the share of the clip given by ladder_cycle (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/inair_stand_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 695,
+			"kind": "AnimationPose",
+			"node": 694,
+			"path": "SM/InAir/SM/landing_blend/inair_stand2",
+			"time": "at the share of the clip given by a curve of air_height_above_ground (0 to 1, 5.813 to 1, 50 to 0) (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/inair_n_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 695,
+			"kind": "AnimationPose",
+			"node": 696,
+			"path": "SM/InAir/SM/landing_blend/inair_n2",
+			"time": "at the share of the clip given by a curve of air_height_above_ground (0 to 1, 5.813 to 1, 50 to 0) (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/inair_e_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 695,
+			"kind": "AnimationPose",
+			"node": 697,
+			"path": "SM/InAir/SM/landing_blend/inair_e2",
+			"time": "at the share of the clip given by a curve of air_height_above_ground (0 to 1, 5.813 to 1, 50 to 0) (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/inair_s_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 695,
+			"kind": "AnimationPose",
+			"node": 698,
+			"path": "SM/InAir/SM/landing_blend/inair_s2",
+			"time": "at the share of the clip given by a curve of air_height_above_ground (0 to 1, 5.813 to 1, 50 to 0) (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/inair_w_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 695,
+			"kind": "AnimationPose",
+			"node": 699,
+			"path": "SM/InAir/SM/landing_blend/inair_w2",
+			"time": "at the share of the clip given by a curve of air_height_above_ground (0 to 1, 5.813 to 1, 50 to 0) (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/inair_crouch_stand_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 702,
+			"kind": "AnimationPose",
+			"node": 701,
+			"path": "SM/InAir/SM/landing_blend/inair_crouch_stand2",
+			"time": "at the share of the clip given by a curve of air_height_above_ground (2.54 to 1, 4.27 to 0.92, 9.25 to 0.83, 15.53 to 0.66, 50 to 0) (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/inair_crouch_n_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 702,
+			"kind": "AnimationPose",
+			"node": 703,
+			"path": "SM/InAir/SM/landing_blend/inair_crouch_n2",
+			"time": "at the share of the clip given by a curve of air_height_above_ground (2.54 to 1, 4.27 to 0.92, 9.25 to 0.83, 15.53 to 0.66, 50 to 0) (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/inair_crouch_e_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 702,
+			"kind": "AnimationPose",
+			"node": 704,
+			"path": "SM/InAir/SM/landing_blend/inair_crouch_e2",
+			"time": "at the share of the clip given by a curve of air_height_above_ground (2.54 to 1, 4.27 to 0.92, 9.25 to 0.83, 15.53 to 0.66, 50 to 0) (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/inair_crouch_s_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 702,
+			"kind": "AnimationPose",
+			"node": 705,
+			"path": "SM/InAir/SM/landing_blend/inair_crouch_s2",
+			"time": "at the share of the clip given by a curve of air_height_above_ground (2.54 to 1, 4.27 to 0.92, 9.25 to 0.83, 15.53 to 0.66, 50 to 0) (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/inair_crouch_w_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 702,
+			"kind": "AnimationPose",
+			"node": 706,
+			"path": "SM/InAir/SM/landing_blend/inair_crouch_w2",
+			"time": "at the share of the clip given by a curve of air_height_above_ground (2.54 to 1, 4.27 to 0.92, 9.25 to 0.83, 15.53 to 0.66, 50 to 0) (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/inair_stand_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 748,
+			"kind": "AnimationPose",
+			"node": 747,
+			"path": "SM/landing_blend/inair_stand2",
+			"time": "at the share of the clip given by a curve of air_height_above_ground (0 to 1, 5.813 to 1, 50 to 0) (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/inair_n_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 748,
+			"kind": "AnimationPose",
+			"node": 749,
+			"path": "SM/landing_blend/inair_n2",
+			"time": "at the share of the clip given by a curve of air_height_above_ground (0 to 1, 5.813 to 1, 50 to 0) (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/inair_e_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 748,
+			"kind": "AnimationPose",
+			"node": 750,
+			"path": "SM/landing_blend/inair_e2",
+			"time": "at the share of the clip given by a curve of air_height_above_ground (0 to 1, 5.813 to 1, 50 to 0) (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/inair_s_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 748,
+			"kind": "AnimationPose",
+			"node": 751,
+			"path": "SM/landing_blend/inair_s2",
+			"time": "at the share of the clip given by a curve of air_height_above_ground (0 to 1, 5.813 to 1, 50 to 0) (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/inair_w_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 748,
+			"kind": "AnimationPose",
+			"node": 752,
+			"path": "SM/landing_blend/inair_w2",
+			"time": "at the share of the clip given by a curve of air_height_above_ground (0 to 1, 5.813 to 1, 50 to 0) (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/inair_crouch_stand_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 755,
+			"kind": "AnimationPose",
+			"node": 754,
+			"path": "SM/landing_blend/inair_crouch_stand2",
+			"time": "at the share of the clip given by a curve of air_height_above_ground (2.54 to 1, 4.27 to 0.92, 9.25 to 0.83, 15.53 to 0.66, 50 to 0) (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/inair_crouch_n_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 755,
+			"kind": "AnimationPose",
+			"node": 756,
+			"path": "SM/landing_blend/inair_crouch_n2",
+			"time": "at the share of the clip given by a curve of air_height_above_ground (2.54 to 1, 4.27 to 0.92, 9.25 to 0.83, 15.53 to 0.66, 50 to 0) (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/inair_crouch_e_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 755,
+			"kind": "AnimationPose",
+			"node": 757,
+			"path": "SM/landing_blend/inair_crouch_e2",
+			"time": "at the share of the clip given by a curve of air_height_above_ground (2.54 to 1, 4.27 to 0.92, 9.25 to 0.83, 15.53 to 0.66, 50 to 0) (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/inair_crouch_s_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 755,
+			"kind": "AnimationPose",
+			"node": 758,
+			"path": "SM/landing_blend/inair_crouch_s2",
+			"time": "at the share of the clip given by a curve of air_height_above_ground (2.54 to 1, 4.27 to 0.92, 9.25 to 0.83, 15.53 to 0.66, 50 to 0) (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		},
+		{
+			"clip": "animation/anims/world/rifle/_default_rifle/inair_crouch_w_rifle",
+			"fixed": 0.0,
+			"frames": false,
+			"from": 340282346638528820000000000000000000000.0,
+			"input_node": 755,
+			"kind": "AnimationPose",
+			"node": 759,
+			"path": "SM/landing_blend/inair_crouch_w2",
+			"time": "at the share of the clip given by a curve of air_height_above_ground (2.54 to 1, 4.27 to 0.92, 9.25 to 0.83, 15.53 to 0.66, 50 to 0) (340282346638528820000000000000000000000.0 to -340282346638528820000000000000000000000.0)",
+			"to": -340282346638528820000000000000000000000.0
+		}
+	],
 	"variations": [
 		"default",
 		"knife",
