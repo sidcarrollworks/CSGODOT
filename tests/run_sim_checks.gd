@@ -850,10 +850,12 @@ func _test_the_hand() -> void:
 		var aim :=PlayerInput.aim_direction(player.yaw_degrees, player.pitch_degrees)
 		var went := dropped.position - dropped.previous_position
 		var across := Vector2(went.x, went.z).length() / DT
+		var hull := dropped.physics()
+		var held_body := hull.body_of(hull.model_held_at(held))
 		_check(
-			dropped.previous_position.is_equal_approx(held.origin) and dropped.previous_basis.is_equal_approx(held.basis)
+			dropped.previous_position.is_equal_approx(held_body.origin) and dropped.previous_basis.is_equal_approx(held_body.basis)
 				and held.basis.z.dot(aim) > 0.99,
-			"it leaves from where the gun was held, pointing where the player looks"
+			"it leaves from where the gun was held, pointing where the player looks, as a body at its centre of mass"
 		)
 		var right := Vector3(cos(deg_to_rad(player.yaw_degrees)), 0.0, -sin(deg_to_rad(player.yaw_degrees)))
 		var off := held.origin - (player.global_position + Vector3.UP * player.eye_height())
@@ -868,26 +870,28 @@ func _test_the_hand() -> void:
 			"thrown the way the player looks at CS2's 300 u/s, a little lifted (%.0f u/s across)" % across
 		)
 		_check(not dropped.basis.is_equal_approx(dropped.previous_basis), "and it turns as it flies")
-	steps.call(1.0)
+	steps.call(float(DroppedItem.MOST_MOVING_USEC) / 1_000_000.0)
 	if dropped != null:
 		_check(
-			dropped.resting and absf(dropped.position.y) < 0.5 and dropped.position.distance_to(player.global_position) > 32.0,
-			"thrown ahead, it comes to rest on the floor %.0f units off" % dropped.position.distance_to(player.global_position)
+			dropped.resting and dropped.position.distance_to(player.global_position) > 32.0,
+			"thrown ahead, it comes to rest %.0f units off" % dropped.position.distance_to(player.global_position)
 		)
 		view._process(0.0)
 		var model := view.model_of(dropped.id)
 		# Measured on what is drawn, not by the view's own sums: the drawn
-		# box's height is the model's thinnest size, its bottom the floor,
-		# and the muzzle's axis along the way it was heading.
-		var own := DroppedItemView.bounds(model) if model != null else AABB()
-		var lying_box := model.transform * own if model != null else AABB()
-		var way := DroppedItemView.heading(dropped.basis)
-		var muzzle := (model.transform.basis * Vector3.BACK).normalized() if model != null else Vector3.ZERO
+		# frame, off the skeleton where the model has one (a gun's dropped
+		# clip moves its root bone, which the view takes back out), is where
+		# the body says, and the hull it carries rests on the floor, not in
+		# it.
+		var hull := dropped.physics()
+		var frame := DroppedItemView.drawn_frame(model, hull.bone) if model != null else Transform3D.IDENTITY
+		var bottom := INF
+		for point in hull.points:
+			bottom = minf(bottom, (frame * point).y)
 		_check(
-			model != null and absf(lying_box.position.y - dropped.position.y) < 0.1
-				and absf(lying_box.size.y - minf(own.size.x, minf(own.size.y, own.size.z))) < 0.1
-				and absf(muzzle.dot(Vector3(sin(way), 0.0, cos(way)))) > 0.99,
-			"drawn, it lies on its thinnest side, the way it was heading, its lowest point on the floor (%.2f high, bottom %.2f off)" % [lying_box.size.y, lying_box.position.y - dropped.position.y]
+			model != null and frame.is_equal_approx(dropped.model_transform())
+				and bottom > -DroppedItem.SKIN and bottom < DroppedItem.CONTACT_MARGIN,
+			"drawn where its body lies, its hull's lowest point on the floor (bottom %.2f off)" % bottom
 		)
 		player.global_position = dropped.position
 		player.previous_position = dropped.position

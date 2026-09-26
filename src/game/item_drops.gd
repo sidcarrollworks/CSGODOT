@@ -8,7 +8,8 @@ extends RefCounted
 ## A death drops what Inventory.drops_on_death says (the C4 is the bomb's to
 ## drop, and is not in it). "drop" throws what is in hand, but never the
 ## knife and never the C4 (the bomb takes that command when the C4 is in
-## hand). Walking over an item takes it if its slot is free, as CS2 does;
+## hand). Walking over an item takes it if its slot is free, as CS2 does,
+## measured from the item's centre of mass (DroppedItem.position);
 ## swapping with the one in hand (E) is left for when there is a use key.
 ## What is on the ground goes at round_prestart, CS2's clean-up of the map.
 ##
@@ -21,12 +22,17 @@ const DROP_GRENADES := true
 ## How often an item on the ground looks for a player standing on it:
 ## CS2's pickup_check_period, 0.25 s, so 16 ticks at 64 Hz.
 const PICKUP_CHECK_PERIOD_USEC := 250_000
-## How near a player's feet an item has to lie to be taken, across and up:
-## the hull's width, from the middle of its feet (the item's own size
-## standing in for the half the hull leaves), and its standing height. In
-## no file (measure).
+## How near a player's feet an item's centre of mass has to be to be
+## taken, across, up and down: the hull's width, from the middle of its
+## feet (the item's own size standing in for the half the hull leaves), its
+## standing height, and below the feet as far as the ground under the
+## middle of the hull can be on the steepest floor a player stands on (the
+## box stands on its uphill edge, 16 x tan(45.6) = 16.3 units above the
+## ground under its middle at sv_standable_normal 0.7), with a little over
+## for a gun's thickness. CS2's touch box is in no file (measure).
 const REACH_ACROSS := 32.0
 const REACH_UP := 72.0
+const REACH_DOWN := 18.0
 ## How hard a drop throws the item: CS2's m_flDropSpeed, 300 for every
 ## weapon (GT's CCSWeaponBaseVData.h, no override in weapons.vdata;
 ## reference/research/round-bomb-grenades.md 3.2). Its direction is where
@@ -76,7 +82,7 @@ func _on_death(event: GameEvent) -> void:
 	var held := inventory.in_hand_class()
 	# Held out past the hull, a gun can be through the wall its holder died
 	# against, as for a drop.
-	var hand := _clear_of_walls(node, _held_transform(node), game.last_tick.space if game.last_tick != null else null)
+	var hand := _clear_of_walls(node, _held_transform(node), game.last_tick.space if game.last_tick != null else null, held)
 	for entry in inventory.drops_on_death():
 		var from := hand if entry.item.item_class == held else _middle(node)
 		var rng := _seeded(userid, entry.item.item_class)
@@ -103,7 +109,7 @@ func _on_drop(userid: int, _args: PackedStringArray, t: SimTick) -> bool:
 	if (held.item.is_grenade() and not DROP_GRENADES) or (held.item.type == "knife" and not DROP_KNIFE):
 		return false
 	var node := game.roster.player(userid)
-	var from := _clear_of_walls(node, _held_transform(node), t.space)
+	var from := _clear_of_walls(node, _held_transform(node), t.space, held.item.item_class)
 	var entry := inventory.remove(held.item.item_class)
 	var rng := _seeded(userid, entry.item.item_class)
 	# End over end, the muzzle dipping away from the thrower, and a little
@@ -123,7 +129,7 @@ func _try_pickup(t: SimTick, item: DroppedItem, userid: int) -> bool:
 	if node == null or inventory == null:
 		return false
 	var offset := item.position - node.global_position
-	if Vector2(offset.x, offset.z).length() > REACH_ACROSS or offset.y < -1.0 or offset.y > REACH_UP:
+	if Vector2(offset.x, offset.z).length() > REACH_ACROSS or offset.y < -REACH_DOWN or offset.y > REACH_UP:
 		return false
 	var item_class := item.entry.item.item_class
 	# The kit is only any use to a CT.
@@ -189,18 +195,37 @@ func _middle(node: Node3D) -> Transform3D:
 
 
 ## Held out in front, a gun can be through a wall the player is up
-## against: it is brought back along the line from the eyes to it, to this
-## side of whatever is in the way.
-static func _clear_of_walls(node: Node3D, from: Transform3D, space: PhysicsDirectSpaceState3D) -> Transform3D:
+## against: its hull is swept from the eyes to where it is held, and it is
+## brought back to this side of whatever is in the way. Where the hull does
+## not even fit at the eyes (a long gun, the back to a wall), its centre of
+## mass is brought back along a ray instead, and its first tick steps it out
+## of the wall.
+static func _clear_of_walls(node: Node3D, from: Transform3D, space: PhysicsDirectSpaceState3D, item_class: String) -> Transform3D:
 	if node == null or space == null:
 		return from
 	var eye := node.global_position + Vector3.UP * (float(node.call(&"eye_height")) if node.has_method(&"eye_height") else 64.0)
-	var query := PhysicsRayQueryParameters3D.create(eye, from.origin, Hitscan.WORLD_LAYER)
-	var hit := space.intersect_ray(query)
-	if hit.is_empty():
+	var hull := ItemPhysics.of(item_class)
+	var body := hull.body_of(hull.model_held_at(from))
+	var way := body.origin - eye
+	if way.length_squared() < 1e-6:
 		return from
-	var back := (eye - from.origin).normalized()
-	return Transform3D(from.basis, (hit["position"] as Vector3) + back * 4.0)
+	var free := 1.0
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = hull.shape
+	query.transform = Transform3D(body.basis, eye)
+	query.collision_mask = Hitscan.WORLD_LAYER
+	if space.collide_shape(query, 1).is_empty():
+		query.motion = way
+		var fractions := space.cast_motion(query)
+		if not fractions.is_empty():
+			free = fractions[0]
+	else:
+		var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(eye, body.origin, Hitscan.WORLD_LAYER))
+		if not hit.is_empty():
+			free = maxf(0.0, ((hit["position"] as Vector3) - eye).length() - 4.0) / way.length()
+	if free >= 1.0:
+		return from
+	return Transform3D(from.basis, from.origin - way * (1.0 - free))
 
 
 ## Randomness for one drop that a server and a client agree on: from who
