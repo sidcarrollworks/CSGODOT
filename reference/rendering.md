@@ -209,7 +209,12 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
   behind the map. Measured before (`no_skybox`): 0.8 ms at 1080p and
   3.2 ms at 4K. Checked by drawing through the Compatibility renderer in
   the cloud (the map in front, the skybox behind); Forward+ needs the
-  profiler again on Sid's machine.
+  profiler again on Sid's machine. Since the playtest's issue 23
+  (2026-09-26) the squeeze keeps what lies past the far plane inside it
+  too, and each far mesh has a `custom_aabb` (`FarMaterials.CULL_BOX`), so
+  the skybox's terrain out to half a million units is drawn: the whole
+  skybox in every view, at full LOD and never occlusion culled, which
+  `no_skybox` should measure again.
 - **R3. Culling.** *(Occluders built, 2026-09-24; Sid showed the whole map
   drawn from B tunnels.)* `MapOccluders` builds one `ArrayOccluder3D` at
   load from the collision hull, leaving out player and grenade clips and
