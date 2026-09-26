@@ -76,6 +76,7 @@ func _process(_delta: float) -> bool:
 		_test_paint_channel()
 		_test_blend_materials()
 		_test_lightmap_materials()
+		_test_lightmap_lods()
 		_test_far_materials()
 		_test_light_probes()
 		_test_baked_shadows()
@@ -1396,6 +1397,152 @@ func _test_lightmap_materials() -> void:
 		"measured and written down, it is read back with the lightmaps"
 	)
 	again.free()
+
+
+## Godot's import-time LODs weld vertices without comparing CUSTOM0, so a
+## lower LOD of a surface lit from its third UV set crosses its lightmap
+## seams (playtest of 2026-09-25, issue 12, the kasbah towers' stripes);
+## one lit from UV2 keeps them. Reproduced with ImporterMesh, the importer's
+## own simplifier, on a strip of two lightmap charts meeting at x = 10, and
+## then the fix: the CUSTOM0-lit surface drawn without LODs, the other kept.
+func _test_lightmap_lods() -> void:
+	var dir := "user://export_fixture/lightmap_lods"
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir.path_join("lightmaps")))
+	Image.create(64, 64, false, Image.FORMAT_RGBAF).save_exr(dir.path_join(LightmapMaterials.IRRADIANCE_FILE))
+	Image.create(64, 64, false, Image.FORMAT_RGBA8).save_png(dir.path_join(LightmapMaterials.DIRECTION_FILE))
+
+	var tower := StandardMaterial3D.new()
+	tower.set_meta("extras", {"vmat": {"ShaderName": "csgo_vertexlitgeneric.vfx", "IntParams": {"F_FORCE_UV2": 1.0}}})
+	var plank := StandardMaterial3D.new()
+	plank.set_meta("extras", {"vmat": {"ShaderName": "csgo_vertexlitgeneric.vfx"}})
+	var importer_mesh := ImporterMesh.new()
+	importer_mesh.add_surface(
+		Mesh.PRIMITIVE_TRIANGLES, _two_charts(true), [], {}, tower, "tower",
+		Mesh.ARRAY_CUSTOM_RG_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT
+	)
+	importer_mesh.add_surface(Mesh.PRIMITIVE_TRIANGLES, _two_charts(false), [], {}, plank, "plank")
+	importer_mesh.generate_lods(25.0, 60.0, [])
+
+	var tower_arrays := importer_mesh.get_surface_arrays(0)
+	var plank_arrays := importer_mesh.get_surface_arrays(1)
+	var full := _straddling(tower_arrays, tower_arrays[Mesh.ARRAY_INDEX], true)
+	var custom0_crossed := 0
+	var uv2_crossed := 0
+	for lod in importer_mesh.get_surface_lod_count(0):
+		custom0_crossed += _straddling(tower_arrays, importer_mesh.get_surface_lod_indices(0, lod), true)
+	for lod in importer_mesh.get_surface_lod_count(1):
+		uv2_crossed += _straddling(plank_arrays, importer_mesh.get_surface_lod_indices(1, lod), false)
+	_check(
+		full == 0 and importer_mesh.get_surface_lod_count(0) > 0 and custom0_crossed > 0
+			and importer_mesh.get_surface_lod_count(1) > 0 and uv2_crossed == 0,
+		"Godot's LODs weld across a seam in CUSTOM0 (%d triangles cross it) but keep a seam in UV2 (%d)"
+			% [custom0_crossed, uv2_crossed]
+	)
+
+	var mesh := importer_mesh.get_mesh()
+	var bounds := mesh.get_aabb()
+	var before: Array = mesh._get_surfaces()
+	var custom0_before: PackedFloat32Array = mesh.surface_get_arrays(0)[Mesh.ARRAY_CUSTOM0]
+	var instance := MeshInstance3D.new()
+	instance.mesh = mesh
+	var meshes: Array[MeshInstance3D] = [instance]
+	var result := LightmapMaterials.apply(meshes, dir)
+	var after: Array = mesh._get_surfaces()
+	var tower_before: Dictionary = before[0]
+	var tower_after: Dictionary = after[0]
+	_check(
+		result["surfaces"] == 2 and result["no_lods"] == 1
+			and not tower_after.has("lods") and (after[1] as Dictionary)["lods"] == (before[1] as Dictionary)["lods"],
+		"the surface lit from CUSTOM0 loses its LODs, the one lit from UV2 keeps them"
+	)
+	_check(
+		mesh.get_surface_count() == 2 and mesh.surface_get_name(0) == "tower" and mesh.surface_get_material(0) == tower
+			and mesh.surface_get_format(0) == int(tower_before["format"])
+			and tower_after["vertex_data"] == tower_before["vertex_data"]
+			and tower_after["attribute_data"] == tower_before["attribute_data"]
+			and tower_after["index_data"] == tower_before["index_data"]
+			and mesh.surface_get_arrays(0)[Mesh.ARRAY_CUSTOM0] == custom0_before
+			and mesh.get_aabb().is_equal_approx(bounds),
+		"its vertices, lightmap coordinates, indices, name, material and bounds are untouched"
+	)
+	var tower_lit := instance.get_surface_override_material(0) as ShaderMaterial
+	_check(
+		tower_lit != null and tower_lit.get_shader_parameter("lightmap_uv_in_custom0") == true
+			and instance.get_surface_override_material(1) is ShaderMaterial,
+		"the instance keeps the lightmapped materials put on it"
+	)
+	_check(
+		LightmapMaterials.drop_lods(mesh, PackedInt32Array([0, 1, 5])) == 1
+			and LightmapMaterials.drop_lods(mesh, PackedInt32Array([0])) == 0,
+		"a surface with no LODs left, or none at all, is passed over"
+	)
+	instance.free()
+
+
+## A 20 by 20 grid of quads, one unit each, split at x = 10 into two
+## lightmap charts half the atlas apart: the vertices along the split are
+## doubled, alike in position, UV and normal, different only in their
+## lightmap coordinates, which go in CUSTOM0 (in_custom0, with a dense UV2
+## of the model's own, alike on both sides) or in UV2.
+func _two_charts(in_custom0: bool) -> Array:
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	var lightmap := PackedVector2Array()
+	var index := PackedInt32Array()
+	var first := {}
+	for chart in 2:
+		for y in 21:
+			for x in range(chart * 10, chart * 10 + 11):
+				first[Vector3i(chart, x, y)] = vertices.size()
+				vertices.append(Vector3(x, 0, y))
+				normals.append(Vector3.UP)
+				uvs.append(Vector2(x, y) / 20.0)
+				lightmap.append(Vector2(0.05 + chart * 0.5 + (x - chart * 10) * 0.01, 0.05 + y * 0.01))
+	for chart in 2:
+		for y in 20:
+			for x in range(chart * 10, chart * 10 + 10):
+				var a: int = first[Vector3i(chart, x, y)]
+				var b: int = first[Vector3i(chart, x + 1, y)]
+				var c: int = first[Vector3i(chart, x, y + 1)]
+				var d: int = first[Vector3i(chart, x + 1, y + 1)]
+				index.append_array([a, b, c, b, d, c])
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_INDEX] = index
+	if in_custom0:
+		var pairs := PackedFloat32Array()
+		for coordinate in lightmap:
+			pairs.append_array([coordinate.x, coordinate.y])
+		arrays[Mesh.ARRAY_CUSTOM0] = pairs
+		var own := PackedVector2Array()
+		for uv in uvs:
+			own.append(uv * 10.0)
+		arrays[Mesh.ARRAY_TEX_UV2] = own
+	else:
+		arrays[Mesh.ARRAY_TEX_UV2] = lightmap
+	return arrays
+
+
+## How many of these triangles take their lightmap coordinates from both
+## charts of _two_charts: corners on either side of the atlas's middle.
+func _straddling(arrays: Array, index: PackedInt32Array, in_custom0: bool) -> int:
+	var crossing := 0
+	for triangle in range(0, index.size(), 3):
+		var sides := 0
+		for corner in 3:
+			var i := index[triangle + corner]
+			var u: float = (
+				(arrays[Mesh.ARRAY_CUSTOM0] as PackedFloat32Array)[i * 2] if in_custom0
+				else (arrays[Mesh.ARRAY_TEX_UV2] as PackedVector2Array)[i].x
+			)
+			sides |= 2 if u > 0.5 else 1
+		if sides == 3:
+			crossing += 1
+	return crossing
 
 
 ## A square of side units on its own surface of mesh with this material,

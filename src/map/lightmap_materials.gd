@@ -18,7 +18,8 @@ extends RefCounted
 ## or a tint mask reads it), and its lightmap coordinates, where it has any,
 ## in a third, which Godot imports as CUSTOM0: dust2's kasbah towers and
 ## arches. The props with neither are lit by the light probes instead
-## (ProbeMaterials).
+## (ProbeMaterials). Those lit from CUSTOM0 are drawn without the LODs
+## Godot's import made for them (drop_lods).
 
 const OPAQUE_SHADER := preload("res://src/map/lightmapped.gdshader")
 const OVERLAY_SHADER := preload("res://src/map/lightmapped_overlay.gdshader")
@@ -55,7 +56,8 @@ static var _two_sided := {}
 ## units each; a prop's decal and self-illumination come from textures_dir
 ## (carry_features). With the sun's channel of the map's baked shadows
 ## (MapShadows.sun_channel_at), the page of them goes on too. Returns
-## {"surfaces": how many, "props": how many of those are props, "found":
+## {"surfaces": how many, "props": how many of those are props, "no_lods":
+## how many of those lit from CUSTOM0 lost their LODs (drop_lods), "found":
 ## whether the maps were there, "shadows": whether the sun's baked shadow
 ## was, "ambient": the lightmap's average light as a Color, or null if
 ## unmeasured}; without the maps nothing changes.
@@ -65,7 +67,7 @@ static func apply(
 	var irradiance := _load(map_dir.path_join(IRRADIANCE_FILE))
 	var direction := _load(map_dir.path_join(DIRECTION_FILE))
 	if irradiance == null or direction == null:
-		return {"surfaces": 0, "props": 0, "found": false, "shadows": false, "ambient": null}
+		return {"surfaces": 0, "props": 0, "no_lods": 0, "found": false, "shadows": false, "ambient": null}
 	var lightmap_size := Vector2(irradiance.get_size())
 	var shadows: Texture2D = null
 	if sun_channel >= 0:
@@ -107,6 +109,7 @@ static func apply(
 	var built := {}
 	var surfaces := 0
 	var props := 0
+	var lit_from_custom0 := {}  # ArrayMesh -> PackedInt32Array of its surfaces
 	for candidate in candidates:
 		var mesh_instance: MeshInstance3D = candidate[0]
 		var surface: int = candidate[1]
@@ -118,6 +121,12 @@ static func apply(
 				continue
 			props += 1
 		surfaces += 1
+		if in_custom0:
+			var mesh := mesh_instance.mesh as ArrayMesh
+			var listed: PackedInt32Array = lit_from_custom0.get(mesh, PackedInt32Array())
+			if not surface in listed:
+				listed.append(surface)
+			lit_from_custom0[mesh] = listed
 		if material is ShaderMaterial:
 			# A blend material, which reads the same lightmap uniforms.
 			(material as ShaderMaterial).set_shader_parameter("lightmap_irradiance", irradiance)
@@ -130,9 +139,49 @@ static func apply(
 			built[key] = build(material as BaseMaterial3D, irradiance, direction, in_custom0, textures_dir)
 			set_shadows(built[key], shadows, sun_mask)
 		mesh_instance.set_surface_override_material(surface, built[key])
+	var no_lods := 0
+	for mesh: ArrayMesh in lit_from_custom0:
+		no_lods += drop_lods(mesh, lit_from_custom0[mesh])
 	return {
-		"surfaces": surfaces, "props": props, "found": true, "shadows": shadows != null, "ambient": read_average(map_dir),
+		"surfaces": surfaces, "props": props, "no_lods": no_lods, "found": true, "shadows": shadows != null,
+		"ambient": read_average(map_dir),
 	}
+
+
+## Takes the LODs off these surfaces of a mesh, which are then drawn at full
+## detail at every distance; its other surfaces keep theirs. Returns how
+## many had any.
+##
+## Godot's glTF import gives every surface LODs (meshes/generate_lods), and
+## its simplifier welds vertices that share a position, UV, UV2, normal,
+## tangent sign and colour without comparing CUSTOM0 to 3; every LOD's
+## indices then point at the first vertex of each welded group
+## (ImporterMesh::generate_lods, scene/resources/3d/importer_mesh.cpp). A
+## surface lit from CUSTOM0 has seams there, between lightmap charts, that
+## nothing else marks, so in a lower LOD a triangle on one takes a corner
+## from the neighbouring chart and samples the lightmap across the gap:
+## the zigzag stripes on dust2's kasbah towers (playtest of 2026-09-25,
+## issue 12). A surface lit from UV2 keeps its seams, since UV2 is compared.
+##
+## The surfaces go back through the pair ArrayMesh serialises itself with
+## (_get_surfaces, _set_surfaces), less their "lods" entry: nothing is
+## decompressed or compressed again, and they keep their order, names,
+## materials and bounds, so a MeshInstance3D's overrides still line up.
+## At load only, never in the tick; the mesh is uploaded once more.
+static func drop_lods(mesh: ArrayMesh, surfaces: PackedInt32Array) -> int:
+	var data: Array = mesh._get_surfaces()
+	var dropped := 0
+	for surface in surfaces:
+		if surface < 0 or surface >= data.size():
+			continue
+		var entry: Dictionary = data[surface]
+		if (entry.get("lods", []) as Array).is_empty():
+			continue
+		entry.erase("lods")
+		dropped += 1
+	if dropped > 0:
+		mesh._set_surfaces(data)
+	return dropped
 
 
 ## Gives a lightmapped material the page of baked shadows and the sun's

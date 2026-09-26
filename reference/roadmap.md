@@ -243,7 +243,7 @@ issue done here and on the page in the same pull request.
 | 9 | A see-through seam in a wall (Godot's vertex compression) | The map imported without it | Reimport, look, profile | After 12 |
 | 10 | Too saturated and contrasty against CS2 | CS2's grade (its Hable curve and the map's post-processing file), behind a switch | Extract the file, recalibrate by patches | R0 |
 | 11 | Geometry flickering (the sky's brushes used as occluders) | The sky's brushes out of the occluders (`MapOccluders.NOT_DRAWN`, 2026-09-26): top of mid fixed, **lower mid still flickers**; next is Sid's call: shrink the occluders or turn Godot's occlusion culling off | `profile_render.gd`'s `no_occlusion` to decide; walk R3's spots; `run_tests.sh dust2` | R3 |
-| 12 | Zigzag stripes on the kasbah towers (Godot's mesh LODs break the third UV set's lightmap) | No LODs, or LODs that keep that UV set, on those props | Look, profile | |
+| 12 | Zigzag stripes on the kasbah towers (Godot's mesh LODs break the third UV set's lightmap) | *(done: `LightmapMaterials.drop_lods`)* No LODs, or LODs that keep that UV set, on those props | Look, profile | |
 | 13 | White eyes | CS2's eye shader on the character shader | Extract the eye textures; beside CS2 | R7 |
 | 14 | Recoil on the AK-47 and M4A1-S only | The 15 more patterns already in `reference/spray_patterns/`, solved at load; a provisional kick for the rest | Spray the rest in CS2 (TODO L6); the R6 demo | 8 |
 | 15 | Mouse wheel down to the next weapon | CS2's `invnext` | Its order in CS2 | 12a, after 16 |
