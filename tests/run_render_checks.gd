@@ -172,6 +172,8 @@ func _check_occluders() -> void:
 	_check(not MapOccluders.occludes("physics_group_Glass", skip), "glass does not, whatever its case")
 	_check(not MapOccluders.occludes("physics_group_metalgrate", skip), "a grate does not")
 	_check(not MapOccluders.occludes("physics_group_passbullets", skip), "what rounds pass through does not")
+	_check(not MapOccluders.occludes("physics_sky", skip), "the sky's brushes do not: nobody sees them (playtest issue 11)")
+	_check(MapOccluders.occludes("physics_group_wood_plank", skip), "nor does leaving the sky out catch a wall")
 
 	# Out of the tree, as the importer may be: scaled and turned the way
 	# the import turns a map, with its hull a level down.
@@ -184,6 +186,7 @@ func _check_occluders() -> void:
 	var wall := _box(hull, 100.0, "physics_group_concrete", Vector3(10.0, 0.0, 0.0))
 	_box(hull, 100.0, "physics_group_playerclip")
 	_box(hull, 100.0, "physics_group_glass")
+	_box(hull, 100.0, "physics_sky", Vector3(0.0, 0.0, 300.0))
 	# Each face 2 by 2 units, 4 by 4 once scaled: its triangles are 8 square units.
 	var pebble := _box(hull, 2.0, "physics_group_rock")
 	var meshes: Array[MeshInstance3D] = []
@@ -196,7 +199,7 @@ func _check_occluders() -> void:
 	_check_equal(MapOccluders.relative_transform(importer, pebble).basis.get_scale().x, 2.0, "and the scale down to each part")
 
 	var triangles := MapOccluders.build(importer, meshes, skip)
-	_check_equal(triangles, 12, "only the concrete wall occludes: its twelve triangles, the pebble's too small")
+	_check_equal(triangles, 12, "only the concrete wall occludes: its twelve triangles, not the sky's, the pebble's too small")
 	var occluders := importer.find_children("*", "OccluderInstance3D", false, false)
 	_check_equal(occluders.size(), 1, "one occluder is added under the importer")
 	if occluders.size() == 1:
