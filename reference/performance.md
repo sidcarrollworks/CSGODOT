@@ -93,10 +93,14 @@ while the menu is shut. Its video memory is held from the first opening:
 why a picture taller than 1440 lines gets 2x (`MSAA_4X_UP_TO`). Building
 it reads every pose of both sides and both sides' agents, 294 ms at the
 map's load with nothing read before it (less in a match, whose players have
-read the agents), so the half-time swap's build takes 2 ms; the first time
-the mouse is over a gun whose model nobody has held yet, reading the model
-takes 20 to 45 ms, which reading every holdable model before play would
-take away.
+read the agents), so the half-time swap's build takes 2 ms. The first time
+the mouse is over an item costs 0.12 ms, 0.25 at most over the T menu's 25
+(dust2's match with five a side): the match reads the model of everything
+either side's menu sells before play (`Competitive._prepare_holding`), so
+the agent only instantiates it. Before that read it was 20 to 45 ms an
+item. A gun no menu sells is not read ahead (13 to 20 ms, the M249's
+most), but the agent only shows one in your hand, and your own body has
+read its model by then.
 
 What is drawn is cut down by the map's own visibility (`WorldVisibility`,
 2026-09-24), as CS2 cuts it: from T spawn 2,702 of dust2's 3,589 world
