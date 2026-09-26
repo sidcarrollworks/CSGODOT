@@ -87,7 +87,7 @@ static func trace(
 		# Hitboxes are areas, so they have to be opted into explicitly.
 		query.collide_with_areas = true
 		query.collide_with_bodies = true
-		var collision := space.intersect_ray(query)
+		var collision := PhysicsQueries.intersect_ray(space, query)
 		# Physics reactions only follow the distance the bullet really crosses:
 		# up to this wall/person, then beyond its exit if penetration succeeds.
 		# Plain trace callers leave this callback empty.
@@ -144,7 +144,7 @@ static func trace(
 		var inside := PhysicsRayQueryParameters3D.create(entry, wall.exit, Hitbox.LAYER, exclude)
 		inside.collide_with_areas = true
 		inside.collide_with_bodies = false
-		var person := space.intersect_ray(inside)
+		var person := PhysicsQueries.intersect_ray(space, inside)
 		if not person.is_empty() and person["collider"] is Hitbox:
 			_hit_person(result, shot, data, person["collider"], person["position"], person["normal"])
 			return result
@@ -219,7 +219,7 @@ static func _find_exit(
 		var back := PhysicsRayQueryParameters3D.create(far, near, WORLD_LAYER, exclude)
 		back.hit_back_faces = false
 		back.hit_from_inside = false
-		var exit := space.intersect_ray(back)
+		var exit := PhysicsQueries.intersect_ray(space, back)
 		if exit.is_empty():
 			return {}
 		var ahead := PhysicsRayQueryParameters3D.create(
@@ -227,7 +227,7 @@ static func _find_exit(
 		)
 		ahead.hit_back_faces = false
 		ahead.hit_from_inside = false
-		var between := space.intersect_ray(ahead)
+		var between := PhysicsQueries.intersect_ray(space, ahead)
 		if between.is_empty():
 			return exit
 		far = (between["position"] as Vector3) - direction * EXIT_GAP

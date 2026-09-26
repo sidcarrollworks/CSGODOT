@@ -1,7 +1,7 @@
 class_name Ragdoll
 extends Node3D
 
-## A dead body falling as a body: a rigid body per bone that has a shape,
+## A dead body falling as a body: a native Box3D body per bone with a shape,
 ## jointed to the nearest such bone above it, and the skeleton posed from
 ## them every frame until it is taken away.
 ##
@@ -13,15 +13,15 @@ extends Node3D
 ## shapes on the same bones.
 ##
 ## A knee and an elbow are hinges, bending one way only, from straight to as
-## far as they go. Every other joint lets its limb bend a different way
-## forward, back, out and in, and twist, as a body allows
+## far as they go. Every other joint uses a circular swing cone inscribed
+## inside the anatomical forward/back/out/in limits, plus a twist limit
 ## (reference/research/ragdoll-joints.md), measured from the body standing
 ## with its arms hanging, not from how it died: a hip killed mid-stride
 ## still goes no further back than a hip can. Every joint has friction, so a
 ## limb slows as it swings rather than flailing and spinning on.
 ##
-## The bodies are in world units, unscaled, like the hitboxes: the model is
-## scaled up from metres and physics bodies do not take a scale. They live
+## Bone proxies remain in Source inches; native bodies use metres in the
+## shared world, stepped by GameWorld, with render interpolation here. They live
 ## on their own layer and touch the world and each other, never a round or
 ## the living. As in CS2 (Sid, 2026-09-26), a body's parts collide with one
 ## another, except two parts joined at a joint or a joint apart and two
@@ -36,8 +36,7 @@ extends Node3D
 ## four bones over the pelvis, a hand's width apart, and a chain of short
 ## bodies jointed that close together throws the physics solver into a fit
 ## (the body tangles and flies off), so the torso falls as two or three
-## stiff pieces instead. Under Godot Physics the joints also pull their
-## bodies back together gently (JOINT_BIAS), for the same reason.
+## stiff pieces instead.
 
 ## The physics layer the bodies are on (the fifth), and what they touch:
 ## the world, and the bodies of the same dead body (another's are made
@@ -78,14 +77,6 @@ const HINGES := [
 	["arm_lower", 120.0, &"front"],
 	["leg_lower", 125.0, &"back"],
 ]
-## How much of the way back together a joint pulls its two bodies each step,
-## when they drift apart, under Godot Physics. Godot's default is 0.3; at
-## that, one fall in twelve of a stand-in body exploded, and from 0.2 down
-## none did, the joints still holding within half a unit. Jolt has no such
-## setting and warns when one is given: it puts drifting bodies back by
-## moving them, not by speeding them up, so it cannot overshoot and fling
-## them apart, which is what this was holding down.
-const JOINT_BIAS := 0.15
 ## How hard a joint resists its two bodies turning against each other, per
 ## unit of the child body's mass, in mass-units by square inches a second
 ## squared: the stiffness of a dead body's joints. It is a motor in each
@@ -125,6 +116,9 @@ const BODY_SPEED := 40.0
 ## The bodies by the index of the bone each stands on. A bone folded into
 ## another's body is not a key; body_for finds its body.
 var bodies: Dictionary = {}
+var adapter: Box3DDrops
+var _filters: Array[Node3D] = []
+const METRES := 0.0254
 
 var _skeleton: Skeleton3D
 ## Each bone's transform relative to its body, scale included, so the bone
@@ -161,9 +155,21 @@ func _init() -> void:
 ## skeleton is left to its animation.
 func build(
 	skeleton: Skeleton3D, capsules: Array[Dictionary], unit_scale: float,
-	velocity: Vector3, forward: Vector3, hit_direction: Vector3 = Vector3.ZERO, hit_bone: int = -1
+	velocity: Vector3, forward: Vector3, hit_direction: Vector3 = Vector3.ZERO, hit_bone: int = -1,
+	native_adapter: Box3DDrops = null
 ) -> int:
 	clear()
+	adapter = native_adapter if native_adapter != null else PhysicsQueries.adapter_for_node(self)
+	if adapter == null and is_instance_valid(GameWorld.current) and GameWorld.configured_drop_physics() == "box3d":
+		# A death can be requested by scene setup before the world's deferred
+		# READY initializer. Its containing scene already owns the geometry.
+		GameWorld.current.initialize_drop_physics()
+		adapter = PhysicsQueries.adapter_for_node(self)
+	if not is_instance_valid(adapter) or not adapter.initialized:
+		push_error("A ragdoll requires the initialized shared Box3D world.")
+		return 0
+	adapter.pre_step.connect(_before_native_step)
+	adapter.post_step.connect(_after_native_step)
 	_skeleton = skeleton
 	var by_lower := {}
 	for index in skeleton.get_bone_count():
@@ -232,9 +238,10 @@ func build(
 	# go back to how it died.
 	var died := {}
 	for bone: int in bodies:
-		var body: RigidBody3D = bodies[bone]
+		var body: Part = bodies[bone]
 		died[bone] = body.global_transform
 		body.global_transform = _rest_world(bone) * _offsets[bone].affine_inverse()
+		body.write_native()
 	forward = Vector3(forward.x, 0.0, forward.z)
 	forward = forward.normalized() if forward.length_squared() > 1e-6 else Vector3.FORWARD
 	for bone: int in bodies:
@@ -242,20 +249,32 @@ func build(
 		if parent >= 0:
 			_join(parent, bone, forward)
 	for bone: int in bodies:
-		(bodies[bone] as RigidBody3D).global_transform = died[bone]
+		(bodies[bone] as Part).global_transform = died[bone]
+		(bodies[bone] as Part).write_native()
 	_apart_where_inside()
 	_pass_through_others()
 	_lift_clear()
+	for body: Part in bodies.values():
+		body.write_native()
 	return bodies.size()
 
 
 ## Takes the bodies away and leaves the skeleton where it lies.
 func clear() -> void:
-	for body: RigidBody3D in bodies.values():
-		body.queue_free()
+	if is_instance_valid(adapter):
+		if adapter.pre_step.is_connected(_before_native_step):
+			adapter.pre_step.disconnect(_before_native_step)
+		if adapter.post_step.is_connected(_after_native_step):
+			adapter.post_step.disconnect(_after_native_step)
+	for filter in _filters:
+		if is_instance_valid(filter):
+			filter.free()
+	_filters.clear()
 	for joint in get_children():
-		if joint is Joint3D:
-			joint.queue_free()
+		if joint is Link:
+			joint.free()
+	for body: Part in bodies.values():
+		body.free()
 	bodies.clear()
 	lifted = 0.0
 	_offsets.clear()
@@ -263,6 +282,11 @@ func clear() -> void:
 	_host.clear()
 	_before_step.clear()
 	_skeleton = null
+	adapter = null
+
+
+func _exit_tree() -> void:
+	clear()
 
 
 func _process(_delta: float) -> void:
@@ -272,10 +296,16 @@ func _process(_delta: float) -> void:
 ## Parts found under the floor put back on it (_keep_over_floor), and where
 ## each body is before this tick's step moves it, to draw the skeleton
 ## between the two (pose_skeleton).
-func _physics_process(_delta: float) -> void:
+func _before_native_step(_tick: SimTick) -> void:
 	_keep_over_floor()
-	for body: RigidBody3D in bodies.values():
+	for body: Part in bodies.values():
+		body.write_native()
 		_before_step[body] = body.global_transform
+
+
+func _after_native_step(_tick: SimTick) -> void:
+	for body: Part in bodies.values():
+		body.read_native()
 
 
 ## Puts every bone that has a body where its body is. Parents first, so a
@@ -290,7 +320,7 @@ func pose_skeleton(alpha: float = -1.0) -> void:
 		alpha = DrawClock.fraction()
 	var world_to_skeleton := _skeleton.global_transform.affine_inverse()
 	for bone in _order:
-		var body: RigidBody3D = bodies[_host[bone]]
+		var body: Part = bodies[_host[bone]]
 		var at := body.global_transform
 		if _before_step.has(body):
 			at = (_before_step[body] as Transform3D).interpolate_with(at, alpha)
@@ -317,7 +347,7 @@ func _apart_where_inside() -> void:
 	for i in bones.size():
 		for j in range(i + 1, bones.size()):
 			if _one_apart(bones[i], bones[j]) or _touch(shapes[i], shapes[j]):
-				(bodies[bones[i]] as RigidBody3D).add_collision_exception_with(bodies[bones[j]])
+				(bodies[bones[i]] as Part).add_collision_exception_with(bodies[bones[j]])
 
 
 ## Whether two bodies are a joint apart with one between (a forearm and the
@@ -335,20 +365,20 @@ func _one_apart(a: int, b: int) -> bool:
 func _pass_through_others() -> void:
 	if not is_inside_tree() or bodies.is_empty():
 		return
-	var here: Vector3 = (bodies.values()[0] as RigidBody3D).global_position
+	var here: Vector3 = (bodies.values()[0] as Part).global_position
 	for other: Node in get_tree().get_nodes_in_group(GROUP):
 		if other == self or not other is Ragdoll or (other as Ragdoll).bodies.is_empty():
 			continue
 		var theirs: Array = (other as Ragdoll).bodies.values()
-		if (theirs[0] as RigidBody3D).global_position.distance_to(here) > OTHERS_NEAR:
+		if (other as Ragdoll).adapter != adapter or (theirs[0] as Part).global_position.distance_to(here) > OTHERS_NEAR:
 			continue
-		for mine: RigidBody3D in bodies.values():
-			for their: RigidBody3D in theirs:
+		for mine: Part in bodies.values():
+			for their: Part in theirs:
 				mine.add_collision_exception_with(their)
 
 
 ## A body's capsules in the world, each [one end, the other, radius].
-static func _segments(body: RigidBody3D) -> Array:
+static func _segments(body: Part) -> Array:
 	var found := []
 	for collision in body.get_children():
 		if collision is CollisionShape3D:
@@ -379,14 +409,14 @@ func _lift_clear() -> void:
 	if not is_inside_tree():
 		return
 	var most := 0.0
-	for body: RigidBody3D in bodies.values():
+	for body: Part in bodies.values():
 		for collision in body.get_children():
 			if collision is CollisionShape3D:
 				most = maxf(most, _under(collision, LIFT_REACH, true))
 	if most <= 0.0:
 		return
 	lifted = most + LIFT_MARGIN
-	for body: RigidBody3D in bodies.values():
+	for body: Part in bodies.values():
 		body.global_position += Vector3.UP * lifted
 
 
@@ -395,7 +425,7 @@ func _lift_clear() -> void:
 ## the end of its ankle's bend, pressed into a slope by the leg's weight,
 ## creeps down through it otherwise. Bodies at rest are left alone.
 func _keep_over_floor() -> void:
-	for body: RigidBody3D in bodies.values():
+	for body: Part in bodies.values():
 		if body.sleeping:
 			continue
 		var most := 0.0
@@ -420,7 +450,7 @@ func _under(collision: CollisionShape3D, reach: float, whole: bool) -> float:
 		below = capsule.radius + (capsule.height / 2.0 - capsule.radius) * absf(collision.global_basis.y.normalized().y)
 	_down.from = centre + Vector3.UP * reach
 	_down.to = centre + Vector3.DOWN * below * 2.0
-	var floor := space.intersect_ray(_down)
+	var floor := PhysicsQueries.intersect_ray(space, _down)
 	if floor.is_empty():
 		return 0.0
 	var normal: Vector3 = floor["normal"]
@@ -430,32 +460,24 @@ func _under(collision: CollisionShape3D, reach: float, whole: bool) -> float:
 	if top.y > centre.y:
 		_up.from = centre
 		_up.to = top
-		if not space.intersect_ray(_up).is_empty():
+		if not PhysicsQueries.intersect_ray(space, _up).is_empty():
 			return 0.0
 	return maxf(top.y + below / normal.y - centre.y, 0.0)
 
 
-func _make_body(bone: int, parts: Array, mass: float) -> RigidBody3D:
+func _make_body(bone: int, parts: Array, mass: float) -> Part:
 	# The body stands on its largest capsule, so its centre of mass is the
 	# middle of the part rather than the joint.
 	var largest: Dictionary = parts[0]
 	for part: Dictionary in parts:
 		if part["radius"] > largest["radius"]:
 			largest = part
-	var body := RigidBody3D.new()
+	var body := Part.new()
+	body.ragdoll = self
 	body.name = "Ragdoll_%s" % _skeleton.get_bone_name(bone)
 	body.collision_layer = LAYER
 	body.collision_mask = MASK
 	body.mass = maxf(mass, 0.5)
-	body.continuous_cd = true
-	body.linear_damp_mode = RigidBody3D.DAMP_MODE_REPLACE
-	body.linear_damp = 0.1
-	body.angular_damp_mode = RigidBody3D.DAMP_MODE_REPLACE
-	body.angular_damp = 1.0
-	var material := PhysicsMaterial.new()
-	material.friction = FRICTION
-	material.bounce = 0.0
-	body.physics_material_override = material
 	add_child(body)
 	body.global_transform = SkinnedHitboxes.capsule_transform(largest["a"], largest["b"])
 	for part: Dictionary in parts:
@@ -466,12 +488,12 @@ func _make_body(bone: int, parts: Array, mass: float) -> RigidBody3D:
 		collision.shape = shape
 		body.add_child(collision)
 		collision.global_transform = SkinnedHitboxes.capsule_transform(part["a"], part["b"])
-	body.add_constant_central_force(Vector3.DOWN * GRAVITY * body.mass)
+	body.create_native()
 	return body
 
 
 ## The body a bone rides, its own or the one it was folded into, or null.
-func body_for(bone: int) -> RigidBody3D:
+func body_for(bone: int) -> Part:
 	return bodies.get(_host.get(bone, -1))
 
 
@@ -506,8 +528,8 @@ static func joint_for(bone_name: String) -> Array:
 ## joint whose twist axis runs along the child limb, from hanging straight
 ## down for an arm or a leg, and from its rest otherwise.
 func _join(parent_bone: int, child_bone: int, forward: Vector3) -> void:
-	var parent: RigidBody3D = bodies[parent_bone]
-	var child: RigidBody3D = bodies[child_bone]
+	var parent: Part = bodies[parent_bone]
+	var child: Part = bodies[child_bone]
 	var spec := joint_for(_skeleton.get_bone_name(child_bone))
 	var pivot := _rest_world(child_bone).origin
 	var limb := child.global_position - pivot
@@ -516,7 +538,7 @@ func _join(parent_bone: int, child_bone: int, forward: Vector3) -> void:
 	limb = limb.normalized()
 
 	var upper := pivot - parent.global_position
-	var joint: Joint3D
+	var joint: Link
 	var rest := child.global_transform
 	if spec.size() == 3:
 		var axis := bend_axis(upper, limb, forward, spec[2])
@@ -527,80 +549,114 @@ func _join(parent_bone: int, child_bone: int, forward: Vector3) -> void:
 		var hanging := Vector3.DOWN if spec[6] == &"down" else limb
 		var turn := Quaternion(limb, hanging) if limb.dot(hanging) > -0.999 else Quaternion(forward, PI)
 		child.global_transform = Transform3D(Basis(turn), pivot) * Transform3D(Basis.IDENTITY, -pivot) * rest
+		child.write_native()
 		joint = _limits(pivot, hanging, forward, upper, spec)
 	_resist(joint, child.mass * JOINT_TORQUE)
 	joint.name = "Joint_%s" % _skeleton.get_bone_name(child_bone)
 	add_child(joint)
 	joint.node_a = joint.get_path_to(parent)
 	joint.node_b = joint.get_path_to(child)
+	_install_joint(joint, parent, child)
 	child.global_transform = rest
+	child.write_native()
 
 
 ## The joint's friction: a motor on each axis it turns about, driving the
 ## turn toward standing still with no more than `torque`.
-static func _resist(joint: Joint3D, torque: float) -> void:
-	if joint is HingeJoint3D:
-		joint.set_flag(HingeJoint3D.FLAG_ENABLE_MOTOR, true)
-		joint.set_param(HingeJoint3D.PARAM_MOTOR_TARGET_VELOCITY, 0.0)
-		# Given as an impulse a tick; Jolt takes it back to a torque.
-		joint.set_param(HingeJoint3D.PARAM_MOTOR_MAX_IMPULSE, torque / Engine.physics_ticks_per_second)
-	elif joint is Generic6DOFJoint3D:
-		for axis in ["x", "y", "z"]:
-			joint.set("angular_motor_%s/enabled" % axis, true)
-			joint.set("angular_motor_%s/target_velocity" % axis, 0.0)
-			joint.set("angular_motor_%s/force_limit" % axis, torque)
+static func _resist(joint: Link, torque: float) -> void:
+	joint.torque = torque * METRES * METRES
 
 
 ## A joint about `limb` (its X, the twist) that lets the limb bend forward,
 ## back, out and in as far as `spec` says (a JOINTS entry). Its Z is the
 ## body's front, or up for a limb that already points forward (a foot, whose
 ## "forward" is its toes up); out is away from the parent body's middle.
-func _limits(pivot: Vector3, limb: Vector3, forward: Vector3, upper: Vector3, spec: Array) -> Generic6DOFJoint3D:
+func _limits(pivot: Vector3, limb: Vector3, forward: Vector3, upper: Vector3, spec: Array) -> Link:
 	var front := forward if absf(limb.dot(forward)) < 0.7 else Vector3.UP
 	var z := (front - limb * front.dot(limb)).normalized()
 	var y := z.cross(limb)
-	var joint := Generic6DOFJoint3D.new()
-	joint.transform = Transform3D(Basis(limb, y, z), pivot)
-	# Turning the limb about Y by +a takes it toward -Z, the back; about Z by
-	# +a toward +Y. Godot counts a 6DOF's angles the other way round from the
-	# child's turn: an allowed turn from lo to hi is a limit from -hi to -lo.
-	var out_is_y := upper.dot(y) >= 0.0
-	var turns := {
-		"x": [-spec[1], spec[1]],
-		"y": [-spec[2], spec[3]],
-		"z": [-spec[5], spec[4]] if out_is_y else [-spec[4], spec[5]],
-	}
-	for axis: String in turns:
-		joint.set("angular_limit_%s/enabled" % axis, true)
-		joint.set("angular_limit_%s/lower_angle" % axis, deg_to_rad(-turns[axis][1]))
-		joint.set("angular_limit_%s/upper_angle" % axis, deg_to_rad(-turns[axis][0]))
+	var joint := Link.new()
+	# Native ball joints swing and twist about Z. Their single circular cone
+	# cannot reproduce the legacy six-axis angular box. Use a conservative
+	# cone offset toward the permitted bend, retaining the neutral pose.
+	joint.transform = Transform3D(Basis(z, limb.cross(z), limb), pivot)
+	var outward := y if upper.dot(y) >= 0.0 else -y
+	var radius := 0.85 * minf((float(spec[2]) + float(spec[3])) * 0.5, (float(spec[4]) + float(spec[5])) * 0.5)
+	var centre := Vector2((float(spec[2]) - float(spec[3])) * 0.5, (float(spec[4]) - float(spec[5])) * 0.5)
+	if centre.length() > radius:
+		centre = centre.limit_length(radius)
+	var swing := limb.cross(z) * deg_to_rad(centre.x) + limb.cross(outward) * deg_to_rad(centre.y)
+	joint.cone_offset = Basis(swing.normalized(), swing.length()) if swing.length_squared() > 1e-8 else Basis.IDENTITY
+	joint.cone_angle = deg_to_rad(radius)
+	joint.twist = deg_to_rad(float(spec[1]))
 	return joint
 
 
 ## A hinge about `axis` (turning the lower limb about it bends the joint
 ## further), from straight to `most` degrees bent. Its limits are angles
-## from the pose it is made in, and Godot counts a hinge's angle the other
-## way round from the axis, so bending further is going negative.
-func _hinge(pivot: Vector3, upper: Vector3, lower: Vector3, axis: Vector3, most: float) -> HingeJoint3D:
-	var joint := HingeJoint3D.new()
+## from the pose it is made in, in the native axis's positive sense.
+func _hinge(pivot: Vector3, upper: Vector3, lower: Vector3, axis: Vector3, most: float) -> Link:
+	var joint := Link.new()
+	joint.is_hinge = true
 	var z := (axis - lower * axis.dot(lower)).normalized()
 	# The hinge turns about its Z.
 	joint.transform = Transform3D(Basis(lower, z.cross(lower), z), pivot)
 	# Negative for a joint bent the wrong way (a knee locked back), which may
 	# straighten from there but not go further back.
 	var bent := upper.signed_angle_to(lower, axis)
-	joint.set_flag(HingeJoint3D.FLAG_USE_LIMIT, true)
-	joint.set_param(HingeJoint3D.PARAM_LIMIT_LOWER, bent - deg_to_rad(most))
-	joint.set_param(HingeJoint3D.PARAM_LIMIT_UPPER, maxf(bent, 0.0))
-	if not on_jolt():
-		joint.set_param(HingeJoint3D.PARAM_BIAS, JOINT_BIAS)
+	# Native angles are body B relative to A, in the axis's positive sense.
+	joint.lower = -maxf(bent, 0.0)
+	joint.upper = deg_to_rad(most) - bent
 	return joint
 
 
-## Whether the physics is Jolt's, as the project is set to. DEFAULT is Godot
-## Physics in 4.7.
-static func on_jolt() -> bool:
-	return String(ProjectSettings.get_setting("physics/3d/physics_engine")) == "Jolt Physics"
+func _install_joint(link: Link, parent: Part, child: Part) -> void:
+	var native := ClassDB.instantiate(&"Box3DHingeJoint" if link.is_hinge else &"Box3DBallJoint") as Node3D
+	link.native = native
+	native.transform = _to_native(link.global_transform)
+	native.set(&"body_a", parent.native.get_path())
+	native.set(&"body_b", child.native.get_path())
+	native.set(&"collide_connected", false)
+	if link.is_hinge:
+		native.set(&"limit_enabled", true)
+		native.set(&"lower_limit", link.lower)
+		native.set(&"upper_limit", link.upper)
+		native.set(&"motor_enabled", true)
+		native.set(&"motor_speed", 0.0)
+		native.set(&"max_motor_torque", link.torque)
+	else:
+		native.set(&"cone_limit_enabled", true)
+		native.set(&"cone_angle", link.cone_angle)
+		native.set(&"twist_limit_enabled", true)
+		native.set(&"twist_lower", -link.twist)
+		native.set(&"twist_upper", link.twist)
+		native.set(&"friction_torque", link.torque)
+	adapter.native_world.add_child(native)
+	# The referenced bodies are already ready, so native READY creates the
+	# joint immediately at anatomical rest, before restoring the death pose.
+	assert(native.call(&"is_joint_valid"), "Ragdoll joint must exist before the first simulation tick.")
+	if not link.is_hinge:
+		var centred := Transform3D(link.cone_offset * link.global_basis, link.global_position)
+		native.call(&"set_local_frame_a", _to_native(parent.global_transform.affine_inverse() * centred))
+	parent.exceptions.append(child)
+	child.exceptions.append(parent)
+
+
+func _exclude(a: Part, b: Part) -> void:
+	if a.exceptions.has(b) or not is_instance_valid(a.native) or not is_instance_valid(b.native):
+		return
+	var native := ClassDB.instantiate(&"Box3DFilterJoint") as Node3D
+	native.set(&"body_a", a.native.get_path())
+	native.set(&"body_b", b.native.get_path())
+	adapter.native_world.add_child(native)
+	assert(native.call(&"is_joint_valid"), "Ragdoll collision exclusion must exist before stepping.")
+	_filters.append(native)
+	a.exceptions.append(b)
+	b.exceptions.append(a)
+
+
+static func _to_native(at: Transform3D) -> Transform3D:
+	return Transform3D(at.basis.orthonormalized(), at.origin * METRES)
 
 
 ## The axis a knee or an elbow bends about: rotating the lower limb about it
@@ -619,3 +675,113 @@ static func bend_axis(upper: Vector3, lower: Vector3, forward: Vector3, toward: 
 	if anatomical.length_squared() < 1e-6:
 		return Vector3.ZERO
 	return anatomical.normalized()
+
+
+## Presentation/inspection proxy in Source inches. The only simulated body
+## is native, beneath the shared Box3DWorld. Shape children here are metadata
+## for bone placement and floor recovery, not Godot collision bodies.
+class Part:
+	extends Node3D
+	var ragdoll: Ragdoll
+	var native: Node3D
+	var mass := 1.0
+	var collision_layer := LAYER
+	var collision_mask := MASK
+	var exceptions: Array[Part] = []
+	var _last_pose := Transform3D.IDENTITY
+	var linear_velocity: Vector3:
+		get:
+			return (native.call(&"get_linear_velocity") as Vector3) / METRES if is_instance_valid(native) else Vector3.ZERO
+		set(value):
+			if is_instance_valid(native):
+				native.call(&"set_linear_velocity", value * METRES)
+	var angular_velocity: Vector3:
+		get:
+			return native.call(&"get_angular_velocity") as Vector3 if is_instance_valid(native) else Vector3.ZERO
+		set(value):
+			if is_instance_valid(native):
+				native.call(&"set_angular_velocity", value)
+	var sleeping: bool:
+		get:
+			return not bool(native.call(&"is_awake")) if is_instance_valid(native) else true
+		set(value):
+			if is_instance_valid(native):
+				native.call(&"set_awake", not value)
+	func create_native() -> void:
+		native = ClassDB.instantiate(&"Box3DBody") as Node3D
+		native.name = name
+		native.transform = Ragdoll._to_native(global_transform)
+		native.set(&"body_type", ClassDB.class_get_integer_constant(&"Box3DBody", &"DYNAMIC"))
+		native.set(&"collision_layer", collision_layer)
+		native.set(&"collision_mask", collision_mask)
+		native.set(&"linear_damping", 0.1)
+		native.set(&"angular_damping", 1.0)
+		native.set(&"continuous", true)
+		native.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+		for collision: Node in get_children():
+			if not collision is CollisionShape3D:
+				continue
+			var shape := (collision as CollisionShape3D).shape as CapsuleShape3D
+			var capsule := ClassDB.instantiate(&"Box3DCollisionShape") as Node3D
+			capsule.set(&"shape_type", ClassDB.class_get_integer_constant(&"Box3DCollisionShape", &"CAPSULE"))
+			capsule.set(&"capsule_radius", shape.radius * METRES)
+			capsule.set(&"capsule_height", shape.height * METRES)
+			capsule.set(&"friction", FRICTION)
+			capsule.set(&"restitution", 0.0)
+			capsule.set(&"collision_layer", collision_layer)
+			capsule.set(&"collision_mask", collision_mask)
+			capsule.transform = Ragdoll._to_native((collision as Node3D).transform)
+			native.add_child(capsule)
+		ragdoll.adapter.native_world.add_child(native)
+		var data: Dictionary = native.call(&"get_mass_data")
+		var ratio := mass / maxf(float(data["mass"]), 1e-8)
+		native.call(&"set_mass_data", mass, data["center"], (data["inertia"] as Basis) * ratio)
+		_last_pose = global_transform
+
+	func write_native() -> void:
+		if not is_instance_valid(native) or global_transform.is_equal_approx(_last_pose):
+			return
+		var velocity := linear_velocity
+		var spin := angular_velocity
+		native.call(&"teleport", Ragdoll._to_native(global_transform))
+		linear_velocity = velocity
+		angular_velocity = spin
+		_last_pose = global_transform
+
+	func read_native() -> void:
+		if not is_instance_valid(native):
+			return
+		var solved := native.global_transform
+		global_transform = Transform3D(solved.basis, solved.origin / METRES)
+		_last_pose = global_transform
+
+	func add_collision_exception_with(other: Part) -> void:
+		ragdoll._exclude(self, other)
+
+	func get_collision_exceptions() -> Array[Part]:
+		return exceptions.duplicate()
+
+	func _exit_tree() -> void:
+		if is_instance_valid(native):
+			native.free()
+		native = null
+
+
+## The anatomical frame in inches; native holds the actual solver joint.
+class Link:
+	extends Node3D
+	var native: Node3D
+	var node_a: NodePath
+	var node_b: NodePath
+	var is_hinge := false
+	var lower := 0.0
+	var upper := 0.0
+	var twist := 0.0
+	var cone_angle := 0.0
+	var cone_offset := Basis.IDENTITY
+	var torque := 0.0
+
+	func _exit_tree() -> void:
+		if is_instance_valid(native):
+			native.free()
+		native = null

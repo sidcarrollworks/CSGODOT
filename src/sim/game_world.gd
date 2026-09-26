@@ -16,9 +16,10 @@ extends Node
 ## It counts its own ticks from the moment it starts, and SimClock reads the
 ## count, so simulation time starts with the game rather than with the
 ## process, and a check can hold the world and step it itself (step()). What
-## is only drawn or heard of the players (the view, footsteps, ragdolls) runs
+## is only drawn or heard of the players (the view and footsteps) runs
 ## on the engine's ticks as before, after the world's, so it reads the tick
-## just run.
+## just run. Ragdoll physics advances in this world's shared native step;
+## only its skeleton drawing runs between ticks.
 ##
 ## It also holds what a tick gives out, so each tick starts afresh: the nav
 ## mesh's path searches, and the game's shared state (game): its events,
@@ -93,26 +94,28 @@ func initialize_drop_physics(geometry_root: Node = null, backend: String = "") -
 		_drop_physics_initialized = true
 		return true
 	if backend != "box3d":
-		push_error("Unknown dropped-item physics '%s'; use --drop-physics box3d or legacy." % backend)
+		push_error("Unknown game physics '%s'; use --physics box3d or legacy." % backend)
 		return false
 	var adapter := Box3DDrops.new()
-	adapter.name = "DroppedPhysics"
+	adapter.name = "Box3DPhysics"
 	add_child(adapter)
-	if not adapter.initialize(game, geometry_root if geometry_root != null else get_parent()):
+	if not adapter.initialize(game, geometry_root if geometry_root != null else get_parent(), true):
 		adapter.free()
 		return false
 	drop_physics_backend = backend
 	_drop_physics_initialized = true
-	print("Dropped-item physics: Box3D (%d static shapes, %d triangles)" % [adapter.captured_shapes, adapter.captured_triangles])
+	print("Game physics: Box3D (%d static shapes, %d triangles)" % [adapter.captured_shapes, adapter.captured_triangles])
 	return true
 
 
 static func configured_drop_physics() -> String:
-	var backend := String(ProjectSettings.get_setting("csgodot/physics/dropped_items", "legacy"))
+	var backend := String(ProjectSettings.get_setting("csgodot/physics/backend", "box3d"))
 	for args in [OS.get_cmdline_args(), OS.get_cmdline_user_args()]:
 		for i in args.size():
-			if args[i] == "--drop-physics" and i + 1 < args.size():
+			if args[i] in ["--physics", "--drop-physics"] and i + 1 < args.size():
 				backend = args[i + 1]
+			elif String(args[i]).begins_with("--physics="):
+				backend = String(args[i]).trim_prefix("--physics=")
 			elif String(args[i]).begins_with("--drop-physics="):
 				backend = String(args[i]).trim_prefix("--drop-physics=")
 	return backend.to_lower()
@@ -168,6 +171,8 @@ func step() -> void:
 func begin_tick() -> void:
 	tick += 1
 	_path_searches_left = PATH_SEARCHES_PER_TICK
+	if is_instance_valid(game.drop_physics) and game.drop_physics.queries != null:
+		game.drop_physics.queries.sync_dynamic()
 
 
 ## The tick ends, every player having run it: the match judges it, then the

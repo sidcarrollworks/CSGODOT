@@ -349,9 +349,10 @@ var saved := inv.save_state(); inv.load_state(saved)
 ammo, and a `basis` (the world model's axes: +Z the muzzle, +Y the top) and
 spin; `position` is its centre of mass. It is a body on the item's own
 convex hull (`ItemPhysics`): it flies under gravity, turning about its
-centre of mass, meets the world with impulses at its contacts (its hull
-swept while it moves, no queries at rest), and sleeps; drawn, it is where
-its body is (`DroppedItemView`). `DroppedItem.drop(game, userid,
+centre of mass, meets the world with impulses at its contacts, and
+sleeps under the native solver; drawn, it is where its body is
+(`DroppedItemView`). The explicit legacy comparison uses the custom
+GDScript contact solver over Jolt queries. `DroppedItem.drop(game, userid,
 entry, velocity)` puts one on the ground at a player's middle: buying uses
 it for the gun a purchase replaced. `DroppedItem.drop_from(game, userid,
 entry, from, velocity, spin)` starts it from a transform: a drop and a
@@ -391,10 +392,13 @@ yaw/pitch/crouch approximation still does not read animated bones.
 - clears what lies on the ground at `round_prestart`.
 The C4 on the ground is the bomb's own entity, not a `DroppedItem`.
 
-On `codex/box3d-dropped-guns`, the `box3d` backend owns dropped-item
-dynamics; `legacy` selects the custom GDScript solver over Jolt queries.
+On `codex/box3d-dropped-guns`, the `box3d` backend owns the shared game
+physics world, including dropped-item dynamics. `legacy` selects the
+old collision/drop comparison; converted ragdolls require a native
+world and have no equivalent legacy fallback.
 Bullet impulses are restricted to native drops with `ItemDef.is_gun`.
-The existing Jolt world/player trace and damage path supplies open bullet
+The world/player trace, now routed through `PhysicsQueries`, and the
+existing damage path supply open bullet
 segments, stopping at obstructions and resuming after successful wall
 penetration within range. Each segment queries the native gun hulls and
 applies an impulse at each actual contact point, without changing the
@@ -410,16 +414,21 @@ impulses pointing away from the support are unchanged; the application
 point remains the actual bullet contact. This experimental gameplay
 reaction addresses downward shots whose motion was absorbed by the
 floor and friction; it is not extracted or verified CS2 physics.
+The binding reports one normal for points from potentially multiple
+contact manifolds, so support selection at a shared floor/wall collider
+remains an open limitation.
 
-The experimental `Box3DDrops.BULLET_IMPULSE_PER_DAMAGE` is 6 kg·inch/s
+The experimental `Box3DDrops.BULLET_IMPULSE_PER_DAMAGE` is 6.9 kg·inch/s
 per point of base damage remaining at that contact, including range
 falloff and penetration loss, before player armour/hitgroup multipliers.
-This value is not extracted or verified from CS2. Other dropped item
+The 15% increase from the initial 6.0 was chosen for Sid's request for
+a slight increase; it is not extracted or verified from CS2. Other dropped item
 types, the legacy solver and blast impulses are outside this bullet-push
 change. The initial horizontal bullet checks passed but missed the
 failed grounded shooting playtest. The expanded native suite passes
-38/38 and actual player-command suite 36/36, including downward shots
-and drawn motion. Human acceptance and the original four AWP settling
+38/38 and actual player-command suite 36/36 at the earlier 6.0 strength,
+including downward shots and drawn motion. Human acceptance of the
+current conversion and the original four AWP settling
 failures remain open. The dated measurements and validation counts are in
 [the trial notes](../box3d-trial.md).
 
@@ -457,8 +466,9 @@ tick; this branch is merged with it and fits it. Each tick the GameWorld:
 2. runs each player's command, in the order they joined;
 3. runs the match (`MatchState.tick`);
 4. calls `world.game.step(tick, space)`: the players' queued commands,
-   then every entity, then every system in the order added, then the
-   tick's events handed out.
+   then every entity, then the shared native physics step, then every
+   system in the order added, then the tick's events handed out. Native
+   ragdolls synchronize through the physics step's pre/post hooks.
 
 `world.game` is the one `GameSystems`. `GameWorld.add_player` puts the
 player on its `Roster` (and `remove_player` takes them off), so a system
@@ -491,6 +501,43 @@ grenades, the bomb and buying add their systems there
   player's own `hit_target` once it has one; sets `HitTarget.userid`),
   `userid_of(node)`, `ids()`, `team_of(userid)` (the node's `team`),
   `on_team(team)`. Use it, not group scans.
+
+### Native collision boundary
+
+`GameWorld` initializes Box3D before automatic ticks. The backend is
+`csgodot/physics/backend`, default `box3d`; `--physics` overrides it and
+the former `--drop-physics` flag is an alias. The historical
+`game.drop_physics: Box3DDrops` field now owns the shared native world.
+Godot static-body, character-body and hitbox nodes retain authoring
+geometry and identity, but their RIDs are detached from Godot's physics
+space while represented natively. The Jolt project setting remains for
+the explicit comparison and unattached test spaces.
+
+Game callers use `PhysicsQueries` with the existing
+`PhysicsDirectSpaceState3D`/query-parameter types. `SimTick.space`
+identifies which world's native adapter handles the query; it is not a
+reason to call the Godot space directly. The facade converts inches to
+metres, preserves original collider/RID/shape-index identities, masks,
+area flags and exclusions, and returns the usual empty dictionary on a
+miss. Original shape indices still resolve material names and original
+hitboxes still receive damage. Player/hitbox proxies synchronize before
+queries, and scene additions/removals update their native counterparts.
+
+A solid-body ray starting inside skips the containing body when
+`hit_from_inside` is false, as penetration requires; true reports its
+origin with a zero normal, as smoke requires. Grenades keep their
+custom ballistic, bounce and detonation rules over native sweeps.
+Sweeps keep about 0.197 inches of native surface tolerance plus
+0.06 inches of normal clearance so an outgoing bounce can leave its
+last contact. The following `get_rest_info` reads that sweep's contact.
+Boolean overlap checks use `intersect_shape`; raw `collide_shape`
+contact pairs are legacy-only and fail explicitly in a native world.
+
+Native ragdoll capsules and ball/hinge/filter joints share the world's
+64 Hz stepping. Their circular, offset swing cones conservatively
+approximate the former independent-axis 6DOF limits; exact equivalence
+and visual acceptance are not established. Full conversion validation
+and current limitations are in [the trial notes](../box3d-trial.md).
 
 ### Buttons
 

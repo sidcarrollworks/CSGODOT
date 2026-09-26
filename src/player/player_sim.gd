@@ -525,6 +525,7 @@ func place(spawn_position: Vector3, yaw: float) -> void:
 	pitch_degrees = 0.0
 	previous_yaw_degrees = yaw
 	previous_pitch_degrees = 0.0
+	PhysicsQueries.sync_object(self)
 
 
 ## The match puts the player at a spawn point for a round. Fresh (the
@@ -966,7 +967,7 @@ func body_centre() -> Vector3:
 	if ragdoll == null or ragdoll.bodies.is_empty():
 		return global_position + Vector3.UP * 36.0
 	var sum := Vector3.ZERO
-	for body: RigidBody3D in ragdoll.bodies.values():
+	for body: Ragdoll.Part in ragdoll.bodies.values():
 		sum += body.global_position
 	return sum / ragdoll.bodies.size()
 

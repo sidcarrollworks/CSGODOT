@@ -1,16 +1,21 @@
-# Dropped-gun Box3D trial
+# Box3D physics trial
 
 Sid requested this trial on 2026-09-26 after dropped guns continued to
-jitter, and chose to start with dropped guns. The branch is
+jitter, and chose to start with dropped guns. He subsequently requested
+conversion of all game physics and a slight increase to the bullet kick;
+the branch applies a 15% increase. The branch remains
 `codex/box3d-dropped-guns`.
 
-The comparison is against `DroppedItem`'s custom GDScript contact and
-impulse solver, which uses Jolt's collision queries. It is not a comparison
+The dated dropped-item comparison below is against `DroppedItem`'s
+custom GDScript contact and impulse solver, which uses Jolt's collision
+queries. It is not a comparison
 against Jolt's native rigid-body solver. The shared `DroppedItem` path
-covers guns, unthrown inventory grenades, the Zeus and defuse kits.
-Movement, hit registration, live thrown grenades, C4 and ragdolls continue
-using their existing paths. This experiment does not establish that
-Box3D reproduces CS2 physics.
+covers guns, unthrown inventory grenades, the Zeus and defuse kits. The
+current branch also routes movement, combat, grenade and presentation
+collision queries through Box3D, and builds ragdolls in the same native
+world. Source movement and grenade-flight rules remain game code; this
+experiment does not establish that Box3D reproduces CS2 physics. Current
+conversion checks are recorded separately from the historical timings.
 
 ## Setup and switching
 
@@ -30,28 +35,38 @@ and release DLLs, Linux, Android and web libraries; macOS needs a source
 build. Upstream describes the binding as experimental and says its
 cross-compiled Windows binaries were untested by the author.
 
-The trial branch defaults to `box3d`. Append one of these after Godot's
-`--` separator to select the drop backend for a run:
+The trial branch defaults to `box3d` through
+`csgodot/physics/backend`. Append one of these after Godot's `--`
+separator to select the backend for a run:
 
 ```text
---drop-physics box3d
---drop-physics legacy
+--physics box3d
+--physics legacy
 ```
 
-The `--drop-physics=box3d` form is accepted too. Requesting Box3D without
-the addon fails explicitly; use the installer or select `legacy`.
+The `--physics=box3d` form and the old `--drop-physics` alias are accepted
+too. Requesting Box3D without the addon fails explicitly. `legacy` is a
+query/drop comparison path; converted ragdolls require the shared
+Box3D world, so it is not a complete feature fallback. The Jolt project
+setting supplies that comparison and unattached test spaces; it is not
+the active game physics when the full native adapter is initialized.
 
 ## Simulation boundary
 
 Box3D is a separate node-based GDExtension, not a selectable
-`PhysicsServer3DExtension`. A `Box3DWorld` holds the native item bodies
-and a static copy of the relevant map collision. All its bodies must be
-descendants of that world. The mirror reads world-layer `StaticBody3D`
-shapes: boxes, convex/concave hulls and tessellated spheres, capsules and
-cylinders. An unsupported static shape fails explicitly. Changing the
+`PhysicsServer3DExtension`. A `Box3DWorld` holds native items, ragdoll
+bodies/joints, query representations of player hulls and hitboxes, and
+map collision including player and grenade clips. All its bodies must
+be descendants of that world. The mirror reads `StaticBody3D` shapes:
+boxes, convex/concave hulls and tessellated spheres, capsules and
+cylinders. An unsupported static shape fails explicitly. Original
+static-body, character-body and hitbox RIDs are detached from Godot's
+physics space while the adapter owns them; their nodes retain the
+geometry, identity and shape names used by game code. Changing the
 range's cover panel with M or relocating it with N schedules an explicit
-collision refresh outside the simulation tick. Other moving rigid bodies
-are not mirrored into the native world. The adapter
+collision refresh outside the simulation tick. Scene additions/removals
+update the native representations, and player/hitbox poses synchronize
+before queries. Ragdolls are created natively. The adapter
 converts Source inches to metres; Box3D's process-wide length setting
 stays at its default of 1. Position, linear velocity and collider
 dimensions cross that boundary; orientation
@@ -104,10 +119,13 @@ accepted.
   elasticities to be retained for a fairer solver comparison.
 - Collision masks retain the existing drop behavior: items collide with
   the static world and pass through players and other dropped items.
-- Queries return a dictionary containing `hit` even on a miss; do not
-  test dictionary emptiness. Query positions/distances use the native
-  world's units, normals and fractions do not need conversion. This
-  trial leaves gameplay's Jolt queries in place.
+- Raw native queries return a dictionary containing `hit` even on a
+  miss; do not test their dictionary emptiness. `PhysicsQueries`
+  translates them to the game-facing empty-dictionary miss contract,
+  converts positions/distances back to Source inches, and preserves the
+  original collider, RID and shape index for damage/material lookup.
+  Normals and fractions do not need length conversion. Game callers use
+  this facade rather than calling Godot's direct-space queries themselves.
 
 See the pinned [body class documentation](https://github.com/Stink-O/box3d-godot/blob/v0.4.3/godot/doc_classes/Box3DBody.xml),
 [world class documentation](https://github.com/Stink-O/box3d-godot/blob/v0.4.3/godot/doc_classes/Box3DWorld.xml)
@@ -232,8 +250,9 @@ lateral axis. The yaw/pitch/crouch approximation remains; this does not
 sample animated bones or change the first- or third-person pose systems.
 
 Bullet impulses apply only to native drops whose `ItemDef.is_gun` is
-true. Other dropped inventory items do not receive them. Hitscan still
-uses the existing Jolt world/player trace and damage path. Each open
+true. Other dropped inventory items do not receive them. At this stage,
+hitscan used the existing Jolt world/player trace and damage path; the
+later full conversion routes that trace through Box3D. Each open
 segment of that trace also queries the native gun hulls, applying an
 impulse at each gun's actual contact point. Its initial direction is the
 shot direction; the grounded response below can redirect its component
@@ -244,7 +263,7 @@ range. A gun hit does not alter the existing bullet damage/penetration
 path. Each shotgun pellet adds its own impulse; an off-centre contact
 also adds angular motion, and a sleeping gun and its view wake up.
 
-`Box3DDrops.BULLET_IMPULSE_PER_DAMAGE` is **6 kg·inch/s per point of
+The initial `Box3DDrops.BULLET_IMPULSE_PER_DAMAGE` was **6 kg·inch/s per point of
 remaining base damage at the contact**: weapon damage with range falloff
 and the surviving penetration share, before player armour or hitgroup
 multipliers. The adapter converts that impulse to kg·m/s for Box3D.
@@ -292,7 +311,8 @@ component and total impulse magnitude stay the same. The impulse still
 acts at the bullet's actual gun contact point. Unsupported guns and
 shots directed away from the support keep the original response. This
 is an experimental gameplay reaction, not extracted or verified CS2
-physics; the damage-scaled strength remains 6 kg·inch/s per point.
+physics; the damage-scaled strength for these measurements was
+6 kg·inch/s per point. The later 15% increase is recorded below.
 
 The expanded native bullet suite passed **38/38 checks**, including
 grounded kick and movement on a flat floor and a 20-degree ramp; four
@@ -318,8 +338,143 @@ A six-inch curb case redirected correctly and moved 3.40 inches. Open
 floors and ramps pass the checks above; mixed floor/wall contacts still
 need a per-manifold support solution.
 
-Human acceptance of the corrected bullet reaction and release
-orientation is still pending. The initial positive Box3D feedback
-preceded both bullet follow-ups. The branch remains an experiment;
-the four known AWP settling failures and synthetic-ramp penetration
-remain open.
+Sid subsequently confirmed that shooting grounded guns was working and
+requested a slightly stronger reaction, followed by the full conversion
+below. The branch remains an experiment; the four known AWP settling
+failures and synthetic-ramp penetration remain open.
+
+## Full game conversion, 2026-09-26
+
+At Sid's request, the shared world now owns the game's collision and
+rigid-body simulation. `GameWorld` initializes the full adapter before
+automatic ticks. `PhysicsQueries` routes rays, sweeps and overlaps to
+it, including hitscan/penetration, player movement and hitboxes, live
+grenades, smoke/fire/flash visibility, bot sight, footsteps, muzzle-light
+placement and the spectator camera. An unattached test space retains
+Godot queries for comparison. Test counters distinguish native queries
+from that fallback.
+
+The port preserves original collider/RID/shape-index identities, area
+flags, masks and exclusions. For solid shapes, a ray starting inside
+with `hit_from_inside=false` skips its containing body, as penetration's
+exit search requires. With the flag true it reports the origin with a
+zero normal, as smoke expansion requires. Concave meshes remain hollow.
+The result of a native sweep supplies the immediately following
+`get_rest_info` contact. Native casts stop about 0.005 m (0.197 inches)
+off a surface; an additional 0.06-inch normal clearance avoids an
+outgoing grenade or sliding player starting inside the native contact
+band. Player recovery is bounded to 0.5 inches. These tolerances differ
+from the original engine's and need playtesting on real map edges.
+
+Raw `collide_shape` contact pairs are legacy-only: v0.4.3's overlap API
+does not expose an equivalent manifold. Native dropped bodies use
+Box3D's solver; the gun-release overlap check uses `intersect_shape`.
+Unsupported raw contact-pair requests fail explicitly rather than
+inventing contacts.
+
+Ragdolls use native capsule bodies, ball/hinge joints and filter joints,
+stepped by the shared world's pre/post tick hooks. The binding's ball
+joint has a circular swing cone, so the previous independent-axis 6DOF
+limits are represented conservatively with an offset cone; they are not
+an exact joint-model conversion. The Source movement and grenade
+ballistics algorithms keep their existing rules over native queries.
+
+The current bullet coefficient is **6.9 kg·inch/s per point of remaining
+base damage**, 15% above 6.0, chosen for Sid's request for a slight
+increase. The support reflection and coefficient remain experimental
+gameplay tuning, not extracted CS2 physics. Earlier
+kick displacements above used 6.0 and are not new measurements at 6.9.
+
+Final conversion checks:
+
+- Native combat/grenade/drop-placement integration: **43/43**, with
+  native-query counters and no fallback calls; exit 0 and empty stderr.
+  This includes head damage, box and mesh penetration/materials, flash
+  and smoke visibility (including starts inside a wall), grenade rebounds
+  and clip masks, fire ground placement, and releasing a long gun beside
+  a wall.
+- Native world/hitbox lifecycle: **20/20**, including detachment of the
+  original Godot bodies, fixed-pose shape changes and native cleanup.
+- Native movement: **22/22** focused checks; the movement course passes
+  **80/80 on each backend**. Standing and crouch jump heights are 59.37
+  and 77.37 inches respectively on both.
+- Native ragdolls: **67/67**, including one-sided floor rays, flat/ramp/curb
+  landings, anatomical limits, collision exclusions, tick ownership, mass
+  and unit conversion, cleanup, and the extracted agent's actual shapes.
+
+The AWP follow-up retained the same 50 drop assertions. Body sleep
+thresholds of 0.075, 0.1 and 0.2 m/s all left the same four failures.
+An isolated `contact_recycling=false` body experiment reduced final
+floor/ramp drift from 0.843/0.459 inches to 0.032/0.044 inches, but still
+failed the settling checks. Neither experiment changed production
+settings or relaxed assertions; no forced-sleep timer was added.
+
+The real Dust2 Competitive integration passes **10/10**: nine bots move,
+22 shots are fired, the inventory drop/HE/death-ragdoll paths execute,
+59,945 native queries run with no legacy queries, and Godot's server has
+no active bodies or attached map/player collision objects. The physical
+floor check samples actual collision rather than nav-polygon heights,
+which can bridge small stairs and ledges.
+
+The bot regression exposed overlap recovery discarded by the ground
+probe. The native path now preserves that correction separately from
+the probe's intentional travel. Recovery candidates use current player
+positions, not unsaved history across ticks. The original head-on budget
+passes at 4.23 hull traces per bot/tick (4.03 alone, 4.34 control); no
+budget assertion was relaxed. Dust2's minute-long route check also passes.
+Depenetration is carried separately from commanded travel, so a correction
+larger than a low-speed move cannot consume slide time or reverse the
+remaining motion. A controlled corner regression exercises that case.
+
+### Full-world CPU comparison
+
+Measured on the same Windows Ryzen 7 7800X3D with Godot 4.7.2, using
+`scripts/profile_box3d_match.gd`, one otherwise idle process per backend:
+
+```text
+godot --headless --path . --script scripts/profile_box3d_match.gd -- --physics box3d
+godot --headless --path . --script scripts/profile_box3d_match.gd -- --physics legacy
+```
+
+Both use seed 20260926, 96 warmup ticks, ten immortal players, and a
+768-tick schedule with map routes, an AK drop, an HE throw and a staged
+bot engagement. Each run fired 22 shots and ended with ten living players.
+Ragdolls are omitted from the paired comparison because the converted
+ragdoll path requires Box3D; the integration check above covers a death.
+
+| Backend | Mean tick | p95 | Maximum | Mean hull traces/tick |
+|---|---:|---:|---:|---:|
+| Full Box3D port | 7.091 ms | 8.787 ms | 11.710 ms | 55.31 |
+| Legacy queries/drops | 3.296 ms | 4.105 ms | 5.379 ms | 51.77 |
+
+This times `GameWorld.step`: command generation, player simulation,
+gameplay systems, and native stepping. Animation posing, rendering,
+audio/UI callbacks, map setup and Godot's automatic physics-server step
+are outside the interval. Native made 59,239 facade queries and zero
+legacy calls; legacy made 16,229 facade queries, with its CharacterBody
+motion queries counted separately as hull traces. Different engine
+contacts produce different trace counts and routes despite the same
+schedule. These are CPU timings, not frame-rate measurements or a
+like-for-like comparison of native rigid-body solvers.
+
+The initial unoptimized full port averaged 15.114 ms per tick. Separating
+hull/hitbox synchronization, skipping unchanged query proxies, using a
+nearest-hit ray fast path, and preserving overlap recovery reduced that
+cost. The final port still costs about **2.15 times** the legacy path in
+this workload; improved gun feel does not establish a full-game speedup.
+A diagnostic run attributes 3.641 ms per tick to query-proxy
+synchronization, while native cast wrappers take 0.591 ms. Much of the
+remaining cost is this scripted integration, not evidence that the native
+solver itself is inherently slower than Jolt.
+
+The final local full run and targeted reruns cover **3,750 assertions:
+3,746 passed and four known AWP settling checks failed**. Of 43 suite
+files, 41 pass, the drop-quality suite fails, and the draw-only suite
+skips headless. The final low-speed recovery correction was followed by
+146 passing checks across native movement, bot movement, real Dust2
+match/routes and the Source movement course. No script/parse errors were
+reported; existing headless-render and shutdown resource warnings remain.
+
+Ragdoll visual acceptance and human acceptance of the combined conversion
+remain open, as do the four AWP failures. Keep the PR a draft for this
+performance/quality comparison.

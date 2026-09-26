@@ -1,16 +1,19 @@
 class_name Box3DDrops
 extends Node3D
 
-## Experimental dropped-item rigid bodies. GameSystems advances this world
-## after entity ticks and before pickups. Jolt still owns players,
-## hits and live grenades. Native bodies use metres; entities keep inches.
+## Shared native physics world. GameSystems advances it after entity ticks
+## and before pickups. The historical class name also serves drop-only
+## comparison fixtures. Native bodies use metres; game state keeps inches.
+signal pre_step(t: SimTick)
+signal post_step(t: SimTick)
+
 const METRES_PER_UNIT := 0.0254
-const ITEM_LAYER := 2
+const ITEM_LAYER := 128
 const COLLISION_STEPS := 4
 ## Experimental bullet response requested during the Box3D playtest.
 ## kg*inches/second per point of remaining base damage, before armour or
 ## hitbox multipliers. This is tuning, not an extracted CS2 force value.
-const BULLET_IMPULSE_PER_DAMAGE := 6.0
+const BULLET_IMPULSE_PER_DAMAGE := 6.9
 ## Match the world's native contact recycling distance, in metres.
 const SUPPORT_CONTACT_DISTANCE := 0.005
 
@@ -22,6 +25,8 @@ var bullet_queries: int = 0
 var captured_shapes: int = 0
 var captured_triangles: int = 0
 var initialized: bool = false
+var full_world: bool = false
+var queries: Box3DQueries
 
 var _bodies: Dictionary = {}
 var _items: Dictionary = {}
@@ -40,16 +45,17 @@ static func available() -> bool:
 
 ## Explicit setup for scenes and headless checks, after static collision
 ## has been built. All meshes and material rules are prepared before play.
-func initialize(p_game: GameSystems, geometry_root: Node) -> bool:
+func initialize(p_game: GameSystems, geometry_root: Node, p_full_world: bool = false) -> bool:
 	if initialized:
 		return game == p_game
 	if not is_inside_tree() or geometry_root == null or not available():
-		push_error("Box3D drops require the installed v0.4.3 addon and an initialized scene. Use --drop-physics legacy to compare.")
+		push_error("Box3D physics requires the installed v0.4.3 addon and an initialized scene. Run scripts/install_box3d.ps1.")
 		return false
 	if not is_equal_approx(float(ProjectSettings.get_setting("physics/box3d/length_units_per_meter", 1.0)), 1.0):
-		push_error("Box3D drops use a metre bridge; physics/box3d/length_units_per_meter must be 1.")
+		push_error("Box3D physics uses a metre bridge; physics/box3d/length_units_per_meter must be 1.")
 		return false
 	game = p_game
+	full_world = p_full_world
 	# A failed capture can be retried on this adapter with a fresh world.
 	# Its new contact-rule object needs the material pairs populated again.
 	_materials.clear()
@@ -87,6 +93,9 @@ func initialize(p_game: GameSystems, geometry_root: Node) -> bool:
 		return false
 	initialized = true
 	game.drop_physics = self
+	if full_world:
+		queries = Box3DQueries.new()
+		queries.initialize(self, geometry_root)
 	game.entities.spawned.connect(_on_spawned)
 	game.entities.removed.connect(_on_removed)
 	for entity in game.entities.all():
@@ -100,35 +109,45 @@ func capture_world(geometry_root: Node) -> bool:
 	if not is_instance_valid(native_world) or geometry_root == null:
 		return false
 	for body in _statics:
-		body.free()
+		if is_instance_valid(body):
+			body.free()
 	_statics.clear()
 	captured_shapes = 0
 	captured_triangles = 0
-	return _capture_node(geometry_root)
+	var captured := _capture_node(geometry_root)
+	if captured and queries != null:
+		queries.refresh_statics()
+	return captured
 
 
 func _capture_node(node: Node) -> bool:
 	if node == self:
 		return true
-	if node is StaticBody3D:
-		var body := node as StaticBody3D
-		if body.collision_layer & Hitscan.WORLD_LAYER != 0:
-			for owner_id: int in body.get_shape_owners():
-				if body.is_shape_owner_disabled(owner_id):
-					continue
-				var owner_node := body.shape_owner_get_owner(owner_id)
-				var surface := Penetration.surface_for(owner_node.name if owner_node is Node else "")
-				var at := body.global_transform * body.shape_owner_get_transform(owner_id)
-				for index in body.shape_owner_get_shape_count(owner_id):
-					if not _capture_shape(body.shape_owner_get_shape(owner_id, index), at, surface):
-						return false
+	if node is StaticBody3D and not capture_static_body(node):
+		return false
 	for child in node.get_children():
 		if not _capture_node(child):
 			return false
 	return true
 
 
-func _capture_shape(shape: Shape3D, at: Transform3D, surface: String) -> bool:
+func capture_static_body(body: StaticBody3D) -> bool:
+	if not full_world and body.collision_layer & Hitscan.WORLD_LAYER == 0:
+		return true
+	for owner_id: int in body.get_shape_owners():
+		if body.is_shape_owner_disabled(owner_id):
+			continue
+		var owner_node := body.shape_owner_get_owner(owner_id)
+		var surface := Penetration.surface_for(owner_node.name if owner_node is Node else "")
+		var at := body.global_transform * body.shape_owner_get_transform(owner_id)
+		for index in body.shape_owner_get_shape_count(owner_id):
+			if not _capture_shape(body.shape_owner_get_shape(owner_id, index), at, surface, body,
+				body.shape_owner_get_shape_index(owner_id, index)):
+				return false
+	return true
+
+
+func _capture_shape(shape: Shape3D, at: Transform3D, surface: String, source: StaticBody3D, shape_index: int) -> bool:
 	var faces := PackedVector3Array()
 	var convex := false
 	if shape is ConcavePolygonShape3D:
@@ -169,8 +188,13 @@ func _capture_shape(shape: Shape3D, at: Transform3D, surface: String) -> bool:
 	body.set(&"shape_type", ClassDB.class_get_integer_constant(&"Box3DBody", &"HULL" if convex else &"MESH"))
 	# collision_mesh handles Godot's triangle winding in the binding.
 	body.set(&"collision_mesh", _mesh_from_faces(faces))
-	body.set(&"collision_layer", Hitscan.WORLD_LAYER)
-	body.set(&"collision_mask", ITEM_LAYER)
+	body.set(&"collision_layer", source.collision_layer)
+	body.set(&"collision_mask", Box3DQueries.ALL_LAYERS if full_world else ITEM_LAYER)
+	body.set_meta(&"source_id", source.get_instance_id())
+	body.set_meta(&"source_rid", source.get_rid())
+	body.set_meta(&"source_shape", shape_index)
+	body.set_meta(&"source_area", false)
+	body.set_meta(&"source_solid", convex)
 	_material(body, surface)
 	native_world.add_child(body)
 	_statics.append(body)
@@ -354,6 +378,9 @@ func tick(t: SimTick) -> void:
 	if not initialized or t.tick == _last_tick:
 		return
 	_last_tick = t.tick
+	if queries != null:
+		queries.sync_dynamic()
+	pre_step.emit(t)
 	for id: int in _bodies.keys():
 		var item: DroppedItem = _items[id]
 		if item.removed:
@@ -379,6 +406,7 @@ func tick(t: SimTick) -> void:
 		elif was_resting and not item.resting:
 			item.rested_usec = -1
 			item.motion_started.emit()
+	post_step.emit(t)
 
 
 func body_count() -> int:
@@ -390,6 +418,9 @@ func body_for(entity_id: int) -> Node3D:
 
 
 func _exit_tree() -> void:
+	if queries != null:
+		queries.close()
+		queries = null
 	if game != null:
 		if game.entities.spawned.is_connected(_on_spawned):
 			game.entities.spawned.disconnect(_on_spawned)

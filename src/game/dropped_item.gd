@@ -246,7 +246,7 @@ func _contacts(space: PhysicsDirectSpaceState3D, hull: ItemPhysics.Hull) -> Arra
 	var query := _query(hull)
 	query.margin = CONTACT_MARGIN
 	queries += 1
-	var pairs := space.collide_shape(query, MOST_CONTACTS)
+	var pairs := PhysicsQueries.collide_shape(space, query, MOST_CONTACTS)
 	# In pairs: the point on the hull (grown by the margin), and the point
 	# on the world; from the one to the other is the way out.
 	var planes: Array[Dictionary] = []
@@ -290,7 +290,7 @@ func _surface_at(space: PhysicsDirectSpaceState3D, hull: ItemPhysics.Hull) -> St
 	var query := _query(hull)
 	query.margin = CONTACT_MARGIN
 	queries += 1
-	var rest := space.get_rest_info(query)
+	var rest := PhysicsQueries.get_rest_info(space, query)
 	if not rest.is_empty():
 		ground_normal = rest["normal"]
 	return _surface_name(rest)
@@ -382,13 +382,13 @@ func _sweep(space: PhysicsDirectSpaceState3D, hull: ItemPhysics.Hull, motion: Ve
 	var query := _query(hull)
 	query.motion = motion
 	queries += 1
-	var fractions := space.cast_motion(query)
+	var fractions := PhysicsQueries.cast_motion(space, query)
 	if fractions.is_empty() or fractions[1] >= 1.0:
 		return {"safe": 1.0}
 	query.transform = Transform3D(basis, position + motion * fractions[1])
 	query.motion = Vector3.ZERO
 	queries += 1
-	var rest := space.get_rest_info(query)
+	var rest := PhysicsQueries.get_rest_info(space, query)
 	if rest.is_empty():
 		return {"safe": fractions[0]}
 	var normal: Vector3 = rest["normal"]

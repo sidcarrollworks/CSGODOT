@@ -256,28 +256,40 @@ issue done here and on the page in the same pull request.
 | 22 | Looking down shows the vest where CS2 shows legs | **Done:** the seen body folds from spine_2 up, the shadow and bots whole | Beside CS2 | 6a |
 | 23 | The distant hill missing (the 3D skybox past the camera's far plane, dropped before its depth squeeze can help) | *(done: `FarMaterials.CULL_BOX`, `far_position`)* Far meshes kept in the frustum, and a squeeze that keeps them inside the far plane | The view beside CS2; the cost | R2 |
 
-**Dropped-gun physics trial (2026-09-26, Sid).** After further dropped-gun
-jitter, Sid requested a Box3D branch and chose dropped guns first.
-`codex/box3d-dropped-guns` compares the existing GDScript solver over Jolt
-queries with Box3D rigid bodies using the same item hulls. The request
-supersedes the earlier general recommendation in `research/box3d.md` for
-this limited experiment. **Branch implementation and local headless cost
-comparison are done.** Setup, scope and measurements are tracked in
-[box3d-trial.md](box3d-trial.md). The initial run had four AWP settling
-failures. Sid's follow-up playtest reported that Box3D feels much better
-and requested held orientation on release and shooting ground guns to
-push them. Both follow-ups are implemented on the trial branch:
-orientation checks pass 41/41 and the initial bullet checks passed
-25/25. Sid then reported that shooting ground guns did nothing. A real
-player-command reproduction showed floor friction absorbing the
-downward kick, a case the horizontal bullet tests missed. The follow-up
-reflects the into-surface impulse component away from a confirmed
-native support contact, preserving its magnitude and tangent. Expanded
-floor/ramp bullet checks pass 38/38 and player-command checks pass
-36/36, including visible motion after downward shots. This reaction and
-its strength are experimental and apply only to native guns; the legacy
-toggle has no bullet push. Human acceptance, the original four AWP
-settling failures and the quality decision remain open.
+**Box3D physics trial (2026-09-26, Sid).** The branch
+`codex/box3d-dropped-guns` started with dropped-gun jitter and now follows
+Sid's request to convert all game physics. The shared native world owns
+map collision, player/hitbox queries, dropped bodies and ragdolls;
+movement, hitscan/penetration, live-grenade collision, sight and surface
+queries use it. Source movement and grenade-flight rules remain game
+code. The branch defaults to `--physics box3d`; the old `--drop-physics`
+flag remains an alias. Original Godot collision RIDs are detached while
+the full adapter is active.
+
+Native gameplay integration passes 43/43, world/hitbox lifecycle 20/20,
+ragdolls 67/67, focused movement 22/22, and real Dust2 integration 10/10;
+the movement course passes 80/80 on each backend. The final seeded 5v5
+CPU comparison averages 7.091 ms per native tick versus 3.296 ms for the
+legacy query/drop path (see the trial notes for scope); this is not a
+full-game speedup. The full suite and final targeted reruns cover 3,750
+assertions: 3,746 pass and the four known AWP settling checks fail; one
+draw-only suite skips headless. Implementation of the full-physics trial
+is done; acceptance and its remaining quality/performance work stay open.
+Ragdoll ball/hinge joints approximate the previous independent-axis
+limits with conservative offset cones and need visual acceptance.
+
+Sid's positive drop playtest led to release-orientation and bullet-push
+fixes. A later failed shooting playtest exposed floor friction absorbing
+downward shots; the supported-gun reaction now reflects the into-surface
+component outward. Its current strength is 6.9 kg·inch/s per remaining
+base-damage point: a 15% increase from 6.0, chosen for Sid's request for
+a slight increase. Both reaction and strength are experimental; the
+legacy comparison has no bullet push
+and requires the native world for converted ragdolls. Setup, dated test
+results and the original drop-only benchmarks are in
+[box3d-trial.md](box3d-trial.md). Human acceptance, the original four AWP
+settling failures and the quality decision remain open; the old timings
+do not measure the full conversion.
 
 ### Phase 1: make being shot feel like CS2
 
@@ -608,9 +620,11 @@ list, split into Local and Remote items, with the measurements.
     gives dropped items native rigid bodies on their own physics hulls;
     its follow-up adds bullet impulses to guns and corrects their held
     orientation at release. After a failed shooting playtest, a
-    grounded-contact response now passes realistic downward-shot
-    regressions; human acceptance remains pending. The reaction
-    and impulse strength are experimental; see
+    grounded-contact response passes realistic downward-shot
+    regressions. The subsequent full-physics conversion raises its
+    experimental impulse strength by 15% for Sid's requested slight
+    increase, to 6.9 kg·inch/s per remaining
+    base-damage point; human acceptance remains pending. See
     [box3d-trial.md](box3d-trial.md). The playtest of
     2026-09-25's issues 2 and 3 track the broader work.
 12a. **Binds: the same keys everywhere, the test range included.** *(Remote;

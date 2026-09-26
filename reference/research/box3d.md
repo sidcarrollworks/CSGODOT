@@ -5,7 +5,11 @@ mean for us. The original recommendation below concerned a whole-game
 conversion. **Updated 2026-09-26:** Sid requested a branch to try Box3D for
 dropped guns, whose current simulation still jitters, and chose dropped
 guns first. That request supersedes the earlier recommendation for this
-limited trial. [The trial notes](../box3d-trial.md) describe its scope,
+limited trial. After successful playtests, Sid expanded the request on
+2026-09-26 to **all physics on the same branch**. That instruction now
+supersedes the original whole-game recommendation too; implementation
+and current limits belong in [the trial notes](../box3d-trial.md). The
+original research below records the starting assessment. The notes describe scope,
 setup and comparison procedure; this page remains the wider assessment.
 
 ## Sources

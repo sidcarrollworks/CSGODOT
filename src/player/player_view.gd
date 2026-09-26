@@ -314,7 +314,7 @@ func death_cam_position(centre: Vector3, yaw_degrees: float, pitch_degrees: floa
 	var wanted := centre - looking * DEATH_CAM_DISTANCE
 	if player.is_inside_tree():
 		var query := PhysicsRayQueryParameters3D.create(centre, wanted, Hitscan.WORLD_LAYER)
-		var hit := player.get_world_3d().direct_space_state.intersect_ray(query)
+		var hit := PhysicsQueries.intersect_ray(player.get_world_3d().direct_space_state, query)
 		if not hit.is_empty():
 			var reach := maxf(centre.distance_to(hit["position"]) - DEATH_CAM_WALL_GAP, 0.0)
 			wanted = centre - looking * reach

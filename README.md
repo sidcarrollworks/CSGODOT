@@ -2,16 +2,17 @@
 
 **Counter-Strike 2, rebuilt from scratch in Godot 4.7.**
 
-This branch trials **Box3D for dropped items**. Install its pinned addon
+This branch trials **Box3D for the game's physics**. Install its pinned addon
 before opening the project:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/install_box3d.ps1
 ```
 
-Box3D is the branch default. Run with `-- --drop-physics legacy` to compare
-the existing GDScript solver over Jolt queries. Movement, shots, live
-grenades and ragdolls retain their existing physics. See
+Box3D is the branch default (`-- --physics box3d`). A shared native world
+handles collision queries, player hulls and hitboxes, dropped items and
+ragdolls. The Source movement and grenade-flight rules remain game code
+using Box3D collision. See
 [`reference/box3d-trial.md`](reference/box3d-trial.md) for setup and the
 repeatable performance/settling comparison.
 

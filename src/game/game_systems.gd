@@ -24,7 +24,8 @@ var roster := Roster.new()
 ## first step.
 var last_tick: SimTick
 
-## Optional native drop solver, stepped before pickup systems.
+## Shared native physics world, stepped after entity motion and before
+## pickup systems. The historical property name remains for fixtures.
 var drop_physics: Box3DDrops
 
 var _systems: Array = []

@@ -218,13 +218,13 @@ static func _clear_of_walls(node: Node3D, from: Transform3D, space: PhysicsDirec
 	query.shape = hull.shape
 	query.transform = Transform3D(body.basis, eye)
 	query.collision_mask = Hitscan.WORLD_LAYER
-	if space.collide_shape(query, 1).is_empty():
+	if PhysicsQueries.intersect_shape(space, query, 1).is_empty():
 		query.motion = way
-		var fractions := space.cast_motion(query)
+		var fractions := PhysicsQueries.cast_motion(space, query)
 		if not fractions.is_empty():
 			free = fractions[0]
 	else:
-		var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(eye, body.origin, Hitscan.WORLD_LAYER))
+		var hit := PhysicsQueries.intersect_ray(space, PhysicsRayQueryParameters3D.create(eye, body.origin, Hitscan.WORLD_LAYER))
 		if not hit.is_empty():
 			free = maxf(0.0, ((hit["position"] as Vector3) - eye).length() - 4.0) / way.length()
 	if free >= 1.0:

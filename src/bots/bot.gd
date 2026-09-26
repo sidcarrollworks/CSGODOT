@@ -688,7 +688,7 @@ func can_see(other: Node3D) -> bool:
 	if flat.length_squared() > 1e-6 and rad_to_deg(forward.angle_to(flat.normalized())) > SIGHT_HALF_ANGLE:
 		return false
 	var query := PhysicsRayQueryParameters3D.create(eyes, theirs, Hitscan.WORLD_LAYER, [get_rid()])
-	if not get_world_3d().direct_space_state.intersect_ray(query).is_empty():
+	if not PhysicsQueries.intersect_ray(get_world_3d().direct_space_state, query).is_empty():
 		return false
 	return not _smoke_between(eyes, theirs)
 

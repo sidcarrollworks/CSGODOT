@@ -81,8 +81,8 @@ func _check_impulses_and_filters() -> void:
 	var single := item.velocity
 	var body := test.adapter.body_for(item.id)
 	var momentum := (body.call(&"get_linear_velocity") as Vector3).length() * float(body.call(&"get_mass")) / SCALE
-	_check(absf(momentum - 216.0) < 0.2,
-		"36 damage supplies 216 kg-inch/s of native momentum, without a tick-duration factor (%.3f)" % momentum)
+	_check(absf(momentum - 248.4) < 0.2,
+		"36 damage supplies 248.4 kg-inch/s of native momentum, without a tick-duration factor (%.3f)" % momentum)
 	_check(not result.hit and result.walls.is_empty() and item.angular_velocity.length() < 0.01,
 		"a centred shot pushes through the gun without changing the Jolt hit result or adding spin")
 	test.game.entities.clear()
@@ -134,9 +134,9 @@ func _check_support_response() -> void:
 		_fire(test, shot, _data())
 		var native := test.adapter.body_for(item.id)
 		var momentum := item.velocity.length() * float(native.call(&"get_mass"))
-		_check(item.velocity.dot(normal) > 10.0 and absf(momentum - 216.0) < 0.2,
+		_check(item.velocity.dot(normal) > 10.0 and absf(momentum - 248.4) < 0.2,
 			"the %.0f-degree support redirects the kick outward without increasing its magnitude" % slope_degrees)
-		var along_surface := shot.direction.slide(normal) * (216.0 / float(native.call(&"get_mass")))
+		var along_surface := shot.direction.slide(normal) * (248.4 / float(native.call(&"get_mass")))
 		_check(item.velocity.slide(normal).distance_to(along_surface) < 0.02,
 			"the %.0f-degree support preserves momentum along its surface" % slope_degrees)
 		var maximum := 0.0

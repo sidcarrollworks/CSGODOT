@@ -510,7 +510,7 @@ func _test_nav_mesh() -> void:
 			corners += 1
 			var inward := Vector3(area.centre.x - corner.x, 0.0, area.centre.z - corner.z).limit_length(2.0)
 			var point := corner + inward
-			var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(point + Vector3.UP * 4.0, point + Vector3.DOWN * 24.0, mask))
+			var hit := PhysicsQueries.intersect_ray(space, PhysicsRayQueryParameters3D.create(point + Vector3.UP * 4.0, point + Vector3.DOWN * 24.0, mask))
 			if not hit.is_empty():
 				heights.append(corner.y - (hit["position"] as Vector3).y)
 	heights.sort()
@@ -566,7 +566,7 @@ func _test_nav_mesh() -> void:
 		for i in range(1, path.size()):
 			length += path[i - 1].distance_to(path[i])
 			var waist := Vector3.UP * 36.0
-			if not space.intersect_ray(PhysicsRayQueryParameters3D.create(path[i - 1] + waist, path[i] + waist, mask)).is_empty():
+			if not PhysicsQueries.intersect_ray(space, PhysicsRayQueryParameters3D.create(path[i - 1] + waist, path[i] + waist, mask)).is_empty():
 				blocked += 1
 		var straight := from.distance_to(to)
 		_check(
@@ -583,7 +583,7 @@ func _test_nav_mesh() -> void:
 		for i in range(1, taut.points.size()):
 			taut_length += taut.points[i - 1].distance_to(taut.points[i])
 			var waist := Vector3.UP * 36.0
-			if not space.intersect_ray(PhysicsRayQueryParameters3D.create(taut.points[i - 1] + waist, taut.points[i] + waist, mask)).is_empty():
+			if not PhysicsQueries.intersect_ray(space, PhysicsRayQueryParameters3D.create(taut.points[i - 1] + waist, taut.points[i] + waist, mask)).is_empty():
 				taut_blocked += 1
 			jumps += 1 if taut.jumps_from(i - 1) else 0
 		_check(

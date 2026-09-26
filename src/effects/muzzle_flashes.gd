@@ -614,7 +614,7 @@ func _to_ground(p: Particle, reach: float, sink: float = 0.0) -> bool:
 	if not is_inside_tree():
 		return false
 	var query := PhysicsRayQueryParameters3D.create(p.position, p.position + Vector3.DOWN * reach, Hitscan.WORLD_LAYER)
-	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	var hit := PhysicsQueries.intersect_ray(get_world_3d().direct_space_state, query)
 	if hit.is_empty():
 		return false
 	p.position = hit["position"] + Vector3.UP * sink * p.half
