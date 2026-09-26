@@ -249,7 +249,7 @@ issue done here and on the page in the same pull request.
 | 15 | Mouse wheel down to the next weapon | CS2's `invnext` | Its order in CS2 | 12a, after 16 |
 | 16 | A quick switch cuts the draw short | **Done 2026-09-26:** the draw restarted on every switch, as CS2's graph does, and R during it reloads once it ends (Sid's CS2 check) | Play quick switches beside CS2 | 12 |
 | 17 | Running into a jump snaps to the air pose | The take-off from CS2's graph | Extract the jump clips; regenerate the tables | 6 |
-| 18 | Nobody seems to get the bomb | A check end to end, CS2's handing it to the human T (`bot_defer_to_human_items`), a cue for who carries it | Rounds as T and CT; CS2's warmup | 16, 15 |
+| 18 | Nobody seems to get the bomb | *(done 2026-09-26, except "[E] Take Bomb", which waits on 3)* A check end to end, CS2's handing it to the human T (`bot_defer_to_human_items`), a cue for who carries it | Rounds as T and CT; CS2's warmup | 16, 15 |
 | 19 | Grenade sounds and effects | The shared sound-event table and player, then the grenades' sounds; the effects after research | Extract the missing sounds and the particles | 17 to 20 |
 | 20 | A click as the magazine nears empty (CS2's `Default.NearlyEmpty`) | On the shared sound player, the threshold provisional | Measure the threshold in CS2 | After 19's groundwork |
 | 21 | Round sounds (start, end, planted, ten seconds, announcer) | The cues from `reference/research/audio-round.md` | Extract the UI, music and announcer; listen | 16, after 19's groundwork |
@@ -657,7 +657,9 @@ list, split into Local and Remote items, with the measurements.
     in dust2's match since 2026-09-23 (its two sites, the map's own blast
     radius, the round ending on the blast or the defuse); the HUD is next,
     as `reference/systems/bomb.md` sets out; the plant time, defuse reach and
-    beeps are guesses until C1)* *(Local measures,
+    beeps are guesses until C1; since playtest issue 18 a human T gets it
+    every round, as CS2's `bot_defer_to_human_items` has it, and your
+    team's cards show the carrier's C4)* *(Local measures,
     then Remote; the bomb and the kit are extracted)* One T carries it; plant in a site; 40 s
     with beeps; defuse 10 s or 5 with a kit; the explosion (CS2 reworked it
     in July 2026 into a shockwave with damage baked per map: dust2's is

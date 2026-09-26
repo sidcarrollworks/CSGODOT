@@ -100,6 +100,7 @@ func start(game_world: GameWorld, map_contents: MapContents) -> void:
 	hud.player = player as PlayerController
 	hud.match_state = match_state
 	hud.economy = economy
+	hud.bomb = bomb_system.bomb if bomb_system != null else null
 	hud.userid = (player as PlayerSim).userid
 	add_child(hud)
 	_add_views()

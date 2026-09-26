@@ -54,6 +54,7 @@ func _run() -> void:
 	_test_a_plant_through_the_game(t_id)
 	_test_the_blast_through_the_damage_path(t_id, ct_id, ct)
 	_test_dropped_and_picked_up(t_id, planter)
+	_test_who_the_round_hands_it_to()
 	_finish("bomb-system")
 
 
@@ -102,6 +103,38 @@ func _test_handed_out_at_the_round_start(t_id: int) -> void:
 	var given := _heard_one(&"player_given_c4")
 	_check(given != null and given.fields["userid"] == t_id, "and player_given_c4 says so")
 	_check(not _system.live, "no plant until freeze time is over")
+
+
+## CS2's bot_defer_to_human_items (competitive's 1): the round hands it to a
+## living human T when there is one, to a bot only when there is none, and
+## to any T with the rule off. The players' is_bot is what says who is a bot.
+func _test_who_the_round_hands_it_to() -> void:
+	var a_bot := Bot.new()
+	var a_person := PlayerSim.new()
+	_check(a_bot.is_bot and not a_person.is_bot, "a Bot is a bot, a PlayerSim a person")
+	a_bot.free()
+	a_person.free()
+	var roster := Roster.new()
+	var human := _player(OFF_SITE, "T")
+	var bots: Array[int] = []
+	for i in 4:
+		var bot := _player(OFF_SITE, "T")
+		bot.is_bot = true
+		bots.append(roster.add(bot))
+	var ct := _player(OFF_SITE, "CT")
+	roster.add(ct)
+	var human_id := roster.add(human)
+	var rules := C4Rules.new()
+	_check_equal(BombSystem.may_be_given(roster, rules), [human_id] as Array[int], "with a human T and four T bots, only the human")
+	rules.bot_defer_to_human_items = false
+	_check_equal(BombSystem.may_be_given(roster, rules).size(), 5, "with the rule off, any of the five")
+	rules.bot_defer_to_human_items = true
+	human.alive = false
+	_check_equal(BombSystem.may_be_given(roster, rules), bots, "the human dead, one of the bots")
+	for player: Node in [human, ct]:
+		player.queue_free()
+	for id in bots:
+		roster.player(id).queue_free()
 
 
 func _test_no_plant_before_the_round_is_live(t_id: int) -> void:

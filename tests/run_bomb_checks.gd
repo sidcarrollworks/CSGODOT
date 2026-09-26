@@ -46,6 +46,7 @@ func _initialize() -> void:
 	_test_letting_go_of_a_plant()
 	_test_dropped_on_death()
 	_test_dropped_by_choice()
+	_test_bots_leave_it_to_a_human()
 	_test_a_defuse()
 	_test_a_defuse_with_a_kit()
 	_test_letting_go_of_a_defuse()
@@ -300,6 +301,36 @@ func _test_dropped_by_choice() -> void:
 	planter.drop = true
 	_one_tick(bomb, [planter])
 	_check(bomb.planting(), "it cannot be dropped in the middle of a plant")
+
+
+## CS2's bot_defer_to_human_items: with a human T alive, a bot walking
+## over the dropped bomb leaves it for them (seen in CS2 by Sid,
+## 2026-09-26).
+func _test_bots_leave_it_to_a_human() -> void:
+	_check(C4Rules.new().bot_defer_to_human_items and C4Rules.new().bot_defer_to_human_goals,
+		"the bots defer to a human, as competitive's config sets them")
+	var bomb := C4.new()
+	var human := _actor(T_ID, "T", OFF_SITE + Vector3(400.0, 0.0, 0.0))
+	var bot := _actor(OTHER_T_ID, "T", OFF_SITE)
+	bot.is_bot = true
+	var dead_carrier := _actor(3, "T", OFF_SITE)
+	dead_carrier.alive = false
+	bomb.give_to(3, OFF_SITE)
+	_one_tick(bomb, [dead_carrier, human, bot])
+	_check_equal(bomb.state, C4.State.DROPPED, "its carrier dying drops it")
+	_run(bomb, 0.5, [dead_carrier, human, bot])
+	_check_equal(bomb.state, C4.State.DROPPED, "a bot standing on it leaves it while a human T lives")
+	human.alive = false
+	_one_tick(bomb, [dead_carrier, human, bot])
+	_check(bomb.state == C4.State.CARRIED and bomb.carrier == OTHER_T_ID, "with no human T alive, the bot takes it")
+
+	bomb = C4.new()
+	bomb.rules.bot_defer_to_human_items = false
+	bomb.give_to(3, OFF_SITE)
+	human.alive = true
+	_one_tick(bomb, [dead_carrier, human, bot])
+	_one_tick(bomb, [dead_carrier, human, bot])
+	_check(bomb.state == C4.State.CARRIED and bomb.carrier == OTHER_T_ID, "with the rule off, the bot takes it at once")
 
 
 # --- Defusing ----------------------------------------------------------------
