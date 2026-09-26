@@ -551,7 +551,7 @@ func run_command(cmd: UserCmd, dt: float) -> void:
 	previous_viewmodel_punch = weapon.viewmodel_punch() if weapon != null else Vector2.ZERO
 	_run(cmd, dt)
 	if alive and model != null:
-		model.update_motion(velocity, yaw_degrees, duck_progress, on_ground)
+		model.update_motion(velocity, yaw_degrees, duck_progress, on_ground, air_action, air_action_usec, height_above_ground)
 
 
 ## How far the view is kicked from where the player aims, in degrees, as

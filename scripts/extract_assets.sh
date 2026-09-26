@@ -933,7 +933,7 @@ extract_weapon_animations() {
 		exit 1
 	fi
 	local clips
-	clips="$(grep -E "^animation/(anims/viewmodel/(rifle/(_default_rifle|rifle_[a-z0-9]+)|pistol/(_default_pistol|pistol_[a-z0-9]+))/|anims/world/(rifle/rifle_[a-z0-9_]+|pistol/pistol_[a-z0-9_]+)/|anims/world/pistol/_default_pistol/(idle|run|walk|crouch|inair|jump_stand|shoot)_[a-z_]*\.vnmclip_c$|skeletons/weapons/($GUN_SKELETONS)\.vnmskel_c$)" <<<"$listing" \
+	clips="$(grep -E "^animation/(anims/viewmodel/(rifle/(_default_rifle|rifle_[a-z0-9]+)|pistol/(_default_pistol|pistol_[a-z0-9]+))/|anims/world/(rifle/rifle_[a-z0-9_]+|pistol/pistol_[a-z0-9_]+)/|anims/world/pistol/_default_pistol/(idle|run|walk|crouch|inair|jump|shoot)_[a-z_]*\.vnmclip_c$|skeletons/weapons/($GUN_SKELETONS)\.vnmskel_c$)" <<<"$listing" \
 		| paste -sd, - || true)"
 	require_filter "$clips" "the gun animations"
 	echo
@@ -1077,11 +1077,12 @@ extract_characters() {
 	local clips
 	# First person: the AK's clips and the shared rifle set, which is the
 	# M4A1-S's. Third person: the shared set's locomotion (idle, walk, run,
-	# crouch, in the eight directions, plus in-air, jump and shoot), each
-	# weapon's own draw, reload and shoot, and the shared deaths by where the
-	# last round landed. (The flinches beside them are additive layers, not
+	# crouch, in the eight directions, plus in-air, the jump's take-off in
+	# each direction and shoot), each weapon's own draw, reload and shoot,
+	# the shared deaths by where the last round landed, and the shared jump
+	# additives, CS2's BodyAdditives layer. (The flinches beside them are additive layers, not
 	# poses, and wait for an animation tree to add them.)
-	clips="$(grep -E '^animation/(anims/viewmodel/rifle/(_default_rifle|rifle_ak)/|anims/world/rifle/(_default_rifle/(idle|run|walk|crouch|inair|jump_stand|shoot)_[a-z_]*|rifle_ak/|rifle_m4a1_silencer/)|anims/world/shared/death_(chest|gut|rknee|rshoulder)[a-z_]*\.vnmclip_c$|skeletons/characters/(viewmodel|worldmodel)\.vnmskel_c$|skeletons/weapons/(ak47|m4a1)[a-z_]*\.vnmskel_c$)' <<<"$listing" \
+	clips="$(grep -E '^animation/(anims/viewmodel/rifle/(_default_rifle|rifle_ak)/|anims/world/rifle/(_default_rifle/(idle|run|walk|crouch|inair|jump|shoot)_[a-z_]*|rifle_ak/|rifle_m4a1_silencer/)|anims/world/shared/(death_(chest|gut|rknee|rshoulder)|jump_additive_)[a-z_]*\.vnmclip_c$|skeletons/characters/(viewmodel|worldmodel)\.vnmskel_c$|skeletons/weapons/(ak47|m4a1)[a-z_]*\.vnmskel_c$)' <<<"$listing" \
 		| paste -sd, - || true)"
 	require_filter "$clips" "the animations"
 	echo

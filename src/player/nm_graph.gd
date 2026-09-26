@@ -307,9 +307,16 @@ func expression(index: int, depth: int = 0) -> String:
 		"FloatEase":
 			return "%s eased over %s s" % [expression(int(n.get("m_nInputValueNodeIdx", -1)), depth + 1), format_number(n.get("m_flEaseTime", 0.0))]
 		"FloatSpring":
-			return "%s on a %s Hz spring" % [expression(int(n.get("m_nInputValueNodeIdx", -1)), depth + 1), format_number(n.get("m_flHertz", 0.0))]
+			var spring := spring_of(index)
+			return "%s on a %s Hz spring, damping %s%s" % [
+				expression(int(n.get("m_nInputValueNodeIdx", -1)), depth + 1), format_number(spring["hertz"]), format_number(spring["damping"]),
+				", from %s" % format_number(spring["start"]) if spring["uses_start"] else "",
+			]
 		"FloatCurve":
-			return "a curve of %s" % expression(int(n.get("m_nInputValueNodeIdx", -1)), depth + 1)
+			var points := PackedStringArray()
+			for point: Vector2 in curve_points(index):
+				points.append("%s to %s" % [format_number(point.x), format_number(point.y)])
+			return "a curve of %s%s" % [expression(int(n.get("m_nInputValueNodeIdx", -1)), depth + 1), " (%s)" % ", ".join(points) if not points.is_empty() else ""]
 		"FloatRemap":
 			var from: Dictionary = n.get("m_inputRange", {})
 			var to: Dictionary = n.get("m_outputRange", {})
@@ -385,7 +392,7 @@ func summary(index: int) -> String:
 			return "clip %s%s" % [clip_of(index).get_file().get_basename(), " (%s)" % ", ".join(notes) if not notes.is_empty() else ""]
 		"AnimationPose":
 			var clip := clip_of(index).get_file().get_basename()
-			return "a pose from %s" % clip if not clip.is_empty() else "a pose"
+			return "%s %s" % ["a pose from %s" % clip if not clip.is_empty() else "a pose", pose_time_words(index)]
 		"ZeroPose":
 			return "the zero pose"
 		"ReferencedGraph":
@@ -434,6 +441,109 @@ func summary(index: int) -> String:
 	if child >= 0:
 		return "%s over %s" % [kind(index), summary(child)]
 	return "%s %s" % [kind(index), path(index)]
+
+
+## A float curve node's points, (input, output) in the order the graph keeps
+## them. CS2 stores the curve as a CPiecewiseCurve (its m_spline, with
+## m_tangents beside it; DumpSource2's schema, GameTracking-CS2 of
+## 2026-09-25); how a point is written inside m_spline is not in the schema,
+## so this takes an [x, y] list, a {m_vPos} or other object whose first two
+## numbers are x and y, or a flat list of numbers in pairs.
+func curve_points(index: int) -> Array[Vector2]:
+	var out: Array[Vector2] = []
+	var curve: Variant = node(index).get("m_curve", {})
+	var spline: Array = (curve as Dictionary).get("m_spline", []) if curve is Dictionary else []
+	if not spline.is_empty() and (spline[0] is float or spline[0] is int):
+		for i in range(0, spline.size() - 1, 2):
+			out.append(Vector2(float(spline[i]), float(spline[i + 1])))
+		return out
+	for point: Variant in spline:
+		var numbers := _numbers_in(point)
+		if numbers.size() >= 2:
+			out.append(Vector2(numbers[0], numbers[1]))
+	return out
+
+
+## The first numbers in a value, depth first: [x, y] itself, or an object's
+## values in order.
+static func _numbers_in(value: Variant) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	if value is float or value is int:
+		out.append(float(value))
+	elif value is Array:
+		for item: Variant in value:
+			out.append_array(_numbers_in(item))
+			if out.size() >= 2:
+				break
+	elif value is Dictionary:
+		for key: Variant in value:
+			if String(key) == "_class":
+				continue
+			out.append_array(_numbers_in(value[key]))
+			if out.size() >= 2:
+				break
+	return out
+
+
+## A float spring node's settings: how fast it follows (hertz), how much it
+## overshoots (damping, 1 for none), and the value it starts from if it
+## uses one. Unset fields take the schema's defaults (4 Hz, 0.7).
+func spring_of(index: int) -> Dictionary:
+	var n := node(index)
+	return {
+		"hertz": float(n.get("m_flHertz", 4.0)), "damping": float(n.get("m_flDampingRatio", 0.7)),
+		"start": float(n.get("m_flStartValue", 0.0)), "uses_start": bool(n.get("m_bUseStartValue", false)),
+	}
+
+
+## An animation pose node's time: the value node that sets it (-1 for
+## none, when it stands at the user time), the input range that maps to the
+## clip's start and end, whether the input counts frames rather than the
+## share of the clip, and the fixed time.
+func pose_time_of(index: int) -> Dictionary:
+	var n := node(index)
+	var remap: Dictionary = n.get("m_inputTimeRemapRange", {})
+	return {
+		"input": int(n.get("m_nPoseTimeValueNodeIdx", -1)), "from": float(remap.get("m_flMin", 0.0)), "to": float(remap.get("m_flMax", 1.0)),
+		"frames": bool(n.get("m_bUseFramesAsInput", false)), "fixed": float(n.get("m_flUserSpecifiedTime", 0.0)),
+	}
+
+
+func pose_time_words(index: int) -> String:
+	var time := pose_time_of(index)
+	if int(time["input"]) < 0:
+		return "at %s" % format_number(time["fixed"])
+	return "at the %s given by %s%s" % [
+		"frame" if time["frames"] else "share of the clip", expression(int(time["input"])),
+		" (%s to %s)" % [format_number(time["from"]), format_number(time["to"])] if not (is_zero_approx(float(time["from"])) and is_equal_approx(float(time["to"]), 1.0)) else "",
+	]
+
+
+## The graph's curves, springs and poses as data, for locomotion.json:
+## each FloatCurve node's points, each FloatSpring's settings and each
+## AnimationPose's time, by node, with its path and what feeds it.
+func value_nodes() -> Array:
+	var out := []
+	for index in nodes_of_kind("FloatCurve"):
+		var points := []
+		for point: Vector2 in curve_points(index):
+			points.append([point.x, point.y])
+		out.append({
+			"node": index, "path": path(index), "kind": "FloatCurve", "input": expression(int(node(index).get("m_nInputValueNodeIdx", -1))),
+			"input_node": int(node(index).get("m_nInputValueNodeIdx", -1)), "points": points,
+			"tangents": (node(index).get("m_curve", {}) as Dictionary).get("m_tangents", []),
+		})
+	for index in nodes_of_kind("FloatSpring"):
+		var entry := spring_of(index)
+		entry.merge({"node": index, "path": path(index), "kind": "FloatSpring", "input": expression(int(node(index).get("m_nInputValueNodeIdx", -1))), "input_node": int(node(index).get("m_nInputValueNodeIdx", -1))})
+		out.append(entry)
+	for index in nodes_of_kind("AnimationPose"):
+		var entry := pose_time_of(index)
+		entry.merge({"node": index, "path": path(index), "kind": "AnimationPose", "clip": clip_of(index).trim_suffix(".vnmclip"), "time": pose_time_words(index)})
+		entry["input_node"] = entry["input"]
+		entry.erase("input")
+		out.append(entry)
+	return out
 
 
 ## A 1D blend's inputs, each at the parameter value it is fully in at.
