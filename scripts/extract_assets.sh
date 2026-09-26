@@ -31,6 +31,7 @@
 #   scripts/extract_assets.sh characters      # two player models and their locomotion
 #   scripts/extract_assets.sh animgraphs      # the animation graphs that drive the clips (seconds)
 #   scripts/extract_assets.sh character-masks # just the player models' cloth masks (seconds; the characters step takes them too)
+#   scripts/extract_assets.sh character-animations # just the player models' clips and skeletons (no models or materials)
 #   scripts/extract_assets.sh sounds          # the guns' and the equipment's sounds, footsteps by surface, hits
 #   scripts/extract_assets.sh all             # map + weapons + equipment + hud + effects + characters + animgraphs + sounds
 #
@@ -1074,6 +1075,27 @@ extract_characters() {
 	done
 	rm -rf "$scratch"
 
+	extract_character_animations "$listing"
+
+	echo
+	# A model whose materials came through without their descriptions is
+	# still worth importing.
+	extract_character_masks || true
+}
+
+## The characters' clips on their own: the rifle set, the shared deaths and
+## jump additives, and the skeletons (extract_characters runs it after the
+## models). Clips carry no materials and need none of CS2's shaders, so this
+## step can run while the models cannot be re-exported whole (CS2's VCS 72
+## shaders, 2026-09-23). listing is the archive's, if already read.
+extract_character_animations() {
+	require_file "$PAK_VPK"
+	mkdir -p "$CHARACTERS_DEST"
+	local listing="${1:-}"
+	if [[ -z "$listing" ]] && ! listing="$(list_paths "$PAK_VPK")"; then
+		echo "Source2Viewer-CLI failed while listing $PAK_VPK." >&2
+		exit 1
+	fi
 	local clips
 	# First person: the AK's clips and the shared rifle set, which is the
 	# M4A1-S's. Third person: the shared set's locomotion (idle, walk, run,
@@ -1090,11 +1112,6 @@ extract_characters() {
 	echo "        -> $CHARACTERS_DEST/animation"
 	"$S2V_BIN" -i "$PAK_VPK" -f "$clips" -o "$CHARACTERS_DEST" -d --gltf_export_format gltf \
 		| grep -vE '^(Preloading|Added folder|--- )' || true
-
-	echo
-	# A model whose materials came through without their descriptions is
-	# still worth importing.
-	extract_character_masks || true
 }
 
 ## The player models' cloth masks: the blue channel of each agent material's
@@ -1193,6 +1210,7 @@ case "$COMMAND" in
 	visibility) extract_visibility ;;
 	characters) extract_characters; finish ;;
 	character-masks) extract_character_masks; finish ;;
+	character-animations) extract_character_animations; finish ;;
 	animgraphs) extract_animgraphs ;;
 	weapons) extract_weapons; finish ;;
 	weapon-animations) extract_weapon_animations; finish ;;
