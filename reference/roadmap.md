@@ -253,7 +253,7 @@ issue done here and on the page in the same pull request.
 | 19 | Grenade sounds and effects | The shared sound-event table and player, then the grenades' sounds; the effects after research | Extract the missing sounds and the particles | 17 to 20 |
 | 20 | A click as the magazine nears empty (CS2's `Default.NearlyEmpty`) | On the shared sound player, the threshold provisional | Measure the threshold in CS2 | After 19's groundwork |
 | 21 | Round sounds (start, end, planted, ten seconds, announcer) | The cues from `reference/research/audio-round.md` | Extract the UI, music and announcer; listen | 16, after 19's groundwork |
-| 22 | Looking down shows the vest where CS2 shows legs | More of the body you see folded away, the shadow and bots whole | Beside CS2 | 6a |
+| 22 | Looking down shows the vest where CS2 shows legs | **Done:** the seen body folds from spine_2 up, the shadow and bots whole | Beside CS2 | 6a |
 
 ### Phase 1: make being shot feel like CS2
 

@@ -17,15 +17,20 @@ extends Node
 ## camera is top_level and its transform is rebuilt every frame from the
 ## interpolated body position plus the render-rate look angles.
 
-## What the camera must not see of the body: the head it sits inside, and
-## the arms the view model stands in for. Folding the upper arms folds the
-## hands with them.
-const FOLDED_BONES: Array[String] = ["head_0", "neck_0", "arm_upper_L", "arm_upper_R"]
+## What the camera must not see of the body: everything from the chest up.
+## Folding spine_2 folds what hangs off it with it: spine_3, the clavicles
+## and scapulas, the neck and head the camera sits inside, and the arms the
+## view model stands in for. The vest and shoulders are skinned to those
+## bones, and left whole they filled the view looking down, where CS2 shows
+## only the belt, the legs and the boots (playtest 2026-09-25, issue 22).
+## The pelvis, spine_0, spine_1 and the legs stay whole. The shadow
+## (body_shadow) folds nothing.
+const FOLDED_BONES: Array[String] = ["spine_2"]
 
 ## How far behind the eyes the body stands, in units. The eyes are at the
-## front of the head, over the chest; at zero the collar fills the bottom of
-## the view looking straight ahead. This puts the chest below the view until
-## you look down for it.
+## front of the head, over the chest; at zero the waist sits right under
+## them. By eye; the chest is folded (FOLDED_BONES), and where CS2's boots
+## sit in view looking down is Sid's to match (playtest 2026-09-25, 22).
 const BODY_SETBACK := 8.0
 
 ## Dead, the camera leaves your eyes for a view of your body from outside:
@@ -82,14 +87,14 @@ var weapon_sounds: WeaponSounds
 var footsteps: Footsteps
 
 ## Your own body, seen when you look down: the third-person model without
-## its head and arms, walking the same clips as a bot's. It stands in the
+## its chest, head and arms, walking the same clips as a bot's. It stands in the
 ## world and casts no shadow; that is body_shadow's job.
 var body_model: PlayerModel
 ## Your shadow: the same model walking the same clips in the same place,
 ## drawn only into the shadow maps, whole: head, arms and what is in hand,
 ## held, fired and reloaded as everyone else sees you hold it, as CS2's
-## shadow is your third-person body. The body the camera sees has no head
-## or arms, and a shadow without them is a strange thing to see.
+## shadow is your third-person body. The body the camera sees has no chest,
+## head or arms, and a shadow without them is a strange thing to see.
 var body_shadow: PlayerModel
 
 ## The weapon model's rest pose, captured on the first frame so the recoil,
