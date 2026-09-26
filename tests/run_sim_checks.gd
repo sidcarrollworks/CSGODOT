@@ -854,7 +854,7 @@ func _test_the_hand() -> void:
 		var held_body := hull.body_of(hull.model_held_at(held))
 		_check(
 			dropped.previous_position.is_equal_approx(held_body.origin) and dropped.previous_basis.is_equal_approx(held_body.basis)
-				and held.basis.z.dot(aim) > 0.99,
+				and dropped.previous_basis.z.dot(aim) > 0.99,
 			"it leaves from where the gun was held, pointing where the player looks, as a body at its centre of mass"
 		)
 		var right := Vector3(cos(deg_to_rad(player.yaw_degrees)), 0.0, -sin(deg_to_rad(player.yaw_degrees)))

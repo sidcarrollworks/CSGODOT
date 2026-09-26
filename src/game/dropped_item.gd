@@ -26,10 +26,11 @@ extends SimEntity
 ## player's traces are.
 ##
 ## Nothing cleans it up sooner: CS2's weapon_auto_cleanup_time and
-## weapon_max_before_cleanup are both 0. Bullets pass through it, as
-## mp_shoot_dropped_grenades is false. What blasts do to a gun on the ground
-## is for later (the playtest page's issue 2, plan step 9). How CS2 combines
-## two surfaces, when its bodies sleep and whether dropped guns meet player
+## weapon_max_before_cleanup are both 0. Bullets pass through items; the
+## Box3D trial also applies an impulse to guns at each bullet contact.
+## mp_shoot_dropped_grenades concerns detonation, not gun impulses.
+## Blast impulses are for later (the playtest page's issue 2, plan step 9).
+## How CS2 combines two surfaces, when its bodies sleep and whether drops meet player
 ## clips are in no file (measure; each is a named constant below).
 
 ## sv_gravity, as MovementConfig has it.
@@ -88,8 +89,8 @@ const MOST_MOVING_USEC := 8_000_000
 var entry: Inventory.Entry
 ## Its centre of mass's velocity.
 var velocity := Vector3.ZERO
-## Which way it points: the model's +Z is its muzzle, +Y its top, as a gun
-## is held (PlayerSim.held_transform). And the tick before's, for drawing
+## Which way it points: the model's +Z is its muzzle, +Y its top, after
+## converting the hand's attachment-bone frame. And the tick before's, for drawing
 ## between the two. position is the centre of mass (ItemPhysics.Hull
 ## places the model from the two).
 var basis := Basis.IDENTITY

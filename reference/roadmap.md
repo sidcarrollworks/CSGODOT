@@ -263,8 +263,15 @@ queries with Box3D rigid bodies using the same item hulls. The request
 supersedes the earlier general recommendation in `research/box3d.md` for
 this limited experiment. **Branch implementation and local headless cost
 comparison are done.** Setup, scope and measurements are tracked in
-[box3d-trial.md](box3d-trial.md). Four AWP settling checks still fail;
-visual acceptance and the quality decision remain open before adoption.
+[box3d-trial.md](box3d-trial.md). The initial run had four AWP settling
+failures. Sid's follow-up playtest reported that Box3D feels much better
+and requested held orientation on release and shooting ground guns to
+push them. Both follow-ups are implemented on the trial branch:
+orientation checks pass 41/41 and bullet checks 25/25, with the relevant
+regression suites passing. Bullet impulses apply only to native guns,
+with an experimental strength; the legacy toggle has no bullet push.
+Human acceptance of the new behavior, the original four AWP settling
+failures and the quality decision remain open.
 
 ### Phase 1: make being shot feel like CS2
 
@@ -591,9 +598,13 @@ list, split into Local and Remote items, with the measurements.
     300 u/s where they look, turning as it flies,
     bouncing, and laid on its side where it stops; a death lets the gun go
     from the hand, moving as the body was. Left: E to swap with the gun in
-    hand, and a gun on the ground as a rigid body that blasts and rounds
-    push, on its own physics hull (`reference/cs2-systems.md` section 4);
-    the playtest of 2026-09-25's issues 2 and 3 plan both.
+    hand, and blast impulses on dropped guns. The 2026-09-26 Box3D trial
+    gives dropped items native rigid bodies on their own physics hulls;
+    its follow-up adds bullet impulses to guns and corrects their held
+    orientation at release, with automated checks passing and human
+    acceptance pending. Its impulse strength is experimental; see
+    [box3d-trial.md](box3d-trial.md). The playtest of
+    2026-09-25's issues 2 and 3 track the broader work.
 12a. **Binds: the same keys everywhere, the test range included.** *(Remote;
     Local wires section 5's keys through it and checks CS2's defaults; new
     2026-09-24, Sid: "Ideally the same keys are used everywhere even in

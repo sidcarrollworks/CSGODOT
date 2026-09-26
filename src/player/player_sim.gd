@@ -507,10 +507,10 @@ func hand_ready() -> bool:
 	return not _throwing and SimClock.now_usec() >= _drawn_until_usec
 
 
-## Where the thing in hand is, and which way it points, in the world, as the
-## world models are built (+Z the muzzle, +Y the top): CS2's hold for it,
-## from where the player stands and looks (HeldPose). What a drop throws
-## from (ItemDrops).
+## The item's attachment-bone frame at the hand, in the world: CS2's hold
+## from where the player stands and looks (HeldPose). Converting through
+## ItemPhysics.Hull.model_held_at gives the model's +Z muzzle and +Y top.
+## What a drop throws from (ItemDrops).
 func held_transform() -> Transform3D:
 	return HeldPose.of(self, _held_class)
 
@@ -760,6 +760,8 @@ func _try_shoot(at_usec: int, tick_fraction: float, yaw: float, pitch: float) ->
 		userid, team, team_damage_scale, exclude,
 		world.game.events if is_instance_valid(world) else null
 	)
+	if is_instance_valid(world) and is_instance_valid(world.game.drop_physics):
+		shooter.on_free_segment = world.game.drop_physics.push_bullet_segment.bind(weapon.data, shot.origin)
 	# A shotgun's pellets are each traced and do their damage on their own.
 	for i in shot.pellets():
 		var pellet := shot.pellet_shot(i)

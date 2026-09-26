@@ -7,11 +7,16 @@ extends Node3D
 const METRES_PER_UNIT := 0.0254
 const ITEM_LAYER := 2
 const COLLISION_STEPS := 4
+## Experimental bullet response requested during the Box3D playtest.
+## kg*inches/second per point of remaining base damage, before armour or
+## hitbox multipliers. This is tuning, not an extracted CS2 force value.
+const BULLET_IMPULSE_PER_DAMAGE := 6.0
 
 var game: GameSystems
 var native_world: Node3D
 var steps: int = 0
 var native_steps: int = 0
+var bullet_queries: int = 0
 var captured_shapes: int = 0
 var captured_triangles: int = 0
 var initialized: bool = false
@@ -235,6 +240,7 @@ func _on_spawned(entity: SimEntity) -> void:
 	var hull := item.physics()
 	var body := ClassDB.instantiate(&"Box3DBody") as Node3D
 	body.name = "Drop%d" % item.id
+	body.set_meta(&"dropped_entity", item.id)
 	body.set(&"body_type", ClassDB.class_get_integer_constant(&"Box3DBody", &"DYNAMIC"))
 	body.set(&"shape_type", ClassDB.class_get_integer_constant(&"Box3DBody", &"HULL"))
 	body.set(&"collision_mesh", _hull_meshes[item.entity_class])
@@ -270,6 +276,48 @@ func _on_removed(entity: SimEntity) -> void:
 	_bodies.erase(entity.id)
 	_items.erase(entity.id)
 	_revisions.erase(entity.id)
+
+
+## React to an unobstructed part of a bullet's path. Hitscan supplies only
+## the space before the next wall/person, and the surviving damage share
+## after a penetrated wall. Bullets retain their existing pass-through
+## behavior on drops; only guns receive impulses, once per hull per segment.
+func push_bullet_segment(from: Vector3, to: Vector3, kept: float, data: WeaponData, shot_origin: Vector3) -> void:
+	if not initialized or _bodies.is_empty() or kept <= 0.0 or from.is_equal_approx(to):
+		return
+	bullet_queries += 1
+	# Box3D filters both directions. Drops are on ITEM_LAYER and accept the
+	# world layer, so the query must carry WORLD_LAYER as its own category.
+	var hits: Array = native_world.call(&"raycast_all", from * METRES_PER_UNIT, to * METRES_PER_UNIT, ITEM_LAYER, Hitscan.WORLD_LAYER)
+	var touched := {}
+	var direction := (to - from).normalized()
+	for hit: Dictionary in hits:
+		var body := hit.get("collider") as Node3D
+		if not is_instance_valid(body):
+			continue
+		var id := int(body.get_meta(&"dropped_entity", 0))
+		var item := _items.get(id) as DroppedItem
+		if item == null or item.removed or touched.has(id) or _bodies.get(id) != body:
+			continue
+		if item.entry == null or not item.entry.item.is_gun:
+			continue
+		touched[id] = true
+		var at: Vector3 = hit["position"]
+		var distance := shot_origin.distance_to(at / METRES_PER_UNIT)
+		var damage := data.damage_at(distance) * kept
+		if damage <= 0.0:
+			continue
+		# Impulse (not force) is independent of tick duration. The native API
+		# takes kg*m/s and an absolute world-space point in metres; applying it
+		# off-centre adds torque and wakes the body. Each pellet adds to the
+		# body's current velocity, never overwriting an earlier pellet's kick.
+		body.call(&"apply_impulse_at_point", direction * (damage * BULLET_IMPULSE_PER_DAMAGE * METRES_PER_UNIT), at)
+		item.velocity = (body.call(&"get_linear_velocity") as Vector3) / METRES_PER_UNIT
+		item.angular_velocity = body.call(&"get_angular_velocity") as Vector3
+		if item.resting:
+			item.resting = false
+			item.rested_usec = -1
+			item.motion_started.emit()
 
 
 ## Advance one simulation interval, even without a view. Refresh contacts

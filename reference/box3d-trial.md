@@ -141,11 +141,12 @@ new round and removal on pickup, plus unchanged movement and combat.
 
 ## Measured results, 2026-09-26
 
-**The trial remains a draft: CPU cost was lower in these runs, but the
-dropped-gun quality problem is not resolved.** Four AWP settling checks
-still fail, and the broader synthetic-ramp profile shows penetration and
+**Initial trial results: CPU cost was lower in these runs, but the
+automated quality checks did not all pass.** Four AWP settling checks
+failed, and the broader synthetic-ramp profile showed penetration and
 continued motion. Dust2's sampled drops settled, which does not establish
-that every surface or throw works.
+that every surface or throw works. These measurements precede the
+playtest follow-up below.
 
 These are single headless runs on Windows with Godot 4.7.2 and an AMD
 Ryzen 7 7800X3D. Each case uses seed `924043`, 36 guns (12 each of the
@@ -213,7 +214,61 @@ the tables above preserve the results in the repository. The synthetic
 logs were produced before the two motion fields gained `tick` in their
 names; their values already measured per-tick changes.
 
-Visual acceptance beside CS2 is still pending. Keep the branch as an
-experiment until the AWP failures, synthetic-ramp penetration and visible
-settling behavior are resolved; the timing improvement alone is not an
-acceptance result.
+## Playtest follow-up, 2026-09-26
+
+Sid played the Box3D branch and reported that dropped guns feel much
+better. He requested two follow-ups: release a gun in the orientation it
+was held, and make shooting a gun on the ground push it. This is positive
+playtest feedback; it does not replace the initial AWP failures or
+synthetic-ramp penetration results above.
+
+The release-orientation correction makes `HeldPose` return the weapon's
+attachment-bone frame: its aim basis includes
+`ItemPhysics.held_bone.basis`, while the measured hand position stays the
+same. `drop_from` already removes that rest frame to recover the world
+model's pose; previously it removed it from a model-space aim basis and
+turned the barrel sideways. Tumble uses the resulting model-space
+lateral axis. The yaw/pitch/crouch approximation remains; this does not
+sample animated bones or change the first- or third-person pose systems.
+
+Bullet impulses apply only to native drops whose `ItemDef.is_gun` is
+true. Other dropped inventory items do not receive them. Hitscan still
+uses the existing Jolt world/player trace and damage path. Each open
+segment of that trace also queries the native gun hulls, applying an
+impulse at each gun's actual contact point in the shot direction. The
+segments stop at walls and players and resume only where the existing
+trace successfully penetrates a wall, within the weapon's remaining
+range. A gun hit does not alter the existing bullet damage/penetration
+path. Each shotgun pellet adds its own impulse; an off-centre contact
+also adds angular motion, and a sleeping gun and its view wake up.
+
+`Box3DDrops.BULLET_IMPULSE_PER_DAMAGE` is **6 kg·inch/s per point of
+remaining base damage at the contact**: weapon damage with range falloff
+and the surviving penetration share, before player armour or hitgroup
+multipliers. The adapter converts that impulse to kg·m/s for Box3D.
+This strength is experimental, not a number extracted or verified from
+CS2. `mp_shoot_dropped_grenades=false` controls shot detonation of dropped
+grenades; it does not establish whether bullets should push guns. The
+`legacy` drop backend retains its existing behavior and has no bullet
+push; blast impulses remain outside this follow-up.
+
+Both follow-ups are implemented. The new orientation suite passed
+**41/41 checks** with local extracted models (39 failed before the fix).
+It covers every gun, yaw/pitch and crouch combinations, the actual drop
+command's release pose/tumble/velocity, and drawn Glock, AK-47 and AWP
+poses. After the correction, simulation passed 156/156, contracts
+257/257 and item physics 40/40.
+
+The new bullet suite passed **25/25 checks**, covering a real Glock's
+impulse and wake/view behavior, off-centre torque, additive pellets,
+wall blocking, successful penetration, range, and excluded/removed
+items. Existing penetration, shotgun and weapon suites passed 62/62,
+104/104 and 198/198 respectively. The native quality suite remained
+46/50, with the same four known AWP settling failures.
+
+Human acceptance of the new release orientation and bullet push is
+pending. The initial positive playtest preceded these changes. The
+dated timings and full-suite counts above describe the initial trial;
+the timing profiles contain no firing and do not measure bullet-query
+cost. The branch remains an experiment while the existing settling and
+penetration issues remain open.

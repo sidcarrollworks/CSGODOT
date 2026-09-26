@@ -86,7 +86,8 @@ func _on_death(event: GameEvent) -> void:
 	for entry in inventory.drops_on_death():
 		var from := hand if entry.item.item_class == held else _middle(node)
 		var rng := _seeded(userid, entry.item.item_class)
-		var spin := from.basis.x * rng.randf_range(-DEATH_TUMBLE, DEATH_TUMBLE) + Vector3.UP * rng.randf_range(-DEATH_TUMBLE, DEATH_TUMBLE)
+		var model_basis := ItemPhysics.of(entry.item.item_class).model_held_at(from).basis
+		var spin := model_basis.x * rng.randf_range(-DEATH_TUMBLE, DEATH_TUMBLE) + Vector3.UP * rng.randf_range(-DEATH_TUMBLE, DEATH_TUMBLE)
 		var dropped := DroppedItem.drop_from(game, userid, entry, from, velocity, spin)
 		if entry.item.item_class == "item_defuser":
 			game.events.send(&"defuser_dropped", {"entityid": dropped.id})
@@ -114,7 +115,10 @@ func _on_drop(userid: int, _args: PackedStringArray, t: SimTick) -> bool:
 	var rng := _seeded(userid, entry.item.item_class)
 	# End over end, the muzzle dipping away from the thrower, and a little
 	# twist.
-	var spin := from.basis.x * rng.randf_range(0.5, 1.0) * THROW_TUMBLE \
+	# from is the attachment bone, whose local X is not the gun's lateral
+	# axis. Tumble the model end over end after converting back to its axes.
+	var model_basis := ItemPhysics.of(entry.item.item_class).model_held_at(from).basis
+	var spin := model_basis.x * rng.randf_range(0.5, 1.0) * THROW_TUMBLE \
 		+ Vector3.UP * rng.randf_range(-1.0, 1.0) * THROW_TWIST
 	DroppedItem.drop_from(game, userid, entry, from, _throw_velocity(node), spin)
 	game.events.send(&"item_remove", {"userid": userid, "item": entry.item.item_class})

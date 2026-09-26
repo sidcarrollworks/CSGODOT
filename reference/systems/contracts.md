@@ -364,7 +364,17 @@ position, view and crouch alone, never an animated bone), at 300 u/s
 where they look, a little lifted, with their own motion;
 a death with the body's motion as it died (`PlayerSim.death_velocity`,
 since the body stops before `player_death` is handed out).
+
+`HeldPose` returns an attachment-bone transform, not the world model's
+transform: its aim basis includes the extracted
+`ItemPhysics.held_bone.basis`. `drop_from` removes that rest frame to
+recover the model pose and places its centre of mass accordingly. This
+preserves the gun's aimed orientation at release and the measured hand
+position. Tumble uses the model's lateral axis; the existing
+yaw/pitch/crouch approximation still does not read animated bones.
+
 `ItemDrops`, the items contract's own system (GameSystems adds it first):
+
 - hears `player_death` and drops what `drops_on_death()` gives
   (`defuser_dropped` for the kit);
 - takes the `drop` command for what is in hand, grenades too, never the
@@ -381,6 +391,26 @@ since the body stops before `player_death` is handed out).
 - clears what lies on the ground at `round_prestart`.
 The C4 on the ground is the bomb's own entity, not a `DroppedItem`.
 
+On `codex/box3d-dropped-guns`, the `box3d` backend owns dropped-item
+dynamics; `legacy` selects the custom GDScript solver over Jolt queries.
+Bullet impulses are restricted to native drops with `ItemDef.is_gun`.
+The existing Jolt world/player trace and damage path supplies open bullet
+segments, stopping at obstructions and resuming after successful wall
+penetration within range. Each segment queries the native gun hulls and
+applies an impulse at each actual contact point, without changing the
+bullet's damage path. Every pellet adds its own impulse; off-centre hits
+add angular motion, and hits wake both a sleeping gun and its view.
+
+The experimental `Box3DDrops.BULLET_IMPULSE_PER_DAMAGE` is 6 kg·inch/s
+per point of base damage remaining at that contact, including range
+falloff and penetration loss, before player armour/hitgroup multipliers.
+This value is not extracted or verified from CS2. Other dropped item
+types, the legacy solver and blast impulses are outside this bullet-push
+change. The follow-up's automated orientation and bullet checks pass;
+human acceptance and the original four AWP settling failures remain
+open. The dated measurements and validation counts are in
+[the trial notes](../box3d-trial.md).
+
 CS2's values, from its convar dump (SteamDatabase's `DumpSource2/convars.txt`)
 and `game/csgo/cfg/gamemode_competitive.cfg`, sent by Sid's local agent
 on 2026-09-23 and checked against both files:
@@ -395,13 +425,15 @@ on 2026-09-23 and checked against both files:
 | `mp_death_drop_grenade` | 2 (current or best) | the grenade in hand, or else the best; one |
 | `mp_death_drop_taser`, `_defuser`, `_c4` | true | the Zeus and the kit; the C4 is the bomb's |
 | `weapon_auto_cleanup_time`, `weapon_max_before_cleanup` | 0, 0 | nothing is cleaned up before the round ends |
-| `mp_shoot_dropped_grenades` | false | bullets pass through items on the ground |
+| `mp_shoot_dropped_grenades` | false | shooting a dropped grenade does not detonate it; this says nothing about bullet impulses on dropped guns |
 
 In no file (measure): the throw's split between forward and up
 (`ItemDrops.THROW_LIFT`; the speed is CS2's `m_flDropSpeed` 300), the
-spin (by eye), the pickup reach, which grenade counts as best, a gun's
-mass and bounce on the ground, and how blasts and bullets push it. The bomb's dropped C4 takes
-the same two waits if it follows CS2.
+spin (by eye), the pickup reach, which grenade counts as best, the final
+bounce/settling behavior and how blasts and bullets push a gun. Gun mass
+comes from CS2's PHYS data through `ItemPhysics`; the trial's bullet
+impulse strength remains experimental. The bomb's dropped C4 takes the
+same two waits if it follows CS2.
 
 ## 4. The tick, and how systems join it
 
