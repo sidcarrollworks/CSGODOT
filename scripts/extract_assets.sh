@@ -41,7 +41,7 @@
 #   scripts/extract_assets.sh nav de_inferno  # just de_inferno's nav mesh
 #   scripts/extract_assets.sh paths de_mirage # where they land; needs no CS2
 # Each map lands in assets/maps/<name>, with its hull in <name>_physics and
-# its 3D skybox in <name>_skybox; maps/play/play.tscn plays it (README).
+# its 3D skybox in <name>_skybox; maps/play/play.tscn plays it (reference/extracting.md).
 #
 # Requires Source2Viewer-CLI: https://github.com/ValveResourceFormat/ValveResourceFormat
 # Point at it with S2V=/path/to/Source2Viewer-CLI if it is not on PATH.
