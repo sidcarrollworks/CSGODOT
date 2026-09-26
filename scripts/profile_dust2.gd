@@ -65,6 +65,9 @@ func _initialize() -> void:
 	_start_usec = Time.get_ticks_usec()
 	var dust2 := (load("res://maps/de_dust2/de_dust2.tscn") as PackedScene).instantiate()
 	dust2.set("team_size", _team_size)
+	# Competitive with bots, never the picker, which Ask would show only if
+	# this were the scene being played.
+	dust2.set("game_mode", "Competitive")
 	root.add_child(dust2)
 	var stamp := GDScript.new()
 	stamp.source_code = "extends Node\nvar stamp := 0\nfunc _physics_process(_d: float) -> void:\n\tstamp = Time.get_ticks_usec()\n"

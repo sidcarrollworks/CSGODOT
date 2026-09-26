@@ -20,8 +20,8 @@ scripts/extract_assets.sh equipment    # the bomb and kit, grenades, knives, Zeu
 scripts/extract_assets.sh sounds       # the weapons' sounds, footsteps by surface, hits
 ```
 
-`map` takes a few minutes and a little under two gigabytes. It pulls twelve
-things out of the game: the visible world as glTF with its textures, the
+`map` takes a few minutes and a little under two gigabytes. It pulls
+thirteen things out of the game: the visible world as glTF with its textures, the
 collision hull as a second glTF, the entity lump as text, the nav mesh the
 game's bots walk, the volumes of the buy zones, bomb sites and callouts (with
 the game's baked bomb damage), the radar and where it lies, CS2's surfaces
@@ -30,11 +30,13 @@ texture layer of every material that has one (which a glTF has no room for),
 the sky as an HDR panorama, the 3D skybox (the buildings and hills beyond the
 map, a small map of their own, drawn behind everything as the game draws it),
 the lightmaps the game baked its bounce light into, with the light probes
-beside them, and which parts of the map can be seen from which (what is not
-seen from where you stand is not drawn, as in the game). `physics`,
-`entities`, `nav`, `volumes`, `radar`, `surfaces`, `layers`, `sky`, `skybox`,
-`lightmaps` and `visibility` fetch the last eleven on their own; all but the
-lightmaps take seconds. The lightmaps are one 300 MB image, which
+beside them, which parts of the map can be seen from which (what is not
+seen from where you stand is not drawn, as in the game), and the map's
+colour grade (its post-processing file: the filmic curve, the bloom and a
+colour table, which `--grade cs2` draws with; `reference/research/cs2-post-processing.md`).
+`physics`, `entities`, `nav`, `volumes`, `radar`, `surfaces`, `layers`,
+`sky`, `skybox`, `lightmaps`, `visibility` and `postprocessing` fetch the
+last twelve on their own; all but the lightmaps take seconds. The lightmaps are one 300 MB image, which
 Godot's first import spends a few minutes compressing to 90; the probes are
 720 small slices that the game packs into one file the first time it runs.
 

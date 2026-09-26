@@ -49,6 +49,9 @@ class Actor:
 	var id: int = NOBODY
 	var team: String = ""
 	var alive: bool = true
+	## Run by a bot, which leaves the bomb to a human teammate
+	## (C4Rules.bot_defer_to_human_items).
+	var is_bot: bool = false
 	## Where they stand, their eyes, and the way they look.
 	var feet: Vector3 = Vector3.ZERO
 	var eyes: Vector3 = Vector3.ZERO
@@ -71,6 +74,7 @@ class Actor:
 		actor.id = player_id
 		actor.team = player.team
 		actor.alive = player.alive
+		actor.is_bot = player.is_bot
 		actor.feet = player.global_position
 		actor.eyes = player.global_position + Vector3.UP * player.eye_height()
 		actor.aim = PlayerInput.aim_direction(player.yaw_degrees, player.pitch_degrees)
@@ -328,8 +332,12 @@ func _drop(now_usec: int, at: Vector3, by_choice: bool) -> void:
 func _tick_dropped(now_usec: int, actors: Array[Actor]) -> void:
 	var nearest: Actor = null
 	var nearest_distance := INF
+	var bots_defer := rules.bot_defer_to_human_items and actors.any(
+		func(actor: Actor) -> bool: return actor.alive and actor.team == "T" and not actor.is_bot)
 	for actor in actors:
 		if not actor.alive or actor.team != "T":
+			continue
+		if bots_defer and actor.is_bot:
 			continue
 		if actor.id == dropped_by and now_usec < redrop_usec:
 			continue

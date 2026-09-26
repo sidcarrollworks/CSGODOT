@@ -16,17 +16,31 @@ extends RefCounted
 ## standard material moves onto far.gdshader with what the import made of
 ## it; a shader material (a blend material, say) gets a variant of its own
 ## shader with the squeeze added.
+##
+## The skybox is imported at sixteen times its size, so its terrain runs out
+## to half a million units, far past the camera's far plane (16,384). The
+## squeeze keeps every distance inside the far plane, and each mesh is given
+## a box that keeps it in every view's frustum, as the effects' batches have
+## (EffectQuads), so the CPU never drops it for lying past the far plane
+## before the squeeze can run: dust2's hill behind mid, from T spawn
+## (reference/playtest-2026-09-25.md, issue 23). So the whole skybox is
+## drawn in every view, occluded or not; scripts/profile_render.gd's
+## no_skybox measures what that costs.
 
 const SHADER := preload("res://src/map/far.gdshader")
 const INCLUDE := "#include \"res://src/map/far.gdshaderinc\""
-const VERTEX_SQUEEZE := "void vertex() {\n\tPOSITION = far_position(PROJECTION_MATRIX * MODELVIEW_MATRIX * vec4(VERTEX, 1.0), CLIP_SPACE_FAR);\n}\n\n"
+const VERTEX_SQUEEZE := "void vertex() {\n\tPOSITION = far_position(PROJECTION_MATRIX * MODELVIEW_MATRIX * vec4(VERTEX, 1.0), CLIP_SPACE_FAR, PROJECTION_MATRIX);\n}\n\n"
 ## Where a blended material's edge is cut, drawn behind everything.
 const BLENDED_CUT := 0.5
+## The box a mesh behind everything is culled by, in its own space: larger
+## than any view reaches, scaled up or not.
+const CULL_BOX := AABB(Vector3.ONE * -1e7, Vector3.ONE * 2e7)
 
 static var _variants := {}  # Shader -> its far variant, and a two-sided one under a string key
 
 
-## Puts every surface of these meshes behind everything. Returns how many.
+## Puts every surface of these meshes behind everything, and keeps each
+## mesh in view whatever its distance (CULL_BOX). Returns how many surfaces.
 static func apply(meshes: Array[MeshInstance3D]) -> int:
 	var far := far_plane_depth()
 	var built := {}
@@ -35,6 +49,7 @@ static func apply(meshes: Array[MeshInstance3D]) -> int:
 		var mesh := mesh_instance.mesh
 		if mesh == null:
 			continue
+		mesh_instance.custom_aabb = CULL_BOX
 		for surface in mesh.get_surface_count():
 			var material := mesh_instance.get_active_material(surface)
 			if material == null:

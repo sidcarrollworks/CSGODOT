@@ -347,9 +347,11 @@ var saved := inv.save_state(); inv.load_state(saved)
 `DroppedItem` (a `SimEntity`, class the item's own: `"weapon_ak47"`,
 `"item_defuser"`) holds the carried `Inventory.Entry`, so a gun keeps its
 ammo, and a `basis` (the world model's axes: +Z the muzzle, +Y the top) and
-spin; it flies under gravity, turning (one ray a tick while it moves),
-bounces off the world, and rests; drawn, it lies on its thinnest side the
-way it was heading (`DroppedItemView`). `DroppedItem.drop(game, userid,
+spin; `position` is its centre of mass. It is a body on the item's own
+convex hull (`ItemPhysics`): it flies under gravity, turning about its
+centre of mass, meets the world with impulses at its contacts (its hull
+swept while it moves, no queries at rest), and sleeps; drawn, it is where
+its body is (`DroppedItemView`). `DroppedItem.drop(game, userid,
 entry, velocity)` puts one on the ground at a player's middle: buying uses
 it for the gun a purchase replaced. `DroppedItem.drop_from(game, userid,
 entry, from, velocity, spin)` starts it from a transform: a drop and a

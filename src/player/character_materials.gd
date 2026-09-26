@@ -19,6 +19,14 @@ extends RefCounted
 ## path the material names it by, and readied for the import there
 ## (ExportCharacterMasks). A material that asks for cloth shading without
 ## its mask there is shaded as it was, with GGX, and says so once.
+##
+## A material that draws eyes (F_EYEBALLS) names the eye's colour
+## (g_tEyeAlbedo1, its alpha the iris) and where on the model the eyes are
+## (g_tEyeMask1), which the export leaves out too and the same step
+## decompiles; ExportCharacterMasks moves the colour's alpha into a file of
+## its own. With both there, the material gets them and its eye parameters,
+## and each model aims its own copy of it (CharacterEyes). Without them it
+## keeps the white eyes the colour texture paints, and says so once.
 
 const SHADER := preload("res://src/player/character.gdshader")
 ## The shader CS2 draws its agents and their arms with.
@@ -32,6 +40,22 @@ const AMBIENT_FROM_PROBES := &"ambient_from_probes"
 ## CS2's own default for a material that leaves it out (Source 2 Viewer's
 ## texturing.slang).
 const SHEEN_SCALE := 0.667
+## The eye's colour, its alpha the iris, and where on the model the eyes are.
+const EYE_ALBEDO := "g_tEyeAlbedo1"
+const EYE_MASK := "g_tEyeMask1"
+## The eye parameters handed to the shader, by CS2's name, with CS2's
+## defaults (Source 2 Viewer's csgo_character_eyes_ps.slang and _vs.slang).
+const EYE_PARAMS := {
+	"g_flEyeBallRadius1": ["eye_radius", 0.0],
+	"g_flEyeIrisSize1": ["eye_iris_size", 1.0],
+	"g_flEyePupilSize1": ["eye_pupil_size", 0.0],
+	"g_flEyeHueShift1": ["eye_hue_shift", 0.0],
+	"g_flEyeSaturation1": ["eye_saturation", 1.0],
+}
+## How far each eye turns outward from where the two look, in degrees
+## (g_flEyeBallWalleyeL1 and ...R1), kept on the material for CharacterEyes,
+## which aims them: left, right.
+const WALLEYE := &"eye_walleye"
 
 ## The masks found missing, each said once.
 static var _missing := {}
@@ -46,6 +70,11 @@ static func is_character(description: Dictionary) -> bool:
 ## Whether the material asks for cloth shading (F_CLOTH_SHADING).
 static func wants_cloth(description: Dictionary) -> bool:
 	return int((description.get("IntParams", {}) as Dictionary).get("F_CLOTH_SHADING", 0)) != 0
+
+
+## Whether the material draws eyes (F_EYEBALLS).
+static func wants_eyes(description: Dictionary) -> bool:
+	return int((description.get("IntParams", {}) as Dictionary).get("F_EYEBALLS", 0)) != 0
 
 
 ## Where the material's cloth mask is decompiled to under textures_dir; ""
@@ -73,6 +102,8 @@ static func carry(lit: ShaderMaterial, description: Dictionary, textures_dir: St
 	var floats: Dictionary = description.get("FloatParams", {})
 	lit.set_shader_parameter("direct_diffuse_occlusion", float(floats.get("g_flAmbientOcclusionDirectDiffuse", 1.0)))
 	lit.set_shader_parameter("direct_specular_occlusion", float(floats.get("g_flAmbientOcclusionDirectSpecular", 1.0)))
+	if wants_eyes(description):
+		_carry_eyes(lit, description, textures_dir)
 	if not wants_cloth(description):
 		return
 	var mask := BlendMaterials.load_texture(textures_dir, (description.get("TextureParams", {}) as Dictionary).get(MASKS))
@@ -91,6 +122,51 @@ static func carry(lit: ShaderMaterial, description: Dictionary, textures_dir: St
 	lit.set_shader_parameter("sheen_scale", float(floats.get("g_flSheenScale", SHEEN_SCALE)))
 	var tint := sheen_tint(description)
 	lit.set_shader_parameter("sheen_tint", Vector3(tint.r, tint.g, tint.b))
+
+
+## Where a material's eye texture (EYE_ALBEDO or EYE_MASK) is decompiled to
+## under textures_dir, and the eye colour's iris beside it (iris true); ""
+## for a material that names none.
+static func eye_file(description: Dictionary, param: String, iris: bool = false, textures_dir: String = TEXTURES_DIR) -> String:
+	var vtex: Variant = (description.get("TextureParams", {}) as Dictionary).get(param, "")
+	if not vtex is String or (vtex as String).is_empty():
+		return ""
+	return textures_dir.path_join((vtex as String).get_basename() + (ExportCharacterMasks.IRIS_SUFFIX if iris else "") + ".png")
+
+
+## The eye's colour, iris and mask, and its parameters, for a material that
+## draws eyes; nothing, said once, where the textures are not there.
+static func _carry_eyes(lit: ShaderMaterial, description: Dictionary, textures_dir: String) -> void:
+	var textures: Dictionary = description.get("TextureParams", {})
+	var albedo := BlendMaterials.load_texture(textures_dir, textures.get(EYE_ALBEDO))
+	var mask := BlendMaterials.load_texture(textures_dir, textures.get(EYE_MASK))
+	var iris: Texture2D = null
+	var iris_vtex: Variant = textures.get(EYE_ALBEDO)
+	if iris_vtex is String and not (iris_vtex as String).is_empty():
+		iris = BlendMaterials.load_texture(
+			textures_dir, (iris_vtex as String).get_basename() + ExportCharacterMasks.IRIS_SUFFIX + ".vtex"
+		)
+	if albedo == null or mask == null or iris == null:
+		var path := eye_file(description, EYE_ALBEDO, false, textures_dir)
+		if not _missing.has(path):
+			_missing[path] = true
+			push_warning(
+				"%s draws eyes, but its eye textures (%s, its iris, and %s) are not all there, so its eyes stay white;"
+				% [
+					description.get("Name", "A material"), path if not path.is_empty() else "(none named)",
+					eye_file(description, EYE_MASK, false, textures_dir),
+				]
+				+ " scripts/extract_assets.sh character-masks extracts them."
+			)
+		return
+	lit.set_shader_parameter("eyes", true)
+	lit.set_shader_parameter("eye_albedo", albedo)
+	lit.set_shader_parameter("eye_iris", iris)
+	lit.set_shader_parameter("eye_mask", mask)
+	var floats: Dictionary = description.get("FloatParams", {})
+	for param: String in EYE_PARAMS:
+		lit.set_shader_parameter(EYE_PARAMS[param][0], float(floats.get(param, EYE_PARAMS[param][1])))
+	lit.set_meta(WALLEYE, Vector2(float(floats.get("g_flEyeBallWalleyeL1", 0.0)), float(floats.get("g_flEyeBallWalleyeR1", 0.0))))
 
 
 ## Puts a mesh's character surfaces on character.gdshader lit by its world's

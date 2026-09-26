@@ -26,6 +26,7 @@ const SIMULATION_FILES := [
 	"res://src/sim/game_world.gd",
 	"res://src/player/player_sim.gd",
 	"res://src/bots/bot.gd",
+	"res://src/bots/bot_steering.gd",
 	"res://src/movement/player_body.gd",
 	"res://src/movement/movement_solver.gd",
 	"res://src/weapons/weapon.gd",
@@ -119,6 +120,7 @@ func _run() -> void:
 	_test_the_hit_direction_on_screen()
 	await _test_the_hud_shows_hits()
 	_test_you_spawn_with_the_knife_and_pistol()
+	_test_a_switch_draws_from_the_start()
 	_test_the_frame_meter()
 	await _test_a_frame_draws_where_the_clock_is()
 	_test_frames_are_held_under_the_refresh()
@@ -748,6 +750,46 @@ func _test_the_hand() -> void:
 	_check(reloading and player.weapon == ak and ak.ammo == 12 and not ak.is_reloading(SimClock.now_usec()),
 		"a reload is stopped by a switch, without its rounds; Q takes the AK-47 back (%d rounds)" % ak.ammo)
 
+	# R during the draw: CS2 finishes the pull-out, then reloads (Sid,
+	# 2026-09-26, reference/playtest-2026-09-25.md issue 16).
+	var reloads_started := [0]
+	var count_reload := func() -> void: reloads_started[0] += 1
+	player.reload_started.connect(count_reload)
+	var ak_before := [ak.ammo, ak.reserve]
+	player.select = 2
+	steps.call(DT)
+	player.select = 1
+	steps.call(DT)
+	var ak_drawn := ak.drawn_usec()
+	player.tap = UserCmd.RELOAD
+	steps.call(DT)
+	var held_off: bool = not ak.is_reloading(SimClock.now_usec()) and reloads_started[0] == 0 and ak.is_drawing(SimClock.now_usec())
+	steps.call(float(ak_drawn - SimClock.now_usec()) / 1_000_000.0 + DT)
+	var after_draw: bool = ak.is_reloading(SimClock.now_usec()) and reloads_started[0] == 1
+	steps.call(float(ak_drawn + int(ak.data.reload_time * 1_000_000.0) - SimClock.now_usec()) / 1_000_000.0)
+	_check(
+		held_off and after_draw and ak.ammo == ak.data.magazine_size and not ak.is_reloading(SimClock.now_usec()),
+		"R pressed while the AK-47 is drawn does not cut the draw: the reload starts as the draw ends, and is done its reload time later (%d rounds)" % ak.ammo
+	)
+	# Kept for the gun it was pressed on: a switch drops it.
+	var glock_ammo := glock.ammo
+	player.select = 2
+	steps.call(DT)
+	player.tap = UserCmd.RELOAD
+	steps.call(DT)
+	player.select = 1
+	steps.call(DT)
+	steps.call(ItemRegistry.item("weapon_ak47").deploy_seconds + 0.1)
+	_check(
+		reloads_started[0] == 1 and glock.ammo == glock_ammo and glock_ammo < glock.data.magazine_size
+			and not ak.is_reloading(SimClock.now_usec()),
+		"R pressed while the Glock is drawn, then a switch: nothing reloads (%d started)" % reloads_started[0]
+	)
+	player.reload_started.disconnect(count_reload)
+	# The checks after these go on with the 12 rounds the AK-47 had.
+	ak.ammo = ak_before[0]
+	ak.reserve = ak_before[1]
+
 	player.select = 3
 	steps.call(DT)
 	_check(player.weapon == null and player.in_hand_class() == "weapon_knife"
@@ -808,10 +850,12 @@ func _test_the_hand() -> void:
 		var aim :=PlayerInput.aim_direction(player.yaw_degrees, player.pitch_degrees)
 		var went := dropped.position - dropped.previous_position
 		var across := Vector2(went.x, went.z).length() / DT
+		var hull := dropped.physics()
+		var held_body := hull.body_of(hull.model_held_at(held))
 		_check(
-			dropped.previous_position.is_equal_approx(held.origin) and dropped.previous_basis.is_equal_approx(held.basis)
+			dropped.previous_position.is_equal_approx(held_body.origin) and dropped.previous_basis.is_equal_approx(held_body.basis)
 				and held.basis.z.dot(aim) > 0.99,
-			"it leaves from where the gun was held, pointing where the player looks"
+			"it leaves from where the gun was held, pointing where the player looks, as a body at its centre of mass"
 		)
 		var right := Vector3(cos(deg_to_rad(player.yaw_degrees)), 0.0, -sin(deg_to_rad(player.yaw_degrees)))
 		var off := held.origin - (player.global_position + Vector3.UP * player.eye_height())
@@ -826,26 +870,28 @@ func _test_the_hand() -> void:
 			"thrown the way the player looks at CS2's 300 u/s, a little lifted (%.0f u/s across)" % across
 		)
 		_check(not dropped.basis.is_equal_approx(dropped.previous_basis), "and it turns as it flies")
-	steps.call(1.0)
+	steps.call(float(DroppedItem.MOST_MOVING_USEC) / 1_000_000.0)
 	if dropped != null:
 		_check(
-			dropped.resting and absf(dropped.position.y) < 0.5 and dropped.position.distance_to(player.global_position) > 32.0,
-			"thrown ahead, it comes to rest on the floor %.0f units off" % dropped.position.distance_to(player.global_position)
+			dropped.resting and dropped.position.distance_to(player.global_position) > 32.0,
+			"thrown ahead, it comes to rest %.0f units off" % dropped.position.distance_to(player.global_position)
 		)
 		view._process(0.0)
 		var model := view.model_of(dropped.id)
 		# Measured on what is drawn, not by the view's own sums: the drawn
-		# box's height is the model's thinnest size, its bottom the floor,
-		# and the muzzle's axis along the way it was heading.
-		var own := DroppedItemView.bounds(model) if model != null else AABB()
-		var lying_box := model.transform * own if model != null else AABB()
-		var way := DroppedItemView.heading(dropped.basis)
-		var muzzle := (model.transform.basis * Vector3.BACK).normalized() if model != null else Vector3.ZERO
+		# frame, off the skeleton where the model has one (a gun's dropped
+		# clip moves its root bone, which the view takes back out), is where
+		# the body says, and the hull it carries rests on the floor, not in
+		# it.
+		var hull := dropped.physics()
+		var frame := DroppedItemView.drawn_frame(model, hull.bone) if model != null else Transform3D.IDENTITY
+		var bottom := INF
+		for point in hull.points:
+			bottom = minf(bottom, (frame * point).y)
 		_check(
-			model != null and absf(lying_box.position.y - dropped.position.y) < 0.1
-				and absf(lying_box.size.y - minf(own.size.x, minf(own.size.y, own.size.z))) < 0.1
-				and absf(muzzle.dot(Vector3(sin(way), 0.0, cos(way)))) > 0.99,
-			"drawn, it lies on its thinnest side, the way it was heading, its lowest point on the floor (%.2f high, bottom %.2f off)" % [lying_box.size.y, lying_box.position.y - dropped.position.y]
+			model != null and frame.is_equal_approx(dropped.model_transform())
+				and bottom > -DroppedItem.SKIN and bottom < DroppedItem.CONTACT_MARGIN,
+			"drawn where its body lies, its hull's lowest point on the floor (bottom %.2f off)" % bottom
 		)
 		player.global_position = dropped.position
 		player.previous_position = dropped.position
@@ -1466,6 +1512,104 @@ func _test_you_spawn_with_the_knife_and_pistol() -> void:
 			"a %s spawns with the knife and the %s, the pistol in hand, having taken nothing else in hand (carries %s, drew %s)" % [side, pistol, carried, drawn]
 		)
 		you.free()
+
+
+## A quick switch draws from the start every time, as CS2's graph does
+## (reference/playtest-2026-09-25.md, issue 16): a model put away part way
+## through its draw holds none of it, and taking it up again, or drawing it
+## again while in hand, rewinds the draw. No assets needed: the models are
+## built by hand, with a 1 s draw and an idle, and hung on a player's view.
+func _test_a_switch_draws_from_the_start() -> void:
+	var model := _hand_built_view_model()
+	_world.add_child(model)
+	var clips := model.animation_player
+	model.deploy(true)
+	clips.advance(0.3)
+	var part_way := clips.current_animation_position
+	model.put_away()
+	var stopped := not clips.is_playing() and not model.visible \
+		and model.process_mode == Node.PROCESS_MODE_DISABLED
+	model.deploy(true)
+	_check(
+		is_equal_approx(part_way, 0.3) and stopped
+			and model.visible and model.process_mode == Node.PROCESS_MODE_INHERIT
+			and clips.current_animation == &"draw" and clips.is_playing()
+			and is_zero_approx(clips.current_animation_position),
+		"a model put away 0.3 s into its draw is stopped, and taken up again draws from the start (at %.2f s)" % clips.current_animation_position
+	)
+	clips.advance(0.5)
+	model.deploy(false)
+	_check(
+		clips.current_animation == &"draw" and is_zero_approx(clips.current_animation_position) and not model.visible,
+		"drawn again while its draw is running, it rewinds; a dead player's is drawn hidden"
+	)
+	model.free()
+
+	# The same through the player's view, 1-2-1 within a draw: the first
+	# item's second draw starts from its start, not 0.3 s in.
+	var player := (load("res://src/player/player.tscn") as PackedScene).instantiate() as PlayerController
+	_world.add_child(player)
+	player.view.catch_up()
+	# The knife and pistol you spawn with, a model built by hand for each.
+	var carried: Array[ViewModel] = []
+	for entry in player.inventory.entries():
+		var made := _hand_built_view_model()
+		made.name = "ViewModel_%s" % entry.item.item_class
+		player.camera.add_child(made)
+		made.put_away()
+		player.view._view_models[entry.item.item_class] = made
+		carried.append(made)
+	var classes := player.inventory.entries().map(func(entry: Inventory.Entry) -> String: return entry.item.item_class)
+	if carried.size() < 2:
+		_check(false, "a player spawns with two things to switch between (%s)" % [classes])
+		player.free()
+		return
+	# The first switch goes to something not already in hand, so it draws.
+	if classes[0] == player.inventory.in_hand_class():
+		classes.reverse()
+		carried.reverse()
+	var first: ViewModel = carried[0]
+	var second: ViewModel = carried[1]
+	player.inventory.select(classes[0])
+	player.view.catch_up()
+	first.animation_player.advance(0.3)
+	var part_way_first := first.animation_player.current_animation_position
+	player.inventory.select(classes[1])
+	player.view.catch_up()
+	var second_drawing := second.animation_player.current_animation == &"draw" and second.visible \
+		and not first.visible and not first.animation_player.is_playing()
+	player.inventory.select(classes[0])
+	player.view.catch_up()
+	_check(
+		is_equal_approx(part_way_first, 0.3) and second_drawing
+			and player.view_model == first and first.visible and not second.visible
+			and first.animation_player.current_animation == &"draw"
+			and is_zero_approx(first.animation_player.current_animation_position),
+		"switching %s, %s, %s within a draw: the second draws, and the first's second draw starts from the start (at %.2f s)"
+			% [classes[0], classes[1], classes[0], first.animation_player.current_animation_position]
+	)
+	player.free()
+
+
+## A view model with no assets: an AnimationPlayer holding a 1 s draw that
+## plays once and a looping idle, standing in for a clip set.
+func _hand_built_view_model() -> ViewModel:
+	var model := ViewModel.new()
+	var clips := AnimationPlayer.new()
+	model.add_child(clips)
+	var library := AnimationLibrary.new()
+	var draw := Animation.new()
+	draw.length = 1.0
+	library.add_animation(&"draw", draw)
+	var idle := Animation.new()
+	idle.length = 1.0
+	idle.loop_mode = Animation.LOOP_LINEAR
+	library.add_animation(&"idle", idle)
+	clips.add_animation_library(&"", library)
+	model.animation_player = clips
+	model.one_shots = PackedStringArray(["draw"])
+	model.idle = &"idle"
+	return model
 
 
 ## The HUD you play with shows your armour, and an arc for a hit that

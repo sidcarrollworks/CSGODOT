@@ -49,6 +49,9 @@ var one_shots: PackedStringArray = PackedStringArray()
 var held: PackedStringArray = PackedStringArray()
 
 var _pins: Array[Dictionary] = []
+## The character's eyes, where a mesh adopted draws them (CharacterEyes),
+## aimed each time the character rig updates.
+var _eyes: CharacterEyes = null
 
 ## How far the point a model is lit from moves before its cube is sampled
 ## again (light_from), in units: a tick's run at 250 u/s, a sixth of the
@@ -89,6 +92,7 @@ func load_clips(clips: PackedStringArray, suffix: String) -> bool:
 	character_rig = null
 	weapon_rig = null
 	_pins.clear()
+	_eyes = null
 	if clips.is_empty():
 		return false
 
@@ -115,6 +119,7 @@ func load_clips(clips: PackedStringArray, suffix: String) -> bool:
 	if character_rig == null:
 		return false
 	character_rig.skeleton_updated.connect(_update_pins)
+	character_rig.skeleton_updated.connect(_update_eyes)
 
 	# A copy: instances of a scene share its library, and renaming the clip
 	# in one would rename it in every model built from the same clip.
@@ -191,6 +196,12 @@ func fold_bones(bone_names: PackedStringArray) -> void:
 		var index := character_rig.find_bone(bone_name)
 		if index >= 0:
 			character_rig.set_bone_pose_scale(index, Vector3.ONE * FOLDED)
+			# Out of the tree, as a body is when it is folded, setting a pose
+			# does not mark the bone's global pose stale, so a global pose
+			# something read before (a mesh adopted onto the rig) would be
+			# kept, the fold unseen. Setting the bone enabled marks it and
+			# its children stale in or out of the tree.
+			character_rig.set_bone_enabled(index, character_rig.is_bone_enabled(index))
 	# Swapping the clips under a playing animation stops it.
 	if idle != &"":
 		play(idle)
@@ -294,6 +305,27 @@ func adopt(mesh: MeshInstance3D, rig: Skeleton3D) -> void:
 		_probe_light(mesh)
 	else:
 		CharacterMaterials.use_environment(mesh)
+	_take_eyes(mesh, rig)
+
+
+## Gives a mesh on the character rig whose material draws eyes a copy of it
+## of its own, aimed from then on. The copy is a ShaderMaterial, which
+## neither _probe_light nor CharacterMaterials puts on another shader, so
+## it stays through use_probe_lighting.
+func _take_eyes(mesh: MeshInstance3D, rig: Skeleton3D) -> void:
+	if rig != character_rig:
+		return
+	if _eyes == null:
+		_eyes = CharacterEyes.on(rig)
+		if _eyes == null:
+			return
+	_eyes.take(mesh)
+
+
+## A hidden model's eyes wait: they are aimed at the first update after it is shown.
+func _update_eyes() -> void:
+	if _eyes != null and _eyes.has_any() and is_visible_in_tree():
+		_eyes.update()
 
 
 ## Puts a mesh's standard materials on the probe shader.

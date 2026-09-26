@@ -167,6 +167,8 @@ func build(side: String) -> bool:
 	if dressed != null:
 		for mesh in dressed.find_children("*thirdperson*", "MeshInstance3D", true, false):
 			agent.adopt(mesh, agent.character_rig)
+		# The arms', thighs' and head's twist bones, which the poses do not key.
+		TwistModifier.attach(agent.character_rig, PlayerModel.AGENTS.get(side, PlayerModel.AGENTS["T"]), TwistModifier.skeleton_of(dressed))
 		dressed.free()
 	body = agent
 	body.scale = Vector3.ONE * MapImporter.SOURCE2_VIEWER_SCALE

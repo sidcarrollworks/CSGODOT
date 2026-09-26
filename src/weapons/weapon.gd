@@ -208,10 +208,7 @@ func _init(p_data: WeaponData) -> void:
 	data = p_data
 	ammo = data.magazine_size
 	reserve = data.reserve_ammo
-	var pattern := PackedVector2Array()
-	for i in data.recoil_pattern.size():
-		pattern.append(data.recoil_offset(i))
-	_impulses = RecoilState.solve_impulses(pattern, data.cycle_time)
+	_impulses = data.recoil_impulses()
 
 
 ## Which round of the pattern the next one is, now. Falls back towards zero
@@ -337,6 +334,11 @@ func max_speed() -> float:
 
 func is_drawing(now_usec: int) -> bool:
 	return now_usec < _drawn_usec
+
+
+## When the draw is over, in the simulation's microseconds.
+func drawn_usec() -> int:
+	return _drawn_usec
 
 
 ## The trigger went down afresh. Call it for every press, before firing the
@@ -567,13 +569,30 @@ static func _cone_for(numbers: WeaponData, state: ShooterState) -> float:
 ## goes flat, while its sideways steps grow to three degrees. Scale the kick
 ## by those and the view punches twice and then only sways, which is not what
 ## a gun does and is not what CS2 does either.
-func _view_kick_for(round_index: int) -> Vector2:
-	var here := data.recoil_offset(round_index)
-	var sideways := data.recoil_offset(round_index + 1).x - here.x
-	if is_zero_approx(sideways) and round_index > 0:
-		# Past the end of the pattern, lean the way the last round did.
-		sideways = here.x - data.recoil_offset(round_index - 1).x
-	return Vector2(signf(sideways) * data.view_kick_side(), data.view_kick_up())
+##
+## A gun with no pattern (the provisional kick, WeaponData.view_kick_up)
+## leans by its recoil seed and the round, the same way every time, and not
+## at all if CS2 gives it no angle variance (the P2000 and USP-S). Scoped, the
+## kick shrinks by the game's scoped magnitude against the unscoped one (the
+## AWP's 25 against 78), as far as the scope has come in.
+func _view_kick_for(round_index: int, now_usec: int) -> Vector2:
+	var sideways := 0.0
+	if data.recoil_pattern.is_empty():
+		if data.recoil_angle_variance > 0.0:
+			var rng := RandomNumberGenerator.new()
+			rng.seed = hash([data.recoil_seed, round_index])
+			sideways = rng.randf_range(-1.0, 1.0)
+	else:
+		var here := data.recoil_offset(round_index)
+		sideways = data.recoil_offset(round_index + 1).x - here.x
+		if is_zero_approx(sideways) and round_index > 0:
+			# Past the end of the pattern, lean the way the last round did.
+			sideways = here.x - data.recoil_offset(round_index - 1).x
+	var kick := Vector2(signf(sideways) * data.view_kick_side(), data.view_kick_up())
+	var share := scoped_share(now_usec)
+	if share > 0.0 and data.recoil_magnitude > 0.0:
+		kick *= lerpf(1.0, data.scoped.recoil_magnitude / data.recoil_magnitude, share)
+	return kick
 
 
 ## Fires one round. Returns null if the weapon could not fire.
@@ -628,7 +647,7 @@ func fire(
 	# The view gets kicked by this shot's own recoil, scaled down, and as a
 	# push on the punch velocity rather than a jump in the angle, so it rises
 	# into the kick over the next few ticks.
-	var punch := _view_kick_for(round_index)
+	var punch := _view_kick_for(round_index, now_usec)
 
 	var shot := Shot.new()
 	shot.origin = origin
@@ -669,8 +688,11 @@ func fire(
 	return shot
 
 
+## Starts a reload at now_usec. Not during the draw: in CS2 the pull-out
+## finishes before a reload starts (Sid, 2026-09-26; PlayerSim keeps a press
+## made during it for when it ends).
 func start_reload(now_usec: int) -> bool:
-	if reserve <= 0 or ammo >= data.magazine_size or is_reloading(now_usec):
+	if reserve <= 0 or ammo >= data.magazine_size or is_reloading(now_usec) or is_drawing(now_usec):
 		return false
 	_reloading_until_usec = now_usec + int(data.reload_time * 1_000_000.0)
 	# Reloading takes the scope down, and it stays down.

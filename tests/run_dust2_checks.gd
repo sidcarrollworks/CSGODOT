@@ -89,6 +89,7 @@ func _import() -> bool:
 		"collision comes from the hull (scripts/extract_assets.sh physics)"
 	)
 	_check_penetration_surfaces()
+	_check_sky_not_occluding()
 	_check(stats.has("sun"), "the map's sun came through")
 	var blend: Dictionary = stats.get("blend", {})
 	_check(
@@ -363,6 +364,39 @@ func _check_visibility() -> void:
 		"most of the map is not drawn from there (%d of %d meshes), and everything within 128 units is (%d of %d)"
 			% [visibility.hidden_count(), meshes.size(), near_drawn, near]
 	)
+
+
+## The sky's brushes hide nothing (MapOccluders.NOT_DRAWN): none of the hull's
+## physics_sky triangles is among the occluders'. As occluders, what lay
+## behind their edges flickered from top of mid (Sid's playtest, 2026-09-25,
+## issue 11). Triangles are matched by their corners, not by where they lie:
+## the sky brushes stand on buildings whose roofs and walls rightly occlude.
+func _check_sky_not_occluding() -> void:
+	var sky := {}
+	var collision := _importer.find_child("Collision", true, false)
+	for shape in (collision.get_children() if collision != null else []):
+		if String(shape.name).begins_with("physics_sky") and shape is CollisionShape3D:
+			var faces := ((shape as CollisionShape3D).shape as ConcavePolygonShape3D).get_faces()
+			for corner in range(0, faces.size() - 2, 3):
+				sky[_triangle_key(faces[corner], faces[corner + 1], faces[corner + 2])] = true
+	_check(not sky.is_empty(), "the hull holds the sky's brushes (physics_sky, %d triangles), which the check below is about" % sky.size())
+	var occluding := 0
+	for node in _importer.find_children("Occluders", "OccluderInstance3D", false, false):
+		var occluder := (node as OccluderInstance3D).occluder
+		var vertices := occluder.get_vertices()
+		var indices := occluder.get_indices()
+		for corner in range(0, indices.size() - 2, 3):
+			if sky.has(_triangle_key(vertices[indices[corner]], vertices[indices[corner + 1]], vertices[indices[corner + 2]])):
+				occluding += 1
+	_check(occluding == 0, "none of the sky's triangles is an occluder (%d of %d are)" % [occluding, sky.size()])
+
+
+## A triangle as a key that does not depend on its winding or on float
+## noise: its corners rounded to whole units, sorted.
+func _triangle_key(a: Vector3, b: Vector3, c: Vector3) -> String:
+	var corners := [a.round(), b.round(), c.round()]
+	corners.sort()
+	return str(corners)
 
 
 func _check_penetration_surfaces() -> void:

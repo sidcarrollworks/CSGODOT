@@ -232,29 +232,29 @@ issue done here and on the page in the same pull request.
 
 | # | Issue | Remote | Local | With |
 |---|---|---|---|---|
-| 1 | A mode chosen at start: Competitive, or Practice with no bots. Until then, Team Size 0 on `de_dust2.tscn` (not committed) plays it alone | A picker, `--mode`, Practice as Competitive with no bots and a warmup that does not end | Try it in fullscreen | 24a, 26 |
-| 2 | Dropped guns sink into slopes, the magazine goes through the floor, they turn about the wrong point | A body on CS2's own hull (one convex hull a gun, mass 3 to 6, from the game's physics), swept against the floor; checks on a one-sided trimesh | Dump the guns' hulls; look on T spawn's ramp | 12 |
+| 1 | A mode chosen at start: Competitive, or Practice with no bots | **Done** (2026-09-26, 24c): a picker, `--mode`, Practice as Competitive with no bots and a warmup that does not end | Try it in fullscreen | 24a, 24c, 26 |
+| 2 | Dropped guns sink into slopes, the magazine goes through the floor, they turn about the wrong point | **Done (#117):** a body on CS2's own hull (one convex hull a gun, mass 3 to 6, from the game's physics), swept against the floor; checks on a one-sided trimesh | `extract_assets.sh weapon-physics` and commit `physics.csv`; look on T spawn's ramp | 12 |
 | 3 | E picks up what you look at, swapping out what is in that slot | The use search (CS2's 80 units, a cone), the swap, one precedence with the bomb | See in CS2 what E takes and from how far | 12, after 2 |
-| 4 | Ragdoll legs through the floor, joints bending too far | Start clear of the floor, CS2's own shapes (in the agents' `.vmdl`), joint limits; checks on a one-sided trimesh | Dump CS2's joints; deaths on the ramp | Housekeeping |
+| 4 | Ragdoll legs through the floor, joints bending too far | **Done** (#121, `reference/research/ragdoll-joints.md`): start clear of the floor and kept over it, CS2's own shapes (in the agents' `.vmdl`), joint limits from standing; checks on a one-sided trimesh | Dump CS2's joints; deaths on the ramp | Housekeeping |
 | 5 | Bots hover over T spawn's ramp in freeze time (the hull rests on the uphill edge; there is no foot IK) | Research, then draw-only foot IK and a ground fit | CS2's feet on the ramp | After 17 |
-| 6 | Bots meet head-on and hop at each other forever | Making way for teammates, stuck handling that never jumps at one, goals spread over a site | dust2's chokepoints and 24b's inferno spot | 24b, 23 |
+| 6 | Bots meet head-on and hop at each other forever | **Done** (PR #113): making way for teammates (`BotSteering`), stuck handling that never jumps at one, goals spread over a site | dust2's chokepoints and 24b's inferno spot; `scripts/run_tests.sh dust2` runs the new no-stall check | 24b, 23 |
 | 7 | The xbox tarp far too dark (its lightmap read from the wrong UV set) | The UV set for `csgo_environment`, and its tint | `extract_assets.sh layers`; an xbox shot in CS2 | After 12 |
-| 8 | Wrists wrung on the knife (the forearm twist bones are never posed) | CS2's tilt-twist constraints from the agents' `.vmdl` on the drawn arms, after the maths is written up | Beside CS2 | 6 |
+| 8 | Wrists wrung on the knife (the forearm twist bones are never posed) | **Done:** CS2's tilt-twist constraints from the agents' `.vmdl` on the drawn arms and bodies (`TwistModifier`), the maths in `reference/research/twist-constraints.md` | `scripts/run_tests.sh twist` with the agents and knife extracted; the knife and AK beside CS2, both teams; the cost in `profile_dust2.gd` | 6 |
 | 9 | A see-through seam in a wall (Godot's vertex compression) | The map imported without it | Reimport, look, profile | After 12 |
-| 10 | Too saturated and contrasty against CS2 | CS2's grade (its Hable curve and the map's post-processing file), behind a switch | Extract the file, recalibrate by patches | R0 |
-| 11 | Geometry flickering (the sky's brushes used as occluders) | The sky's brushes out of the occluders | Confirm with occlusion off; walk R3's spots | R3 |
-| 12 | Zigzag stripes on the kasbah towers (Godot's mesh LODs break the third UV set's lightmap) | No LODs, or LODs that keep that UV set, on those props | Look, profile | |
-| 13 | White eyes | CS2's eye shader on the character shader | Extract the eye textures; beside CS2 | R7 |
-| 14 | Recoil on the AK-47 and M4A1-S only | The 15 more patterns already in `reference/spray_patterns/`, solved at load; a provisional kick for the rest | Spray the rest in CS2 (TODO L6); the R6 demo | 8 |
+| 10 | Too saturated and contrasty against CS2 | *Done:* CS2's grade (its Hable curve and the map's post-processing file), behind a switch (`--grade cs2`) | Extract the file, recalibrate by patches | R0 |
+| 11 | Geometry flickering (the sky's brushes used as occluders) | The sky's brushes out of the occluders (`MapOccluders.NOT_DRAWN`, 2026-09-26): top of mid fixed, **lower mid still flickers**; next is Sid's call: shrink the occluders or turn Godot's occlusion culling off | `profile_render.gd`'s `no_occlusion` to decide; walk R3's spots; `run_tests.sh dust2` | R3 |
+| 12 | Zigzag stripes on the kasbah towers (Godot's mesh LODs break the third UV set's lightmap) | *(done: `LightmapMaterials.drop_lods`)* No LODs, or LODs that keep that UV set, on those props | Look, profile | |
+| 13 | White eyes | CS2's eye shader on the character shader *(done, 2026-09-26: `CharacterEyes`, the eye path in `character.gdshader`)* | Extract the eye textures (`character-masks`), `run_tests.sh model`; the Phoenix face and the SAS lenses beside CS2 | R7 |
+| 14 | Recoil on the AK-47 and M4A1-S only | *(done 2026-09-26, PR #111)* The 15 more patterns already in `reference/spray_patterns/`, solved at load; a provisional kick for the rest | Spray the rest in CS2 (TODO L6); the R6 demo | 8 |
 | 15 | Mouse wheel down to the next weapon | CS2's `invnext` | Its order in CS2 | 12a, after 16 |
-| 16 | A quick switch cuts the draw short | The draw restarted on every switch, as CS2's graph does | Whether CS2 reloads during a draw | 12 |
-| 17 | Running into a jump snaps to the air pose | The take-off from CS2's graph | Extract the jump clips; regenerate the tables | 6 |
-| 18 | Nobody seems to get the bomb | A check end to end, CS2's handing it to the human T (`bot_defer_to_human_items`), a cue for who carries it | Rounds as T and CT; CS2's warmup | 16, 15 |
-| 19 | Grenade sounds and effects | The shared sound-event table and player, then the grenades' sounds; the effects after research | Extract the missing sounds and the particles | 17 to 20 |
+| 16 | A quick switch cuts the draw short | **Done 2026-09-26:** the draw restarted on every switch, as CS2's graph does, and R during it reloads once it ends (Sid's CS2 check) | Play quick switches beside CS2 | 12 |
+| 17 | Running into a jump snaps to the air pose | *(Remote done, PR #114)* The take-off from CS2's graph | Extract the jump clips; regenerate the tables | 6 |
+| 18 | Nobody seems to get the bomb | *(done 2026-09-26, except "[E] Take Bomb", which waits on 3)* A check end to end, CS2's handing it to the human T (`bot_defer_to_human_items`), a cue for who carries it | Rounds as T and CT; CS2's warmup | 16, 15 |
+| 19 | Grenade sounds and effects | The shared sound-event table and player (**done** 2026-09-26: `reference/sounds/`, `SoundEvents`, `default_bus_layout.tres`), then the grenades' sounds; the effects after research | Extract the missing sounds and the particles | 17 to 20 |
 | 20 | A click as the magazine nears empty (CS2's `Default.NearlyEmpty`) | On the shared sound player, the threshold provisional | Measure the threshold in CS2 | After 19's groundwork |
 | 21 | Round sounds (start, end, planted, ten seconds, announcer) | The cues from `reference/research/audio-round.md` | Extract the UI, music and announcer; listen | 16, after 19's groundwork |
-| 22 | Looking down shows the vest where CS2 shows legs | More of the body you see folded away, the shadow and bots whole | Beside CS2 | 6a |
-| 23 | The distant hill missing (the 3D skybox past the camera's far plane, dropped before its depth squeeze can help) | Far meshes kept in the frustum, and a squeeze that keeps them inside the far plane | The view beside CS2; the cost | R2 |
+| 22 | Looking down shows the vest where CS2 shows legs | **Done:** the seen body folds from spine_2 up, the shadow and bots whole | Beside CS2 | 6a |
+| 23 | The distant hill missing (the 3D skybox past the camera's far plane, dropped before its depth squeeze can help) | *(done: `FarMaterials.CULL_BOX`, `far_position`)* Far meshes kept in the frustum, and a squeeze that keeps them inside the far plane | The view beside CS2; the cost | R2 |
 
 ### Phase 1: make being shot feel like CS2
 
@@ -657,7 +657,9 @@ list, split into Local and Remote items, with the measurements.
     in dust2's match since 2026-09-23 (its two sites, the map's own blast
     radius, the round ending on the blast or the defuse); the HUD is next,
     as `reference/systems/bomb.md` sets out; the plant time, defuse reach and
-    beeps are guesses until C1)* *(Local measures,
+    beeps are guesses until C1; since playtest issue 18 a human T gets it
+    every round, as CS2's `bot_defer_to_human_items` has it, and your
+    team's cards show the carrier's C4)* *(Local measures,
     then Remote; the bomb and the kit are extracted)* One T carries it; plant in a site; 40 s
     with beeps; defuse 10 s or 5 with a kit; the explosion (CS2 reworked it
     in July 2026 into a shockwave with damage baked per map: dust2's is
@@ -698,7 +700,9 @@ list, split into Local and Remote items, with the measurements.
     it crosses), keeping each jump's take-off and landing; a bot walks it
     through its commands, as a player would, jumping (with a crouch in the
     air) where a link rises past a step, crouching before an area marked
-    for a low ceiling, and finding its way again when it is held up. On
+    for a low ceiling, and, held up by the map, wiggling, then jumping and
+    finding its way again (held up by a teammate, it makes way instead:
+    the playtest of 2026-09-25, issue 6). On
     dust2 each bot walks from its spawn to a bomb site and back, A and B in
     turn (`bots_walk_to_sites`; off, they walk their spawn points as
     before). Without the mesh they walk straight lines between their spawn
@@ -757,7 +761,10 @@ list, split into Local and Remote items, with the measurements.
       A stops at (1493, 205, 2442), a spot it passed on the way out.
       Doors and func_brush blockers are ruled out. dust2 shows the same
       jam: the playtest of 2026-09-25, issue 6, traces it to bots having
-      no way round a teammate and jumping when held up.
+      no way round a teammate and jumping when held up. The jam half is addressed on the
+      Remote side (PR #113: bots make way for teammates); Sid's replay
+      of the inferno spot is still open, as are the two Ts stopping above
+      A's floor and the CT stopping on its way back, which are not jams.
     - *Café tables, chairs and signs draw solid black.* *(Local finds the
       cause, then Remote)* They have textures; `prepare_export` warned
       that inferno's world and skybox glTFs have a primitive with both
@@ -784,6 +791,20 @@ list, split into Local and Remote items, with the measurements.
       before any import has registered the class names, so the first
       `map <name>` skips the lightmap average (`average.json`) until the
       next import. Loading `BlendMaterials` by path there should fix it.
+24c. **A mode chosen at start: Competitive or Practice.** *(Remote done
+    2026-09-26; Local below; playtest issue 1)* `maps/play/play.gd` takes
+    `game_mode` (Ask, Competitive, Practice) and `--mode competitive|practice`
+    on the command line, which wins. Ask shows a picker (`ModePicker`,
+    `src/modes/mode_picker.gd`) before the map loads when the scene is the
+    one being played on a screen; added under something else (the profilers,
+    which now set Competitive, and the checks) or headless, it plays
+    Competitive. Practice is `Competitive.practice()`: no bots and a warmup
+    that stands still (`MatchRules.warmup_paused`, CS2's
+    `mp_warmup_pausetimer 1`), so warmup's money, buying and respawns last
+    until F5 starts the rounds. A departure from CS2, whose offline practice
+    is a match with bots you choose. **Local:** play `de_dust2.tscn` in
+    exclusive fullscreen, choose each mode, and say whether Practice has
+    what testing needs. Roadmap 26's main menu replaces the picker.
 
 25. **Netcode.** *(Remote; Local playtests across machines)* CS2's model: the
     server decides, clients send input with sub-tick times and predict their

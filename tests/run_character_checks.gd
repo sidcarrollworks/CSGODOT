@@ -12,12 +12,16 @@ extends "res://tests/check_suite.gd"
 const SCRATCH := "user://character_checks"
 
 
-func _init() -> void:
+func _initialize() -> void:
 	_test_routing()
 	_test_carry()
 	_test_shader_code()
 	_test_models_off_the_probes()
 	_test_mask_alpha()
+	_test_eye_carry()
+	_test_iris_split()
+	_test_eye_aim()
+	await _test_eyes_on_the_rig()
 	_finish("character")
 
 
@@ -125,6 +129,11 @@ func _test_carry() -> void:
 			and CharacterMaterials.mask_file({}) == "",
 		"the mask is looked for by the path the material names it by, as the extraction decompiles it"
 	)
+
+
+## Whether a float shader parameter is 0, or was never set (its default, 0).
+func _zero(value: Variant) -> bool:
+	return value == null or is_zero_approx(float(value))
 
 
 ## A bool shader parameter as set, or false where it was never set.
@@ -255,3 +264,206 @@ func _test_mask_alpha() -> void:
 		"a mask an agent names loses its alpha and keeps its colours, once; a glTF not an agent's and the other textures are left alone (%d, %d, %d)"
 			% [elsewhere_fixed, first, second]
 	)
+
+
+## The eye textures of a material that draws eyes, decompiled where it names
+## them under directory, the iris split off as the prepare step splits it;
+## and the material.
+func _eye_material(directory: String, floats: Dictionary = {}) -> StandardMaterial3D:
+	var absolute := ProjectSettings.globalize_path(directory.path_join("materials/eyes"))
+	DirAccess.make_dir_recursive_absolute(absolute)
+	var colour := Image.create(4, 4, false, Image.FORMAT_RGBA8)
+	colour.fill(Color(1, 1, 1, 0))
+	colour.set_pixel(1, 1, Color(0.2, 0.3, 0.8, 1.0))
+	colour.save_png(absolute.path_join("eye_color.png"))
+	DirAccess.remove_absolute(absolute.path_join("eye_color_iris.png"))
+	ExportCharacterMasks.split_iris(directory.path_join("materials/eyes/eye_color.png"))
+	var mask := Image.create(4, 4, false, Image.FORMAT_RGB8)
+	mask.fill(Color.WHITE)
+	mask.save_png(absolute.path_join("eye_mask.png"))
+	return _character({
+		"ints": {"F_EYEBALLS": 1},
+		"floats": floats,
+		"textures": {
+			CharacterMaterials.EYE_ALBEDO: "materials/eyes/eye_color.vtex",
+			CharacterMaterials.EYE_MASK: "materials/eyes/eye_mask.vtex",
+		},
+	})
+
+
+func _test_eye_carry() -> void:
+	var directory := SCRATCH.path_join("eyes")
+	var phoenix := {
+		"g_flEyeBallRadius1": 0.6, "g_flEyeIrisSize1": 1.026, "g_flEyePupilSize1": 0.143,
+		"g_flEyeHueShift1": 0.0, "g_flEyeSaturation1": 1.0,
+		"g_flEyeBallWalleyeL1": 4.578, "g_flEyeBallWalleyeR1": 5.0,
+	}
+	var lit := ProbeMaterials.build(_eye_material(directory, phoenix), directory)
+	_check(
+		_flag(lit, "eyes") and lit.get_shader_parameter("eye_albedo") is Texture2D
+			and lit.get_shader_parameter("eye_iris") is Texture2D and lit.get_shader_parameter("eye_mask") is Texture2D,
+		"a material that draws eyes gets its eye colour, the iris split from it, and its eye mask, from where it names them"
+	)
+	_check(
+		is_equal_approx(lit.get_shader_parameter("eye_radius"), 0.6)
+			and is_equal_approx(lit.get_shader_parameter("eye_iris_size"), 1.026)
+			and is_equal_approx(lit.get_shader_parameter("eye_pupil_size"), 0.143)
+			and is_equal_approx(lit.get_shader_parameter("eye_saturation"), 1.0)
+			and (lit.get_meta(CharacterMaterials.WALLEYE) as Vector2).is_equal_approx(Vector2(4.578, 5.0))
+			and _zero(lit.get_shader_parameter("eye_scale")),
+		"with the Phoenix's eyeball, iris and pupil sizes and walleye, and no eye painted until a rig aims it"
+	)
+	var defaulted := ProbeMaterials.build(_eye_material(directory), directory)
+	_check(
+		is_equal_approx(defaulted.get_shader_parameter("eye_iris_size"), 1.0)
+			and is_equal_approx(defaulted.get_shader_parameter("eye_saturation"), 1.0),
+		"where the material leaves them out, CS2's defaults: an iris size and a saturation of 1"
+	)
+	var unextracted := ProbeMaterials.build(_character({
+		"ints": {"F_EYEBALLS": 1},
+		"textures": {
+			CharacterMaterials.EYE_ALBEDO: "materials/eyes/not_extracted.vtex",
+			CharacterMaterials.EYE_MASK: "materials/eyes/eye_mask.vtex",
+		},
+	}), directory)
+	_check(
+		not _flag(unextracted, "eyes") and unextracted.get_shader_parameter("eye_albedo") == null,
+		"without its eye textures there, a material keeps the white eyes its colour texture paints"
+	)
+	var described: Dictionary = _eye_material(directory).get_meta("extras")["vmat"]
+	_check(
+		CharacterMaterials.eye_file(described, CharacterMaterials.EYE_ALBEDO, false, directory)
+			== directory.path_join("materials/eyes/eye_color.png")
+			and CharacterMaterials.eye_file(described, CharacterMaterials.EYE_ALBEDO, true, directory)
+			== directory.path_join("materials/eyes/eye_color_iris.png")
+			and CharacterMaterials.eye_file({}, CharacterMaterials.EYE_MASK) == "",
+		"the eye textures are looked for by the paths the material names them by, the iris beside the colour"
+	)
+
+
+## The eye colour's alpha, the iris, moved into a greyscale file of its own
+## before the import, which would paint the iris's colour over the white.
+func _test_iris_split() -> void:
+	var directory := SCRATCH.path_join("iris")
+	var agent := directory.path_join("agents/models/test/agent.gltf")
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(agent.get_base_dir()))
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(directory.path_join("materials/eyes")))
+	var file := FileAccess.open(agent, FileAccess.WRITE)
+	file.store_string("{\"materials\": [{\"extras\": {\"vmat\": {\"TextureParams\": {\"g_tEyeAlbedo1\": \"materials/eyes/brown.vtex\"}}}}]}")
+	file.close()
+	var png := directory.path_join("materials/eyes/brown.png")
+	var colour := Image.create(8, 8, false, Image.FORMAT_RGBA8)
+	colour.fill(Color(1.0, 1.0, 1.0, 0.0))
+	colour.set_pixel(4, 4, Color8(102, 51, 25))
+	colour.save_png(ProjectSettings.globalize_path(png))
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(directory.path_join("materials/eyes/brown_iris.png")))
+	var first := ExportCharacterMasks.fix_file(agent, directory)
+	var second := ExportCharacterMasks.fix_file(agent, directory)
+	var after := Image.load_from_file(ProjectSettings.globalize_path(png))
+	var iris := Image.load_from_file(ProjectSettings.globalize_path(directory.path_join("materials/eyes/brown_iris.png")))
+	_check(
+		first == 1 and second == 0 and after != null and after.detect_alpha() == Image.ALPHA_NONE
+			and after.get_pixel(0, 0).is_equal_approx(Color(1, 1, 1)) and after.get_pixel(4, 4).is_equal_approx(Color8(102, 51, 25))
+			and iris != null and iris.get_pixel(0, 0).r < 0.01 and iris.get_pixel(4, 4).r > 0.99,
+		"an eye colour an agent names keeps its colours, white included, and its iris goes to a file of its own, once (%d, %d)"
+			% [first, second]
+	)
+
+
+## Where CS2 aims an eye: at the target, turned outward by its walleye, and
+## held within 40 degrees of its forward tipped half up and half down.
+func _test_eye_aim() -> void:
+	var forward := Vector3.FORWARD
+	var up := Vector3.UP
+	var left := up.cross(forward)
+	var ahead := CharacterEyes.aim(Vector3.ZERO, forward, up, forward * 100.0, 0.0)
+	_check(ahead.is_equal_approx(forward), "an eye with its target straight ahead looks straight ahead (%s)" % ahead)
+	var walleyed := CharacterEyes.aim(Vector3.ZERO, forward, up, forward * 100.0, 5.0)
+	_check(
+		is_equal_approx(rad_to_deg(walleyed.angle_to(forward)), 5.0) and walleyed.dot(left) > 0.0,
+		"a walleye of 5 degrees turns it 5 degrees toward the model's left, outward for the left eye (%s)" % walleyed
+	)
+	# The two 40-degree cones about the forward tipped half up and half
+	# down (26.57 degrees each way) meet 13.43 degrees above and below it,
+	# so that is as far as an eye turns up or down.
+	var raised := (forward + up * 0.5).normalized()
+	var lowered := (forward - up * 0.5).normalized()
+	var overhead := CharacterEyes.aim(Vector3.ZERO, forward, up, up * 100.0 + forward, 0.0)
+	_check(
+		is_equal_approx(rad_to_deg(overhead.angle_to(lowered)), 40.0) and overhead.angle_to(raised) < deg_to_rad(40.0)
+			and overhead.dot(up) > 0.0 and absf(overhead.dot(left)) < 1e-4,
+		"a target overhead is looked at only as high as both 40-degree cones allow, 13.4 degrees up (%.2f)"
+			% rad_to_deg(overhead.angle_to(forward))
+	)
+	var underfoot := CharacterEyes.aim(Vector3.ZERO, forward, up, -up * 100.0 + forward, 0.0)
+	_check(
+		is_equal_approx(rad_to_deg(underfoot.angle_to(raised)), 40.0) and underfoot.dot(up) < 0.0,
+		"and one underfoot only as low (%.2f)" % rad_to_deg(underfoot.angle_to(forward))
+	)
+
+
+## A model's eyes on its rig: its own copy of the eye material, aimed from
+## the eyeball and target bones, turning with the head, the shared material
+## left alone.
+func _test_eyes_on_the_rig() -> void:
+	# The tree is up after the first frame, and the eyes are placed in it.
+	await process_frame
+	var directory := SCRATCH.path_join("rig")
+	var source := _eye_material(directory, {"g_flEyeBallRadius1": 0.6, "g_flEyeBallWalleyeL1": 4.578, "g_flEyeBallWalleyeR1": 5.0})
+	var shared := ProbeMaterials.build(source, directory)
+
+	# A rig as the export makes one, in metres, facing -z with the model's
+	# left at -x, and the model scaled to units as PlayerModel scales it.
+	var model := RigModel.new()
+	model.scale = Vector3.ONE * MapImporter.SOURCE2_VIEWER_SCALE
+	var rig := Skeleton3D.new()
+	rig.add_bone("head_0")
+	rig.set_bone_rest(0, Transform3D(Basis.IDENTITY, Vector3(0.0, 1.6, 0.0)))
+	for bone: Array in [["eyeball_l", Vector3(-0.0343, 0.05, -0.06)], ["eyeball_r", Vector3(0.0343, 0.05, -0.06)], ["eye_target", Vector3(0.0, 0.0, -2.54)]]:
+		var index := rig.get_bone_count()
+		rig.add_bone(bone[0])
+		rig.set_bone_parent(index, 0)
+		rig.set_bone_rest(index, Transform3D(Basis.IDENTITY, bone[1]))
+	rig.reset_bone_poses()
+	model.add_child(rig)
+	model.character_rig = rig
+	root.add_child(model)
+	var holder := Node3D.new()
+	root.add_child(holder)
+	var mesh := MeshInstance3D.new()
+	var surfaces := ArrayMesh.new()
+	surfaces.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, BoxMesh.new().get_mesh_arrays())
+	surfaces.surface_set_material(0, source)
+	mesh.mesh = surfaces
+	holder.add_child(mesh)
+	model.adopt(mesh, rig)
+
+	var own := mesh.get_surface_override_material(0) as ShaderMaterial
+	var scale: Variant = own.get_shader_parameter("eye_scale") if own != null else null
+	var left_eye: Variant = own.get_shader_parameter("eye_left_position") if own != null else null
+	var expected_left := rig.global_transform * rig.get_bone_global_pose(rig.find_bone("eyeball_l")).origin
+	_check(
+		own != null and own != shared and own.shader == shared.shader and _flag(own, "eyes")
+			and _zero(shared.get_shader_parameter("eye_scale")),
+		"a model adopting a mesh with eyes draws them with its own copy of the material, the shared one left alone"
+	)
+	_check(
+		scale is float and is_equal_approx(scale, 1.0) and left_eye is Vector3 and (left_eye as Vector3).is_equal_approx(expected_left),
+		"the copy is told where the left eyeball is in the world and that a unit there is a Source unit (%s, %s)" % [left_eye, scale]
+	)
+	var looking: Vector3 = own.get_shader_parameter("eye_left_view")
+	var across: Vector3 = own.get_shader_parameter("eye_left_across")
+	_check(
+		looking.dot(Vector3.FORWARD) > 0.99 and looking.dot(Vector3.LEFT) > 0.0 and across.dot(Vector3.LEFT) > 0.99,
+		"the left eye looks ahead at the target, walled out a touch toward the left, its texture's right the model's left (%s, %s)"
+			% [looking, across]
+	)
+	# The head turned a quarter to the model's left: the eyes turn with it.
+	rig.set_bone_pose_rotation(0, Quaternion(Vector3.UP, PI / 2.0))
+	(model.get("_eyes") as CharacterEyes).update()
+	var turned: Vector3 = own.get_shader_parameter("eye_left_view")
+	_check(turned.dot(Vector3.LEFT) > 0.99, "turning the head turns where the eyes look (%s)" % turned)
+	model.use_probe_lighting()
+	_check(mesh.get_surface_override_material(0) == own, "and the copy stays through the model's going on the probes")
+	model.free()
+	holder.free()

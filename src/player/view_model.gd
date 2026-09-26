@@ -76,6 +76,8 @@ func setup(team: String, weapon_model: String, clip_set: String) -> bool:
 	if agent != null:
 		for mesh in agent.find_children("*firstperson*", "MeshInstance3D", true, false):
 			adopt(mesh, character_rig)
+		# The forearms' twist bones, which the clips do not key.
+		TwistModifier.attach(character_rig, AGENTS.get(team, AGENTS["T"]), TwistModifier.skeleton_of(agent))
 		agent.free()
 
 	var weapon := instantiate(weapon_model)
@@ -98,6 +100,28 @@ func setup(team: String, weapon_model: String, clip_set: String) -> bool:
 	position = offset
 	play(&"draw")
 	return true
+
+
+## Taken in hand: shown if the player is alive, running again, and drawing
+## from the start. CS2's first-person graph goes to Deploying from any state
+## on every deploy and swaps Deploy0 and Deploy2 on action_reset, so the draw
+## restarts each time (reference/animgraph/viewmodel.md), as the simulation
+## restarts the deploy time (PlayerSim._draw). Without the rewind a model
+## taken up again part way through its draw carried on from there, or was
+## already at idle, while the gun still could not fire.
+func deploy(shown: bool) -> void:
+	process_mode = Node.PROCESS_MODE_INHERIT
+	visible = shown
+	play(&"draw", 0.0, 1.0, true)
+
+
+## Put away: hidden, stilled, and its clip stopped, so a model put away half
+## way through its draw holds none of it for the next time it is taken up.
+func put_away() -> void:
+	visible = false
+	process_mode = Node.PROCESS_MODE_DISABLED
+	if animation_player != null:
+		animation_player.stop()
 
 
 ## Kicks the gun for one round, cycling through whatever firing clips the set

@@ -275,7 +275,7 @@ func import_map() -> Dictionary:
 		)
 
 	var blend := BlendMaterials.apply(visible_meshes, layer_textures_dir)
-	var lightmaps := {"surfaces": 0, "props": 0, "found": false, "shadows": false, "ambient": null}
+	var lightmaps := {"surfaces": 0, "props": 0, "no_lods": 0, "found": false, "shadows": false, "ambient": null}
 	var probes := {"volumes": 0, "surfaces": 0, "shadows": false, "rest": 0}
 	var sun_shadow := ""
 	if not lightmaps_dir.is_empty():
@@ -693,6 +693,8 @@ func _report_text() -> String:
 	var lightmaps: Dictionary = stats["lightmaps"]
 	if lightmaps["found"]:
 		lines.append("    baked bounce light on %d surfaces, %d of them props" % [lightmaps["surfaces"], lightmaps["props"]])
+		if lightmaps["no_lods"] > 0:
+			lines.append("    %d props lit from their third UV set drawn without LODs" % lightmaps["no_lods"])
 		var probes: Dictionary = stats["probes"]
 		if probes["volumes"] > 0:
 			lines.append("    light probes: %d volumes, lighting %d more prop surfaces" % [probes["volumes"], probes["surfaces"]])

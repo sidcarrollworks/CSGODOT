@@ -8,7 +8,12 @@ extends PlayerSim
 ## and round, facing the way it goes: over the map's nav mesh where it has
 ## one, the way pulled taut round corners, crouching where the floor is under
 ## a low ceiling and jumping up where it rises past a step; in straight lines
-## between the route's points where it has none. It can be shot: it wears
+## between the route's points where it has none. It makes way for its own
+## side (BotSteering): it follows a teammate going its way, steps aside for
+## one coming at it once they have bumped, backed up and tried again (as
+## Sid saw CS2's do), and backs off out of a doorway one hull wide when it has
+## the higher userid; held up otherwise, it wiggles, then jumps, but never at
+## a teammate. It can be shot: it wears
 ## the model's own hitboxes on its bones, goes limp and falls the way the last round
 ## pushed it (a ragdoll), and comes back at the start of its route (in a
 ## match, not until the next round, at the spawn point it is given). It shoots
@@ -96,10 +101,35 @@ const CORNER_REACHED := 8.0
 ## Crouches this far, in plan, before an area whose ceiling is too low to
 ## stand under, so it is down by the time it gets there.
 const CROUCH_AHEAD := 100.0
-## Held up this long without getting anywhere, it finds its way again from
-## where it is, and jumps, in case what holds it is a lip the mesh steps over.
+## Getting unstuck as Booth's GDC 2004 talk on CS's bot describes it
+## ("Watch average velocity over a short window of time"; "Random wiggle",
+## then "Add random jump after a short duration"), with CS2's own fields for
+## it (m_avgVel[10], m_wiggleTimer, m_stuckJumpTimer;
+## reference/research/round-hud-bots.md B4). Its flat speed on the ground is
+## sampled STUCK_SAMPLES times over STUCK_SECONDS; walking with their average
+## under STUCK_SPEED, it is stuck, at that spot (m_stuckSpot). It strafes a
+## random way (left, right or back) for WIGGLE_SECONDS, and if it is still
+## within UNSTUCK_DISTANCE of the spot STUCK_JUMP_SECONDS after it got
+## stuck, it jumps, in case what holds it is a lip the mesh
+## steps over, and finds its way again from where it is. Never either with
+## a teammate's hull against it: a jump cannot clear a 72-unit hull (the
+## apex is 57) and the mesh knows nothing of players, so the way would come
+## back the same; BotSteering makes the way instead. The timings are
+## choices (in no file); the window is the 0.75 s the bot used before.
 const STUCK_SECONDS := 0.75
+const STUCK_SAMPLES := 10
 const STUCK_SPEED := 20.0
+const WIGGLE_SECONDS := 0.3
+const STUCK_JUMP_SECONDS := 0.75
+const UNSTUCK_DISTANCE := 96.0
+## A teammate this close, centre to centre in plan, is against its hull
+## (two half hulls and a margin), so what holds it is a teammate.
+const FRIEND_AGAINST := 40.0
+## Its goal counts as reached when a teammate stands within a hull of it
+## and the bot is within a hull and a half: the goal is taken, and the bot
+## could never get within arrive_distance of it. A choice.
+const GOAL_TAKEN := 32.0
+const GOAL_TAKEN_REACH := 48.0
 ## A landing counts as reached when the feet are this close to its height.
 const STEP_UP_OR_DOWN := 18.0
 ## It jumps for a landing only this close to the take-off, in plan, so it
@@ -109,6 +139,10 @@ const TAKE_OFF_REACH := 24.0
 # to say (GameWorld.PATH_SEARCHES_PER_TICK).
 
 ## Its body falling, while it is dead; null otherwise.
+
+## Makes way for its own side (BotSteering). Off, it walks straight into
+## its teammates as it did before: the checks' control case.
+@export var makes_way: bool = true
 
 ## Armed but not shooting: it sees nobody, so it stands or walks its route.
 ## The test range's shooter waits like this until it is told to fire.
@@ -126,7 +160,25 @@ var _next: int = 0
 ## heading for; null to find it again.
 var _path: SourceNavMesh.WalkPath
 var _corner: int = 0
-var _stuck_for: float = 0.0
+## Its flat speed on the ground, the last STUCK_SAMPLES samples, one every
+## _sample_ticks() ticks, oldest overwritten; how many are in, and the tick
+## the next is due.
+var _speeds := PackedFloat32Array()
+var _speeds_in: int = 0
+var _next_sample_tick: int = 0
+## The tick it first found itself stuck, -1 when it is not; its wiggle, a
+## side (-1 left, 1 right, 0 back), and the tick the wiggle ends.
+var _stuck_since: int = -1
+var _stuck_spot := Vector3.ZERO
+var _wiggle_side: int = 0
+var _wiggle_until: int = -1
+## How it made way for a teammate last tick (BotSteering's modes), and
+## the stage it is at in making way.
+var steering: int = BotSteering.CLEAR
+var _steer_memory := BotSteering.Memory.new()
+## The way its path goes, which it faces while BotSteering walks it
+## another way (aside, or backing off).
+var _face_way := Vector3.ZERO
 ## The point of the route it found no way to over the mesh, so the way is
 ## not asked for again every tick; -1 when there is none.
 var _no_way_to: int = -1
@@ -149,6 +201,7 @@ var _blind_fire_at: Vector3 = Vector3.ZERO
 
 
 func _init() -> void:
+	is_bot = true
 	# A dead bot lies there this long before it is back on its route.
 	respawn_seconds = 5.0
 
@@ -304,13 +357,19 @@ func _think(tick: int, delta: float) -> UserCmd:
 		# Backing off is walking: out of the scope, at the gun's own speed.
 		_scope_down(cmd, yaw, pitch)
 		cmd.move = Vector2(0.0, -1.0)
-	elif not route.is_empty():
+	elif not route.is_empty() and not frozen:
+		# Held still in freeze time, it does not walk, so it neither finds
+		# itself stuck nor finds its way again every STUCK_SECONDS.
 		_scope_down(cmd, yaw, pitch)
 		var way := _way_on(cmd, delta)
-		if way.length_squared() > 0.0:
+		# It faces the way its path goes, and walks the way it steered (aside
+		# or back for a teammate, or a wiggle), as a player strafes.
+		var face := _face_way if _face_way.length_squared() > 0.0 else way
+		if face.length_squared() > 0.0:
 			# The game's yaw 0 looks down -Z, and yaw grows towards -X.
-			var wanted := rad_to_deg(atan2(-way.x, -way.z))
+			var wanted := rad_to_deg(atan2(-face.x, -face.z))
 			yaw = rad_to_deg(rotate_toward(deg_to_rad(yaw), deg_to_rad(wanted), deg_to_rad(turn_rate) * delta))
+		if way.length_squared() > 0.0:
 			cmd.move = UserCmd.move_toward(way, yaw)
 
 	cmd.yaw_degrees = yaw + error.x
@@ -378,11 +437,45 @@ func _plan_shopping() -> void:
 	_shop_tick = now + SHOP_DELAY_TICKS + posmod(hash(["bot_buy_delay", userid, now]), SHOP_SPREAD_TICKS + 1)
 
 
+## Its aim error drawn from a seed of who it is and when it spawned, so a
+## replay of the same commands misses the same way.
+func _seed_aim() -> void:
+	_rng.seed = hash(["bot_aim", userid, SimClock.current_tick()])
+
+
 ## Which way it walks this tick, flat, towards route[_next]: along the path
-## over the nav mesh where there is one, straight at it where there is not.
+## over the nav mesh where there is one, straight at it where there is not,
+## making way for its teammates (BotSteering) and getting itself unstuck.
 ## Sets the command's crouch and jump as the floor asks. Zero when it has
 ## arrived, and it heads for the next point of the route from the next tick.
-func _way_on(cmd: UserCmd, delta: float) -> Vector3:
+## _face_way is left as the way the path goes, for it to face.
+func _way_on(cmd: UserCmd, _delta: float) -> Vector3:
+	_face_way = Vector3.ZERO
+	var way := _path_way(cmd)
+	if way.length_squared() == 0.0:
+		steering = BotSteering.CLEAR
+		_forget_speeds()
+		return way
+	_face_way = way
+
+	var friends := _friends()
+	if not makes_way:
+		friends = [PackedVector3Array(), PackedVector3Array(), PackedInt32Array()]
+	var steer := BotSteering.steer(
+		global_position, way, userid, friends[0], friends[1], friends[2], nav_mesh, _steer_memory, cmd.tick
+	)
+	steering = steer.mode
+	way = steer.way
+	if steer.mode in [BotSteering.FOLLOW, BotSteering.WAIT, BotSteering.YIELD, BotSteering.BACK_UP, BotSteering.RETRY]:
+		# Held up by a teammate on purpose: not stuck.
+		_forget_speeds()
+		return way
+	return _unstick(cmd, way, _friend_against(friends[0]))
+
+
+## The way on along its path (or straight at the goal with no mesh), before
+## it makes way for anyone: the crouch and the ledge's jump set on `cmd`.
+func _path_way(cmd: UserCmd) -> Vector3:
 	var goal := route[_next]
 	if nav_mesh != null and _path == null and _no_way_to != _next:
 		if is_instance_valid(world) and not world.may_search_path():
@@ -396,7 +489,7 @@ func _way_on(cmd: UserCmd, delta: float) -> Vector3:
 
 	if _path == null:
 		var to_goal := Vector3(goal.x - global_position.x, 0.0, goal.z - global_position.z)
-		if to_goal.length() < arrive_distance:
+		if to_goal.length() < arrive_distance or _goal_taken(goal):
 			_arrive()
 			return Vector3.ZERO
 		return to_goal.normalized()
@@ -412,7 +505,8 @@ func _way_on(cmd: UserCmd, delta: float) -> Vector3:
 		var from := _path.points[_corner - 1]
 		var leg := Vector3(point.x - from.x, 0.0, point.z - from.z)
 		var passed := not last and leg.length_squared() > 1.0 and leg.dot(to_corner) <= 0.0
-		if height_ok and (to_corner.length() < (arrive_distance if last else CORNER_REACHED) or passed):
+		var taken := last and _goal_taken(point)
+		if height_ok and (to_corner.length() < (arrive_distance if last else CORNER_REACHED) or passed or taken):
 			_corner += 1
 			continue
 		break
@@ -435,8 +529,6 @@ func _way_on(cmd: UserCmd, delta: float) -> Vector3:
 			cmd.buttons |= UserCmd.DUCK
 	if _under_low_ceiling():
 		cmd.buttons |= UserCmd.DUCK
-	if _note_progress(delta):
-		cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.JUMP, true, 0.0, yaw_degrees, pitch_degrees))
 	return way.normalized() if way.length_squared() > 0.0 else Vector3.ZERO
 
 
@@ -445,22 +537,106 @@ func _arrive() -> void:
 	_next = (_next + 1) % route.size()
 	_path = null
 	_no_way_to = -1
-	_stuck_for = 0.0
+	_forget_speeds()
+	_steer_memory.reset()
 
 
-## Whether it has been walking for STUCK_SECONDS without getting anywhere;
-## if so it finds its way again from where it is from the next tick.
-func _note_progress(delta: float) -> bool:
-	if Vector2(velocity.x, velocity.z).length() >= STUCK_SPEED or not on_ground:
-		_stuck_for = 0.0
+## Its own side's living players but itself, as BotSteering reads them:
+## [positions, velocities, userids].
+func _friends() -> Array:
+	var positions := PackedVector3Array()
+	var velocities := PackedVector3Array()
+	var userids := PackedInt32Array()
+	if is_instance_valid(world):
+		for other in world.players:
+			if other == self or not other.alive or other.team != team:
+				continue
+			positions.append(other.global_position)
+			velocities.append(other.velocity)
+			userids.append(other.userid)
+	return [positions, velocities, userids]
+
+
+## Whether a teammate's hull is against its own (FRIEND_AGAINST).
+func _friend_against(positions: PackedVector3Array) -> bool:
+	for at in positions:
+		if absf(at.y - global_position.y) < BotSteering.SAME_FLOOR \
+				and Vector2(at.x - global_position.x, at.z - global_position.z).length() < FRIEND_AGAINST:
+			return true
+	return false
+
+
+## Whether a teammate stands on its goal (GOAL_TAKEN) with the bot near it.
+func _goal_taken(goal: Vector3) -> bool:
+	if Vector2(goal.x - global_position.x, goal.z - global_position.z).length() >= GOAL_TAKEN_REACH \
+			or not is_instance_valid(world):
 		return false
-	_stuck_for += delta
-	if _stuck_for < STUCK_SECONDS:
-		return false
-	_stuck_for = 0.0
+	for other in world.players:
+		if other != self and other.alive and other.team == team \
+				and absf(other.global_position.y - goal.y) < BotSteering.SAME_FLOOR \
+				and Vector2(goal.x - other.global_position.x, goal.z - other.global_position.z).length() < GOAL_TAKEN:
+			return true
+	return false
+
+
+## Getting unstuck (STUCK_SECONDS and after): the way to walk this tick,
+## `way` unless it is wiggling; jumps and finds its way again once stuck for
+## STUCK_JUMP_SECONDS, unless a teammate is against it.
+func _unstick(cmd: UserCmd, way: Vector3, friend_against: bool) -> Vector3:
+	var tick := cmd.tick
+	if on_ground and tick >= _next_sample_tick:
+		if _speeds.size() != STUCK_SAMPLES:
+			_speeds.resize(STUCK_SAMPLES)
+		_speeds[_speeds_in % STUCK_SAMPLES] = Vector2(velocity.x, velocity.z).length()
+		_speeds_in += 1
+		_next_sample_tick = tick + _sample_ticks()
+	if _stuck_since >= 0 and global_position.distance_to(_stuck_spot) > UNSTUCK_DISTANCE:
+		# Got away from where it stuck: going again.
+		_forget_speeds()
+	if tick < _wiggle_until:
+		var right := Vector3(-way.z, 0.0, way.x)
+		return -way if _wiggle_side == 0 else right * float(_wiggle_side)
+	if _stuck_since < 0:
+		if not _stuck():
+			return way
+		# Stuck: a wiggle, left, right or back, drawn from a seed of who it
+		# is and when, so a replay wiggles the same way.
+		_stuck_since = tick
+		_stuck_spot = global_position
+		_wiggle_side = posmod(hash(["bot_wiggle", userid, tick]), 3) - 1
+		_wiggle_until = tick + maxi(1, roundi(WIGGLE_SECONDS / SimClock.tick_seconds()))
+		return _unstick(cmd, way, friend_against)
+	if tick - _stuck_since < roundi(STUCK_JUMP_SECONDS / SimClock.tick_seconds()):
+		return way
+	_forget_speeds()
+	if friend_against:
+		return way
+	cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.JUMP, true, 0.0, yaw_degrees, pitch_degrees))
 	_path = null
 	_no_way_to = -1
-	return true
+	return way
+
+
+## Whether the average of a full window of speed samples is under STUCK_SPEED.
+func _stuck() -> bool:
+	if _speeds_in < STUCK_SAMPLES:
+		return false
+	var total := 0.0
+	for speed in _speeds:
+		total += speed
+	return total / STUCK_SAMPLES < STUCK_SPEED
+
+
+## Ticks between speed samples: STUCK_SAMPLES of them over STUCK_SECONDS.
+func _sample_ticks() -> int:
+	return maxi(1, roundi(STUCK_SECONDS / STUCK_SAMPLES / SimClock.tick_seconds()))
+
+
+## Starts the speed window afresh, not stuck and not wiggling.
+func _forget_speeds() -> void:
+	_speeds_in = 0
+	_stuck_since = -1
+	_wiggle_until = -1
 
 
 ## Whether an area whose ceiling is too low to stand under is on its path
@@ -580,11 +756,13 @@ func respawn() -> void:
 		_next = 1 % route.size()
 	_path = null
 	_no_way_to = -1
-	_stuck_for = 0.0
+	_forget_speeds()
+	_steer_memory.reset()
 	velocity = Vector3.ZERO
 	_forget_hits()
 	_get_up()
 	_plan_shopping()
+	_seed_aim()
 	respawned.emit()
 	_send(&"player_spawn", {"userid": userid})
 
@@ -597,10 +775,12 @@ func spawn_at(spawn_position: Vector3, yaw: float, fresh: bool = false) -> void:
 	_seen_for = 0.0
 	target = null
 	_plan_shopping()
+	_seed_aim()
 	# The way it was finding over the nav mesh is from where it was.
 	_path = null
 	_no_way_to = -1
-	_stuck_for = 0.0
+	_forget_speeds()
+	_steer_memory.reset()
 	if route.is_empty():
 		return
 	var nearest := 0

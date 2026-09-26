@@ -147,7 +147,10 @@ its animation 93 us a frame against 87 (one body, headless, AK and Glock).
 A trace of the player's hull through dust2's collision is 20 to 50 us,
 depending on how many triangles are under it, and it is most of what a
 player costs: a tick standing still is one trace, running in the open four,
-more against a wall or up a slope. A ray is 2 to 15 us.
+more against a wall or up a slope. A ray is 2 to 15 us. A player in the
+air adds one ray a tick for their height above the ground
+(`PlayerBody.height_above_ground`, counted in `ground_rays`; playtest issue
+17), and none on the ground; not yet profiled on dust2.
 
 Memory: 1.94 GB static in a headless run, 146 MB of it the light probe
 atlas, of which the probe volumes use 48.6%. 28,000 objects and 4,600
@@ -339,6 +342,7 @@ workers). No buy or pickup in a match reads a model any more.
 | Nothing built in the tick for the views, first-person clips read ahead on worker threads, the effects' shaders compiled at load and their cards sent in one buffer | perf/no-first-use-hitches | a first buy's tick 136 ms (the R8's 347), a death's dropped gun 41, the first shots' frames 18 to 35; now no frame over 20 ms ("Against CS2") |
 | Every model anyone may take in hand read before play, and the guns' legacy bodies left out at import (`weapon_model_import.gd`) | perf/read-match-guns-ahead | 32 models read where 18 were, for 123 MiB more video memory and 0.17 s more at match start (1.46 s to 1.63); no buy or pickup reads a model during a match |
 | A stepped move takes its landing from its own trace down; bodies nobody sees stepped only in frames without a tick; a body's probe light put on only when sampled again | perf/bot-tick | drawn at 4K from your spawn, the live round 5.67 to 5.82 ms a frame to 5.26 to 5.31, what freeze time now costs, and freeze time 5.5 to 5.25; the GPU 0.24 ms less ("Still and moving") |
+| Every gun's spray pattern solved as the registry builds it (`WeaponData.recoil_impulses`) | playtest issue 14 | 15 more guns read a pattern, and the first of each built in a tick (a buy, a pickup) would have solved it there: the M249's 100 rounds 33 to 39 ms, the Negev's 150 36 to 41, the Bizon 17 to 20; now 0.05 ms, and `ItemRegistry.load_all` 88 ms to about 320 (headless, a cloud container, three runs each) |
 
 A tick at 64 costs a little more than one at 128 did: it moves everyone
 twice as far, with more to meet on the way, and holds twice the rounds and

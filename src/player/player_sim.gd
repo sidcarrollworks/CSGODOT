@@ -28,6 +28,10 @@ extends PlayerBody
 ## The world that runs the player, and where everyone else in the game is
 ## found; null until one takes it (GameWorld.add_player).
 var world: GameWorld
+## Whether a bot runs the player rather than a person: Bot sets it. The
+## rules that treat people and bots apart read this, never `is Bot` (the
+## player_team event's isbot).
+var is_bot: bool = false
 ## Who the player is in their world's game: the userid its roster gave them,
 ## which events, damage and the inventories name them by;
 ## GameEvents.NOBODY out of a game.
@@ -204,6 +208,9 @@ var _spawn_set: bool = false
 ## before).
 var _held_class: String = ""
 var _drawn_until_usec: int = 0
+## R pressed while the gun was being drawn: the reload starts as the draw
+## ends, as CS2's does (Sid, 2026-09-26), and a switch drops it.
+var _reload_after_draw: bool = false
 ## A grenade in hand with its pin out, and the attack buttons held while it
 ## is: which of them say how hard it goes when they are let go.
 var _pin_pulled: bool = false
@@ -460,6 +467,7 @@ func _draw(entry: Inventory.Entry) -> void:
 	_held_class = entry.item.item_class if entry != null else ""
 	weapon = held_weapon
 	_pin_pulled = false
+	_reload_after_draw = false
 	if held_weapon != null:
 		config.max_speed = held_weapon.data.max_player_speed
 	else:
@@ -551,7 +559,7 @@ func run_command(cmd: UserCmd, dt: float) -> void:
 	previous_viewmodel_punch = weapon.viewmodel_punch() if weapon != null else Vector2.ZERO
 	_run(cmd, dt)
 	if alive and model != null:
-		model.update_motion(velocity, yaw_degrees, duck_progress, on_ground)
+		model.update_motion(velocity, yaw_degrees, duck_progress, on_ground, air_action, air_action_usec, height_above_ground)
 
 
 ## How far the view is kicked from where the player aims, in degrees, as
@@ -598,9 +606,20 @@ func _run(cmd: UserCmd, dt: float) -> void:
 	pitch_degrees = cmd.pitch_degrees
 	_recover_from_hits(dt)
 
+	# R during the draw is kept, and the reload starts the moment the draw
+	# is over: CS2 finishes the pull-out first.
 	var reload := cmd.first_press(UserCmd.RELOAD)
-	if reload != null and weapon != null:
-		if weapon.start_reload(SimClock.usec_at(cmd.tick, reload.when)):
+	if weapon != null:
+		var reload_at := -1
+		if reload != null:
+			reload_at = SimClock.usec_at(cmd.tick, reload.when)
+			if weapon.is_drawing(reload_at):
+				_reload_after_draw = true
+				reload_at = -1
+		if reload_at < 0 and _reload_after_draw and not weapon.is_drawing(SimClock.tick_end_usec(cmd.tick)):
+			_reload_after_draw = false
+			reload_at = weapon.drawn_usec()
+		if reload_at >= 0 and weapon.start_reload(reload_at):
 			reload_started.emit()
 			_send(&"weapon_reload", {"userid": userid})
 
