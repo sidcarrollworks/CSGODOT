@@ -230,8 +230,9 @@ func _test_ragdoll() -> void:
 	)
 	var body_head: RigidBody3D = ragdoll.bodies.get(head)
 	_check(
-		body_head != null and body_head.collision_layer == Ragdoll.LAYER and body_head.collision_mask == Hitscan.WORLD_LAYER,
-		"the bodies touch the world and nothing else, and are nothing a round is traced against"
+		body_head != null and body_head.collision_layer == Ragdoll.LAYER and body_head.collision_mask == Hitscan.WORLD_LAYER | Ragdoll.LAYER
+			and Ragdoll.LAYER & (Hitscan.WORLD_LAYER | Hitbox.LAYER) == 0,
+		"the bodies touch the world and dead bodies alone, and are nothing a round is traced against"
 	)
 	# Jolt ignores a joint's bias and warns on every joint of every death
 	# when one is set; Godot Physics needs Ragdoll.JOINT_BIAS. The hinges

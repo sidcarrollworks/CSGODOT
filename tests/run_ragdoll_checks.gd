@@ -24,6 +24,10 @@ const FEET_IN := 1.5
 ## How far past a limit a joint may be found after the fall, in degrees:
 ## the solver holds a limit softly while a body lands on it.
 const LIMIT_SLACK := 12.0
+## How long a body is left to come to rest. One killed running downhill
+## at 250 u/s slides and rolls a while, its parts pressing on each other,
+## and lies still at about 4.5 s.
+const SETTLE_SECONDS := 6.0
 const AGENT := "res://assets/characters/agents/models/tm_phoenix/tm_phoenix_varianta.gltf"
 
 ## How far the body may bend at each joint, as a human body can, in degrees
@@ -62,6 +66,8 @@ func _run() -> void:
 		await _fall(shapes, "ramp", "running downhill", down, -1)
 		await _fall(shapes, "flat", "shot in the legs", Vector3.ZERO, 1)
 		await _fall(shapes, "curb", "standing with a foot in the kerb", Vector3.ZERO, -1)
+	await _test_pushed()
+	await _test_parts_and_others()
 	await _test_the_agent()
 	_report()
 
@@ -366,7 +372,7 @@ func _deepest(skeleton: Skeleton3D, shapes: Array[Dictionary], surface: Plane) -
 	return deepest
 
 
-## A body killed on a floor, left four seconds, then checked: every part's
+## A body killed on a floor, left SETTLE_SECONDS, then checked: every part's
 ## centre over the floor, the whole of it at rest, and each joint within
 ## what a body allows.
 func _fall(which: String, kind: String, how: String, velocity: Vector3, legs_hit: int) -> void:
@@ -401,7 +407,7 @@ func _fall(which: String, kind: String, how: String, velocity: Vector3, legs_hit
 	var label := "%s, killed on a %s one-sided floor (%s shapes)" % [how, "road by a kerb" if kind == "curb" else kind, which]
 
 	var worst_under := INF
-	for i in SimClock.ticks_in(4.0):
+	for i in SimClock.ticks_in(SETTLE_SECONDS):
 		await physics_frame
 		for body: RigidBody3D in ragdoll.bodies.values():
 			# How far the part is over the floor, less its thickness:
@@ -517,6 +523,88 @@ func _knees(skeleton: Skeleton3D) -> Array:
 	return found
 
 
+# --- What CS2 does that Sid checked (2026-09-26) --------------------------
+
+## A stand-in body over a flat floor, its feet just in it, and a ragdoll
+## built from it: [ragdoll, holder, pelvis body].
+func _killed(at: Vector3, velocity: Vector3, hit_direction: Vector3) -> Array:
+	var holder := Node3D.new()
+	holder.scale = Vector3.ONE * SCALE
+	_world.add_child(holder)
+	var skeleton := _skeleton(holder)
+	var shapes := _shapes("cs2")
+	await process_frame
+	var into := _deepest(skeleton, shapes, _surface("flat")) - FEET_IN
+	holder.position = at + Vector3(0.0, into, 0.0)
+	await physics_frame
+	var ragdoll := Ragdoll.new()
+	_world.add_child(ragdoll)
+	ragdoll.build(skeleton, shapes, SCALE, velocity, Vector3.FORWARD, hit_direction, skeleton.find_bone("spine_2"))
+	return [ragdoll, holder, ragdoll.bodies[skeleton.find_bone("pelvis")]]
+
+
+## The killing round pushes the body away from the shooter, and a body that
+## was running keeps going too, so it falls along the two together.
+func _test_pushed() -> void:
+	var ground := _floor("flat")
+	var away := Vector3.RIGHT
+	for case: Array in [["standing", Vector3.ZERO], ["running forward", Vector3.FORWARD * 250.0]]:
+		var made: Array = await _killed(Vector3.ZERO, case[1], away)
+		var pelvis: RigidBody3D = made[2]
+		var start := pelvis.global_position
+		for i in SimClock.ticks_in(1.0):
+			await physics_frame
+		var moved := pelvis.global_position - start
+		var ok := moved.x > 4.0
+		if case[1] != Vector3.ZERO:
+			ok = ok and moved.z < -20.0
+		else:
+			ok = ok and absf(moved.z) < moved.x
+		_check(ok, "killed %s by a round from its left, it falls away from the shooter%s (moved %.0f right, %.0f forward)"
+			% [case[0], ", and on forward with the run it had" if case[1] != Vector3.ZERO else "", moved.x, -moved.z])
+		(made[0] as Node).queue_free()
+		(made[1] as Node).queue_free()
+		await physics_frame
+	ground.queue_free()
+	await physics_frame
+
+
+## A body's parts collide with each other, but not two parts joined at a
+## joint nor two that start inside each other; and one dead body passes
+## through another: one dropped onto another lies on the floor through it.
+func _test_parts_and_others() -> void:
+	var ground := _floor("flat")
+	var first: Array = await _killed(Vector3.ZERO, Vector3.ZERO, Vector3.ZERO)
+	var ragdoll: Ragdoll = first[0]
+	var hands: Array = ragdoll.bodies.values().filter(func(body: RigidBody3D) -> bool: return String(body.name).contains("hand"))
+	var head: Array = ragdoll.bodies.values().filter(func(body: RigidBody3D) -> bool: return String(body.name).contains("head"))
+	var shin: Array = ragdoll.bodies.values().filter(func(body: RigidBody3D) -> bool: return String(body.name).contains("leg_lower_l"))
+	var excepted := (head[0] as RigidBody3D).get_collision_exceptions()
+	_check(
+		(ragdoll.bodies.values()[0] as RigidBody3D).collision_mask & Ragdoll.LAYER != 0
+			and not excepted.has(shin[0]) and hands.size() == 2,
+		"a body's parts collide with one another: the head and a shin are no exception to each other"
+	)
+	for i in SimClock.ticks_in(2.0):
+		await physics_frame
+	var lying: float = (first[2] as RigidBody3D).global_position.y
+	# A second body killed standing on the first one's spot, 30 units up.
+	var second: Array = await _killed(Vector3(0.0, 30.0, 0.0), Vector3.ZERO, Vector3.ZERO)
+	var theirs := (second[2] as RigidBody3D).get_collision_exceptions()
+	for i in SimClock.ticks_in(3.0):
+		await physics_frame
+	var fell_to: float = (second[2] as RigidBody3D).global_position.y
+	_check(
+		theirs.has(first[2]) and fell_to < lying + 4.0,
+		"one dead body falls through another onto the floor, not onto it (its pelvis %.1f up, the one under it %.1f)" % [fell_to, lying]
+	)
+	for made: Array in [first, second]:
+		(made[0] as Node).queue_free()
+		(made[1] as Node).queue_free()
+	ground.queue_free()
+	await physics_frame
+
+
 # --- The real agent -------------------------------------------------------
 
 ## The extracted agent killed standing on the ramp, with CS2's own shapes
@@ -541,7 +629,7 @@ func _test_the_agent() -> void:
 	var ragdoll := Ragdoll.new()
 	_world.add_child(ragdoll)
 	var made := ragdoll.build(skeleton, shapes, SCALE, Vector3.ZERO, Vector3.FORWARD, Vector3.BACK, -1)
-	for i in SimClock.ticks_in(4.0):
+	for i in SimClock.ticks_in(SETTLE_SECONDS):
 		await physics_frame
 	var under := []
 	for body: RigidBody3D in ragdoll.bodies.values():

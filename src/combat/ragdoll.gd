@@ -22,8 +22,10 @@ extends Node3D
 ##
 ## The bodies are in world units, unscaled, like the hitboxes: the model is
 ## scaled up from metres and physics bodies do not take a scale. They live
-## on their own layer and touch only the world, so a corpse is not in the
-## way of rounds or of the living. Before the first step the whole body is
+## on their own layer and touch the world and each other, never a round or
+## the living. As in CS2 (Sid, 2026-09-26), a body's parts collide with one
+## another, except two parts joined at a joint or a joint apart and two
+## that start inside each other, but one dead body passes through another. Before the first step the whole body is
 ## lifted clear of the floor: dust2's floor is one-sided, and a foot that
 ## starts inside a kerb or under the road is never pushed back out, but
 ## falls on through and drags its leg after it.
@@ -37,9 +39,16 @@ extends Node3D
 ## stiff pieces instead. Under Godot Physics the joints also pull their
 ## bodies back together gently (JOINT_BIAS), for the same reason.
 
-## The physics layer the bodies are on (the fifth), and what they touch.
+## The physics layer the bodies are on (the fifth), and what they touch:
+## the world, and the bodies of the same dead body (another's are made
+## exceptions, _pass_through_others).
 const LAYER := 16
-const MASK := Hitscan.WORLD_LAYER
+const MASK := Hitscan.WORLD_LAYER | LAYER
+## How near, in units, another dead body has to lie for this one to be
+## told to pass through it. Farther, they cannot reach each other.
+const OTHERS_NEAR := 200.0
+## The group every ragdoll is in, to find the others.
+const GROUP := &"ragdolls"
 ## The world's gravity, in units per second squared (MovementConfig's).
 const GRAVITY := 800.0
 ## The body's weight in all, shared between the parts by their size. Only
@@ -137,8 +146,9 @@ var _before_step: Dictionary = {}
 
 func _init() -> void:
 	top_level = true
+	add_to_group(GROUP)
 	for ray in [_down, _up]:
-		ray.collision_mask = MASK
+		ray.collision_mask = Hitscan.WORLD_LAYER
 		ray.hit_back_faces = false
 
 
@@ -233,6 +243,8 @@ func build(
 			_join(parent, bone, forward)
 	for bone: int in bodies:
 		(bodies[bone] as RigidBody3D).global_transform = died[bone]
+	_apart_where_inside()
+	_pass_through_others()
 	_lift_clear()
 	return bodies.size()
 
@@ -292,6 +304,68 @@ func _bone_world(bone: int) -> Transform3D:
 ## Where a bone would be with the skeleton standing at rest where it is.
 func _rest_world(bone: int) -> Transform3D:
 	return _skeleton.global_transform * _skeleton.get_bone_global_rest(bone)
+
+
+## Two parts that start inside each other (a hand held against the chest)
+## never collide: pushed apart from inside in one step, they would fling the
+## body. Nor do two a joint apart with one between (_one_apart). Two parts
+## joined at a joint are already kept from colliding by the joint
+## (exclude_nodes_from_collision).
+func _apart_where_inside() -> void:
+	var bones: Array = bodies.keys()
+	var shapes := bones.map(func(bone: int) -> Array: return _segments(bodies[bone]))
+	for i in bones.size():
+		for j in range(i + 1, bones.size()):
+			if _one_apart(bones[i], bones[j]) or _touch(shapes[i], shapes[j]):
+				(bodies[bones[i]] as RigidBody3D).add_collision_exception_with(bodies[bones[j]])
+
+
+## Whether two bodies are a joint apart with one between (a forearm and the
+## chest, a shin and the pelvis, the two thighs), which press on each other
+## wherever the joint between them bends far, and would fight it.
+func _one_apart(a: int, b: int) -> bool:
+	var above_a := _body_parent(a)
+	var above_b := _body_parent(b)
+	return (above_a >= 0 and (above_a == above_b or _body_parent(above_a) == b)) \
+		or (above_b >= 0 and _body_parent(above_b) == a)
+
+
+## One dead body passes through another, as in CS2: every part of this one is
+## made an exception for every part of each other body lying near it.
+func _pass_through_others() -> void:
+	if not is_inside_tree() or bodies.is_empty():
+		return
+	var here: Vector3 = (bodies.values()[0] as RigidBody3D).global_position
+	for other: Node in get_tree().get_nodes_in_group(GROUP):
+		if other == self or not other is Ragdoll or (other as Ragdoll).bodies.is_empty():
+			continue
+		var theirs: Array = (other as Ragdoll).bodies.values()
+		if (theirs[0] as RigidBody3D).global_position.distance_to(here) > OTHERS_NEAR:
+			continue
+		for mine: RigidBody3D in bodies.values():
+			for their: RigidBody3D in theirs:
+				mine.add_collision_exception_with(their)
+
+
+## A body's capsules in the world, each [one end, the other, radius].
+static func _segments(body: RigidBody3D) -> Array:
+	var found := []
+	for collision in body.get_children():
+		if collision is CollisionShape3D:
+			var capsule := (collision as CollisionShape3D).shape as CapsuleShape3D
+			var half := (collision as CollisionShape3D).global_basis.y.normalized() * (capsule.height / 2.0 - capsule.radius)
+			var centre := (collision as CollisionShape3D).global_position
+			found.append([centre - half, centre + half, capsule.radius])
+	return found
+
+
+static func _touch(a: Array, b: Array) -> bool:
+	for one: Array in a:
+		for two: Array in b:
+			var closest := Geometry3D.get_closest_points_between_segments(one[0], one[1], two[0], two[1])
+			if closest[0].distance_to(closest[1]) < one[2] + two[2]:
+				return true
+	return false
 
 
 ## Lifts the whole body straight up by as much as its deepest part is into

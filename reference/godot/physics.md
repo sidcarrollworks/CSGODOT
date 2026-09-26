@@ -120,7 +120,7 @@ Doc: `tutorials/physics/physics_introduction.rst`, `classes/class_collisionobjec
 | 2 | 2 | player/bot hulls `PlayerSim.PLAYER_LAYER` |
 | 3 | 4 | hitboxes `Hitbox.LAYER` |
 | 4 | 8 | player clip `MapImporter.PLAYER_CLIP_LAYER` |
-| 5 | 16 | ragdoll bodies `Ragdoll.LAYER` |
+| 5 | 16 | ragdoll bodies `Ragdoll.LAYER` (they mask it too: a body's parts collide) |
 | 6 | 32 | grenade clip `GrenadeRules.GRENADE_CLIP_LAYER` |
 | 20 | 1<<19 | `PlayerSim.UNSEEN_LAYER` |
 
@@ -395,7 +395,7 @@ See the ragdoll section. `set_param(Param, float)`/`get_param`, and `set_flag(Fl
 - `src/map/brush_volume.gd`: convex pieces for Area3D volumes. `contains()` tests `Plane.distance_to` in script.
 - `src/combat/hitbox.gd`, `src/combat/skinned_hitboxes.gd`, `src/combat/hit_target.gd`: hitbox `Area3D`s on layer 4 with capsules or boxes. Their layer is set to 0 when inactive.
 - `src/combat/ragdoll.gd`:
-  - Builds `RigidBody3D`s (from CS2's ragdoll shapes, `RagdollShapes`, or the hitbox capsules) plus `Generic6DOFJoint3D`s and `HingeJoint3D`s on layer 16, masking the world only.
+  - Builds `RigidBody3D`s (from CS2's ragdoll shapes, `RagdollShapes`, or the hitbox capsules) plus `Generic6DOFJoint3D`s and `HingeJoint3D`s on layer 16, masking the world and that layer; a body's own non-neighbouring parts collide, and every part of another ragdoll lying near is made a collision exception (`add_collision_exception_with`), so dead bodies pass through each other.
   - Makes the joints with the bodies laid out at the skeleton's rest pose, then moves them to the death pose: a joint's frames are fixed from its node's and bodies' global transforms when `node_a`/`node_b` are set in the tree (`Joint3D::_update_joint`, Godot 4.7.2 source), so its limits are measured from rest.
   - On Jolt a `Generic6DOFJoint3D` is a `SixDOFConstraint` with pyramid swing, and each angular axis honours its own lower and upper limit. Godot's angle is the negative of the child's turn about the axis (the Jolt module negates and swaps the limits; checked headless: a limit of [0, 0.6] let the child turn to -0.6).
   - Joint friction is an angular motor on each joint (target velocity 0, `angular_motor_*/force_limit`; a hinge's `motor/max_impulse`, which Jolt divides by the tick back into a torque), inside the solver.

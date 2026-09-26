@@ -128,13 +128,49 @@ capsules. On main at `4ae290c`, 13 of its 56 checks fail:
 
 With this change all 56 pass, and the range's 79.
 
-**Not done: the body's parts colliding with each other.** With the mask
-widened to the ragdoll layer, the headless run was killed by the machine
-(out of memory or hung) before it reported, so it is left out. Joined pairs
-would be excluded (`exclude_nodes_from_collision`), but the rifle pose's
-hands start inside the chest, and a mask on the layer also makes separate
-corpses collide, which nobody has checked CS2 does. Watching CS2 (below)
-decides whether to try again.
+## What Sid saw in CS2 (2026-09-26)
+
+Sid, after watching CS2's deaths: its ragdolls collide with themselves but
+not with other ragdolls. Shots push a living body too: shot in the leg, the
+leg moves a little. The last shot pushes the ragdoll: a bot killed standing
+still is pushed away from the shooter, and one killed running keeps the
+momentum it had, so it falls along the two together. **Primary** (Sid's
+own observation in CS2, not measured).
+
+What the ragdoll does with that:
+
+- **A body's parts collide with each other.** The bodies mask their own
+  layer as well as the world. Some pairs are made exceptions: two parts
+  joined at a joint (the joint does it, `exclude_nodes_from_collision`),
+  two a joint apart with one between (a forearm and the chest, a shin and
+  the pelvis, the two thighs, the head and an upper arm), and two that start
+  inside each other (a hand held against the chest). Without the second
+  kind, a body killed running down the ramp jammed a forearm into the chest
+  against the elbow's limit and never came to rest; without the third, the
+  parts are pushed apart from inside in one step, which flings the body.
+  (An earlier try with no exceptions was cut off when this thread's machine
+  restarted, not by the test.)
+- **One dead body passes through another.** Every part of a new ragdoll is
+  made an exception for every part of each other ragdoll lying within 200
+  units of it (the group `ragdolls`), up to 225 exceptions a nearby body.
+  Farther ones cannot reach it. A ragdoll's layer could not do this: a
+  layer is shared by every ragdoll, and a layer each would use one of the
+  32 for every body in a round.
+- **The push and the momentum** were already there: every part starts with
+  the velocity the body died with plus 40 u/s along the round, and the part
+  the round hit another 180 u/s (`BODY_SPEED`, `HIT_SPEED`, from #30, set
+  by eye). The checks now cover both: killed standing by a round from the
+  left, the pelvis moves about 43 units right in a second; killed running
+  forward at 250 u/s, 46 right and 116 forward.
+- A body killed running down the 20° ramp at 250 u/s slides and rolls a
+  while with its parts pressing on each other, and lies still at about
+  4.5 s, so the checks give each fall 6 s.
+
+**Follow-up, not built here: shots moving a living body.** In CS2 a round
+into a living player's leg moves the leg a little. That is a hit reaction
+on the drawn, animated body (a flinch layered on the animation, or a brief
+physical blend), not the ragdoll; the roadmap's "tag recovery and flinch"
+(Local 4a, #27) is the nearest item. It needs its own issue and research.
 
 ## Cost
 
@@ -143,11 +179,12 @@ Measured headless in the cloud container (not Sid's machine;
 
 | | main | this change |
 |---|---|---|
-| Building a ragdoll | 1.2 to 2.6 ms | 2.5 to 3.3 ms |
+| Building a ragdoll | 1.2 to 2.6 ms | 2.8 to 3.4 ms |
 | The per-tick floor check, 15 bodies awake | none | 0.04 to 0.05 ms |
 
-The build is about 1 ms dearer here (the joints are made with the bodies
-moved twice, and up to 60 rays find the floor). The per-tick check stops
+The build is about 1.5 ms dearer here (the joints are made with the bodies
+moved twice, up to 60 rays find the floor, and 105 pairs of parts are tested
+for starting inside each other). The per-tick check stops
 once a body sleeps. Both are in what is only seen: CS2 ragdolls its dead on
 each client, and the server's hitboxes do not follow the ragdoll.
 
@@ -174,8 +211,8 @@ search; a longer look is for whoever takes the Local checks.
   working materials. Then a script turns the joints into a generated table
   under `reference/`, and `Ragdoll` reads CS2's limits, frames and friction
   in place of the table in `ragdoll.gd`.
-- **By eye in CS2:** whether its ragdolls collide with themselves and with
-  each other, and how stiff they settle.
+- **By eye in CS2:** how stiff its ragdolls settle, and how far the killing
+  round pushes them (Sid answered the rest on 2026-09-26, above).
 - **On dust2:** deaths on the T spawn ramp and street (by the kerb), long
   and the stairs; standing, running downhill and shot in the legs; your own
   death too. `scripts/run_tests.sh ragdoll` with the extracted agents runs
