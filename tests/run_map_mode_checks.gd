@@ -40,6 +40,8 @@ func _run() -> void:
 	await physics_frame
 	await _test_competitive_on_a_small_map()
 	await _test_competitive_without_the_maps_buy_zones_or_a_side()
+	await _test_the_bomb_each_round("T")
+	await _test_the_bomb_each_round("CT")
 	_finish("map-mode")
 
 
@@ -247,7 +249,7 @@ func _small_map() -> MapContents:
 
 ## A scene as maps/play/play.tscn builds one, on the map given, with the
 ## floor under it; returns [the scene, the world, the mode].
-func _play_on(map: MapContents, team_size: int) -> Array:
+func _play_on(map: MapContents, team_size: int, side: String = "T") -> Array:
 	var scene := Node3D.new()
 	root.add_child(scene)
 	var floor_body := StaticBody3D.new()
@@ -262,6 +264,7 @@ func _play_on(map: MapContents, team_size: int) -> Array:
 	var mode := Competitive.new()
 	mode.team_size = team_size
 	mode.warmup_seconds = 0.0
+	mode.spawn_team = side
 	scene.add_child(mode)
 	mode.start(world, map)
 	return [scene, world, mode]
@@ -324,6 +327,57 @@ func _test_competitive_on_a_small_map() -> void:
 
 ## Everything a side's player may take in hand in a match: its menu, the
 ## knife and the bomb.
+## The bomb end to end, as dust2's match hands it out: the match's own
+## round_start reaches the bomb system and a living T carries weapon_c4,
+## round after round, each round ended by hand. You and one T bot against
+## two CT bots. Playing T you are the only human T, so it is yours every
+## round (CS2's competitive sets bot_defer_to_human_items 1); playing CT, a
+## T bot carries it.
+func _test_the_bomb_each_round(side: String) -> void:
+	var played := _play_on(_small_map(), 2, side)
+	var world: GameWorld = played[1]
+	var mode: Competitive = played[2]
+	var you := mode.player as PlayerSim
+	var match_state := mode.match_state
+	if side == "T":
+		_check(mode.hud.bomb == mode.bomb_system.bomb, "the HUD reads the match's bomb, for its carrier's mark")
+	match_state.rules.freeze_seconds = 0.0
+	match_state.rules.round_restart_seconds = 0.0
+	var carriers: Array[int] = []
+	for round_index in 3:
+		# Into the round: past the freeze, its round_start handed out.
+		var waited := 0
+		while (match_state.phase != MatchState.Phase.LIVE or match_state.round_number != round_index + 1) and waited < 64:
+			if match_state.phase == MatchState.Phase.FREEZE:
+				match_state.phase_ends_usec = 0
+			await physics_frame
+			waited += 1
+		await physics_frame
+		var bomb := mode.bomb_system.bomb
+		var holders := PackedStringArray()
+		for sim: PlayerSim in world.players:
+			if world.game.inventory(sim.userid).has("weapon_c4"):
+				holders.append("%s %s" % [sim.team, sim.name])
+		var carrier := world.game.roster.player(bomb.carrier) as PlayerSim
+		_check(
+			bomb.state == C4.State.CARRIED and carrier != null and carrier.team == "T" and carrier.alive
+				and holders.size() == 1 and world.game.inventory(bomb.carrier).has("weapon_c4"),
+			"playing %s, round %d: one living T carries the bomb, in their inventory (round %d, %s, held by %s)"
+				% [side, round_index + 1, match_state.round_number, C4.State.keys()[bomb.state], holders]
+		)
+		carriers.append(bomb.carrier)
+		match_state.end_round("CT", MatchState.Reason.TIME_RAN_OUT)
+	if side == "T":
+		_check(carriers.all(func(id: int) -> bool: return id == you.userid), "playing T, it is yours every round, the only human T (%s, you %d)" % [carriers, you.userid])
+	else:
+		_check(
+			carriers.all(func(id: int) -> bool: return world.game.roster.player(id) is Bot),
+			"playing CT, a T bot carries it (%s)" % [carriers]
+		)
+	(played[0] as Node).queue_free()
+	await process_frame
+
+
 static func _anyone_may_hold(side: String) -> PackedStringArray:
 	var anyone := PackedStringArray(Loadout.items(side))
 	anyone.append_array(PackedStringArray(["weapon_knife", "weapon_c4"]))

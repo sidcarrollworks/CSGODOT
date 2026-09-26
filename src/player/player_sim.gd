@@ -28,6 +28,10 @@ extends PlayerBody
 ## The world that runs the player, and where everyone else in the game is
 ## found; null until one takes it (GameWorld.add_player).
 var world: GameWorld
+## Whether a bot runs the player rather than a person: Bot sets it. The
+## rules that treat people and bots apart read this, never `is Bot` (the
+## player_team event's isbot).
+var is_bot: bool = false
 ## Who the player is in their world's game: the userid its roster gave them,
 ## which events, damage and the inventories name them by;
 ## GameEvents.NOBODY out of a game.

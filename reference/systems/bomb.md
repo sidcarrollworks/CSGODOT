@@ -77,8 +77,12 @@ GameWorld's tick after the players and the match, and:
 - deals the blast as a `DamageInfo` per player: no attacker (CS2 credits
   a bomb death to nobody: the kill feed shows the C4 alone), inflictor `"planted_c4"`, weapon `"weapon_c4"`, `DMG_BLAST`, no zone,
   armour as a grenade's (`armor_penetration` 0.5), no team scaling;
-- hands the bomb to a random living terrorist on `round_start` (seeded from
-  the tick), allows plants from `round_freeze_end` to `round_end`, and
+- hands the bomb on `round_start` to a random living terrorist (seeded from
+  the tick): a human one when there is one, since competitive sets
+  `bot_defer_to_human_items 1` (`C4Rules`, `BombSystem.may_be_given`, read
+  from `PlayerSim.is_bot`); a bot only on a side of bots. While a human T
+  lives, bots also leave a dropped bomb for them (inferred from the
+  convar's description; playtest-2026-09-25.md issue 18). It allows plants from `round_freeze_end` to `round_end`, and
   clears it on `round_prestart`. With no match (the range) plants are
   always allowed.
 

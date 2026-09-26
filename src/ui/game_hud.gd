@@ -12,7 +12,9 @@ extends CanvasLayer
 ## it is (HudAlert: warmup, the round's announcement, who won). A red arc
 ## round the crosshair on the side each hit came from; when dead, a bar
 ## across the middle counting down to the respawn or saying whom you are
-## watching; and CS2's buy menu on B, over the rest. The rest of a round's
+## watching; "You picked up the bomb" as you walk over it, the bomb's C4
+## on its carrier's card for your team; and CS2's buy menu on B, over the
+## rest. The rest of a round's
 ## HUD (the kill feed, the radar, the scoreboard) is roadmap item 15.
 ##
 ## Each piece is a HudElement: it draws itself with HudStyle's colours, font
@@ -34,6 +36,8 @@ var economy: Economy
 var userid: int = GameEvents.NOBODY
 ## CS2's buy menu (B), over the rest of the HUD; null without an economy.
 var buy_menu: BuyMenu
+## The bomb, where the match has one; only read, for who carries it.
+var bomb: C4
 
 var _crosshair: Crosshair
 ## A sniper's scope, over the view while scoped in.
@@ -53,6 +57,9 @@ var _frames := FrameMeter.new()
 var _notice_left: float = 0.0
 ## The side your agent in the buy menu was built for.
 var _agent_team: String = ""
+## The bomb's state and carrier last frame, to see it picked up.
+var _bomb_was := C4.State.NONE
+var _carrier_was: int = C4.NOBODY
 ## How long a refusal stays up, in seconds.
 const NOTICE_SECONDS := 2.0
 ## Where the line across the middle while dead starts, down from the top.
@@ -144,13 +151,31 @@ func _process(delta: float) -> void:
 	_crosshair.visible = shows_crosshair(player) and not buying
 	dead_bar.say("" if player.alive else dead_line(player), "", HudStyle.team_colour(team))
 	if match_state != null:
-		team_counter.show_match(match_state, player, economy, SimClock.now_usec())
+		team_counter.show_match(match_state, player, economy, SimClock.now_usec(), bomb)
 		var line := alert_line(match_state)
 		# The note under the alert gives way to a refusal's bar, which sits there.
 		alert.say(line[0], "" if hint.is_showing() else line[1], HudStyle.team_colour(team))
+	if bomb != null:
+		var picked := bomb_hint(_bomb_was, _carrier_was, bomb, userid)
+		if not picked.is_empty():
+			hint.say(picked, "", HudStyle.team_colour("T"))
+			_notice_left = NOTICE_SECONDS
+		_bomb_was = bomb.state
+		_carrier_was = bomb.carrier
 	if _where.visible:
 		_where.text = where_line(player.global_position, player.input.yaw_degrees, player.input.pitch_degrees) \
 			+ "\n" + _frames.line()
+
+
+## CS2's hint as you pick up the bomb from the ground, "You picked up the
+## bomb" (research round-bomb-grenades.md 1.6), from how the bomb was last
+## frame and is now; "" otherwise. Being handed it at a round's start says
+## nothing here: your card's C4 shows it (TeamCounter).
+static func bomb_hint(was: C4.State, carrier_was: int, bomb: C4, you: int) -> String:
+	var yours := bomb.state == C4.State.CARRIED and bomb.carrier == you
+	if yours and was == C4.State.DROPPED and carrier_was != you:
+		return "You picked up the bomb"
+	return ""
 
 
 ## Whether the crosshair is drawn: not for a sniper (the game's

@@ -27,7 +27,9 @@ extends HudElement
 ## in a bar under it; dead, it fades to a fifth under a skull. In the round's
 ## down time (warmup, freeze time, its end), or while you are dead, your
 ## team's cards stretch down over a darkening column with each one's money
-## and best gun (snippet-equipment-info).
+## and best gun (snippet-equipment-info). Whoever on your team carries the
+## bomb has CS2's C4 icon on their card, washed yellow 255,255,95, at all
+## times (round-hud-bots.md A3); the other side's cards never show it.
 ##
 ## GameHud gives it the match each frame; it redraws only when something it
 ## shows changed (HudElement).
@@ -96,6 +98,11 @@ const DEFAULT_PORTRAIT := {"T": Color8(145, 109, 65), "CT": Color8(114, 137, 163
 ## opaque at the top, fading in its curve to nothing at the bottom (the
 ## mask's image read at eighths).
 const FADE_4 := [1.0, 0.953, 0.886, 0.804, 0.702, 0.58, 0.443, 0.141, 0.0]
+## The carrier's C4 icon: CS2's wash (.Avatar__C4), and where on the card.
+## The research has the wash, not the place, so the lower right corner of
+## the portrait, 20 px, is a guess to set beside CS2 (playtest issue 18).
+const C4_WASH := Color8(255, 255, 95)
+const C4_BOX := Rect2(CARD - 22.0, CARD - 16.0, 20.0, 14.0)
 
 ## One player's card, as the frame's state gives it.
 class Card:
@@ -111,6 +118,8 @@ class Card:
 	var grenades: PackedStringArray
 	var armour: int
 	var helmet: bool
+	## Carrying the bomb; only ever true on your own team's cards.
+	var bomb: bool
 
 
 var clock: String = ""
@@ -133,8 +142,9 @@ func _ready() -> void:
 	place(Vector2(0.5, 0.0), Rect2(-width * 0.5, 0.0, width, TOP + COLUMN_HEIGHT + 8.0))
 
 
-## Reads the match for `you`, and redraws if anything shown changed.
-func show_match(state: MatchState, you: PlayerSim, economy: Economy, now_usec: int) -> void:
+## Reads the match for `you`, and redraws if anything shown changed. `bomb`
+## says who carries it, where there is one.
+func show_match(state: MatchState, you: PlayerSim, economy: Economy, now_usec: int, bomb: C4 = null) -> void:
 	var mine := you.team if you != null else "T"
 	var seconds := state.seconds_left(now_usec)
 	var live := state.phase == MatchState.Phase.LIVE
@@ -142,6 +152,7 @@ func show_match(state: MatchState, you: PlayerSim, economy: Economy, now_usec: i
 	clock_red = live and seconds <= RED_SECONDS
 	show_equipment = not live or (you != null and not you.alive)
 	var signature: Array = [clock, clock_red, show_equipment, mine]
+	var carrier := bomb.carrier if bomb != null and bomb.state == C4.State.CARRIED else C4.NOBODY
 	for side: String in MatchState.SIDES:
 		scores[side] = state.score(side)
 		alive[side] = state.alive_on(side)
@@ -163,9 +174,10 @@ func show_match(state: MatchState, you: PlayerSim, economy: Economy, now_usec: i
 			card.grenades = GameHud.grenades_of(player)
 			card.armour = roundi(player.hit_target.armor) if player.hit_target != null and player.alive else 0
 			card.helmet = player.hit_target != null and player.hit_target.helmet
+			card.bomb = card.friendly and player.alive and carrier != C4.NOBODY and player.userid == carrier
 			list.append(card)
 			signature.append_array([card.name, card.alive, card.health, card.money, card.weapon, card.friendly,
-				card.colour, card.grenades, card.armour, card.helmet])
+				card.colour, card.grenades, card.armour, card.helmet, card.bomb])
 		cards[side] = list
 	show_state(signature)
 
@@ -293,6 +305,8 @@ func _draw_card(on: CanvasItem, x: float, card: Card) -> void:
 		return
 	if not card.friendly:
 		return
+	if card.bomb:
+		_draw_c4(on, Rect2(portrait.position + C4_BOX.position, C4_BOX.size))
 	# Health: red where it is gone, fading to nothing at the right, a white
 	# fill (the bar adds ten times its light, which is white), and in the down
 	# time its number in black.
@@ -338,6 +352,19 @@ func _draw_card(on: CanvasItem, x: float, card: Card) -> void:
 		if armour != null:
 			var top := NADE_ROW_TOP + (ROW + 4.0 if nades.size() > 0 else 0.0)
 			_draw_shadowed(on, armour, Rect2(x + (CARD - 20.0) * 0.5, top, 20.0, ROW))
+
+
+## The carrier's mark: CS2's C4 icon washed yellow, or where it was not
+## extracted (scripts/extract_assets.sh hud), a yellow block lettered C4.
+func _draw_c4(on: CanvasItem, box: Rect2) -> void:
+	var c4 := HudStyle.item_icon("weapon_c4")
+	if c4 != null:
+		HudStyle.draw_fitted(on, c4, Rect2(box.position + Vector2.ONE, box.size), Color(0, 0, 0, 0.56))
+		HudStyle.draw_fitted(on, c4, box, C4_WASH)
+		return
+	on.draw_rect(box, Color(C4_WASH, 0.9))
+	HudStyle.draw_text(on, Vector2(box.get_center().x, box.end.y - 3.0), "C4", 10, Color.BLACK,
+		HORIZONTAL_ALIGNMENT_CENTER, &"bold")
 
 
 ## An icon in white with CS2's 1 px dark shadow (img-shadow 1px 1px 1px).

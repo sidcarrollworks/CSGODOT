@@ -298,7 +298,13 @@ effects are for C1 to measure.
 
 - **At round start** one T gets it (`mp_give_player_c4`). Guides say one of the Ts,
   implying at random ([csdb](https://csdb.gg/commands/sv_spawn_afk_bomb_drop_time/), search
-  summary; **From memory**: random). `CCSPlayerPawn.m_fLastGivenBombTime` may mean the
+  summary; **From memory**: random). **Corrected 2026-09-26** (playtest-2026-09-25.md
+  issue 18): with bots, not among all Ts. GT `game/csgo/cfg/gamemode_competitive.cfg` sets
+  `bot_defer_to_human_items 1` and `bot_defer_to_human_goals 1`, and the convar dump
+  describes the first as "If nonzero and there is a human on the team, the bots will not get
+  scenario items". So a human T gets it whenever there is one; a bot only on a side of bots.
+  Whether it also stops a bot's touch pickup of a dropped bomb is **Inferred** from that
+  description; the game builds it that way until a Local check says otherwise. `CCSPlayerPawn.m_fLastGivenBombTime` may mean the
   choice leans away from whoever had it last (**Inferred** from the name alone; not
   confirmed). Warmup carries a drop policy (`mp_warmup_items_drop_policy` 247, where bit 2
   is c4).

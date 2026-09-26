@@ -149,6 +149,7 @@ var _blind_fire_at: Vector3 = Vector3.ZERO
 
 
 func _init() -> void:
+	is_bot = true
 	# A dead bot lies there this long before it is back on its route.
 	respawn_seconds = 5.0
 
