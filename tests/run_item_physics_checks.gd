@@ -54,7 +54,7 @@ func _check_the_dump() -> void:
 	var gun: Dictionary = dump.get("weapons/models/fixture/weapon_fixture.vmdl_c", {})
 	_check(gun.get("bone") == "weapon_offset" and is_equal_approx(float(gun.get("mass", 0.0)), 4.5)
 		and float(gun.get("angular_damping", -1.0)) == 0.0,
-		"a gun's hull is bound to weapon_offset, with its mass and damping")
+		"a gun's hull is bound to weapon_offset, with its mass and damping, read from its PHYS block and not the resource's details before it")
 	var bind: Transform3D = gun.get("bind", Transform3D.IDENTITY)
 	_check(bind.origin.is_equal_approx(Vector3(0.0, 2.0, 1.0)) and bind.basis.is_equal_approx(Basis.IDENTITY),
 		"its bind pose comes from Source's axes (1, 0, 2) to the model's (x left, y up, z the muzzle): (0, 2, 1)")
@@ -183,7 +183,7 @@ func _check_ramp() -> void:
 	_check(results["rested"] == 4 and results["lowest_at_rest"] < DroppedItem.CONTACT_MARGIN,
 		"at rest its lowest corner lies on the ramp (%.3f above it)" % results["lowest_at_rest"])
 	_check(results["aligned"] > 0.99,
-		"and it lies flat along the ramp, its thin side against it, not level (%.4f)" % results["aligned"])
+		"and it lies flat along the ramp, a face of it against it, not level (%.4f)" % results["aligned"])
 	ramp.queue_free()
 	await physics_frame
 
@@ -249,7 +249,10 @@ func _check_the_view() -> void:
 	view._process(0.0)
 	var model := view.model_of(item.id)
 	var hull := item.physics()
-	_check(model != null and (model.transform * hull.centre_of_mass).is_equal_approx(item.position),
+	# Measured off the skeleton, where the model has one: a gun's dropped
+	# clip moves its root bone, which the view takes back out.
+	var frame := DroppedItemView.drawn_frame(model, hull.bone) if model != null else Transform3D.IDENTITY
+	_check(model != null and (frame * hull.centre_of_mass).is_equal_approx(item.position),
 		"the drawn model's centre of mass is where the simulation's body is")
 	var state := item.save_state()
 	var copy := DroppedItem.new()
@@ -338,8 +341,10 @@ func _throws(depth_of: Callable, count: int, normal := Vector3.UP) -> Dictionary
 			if item.resting:
 				out["rested"] += 1
 				out["lowest_at_rest"] = maxf(out["lowest_at_rest"], lowest)
-				# The fixture is thinnest along its y.
-				out["aligned"] = minf(out["aligned"], absf(item.basis.y.normalized().dot(normal)))
+				# The fixture is a box: lying flat, one of its axes is along
+				# the surface's normal.
+				var b := item.basis.orthonormalized()
+				out["aligned"] = minf(out["aligned"], maxf(absf(b.x.dot(normal)), maxf(absf(b.y.dot(normal)), absf(b.z.dot(normal)))))
 				var still := item.queries
 				for i in 8:
 					item.tick(SimTick.new(game, tick + 2 + i, space))

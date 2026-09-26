@@ -811,7 +811,7 @@ func _test_the_hand() -> void:
 		var hull := dropped.physics()
 		var held_body := hull.body_of(hull.model_held_at(held))
 		_check(
-			dropped.previous_position.is_equal_approx(held_body.origin) and dropped.previous_basis.is_equal_approx(held.basis)
+			dropped.previous_position.is_equal_approx(held_body.origin) and dropped.previous_basis.is_equal_approx(held_body.basis)
 				and held.basis.z.dot(aim) > 0.99,
 			"it leaves from where the gun was held, pointing where the player looks, as a body at its centre of mass"
 		)
@@ -837,14 +837,19 @@ func _test_the_hand() -> void:
 		view._process(0.0)
 		var model := view.model_of(dropped.id)
 		# Measured on what is drawn, not by the view's own sums: the drawn
-		# model is where the body says, and the drawn box's bottom is on the
-		# floor, not in it.
-		var own := DroppedItemView.bounds(model) if model != null else AABB()
-		var drawn_box := model.transform * own if model != null else AABB()
+		# frame, off the skeleton where the model has one (a gun's dropped
+		# clip moves its root bone, which the view takes back out), is where
+		# the body says, and the hull it carries rests on the floor, not in
+		# it.
+		var hull := dropped.physics()
+		var frame := DroppedItemView.drawn_frame(model, hull.bone) if model != null else Transform3D.IDENTITY
+		var bottom := INF
+		for point in hull.points:
+			bottom = minf(bottom, (frame * point).y)
 		_check(
-			model != null and model.transform.is_equal_approx(dropped.model_transform())
-				and drawn_box.position.y > -DroppedItem.SKIN and drawn_box.position.y < DroppedItem.CONTACT_MARGIN,
-			"drawn where its body lies, its lowest point on the floor (bottom %.2f off)" % drawn_box.position.y
+			model != null and frame.is_equal_approx(dropped.model_transform())
+				and bottom > -DroppedItem.SKIN and bottom < DroppedItem.CONTACT_MARGIN,
+			"drawn where its body lies, its hull's lowest point on the floor (bottom %.2f off)" % bottom
 		)
 		player.global_position = dropped.position
 		player.previous_position = dropped.position

@@ -170,6 +170,28 @@ static func pose(model: Node3D, item: DroppedItem) -> Transform3D:
 	return rest * posed.affine_inverse()
 
 
+## Where a drawn model puts its hull: the model's frame as its bone is
+## drawn, which is the model's transform less whatever the pose moved the
+## bone off its rest (pose()). What the checks measure a drawn gun by; a
+## model without the bone, the stand-in among them, is its own transform.
+static func drawn_frame(model: Node3D, bone_name: String) -> Transform3D:
+	var skeletons := model.find_children("*", "Skeleton3D", true, false)
+	if skeletons.is_empty() or bone_name.is_empty():
+		return model.transform
+	var skeleton := skeletons[0] as Skeleton3D
+	var bone := skeleton.find_bone(bone_name)
+	if bone < 0:
+		return model.transform
+	var to_model := Transform3D.IDENTITY
+	var node: Node = skeleton
+	while node != model and node is Node3D:
+		to_model = (node as Node3D).transform * to_model
+		node = node.get_parent()
+	var rest := to_model * skeleton.get_bone_global_rest(bone)
+	var posed := to_model * skeleton.get_bone_global_pose(bone)
+	return model.transform * posed * rest.affine_inverse()
+
+
 ## The animation of a player called name, or ending in it after a library's
 ## prefix; empty if none.
 static func _clip_named(player: AnimationPlayer, name: String) -> String:

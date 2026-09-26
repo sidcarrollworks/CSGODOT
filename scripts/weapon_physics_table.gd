@@ -51,19 +51,32 @@ static func read_dump(path: String) -> Dictionary:
 	var current := ""
 	var lines := PackedStringArray()
 	var skipping := false
+	# Each model's section starts with the resource's own details, its
+	# references and its list of blocks; the block itself follows its
+	# '--- Data for block "PHYS" ---' line, and ends at the next '--- ' line.
+	var in_block := false
 	while not file.eof_reached():
 		var line := file.get_line()
-		var found := header.search(line.strip_edges())
+		var stripped := line.strip_edges()
+		var found := header.search(stripped)
 		if found != null:
 			if not current.is_empty():
 				out[current] = read_block("\n".join(lines))
 			current = found.get_string(1)
 			lines = PackedStringArray()
 			skipping = false
+			in_block = false
 			continue
 		if current.is_empty() or skipping:
 			continue
-		if line.strip_edges().begins_with("m_pFeModel"):
+		if stripped.begins_with("--- Data for block \"PHYS\""):
+			lines = PackedStringArray()
+			in_block = true
+			continue
+		if in_block and stripped.begins_with("--- "):
+			skipping = true
+			continue
+		if stripped.begins_with("m_pFeModel"):
 			skipping = true
 			continue
 		lines.append(line)

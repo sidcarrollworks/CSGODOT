@@ -1,4 +1,13 @@
 [1/2] weapons/models/fixture/weapon_fixture.vmdl_c
+--- Resource ---
+Resource type: Model
+{
+	m_boneNames = [ "not_the_physics_bone" ]
+	m_parts = [ { m_flMass = 99.0 } ]
+}
+--- Blocks ---
+RERL REDI DATA PHYS AGRP
+--- Data for block "PHYS" ---
 <!-- kv3 encoding:text:version{e21c7f3c-8a33-41c5-9977-a76d3a32aa0d} format:generic:version{7412167c-06e9-4698-aff2-e63eb59037e7} -->
 {
 	m_nFlags = 0
