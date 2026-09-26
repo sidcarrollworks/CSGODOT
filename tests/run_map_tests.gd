@@ -1371,7 +1371,7 @@ func _test_lightmap_materials() -> void:
 			lit.get_shader_parameter("lightmap_irradiance") is Texture2D
 				and lit.get_shader_parameter("lightmap_direction") is Texture2D
 				and blend.get_shader_parameter("lightmap_irradiance") is Texture2D
-				and is_equal_approx(blend.get_shader_parameter("lightmap_energy"), LightmapMaterials.ENERGY),
+				and is_equal_approx(blend.get_shader_parameter("lightmap_energy"), LightmapMaterials.energy()),
 			"the lightmaps are handed to the new materials and to the blend material, at the one energy"
 		)
 		_check(
@@ -1604,7 +1604,7 @@ func _test_prop_features() -> void:
 	var tint := Color(1.0, 1.0, 0.882353).srgb_to_linear()
 	var glow: Variant = lamp_lit.get_shader_parameter("self_illum_color")
 	_check(
-		glow is Vector3 and (glow as Vector3).is_equal_approx(Vector3(tint.r, tint.g, tint.b) * pow(2.0, 2.975) * LightmapMaterials.ENERGY)
+		glow is Vector3 and (glow as Vector3).is_equal_approx(Vector3(tint.r, tint.g, tint.b) * pow(2.0, 2.975) * LightmapMaterials.energy())
 			and lamp_lit.get_shader_parameter("self_illum_mask") is Texture2D
 			and is_equal_approx(lamp_lit.get_shader_parameter("self_illum_albedo_factor"), 1.0),
 		"a lamp glows: 2 to its brightness, in its tint, at the lightmap's energy, through its mask, over its colour (%s)" % [glow]
@@ -1976,7 +1976,7 @@ classname                      "light_environment"
 		lit.shader != ProbeMaterials.SHADER and lit.shader.code.contains("cull_disabled")
 			and lit.shader.code.contains("probe_ambient(") and ProbeMaterials.build(material) == lit
 			and (lit.get_shader_parameter("albedo_color") as Color).is_equal_approx(material.albedo_color)
-			and is_equal_approx(lit.get_shader_parameter("probe_energy"), LightmapMaterials.ENERGY),
+			and is_equal_approx(lit.get_shader_parameter("probe_energy"), LightmapMaterials.energy()),
 		"a material moves onto the probe shader, two-sided when it was, made once, at the lightmaps' energy"
 	)
 	var blended := StandardMaterial3D.new()
@@ -2601,7 +2601,9 @@ func _test_lighting() -> void:
 	]
 	var holder := Node3D.new()
 	root.add_child(holder)
-	var used := MapLighting.build(holder, {"basis": Basis.IDENTITY, "color": Color.WHITE}, entities, "")
+	# ACES: what is read from the entities, the exposure window among it; CS2's
+	# grade on the same entities is run_grade_checks' to check.
+	var used := MapLighting.build(holder, {"basis": Basis.IDENTITY, "color": Color.WHITE}, entities, "", null, false, null, "aces")
 
 	var sun := holder.get_node_or_null("Sun") as DirectionalLight3D
 	var atmosphere := holder.get_node_or_null("Atmosphere") as WorldEnvironment
@@ -2610,7 +2612,7 @@ func _test_lighting() -> void:
 		var environment := atmosphere.environment
 		_check(
 			sun.light_color.is_equal_approx(Color(1, 0, 0))
-				and is_equal_approx(sun.light_energy, 2.0 * MapLighting.SUN_ENERGY_PER_BRIGHTNESS)
+				and is_equal_approx(sun.light_energy, 2.0 * MapLighting.sun_energy_per_brightness("aces"))
 				and sun.directional_shadow_max_distance >= 8000.0
 				and sun.directional_shadow_pancake_size >= 2000.0
 				and is_equal_approx(sun.light_angular_distance, 0.25) and sun.shadow_enabled,
@@ -2682,13 +2684,13 @@ func _test_lighting() -> void:
 		var lamp := spots[0] as SpotLight3D
 		# CS2's frustum: its eye 1 / 0.12 = 8.33 units above the lamp, 16
 		# units either side there, 62.49 degrees off its axis, a solid angle
-		# of 3.6213 steradians; 40 pi x 3000 lumens over that, at the sun's
-		# scale, is 72,870 at one unit.
+		# of 3.6213 steradians; 40 pi x 3000 lumens over that is 104,106 at
+		# one unit, times the sun's scale under the grade in use.
 		_check(
 			lamp.global_position.is_equal_approx(Vector3(1424.563354, 84.561882 + 1.0 / 0.12, -1040.0))
 				and (-lamp.global_basis.z).is_equal_approx(Vector3.DOWN)
 				and is_equal_approx(lamp.spot_angle, rad_to_deg(atan(16.0 * 0.12)))
-				and absf(lamp.light_energy - 72870.0) < 50.0 and is_equal_approx(lamp.spot_attenuation, 2.0)
+				and absf(lamp.light_energy - 104106.0 * MapLighting.sun_energy_per_brightness()) < 70.0 and is_equal_approx(lamp.spot_attenuation, 2.0)
 				and lamp.light_color.is_equal_approx(Color8(255, 184, 123)) and lamp.shadow_enabled,
 			"a barn is a shadowed spot from its frustum's eye, straight down, 62.5 degrees wide, falling off as the square (%s, %.0f)"
 				% [lamp.global_position, lamp.light_energy]
@@ -2697,7 +2699,7 @@ func _test_lighting() -> void:
 		_check(
 			full > 0.94 and is_equal_approx(lamp.spot_angle_attenuation, 1.0)
 				and is_equal_approx(lamp.shadow_bias, MapLighting.LAMP_SHADOW_BIAS)
-				and absf((spots[1] as SpotLight3D).light_energy - 72870.0 * 850.0 / 3000.0) < 20.0,
+				and absf((spots[1] as SpotLight3D).light_energy - 104106.0 * MapLighting.sun_energy_per_brightness() * 850.0 / 3000.0) < 25.0,
 			"it keeps 95% of its light out to CS2's range, fades only near its edge, and shadows at the map's scale; the dimmer lamp is lit by its own lumens"
 		)
 	lit.free()
@@ -2711,7 +2713,7 @@ func _test_lighting() -> void:
 	_check(
 		measured_env.ambient_light_source == Environment.AMBIENT_SOURCE_COLOR
 			and measured_env.ambient_light_color.is_equal_approx(Color(1.0, 0.5, 0.5).linear_to_srgb())
-			and is_equal_approx(measured_env.ambient_light_energy, 0.5 * LightmapMaterials.ENERGY)
+			and is_equal_approx(measured_env.ambient_light_energy, 0.5 * LightmapMaterials.energy())
 			and with_bounce["ambient"].contains("average"),
 		"with the lightmap's average measured, that is the ambient, at the lightmap's energy"
 	)

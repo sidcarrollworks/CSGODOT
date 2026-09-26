@@ -17,8 +17,27 @@ extends RefCounted
 
 ## Source's light_environment brightness is in a unit of its own. This is the
 ## factor that puts dust2's 2.5 where a sunlit wall tone-maps to about what
-## the game shows, found by comparing renders against the game.
+## the game shows under the ACES grade, found by comparing renders against
+## the game. Under CS2's own grade the brightness is Godot's energy as it
+## is, CS2_SUN_ENERGY_PER_BRIGHTNESS (sun_energy_per_brightness gives the
+## one in use).
 const SUN_ENERGY_PER_BRIGHTNESS := 0.7
+const CS2_SUN_ENERGY_PER_BRIGHTNESS := 1.0
+
+## What CS2's grade's exposure is multiplied by, left over once the sun and
+## the bounce are in the game's own units: measured at long doors (pos 586.0
+## 10.4 968.0, yaw 232.5, pitch 2.9) against Sid's CS2 screenshot by the
+## patch method, patches drawn on both and compared in linear light
+## (reference/playtest-2026-09-25.md, issue 10). At 1.2 the sunlit plaster
+## and ground came to 1.01 of the game's and the shaded ground to 0.99.
+const CS2_EXPOSURE_FIT := 1.2
+
+
+## The sun's energy for a light_environment brightness of 1 under the grade
+## mode (ColourGrade.mode() unless given).
+static func sun_energy_per_brightness(mode: String = "") -> float:
+	var grade := mode if mode in ColourGrade.MODES else ColourGrade.mode()
+	return CS2_SUN_ENERGY_PER_BRIGHTNESS if grade == "cs2" else SUN_ENERGY_PER_BRIGHTNESS
 
 ## How far towards the sun a shadow split reaches, in units (see build).
 const SHADOW_PANCAKE := 4096.0
@@ -49,6 +68,7 @@ static func build(
 	var sun_entity := _first(entities, "light_environment")
 	var fog_entity := _first(entities, "env_cubemap_fog")
 	var post_entity := post_processing_volume(entities)
+	var mode := grade if grade in ColourGrade.MODES else ColourGrade.mode()
 
 	var light := DirectionalLight3D.new()
 	light.name = "Sun"
@@ -59,7 +79,7 @@ static func build(
 	light.light_energy = 1.2
 	if not sun_entity.is_empty():
 		light.light_color = _colour(sun_entity.get("color", ""), light.light_color)
-		light.light_energy = float(sun_entity.get("brightness", "1.0")) * SUN_ENERGY_PER_BRIGHTNESS
+		light.light_energy = float(sun_entity.get("brightness", "1.0")) * sun_energy_per_brightness(mode)
 		# The sun's size in the sky, which is how soft its shadows' edges are.
 		light.light_angular_distance = float(sun_entity.get("angulardiameter", "0.5"))
 	light.shadow_enabled = true
@@ -125,7 +145,7 @@ static func build(
 		var peak := maxf(average.r, maxf(average.g, average.b))
 		environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 		environment.ambient_light_color = Color(average.r / peak, average.g / peak, average.b / peak).linear_to_srgb()
-		environment.ambient_light_energy = peak * LightmapMaterials.ENERGY
+		environment.ambient_light_energy = peak * LightmapMaterials.energy(mode)
 	else:
 		environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 		environment.ambient_light_sky_contribution = 0.7
@@ -176,14 +196,13 @@ static func build(
 	environment.adjustment_enabled = true
 	environment.adjustment_saturation = 1.15
 
-	# CS2's own grade, from the map's post-processing file, is behind a
-	# switch until it has been judged against the game (ColourGrade). Both
-	# are kept on the environment, so the render profiler's other_grade can
-	# swap one for the other (RenderVariants).
+	# CS2's own grade, from the map's post-processing file, is the default
+	# (ColourGrade), ACES the other mode. Both are kept on the environment,
+	# so the render profiler's other_grade can swap one for the other
+	# (RenderVariants); the sun and the bounce stay in the mode's units.
 	environment.set_meta(&"grade_aces", ColourGrade.current(environment))
 	environment.set_meta(&"grade_post", post if post != null else MapPostProcessing.load_file(""))
-	environment.set_meta(&"grade_exposure", cs2_exposure(post_entity))
-	var mode := grade if grade in ColourGrade.MODES else ColourGrade.mode()
+	environment.set_meta(&"grade_exposure", cs2_exposure(post_entity) * CS2_EXPOSURE_FIT)
 	ColourGrade.use(environment, mode)
 
 	var world_environment := WorldEnvironment.new()
@@ -251,7 +270,7 @@ static func is_drawn_live(entity: Dictionary) -> bool:
 ## there; its lumens are spread over the frustum's solid angle, 40 pi lumens
 ## a steradian at one unit, and fall off as the inverse square from the eye,
 ## faded over its outer soft_x (a third, on dust2's). That is the unit the sun's
-## brightness is in, so it takes SUN_ENERGY_PER_BRIGHTNESS as the sun does.
+## brightness is in, so it takes sun_energy_per_brightness() as the sun does.
 ## Its shadow is Godot's, in place of the lightmap's baked mask. Null for an
 ## orthographic barn (size_params.z of 0), which is not built.
 static func barn_light(entity: Dictionary) -> SpotLight3D:
@@ -268,7 +287,7 @@ static func barn_light(entity: Dictionary) -> SpotLight3D:
 
 	var lamp := SpotLight3D.new()
 	lamp.light_color = _colour(entity.get("color", ""), Color.WHITE)
-	lamp.light_energy = 40.0 * PI * lumens / solid_angle * SUN_ENERGY_PER_BRIGHTNESS
+	lamp.light_energy = 40.0 * PI * lumens / solid_angle * sun_energy_per_brightness()
 	# The inverse square, in units from the eye.
 	lamp.spot_attenuation = 2.0
 	lamp.spot_range = (near + float(entity.get("range", "512"))) * LAMP_RANGE_BEYOND

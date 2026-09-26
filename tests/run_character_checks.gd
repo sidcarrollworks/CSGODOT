@@ -46,7 +46,7 @@ func _test_routing() -> void:
 	var lit := ProbeMaterials.build(body)
 	_check(
 		lit.shader == CharacterMaterials.SHADER and ProbeMaterials.build(body) == lit
-			and is_equal_approx(lit.get_shader_parameter("probe_energy"), LightmapMaterials.ENERGY),
+			and is_equal_approx(lit.get_shader_parameter("probe_energy"), LightmapMaterials.energy()),
 		"a material CS2 draws with csgo_character goes on the character shader, made once, at the probes' energy"
 	)
 	var prop := StandardMaterial3D.new()
