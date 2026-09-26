@@ -77,6 +77,8 @@ func setup(team: String, weapon_model: String, clip_set: String) -> bool:
 		for mesh in agent.find_children("*firstperson*", "MeshInstance3D", true, false):
 			adopt(mesh, character_rig)
 		agent.free()
+		# The forearms' twist bones, which the clips do not key.
+		TwistModifier.attach(character_rig, AGENTS.get(team, AGENTS["T"]))
 
 	var weapon := instantiate(weapon_model)
 	if weapon != null and weapon_rig != null:
