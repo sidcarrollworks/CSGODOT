@@ -30,6 +30,7 @@ Updated 2026-09-23 evening: one world runs the tick (`GameWorld`, the first part
 Updated 2026-09-23 night: dust2 buys (items 13 and 14 wired in), spawns give the knife and pistol only, the match sends CS2's round events, the bomb and grenades are in dust2's match, bots buy as CS2's do and hold what is in hand (items 6 and 24), and a drop is thrown from the hand (item 12).
 Updated 2026-09-24: binds added (item 12a, planned in `reference/binds.md`): one table of keys, CS2's defaults, for the game and the test range alike.
 Updated 2026-09-24 later: game modes apart from maps (item 24a, `reference/systemization.md` step 4's first part): any extracted defusal map plays in competitive.
+Updated 2026-09-25: Sid's dust2 playtest, 22 issues with plans ("Playtest of 2026-09-25", `reference/playtest-2026-09-25.md`).
 
 ## Part 1: what exists
 
@@ -217,6 +218,42 @@ Updated 2026-09-24 later: game modes apart from maps (item 24a, `reference/syste
 
 Each phase can start once the one before it is in, except where noted.
 Items marked **(Sid)** need Sid's machine or a decision from him.
+
+### Playtest of 2026-09-25 (dust2)
+
+Sid played dust2 and sent 22 issues. `reference/playtest-2026-09-25.md`
+has each one investigated: what Sid saw, the cause (verified or inferred),
+what already covers it, the plan, and its Remote and Local parts. Its top
+gives the order for cloud threads (which can run side by side and which
+touch the same files) and Sid's Local work batched into a few runs. Every
+issue splits: a Remote part a cloud thread can take now, then an
+extraction run, a look beside CS2 or the asset run of the checks. Mark an
+issue done here and on the page in the same pull request.
+
+| # | Issue | Remote | Local | With |
+|---|---|---|---|---|
+| 1 | A mode chosen at start: Competitive, or Practice with no bots. Until then, Team Size 0 on `de_dust2.tscn` (not committed) plays it alone | A picker, `--mode`, Practice as Competitive with no bots and a warmup that does not end | Try it in fullscreen | 24a, 26 |
+| 2 | Dropped guns sink into slopes, the magazine goes through the floor, they turn about the wrong point | A body on CS2's own hull (one convex hull a gun, mass 3 to 6, from the game's physics), swept against the floor; checks on a one-sided trimesh | Dump the guns' hulls; look on T spawn's ramp | 12 |
+| 3 | E picks up what you look at, swapping out what is in that slot | The use search (CS2's 80 units, a cone), the swap, one precedence with the bomb | See in CS2 what E takes and from how far | 12, after 2 |
+| 4 | Ragdoll legs through the floor, joints bending too far | Start clear of the floor, CS2's own shapes (in the agents' `.vmdl`), joint limits; checks on a one-sided trimesh | Dump CS2's joints; deaths on the ramp | Housekeeping |
+| 5 | Bots hover over T spawn's ramp in freeze time (the hull rests on the uphill edge; there is no foot IK) | Research, then draw-only foot IK and a ground fit | CS2's feet on the ramp | After 17 |
+| 6 | Bots meet head-on and hop at each other forever | Making way for teammates, stuck handling that never jumps at one, goals spread over a site | dust2's chokepoints and 24b's inferno spot | 24b, 23 |
+| 7 | The xbox tarp far too dark (its lightmap read from the wrong UV set) | The UV set for `csgo_environment`, and its tint | `extract_assets.sh layers`; an xbox shot in CS2 | After 12 |
+| 8 | Wrists wrung on the knife (the forearm twist bones are never posed) | CS2's tilt-twist constraints from the agents' `.vmdl` on the drawn arms, after the maths is written up | Beside CS2 | 6 |
+| 9 | A see-through seam in a wall (Godot's vertex compression) | The map imported without it | Reimport, look, profile | After 12 |
+| 10 | Too saturated and contrasty against CS2 | CS2's grade (its Hable curve and the map's post-processing file), behind a switch | Extract the file, recalibrate by patches | R0 |
+| 11 | Geometry flickering (the sky's brushes used as occluders) | The sky's brushes out of the occluders | Confirm with occlusion off; walk R3's spots | R3 |
+| 12 | Zigzag stripes on the kasbah towers (Godot's mesh LODs break the third UV set's lightmap) | No LODs, or LODs that keep that UV set, on those props | Look, profile | |
+| 13 | White eyes | CS2's eye shader on the character shader | Extract the eye textures; beside CS2 | R7 |
+| 14 | Recoil on the AK-47 and M4A1-S only | The 15 more patterns already in `reference/spray_patterns/`, solved at load; a provisional kick for the rest | Spray the rest in CS2 (TODO L6); the R6 demo | 8 |
+| 15 | Mouse wheel down to the next weapon | CS2's `invnext` | Its order in CS2 | 12a, after 16 |
+| 16 | A quick switch cuts the draw short | The draw restarted on every switch, as CS2's graph does | Whether CS2 reloads during a draw | 12 |
+| 17 | Running into a jump snaps to the air pose | The take-off from CS2's graph | Extract the jump clips; regenerate the tables | 6 |
+| 18 | Nobody seems to get the bomb | A check end to end, CS2's handing it to the human T (`bot_defer_to_human_items`), a cue for who carries it | Rounds as T and CT; CS2's warmup | 16, 15 |
+| 19 | Grenade sounds and effects | The shared sound-event table and player, then the grenades' sounds; the effects after research | Extract the missing sounds and the particles | 17 to 20 |
+| 20 | A click as the magazine nears empty (CS2's `Default.NearlyEmpty`) | On the shared sound player, the threshold provisional | Measure the threshold in CS2 | After 19's groundwork |
+| 21 | Round sounds (start, end, planted, ten seconds, announcer) | The cues from `reference/research/audio-round.md` | Extract the UI, music and announcer; listen | 16, after 19's groundwork |
+| 22 | Looking down shows the vest where CS2 shows legs | More of the body you see folded away, the shadow and bots whole | Beside CS2 | 6a |
 
 ### Phase 1: make being shot feel like CS2
 
@@ -474,8 +511,9 @@ list, split into Local and Remote items, with the measurements.
   the players, your arms and the buy menu's agent are drawn with CS2's
   cloth sheen where their materials ask for it, their occlusion darkening
   the sun too, where they shone like plastic (Sid's buy menu screenshot,
-  2026-09-25). Left of the layers: the softened skin, the eyes, the rim
-  and tint masks, the detail textures.
+  2026-09-25). Left of the layers: the softened skin, the eyes (the
+  playtest of 2026-09-25, issue 13), the rim and tint masks, the detail
+  textures.
 - **Research CS2's renderer (R0) and CS2's video settings (R6).**
   *(Remote, not started)*
 
@@ -543,7 +581,8 @@ list, split into Local and Remote items, with the measurements.
     bouncing, and laid on its side where it stops; a death lets the gun go
     from the hand, moving as the body was. Left: E to swap with the gun in
     hand, and a gun on the ground as a rigid body that blasts and rounds
-    push, on its own physics hull (`reference/cs2-systems.md` section 4).
+    push, on its own physics hull (`reference/cs2-systems.md` section 4);
+    the playtest of 2026-09-25's issues 2 and 3 plan both.
 12a. **Binds: the same keys everywhere, the test range included.** *(Remote;
     Local wires section 5's keys through it and checks CS2's defaults; new
     2026-09-24, Sid: "Ideally the same keys are used everywhere even in
@@ -715,7 +754,9 @@ list, split into Local and Remote items, with the measurements.
       (292, 164, 2000) and 77 away in plan; two CTs back from B jam
       together at (2579 to 2611, 128, 2008), one jumping; a CT back from
       A stops at (1493, 205, 2442), a spot it passed on the way out.
-      Doors and func_brush blockers are ruled out.
+      Doors and func_brush blockers are ruled out. dust2 shows the same
+      jam: the playtest of 2026-09-25, issue 6, traces it to bots having
+      no way round a teammate and jumping when held up.
     - *Café tables, chairs and signs draw solid black.* *(Local finds the
       cause, then Remote)* They have textures; `prepare_export` warned
       that inferno's world and skybox glTFs have a primitive with both
@@ -797,8 +838,10 @@ All Remote, except the real ragdoll data, which needs extracting locally.
   `scripts/run_tests.sh` with a headless Godot 4.7.2 on every pull request
   and push to main; the runner now runs every test file and sums them up
   (step 0 of `reference/systemization.md`).
-- CS2's own ragdoll data is not extracted; the ragdoll uses the hitbox
-  capsules. Swapping in the real one is optional polish.
+- CS2's ragdoll shapes are in the extracted agents' `.vmdl` (15 bodies);
+  its joints and their limits are not extracted. The ragdoll uses the
+  hitbox capsules and estimated limits; the playtest's issue 4 takes both
+  over (`reference/playtest-2026-09-25.md`).
 
 ---
 
@@ -806,6 +849,7 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 
 | | What | Unblocks |
 |---|---|---|
+| Hands | The playtest's Local work, batched (`reference/playtest-2026-09-25.md`, "Sid's machine, batched") | Playtest issues 1 to 22 |
 | Hands | Spray a wall in CS2 from 496 units | Item 8 |
 | Hands | Measure jump height, crouch-jump reach, dead-strafe feel | Movement check |
 | Hands | Check on the range that the shooting bot stays upright while firing, and that the dummy's ragdoll and your own settle without spinning (PR #30) | Confirms PR #30 |
