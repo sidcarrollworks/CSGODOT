@@ -401,14 +401,26 @@ applies an impulse at each actual contact point, without changing the
 bullet's damage path. Every pellet adds its own impulse; off-centre hits
 add angular motion, and hits wake both a sleeping gun and its view.
 
+For a grounded gun, the response reflects an impulse component pointing
+into its support away from that surface, keeping the tangential
+component and total impulse magnitude. Support requires a native
+contact with upward normal component at least 0.5, positive contact
+impulse and separation at most 0.005 metres. Unsupported guns and
+impulses pointing away from the support are unchanged; the application
+point remains the actual bullet contact. This experimental gameplay
+reaction addresses downward shots whose motion was absorbed by the
+floor and friction; it is not extracted or verified CS2 physics.
+
 The experimental `Box3DDrops.BULLET_IMPULSE_PER_DAMAGE` is 6 kg·inch/s
 per point of base damage remaining at that contact, including range
 falloff and penetration loss, before player armour/hitgroup multipliers.
 This value is not extracted or verified from CS2. Other dropped item
 types, the legacy solver and blast impulses are outside this bullet-push
-change. The follow-up's automated orientation and bullet checks pass;
-human acceptance and the original four AWP settling failures remain
-open. The dated measurements and validation counts are in
+change. The initial horizontal bullet checks passed but missed the
+failed grounded shooting playtest. The expanded native suite passes
+38/38 and actual player-command suite 36/36, including downward shots
+and drawn motion. Human acceptance and the original four AWP settling
+failures remain open. The dated measurements and validation counts are in
 [the trial notes](../box3d-trial.md).
 
 CS2's values, from its convar dump (SteamDatabase's `DumpSource2/convars.txt`)

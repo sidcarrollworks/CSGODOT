@@ -18,8 +18,10 @@ func _initialize() -> void:
 	await physics_frame
 	ItemPhysics.use_table(ItemPhysics.PATH)
 	await _check_ground_wake()
+	await _check_support_response()
 	ItemPhysics.use_table("res://tests/fixtures/item_physics.csv")
 	await _check_impulses_and_filters()
+	await _check_airborne_downward_hit()
 	await _check_range()
 	await _check_occlusion()
 	ItemPhysics.use_table(ItemPhysics.PATH)
@@ -108,6 +110,56 @@ func _check_impulses_and_filters() -> void:
 	_check(removed.velocity.is_zero_approx()
 		and (test.adapter.body_for(removed.id).call(&"get_linear_velocity") as Vector3).is_zero_approx(),
 		"a removed gun is ignored even before its native body is pruned")
+	_close(test)
+
+
+func _check_support_response() -> void:
+	for slope_degrees in [0.0, 20.0]:
+		var test := _case(true)
+		var floor_body := test.geometry.get_child(0) as StaticBody3D
+		floor_body.rotation.z = deg_to_rad(slope_degrees)
+		test.adapter.capture_world(test.geometry)
+		await _settle_queries()
+		var item := DroppedItem.drop_from(test.game, 99, _entry("weapon_glock"),
+			Transform3D(Basis.IDENTITY, Vector3(0.0, 30.0, 0.0)))
+		for tick in 512:
+			_step(test)
+			if item.resting:
+				break
+		_check(item.resting, "the gun sleeps on the %.0f-degree support before the downward shot" % slope_degrees)
+		var normal := floor_body.basis.y
+		var before := item.position
+		var origin := before + normal * 64.0 + Vector3.BACK * 12.0
+		var shot := _shot(origin, (before - origin).normalized())
+		_fire(test, shot, _data())
+		var native := test.adapter.body_for(item.id)
+		var momentum := item.velocity.length() * float(native.call(&"get_mass"))
+		_check(item.velocity.dot(normal) > 10.0 and absf(momentum - 216.0) < 0.2,
+			"the %.0f-degree support redirects the kick outward without increasing its magnitude" % slope_degrees)
+		var along_surface := shot.direction.slide(normal) * (216.0 / float(native.call(&"get_mass")))
+		_check(item.velocity.slide(normal).distance_to(along_surface) < 0.02,
+			"the %.0f-degree support preserves momentum along its surface" % slope_degrees)
+		var maximum := 0.0
+		for tick in 16:
+			_step(test)
+			maximum = maxf(maximum, item.position.distance_to(before))
+		_check(maximum > 0.5, "a downward hit visibly moves the gun on the %.0f-degree support (%.3f inches)" % [slope_degrees, maximum])
+		_close(test)
+
+
+func _check_airborne_downward_hit() -> void:
+	var test := _case()
+	await _settle_queries()
+	var item := _put(test, "weapon_ak47", GUN_AT)
+	var origin := GUN_AT + Vector3(0.0, 64.0, 64.0)
+	var shot := _shot(origin, (GUN_AT - origin).normalized())
+	_fire(test, shot, _data())
+	_check(item.velocity.y < -1.0 and item.velocity.normalized().distance_to(shot.direction) < 0.001,
+		"a downward shot into an unsupported gun keeps its downward momentum")
+	var before := item.position
+	for tick in 8:
+		_step(test)
+	_check(item.position.y < before.y - 1.0, "the airborne gun continues down through simulation ticks")
 	_close(test)
 
 

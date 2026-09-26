@@ -267,11 +267,17 @@ comparison are done.** Setup, scope and measurements are tracked in
 failures. Sid's follow-up playtest reported that Box3D feels much better
 and requested held orientation on release and shooting ground guns to
 push them. Both follow-ups are implemented on the trial branch:
-orientation checks pass 41/41 and bullet checks 25/25, with the relevant
-regression suites passing. Bullet impulses apply only to native guns,
-with an experimental strength; the legacy toggle has no bullet push.
-Human acceptance of the new behavior, the original four AWP settling
-failures and the quality decision remain open.
+orientation checks pass 41/41 and the initial bullet checks passed
+25/25. Sid then reported that shooting ground guns did nothing. A real
+player-command reproduction showed floor friction absorbing the
+downward kick, a case the horizontal bullet tests missed. The follow-up
+reflects the into-surface impulse component away from a confirmed
+native support contact, preserving its magnitude and tangent. Expanded
+floor/ramp bullet checks pass 38/38 and player-command checks pass
+36/36, including visible motion after downward shots. This reaction and
+its strength are experimental and apply only to native guns; the legacy
+toggle has no bullet push. Human acceptance, the original four AWP
+settling failures and the quality decision remain open.
 
 ### Phase 1: make being shot feel like CS2
 
@@ -601,8 +607,10 @@ list, split into Local and Remote items, with the measurements.
     hand, and blast impulses on dropped guns. The 2026-09-26 Box3D trial
     gives dropped items native rigid bodies on their own physics hulls;
     its follow-up adds bullet impulses to guns and corrects their held
-    orientation at release, with automated checks passing and human
-    acceptance pending. Its impulse strength is experimental; see
+    orientation at release. After a failed shooting playtest, a
+    grounded-contact response now passes realistic downward-shot
+    regressions; human acceptance remains pending. The reaction
+    and impulse strength are experimental; see
     [box3d-trial.md](box3d-trial.md). The playtest of
     2026-09-25's issues 2 and 3 track the broader work.
 12a. **Binds: the same keys everywhere, the test range included.** *(Remote;

@@ -11,6 +11,8 @@ const COLLISION_STEPS := 4
 ## kg*inches/second per point of remaining base damage, before armour or
 ## hitbox multipliers. This is tuning, not an extracted CS2 force value.
 const BULLET_IMPULSE_PER_DAMAGE := 6.0
+## Match the world's native contact recycling distance, in metres.
+const SUPPORT_CONTACT_DISTANCE := 0.005
 
 var game: GameSystems
 var native_world: Node3D
@@ -59,7 +61,7 @@ func initialize(p_game: GameSystems, geometry_root: Node) -> bool:
 	native_world.set(&"async_step", false)
 	native_world.set(&"gravity", Vector3.DOWN * DroppedItem.GRAVITY * METRES_PER_UNIT)
 	native_world.set(&"substep_count", 4)
-	native_world.set(&"contact_recycle_distance", 0.005)
+	native_world.set(&"contact_recycle_distance", SUPPORT_CONTACT_DISTANCE)
 	native_world.set(&"enable_sleep", true)
 	native_world.set(&"enable_warm_starting", true)
 	native_world.set(&"continuous_collision", true)
@@ -311,13 +313,38 @@ func push_bullet_segment(from: Vector3, to: Vector3, kept: float, data: WeaponDa
 		# takes kg*m/s and an absolute world-space point in metres; applying it
 		# off-centre adds torque and wakes the body. Each pellet adds to the
 		# body's current velocity, never overwriting an earlier pellet's kick.
-		body.call(&"apply_impulse_at_point", direction * (damage * BULLET_IMPULSE_PER_DAMAGE * METRES_PER_UNIT), at)
+		var kick_direction := _bullet_kick_direction(body, direction)
+		body.call(&"apply_impulse_at_point", kick_direction * (damage * BULLET_IMPULSE_PER_DAMAGE * METRES_PER_UNIT), at)
 		item.velocity = (body.call(&"get_linear_velocity") as Vector3) / METRES_PER_UNIT
 		item.angular_velocity = body.call(&"get_angular_velocity") as Vector3
 		if item.resting:
 			item.resting = false
 			item.rested_usec = -1
 			item.motion_started.emit()
+
+
+## A standing player's shot otherwise drives a settled gun into its floor,
+## where contact friction absorbs the whole kick. For this experiment,
+## redirect only the into-support component outward, preserving magnitude
+## and motion along the surface. Airborne and outgoing hits keep their aim.
+func _bullet_kick_direction(body: Node3D, direction: Vector3) -> Vector3:
+	var support := Vector3.ZERO
+	var most_inward := 0.0
+	for contact: Dictionary in body.call(&"get_contacts"):
+		# Box3D reports normals from this body TOWARD the other collider.
+		var normal := -(contact["normal"] as Vector3)
+		var inward := direction.dot(normal)
+		# Floors and ramps up to 60 degrees qualify; walls do not.
+		if normal.y < 0.5 or inward >= most_inward or float(contact["impulse"]) <= 0.0:
+			continue
+		# Speculative contacts can exist before bodies touch. Require a near
+		# point on a contact that supported load; this also survives sleep.
+		for point: Dictionary in contact["points"]:
+			if float(point["separation"]) <= SUPPORT_CONTACT_DISTANCE:
+				support = normal
+				most_inward = inward
+				break
+	return direction if support.is_zero_approx() else direction.bounce(support)
 
 
 ## Advance one simulation interval, even without a view. Refresh contacts

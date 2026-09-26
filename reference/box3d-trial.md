@@ -235,8 +235,10 @@ Bullet impulses apply only to native drops whose `ItemDef.is_gun` is
 true. Other dropped inventory items do not receive them. Hitscan still
 uses the existing Jolt world/player trace and damage path. Each open
 segment of that trace also queries the native gun hulls, applying an
-impulse at each gun's actual contact point in the shot direction. The
-segments stop at walls and players and resume only where the existing
+impulse at each gun's actual contact point. Its initial direction is the
+shot direction; the grounded response below can redirect its component
+into the supporting surface. Segments stop at walls and players and
+resume only where the existing
 trace successfully penetrates a wall, within the weapon's remaining
 range. A gun hit does not alter the existing bullet damage/penetration
 path. Each shotgun pellet adds its own impulse; an off-centre contact
@@ -259,16 +261,56 @@ command's release pose/tumble/velocity, and drawn Glock, AK-47 and AWP
 poses. After the correction, simulation passed 156/156, contracts
 257/257 and item physics 40/40.
 
-The new bullet suite passed **25/25 checks**, covering a real Glock's
+The initial bullet suite passed **25/25 checks**, covering a real Glock's
 impulse and wake/view behavior, off-centre torque, additive pellets,
 wall blocking, successful penetration, range, and excluded/removed
 items. Existing penetration, shotgun and weapon suites passed 62/62,
 104/104 and 198/198 respectively. The native quality suite remained
 46/50, with the same four known AWP settling failures.
 
-Human acceptance of the new release orientation and bullet push is
-pending. The initial positive playtest preceded these changes. The
-dated timings and full-suite counts above describe the initial trial;
-the timing profiles contain no firing and do not measure bullet-query
-cost. The branch remains an experiment while the existing settling and
-penetration issues remain open.
+The dated timings and full-suite counts above describe the initial
+trial; the timing profiles contain no firing and do not measure
+bullet-query cost.
+
+## Grounded bullet response follow-up, 2026-09-26
+
+Sid's next playtest reported that shooting a gun on the ground did
+nothing. A reproduction through `PlayerSim` and `UserCmd` confirmed a
+hit and initial velocity, but the floor contact and friction absorbed
+the downward kick: at roughly 58 degrees downward, the AK-47 moved only
+0.0013 inches and the Glock 0.0029 inches after ten ticks. The earlier
+25 passing bullet checks tested movement with horizontal shots and
+missed this typical shooting angle. They did not establish that a
+grounded gun would visibly move.
+
+The follow-up changes the reaction for a gun supported by an actual
+native contact. A supporting contact must have a normal with upward
+component at least 0.5, a positive contact impulse and separation no
+greater than 0.005 metres. If the shot's impulse points into that
+surface, its normal component is reflected outward while its tangential
+component and total impulse magnitude stay the same. The impulse still
+acts at the bullet's actual gun contact point. Unsupported guns and
+shots directed away from the support keep the original response. This
+is an experimental gameplay reaction, not extracted or verified CS2
+physics; the damage-scaled strength remains 6 kg·inch/s per point.
+
+The expanded native bullet suite passed **38/38 checks**, including
+grounded kick and movement on a flat floor and a 20-degree ramp; four
+checks failed before the fix. The player-path suite passed **36/36**
+(eight failed before), using actual drop and attack commands against
+Glock and AK-47 drops at 30, 60 and 85 degrees downward and checking
+that the drawn gun moves with the body.
+A combined run passed **438 checks across five suites**: those two plus
+penetration (62), shotgun (104) and weapon (198).
+
+At 60 degrees downward, centre-of-mass displacement after ten ticks
+changed from **0.0012 to 2.1997 inches for the AK-47**, and from
+**0.0034 to 4.8282 inches for the Glock**. These are fixed headless
+reproductions through the player command path, not measurements of CS2
+or human acceptance of the resulting reaction.
+
+Human acceptance of the corrected bullet reaction and release
+orientation is still pending. The initial positive Box3D feedback
+preceded both bullet follow-ups. The branch remains an experiment;
+the four known AWP settling failures and synthetic-ramp penetration
+remain open.
