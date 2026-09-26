@@ -749,6 +749,46 @@ func _test_the_hand() -> void:
 	_check(reloading and player.weapon == ak and ak.ammo == 12 and not ak.is_reloading(SimClock.now_usec()),
 		"a reload is stopped by a switch, without its rounds; Q takes the AK-47 back (%d rounds)" % ak.ammo)
 
+	# R during the draw: CS2 finishes the pull-out, then reloads (Sid,
+	# 2026-09-26, reference/playtest-2026-09-25.md issue 16).
+	var reloads_started := [0]
+	var count_reload := func() -> void: reloads_started[0] += 1
+	player.reload_started.connect(count_reload)
+	var ak_before := [ak.ammo, ak.reserve]
+	player.select = 2
+	steps.call(DT)
+	player.select = 1
+	steps.call(DT)
+	var ak_drawn := ak.drawn_usec()
+	player.tap = UserCmd.RELOAD
+	steps.call(DT)
+	var held_off: bool = not ak.is_reloading(SimClock.now_usec()) and reloads_started[0] == 0 and ak.is_drawing(SimClock.now_usec())
+	steps.call(float(ak_drawn - SimClock.now_usec()) / 1_000_000.0 + DT)
+	var after_draw: bool = ak.is_reloading(SimClock.now_usec()) and reloads_started[0] == 1
+	steps.call(float(ak_drawn + int(ak.data.reload_time * 1_000_000.0) - SimClock.now_usec()) / 1_000_000.0)
+	_check(
+		held_off and after_draw and ak.ammo == ak.data.magazine_size and not ak.is_reloading(SimClock.now_usec()),
+		"R pressed while the AK-47 is drawn does not cut the draw: the reload starts as the draw ends, and is done its reload time later (%d rounds)" % ak.ammo
+	)
+	# Kept for the gun it was pressed on: a switch drops it.
+	var glock_ammo := glock.ammo
+	player.select = 2
+	steps.call(DT)
+	player.tap = UserCmd.RELOAD
+	steps.call(DT)
+	player.select = 1
+	steps.call(DT)
+	steps.call(ItemRegistry.item("weapon_ak47").deploy_seconds + 0.1)
+	_check(
+		reloads_started[0] == 1 and glock.ammo == glock_ammo and glock_ammo < glock.data.magazine_size
+			and not ak.is_reloading(SimClock.now_usec()),
+		"R pressed while the Glock is drawn, then a switch: nothing reloads (%d started)" % reloads_started[0]
+	)
+	player.reload_started.disconnect(count_reload)
+	# The checks after these go on with the 12 rounds the AK-47 had.
+	ak.ammo = ak_before[0]
+	ak.reserve = ak_before[1]
+
 	player.select = 3
 	steps.call(DT)
 	_check(player.weapon == null and player.in_hand_class() == "weapon_knife"
