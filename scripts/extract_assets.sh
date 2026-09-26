@@ -178,7 +178,7 @@ usage() {
 COMMAND="${1:-}"
 case "$COMMAND" in
 	list-map|map|physics|entities|nav|volumes|radar|layers|sky|skybox|lightmaps|visibility|all|paths) ;;
-	list-weapons|surfaces|weapons|weapon-animations|weapon-data|equipment|hud|effects|characters|character-masks|animgraphs|sounds)
+	list-weapons|surfaces|weapons|weapon-animations|weapon-data|equipment|hud|effects|characters|character-masks|character-animations|animgraphs|sounds)
 		# Not a map's own step: a map name here would be ignored, which is
 		# worse than being told.
 		if [[ $# -gt 1 ]]; then

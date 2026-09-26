@@ -462,6 +462,23 @@ func _test_air_rules() -> void:
 			and is_equal_approx(PlayerModel.eased_crouch(1.0, 0.0, 0.05), 0.75),
 		"the air's crouch is eased over CS2's 0.2 s"
 	)
+	# Whatever reference/animgraph/locomotion.json carries (CS2's own curve,
+	# once the tables are regenerated), the landing must still run from
+	# tucked high up to feet down near the ground.
+	var ours := PlayerModel.landing_curve(table)
+	_check(
+		PlayerModel.landing_share(0.0, ours) >= 0.9 and PlayerModel.landing_share(INF, ours) <= 0.1,
+		"the landing's curve from the tables poses the feet down at the ground and tucked out of reach (%s)" % [ours]
+	)
+	var dump_tracks := Animation.new()
+	for track_path in ["Rig/Skeleton3D:ankle_L", "Rig/weapon/Skeleton3D:weapon", "Rig/Skeleton3D:pelvis"]:
+		var track := dump_tracks.add_track(Animation.TYPE_ROTATION_3D)
+		dump_tracks.track_set_path(track, NodePath(track_path))
+	var kept := PlayerModel.body_tracks_only(dump_tracks, "Rig/Skeleton3D")
+	_check(
+		kept.get_track_count() == 2 and dump_tracks.get_track_count() == 3,
+		"a clip keeps only the body's tracks, not the gun rig's the jump additives carry (%d of 3)" % kept.get_track_count()
+	)
 	var from_table := PlayerModel.landing_curve({"values": [
 		{"node": 10, "kind": "FloatCurve", "input": "air_height_above_ground", "points": [[40.0, 0.0], [4.0, 2.0]]},
 		{"node": 11, "kind": "AnimationPose", "path": "SM/InAir/SM/landing_blend/inair_n", "input_node": 10, "from": 0.0, "to": 2.0},
@@ -556,6 +573,9 @@ func _test_air_tree() -> void:
 		model.free()
 		return
 	tree.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+	# The tree's workings on the curve this check knows; the curve CS2's
+	# tables give is checked in _test_air_rules.
+	model._landing_curve = PlayerModel.LANDING_CURVE
 	var now := SimClock.now_usec()
 	var at := func() -> float: return bone.position.y
 	var run := Vector3(0, 0, -240)

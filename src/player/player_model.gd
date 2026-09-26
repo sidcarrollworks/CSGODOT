@@ -210,10 +210,13 @@ func setup(team: String, weapon_model: String, weapon_set: String = "", holds: b
 	# Under their whole names: the rifle's and pistol's end in their
 	# variation, the knife's in nothing. They hold bare differences, as the
 	# guns' additive clips do, and are made ones Godot adds (rest_relative()).
+	# They carry the gun's rig too, which this body's mixer has not got, so
+	# only the body's tracks are kept, as a gun's own clips keep them.
 	var library := animation_player.get_animation_library(&"")
+	var body_node := String(animation_player.get_animation(&"idle").track_get_path(0).get_concatenated_names()) if animation_player.has_animation(&"idle") else ""
 	for additive in add_clips(list_clips(SHARED_DIR, PackedStringArray([JUMP_ADDITIVES])), ""):
 		if not _prepared.has(additive):
-			_prepared[additive] = rest_relative(library.get_animation(additive), character_rig)
+			_prepared[additive] = rest_relative(body_tracks_only(library.get_animation(additive), body_node), character_rig)
 		library.remove_animation(additive)
 		library.add_animation(additive, _prepared[additive])
 	idle = &"idle"
@@ -314,10 +317,7 @@ func prepared_set(weapon_set: String) -> Dictionary:
 			var source := clip_animation(path)
 			if source == null:
 				continue
-			var clip := source.duplicate() as Animation
-			for track in range(clip.get_track_count() - 1, -1, -1):
-				if String(clip.track_get_path(track).get_concatenated_names()) != body_node:
-					clip.remove_track(track)
+			var clip := body_tracks_only(source, body_node)
 			if ResourceLoader.exists(path.get_basename() + ".vnmclip+non_additive.gltf"):
 				clip = rest_relative(clip, character_rig)
 			clip.loop_mode = Animation.LOOP_LINEAR if action.begins_with("idle") else Animation.LOOP_NONE
@@ -423,6 +423,18 @@ func show_held() -> void:
 	held_weapon.visible = true
 	light_due = true
 	_update_pins()
+
+
+## A copy of a clip with only the tracks on body_node (the body's
+## skeleton, as its clips name it): a clip that also moves the gun's rig
+## (".../Skeleton3D:weapon") would have the body's mixer look for bones it
+## has not got, and warn every step.
+static func body_tracks_only(clip: Animation, body_node: String) -> Animation:
+	var out := clip.duplicate() as Animation
+	for track in range(out.get_track_count() - 1, -1, -1):
+		if String(out.track_get_path(track).get_concatenated_names()) != body_node:
+			out.remove_track(track)
+	return out
 
 
 ## One of CS2's additive clips made one Godot's additive nodes add as CS2
