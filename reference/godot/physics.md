@@ -122,7 +122,7 @@ Doc: `tutorials/physics/physics_introduction.rst`, `classes/class_collisionobjec
 | 2 | 2 | player/bot hulls `PlayerSim.PLAYER_LAYER` |
 | 3 | 4 | hitboxes `Hitbox.LAYER` |
 | 4 | 8 | player clip `MapImporter.PLAYER_CLIP_LAYER` |
-| 5 | 16 | ragdoll bodies `Ragdoll.LAYER` |
+| 5 | 16 | ragdoll bodies `Ragdoll.LAYER` (they mask it too: a body's parts collide) |
 | 6 | 32 | grenade clip `GrenadeRules.GRENADE_CLIP_LAYER` |
 | 20 | 1<<19 | `PlayerSim.UNSEEN_LAYER` |
 
@@ -301,7 +301,7 @@ Doc: `tutorials/physics/ragdoll_system.rst`, `classes/class_physicalbone3d.rst`,
   - Per-axis linear and angular limits, springs and motors (`FLAG_ENABLE_LINEAR_LIMIT`, `FLAG_ENABLE_ANGULAR_LIMIT`, `FLAG_ENABLE_*_SPRING`, `FLAG_ENABLE_MOTOR`, `FLAG_ENABLE_LINEAR_MOTOR`).
   - `angular_limit_*/enabled` defaults to true with lower = upper = 0, so a fresh 6DOF is **locked** on every angular axis.
   - Several spring params are undocumented.
-- The project doesn't use `PhysicalBone3D`. `Ragdoll` builds plain `RigidBody3D`s and joints from the hitbox capsules (see below). If it's migrated, joint frames (`joint_offset`) and bone-name selection are what change.
+- The project doesn't use `PhysicalBone3D`. `Ragdoll` builds plain `RigidBody3D`s and joints from CS2's ragdoll shapes or the hitbox capsules (see below). If it's migrated, joint frames (`joint_offset`) and bone-name selection are what change.
 
 ## Class notes
 
@@ -398,7 +398,11 @@ See the ragdoll section. `set_param(Param, float)`/`get_param`, and `set_flag(Fl
 - `src/map/brush_volume.gd`: convex pieces for Area3D volumes. `contains()` tests `Plane.distance_to` in script.
 - `src/combat/hitbox.gd`, `src/combat/skinned_hitboxes.gd`, `src/combat/hit_target.gd`: hitbox `Area3D`s on layer 4 with capsules or boxes. Their layer is set to 0 when inactive.
 - `src/combat/ragdoll.gd`:
-  - Builds `RigidBody3D`s plus `ConeTwistJoint3D`s and `HingeJoint3D`s on layer 16, masking the world only.
+  - Builds `RigidBody3D`s (from CS2's ragdoll shapes, `RagdollShapes`, or the hitbox capsules) plus `Generic6DOFJoint3D`s and `HingeJoint3D`s on layer 16, masking the world and that layer; a body's own non-neighbouring parts collide, and every part of another ragdoll lying near is made a collision exception (`add_collision_exception_with`), so dead bodies pass through each other.
+  - Makes the joints with the bodies laid out at the skeleton's rest pose, then moves them to the death pose: a joint's frames are fixed from its node's and bodies' global transforms when `node_a`/`node_b` are set in the tree (`Joint3D::_update_joint`, Godot 4.7.2 source), so its limits are measured from rest.
+  - On Jolt a `Generic6DOFJoint3D` is a `SixDOFConstraint` with pyramid swing, and each angular axis honours its own lower and upper limit. Godot's angle is the negative of the child's turn about the axis (the Jolt module negates and swaps the limits; checked headless: a limit of [0, 0.6] let the child turn to -0.6).
+  - Joint friction is an angular motor on each joint (target velocity 0, `angular_motor_*/force_limit`; a hinge's `motor/max_impulse`, which Jolt divides by the tick back into a torque), inside the solver.
+  - dust2's hull is one-sided: it lifts the body clear of the floor before the first step and, each tick while a body is awake, puts a part whose centre went under the floor back on top (rays down, front faces only).
   - Replaces damping (`DAMP_MODE_REPLACE`), uses `continuous_cd=true`, and applies gravity with `add_constant_central_force`.
   - Skips `PARAM_BIAS` on Jolt (`on_jolt()`).
   - Draws between ticks with `DrawClock.fraction()`.
@@ -415,7 +419,6 @@ See the ragdoll section. `set_param(Param, float)`/`get_param`, and `set_flag(Fl
 Looks at odds with the docs (not verified):
 
 - `src/effects/muzzle_flashes.gd:616` (`_to_ground`, reached from `ShotEffects._process` → `flashes.advance`) and `src/player/player_view.gd:229` (`death_cam_position`, reached from `_process` → `_spectate`) query `direct_space_state` in `_process`. The docs say the space is only safe in `_physics_process`. It works while physics is on the main thread (inferred), but it breaks if `physics/3d/run_on_separate_thread` is ever enabled. Both are visual-only.
-- `src/combat/ragdoll.gd:204-219` writes `angular_velocity` on every body every tick from `_physics_process`. The RigidBody3D docs advise `_integrate_forces()` for per-tick state changes. It's cosmetic, and `ragdoll.gd` documents why it does this.
 - `src/grenades/smoke_voxels.gd:239` sets `hit_from_inside = true` on a `WORLD_LAYER` ray. The docs say that flag doesn't affect concave shapes, which is what dust2's collision is. It only matters for convex or box world pieces (e.g. test-range cover), where the hit then has a zero normal. It's harmless but may not do what it reads as.
 - `src/grenades/grenade_flight.gd:125` makes a new `SphereShape3D` and query params on every sweep. (inferred) Reusing one per grenade would avoid allocations in the tick.
 - The player hull's `CollisionShape3D` is offset (`transform ... 0, 36, 0` in `src/player/player.tscn`, `src/bots/bot.tscn`, and `_set_hull` moves it). `collision_shapes_3d.rst` advises untransformed shapes for broad-phase optimisations. This is minor, and moving the body origin to the hull centre would ripple through movement.
