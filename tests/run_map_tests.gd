@@ -83,6 +83,7 @@ func _process(_delta: float) -> bool:
 		_test_lighting()
 		_test_world_visibility()
 		_test_culled_variants()
+		_test_reflections()
 		_test_export_alpha()
 		_spawn_player()
 		_spawned_at_tick = Engine.get_physics_frames()
@@ -1723,6 +1724,40 @@ classname                      "light_environment"
 	)
 	instance.free()
 
+	# A body lit through the scene's probes (RigModel.light_from), every
+	# frame: sampled again only once it has moved RELIGHT_DISTANCE, and put
+	# on its meshes only then, or when something new is shown (light_due).
+	var field := LightProbeField.new()
+	field.probes = probes
+	root.add_child(field)
+	var body := RigModel.new()
+	var worn := MeshInstance3D.new()
+	worn.mesh = BoxMesh.new()
+	worn.material_override = lit
+	body.add_child(worn)
+	root.add_child(body)
+	var inside := Vector3(60, 0, 60)
+	var marked := Vector3(9, 9, 9)
+	body.light_from(inside)
+	var first: Variant = worn.get_instance_shader_parameter(&"probe_py")
+	worn.set_instance_shader_parameter(&"probe_py", marked)
+	body.light_from(inside + Vector3(RigModel.RELIGHT_DISTANCE * 0.5, 0, 0))
+	var nearby: Variant = worn.get_instance_shader_parameter(&"probe_py")
+	body.light_due = true
+	body.light_from(inside + Vector3(RigModel.RELIGHT_DISTANCE * 0.5, 0, 0))
+	var due: Variant = worn.get_instance_shader_parameter(&"probe_py")
+	body.light_from(Vector3(900, 0, 0))
+	var moved: Variant = worn.get_instance_shader_parameter(&"probe_py")
+	_check(
+		first is Vector3 and _near((first as Vector3).y, 0.6) and nearby == marked
+			and due is Vector3 and _near((due as Vector3).y, 0.6)
+			and moved is Vector3 and (moved as Vector3).is_zero_approx(),
+		"a body is lit from the probes where it stands, left as it was a few units on, lit again when something new is shown, and again once it has moved (%s, %s, %s, %s)"
+			% [first, nearby, due, moved]
+	)
+	body.free()
+	field.free()
+
 
 func _near(a: float, b: float) -> bool:
 	return absf(a - b) < 0.002
@@ -2059,6 +2094,12 @@ light_probe_atlas_z            0
 			and _baked_layers(bare) == Vector2i(0, 1) and String(bare.stats.get("sun_shadow", "")).contains("light probes too"),
 		"without light probes the map keeps its live shadow, and the report says it needs them (%s)" % bare.stats.get("sun_shadow", "")
 	)
+	var bare_reflections := bare.get_node_or_null("Reflections") as MapReflections
+	_check(
+		bare.stats.get("reflection_probes", 0) == 1 and bare_reflections != null
+			and bare_reflections.find_children("*", "ReflectionProbe", false, false).size() == 1,
+		"a reflection probe is built at the lump's one probe volume"
+	)
 	bare.free()
 
 	# A 3D skybox takes its page without them: nothing moves in it, and it
@@ -2071,6 +2112,10 @@ light_probe_atlas_z            0
 		sky.stats.get("lightmaps", {}).get("shadows", false) and sky.stats.get("sun_shadow", "?") == ""
 			and _baked_layers(sky) == Vector2i(0, 1),
 		"a 3D skybox, which has no probes, takes the sun's shadow from its page all the same, and stays on its own layers"
+	)
+	_check(
+		sky.stats.get("reflection_probes", -1) == 0 and sky.get_node_or_null("Reflections") == null,
+		"and no reflection probes: it is seen from outside them all"
 	)
 	sky.free()
 	var lump := FileAccess.get_file_as_string(dir.path_join(MapShadows.ENTITIES_FILE))
@@ -2313,14 +2358,18 @@ func _test_lighting() -> void:
 				and used["sky"].contains("stand-in"),
 			"with no panorama on disk the sky is procedural, and the report says so"
 		)
-		var ambient_lit: Array[String] = []
+		# The map's materials take their baked bounce as Godot's ambient, in
+		# place of the environment's; turning ambient off would take every
+		# reflection with it (baked_light.gdshaderinc).
+		var not_baked: Array[String] = []
 		for shader: Shader in [LightmapMaterials.OPAQUE_SHADER, ProbeMaterials.SHADER, BlendMaterials.SHADER, LightmapMaterials.OVERLAY_SHADER]:
-			if not shader.code.contains("ambient_light_disabled"):
-				ambient_lit.append(shader.resource_path)
+			if shader.code.contains("ambient_light_disabled") or not shader.code.contains("\tIRRADIANCE = vec4("):
+				not_baked.append(shader.resource_path)
 		_check(
-			environment.glow_enabled and not environment.ssao_enabled and ambient_lit.is_empty(),
-			"glow is on, and screen-space occlusion off: it darkens ambient light, which the map's materials take none of (%s)" % [ambient_lit]
+			not_baked.is_empty(),
+			"the map's materials hand their baked bounce light to Godot as its ambient, and keep its reflections (%s)" % [not_baked]
 		)
+		_check(environment.glow_enabled and not environment.ssao_enabled, "glow is on, and screen-space occlusion off")
 	_check(
 		used["lamps"] == 0 and holder.find_children("*", "SpotLight3D", true, false).is_empty(),
 		"a lump without live lamps lights none"
@@ -2586,6 +2635,127 @@ func _test_culled_variants() -> void:
 	)
 	everything.call()
 	_check(visibility.is_processing(), "put back, it culls from the camera again")
+	holder.free()
+
+
+## Reflections where the map's cubemaps are (MapReflections): which
+## entities are read, each probe's box and picture placed in game space, and
+## the drawing of them all as the map starts, the map's visibility held
+## meanwhile.
+func _test_reflections() -> void:
+	var entities: Array[Dictionary] = [
+		{
+			"classname": "env_combined_light_probe_volume", "origin": "[ 100.0, 200.0, 50.0 ]",
+			"box_mins": "[ -300.0, -100.0, -50.0 ]", "box_maxs": "[ 500.0, 100.0, 150.0 ]",
+			"edge_fade_dists": "[ 16.0, 32.0, 8.0 ]", "indoor_outdoor_level": "2",
+		},
+		{
+			"classname": "env_cubemap_box", "origin": "[ 0.0, 0.0, 0.0 ]", "angles": "[ 0.0, 90.0, 0.0 ]",
+			"box_mins": "[ -400.0, -50.0, -60.0 ]", "box_maxs": "[ 400.0, 50.0, 60.0 ]",
+		},
+		{"classname": "env_cubemap", "origin": "[ 10.0, 20.0, 30.0 ]", "influenceradius": "128", "customcubemaptexture": ""},
+		{
+			"classname": "env_cubemap_box", "origin": "[ 0.0, 0.0, 0.0 ]", "box_mins": "[ -8.0, -8.0, -8.0 ]",
+			"box_maxs": "[ 8.0, 8.0, 8.0 ]", "customcubemaptexture": "materials/custom.vtex",
+		},
+		{"classname": "env_combined_light_probe_volume", "origin": "[ 0.0, 0.0, 0.0 ]"},
+		{"classname": "light_environment"},
+	]
+	var cubemaps := MapReflections.read(entities)
+	_check(
+		cubemaps.size() == 3 and cubemaps[0]["level"] == 2 and cubemaps[0]["box"] and not cubemaps[2]["box"],
+		"the volume, the box and the sphere (its custom texture left empty) are read; one naming its own texture and one with no box are not"
+	)
+	if cubemaps.size() != 3:
+		return
+
+	# The volume: its box about (100, 0, 50) from its origin in Source's
+	# axes, so centred at Source (200, 200, 100), game (200, 100, 200); its
+	# picture from the origin, Source (100, 200, 50), game (200, 50, 100).
+	var volume := MapReflections.probe_for(cubemaps[0])
+	_check(
+		volume.position.is_equal_approx(Vector3(200, 100, 200)) and volume.size.is_equal_approx(Vector3(200, 200, 800))
+			and (volume.transform * volume.origin_offset).is_equal_approx(Vector3(200, 50, 100)),
+		"a volume's probe has its box where the entity's is, and takes its picture from the entity's origin"
+	)
+	_check(
+		volume.box_projection and is_equal_approx(volume.blend_distance, 32.0)
+			and volume.update_mode == ReflectionProbe.UPDATE_ONCE and volume.ambient_mode == ReflectionProbe.AMBIENT_DISABLED
+			and volume.max_distance >= 8192.0 and volume.layers == MapReflections.LAYER,
+		"projected onto its box, faded over the widest of its fades, drawn once, far, and leaving the ambient to the baked light"
+	)
+	_check(
+		volume.cull_mask & RigModel.LAYER == 0 and volume.cull_mask & PlayerSim.UNSEEN_LAYER == 0
+			and volume.cull_mask & MapShadows.LAYER != 0 and volume.cull_mask & 1 != 0,
+		"its picture takes in the map but not the players, their guns or your own body"
+	)
+	volume.free()
+
+	# The box, turned a quarter about Source's Z: its long side, Source X,
+	# comes round to Source Y, which is the game's X.
+	var turned := MapReflections.probe_for(cubemaps[1])
+	var turned_box := turned.transform * AABB(-turned.size * 0.5, turned.size)
+	_check(
+		turned_box.size.is_equal_approx(Vector3(800, 120, 100)) and turned.position.is_zero_approx(),
+		"a turned box is turned with it (%s)" % turned_box.size
+	)
+	turned.free()
+	var sphere := MapReflections.probe_for(cubemaps[2])
+	_check(
+		not sphere.box_projection and sphere.size.is_equal_approx(Vector3.ONE * 256.0)
+			and sphere.position.is_equal_approx(Vector3(20, 30, 10)) and sphere.origin_offset.is_zero_approx(),
+		"a sphere of influence is the box round it, not projected, taken from its middle"
+	)
+	sphere.free()
+
+	var holder := Node3D.new()
+	root.add_child(holder)
+	var visibility := WorldVisibility.new()
+	holder.add_child(visibility)
+	var none: Array[Dictionary] = [{"classname": "light_environment"}]
+	_check(
+		MapReflections.build(holder, none, visibility) == null and visibility.is_processing(),
+		"a map without cubemaps gets no probes, and its visibility is left alone"
+	)
+	var reflections := MapReflections.build(holder, entities, visibility)
+	_check(
+		reflections != null and reflections.probes.size() == 3
+			and reflections.find_children("*", "ReflectionProbe", false, false).size() == 3,
+		"a probe for each cubemap goes into the scene"
+	)
+	if reflections == null:
+		holder.free()
+		return
+	_check(reflections.is_capturing() and not visibility.is_processing(), "the map's visibility is held while they are drawn")
+	_check(
+		RenderVariants.reflections_of(holder) == reflections,
+		"the render profiler finds them, to measure only once they are drawn"
+	)
+	reflections.advance(0)
+	var line := reflections.get_node_or_null("PutInLine") as SubViewport
+	var eye := line.get_child(0) as Camera3D if line != null and line.get_child_count() == 1 else null
+	_check(
+		eye != null and eye.current and eye.projection == Camera3D.PROJECTION_ORTHOGONAL
+			and eye.cull_mask == MapReflections.LAYER and line.render_target_update_mode == SubViewport.UPDATE_ONCE,
+		"a camera of its own draws once, only the probes' layer, where nothing else is"
+	)
+	var corners_seen := 0
+	for probe in reflections.probes:
+		var box := probe.global_transform * AABB(-probe.size * 0.5, probe.size)
+		for corner in 8:
+			if eye != null and eye.is_position_in_frustum(box.get_endpoint(corner)):
+				corners_seen += 1
+	_check_equal(corners_seen, 24, "and has every probe's box in its view, so every probe is queued to be drawn")
+	var levels := int(ProjectSettings.get_setting("rendering/reflections/sky_reflections/roughness_layers", 8))
+	var needed := reflections.frames_to_capture()
+	_check_equal(needed, 3 * (levels + 1) + 2, "the drawing is given a frame for each probe's faces and each of its rough levels, and some to spare")
+	reflections.advance(needed - 1)
+	_check(reflections.is_capturing() and not visibility.is_processing(), "a frame short of that, the visibility is still held")
+	reflections.advance(needed)
+	_check(
+		not reflections.is_capturing() and visibility.is_processing() and line != null and line.is_queued_for_deletion(),
+		"then the camera goes and the visibility culls again"
+	)
 	holder.free()
 
 

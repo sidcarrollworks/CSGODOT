@@ -86,6 +86,8 @@ func _initialize() -> void:
 
 
 func _run() -> void:
+	# First, before a check loads the bot's scene the usual way.
+	_test_a_scene_read_ahead()
 	_test_the_simulation_reads_only_commands()
 	_test_presses_land_at_their_instant()
 	_test_the_mouse_turns_as_far_at_any_window_size()
@@ -116,9 +118,29 @@ func _run() -> void:
 	await _test_a_hit_throws_the_aim()
 	_test_the_hit_direction_on_screen()
 	await _test_the_hud_shows_hits()
+	_test_you_spawn_with_the_knife_and_pistol()
 	_test_the_frame_meter()
 	await _test_a_frame_draws_where_the_clock_is()
+	_test_frames_are_held_under_the_refresh()
 	_report()
+
+
+# --- Nothing read from the disk in the tick ---------------------------------
+
+## A scene read ahead on a worker thread (RigModel.read_ahead, which the
+## views use for what a first buy or drop would otherwise read in the tick)
+## is handed over by preload_scene as one read the usual way is: asked for
+## twice it is read once, and what cannot be read is not asked for.
+func _test_a_scene_read_ahead() -> void:
+	var path := "res://src/bots/bot.tscn"
+	var cached_before := ResourceLoader.has_cached(path)
+	var started := RigModel.read_ahead(PackedStringArray([path, path, "res://src/no_such_scene.tscn", ""]))
+	var packed := RigModel.preload_scene(path)
+	_check(
+		started == 1 and packed != null and packed.can_instantiate() and not RigModel.reading(path)
+			and RigModel.preload_scene(path) == packed and RigModel.read_ahead(PackedStringArray([path])) == 0,
+		"a scene read ahead is handed over when asked for, read once (%d started; %s cached before)" % [started, cached_before]
+	)
 
 
 # --- No keys, no wall clock -------------------------------------------------
@@ -780,8 +802,10 @@ func _test_the_hand() -> void:
 			and player.in_hand_class() == "weapon_knife" and _named(events, &"item_remove").size() == 1,
 		"G drops the AK-47 in hand, its own Weapon with its 12 rounds on the ground, item_remove, and the knife comes back to the hand"
 	)
+	_check(dropped != null and view.model_of(dropped.id) == null and view.drawn() == 0,
+		"its model is not built in the tick it fell on, which it would hold up, but on the next frame")
 	if dropped != null:
-		var aim := PlayerInput.aim_direction(player.yaw_degrees, player.pitch_degrees)
+		var aim :=PlayerInput.aim_direction(player.yaw_degrees, player.pitch_degrees)
 		var went := dropped.position - dropped.previous_position
 		var across := Vector2(went.x, went.z).length() / DT
 		_check(
@@ -1361,6 +1385,24 @@ func _test_the_frame_meter() -> void:
 	)
 
 
+## The game starts in exclusive fullscreen with V-Sync, where G-Sync and
+## FreeSync engage, and holds its frames just under the screen's refresh,
+## as NVIDIA Reflex holds CS2's. Headless nothing is drawn, so nothing is
+## held (the players built above have their views).
+func _test_frames_are_held_under_the_refresh() -> void:
+	_check(
+		int(ProjectSettings.get_setting("display/window/size/mode")) == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
+			and int(ProjectSettings.get_setting("display/window/vsync/vsync_mode", 1)) == DisplayServer.VSYNC_ENABLED,
+		"the game starts in exclusive fullscreen, V-Sync on"
+	)
+	_check(
+		PlayerView.frame_cap(240.0) == 224 and PlayerView.frame_cap(144.0) == 138 and PlayerView.frame_cap(60.0) == 59
+			and PlayerView.frame_cap(0.0) == 0 and PlayerView.frame_cap(-1.0) == 0,
+		"frames held just under the refresh: 224 at 240 Hz, 138 at 144, 59 at 60, none when it is not known"
+	)
+	_check(Engine.max_fps == 0, "and headless, no cap (%d)" % Engine.max_fps)
+
+
 ## A frame is drawn as far between the ticks as the clock says when it is
 ## drawn: a frame that runs a tick is drawn after it, later than Godot's
 ## fraction, taken at the frame's start, says. For that the ticks keep to
@@ -1399,6 +1441,31 @@ func _test_a_frame_draws_where_the_clock_is() -> void:
 		at >= SimClock.now_usec() - SimClock.tick_usec() and at <= SimClock.now_usec(),
 		"and the time drawn is between the last two ticks"
 	)
+
+
+## You spawn as CS2 spawns a player: the knife and your side's pistol
+## (mp_t_default_secondary, mp_ct_default_secondary), the pistol in hand,
+## and nothing else taken in hand on the way; a rifle is bought.
+func _test_you_spawn_with_the_knife_and_pistol() -> void:
+	for side: String in ["T", "CT"]:
+		var you := (load("res://src/player/player.tscn") as PackedScene).instantiate() as PlayerController
+		you.team = side
+		var drawn := PackedStringArray()
+		you.equipped.connect(func(entry: Inventory.Entry) -> void:
+			drawn.append(entry.item.item_class if entry != null else ""))
+		_world.add_child(you)
+		var carried := PackedStringArray()
+		for entry in you.inventory.entries():
+			carried.append(entry.item.item_class)
+		carried.sort()
+		var pistol: String = Inventory.STARTING_PISTOLS[side]
+		var expected := PackedStringArray([pistol, "weapon_knife"])
+		expected.sort()
+		_check(
+			carried == expected and you.in_hand_class() == pistol and not drawn.is_empty() and drawn.count(pistol) == drawn.size(),
+			"a %s spawns with the knife and the %s, the pistol in hand, having taken nothing else in hand (carries %s, drew %s)" % [side, pistol, carried, drawn]
+		)
+		you.free()
 
 
 ## The HUD you play with shows your armour, and an arc for a hit that

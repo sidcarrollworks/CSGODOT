@@ -27,7 +27,11 @@ const FOLDED := 0.001
 const LAYER := 2
 
 ## Lit by the map's light probes rather than Godot's ambient: every mesh
-## adopted goes on the probe shader, and light_from hands it a cube.
+## adopted goes on the probe shader, and light_from hands it a cube. The
+## character's own surfaces go on CS2's character shading either way
+## (CharacterMaterials), lit by the probes or, when this is false, by the
+## world's environment, which is how the buy menu's agent, in a world of
+## its own, is shaded as the players are.
 var probe_lit: bool = true
 
 var animation_player: AnimationPlayer
@@ -47,12 +51,16 @@ var held: PackedStringArray = PackedStringArray()
 var _pins: Array[Dictionary] = []
 
 ## How far the point a model is lit from moves before its cube is sampled
-## again (light_from), in units.
-const RELIGHT_DISTANCE := 1.0
+## again (light_from), in units: a tick's run at 250 u/s, a sixth of the
+## probes' 24-unit cells.
+const RELIGHT_DISTANCE := 4.0
 var _lit_cube := PackedColorArray()
 var _lit_shadow := []
 var _lit_at := Vector3.INF
 var _lit_by: LightProbes
+## Something the light was not put on yet is shown (a gun taken in hand):
+## light_from puts it on every mesh again although it did not sample again.
+var light_due := true
 
 ## What building a body reads, kept for the next one: every scene by its
 ## path, every clip's animation by the clip's, and every directory's clips.
@@ -66,6 +74,8 @@ var _lit_by: LightProbes
 static var _scenes := {}
 static var _animations := {}
 static var _listed := {}
+## Scenes asked for on worker threads (read_ahead) and not yet taken up.
+static var _reading := {}
 
 
 ## Loads clips into this node: the first as the rig, the rest as animations
@@ -282,6 +292,8 @@ func adopt(mesh: MeshInstance3D, rig: Skeleton3D) -> void:
 	mesh.layers = LAYER
 	if probe_lit:
 		_probe_light(mesh)
+	else:
+		CharacterMaterials.use_environment(mesh)
 
 
 ## Puts a mesh's standard materials on the probe shader.
@@ -295,21 +307,28 @@ func _probe_light(mesh: MeshInstance3D) -> void:
 
 
 ## Puts the model on the probe shader after all, when it was built without
-## (probe_lit false): a body nobody saw that is now to be seen.
+## (probe_lit false): a body nobody saw that is now to be seen. Its
+## character surfaces, on the character shader already, take the probes'
+## light from now on.
 func use_probe_lighting() -> void:
 	if probe_lit:
 		return
 	probe_lit = true
+	light_due = true
 	for mesh in find_children("*", "MeshInstance3D", true, false):
 		_probe_light(mesh as MeshInstance3D)
+		CharacterMaterials.use_probes(mesh as MeshInstance3D)
 
 
 ## Lights every mesh of the model from a point in the world, through the
-## scene's light probes, if it has any. Called by whoever moves the model.
+## scene's light probes, if it has any. Called by whoever moves the model,
+## every frame.
 ##
-## The cube is sampled again only once the point has moved RELIGHT_DISTANCE:
-## sampling it is most of a twentieth of a millisecond of script, and the
-## probes are tens of units apart, so a unit's difference does not show.
+## The cube is sampled again only once the point has moved RELIGHT_DISTANCE,
+## and put on the meshes only when it was, or when something new is shown
+## (light_due): sampling it was 19 us of script and putting it on a body's
+## meshes 11 more, every frame for every body (dust2, 2026-09-25), and the
+## probes are tens of units apart, so a few units' difference does not show.
 func light_from(at: Vector3) -> void:
 	var probes := LightProbeField.find(get_tree()) if is_inside_tree() else null
 	if probes == null:
@@ -319,6 +338,10 @@ func light_from(at: Vector3) -> void:
 		_lit_shadow = probes.shadow_placement(at)
 		_lit_at = at
 		_lit_by = probes
+		light_due = true
+	if not light_due:
+		return
+	light_due = false
 	for mesh in find_children("*", "MeshInstance3D", true, false):
 		ProbeMaterials.light_instance(mesh as MeshInstance3D, _lit_cube, _lit_shadow)
 
@@ -384,6 +407,13 @@ static func instantiate(path: String) -> Node:
 static func preload_scene(path: String) -> PackedScene:
 	var packed: PackedScene = _scenes.get(path)
 	if packed == null:
+		if _reading.has(path):
+			# Read ahead: waits only if the worker has not finished it.
+			_reading.erase(path)
+			packed = ResourceLoader.load_threaded_get(path) as PackedScene
+			if packed != null:
+				_scenes[path] = packed
+			return packed
 		if path.is_empty() or not ResourceLoader.exists(path):
 			return null
 		packed = load(path) as PackedScene
@@ -391,6 +421,28 @@ static func preload_scene(path: String) -> PackedScene:
 			return null
 		_scenes[path] = packed
 	return packed
+
+
+## Whether a worker thread is still reading this scene (read_ahead), so
+## preload_scene would wait for it.
+static func reading(path: String) -> bool:
+	return _reading.has(path) and ResourceLoader.load_threaded_get_status(path) == ResourceLoader.THREAD_LOAD_IN_PROGRESS
+
+
+## Starts reading these scenes on worker threads, for preload_scene to take
+## up later without reading the disk: a gun's first-person clips, read
+## there on the tick it was first bought or picked up, took 136 ms on
+## average, the R8's 347 (reference/performance.md). Those read or being
+## read already are left. Returns how many were started.
+static func read_ahead(paths: PackedStringArray) -> int:
+	var started := 0
+	for path in paths:
+		if path.is_empty() or _scenes.has(path) or _reading.has(path) or not ResourceLoader.exists(path):
+			continue
+		if ResourceLoader.load_threaded_request(path) == OK:
+			_reading[path] = true
+			started += 1
+	return started
 
 
 ## The clip glTFs in a directory, sorted, or only those whose names start
@@ -464,13 +516,16 @@ static func common_suffix(paths: PackedStringArray) -> String:
 
 
 ## Whether one of a weapon's meshes is the second body its export carries
-## for old hardware (...body_legacy), left out where the weapon has another.
-## The default knives have only that one, and it is their knife.
+## (...body_legacy), left out where the weapon has another. In CS2 it is the
+## body for skins marked use_legacy_model, the old CS:GO finishes; its
+## default shows body_hd. The default knives have only the legacy one, and it
+## is their knife.
 static func is_spare_body(mesh: Node, meshes: Array) -> bool:
 	if not mesh.name.ends_with("body_legacy"):
 		return false
 	for other: Node in meshes:
-		if not other.name.ends_with("body_legacy"):
+		# Another body, not another mesh: the Dual Berettas' holster is not one.
+		if other != mesh and other.name.contains("_body_") and not other.name.ends_with("body_legacy"):
 			return true
 	return false
 

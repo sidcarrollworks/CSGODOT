@@ -1,17 +1,19 @@
 extends "res://tests/check_suite.gd"
 
 ## The render profiler's variants (RenderVariants) on a small stand-in for a
-## map: a sun, an environment, a mesh casting from both faces and a skybox
-## mesh. Each variant has to change what it says it does, and its undo has to
-## put every one of those things back, since the profiler runs them one after
-## another on the same scene. Headless there is nothing drawn, so the frame
-## times themselves are for scripts/profile_render.gd on a real GPU.
+## map: a sun, an environment, a mesh casting from both faces, a skybox mesh
+## and a reflection probe. Each variant has to change what it says it does,
+## and its undo has to put every one of those things back, since the
+## profiler runs them one after another on the same scene. Headless there
+## is nothing drawn, so the frame times themselves are for
+## scripts/profile_render.gd on a real GPU.
 
 var _scene: Node3D
 var _sun: DirectionalLight3D
 var _environment: Environment
 var _wall: MeshInstance3D
 var _sky: MeshInstance3D
+var _probe: ReflectionProbe
 
 
 func _initialize() -> void:
@@ -39,6 +41,7 @@ func _build() -> void:
 	_environment = Environment.new()
 	_environment.glow_enabled = true
 	_environment.fog_enabled = true
+	_environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	var world_environment := WorldEnvironment.new()
 	world_environment.environment = _environment
 	_scene.add_child(world_environment)
@@ -53,6 +56,10 @@ func _build() -> void:
 	_sky.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_sky.material_override = FarMaterials.build(StandardMaterial3D.new(), FarMaterials.far_plane_depth())
 	_scene.add_child(_sky)
+
+	_probe = ReflectionProbe.new()
+	_probe.size = Vector3.ONE * 256.0
+	_scene.add_child(_probe)
 
 	root.msaa_3d = Viewport.MSAA_4X
 	root.use_occlusion_culling = true
@@ -90,6 +97,9 @@ func _state() -> Dictionary:
 		"msaa": viewport.msaa_3d,
 		"glow": _environment.glow_enabled,
 		"fog": _environment.fog_enabled,
+		"reflections": _environment.reflected_light_source,
+		"probe": _probe.intensity,
+		"probe_shown": _probe.visible,
 		"sky": _sky.visible,
 		"scale": viewport.scaling_3d_scale,
 		"occlusion": viewport.use_occlusion_culling,
@@ -116,6 +126,7 @@ func _check_variants() -> void:
 		"no_hud_blur": {},
 		"no_glow": {"glow": false},
 		"no_fog": {"fog": false},
+		"no_reflections": {"reflections": Environment.REFLECTION_SOURCE_DISABLED, "probe": 0.0},
 		"no_skybox": {"sky": false},
 		"no_players": {},
 		"half_resolution": {"scale": 0.5},
@@ -123,6 +134,7 @@ func _check_variants() -> void:
 			"shadows": false, "angular": 0.0, "distance": 2048.0,
 			"casting": GeometryInstance3D.SHADOW_CASTING_SETTING_ON, "msaa": Viewport.MSAA_DISABLED,
 			"hdr_2d": false, "glow": false, "fog": false, "sky": false,
+			"reflections": Environment.REFLECTION_SOURCE_DISABLED, "probe": 0.0,
 		},
 	}
 	var before := _state()

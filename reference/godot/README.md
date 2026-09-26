@@ -64,7 +64,7 @@ first (`rg -n "ClassName" reference/godot`), then `.godot-docs/classes/`.
 - **main-loop.md**: DisplayServer, Engine, FileAccess, MainLoop, Node, OS, Performance, ProjectSettings, ResourceLoader, SceneTree, Time, WorkerThreadPool
 - **physics.md**: AnimatableBody3D, Area3D, CharacterBody3D, CollisionObject3D, Engine, Joint3D, KinematicCollision3D, PhysicsBody3D, PhysicsDirectSpaceState3D, PhysicsMaterial, PhysicsPointQueryParameters3D, PhysicsRayQueryParameters3D, PhysicsServer3D, PhysicsShapeQueryParameters3D, RigidBody3D, Shape3D and its subclasses, StaticBody3D, World3D
 - **math.md**: AABB, Basis, Geometry3D, Node3D, Plane, Projection, Quaternion, Transform3D, Vector3, Vector3i
-- **rendering.md**: Camera3D, Compositor, DirectionalLight3D, Environment, GeometryInstance3D, Light3D, LightmapGI, Material, Mesh, MeshInstance3D, MultiMesh, OccluderInstance3D, RenderingServer, ShaderMaterial, Texture2D, Viewport, VisualInstance3D
+- **rendering.md**: Camera3D, Compositor, DirectionalLight3D, Environment, GeometryInstance3D, Light3D, LightmapGI, Material, Mesh, MeshInstance3D, MultiMesh, OccluderInstance3D, RenderingServer, ShaderMaterial, Texture2D, Viewport, VisibleOnScreenNotifier3D, VisualInstance3D
 - **shaders.md**: the spatial shader language (render modes, built-ins, depth, instance uniforms)
 - **import.md**: EditorScenePostImport, GLTFDocument, GLTFState, PackedScene, ResourceImporterScene, ResourceImporterTexture, ResourceImporterWAV, ResourceUID
 - **animation.md**: Animation, AnimationLibrary, AnimationMixer, AnimationNode (and the blend nodes), AnimationPlayer, AnimationTree, BoneAttachment3D, PhysicalBoneSimulator3D, Skeleton3D, SkeletonModifier3D, SkeletonProfile, Skin

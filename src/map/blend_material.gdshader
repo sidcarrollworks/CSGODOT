@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx, ambient_light_disabled;
+render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx;
 
 // Two texture layers mixed by a painted weight, the way CS2's
 // csgo_lightmappedgeneric does it with F_LAYERS on. BlendMaterials fills the
@@ -86,6 +86,6 @@ void fragment() {
 	ROUGHNESS = mix(orm.g, second.a, weight);
 	AO = orm.r;
 	METALLIC = 0.0;
-	baked_light = orm.r * lightmap_indirect(lightmap_uv, lightmap_tangent_normal(normal_rg, 1.0));
+	IRRADIANCE = vec4(lightmap_indirect(lightmap_uv, lightmap_tangent_normal(normal_rg, 1.0)), 1.0);
 	baked_sun = lightmap_sun(lightmap_uv);
 }

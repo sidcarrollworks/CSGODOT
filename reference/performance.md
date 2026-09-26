@@ -57,6 +57,14 @@ another, which is how it is seen).
 Headless that is 145 frames a second with ten players and 117 to 128 with
 twenty, all 64 ticks a second in both.
 
+Since perf/bot-tick the bodies step their own animation
+(`PlayerModel.step_off_tick_frames`), so the profiler counts the bots'
+trees under `player_model.gd`, and "animation trees" only the ones the
+engine still steps (your view's two). Headless no camera sees a body, so
+each steps only in the frames that run no tick, fewer times than drawn:
+there, ten players' bodies and skeletons are 0.54 and 0.20 ms a frame in a
+live round.
+
 Drawn, and so not in these tables: the two lamps down dust2's lower
 tunnels (`MapLighting.add_lamps`, 2026-09-24) are Godot spot lights with
 shadows, the map's only lights besides the sun. Godot renders a positional
@@ -127,8 +135,7 @@ its animation 93 us a frame against 87 (one body, headless, AK and Glock).
 | dust2 loaded to the first frame | 4.8 s (5.1 with twenty players), before its bots' guns were read |
 | The first body of each kind (its ~80 scenes read) | 240 ms; every one after, 2.7 ms |
 | The first body that holds what is in hand (the pistol's and knife's locomotion read too) | 210 ms more; every one after, 4.6 ms |
-| What dust2's bots may hold, read before play (`prepare_holding`: 17 classes' clips and models) | 1.0 s with the disk's cache warm, 2.8 s cold |
-| Then everything else on either side's menu, the knife and the bomb, whose clips every body takes up, yours too (clips only) | 0.4 s more |
+| Everything anyone may take in hand, read before play (`prepare_holding`: every item on either side's menu, the knife and the bomb, clips and models, 32 models, the guns' legacy bodies left out at import; 2026-09-25, drawn, the mean of three runs after one to warm up) | 1.63 s with the disk's cache warm, against 1.46 s when it read the bots' 18 models and only the rest's clips; 123 MiB more video memory than then |
 | Every gun's sounds (`WeaponSounds`: 334 files, from `sounds.md` and `timings.csv`) | 0.39 s warm, 2.3 s cold |
 | Bullet-hole textures, and every sound set | 270 ms, and 120 to 570 ms (the disk's cache warm or cold) |
 | The tracers' and flashes' textures (`ShotEffects.prepare`; the flames' sheets are 4096 by 2048, and the first flash of a fight reading one held its frame up 12 ms) | 25 to 30 ms |
@@ -180,19 +187,132 @@ under the refresh took the flight from 0.46 to 0.41 ms. That cap is the
 docs' advice for a variable refresh screen with V-Sync on (G-Sync or
 FreeSync): `r - r * r / 3600`, 224 at 240 Hz, keeps frames inside the
 screen's range (`application/run/max_fps`). Sid plays CS2 with G-Sync,
-V-Sync and NVIDIA Reflex, and Reflex sets about that cap there, besides
-keeping the queue of frames short (Godot's nearest is
-`rendering/rendering_device/vsync/frame_queue_size`, 2 by default; not
-measured here). On a fixed
-refresh screen the same cap shows some frames twice, and the game cannot
-tell which screen it has, so it is a setting for the menus (item 26), not
-a default. Tearing a frame timer cannot see: the game asks for V-Sync, and
-run from the editor it plays embedded in the editor's Game view (Godot
-4.7's default), which cannot go fullscreen, where G-Sync engages by
-default.
+V-Sync and NVIDIA Reflex. With G-Sync and V-Sync on, Reflex holds frames
+just under the refresh too, by NVIDIA's account, besides keeping the
+queue of frames short (Godot's nearest is
+`rendering/rendering_device/vsync/frame_queue_size`, 2 by default); how
+far under in CS2 is not measured here, and no research page covers CS2's
+frame cap.
+
+The game now starts as Sid plays CS2 (2026-09-24): in exclusive
+fullscreen (`display/window/size/mode` 4 in `project.godot`), where G-Sync
+engages by default, and with the cap, worked out from the screen's
+refresh when the view starts (`PlayerView.frame_cap`): 224 on Sid's
+240 Hz screen, the turn still 0.66 ms off. The frame queue is left at
+Godot's default. Run from the editor, the game opens in a window of its
+own, not the editor's Game view, whose embedding works only windowed. On
+a fixed refresh screen the cap shows some frames twice: there, set Max
+FPS in Project Settings (`application/run/max_fps`) to the refresh or
+above, which wins over it, as CS2's `fps_max` is thought to (not
+checked). Whether the tearing Sid saw is gone is his to say (roadmap,
+"Even frames"): a frame timer cannot see it.
 
 What is left is the tick's own 4.5 ms in the frame that runs it, which only
 a cheaper tick removes (the bots' movement is most of it, "Where it goes").
+
+## Against CS2
+
+Sid's CS2, at 3840x2160 with his settings (G-Sync, V-Sync and Reflex) in a
+multiplayer deathmatch, 2026-09-25: 5.5 ms a frame on average walking
+round the map out of combat, 9 to 10 ms once the shooting starts. That is
+the goal.
+
+Ours, `scripts/profile_combat.gd` on the same machine, 2026-09-25: dust2,
+ten players, 3840x2160 fullscreen, V-Sync off and no cap (so a frame is
+what it costs, where CS2's is under its cap), you riding along at a bot's
+eyes and firing when it fires, and every 8 seconds from 30 on every bot put
+on the T spawn together for a fight at close range. A frame is in combat
+while anyone has fired in the last second.
+
+These are from before R5's reflections, which Sid keeps (2026-09-25).
+They add 1.15 to 1.18 ms of GPU at 4K, and in play took the GPU mean
+from 3.1 ms to 4.2 and the frame mean out of combat from 4.8 to 5.6 and
+5.9, with frames of 20 to 30 ms back, their time in drawing, the cause
+not found (reference/rendering.md, R5).
+
+| | Mean | Median | 95th | 99th | Worst | GPU mean |
+|---|---|---|---|---|---|---|
+| Out of combat | 4.37 ms | 3.54 | 7.78 | 8.49 | 10.9 | 3.06 |
+| In combat | 4.23 ms | 3.70 | 7.12 | 8.27 | 14.0 | 3.09 |
+
+The averages are under CS2's. The spread is the frames that run a tick
+(7.0 ms median out of combat, 6.4 in it, against 3.5 for the rest; "Frame
+pacing"). A deathmatch has more players than these ten.
+
+### Still and moving
+
+Sid, playing dust2 from the editor (2026-09-25): 230 frames a second at a
+round's start while everyone stands in freeze time, 180 once the round
+goes live. On his machine, dust2 as played from your own spawn, 3840x2160
+fullscreen, V-Sync off and no cap, 6 seconds of freeze time and then 10 of
+the live round, each from a second in, two or three runs:
+
+| | Freeze time | Live round | Live, 95th | GPU mean |
+|---|---|---|---|---|
+| main (776ac85) | 5.49 to 5.53 ms | 5.67 to 5.82 | 9.0 to 9.25 | 4.54 |
+| perf/bot-tick | 5.24 to 5.29 ms | 5.26 to 5.31 | 8.74 to 8.77 | 4.30 |
+
+At 4K the frames that run a tick wait on the processor (7 to 8 ms) and
+the others on the graphics card (4.3 to 4.5), so what a round adds to the
+tick's frames is what shows. Headless (`profile_dust2.gd -- 5 6 round`),
+what the live round added on main: the bots' `run_command` 1.1 to 2.7 ms
+a tick (a bot's is 114 us standing and 270 to 290 moving, four fifths of
+that its movement, whose hull traces are about 42 us each on dust2's
+floor, 6 in the air); the animation trees 0.76 to 1.13 ms a frame; and
+`bot.gd`'s frame, the bots drawn between ticks and lit, 0.19 to 0.30.
+
+What perf/bot-tick changed:
+
+- A stepped move takes what it landed on from its own trace down, as
+  Source's StepMove reads that trace's plane, rather than tracing again:
+  a moving bot's tick 5.8 traces to 5.3, a tick that steps up a stair 8
+  to 7.
+- Bodies step their own animation: every frame while a camera draws them,
+  otherwise only in the frames that run no tick, or once they have waited
+  two ticks. Stepped on the tick instead, the unseen ones went into the
+  frames already held up, and the live round's 95th went from 9.1 ms to
+  10.3.
+- A body's probe light is put on its meshes only when it is sampled
+  again, now 4 units on rather than 1, or when a gun is newly shown: it
+  was 19 us sampling and 11 putting it on, every frame for every body.
+
+Headless, a live round's tick went from 3.75 to 3.91 ms to 2.91 to 3.25,
+and the frame's script from 2.03 to 2.05 to 1.14 (the bodies stepping
+less often there, as above).
+
+### Hitches
+
+What held a frame or a tick up the first time something happened, found
+with the same run (before this work, its worst frames in combat were 28 to
+35 ms, and the first shots and every fight hitched):
+
+| What | Where | Cost | Now |
+|---|---|---|---|
+| A gun's first-person clips, the first time it came into your inventory (a buy, a pickup, a round's pistol) | the tick: the view model built as the inventory changed | 136 ms on average, the R8's 347 | read on worker threads while the game plays (`RigModel.read_ahead`, every clip of what your side can hold: 263 files, 188 ms on the workers, 34 MB), and the view model built on the next frame: 2.3 ms for the AK-47, whose model the bots had read |
+| A dropped gun's model, the first of its class (every death drops a gun) | the tick: built as the item spawned | 41 ms headless; ticks of 25 ms in the fights | built on the next frame, once a worker thread has read it |
+| The first tracer and flash: each effect shader compiled when its first material asked for it | the frame (`EffectQuads`) | 6.6 ms for add, 10.3 for lit | compiled as the map loads |
+| Each new batch of effect cards: its MultiMesh read back from the GPU when its first card was set | the frame | 2 to 4 ms a batch; the first shots' frames 7 to 18 ms | none: a batch's cards go in one buffer at the frame's end |
+
+After, before R5: no frame over 20 ms in the run, the tick's worst 5 ms (it was 25
+to 30), and the effects' frame, while any are drawn, 0.29 ms mean, 0.22
+median, 0.79 at the 95th, 2.5 most (up to 139 cards; filled a card at a
+time it was 0.26, 0.20, 0.64 and 18). The renderer compiled 3 surface
+and 7 specialization pipelines while recording, and none at draw time
+(the kind that stutters); the frames with a surface compile in them took
+under 6 ms. The molotov's flames went into one
+buffer too, as the smoke's always did (not measured). The one hitch left in
+these runs is the profiler's own first frame, as it captures the mouse,
+and it is not recorded.
+
+Every model anyone can take in hand in a match is read before play now, as
+CS2 precaches every gun (`reference/research/weapon-preload.md`): both
+menus, the Zeus, the grenades, the knife and the bomb, 32 models, where the
+16 guns dust2's bots may hold were read before. With each gun's hidden
+legacy body left out at import, that is 123 MiB more video memory than
+before and 0.17 s more at match start (the "Once" table). A gun is 42 MiB of textures
+and 3 of mesh without it (not the 85 MB first written here: that counted
+upload buffers in system memory, left by reading all 34 at once on
+workers). No buy or pickup in a match reads a model any more.
 
 ## What has been done about it
 
@@ -212,6 +332,9 @@ a cheaper tick removes (the bots' movement is most of it, "Where it goes").
 | A weapon's recoil solved once for each pattern, and the pattern read once | fix/equip-hitch | every weapon built (a gun drawn, any respawn) solved its pushes again: 15 ms, a frozen frame each time a gun was drawn, and 15 ms a player respawned at a fresh round's start; now 0.01 ms, and a draw 18 ms to 0.64 |
 | A gun's recoil numbers carried by its copies (`WeaponData`'s solved fields stored, solved as the registry builds each gun) | the Godot docs audit | every new gun (a buy, a pickup, a round's pistols) solved its weapon model's hold time again on the first tick it was held: 20 to 22 ms, more than a tick; now 1 us, and `ItemRegistry.load_all` 17 ms to 69 |
 | Frames drawn where the clock is: `physics_jitter_fix` 0, `DrawClock`, and the mouse read just before the view is placed | frame pacing | a frame that ran a tick was drawn 4.5 ms behind; flying 2.5 to 4.2 ms off a steady line to 0.6, turning 1.7 to 0.7 ("Frame pacing") |
+| Nothing built in the tick for the views, first-person clips read ahead on worker threads, the effects' shaders compiled at load and their cards sent in one buffer | perf/no-first-use-hitches | a first buy's tick 136 ms (the R8's 347), a death's dropped gun 41, the first shots' frames 18 to 35; now no frame over 20 ms ("Against CS2") |
+| Every model anyone may take in hand read before play, and the guns' legacy bodies left out at import (`weapon_model_import.gd`) | perf/read-match-guns-ahead | 32 models read where 18 were, for 123 MiB more video memory and 0.17 s more at match start (1.46 s to 1.63); no buy or pickup reads a model during a match |
+| A stepped move takes its landing from its own trace down; bodies nobody sees stepped only in frames without a tick; a body's probe light put on only when sampled again | perf/bot-tick | drawn at 4K from your spawn, the live round 5.67 to 5.82 ms a frame to 5.26 to 5.31, what freeze time now costs, and freeze time 5.5 to 5.25; the GPU 0.24 ms less ("Still and moving") |
 
 A tick at 64 costs a little more than one at 128 did: it moves everyone
 twice as far, with more to meet on the way, and holds twice the rounds and
@@ -228,6 +351,12 @@ Looked at and left:
   of one material in one body then get Godot's numbered names, which
   footsteps and penetration read, and parts in separate bodies lose Jolt's
   removal of internal edges, which only works within a body.
+- **The traces stopping Source's DIST_EPSILON (1/32 unit) short**, as
+  `move_and_collide`'s safe margin in place of Godot's 0.001. A trace that
+  starts a thirty-second clear of dust2's floor was 30 to 40 us against 45
+  to 60 touching it, but the body still stood 0.0004 off the floor with
+  the margin, not 1/32; it took 0.3 traces off a moving bot's tick, each
+  costing more, for no time saved (perf/bot-tick, 2026-09-25).
 
 ## Going online
 
@@ -285,9 +414,12 @@ air strafing most), and run_tests.gd holds it at any tick rate.
 1. A server that builds nothing to be seen: the map's collision, entities
    and nav mesh; bodies as skeletons, clips and hitboxes; no audio, decals,
    HUD or probe atlas.
-2. Animation stepped by the tick where it places hitboxes (the server; bots
-   on your own machine), and by the frame where it is only seen. The tree
-   can be stepped from run_command in manual mode.
+2. Animation stepped by the tick where it places hitboxes (the server), and
+   by the frame where it is only seen. On your own machine the bodies step
+   themselves, every frame while seen and between the ticks otherwise
+   (perf/bot-tick; stepping them on the tick there cost the frames it held
+   up, "Still and moving"). A server, drawing nothing, steps them on the
+   tick, with the history of 3.
 3. The lag-compensation history as capsule end points a tick, and rewound
    rounds tested against it in script.
 4. run_command safe to run again for prediction: no sounds, marks or events
@@ -308,9 +440,29 @@ air strafing most), and run_tests.gd holds it at any tick rate.
 
 ## Measuring it again
 
+Frames in play, against CS2's, on Sid's machine (it draws):
+
+    godot --path . --script scripts/profile_combat.gd -- 75
+
+75 is the seconds recorded; `as-played` after it leaves V-Sync and the
+game's frame cap on, for what is seen rather than what a frame costs.
+Leave Godot's `--fullscreen` off: it asks for plain fullscreen where the
+game starts in exclusive. A script that measures what a frame costs turns
+the cap off after your view has set it, as this one and
+`profile_render.gd` do. Its script says what it does; the hitches it
+lists split each frame over 20 ms into its ticks, its scripts, and the
+rest (drawing and input), with the pipelines compiled in it. To find what
+in a frame's scripts is slow, wrap a suspect's `_process` with
+`Time.get_ticks_usec()` for the run, and take it out after.
+
+The script's cost, headless and by system:
+
     godot --headless --path . --script scripts/profile_dust2.gd -- 5 3
 
 Team size 5 is ten players, and 3 is the number of five-second windows.
+`round` after them (`-- 5 6 round`) ends the warmup as it starts, so the
+windows run through freeze time, everyone still, into the live round,
+everyone moving; each window says the phase it ended in.
 Three things to know when reading it:
 
 - It runs every node's callbacks itself, so the figures are by system: the

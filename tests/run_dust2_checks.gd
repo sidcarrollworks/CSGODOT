@@ -158,6 +158,12 @@ func _import() -> bool:
 		"the map's 43 light-probe volumes are read and light the props the lightmaps did not (%d volumes, %d surfaces; scripts/extract_assets.sh lightmaps)"
 			% [probes.get("volumes", 0), probes.get("surfaces", 0)]
 	)
+	# The same 43 volumes carry dust2's cubemaps (rendering.md L4, R5).
+	_check(
+		int(stats.get("reflection_probes", 0)) == 43 and _importer.get_node_or_null("Reflections") is MapReflections,
+		"each of the 43 volumes reflects through a probe of its own, where CS2's cubemap is (%d probes; MapReflections)"
+			% int(stats.get("reflection_probes", 0))
+	)
 	var field := LightProbeField.find(self)
 	var under_awning := field.cube_at(Vector3(2380, -50, 300)) if field != null else PackedColorArray()
 	var open_ground := field.cube_at(Vector3(2600, 20, -1560)) if field != null else PackedColorArray()

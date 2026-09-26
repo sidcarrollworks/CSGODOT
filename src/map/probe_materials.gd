@@ -12,6 +12,10 @@ extends RefCounted
 ## which its shader does at every fragment. A prop is lit once, where it
 ## stands (light_placed); a body that moves is lit again by whoever moves it
 ## (light_instance).
+##
+## A material CS2 draws with its character shader (the players' models and
+## your own arms) goes on character.gdshader instead, which lights the same
+## way and adds what that shader does (CharacterMaterials).
 
 const SHADER := preload("res://src/map/probe_lit.gdshader")
 const PARAMETERS := [&"probe_px", &"probe_nx", &"probe_py", &"probe_ny", &"probe_pz", &"probe_nz"]
@@ -243,14 +247,22 @@ static func _geometry(root: Node) -> Array[GeometryInstance3D]:
 
 
 ## A probe-lit material carrying over what the import made of a standard
-## one: textures, colour, cut, blend and sidedness. Made once per source.
+## one: textures, colour, cut, blend and sidedness. Made once per source. A
+## character's material is on character.gdshader, its textures from the
+## characters' own directory unless textures_dir says otherwise.
 static func build(material: BaseMaterial3D, textures_dir: String = "") -> ShaderMaterial:
 	if _built.has(material):
 		return _built[material]
+	var description := BlendMaterials.vmat(material)
+	var character := CharacterMaterials.is_character(description)
+	if character and textures_dir.is_empty():
+		textures_dir = CharacterMaterials.TEXTURES_DIR
 	var blended := material.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA \
 		or material.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
 	var lit := ShaderMaterial.new()
-	lit.shader = shader_for(blended, material.cull_mode == BaseMaterial3D.CULL_DISABLED)
+	lit.shader = shader_for(
+		blended, material.cull_mode == BaseMaterial3D.CULL_DISABLED, CharacterMaterials.SHADER if character else SHADER
+	)
 	lit.resource_name = material.resource_name
 	lit.render_priority = material.render_priority
 	lit.set_shader_parameter("albedo_texture", material.albedo_texture)
@@ -272,7 +284,9 @@ static func build(material: BaseMaterial3D, textures_dir: String = "") -> Shader
 			if material.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR else -1.0
 		)
 	lit.set_shader_parameter("probe_energy", LightmapMaterials.ENERGY)
-	LightmapMaterials.carry_features(lit, BlendMaterials.vmat(material), textures_dir)
+	LightmapMaterials.carry_features(lit, description, textures_dir)
+	if character:
+		CharacterMaterials.carry(lit, description, textures_dir)
 	lit.set_meta("extras", material.get_meta("extras", {}))
 	_built[material] = lit
 	return lit
@@ -291,15 +305,16 @@ static func flat_orm(metallic: float) -> ImageTexture:
 
 
 ## The shader for a material: blended for an alpha edge, two-sided for
-## foliage and the like; variants made once from the one source.
-static func shader_for(blended: bool, two_sided: bool) -> Shader:
+## foliage and the like; variants made once from their source, this one's
+## or the characters' (base).
+static func shader_for(blended: bool, two_sided: bool, base: Shader = SHADER) -> Shader:
 	if not blended and not two_sided:
-		return SHADER
-	var key := "%s/%s" % [blended, two_sided]
+		return base
+	var key := "%s/%s/%s" % [base.resource_path, blended, two_sided]
 	if _variants.has(key):
 		return _variants[key]
 	# Whatever line endings the checkout gave the file.
-	var code := SHADER.code.replace("\r\n", "\n")
+	var code := base.code.replace("\r\n", "\n")
 	if two_sided:
 		code = code.replace("cull_back", "cull_disabled")
 	if blended:
