@@ -173,6 +173,13 @@ What dust2 turned out to be:
   Viewer's implementation (`complex.frag.slang`, `common/pbr.slang`) with
   the mask, `g_flSheenScale` and the sRGB `g_flSheenTintColor` that
   `CharacterMaterials` hands it.
+- **Nor have the eyes.** A material with `F_EYEBALLS` names the eye's
+  colour (`g_tEyeAlbedo1`, its alpha the iris) and where on the model the
+  eyes are (`g_tEyeMask1`); the same step decompiles both. The iris is
+  clear over the white of the eye, where `process/fix_alpha_border` would
+  paint the iris's colour, so the prepare step moves the alpha into a
+  greyscale `<name>_iris.png` beside the colour
+  (`src/player/export_character_masks.gd`).
 - **A Source 2 Viewer older than CS2's shaders exports the wrong channels.**
   The glTF export asks the game's compiled shaders which channels of a
   texture feed what; CS2's update of September 2026 moved them to version 72,

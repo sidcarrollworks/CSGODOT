@@ -30,7 +30,7 @@
 #   scripts/extract_assets.sh effects         # the tracers' and muzzle flashes' textures
 #   scripts/extract_assets.sh characters      # two player models and their locomotion
 #   scripts/extract_assets.sh animgraphs      # the animation graphs that drive the clips (seconds)
-#   scripts/extract_assets.sh character-masks # just the player models' cloth masks (seconds; the characters step takes them too)
+#   scripts/extract_assets.sh character-masks # just the player models' cloth masks and eye textures (seconds; the characters step takes them too)
 #   scripts/extract_assets.sh sounds          # the guns' and the equipment's sounds, footsteps by surface, hits
 #   scripts/extract_assets.sh all             # map + weapons + equipment + hud + effects + characters + animgraphs + sounds
 #
@@ -1109,14 +1109,17 @@ extract_characters() {
 extract_character_masks() {
 	require_file "$PAK_VPK"
 	local masks
-	masks="$(find "$CHARACTERS_DEST/agents" -name '*.gltf' -exec grep -ohE '"g_tMetalness" *: *"[^"]+"' {} + 2>/dev/null \
+	# The metalness textures carry the cloth mask; the eye textures are the
+	# eyes' colour (its alpha the iris) and where on the model they are.
+	masks="$(find "$CHARACTERS_DEST/agents" -name '*.gltf' \
+		-exec grep -ohE '"(g_tMetalness|g_tEyeAlbedo1|g_tEyeMask1)" *: *"[^"]+"' {} + 2>/dev/null \
 		| sed -E 's/^"[^"]+" *: *"//; s/"$//; s/\.vtex$/.vtex_c/' | sort -u || true)"
 	if [[ -z "$masks" ]]; then
 		echo "No player model under $CHARACTERS_DEST/agents names a metalness texture." >&2
 		echo "Run 'scripts/extract_assets.sh characters' first." >&2
 		return 1
 	fi
-	echo "Extracting $(wc -l <<<"$masks" | tr -d ' ') metalness textures, for the player models' cloth masks"
+	echo "Extracting $(wc -l <<<"$masks" | tr -d ' ') textures, for the player models' cloth masks and eyes"
 	echo "        -> $CHARACTERS_DEST/materials"
 	s2v_batched "$(paste -sd, - <<<"$masks")" -o "$CHARACTERS_DEST" -d \
 		| grep -vE '^(Preloading|Added folder|--- \[)' || true

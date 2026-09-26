@@ -497,8 +497,20 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
      defaults are Source 2 Viewer's reimplementation of CS2's shaders
      (`complex.frag.slang`, `common/pbr.slang`, `common/lighting.slang`,
      `common/environment.slang`), not CS2's own code. Still lost: the
-     softened skin, the eyes, the rim and tint masks, the detail textures,
+     softened skin, the rim and tint masks, the detail textures,
      retro-reflection and anisotropic gloss.
+
+     *(Eyes built, 2026-09-26, playtest issue 13; waits on its Local
+     part.)* A material with `F_EYEBALLS` (the Phoenix's balaclava) has
+     its eyes painted white in its colour texture; CS2 intersects the
+     view ray with a sphere at each eyeball bone and lays the eye's own
+     texture on it around where the eye looks, through the material's eye
+     mask. `character.gdshader` does the same from Source 2 Viewer's
+     `csgo_character_eyes_ps.slang`, and `CharacterEyes` aims each model's
+     eyes from its rig per frame (`csgo_character_eyes_vs.slang`), on a
+     copy of the eye material per model. The eye textures come with
+     `scripts/extract_assets.sh character-masks`; the eye colour's alpha,
+     the iris, is moved into a file of its own before the import.
   4. Textures compressed twice. Source 2 Viewer writes PNGs and Godot
      compresses them again, to DXT1 or DXT5 (`write_import_settings.gd`,
      `compress/high_quality` off), which blurs fine detail and smears the
