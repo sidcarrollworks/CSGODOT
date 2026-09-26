@@ -88,9 +88,10 @@ shade a little and holds the light well below ACES, which is what Sid saw
   compensation. Godot's own auto exposure (CameraAttributes) is a different
   model and is not used.
 - GT convars `mat_tonemap_force_*` (cheat) override each exposure input;
-  `mat_tonemap_force_scale` fixes it. A Local check in CS2 with
-  `mat_tonemap_force_scale 1.0125` against the same spot would show how
-  much adaptation moves it there.
+  `mat_tonemap_force_scale` fixes it. Sid ran
+  `mat_tonemap_force_scale 1.0125` at long doors in CS2 (2026-09-26) and
+  saw no visible difference, so adaptation settles near the window's
+  middle there.
 
 ## 4. Bloom (VRF, GT)
 
