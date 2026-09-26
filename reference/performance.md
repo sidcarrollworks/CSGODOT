@@ -1,5 +1,10 @@
 # What everything costs, and what going online will
 
+For the full Box3D branch, use the [26 September frame-time audit](research/frame-times-2026-09-26.md):
+4K foreground distributions, paired legacy comparison, native/synchronization
+attribution, first-use spikes and reproducible captures. The older Jolt
+measurements below are historical and do not describe the current full port.
+
 An audit of every system's cost, measured on dust2 with ten and twenty
 players (you and bots) on 2026-09-23: Godot 4.7.2 headless, Jolt, 64 ticks a
 second, an AMD Ryzen 7 7800X3D. A slower CPU pays more for all of it; the

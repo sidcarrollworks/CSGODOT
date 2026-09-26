@@ -266,6 +266,15 @@ code. The branch defaults to `--physics box3d`; the old `--drop-physics`
 flag remains an alias. Original Godot collision RIDs are detached while
 the full adapter is active.
 
+**Frame-time audit done (2026-09-26).** Repeated 4K ten-player p99 is
+12.5–12.8 ms on Box3D, versus 9.1 ms through legacy. Disjoint CPU attribution
+finds 3.47 ms/tick in proxy synchronization against 0.42 ms in the native-step
+interval; first-use weapon/grenade spikes are a separate issue. The audit
+records rendering ablations, a live round, focus-filtered tails and one-bot
+scaling. Incremental proxy updates, contact trace amplification and actual
+first-use prewarming remain open; no gameplay/graphics defaults were changed.
+Evidence and reproduction: [frame-times-2026-09-26.md](research/frame-times-2026-09-26.md).
+
 Native gameplay integration passes 43/43, world/hitbox lifecycle 20/20,
 ragdolls 67/67, focused movement 22/22, and real Dust2 integration 10/10;
 the movement course passes 80/80 on each backend. The final seeded 5v5

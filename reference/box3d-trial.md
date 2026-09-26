@@ -1,5 +1,10 @@
 # Box3D physics trial
 
+The [full frame-time audit](research/frame-times-2026-09-26.md) follows the
+full conversion: 4K ten-player p99 12.5–12.8 ms versus legacy 9.1 ms, with
+3.47 ms/tick in proxy synchronization and 0.42 ms in the four-native-step
+interval. These are different scopes; see the audit before comparing them.
+
 Sid requested this trial on 2026-09-26 after dropped guns continued to
 jitter, and chose to start with dropped guns. He subsequently requested
 conversion of all game physics and a slight increase to the bullet kick;
