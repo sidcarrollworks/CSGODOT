@@ -17,16 +17,31 @@ extends Node
 ## camera is top_level and its transform is rebuilt every frame from the
 ## interpolated body position plus the render-rate look angles.
 
-## What the camera must not see of the body: the head it sits inside, and
-## the arms the view model stands in for. Folding the upper arms folds the
-## hands with them.
-const FOLDED_BONES: Array[String] = ["head_0", "neck_0", "arm_upper_L", "arm_upper_R"]
+## What the camera must not see of the body: everything from the chest up.
+## Folding spine_2 folds what hangs off it with it: spine_3, the clavicles
+## and scapulas, the neck and head the camera sits inside, and the arms the
+## view model stands in for. The vest and shoulders are skinned to those
+## bones, and left whole they filled the view looking down, where CS2 shows
+## only the belt, the legs and the boots (playtest 2026-09-25, issue 22).
+## The pelvis, spine_0, spine_1 and the legs stay whole. The shadow
+## (body_shadow) folds nothing.
+const FOLDED_BONES: Array[String] = ["spine_2"]
 
 ## How far behind the eyes the body stands, in units. The eyes are at the
-## front of the head, over the chest; at zero the collar fills the bottom of
-## the view looking straight ahead. This puts the chest below the view until
-## you look down for it.
+## front of the head, over the chest; at zero the waist sits right under
+## them. By eye; the chest is folded (FOLDED_BONES), and where CS2's boots
+## sit in view looking down is Sid's to match (playtest 2026-09-25, 22).
 const BODY_SETBACK := 8.0
+
+## Looking down leans the body you see: it tips back about its feet by up
+## to LOOK_DOWN_LEAN degrees, the hips going back under the eyes, and its
+## lower back bends forward from the pelvis by up to LOOK_DOWN_ARCH
+## (LookDownArch), so the view reads as the back arching over the legs,
+## not the neck tipping over a body standing straight; CS2 shows little
+## but the legs looking down (Sid, 2026-09-26, issue 22). Both by eye, for
+## Sid to tune; the shadow stays upright, as CS2's does.
+const LOOK_DOWN_LEAN := 20.0
+const LOOK_DOWN_ARCH := 45.0
 
 ## Dead, the camera leaves your eyes for a view of your body from outside:
 ## this far from its middle, looking down on it at least this steeply, turned
@@ -82,15 +97,17 @@ var weapon_sounds: WeaponSounds
 var footsteps: Footsteps
 
 ## Your own body, seen when you look down: the third-person model without
-## its head and arms, walking the same clips as a bot's. It stands in the
+## its chest, head and arms, walking the same clips as a bot's. It stands in the
 ## world and casts no shadow; that is body_shadow's job.
 var body_model: PlayerModel
 ## Your shadow: the same model walking the same clips in the same place,
 ## drawn only into the shadow maps, whole: head, arms and what is in hand,
 ## held, fired and reloaded as everyone else sees you hold it, as CS2's
-## shadow is your third-person body. The body the camera sees has no head
-## or arms, and a shadow without them is a strange thing to see.
+## shadow is your third-person body. The body the camera sees has no chest,
+## head or arms, and a shadow without them is a strange thing to see.
 var body_shadow: PlayerModel
+## The bend in its back as you look down (LOOK_DOWN_ARCH).
+var _arch: LookDownArch
 
 ## The weapon model's rest pose, captured on the first frame so the recoil,
 ## bob and sway can be applied relative to however it was posed in the scene.
@@ -251,6 +268,7 @@ func _on_team_changed(_team: String) -> void:
 			body.queue_free()
 	body_model = null
 	body_shadow = null
+	_arch = null
 	_show_body()
 	for model: ViewModel in _view_models.values():
 		_let_go(model)
@@ -462,6 +480,8 @@ func _build_body(node_name: String, folded: Array[String], casting: GeometryInst
 		return null
 	if not folded.is_empty():
 		model.fold_bones(PackedStringArray(folded))
+		_arch = LookDownArch.new()
+		model.character_rig.add_child(_arch)
 	for mesh in model.find_children("*", "MeshInstance3D", true, false):
 		(mesh as MeshInstance3D).cast_shadow = casting
 	model.top_level = true
@@ -529,7 +549,9 @@ func _process(delta: float) -> void:
 		if body != null:
 			body.global_position = interpolated + Vector3(sin(yaw), 0.0, cos(yaw)) * BODY_SETBACK
 			# Turned with the view every frame, not with the ticks.
-			body.rotation.y = PI + yaw
+			body.rotation = Vector3(0.0, PI + yaw, 0.0)
+	if body_model != null:
+		_lean_body(yaw, player.input.pitch_degrees)
 	# The recoil punch is added here rather than to the player's own look
 	# angles, so the view kicks while the angles the player is actually
 	# holding stay untouched. It is also deliberately smaller than the spray:
@@ -552,6 +574,34 @@ func _process(delta: float) -> void:
 		view_model.light_from(camera.global_position)
 	if body_model != null:
 		body_model.light_from(interpolated + Vector3.UP * 40.0)
+
+
+## How far the view looks down, 0 level or up to 1 straight down, eased
+## so the body only starts to lean when it can be seen.
+static func look_down(pitch_degrees: float) -> float:
+	return smoothstep(0.0, 89.0, -pitch_degrees)
+
+
+## Leans the body you see for a view pitch_degrees down (LOOK_DOWN_LEAN,
+## LOOK_DOWN_ARCH): tipped back about its feet, its back bent forward.
+func _lean_body(yaw: float, pitch_degrees: float) -> void:
+	var down := look_down(pitch_degrees)
+	body_model.global_basis = lean(yaw, pitch_degrees) * body_model.global_basis
+	if _arch != null:
+		_arch.axis_world = view_right(yaw)
+		_arch.degrees = (LOOK_DOWN_LEAN + LOOK_DOWN_ARCH) * down
+
+
+## The view's right hand at yaw (radians), level.
+static func view_right(yaw: float) -> Vector3:
+	return Vector3(cos(yaw), 0.0, -sin(yaw))
+
+
+## The turn that tips the body you see back about its feet for a view at
+## yaw (radians) looking pitch_degrees: about the view's right hand, which
+## tips up toward the view's back.
+static func lean(yaw: float, pitch_degrees: float) -> Basis:
+	return Basis(view_right(yaw), deg_to_rad(LOOK_DOWN_LEAN * look_down(pitch_degrees)))
 
 
 ## The scope, as the gun in hand has it at this frame: the camera's field

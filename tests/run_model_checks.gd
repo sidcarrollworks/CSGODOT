@@ -1074,11 +1074,39 @@ func _test_player_composes_kick_and_bob() -> void:
 		)
 	if player.body_model != null:
 		var rig: Skeleton3D = player.body_model.character_rig
+		# Issue 22 of the playtest of 2026-09-25: from the chest up folds,
+		# the waist and legs stay. A bone left whole that rests above the
+		# chest (a jiggle bone hung off spine_1, say) would still be seen.
+		# Only bones something drawn is weighted to: the weapon bones hang
+		# off root_motion, above the chest, and the seen body holds nothing.
+		var weighted := _weighted_bones(player.body_model, rig)
+		var chest := rig.find_bone("spine_2")
+		var chest_height := rig.get_bone_global_rest(chest).origin.y if chest >= 0 else INF
+		var unfolded_above: Array[String] = []
+		var folded_below: Array[String] = []
+		for bone in rig.get_bone_count():
+			var under_chest := false
+			var up := bone
+			while up >= 0 and not under_chest:
+				under_chest = up == chest
+				up = rig.get_bone_parent(up)
+			var folded := rig.get_bone_global_pose(bone).basis.get_scale().x < 0.01
+			if not folded and not under_chest and weighted.has(bone) and rig.get_bone_global_rest(bone).origin.y > chest_height:
+				unfolded_above.append(rig.get_bone_name(bone))
+			if folded != under_chest:
+				folded_below.append(rig.get_bone_name(bone))
 		_check(
-			rig.get_bone_pose_scale(rig.find_bone("head_0")).is_equal_approx(Vector3.ONE * RigModel.FOLDED)
-				and rig.get_bone_pose_scale(rig.find_bone("arm_upper_R")).is_equal_approx(Vector3.ONE * RigModel.FOLDED)
-				and rig.get_bone_pose_scale(rig.find_bone("pelvis")).is_equal_approx(Vector3.ONE),
-			"with its head and arms folded and the rest whole"
+			chest >= 0 and folded_below.is_empty()
+				and rig.get_bone_pose_scale(rig.find_bone("pelvis")).is_equal_approx(Vector3.ONE)
+				and rig.get_bone_global_pose(rig.find_bone("head_0")).basis.get_scale().x < 0.01
+				and rig.get_bone_global_pose(rig.find_bone("arm_upper_R")).basis.get_scale().x < 0.01,
+			"with everything from spine_2 up folded (head and arms with it) and the waist and legs whole"
+				if folded_below.is_empty() else "these bones fold where they should not, or not where they should: %s" % [folded_below]
+		)
+		_check(
+			unfolded_above.is_empty(),
+			"and nothing drawn and left whole rests above the chest"
+				if unfolded_above.is_empty() else "these bones rest above the chest and are not folded: %s" % [unfolded_above]
 		)
 		var shadow_rig: Skeleton3D = player.body_shadow.character_rig if player.body_shadow != null else null
 		var body_casting := 0
@@ -1093,8 +1121,10 @@ func _test_player_composes_kick_and_bob() -> void:
 		_check(
 			shadow_rig != null and body_casting == 0 and not shadow_meshes.is_empty() and shadow_only == shadow_meshes.size()
 				and shadow_rig.get_bone_pose_scale(shadow_rig.find_bone("head_0")).is_equal_approx(Vector3.ONE)
-				and shadow_rig.get_bone_pose_scale(shadow_rig.find_bone("arm_upper_R")).is_equal_approx(Vector3.ONE),
-			"and its shadow is cast by a twin drawn only into the shadow maps, whole, head and arms"
+				and shadow_rig.get_bone_pose_scale(shadow_rig.find_bone("arm_upper_R")).is_equal_approx(Vector3.ONE)
+				and shadow_rig.get_bone_global_pose(shadow_rig.find_bone("spine_2")).basis.get_scale().x > 0.5
+				and shadow_rig.get_bone_global_pose(shadow_rig.find_bone("head_0")).basis.get_scale().x > 0.5,
+			"and its shadow is cast by a twin drawn only into the shadow maps, whole, chest, head and arms"
 		)
 		player.view._process(1.0 / 60.0)
 		var gun: Node3D = player.body_shadow.held_weapon if player.body_shadow != null else null
@@ -1818,3 +1848,24 @@ func _has(names: PackedStringArray, fragment: String) -> bool:
 
 func _report() -> void:
 	_finish("model")
+
+
+## The bones of rig that some vertex of model's meshes is weighted to.
+func _weighted_bones(model: Node, rig: Skeleton3D) -> Dictionary:
+	var weighted := {}
+	for node in model.find_children("*", "MeshInstance3D", true, false):
+		var mesh := node as MeshInstance3D
+		if mesh.mesh == null or mesh.skin == null or mesh.get_node_or_null(mesh.skeleton) != rig:
+			continue
+		var binds := {}
+		for bind in mesh.skin.get_bind_count():
+			var bone_name := mesh.skin.get_bind_name(bind)
+			binds[bind] = rig.find_bone(bone_name) if bone_name != "" else mesh.skin.get_bind_bone(bind)
+		for surface in mesh.mesh.get_surface_count():
+			var arrays := mesh.mesh.surface_get_arrays(surface)
+			var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES] if arrays[Mesh.ARRAY_BONES] != null else PackedInt32Array()
+			var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS] if arrays[Mesh.ARRAY_WEIGHTS] != null else PackedFloat32Array()
+			for i in mini(bones.size(), weights.size()):
+				if weights[i] > 0.0 and binds.has(bones[i]):
+					weighted[binds[bones[i]]] = true
+	return weighted

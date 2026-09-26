@@ -155,11 +155,14 @@ no arms, and everything else works. On top of the clips, the weapon bobs as
 you walk and run, settles lower into the hands at speed, and lags a little
 behind a turn (`src/player/view_model_motion.gd`): the bob in Source's own
 shape, the amounts set by eye against CS2. Look down and your own body is
-there, chest and legs, walking the same clips as a bot's, with your shadow
-on the ground: the third-person model with its head and arms folded away
-(`RigModel.fold_bones`), since the camera sits inside the one and the view
-model stands in for the others. The shadow is cast by a twin of that model
-drawn only into the shadow maps, with its head on, so the shadow has one.
+there, belt and legs, walking the same clips as a bot's, with your shadow
+on the ground: the third-person model folded away from the chest up
+(`RigModel.fold_bones` on spine_2), since the camera sits inside the head,
+the view model stands in for the arms, and CS2 shows no chest looking down.
+Looking down it tips back about its feet and its lower back bends forward
+(`LookDownArch`), so the view feels like the back arching over the legs.
+The shadow is cast by a twin of that model drawn only into the shadow maps,
+whole, so the shadow has a head and arms.
 
 Other players are the same agents seen from outside (`src/player/player_model.gd`):
 the body on the third-person rig, the weapon in its hand, moved as CS2's own
