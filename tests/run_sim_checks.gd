@@ -26,6 +26,7 @@ const SIMULATION_FILES := [
 	"res://src/sim/game_world.gd",
 	"res://src/player/player_sim.gd",
 	"res://src/bots/bot.gd",
+	"res://src/bots/bot_steering.gd",
 	"res://src/movement/player_body.gd",
 	"res://src/movement/movement_solver.gd",
 	"res://src/weapons/weapon.gd",

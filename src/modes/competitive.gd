@@ -133,7 +133,7 @@ func _place_bots() -> void:
 			# buys the rest in freeze time, by a profile's preferences.
 			bot.buy_template = BotBuying.template_for(bot.name)
 			bot.nav_mesh = map.nav_mesh
-			bot.route = bot_route(map.spawns, team, i, _sites)
+			bot.route = bot_route(map.spawns, team, i, _sites, map.nav_mesh)
 			add_child(bot)
 			world.add_player(bot)
 			bot.global_position = spawns[i % spawns.size()]["position"]
@@ -167,11 +167,43 @@ func _prepare_holding() -> void:
 ## bomb site and back, A and B in turn, when there are sites to go to (the
 ## nav mesh, and bots_walk_to_sites); round its side's spawn points when
 ## not. Where on it a bot sets off from is the match's (Bot.spawn_at).
-static func bot_route(spawns: Dictionary, team: String, nth: int, sites: PackedVector3Array) -> PackedVector3Array:
+## The first bot a side sends to a site goes to its middle; the ones after
+## go to a spot spread round it (site_spot), so no two walk to one point
+## and turn back into each other there (reference/playtest-2026-09-25.md,
+## issue 6).
+static func bot_route(spawns: Dictionary, team: String, nth: int, sites: PackedVector3Array, nav_mesh: SourceNavMesh = null) -> PackedVector3Array:
 	if sites.is_empty():
 		return side_route(spawns, team)
 	var points: Array = spawns[team]
-	return PackedVector3Array([points[nth % points.size()]["position"], sites[nth % sites.size()]])
+	@warning_ignore("integer_division")
+	var sent_before := nth / sites.size()
+	var site := sites[nth % sites.size()]
+	if sent_before > 0:
+		site = site_spot(nav_mesh, site, team, nth)
+	return PackedVector3Array([points[nth % points.size()]["position"], site])
+
+
+## How far from a site's middle the bots after the first stand, in units:
+## far enough apart that their hulls and paths stay clear of each other,
+## near enough to be on the site. A choice.
+const SITE_SPREAD := 128.0
+
+
+## A spot SITE_SPREAD from a site's middle, at an angle drawn from a seed of
+## the side and the bot, turned on an eighth at a time until it is over the
+## nav mesh about as high as the middle; the middle itself when none is (or
+## with no mesh to ask).
+static func site_spot(nav_mesh: SourceNavMesh, middle: Vector3, team: String, nth: int) -> Vector3:
+	if nav_mesh == null:
+		return middle
+	var start := float(posmod(hash(["bot_site", team, nth]), 360))
+	for i in 8:
+		var angle := deg_to_rad(start + 45.0 * i)
+		var spot := middle + Vector3(cos(angle), 0.0, sin(angle)) * SITE_SPREAD
+		var area := nav_mesh.area_at(spot, 36.0, 36.0)
+		if area != null:
+			return Vector3(spot.x, area.floor_at(spot), spot.z)
+	return middle
 
 
 ## A side's spawn points, in order, as a loop to walk.
@@ -248,7 +280,7 @@ func _route_bots_again() -> void:
 	var counts := {"T": 0, "CT": 0}
 	for sim in match_state.players:
 		if sim is Bot:
-			(sim as Bot).route = bot_route(map.spawns, sim.team, counts[sim.team], _sites)
+			(sim as Bot).route = bot_route(map.spawns, sim.team, counts[sim.team], _sites, map.nav_mesh)
 			counts[sim.team] += 1
 
 

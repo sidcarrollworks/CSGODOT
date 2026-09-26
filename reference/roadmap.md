@@ -237,7 +237,7 @@ issue done here and on the page in the same pull request.
 | 3 | E picks up what you look at, swapping out what is in that slot | The use search (CS2's 80 units, a cone), the swap, one precedence with the bomb | See in CS2 what E takes and from how far | 12, after 2 |
 | 4 | Ragdoll legs through the floor, joints bending too far | Start clear of the floor, CS2's own shapes (in the agents' `.vmdl`), joint limits; checks on a one-sided trimesh | Dump CS2's joints; deaths on the ramp | Housekeeping |
 | 5 | Bots hover over T spawn's ramp in freeze time (the hull rests on the uphill edge; there is no foot IK) | Research, then draw-only foot IK and a ground fit | CS2's feet on the ramp | After 17 |
-| 6 | Bots meet head-on and hop at each other forever | Making way for teammates, stuck handling that never jumps at one, goals spread over a site | dust2's chokepoints and 24b's inferno spot | 24b, 23 |
+| 6 | Bots meet head-on and hop at each other forever | **Done** (PR #PRNUM): making way for teammates (`BotSteering`), stuck handling that never jumps at one, goals spread over a site | dust2's chokepoints and 24b's inferno spot; `scripts/run_tests.sh dust2` runs the new no-stall check | 24b, 23 |
 | 7 | The xbox tarp far too dark (its lightmap read from the wrong UV set) | The UV set for `csgo_environment`, and its tint | `extract_assets.sh layers`; an xbox shot in CS2 | After 12 |
 | 8 | Wrists wrung on the knife (the forearm twist bones are never posed) | CS2's tilt-twist constraints from the agents' `.vmdl` on the drawn arms, after the maths is written up | Beside CS2 | 6 |
 | 9 | A see-through seam in a wall (Godot's vertex compression) | The map imported without it | Reimport, look, profile | After 12 |
@@ -697,7 +697,9 @@ list, split into Local and Remote items, with the measurements.
     it crosses), keeping each jump's take-off and landing; a bot walks it
     through its commands, as a player would, jumping (with a crouch in the
     air) where a link rises past a step, crouching before an area marked
-    for a low ceiling, and finding its way again when it is held up. On
+    for a low ceiling, and, held up by the map, wiggling, then jumping and
+    finding its way again (held up by a teammate, it makes way instead:
+    the playtest of 2026-09-25, issue 6). On
     dust2 each bot walks from its spawn to a bomb site and back, A and B in
     turn (`bots_walk_to_sites`; off, they walk their spawn points as
     before). Without the mesh they walk straight lines between their spawn
@@ -756,7 +758,10 @@ list, split into Local and Remote items, with the measurements.
       A stops at (1493, 205, 2442), a spot it passed on the way out.
       Doors and func_brush blockers are ruled out. dust2 shows the same
       jam: the playtest of 2026-09-25, issue 6, traces it to bots having
-      no way round a teammate and jumping when held up.
+      no way round a teammate and jumping when held up. The jam half is addressed on the
+      Remote side (PR #PRNUM: bots make way for teammates); Sid's replay
+      of the inferno spot is still open, as are the two Ts stopping above
+      A's floor and the CT stopping on its way back, which are not jams.
     - *Café tables, chairs and signs draw solid black.* *(Local finds the
       cause, then Remote)* They have textures; `prepare_export` warned
       that inferno's world and skybox glTFs have a primitive with both
