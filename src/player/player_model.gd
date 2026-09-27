@@ -164,6 +164,50 @@ var _shown := ""
 ## them all): for each moving space, the length of a cycle at each distance
 ## from its centre (cycle_rings()).
 var _rings := {}
+## Each tree owns its persistent parameters. Requests (seeks, transitions
+## and one-shots) are consumed by advance(), so never belong in this cache.
+class MotionParameters:
+	var positions: Array[StringName] = []
+	var move: StringName
+	var air: StringName
+	var jump: StringName
+	var cycle: StringName
+	var land_hold: Array[StringName] = []
+	var land_pose: Array[StringName] = []
+	var jump_start: StringName
+	var air_state: StringName
+	var air_request: StringName
+	var ground_state: StringName
+	var ground_request: StringName
+	var applied := false
+	var speeds := Vector2.ZERO
+	var crouch := 0.0
+	var crouch_eased := 0.0
+
+	func _init(at: String) -> void:
+		var path := "parameters/" + at
+		for space_name: String in ["stand", "crouch", "air_stand", "air_crouch", "jump_stand", "jump_crouch"]:
+			positions.append(StringName(path + space_name + "/blend_position"))
+		move = StringName(path + "move/blend_amount")
+		air = StringName(path + "air/blend_amount")
+		jump = StringName(path + "jump/blend_amount")
+		cycle = StringName(path + "cycle/scale")
+		for side: String in ["stand", "crouch"]:
+			land_hold.append(StringName(path + "land_hold_" + side + "/scale"))
+			land_pose.append(StringName(path + "land_pose_" + side + "/seek_request"))
+		jump_start = StringName(path + "jump_start/seek_request")
+		air_state = StringName(path + "air_state/current_state")
+		air_request = StringName(path + "air_state/transition_request")
+		ground_state = StringName(path + "ground/current_state")
+		ground_request = StringName(path + "ground/transition_request")
+
+
+var _motion_parameters: Dictionary[String, MotionParameters] = {}
+var _parameters_tree: AnimationTree
+var _parameters_root: AnimationRootNode
+var _hold_applied := false
+var _applied_has_hold := false
+var _applied_hold_crouch := 0.0
 ## Which of them the body moves by now, and the one it goes to once the
 ## draw under way is over (at _switch_at_usec, simulation time), or "".
 var _variation := VARIATION
@@ -592,6 +636,7 @@ func update_motion(
 ## or every one of them (all), for one about to be switched to. A switch
 ## waiting on a draw is made once the draw is over, on the tick.
 func _apply(all: bool = false) -> void:
+	_prepare_parameters()
 	if not _pending_variation.is_empty() and SimClock.now_usec() >= _switch_at_usec:
 		var moves_by := _pending_variation
 		_pending_variation = ""
@@ -600,9 +645,27 @@ func _apply(all: bool = false) -> void:
 		if all or at.is_empty() or at == _variation + "/":
 			_apply_locomotion(at)
 	if has_weapon_layers:
-		animation_tree.set("parameters/hold/add_amount", 1.0 if _has_hold else 0.0)
-		animation_tree.set("parameters/hold_pose/blend_amount", _crouch)
+		if not _hold_applied or _applied_has_hold != _has_hold:
+			animation_tree.set(&"parameters/hold/add_amount", 1.0 if _has_hold else 0.0)
+		if not _hold_applied or _applied_hold_crouch != _crouch:
+			animation_tree.set(&"parameters/hold_pose/blend_amount", _crouch)
+		_hold_applied = true
+		_applied_has_hold = _has_hold
+		_applied_hold_crouch = _crouch
 	_apply_body_additives()
+
+
+## A rebuilt/replaced tree needs every persistent value again, even when
+## the player's motion did not change. The new tree has consumed no jump.
+func _prepare_parameters() -> void:
+	if animation_tree == _parameters_tree and animation_tree.tree_root == _parameters_root:
+		return
+	_parameters_tree = animation_tree
+	_parameters_root = animation_tree.tree_root
+	_motion_parameters.clear()
+	_hold_applied = false
+	_jump_started.clear()
+	_additive_for_usec = -1
 
 
 ## CS2's BodyAdditives: the jump additive added over the whole body as the
@@ -653,32 +716,46 @@ static func add_body_additives(tree: AnimationNodeBlendTree, moving: StringName,
 
 
 func _apply_locomotion(at: String) -> void:
-	var path := "parameters/" + at
-	for space_name in [&"stand", &"crouch", &"air_stand", &"air_crouch", &"jump_stand", &"jump_crouch"]:
-		animation_tree.set(path + String(space_name) + "/blend_position", _speeds)
-	animation_tree.set(path + "move/blend_amount", _crouch)
-	animation_tree.set(path + "air/blend_amount", _crouch_eased)
-	animation_tree.set(path + "jump/blend_amount", _crouch_eased)
-	animation_tree.set(path + "cycle/scale", 1.0 / cycle_length(_rings[at], _speeds.length(), _crouch))
+	var parameters: MotionParameters = _motion_parameters.get(at)
+	if parameters == null:
+		parameters = MotionParameters.new(at)
+		_motion_parameters[at] = parameters
+	if not parameters.applied or parameters.speeds != _speeds:
+		for path: StringName in parameters.positions:
+			animation_tree.set(path, _speeds)
+	if not parameters.applied or parameters.crouch != _crouch:
+		animation_tree.set(parameters.move, _crouch)
+	if not parameters.applied or parameters.crouch_eased != _crouch_eased:
+		animation_tree.set(parameters.air, _crouch_eased)
+		animation_tree.set(parameters.jump, _crouch_eased)
+	if not parameters.applied or parameters.speeds != _speeds or parameters.crouch != _crouch:
+		animation_tree.set(parameters.cycle, 1.0 / cycle_length(_rings[at], _speeds.length(), _crouch))
+	if not parameters.applied:
+		for path: StringName in parameters.land_hold:
+			animation_tree.set(path, 0.0)
+	parameters.applied = true
+	parameters.speeds = _speeds
+	parameters.crouch = _crouch
+	parameters.crouch_eased = _crouch_eased
 	# The landing clips stand still at the time the height gives.
-	for side: String in ["stand", "crouch"]:
-		var curve: Array[Vector2] = _landing_curves.get(side, LANDING_CURVE)
-		animation_tree.set(path + "land_hold_" + side + "/scale", 0.0)
-		animation_tree.set(path + "land_pose_" + side + "/seek_request", landing_share(_height, curve) * float(_landing_seconds.get(at, LANDING_SECONDS)))
+	# These seeks must be reissued even at the same height: advance consumes them.
+	for side in 2:
+		var curve: Array[Vector2] = _landing_curves.get("stand" if side == 0 else "crouch", LANDING_CURVE)
+		animation_tree.set(parameters.land_pose[side], landing_share(_height, curve) * float(_landing_seconds.get(at, LANDING_SECONDS)))
 	if _air_action == PlayerBody.AIR_JUMP and int(_jump_started.get(at, -1)) != _air_action_usec:
 		# A new jump: the take-off from its start.
 		_jump_started[at] = _air_action_usec
-		animation_tree.set(path + "jump_start/seek_request", 0.0)
+		animation_tree.set(parameters.jump_start, 0.0)
 	var air_wanted := air_state(_air_action, _air_action_usec, SimClock.now_usec(), float(_jump_seconds.get(at, JUMP_SECONDS)))
-	if String(animation_tree.get(path + "air_state/current_state")) != air_wanted:
+	if String(animation_tree.get(parameters.air_state)) != air_wanted:
 		# CS2 goes from the take-off to the landing in 0 s, and a jump
 		# starts its take-off as the air fades in.
-		animation_tree.set(path + "air_state/transition_request", air_wanted)
+		animation_tree.set(parameters.air_request, air_wanted)
 	var wanted := "ground" if _on_ground else "air"
-	if String(animation_tree.get(path + "ground/current_state")) != wanted:
+	if String(animation_tree.get(parameters.ground_state)) != wanted:
 		var ground := _locomotion_node(at, &"ground") as AnimationNodeTransition
 		ground.xfade_time = TO_GROUND if _on_ground else into_air_fade(_air_action)
-		animation_tree.set(path + "ground/transition_request", wanted)
+		animation_tree.set(parameters.ground_request, wanted)
 
 
 func _locomotion_node(at: String, node_name: StringName) -> AnimationNode:
@@ -760,6 +837,7 @@ static func landing_curve(table: Dictionary, crouched: bool = false) -> Array[Ve
 ## Moves the body by another variation's locomotion, its parameters set
 ## first, cross-faded as CS2 fades its idle poses.
 func _switch_variation(moves_by: String) -> void:
+	_prepare_parameters()
 	_variation = moves_by
 	_apply_locomotion(moves_by + "/")
 	(_node(&"variation") as AnimationNodeTransition).xfade_time = PISTOL_FADE if moves_by == "pistol" else VARIATION_FADE

@@ -27,13 +27,13 @@ class CostMeter:
 
 	enum Part {
 		TICK, BEGIN, COMMAND, PLAYER, END, POSES, SYNC, RAY, CAST,
-		NATIVE_CAST, EXCLUDE, OVERLAP, REST, NATIVE_INTERVAL,
+		NATIVE_CAST, EXCLUDE, OVERLAP, REST, NATIVE_INTERVAL, MODEL_PARAMETERS,
 	}
 	const LABELS := [
 		"tick_dispatch", "begin_tick", "command_for", "run_command", "end_tick",
 		"pose_batch", "sync_dynamic", "intersect_ray", "shape_cast",
 		"native_cast_wrapper", "disable_excluded", "intersect_shape", "get_rest_info",
-		"native_interval",
+		"native_interval", "model_parameters",
 	]
 	var enabled := false
 	var calls := PackedInt64Array()
@@ -254,7 +254,7 @@ func _tick() -> void:
 			var command := player.command_for(world.tick, dt)
 			_meter.leave()
 			_meter.enter(CostMeter.Part.PLAYER)
-			player.run_command(command, dt)
+			_run_player(player, command, dt)
 			_meter.leave()
 	_meter.enter(CostMeter.Part.END)
 	world.end_tick()
@@ -270,6 +270,23 @@ func _tick() -> void:
 	_pose_players()
 	_meter.leave()
 	_meter.enabled = false
+
+
+## Mirror PlayerSim.run_command's ordering only in this attribution run, so
+## animation parameter preparation is separate from movement/weapon work.
+## The ordinary profile_box3d_match run still calls the production method;
+## compare its workload counts and timing to expose instrumentation overhead.
+func _run_player(player: PlayerSim, command: UserCmd, dt: float) -> void:
+	player.previous_yaw_degrees = player.yaw_degrees
+	player.previous_pitch_degrees = player.pitch_degrees
+	player.previous_view_punch = player.view_punch()
+	player.previous_viewmodel_punch = player.weapon.viewmodel_punch() if player.weapon != null else Vector2.ZERO
+	player._run(command, dt)
+	if player.alive and player.model != null:
+		_meter.enter(CostMeter.Part.MODEL_PARAMETERS)
+		player.model.update_motion(player.velocity, player.yaw_degrees, player.duck_progress,
+			player.on_ground, player.air_action, player.air_action_usec, player.height_above_ground)
+		_meter.leave()
 
 
 func _native_started(_t: SimTick) -> void:

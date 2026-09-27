@@ -284,6 +284,15 @@ dedicated regression coverage. Effects and graphics settings are unchanged.
 The **6 ms maximum frame-time target remains open**; measured results and
 remaining costs are in [the follow-up](research/box3d-performance-fixes-2026-09-26.md).
 
+**Repeated player-update work reduced (2026-09-26).** Per-tree animation
+bindings skip unchanged persistent values while retaining consumed requests;
+bot sight shares observer setup and visits nearest candidates first without
+changing reaction timing. Static crouch-path data, shooter state, and recoil
+damping constants are reused. The ordinary ten-player simulation averages
+3.217 to 3.095 ms with the same shots and hull traces. This is a modest CPU
+gain, not proof of a lower rendered maximum or multiplayer-ready pose timing.
+Measurements and remaining work: [player-update-performance-2026-09-26.md](research/player-update-performance-2026-09-26.md).
+
 Before that optimization, native gameplay integration passed 43/43, world/hitbox lifecycle 20/20,
 ragdolls 67/67, focused movement 22/22, and real Dust2 integration 10/10;
 the movement course passes 80/80 on each backend. The final seeded 5v5

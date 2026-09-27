@@ -89,6 +89,7 @@ var previous_viewmodel_punch := Vector2.ZERO
 ## (the knife, a grenade, the bomb) or nothing. And how the player was
 ## moving when it was last told: what its cone is judged by.
 var weapon: Weapon
+## Owned current state, reused each update; callers needing history copy its fields.
 var shooter_state := Weapon.ShooterState.new()
 var rounds_fired: int = 0
 
@@ -688,10 +689,10 @@ func _update_weapon(cmd: UserCmd, dt: float, still: bool) -> void:
 	if still:
 		presses.clear()
 	weapon.trigger_held = not still and (cmd.held(UserCmd.ATTACK) or not presses.is_empty())
-	shooter_state = Weapon.ShooterState.new(
-		Vector2(velocity.x, velocity.z).length(), on_ground, is_ducked,
-		cmd.held(UserCmd.WALK)
-	)
+	shooter_state.speed = Vector2(velocity.x, velocity.z).length()
+	shooter_state.on_ground = on_ground
+	shooter_state.ducked = is_ducked
+	shooter_state.walking = cmd.held(UserCmd.WALK)
 	weapon.update(dt, now, shooter_state)
 
 	# Right clicks step a scope through its zoom levels and the trigger's
