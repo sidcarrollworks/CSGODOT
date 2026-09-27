@@ -271,11 +271,20 @@ the full adapter is active.
 finds 3.47 ms/tick in proxy synchronization against 0.42 ms in the native-step
 interval; first-use weapon/grenade spikes are a separate issue. The audit
 records rendering ablations, a live round, focus-filtered tails and one-bot
-scaling. Incremental proxy updates, contact trace amplification and actual
-first-use prewarming remain open; no gameplay/graphics defaults were changed.
+scaling. It prioritized incremental proxy updates, contact trace amplification
+and actual first-use prewarming; that audit changed no gameplay/graphics defaults.
 Evidence and reproduction: [frame-times-2026-09-26.md](research/frame-times-2026-09-26.md).
 
-Native gameplay integration passes 43/43, world/hitbox lifecycle 20/20,
+**Bridge and recovery optimization done (2026-09-26; 6 ms target still open).** Query-only
+proxies update on demand, reuse authored geometry, and avoid native kinematic
+stepping. Movement groups its recovery casts, skips excluded self updates,
+and stops identical failed searches; proven deep player overlap needs one
+cast instead of sixty. Same-tick poses and geometry/lifecycle changes have
+dedicated regression coverage. Effects and graphics settings are unchanged.
+The **6 ms maximum frame-time target remains open**; measured results and
+remaining costs are in [the follow-up](research/box3d-performance-fixes-2026-09-26.md).
+
+Before that optimization, native gameplay integration passed 43/43, world/hitbox lifecycle 20/20,
 ragdolls 67/67, focused movement 22/22, and real Dust2 integration 10/10;
 the movement course passes 80/80 on each backend. The final seeded 5v5
 CPU comparison averages 7.091 ms per native tick versus 3.296 ms for the

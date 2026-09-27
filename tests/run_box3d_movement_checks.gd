@@ -17,6 +17,7 @@ var DT := SimClock.tick_seconds()
 class RecoveryTraceBody:
 	extends PlayerBody
 	var motions: Array[Vector3] = []
+	var blocked_after_first := false
 
 	func _trace(motion: Vector3, test_only: bool = false) -> PlayerBody.TraceResult:
 		motions.append(motion)
@@ -26,6 +27,8 @@ class RecoveryTraceBody:
 			if not test_only:
 				global_position += travel
 			return PlayerBody.TraceResult.new(travel, Vector3.RIGHT, recovery)
+		if blocked_after_first:
+			return PlayerBody.TraceResult.new(Vector3.ZERO, Vector3.ZERO)
 		if not test_only:
 			global_position += motion
 		return null
@@ -37,11 +40,14 @@ func _initialize() -> void:
 		return
 	await physics_frame
 	_check_recovery_slide_time()
+	_check_blocked_after_progress()
 	await _check_traces()
 	await _check_floor_wall_spawn()
 	await _check_small_ground_recovery()
 	await _check_duck_clearance()
 	await _check_player_blocking()
+	await _check_blocked_crowd_budget()
+	await _check_shallow_player_recovery()
 	await _check_steps_and_jump()
 	await _check_ramps()
 	_finish("box3d-movement")
@@ -61,6 +67,18 @@ func _check_recovery_slide_time() -> void:
 		and is_equal_approx(player.position.z, DT)
 		and is_equal_approx(player.position.y, 0.25),
 		"overlap recovery greater than a low-speed move keeps the full remaining forward slide, without consuming time or reversing it")
+	player.free()
+
+
+func _check_blocked_after_progress() -> void:
+	var player := RecoveryTraceBody.new()
+	player.blocked_after_first = true
+	root.add_child(player)
+	player.velocity = Vector3(-1.0, 0.0, 1.0)
+	player._try_player_move(DT)
+	_check(player.motions.size() == 2 and player.velocity == Vector3.BACK
+		and player.position.is_equal_approx(Vector3(-DT * 0.5, 0.25, DT * 0.5)),
+		"an unresolved overlap after a partial slide preserves prior travel and clipped velocity without repeating the blocked sweep")
 	player.free()
 
 
@@ -185,10 +203,93 @@ func _check_player_blocking() -> void:
 	var hit := first._trace(Vector3.RIGHT * 300.0, true)
 	_check(hit != null and absf(hit.get_travel().x - 96.0) < 0.5,
 		"another player's native hull blocks movement at the combined half-widths")
+	var reverse := second._trace(Vector3.LEFT * 300.0, true)
+	_check(reverse != null and absf(reverse.get_travel().x + 96.0) < 0.5,
+		"a test-only hit restores the querying player's collision for the next player's sweep")
 	second._trace(Vector3.RIGHT * 64.0)
 	hit = first._trace(Vector3.RIGHT * 300.0, true)
 	_check(hit != null and absf(hit.get_travel().x - 160.0) < 0.5,
 		"a later query in the same tick sees the other player's completed move")
+	_close()
+	await process_frame
+
+
+func _check_blocked_crowd_budget() -> void:
+	_setup()
+	var first := _player(Vector3.ZERO)
+	var second := _player(Vector3(128.0, 0.0, 0.0))
+	_start()
+	await physics_frame
+	for tick in 24:
+		first.simulate(DT)
+		second.simulate(DT)
+	# A crowded spawn can overlap farther than the half-inch local recovery
+	# is allowed to move. Repeating that same recovery cannot release it.
+	second.global_position = first.global_position
+	PhysicsQueries.sync_object(second)
+	var before := first.global_position
+	var traces := first.traces
+	var native_queries := PhysicsQueries.native_queries
+	var legacy_queries := PhysicsQueries.legacy_queries
+	first.velocity = Vector3.FORWARD * 250.0
+	var blocked := first._try_player_move(DT)
+	_check(blocked and first.global_position == before and first.velocity == Vector3.ZERO
+		and first.traces == traces + 1,
+		"a deeply overlapping player box stops safely after one native cast (%d traces)" % (first.traces - traces))
+	_check(PhysicsQueries.native_queries - native_queries == first.traces - traces
+		and PhysicsQueries.legacy_queries == legacy_queries,
+		"the deep-overlap cast remains counted as a native query, with no legacy fallback")
+	var query := PhysicsRayQueryParameters3D.create(before + Vector3(-64.0, 36.0, 0.0),
+		before + Vector3(64.0, 36.0, 0.0), 2, [second.get_rid()])
+	var seen := PhysicsQueries.intersect_ray(_host.get_world_3d().direct_space_state, query)
+	_check(seen.get("collider") == first,
+		"a failed recovery restores the player's native collision before another query")
+	# A failed move is not cached across changing world state: a later player
+	# leaving must make the next move possible in this same simulation tick.
+	second.global_position += Vector3.RIGHT * 128.0
+	PhysicsQueries.sync_object(second)
+	traces = first.traces
+	first.velocity = Vector3.FORWARD * 250.0
+	blocked = first._try_player_move(DT)
+	_check(not blocked and first.global_position.is_equal_approx(before + Vector3.FORWARD * 250.0 * DT)
+		and first.traces == traces + 1,
+		"a blocked player moves immediately with one trace after the crowd clears")
+	query.from = first.global_position + Vector3(-64.0, 36.0, 0.0)
+	query.to = first.global_position + Vector3(64.0, 36.0, 0.0)
+	seen = PhysicsQueries.intersect_ray(_host.get_world_3d().direct_space_state, query)
+	_check(seen.get("collider") == first,
+		"an unobstructed move restores collision and publishes its new native hull pose")
+	_close()
+	await process_frame
+
+
+func _check_shallow_player_recovery() -> void:
+	_setup()
+	var first := _player(Vector3.ZERO)
+	var second := _player(Vector3(128.0, 0.0, 0.0))
+	_start()
+	await physics_frame
+	for tick in 24:
+		first.simulate(DT)
+		second.simulate(DT)
+	# The hulls overlap by 0.1 inch: the existing bounded recovery can clear
+	# that plus native contact tolerance, so the deep-overlap proof must not
+	# reject it. A test-only sweep must still leave the real hull in place.
+	second.global_position = first.global_position + Vector3.RIGHT * 31.9
+	PhysicsQueries.sync_object(second)
+	var before := first.global_position
+	var traces := first.traces
+	var native_queries := PhysicsQueries.native_queries
+	var hit := first._trace(Vector3.LEFT * 16.0, true)
+	var recovery := first._last_native_trace_recovery
+	_check(hit == null and first.global_position == before and first.traces > traces + 1
+		and PhysicsQueries.native_queries - native_queries == first.traces - traces
+		and recovery.x < -0.1 and recovery.x > -PlayerBody.NATIVE_RECOVERY_REACH
+		and is_zero_approx(recovery.y) and is_zero_approx(recovery.z),
+		"a shallow player overlap counts every recovery cast and keeps a test-only hull in place")
+	hit = first._trace(Vector3.LEFT * 16.0)
+	_check(hit == null and first.global_position.is_equal_approx(before + recovery + Vector3.LEFT * 16.0),
+		"the real shallow-overlap move applies only the verified local recovery and requested motion")
 	_close()
 	await process_frame
 

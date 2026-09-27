@@ -1,6 +1,8 @@
 # What everything costs, and what going online will
 
-For the full Box3D branch, use the [26 September frame-time audit](research/frame-times-2026-09-26.md):
+For the current Box3D branch, see the [bridge and movement fixes](research/box3d-performance-fixes-2026-09-26.md)
+and their measured remaining gap to the 6 ms maximum target. The preceding
+[26 September frame-time audit](research/frame-times-2026-09-26.md) records:
 4K foreground distributions, paired legacy comparison, native/synchronization
 attribution, first-use spikes and reproducible captures. The older Jolt
 measurements below are historical and do not describe the current full port.

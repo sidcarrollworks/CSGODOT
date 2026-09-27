@@ -29,6 +29,7 @@ var _hitbox_layers: int = Hitbox.LAYER
 var _dynamic_layers: int = 2 | Hitbox.LAYER
 var _pending: Array[WeakRef] = []
 var _cast_cache: Dictionary = {}
+var _shape_watchers: Dictionary = {}
 
 
 func initialize(owner: Node3D, geometry_root: Node) -> void:
@@ -52,6 +53,7 @@ func close() -> void:
 		if _root.get_tree().node_removed.is_connected(_on_node_removed):
 			_root.get_tree().node_removed.disconnect(_on_node_removed)
 	for record: Dictionary in _objects.values():
+		_unwatch_shapes(record)
 		var source := (record["source"] as WeakRef).get_ref() as CollisionObject3D
 		if is_instance_valid(source) and source.is_inside_tree():
 			if source is Area3D:
@@ -96,6 +98,8 @@ func _on_node_removed(node: Node) -> void:
 
 
 func flush_pending() -> void:
+	if _pending.is_empty():
+		return
 	var pending := _pending
 	_pending = []
 	for ref: WeakRef in pending:
@@ -104,29 +108,47 @@ func flush_pending() -> void:
 			sync_object(node)
 
 
-func sync_dynamic(mask: int = ALL_LAYERS) -> void:
+func sync_dynamic(mask: int = ALL_LAYERS, exclude: Array[RID] = []) -> void:
 	flush_pending()
 	if mask & _dynamic_layers == 0:
 		return
 	# Movement never needs to revisit every bone capsule. Keep separate
 	# registries so a hull sweep only synchronizes the character hulls.
 	if mask & _hull_layers != 0:
-		_sync_group(_hulls, mask)
+		_sync_group(_hulls, mask, exclude)
 	if mask & _hitbox_layers != 0:
-		_sync_group(_hitboxes, mask)
+		_sync_group(_hitboxes, mask, exclude)
 
 
-func _sync_group(group: Dictionary, mask: int) -> void:
-	for id: int in group.keys():
+func _sync_group(group: Dictionary, mask: int, exclude: Array[RID]) -> void:
+	# Node removal signals maintain the registries. Defer the rare stale-entry
+	# cleanup so ordinary casts don't allocate a keys() snapshot.
+	var removed: Array[int] = []
+	for id: int in group:
 		var node := (group[id] as WeakRef).get_ref() as CollisionObject3D
 		if not is_instance_valid(node) or not node.is_inside_tree():
-			_remove(id)
-		elif node.collision_layer & mask != 0 or int(_objects[id].get("layer", 0)) & mask != 0:
+			removed.append(id)
+			continue
+		var record: Dictionary = _objects[id]
+		# Its native shapes are excluded by the query below. Moving this
+		# mirror now cannot affect the result; a later query that can hit it
+		# will pull its current pose before casting.
+		if exclude.has(record["rid"]):
+			continue
+		var layer := node.collision_layer
+		if (layer | int(record["layer"])) & mask == 0:
+			continue
+		# Most hull sweeps revisit nine unmoved players. Check here, before
+		# registration, geometry and native-property work in sync_object.
+		if record.get("at") != node.global_transform or int(record["layer"]) != layer or record.get("geometry_dirty", false):
 			sync_object(node, false)
+	for id in removed:
+		_remove(id)
 
 
 func _remove(id: int) -> void:
 	var record: Dictionary = _objects.get(id, {})
+	_unwatch_shapes(record)
 	for proxy: Node3D in record.get("proxies", []):
 		if is_instance_valid(proxy):
 			proxy.free()
@@ -136,6 +158,35 @@ func _remove(id: int) -> void:
 	_hulls.erase(id)
 	_hitboxes.erase(id)
 	_cast_cache.clear()
+
+
+func _invalidate_shape_resource(shape_id: int) -> void:
+	for id: int in _shape_watchers[shape_id]["sources"]:
+		if _objects.has(id):
+			_objects[id]["geometry_dirty"] = true
+
+
+func _unwatch_shapes(record: Dictionary) -> void:
+	for shape: Shape3D in record.get("resources", []):
+		var shape_id := shape.get_instance_id()
+		var watcher: Dictionary = _shape_watchers[shape_id]
+		watcher["sources"].erase(record["shape_source_id"])
+		if watcher["sources"].is_empty():
+			shape.changed.disconnect(watcher["changed"])
+			_shape_watchers.erase(shape_id)
+
+
+func _watch_shapes(record: Dictionary, resources: Array[Shape3D], id: int) -> void:
+	_unwatch_shapes(record)
+	for shape in resources:
+		var shape_id := shape.get_instance_id()
+		if not _shape_watchers.has(shape_id):
+			var changed := _invalidate_shape_resource.bind(shape_id)
+			_shape_watchers[shape_id] = {"sources": {}, "changed": changed}
+			shape.changed.connect(changed)
+		_shape_watchers[shape_id]["sources"][id] = true
+	record["resources"] = resources
+	record["shape_source_id"] = id
 
 
 func sync_object(source: CollisionObject3D, refresh_shapes: bool = true) -> void:
@@ -179,19 +230,58 @@ func sync_object(source: CollisionObject3D, refresh_shapes: bool = true) -> void
 		else:
 			PhysicsServer3D.body_set_space(source.get_rid(), RID())
 	var record: Dictionary = _objects[id]
+	var source_at := source.global_transform
+	var source_layer := source.collision_layer
+	refresh_shapes = refresh_shapes or bool(record.get("geometry_dirty", false))
 	# Repeated queries see the same poses. Explicit syncs (movement/duck,
 	# shape additions and tools) still refresh geometry at an unchanged pose.
-	if not refresh_shapes and record.get("at") == source.global_transform and int(record["layer"]) == source.collision_layer:
+	if not refresh_shapes and record.get("at") == source_at and int(record["layer"]) == source_layer:
 		return
+	# A motion-only update reuses authored geometry. Crouching, shape edits,
+	# owner changes and explicit callers still take the full refresh path.
+	# Check each combined scale: rotated owners beneath nonuniform scale can
+	# change shape dimensions even when the source's own scale is unchanged.
+	if not refresh_shapes and record.has("locals"):
+		var scale_changed := false
+		for slot: int in record["proxies"].size():
+			var at: Transform3D = source_at * record["locals"][slot]
+			if not at.basis.get_scale().is_equal_approx(record["scales"][slot]):
+				scale_changed = true
+				break
+		if not scale_changed:
+			for slot: int in record["proxies"].size():
+				var at: Transform3D = source_at * record["locals"][slot]
+				var proxy: Node3D = record["proxies"][slot]
+				if int(record["layer"]) != source_layer and not record["disabled"][slot]:
+					proxy.set(&"collision_layer", source_layer)
+				var native_at := Transform3D(at.basis.orthonormalized(), at.origin * SCALE)
+				if not proxy.transform.is_equal_approx(native_at):
+					proxy.call(&"teleport", native_at)
+			record["at"] = source_at
+			record["layer"] = source_layer
+			return
+	var locals: Array[Transform3D] = []
+	var disabled: Array[bool] = []
+	var scales: Array[Vector3] = []
+	var resources: Array[Shape3D] = []
 	var slot := 0
 	for owner_id: int in source.get_shape_owners():
 		for index in source.shape_owner_get_shape_count(owner_id):
 			var shape := source.shape_owner_get_shape(owner_id, index)
-			var at := source.global_transform * source.shape_owner_get_transform(owner_id)
+			if not resources.has(shape):
+				resources.append(shape)
+			var local := source.shape_owner_get_transform(owner_id)
+			var at := source_at * local
+			locals.append(local)
+			disabled.append(source.is_shape_owner_disabled(owner_id))
+			scales.append(at.basis.get_scale())
 			var proxy: Node3D
 			if slot >= record["proxies"].size():
 				proxy = ClassDB.instantiate(&"Box3DBody") as Node3D
-				proxy.set(&"body_type", ClassDB.class_get_integer_constant(&"Box3DBody", &"KINEMATIC"))
+				# Only casts use these mirrors. Explicit teleport updates the
+				# broadphase immediately; a static sensor avoids four unnecessary
+				# kinematic target/velocity updates on every native world tick.
+				proxy.set(&"body_type", ClassDB.class_get_integer_constant(&"Box3DBody", &"STATIC"))
 				proxy.set(&"is_sensor", true)
 				proxy.set(&"collision_mask", QUERY_LAYER)
 				proxy.set(&"sync_node_transform", false)
@@ -217,13 +307,17 @@ func sync_object(source: CollisionObject3D, refresh_shapes: bool = true) -> void
 			var native_at := Transform3D(at.basis.orthonormalized(), at.origin * SCALE)
 			if not proxy.transform.is_equal_approx(native_at):
 				proxy.call(&"teleport", native_at)
-				proxy.transform = native_at
 			slot += 1
 	while record["proxies"].size() > slot:
 		(record["proxies"].pop_back() as Node3D).free()
 		record["shapes"].pop_back()
-	record["layer"] = source.collision_layer
-	record["at"] = source.global_transform
+	record["layer"] = source_layer
+	record["at"] = source_at
+	record["locals"] = locals
+	record["disabled"] = disabled
+	record["scales"] = scales
+	_watch_shapes(record, resources, id)
+	record["geometry_dirty"] = false
 
 
 static func _shape_key(shape: Shape3D, scale: Vector3) -> Array:
@@ -340,10 +434,26 @@ static func _restore_excluded(disabled: Array) -> void:
 
 
 func shape_cast(query: PhysicsShapeQueryParameters3D) -> Dictionary:
-	sync_dynamic(query.collision_mask)
-	var disabled := _disable_excluded(query.exclude)
-	var hit := _native_cast(query, query.motion)
+	var disabled := begin_shape_cast(query)
+	var result := shape_cast_prepared(query)
+	end_shape_cast(disabled)
+	return result
+
+
+## A movement trace can probe several recovery starts without changing the
+## world. Synchronize and exclude once for that synchronous group. Callers
+## must end the group before moving anything or emitting gameplay signals.
+func begin_shape_cast(query: PhysicsShapeQueryParameters3D) -> Array:
+	sync_dynamic(query.collision_mask, query.exclude)
+	return _disable_excluded(query.exclude)
+
+
+func end_shape_cast(disabled: Array) -> void:
 	_restore_excluded(disabled)
+
+
+func shape_cast_prepared(query: PhysicsShapeQueryParameters3D) -> Dictionary:
+	var hit := _native_cast(query, query.motion)
 	if not bool(hit.get("hit", false)):
 		return {}
 	var result := _mapped(hit)

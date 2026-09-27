@@ -171,8 +171,6 @@ func step() -> void:
 func begin_tick() -> void:
 	tick += 1
 	_path_searches_left = PATH_SEARCHES_PER_TICK
-	if is_instance_valid(game.drop_physics) and game.drop_physics.queries != null:
-		game.drop_physics.queries.sync_dynamic()
 
 
 ## The tick ends, every player having run it: the match judges it, then the

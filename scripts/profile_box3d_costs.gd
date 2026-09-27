@@ -99,7 +99,7 @@ class TimedQueries:
 	var hull_entries := 0
 	var hitbox_entries := 0
 
-	func sync_dynamic(mask: int = ALL_LAYERS) -> void:
+	func sync_dynamic(mask: int = ALL_LAYERS, exclude: Array[RID] = []) -> void:
 		if meter.enabled:
 			if mask & _dynamic_layers == 0:
 				scans_world_only += 1
@@ -111,7 +111,7 @@ class TimedQueries:
 				hitbox_entries += _hitboxes.size()
 		meter.enter(CostMeter.Part.SYNC)
 		sync_scan_depth += 1
-		super.sync_dynamic(mask)
+		super.sync_dynamic(mask, exclude)
 		sync_scan_depth -= 1
 		meter.leave()
 
@@ -121,9 +121,11 @@ class TimedQueries:
 		meter.leave()
 		return result
 
-	func shape_cast(query: PhysicsShapeQueryParameters3D) -> Dictionary:
+	# Ordinary and prepared recovery casts share this result path. Measuring
+	# the outer shape_cast alone would miss PlayerBody's prepared probes.
+	func shape_cast_prepared(query: PhysicsShapeQueryParameters3D) -> Dictionary:
 		meter.enter(CostMeter.Part.CAST)
-		var result := super.shape_cast(query)
+		var result := super.shape_cast_prepared(query)
 		meter.leave()
 		return result
 
@@ -166,7 +168,7 @@ class CountedQueries:
 			var kind := "hitbox" if source is Hitbox else ("hull" if source is CharacterBody3D else "other")
 			if not rows.has(kind):
 				rows[kind] = {"calls": 0, "repeat_same_tick": 0, "from_scan": 0,
-					"explicit": 0, "fast_skip": 0, "changed_pose_or_layer": 0, "same_pose_forced_refresh": 0}
+					"explicit": 0, "fast_skip": 0, "changed_pose_or_layer": 0, "same_pose_forced_refresh": 0, "geometry_dirty": 0}
 			var row: Dictionary = rows[kind]
 			var id := source.get_instance_id()
 			row["calls"] += 1
@@ -176,7 +178,9 @@ class CountedQueries:
 			_seen_this_tick[id] = true
 			var record: Dictionary = _objects.get(id, {})
 			var same: bool = record.get("at") == source.global_transform and int(record.get("layer", -1)) == source.collision_layer
-			if same and not refresh_shapes:
+			if record.get("geometry_dirty", false):
+				row["geometry_dirty"] += 1
+			elif same and not refresh_shapes:
 				row["fast_skip"] += 1
 			elif same:
 				# A same-pose refresh can still be necessary after resizing or
@@ -281,6 +285,7 @@ func _native_finished(_t: SimTick) -> void:
 func _report_costs(label: String) -> void:
 	if _count_sync:
 		print("COST_COUNTS_ONLY elapsed times intentionally omitted; extra per-object inspection changes CPU cost")
+		print("COST_COUNTS_SCOPE object rows count sync_object calls only; registry entries skipped in _sync_group are included in COST_SYNC_SCANS, not object fast_skip")
 		for kind: String in (_queries as CountedQueries).rows:
 			print("COST_SYNC_OBJECT kind=%s counts=%s" % [kind, JSON.stringify((_queries as CountedQueries).rows[kind])])
 	else:

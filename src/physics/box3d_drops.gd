@@ -378,8 +378,14 @@ func tick(t: SimTick) -> void:
 	if not initialized or t.tick == _last_tick:
 		return
 	_last_tick = t.tick
+	# Character and bone proxies are query-only sensors. Queries refresh the
+	# layers they need immediately before casting; the rigid-body solver never
+	# collides with them. Updating all bone poses here wasted a full scan even
+	# on ticks without a shot, and repeated the query's own synchronization.
+	# Newly added static geometry must still exist before the solver advances,
+	# including on ticks with no gameplay query to flush the pending nodes.
 	if queries != null:
-		queries.sync_dynamic()
+		queries.flush_pending()
 	pre_step.emit(t)
 	for id: int in _bodies.keys():
 		var item: DroppedItem = _items[id]

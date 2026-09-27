@@ -33,10 +33,12 @@ static func adapter_for_node(node: Node) -> Box3DDrops:
 	return queries.adapter as Box3DDrops if queries != null else null
 
 
-static func sync_object(node: CollisionObject3D) -> void:
+## Pose-only callers may reuse shape geometry. Shape-owner transforms,
+## disabling or replacing owners require the default full refresh.
+static func sync_object(node: CollisionObject3D, refresh_shapes: bool = true) -> void:
 	var adapter := adapter_for_node(node)
 	if adapter != null:
-		adapter.queries.sync_object(node)
+		adapter.queries.sync_object(node, refresh_shapes)
 
 
 static func intersect_ray(space: PhysicsDirectSpaceState3D, query: PhysicsRayQueryParameters3D) -> Dictionary:
