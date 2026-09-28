@@ -646,7 +646,7 @@ list, split into Local and Remote items, with the measurements.
     blended additively in linear light with the world blurred behind its
     panels as Panorama does. Local: checked on Sid's machine against
     `In_game_ui.webp` at 1080p and 4K, where it matches to the pixel but
-    for the player's portrait and colour. Still to do: the kill feed,
+    for the player's portrait and colour. Still to do: the
     radar, scoreboard, the bomb's icon on the clock, the
     kill marks over the health and the low health and ammo glow. The buy
     menu rebuilt 2026-09-25 to Sid's screenshots of CS2's: its columns in
@@ -663,6 +663,14 @@ list, split into Local and Remote items, with the measurements.
     MVP's 3D agent on the band, the damage under dead enemies' cards (the
     report keeps it, `RoundReport.damage_between`) and the team income line
     in the chat. Local: a round won and lost beside CS2's at 1080p.)*
+    *(Kill feed done 2026-09-28: CS2's death notices in the top right from
+    its huddeathnotice layout and styles (`KillFeed`, from the game's
+    player_death events), every mark the event can carry, your kills
+    ringed red and your deaths on dark red, 5 s a row (7.5 s for yours),
+    fading over 1 s. Its icons come with `extract_assets.sh hud`. Left: the
+    assister, a blind or airborne killer, a kill through smoke, revenge and
+    domination draw when player_death carries them, and nothing fills them
+    yet. Local: a round's kills beside CS2's at 1080p with its icons.)*
 
 ### Phase 5: the bomb
 

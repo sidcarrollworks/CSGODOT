@@ -877,10 +877,10 @@ extract_equipment() {
 ## less "weapon_" (with the silencers-off variants), armour, the kit, the
 ## grenades, the knife and the bomb, for the ammo display, the kill feed and
 ## the buy menu. With them the rest of the HUD's images (panorama/images/hud
-## and its teamcounter/: the armour and helmet, each gun's reserve magazine,
-## the kill marks, the team counter's bot portrait and skull; not yet the
-## radar's, the kill feed's or the death panel's), the few UI icons the HUD
-## draws (HUD_UI_ICONS), the masks and the dot pattern its dark panels are
+## and its teamcounter/ and deathnotice/: the armour and helmet, each gun's
+## reserve magazine, the kill marks, the team counter's bot portrait and
+## skull, the kill feed's marks; not yet the radar's or the death panel's),
+## the few UI icons the HUD draws (HUD_UI_ICONS), the masks and the dot pattern its dark panels are
 ## cut and textured with, the agent's poses and CS2's word on each item for
 ## the buy menu, and CS2's font, Stratum2. The font is not in the
 ## VPK: it is loose in game/csgo/panorama/fonts as one stratum2.uifont, which
@@ -901,7 +901,7 @@ extract_hud() {
 	local filter
 	filter="$("$S2V_BIN" -i "$PAK_VPK" -f "panorama/images/hud/" -l \
 		| tr -d '\r' | sed -E 's/ CRC:[0-9a-fA-F]+ size:[0-9]+$//' \
-		| grep -E '^panorama/images/hud/([^/]+|scope/.+|teamcounter/.+)$' | paste -sd, -)"
+		| grep -E '^panorama/images/hud/([^/]+|scope/.+|teamcounter/.+|deathnotice/.+)$' | paste -sd, -)"
 	require_filter "$filter" "the HUD's images"
 	filter+=",panorama/images/icons/equipment/,panorama/images/icons/person.vsvg_c"
 	filter+=",panorama/images/backgrounds/bluedots_large_png.vtex_c"
