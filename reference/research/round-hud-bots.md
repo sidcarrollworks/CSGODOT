@@ -171,6 +171,22 @@ above. What the first reading left out:
   (five), whether a new row fades in (it appears at once), and what your own
   suicide is marked (a death, not a kill).
 
+**What fills the marks** (GT 3fc98e7, DumpSource2/convars.txt, read
+2026-09-28 for `src/game/kill_credit.gd`):
+- `cs_AssistDamageThreshold 25` (developmentonly, gamedll): "the amount of
+  damage needed to score an assist". CS:GO's community figure was 41; CS2's
+  file says 25. That 25 itself is enough is **Inferred** from "needed".
+- `sv_flashed_amount_for_blind_kill 0.7`: "Minimum flashed alpha value for
+  a player to be awarded a blind kill on the kill feed", which is
+  `attackerblind`.
+- `sv_nonemesis true` (developmentonly, defensive): "Disable nemesis and
+  revenge". So CS2 sends `dominated` and `revenge` as 0 by default, though
+  its strings (`#Player_You_Are_Now_Dominating`, `m_nPlayerDominated`) and
+  the kill feed's icons remain.
+- mod.gameevents: `thrusmoke` is "hitscan weapon went through smoke
+  grenade", `attackerinair` "attacker was in midair". What a flash assist
+  asks of the flash is not in the files.
+
 **Critiques players have of CS2's kill feed.** Few are indexed; Reddit and
 the Steam forums refuse the cloud's fetches, so these rest on search
 summaries:

@@ -54,7 +54,8 @@ so no plant lands on the tick a round ends).
 var events := GameEvents.new()
 events.send(&"player_death", {"userid": 3, "attacker": 1, "weapon": "weapon_ak47", "headshot": true})
 events.listen(&"player_death", func(e: GameEvent) -> void: print(e.fields.attacker))
-events.listen_all(callable)          # every event: the kill feed, a recorder, the network later
+events.listen_all(callable)          # every event: a recorder, the network later
+events.complete(&"player_death", f)  # f(fields) -> {keys to add}, as it is sent (the kill credit)
 events.unlisten(&"player_death", callable)
 events.flush()                       # the tick's owner, once, at the end of the tick
 events.muted = true                  # re-running a tick (prediction): sends are dropped
@@ -70,6 +71,12 @@ events.muted = true                  # re-running a tick (prediction): sends are
   (returns false and prints an error), so the list below stays the truth.
   A new event is a line added to the schema and to this file.
 - Listeners are called in the order they were added.
+- `complete(name, completer)`: `completer(fields) -> Dictionary` is called
+  as each event of that name is sent, before it is queued, and the keys it
+  returns fill only keys the sender left out (never one it gave, never one
+  the schema lacks). It is how `KillCredit` adds a death's assister and
+  marks at the moment of the kill. A completer must not send events. A
+  muted send completes nothing.
 
 ### Value conventions
 
@@ -244,9 +251,25 @@ Filled by the victim: `victim` (its userid), `health_taken`, `armor_taken`,
 - `player_death` is sent with what the record knows (attacker, weapon,
   headshot, penetrated, noscope, distance, hitgroup, damage; noscope is
   a round from a scoped gun fired unscoped, `Weapon.Shot.noscope`).
-  Assists, flash assists, through smoke and blind attackers are filled by
-  whoever knows them later (a kill-credit system listening to
-  `player_hurt`, the grenades' smoke query).
+  `KillCredit` (`src/game/kill_credit.gd`, which `GameSystems` adds after
+  `ItemDrops`) completes it as it is sent (2026-09-28), by CS2's rules
+  (GameTracking-CS2 3fc98e7, convars.txt):
+  - `assister`: the enemy of the victim, not the killer, who took the
+    most health from them this life, at least `cs_AssistDamageThreshold`
+    25; kept from every `player_hurt` as it is sent, forgotten at the
+    victim's `player_spawn`, `round_prestart` and warmup.
+  - `assistedflash`: with no damage assist, the enemy whose flash
+    (`player_blind`) the victim is still under (`blind_share` > 0). A guess
+    beyond what CS2's files say.
+  - `attackerblind`: the killer's `blind_share` at least
+    `sv_flashed_amount_for_blind_kill` 0.7.
+  - `attackerinair`: the killer's node's `on_ground` is false.
+  - `thrusmoke`: a gun's kill (primary or pistol slot) where
+    `smoke_length_between` the killer's eyes and the victim's chest is
+    more than 0.
+  - `dominated`, `revenge`: 0, as CS2 sends them with `sv_nonemesis` 1,
+    its default.
+  A suicide and a teamkill get no assist; the bomb's kill no marks.
 
 ## 3. Items and inventories
 
