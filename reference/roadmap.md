@@ -257,6 +257,7 @@ issue done here and on the page in the same pull request.
 | 23 | The distant hill missing (the 3D skybox past the camera's far plane, dropped before its depth squeeze can help) | *(done: `FarMaterials.CULL_BOX`, `far_position`)* Far meshes kept in the frustum, and a squeeze that keeps them inside the far plane | The view beside CS2; the cost | R2 |
 | 24 | The sky dark slate grey (the skybox's clouds, CS2's additive `csgo_unlitgeneric`, imported as an opaque, lit sheet) | **Done 2026-09-28:** `UnlitMaterials`, unlit and added; its textures listed by `export_alpha.gd` | **Done:** `extract_assets.sh layers`; long doors' sky 0.39 of CS2's to 0.86. The rest of the gap, the sky's own brightness and haze, needs research | 10, 23 |
 | 25 | Red window frames, doors and awnings too vivid (the export's tint over the whole texture, not only the tint mask's paint) | *(done 2026-09-26: `prop_tint`, `LightmapMaterials.carry_features`)* The tint moved off the colour and put back through `g_tTintMask`; the `layers` step fetches the masks | **Done 2026-09-28:** `layers` fetched 55 masks; long doors' shutters and door from 0.36 to 0.50 saturation to 0.22 to 0.34 (CS2's 0.17 to 0.31), the awning unchanged | 7, R7 |
+| 26 | Walking, the character stops dead for a tick and sets off again (a move grazing a floor that rises a few degrees took no travel, and the step found no floor) | **Done 2026-09-28:** the sweep keeps its clearance along the hit's normal, and looks past its end (`Box3DQueries.shape_cast_prepared`); checks on made-up slopes | **Done 2026-09-28:** five bots a minute on dust2, 13 hitches to none (`tests/run_dust2_bot_checks.gd`); Sid plays | |
 
 **Box3D is the game's physics (2026-09-28, Sid).** Sid chose to take the
 trial below forward. CI and the cloud threads take its Linux libraries rebuilt
@@ -273,6 +274,23 @@ edges; FootPlant on flat floors under Box3D's rest clearance (playtest issue
 5); the 6 ms frame target; tick-owned hitbox poses for multiplayer; and
 `scripts/profile_dust2.gd` at 5 and 10 a side on both backends, for
 `reference/performance.md`.
+
+**The walking hitch, and the tick 16% shorter (2026-09-28; the 6 ms target
+still open).** Walking dust2 stopped a player dead for a tick, 13 times a
+minute among five bots: a move grazing a floor that rises a few degrees
+beside the way backed off further than it went, and the step up found no
+floor on its way down (playtest issue 26). The sweep now keeps its clearance
+along the hit's normal and looks past its end; a recovery is two casts
+where eight were; a player's tick synchronizes the other hulls once and
+leaves its own out once; a ray from the open is one native call. The seeded
+ten-player tick went from 3.68 to 3.09 ms, its 95th from 4.79 to 4.05, and a
+minute's walk from 117,000 hull casts to 96,000. The merges of 27 and 28
+September had not slowed the tick: main ran level with #125's merge, 0.2 ms
+over the branch. What is left of the 6 ms is the movement in GDScript
+(1.1 ms) and the tick on the thread that draws; the two ways to the goal,
+the solver in native code or the simulation in a process of its own, are
+Sid's to choose. Measurements and the list:
+[box3d-walking-hitch-2026-09-28.md](research/box3d-walking-hitch-2026-09-28.md).
 
 **Box3D physics trial (2026-09-26, Sid).** The branch
 `codex/box3d-dropped-guns` started with dropped-gun jitter and now follows

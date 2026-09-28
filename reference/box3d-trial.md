@@ -22,6 +22,13 @@ follow Sid's request to address the code bottleneck while leaving effects for
 later. Their measurements supersede the performance figures below; the
 6 ms maximum frame-time target remains open.
 
+[The walking hitch, and the tick after it](research/box3d-walking-hitch-2026-09-28.md)
+(2026-09-28) changes what a sweep hands back: the clearance is kept along
+the hit's normal where the motion grazes it, and a motion that would end
+inside the contact band is a hit, where the native cast reports none. It
+ended a stop dead for a tick while walking dust2, and took the seeded
+ten-player tick from 3.68 ms to 3.09.
+
 The earlier [full frame-time audit](research/frame-times-2026-09-26.md) follows the
 full conversion: 4K ten-player p99 12.5–12.8 ms versus legacy 9.1 ms, with
 3.47 ms/tick in proxy synchronization and 0.42 ms in the four-native-step
