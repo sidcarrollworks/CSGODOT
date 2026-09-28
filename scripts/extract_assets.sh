@@ -1072,11 +1072,17 @@ write_weapon_tables() {
 ## helmet's headshot_armor_e1 and _flesh, headshot_noarmor, and the body's
 ## mud_impact_bullet; not the older kevlar1, headshot_armor_01 or
 ## bodyshot_kill_01, which no event plays), what the one hit and those near
-## hear (player_damagebody_04 to _08), and the death groan (death1 to 6). CS2 keeps sounds as one file
+## hear (player_damagebody_04 to _08), and the death groan (death1 to 6);
+## and the round's (playtest issue 21, reference/research/audio-round.md 1.2):
+## the default music kit's cues (valve_cs2_01, not its main menu or team
+## choice), the match stingers (cs_stinger, lastroundhalf), the freeze
+## countdown and warmup beeps, the game-over and round report panels'
+## sounds, the classic announcer, and the bomb's pickup (pickup_weapon_02
+## with its beep). CS2 keeps sounds as one file
 ## each (.vsnd_c), a few variants to a set, which the decompile writes out as
-## the audio they hold. The sound event definitions that pair them with
-## volumes and distances are not fetched; the numbers are set by ear.
-SOUND_FILTER="^sounds/(weapons/($GUN_SOUND_DIRS|$EQUIPMENT_SOUND_DIRS)/[a-z0-9_-]+|weapons/[a-z0-9_]+|player/footsteps/(concrete_ct|dirt|sand|wood|metal_solid|metal_vent|metal_chainlink|metal_grate|tile|gravel|grass|carpet|glass|rubber|plastic_barrel|mud)_[0-9]+|player/footsteps/land_(concrete|dirt|sand|metal_solid|metal_vent|metal_grate|tile|gravel|grass|carpet|glass|rubber|mud|auto)(_[0-9]+)?|player/(kevlar_0[1-8]|headshot_armor_e1|headshot_armor_flesh|headshot_noarmor_0[1-5]|player_damagebody_0[4-8]|death[1-6])|physics/(concrete/concrete_impact_bullet[0-9]|surfaces/(sand|dirt|tile|default|carpet|grass|mud)_impact_bullet[0-9_]*|metal/metal_solid_impact_bullet[0-9]|wood/wood_solid_impact_bullet[0-9]))\.vsnd_c$"
+## the audio they hold. The sound events that pair them with volumes and
+## distances come from GameTracking-CS2's text (scripts/sound_events.sh).
+SOUND_FILTER="^sounds/(weapons/($GUN_SOUND_DIRS|$EQUIPMENT_SOUND_DIRS)/[a-z0-9_-]+|weapons/[a-z0-9_]+|player/footsteps/(concrete_ct|dirt|sand|wood|metal_solid|metal_vent|metal_chainlink|metal_grate|tile|gravel|grass|carpet|glass|rubber|plastic_barrel|mud)_[0-9]+|player/footsteps/land_(concrete|dirt|sand|metal_solid|metal_vent|metal_grate|tile|gravel|grass|carpet|glass|rubber|mud|auto)(_[0-9]+)?|player/(kevlar_0[1-8]|headshot_armor_e1|headshot_armor_flesh|headshot_noarmor_0[1-5]|player_damagebody_0[4-8]|death[1-6])|music/valve_cs2_01/(startofmatch|startround_01|startaction_0[12]|bombplanted|bombtenseccount|roundtenseccount|wonround|lostround|deathcam|roundmvpanthem_01|endofmatch)|music/cs_stinger|ui/(counter_beep|counter_beep_done|beep07|lastroundhalf)|ui/panorama/(gameover_showpanel_01|round_report_[a-z0-9_]+)|vo/announcer/cs2_classic/(bombpl|bombdef|ctwin|terwin|rounddraw|legacy_[a-z0-9_]+)|items/pickup_weapon_02|physics/weapons/weapon_c4beep_impact_0[0-9]|physics/(concrete/concrete_impact_bullet[0-9]|surfaces/(sand|dirt|tile|default|carpet|grass|mud)_impact_bullet[0-9_]*|metal/metal_solid_impact_bullet[0-9]|wood/wood_solid_impact_bullet[0-9]))\.vsnd_c$"
 
 ## The bullet holes: the game's bullet-hole materials for concrete, plaster,
 ## metal and wood, which are what dust2 is made of, and the colour, occlusion

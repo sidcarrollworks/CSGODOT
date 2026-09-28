@@ -272,7 +272,12 @@ layers of every sound, are a table generated from the game's text files
 (`reference/sounds/`, by `scripts/sound_events.sh`), and `SoundEvents`
 (`src/audio/sound_events.gd`) plays any of them the way CS2's sound stack
 does, on the bus of its mixgroup (`default_bus_layout.tres`). New sounds
-are built on it; the ones above still carry levels set by ear.
+are built on it; the ones above still carry levels set by ear. The round's
+sounds are on it (`src/audio/round_sounds.gd`): the announcer, the music
+kit's cues giving way to each other by their priorities
+(`src/audio/music_rules.gd`) at CS2's default music volumes
+(`src/audio/audio_settings.gd`), the freeze countdown's beeps, and the
+bomb's beeps, plant and defuse (`C4View`).
 
 ## Lighting
 

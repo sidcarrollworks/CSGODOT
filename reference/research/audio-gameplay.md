@@ -865,16 +865,16 @@ exactly as CS2 does for steps at 1250.
 1. `reference/cs2-systems.md:450-451` (S2): the sound event definitions are
    readable remotely from GameTracking-CS2's text `.vsndevts` (build 2000915);
    S2 need not wait for Sid's machine. Mark it Remote, or done by this page.
-2. `reference/systems/bomb.md:36`: replace "Guessed from CS:GO's names" with
+2. *(Applied 2026-09-28, playtest issue 21.)* `reference/systems/bomb.md:36`: replace "Guessed from CS:GO's names" with
    the events of section 5: `C4.PlantSound` (`c4_beep2`, A) and
    `C4.PlantSoundB` (`c4_beep3`, B), `_10sec` versions, `c4.explode`
    (`c4_explode1`) and the `c4.shockwave.*` set.
-3. `src/bomb/c4_view.gd:18-19`: stems `weapons/c4/c4_beep2` and `c4_beep3`
+3. *(Applied 2026-09-28, playtest issue 21, as the sound events themselves.)* `src/bomb/c4_view.gd:18-19`: stems `weapons/c4/c4_beep2` and `c4_beep3`
    chosen by the bomb's site letter, and `c4_beep2_10sec`/`c4_beep3_10sec`
    under ten seconds; explosion `weapons/c4/c4_explode1`. As written, the
    `SoundBank` prefix rule mixes A and B beeps and pulls `c4_explode_close_01`
    into the explosion.
-4. `src/bomb/c4_view.gd:80-81, 171-173`: beeps silent at 1300 units, not an
+4. *(Applied 2026-09-28, playtest issue 21.)* `src/bomb/c4_view.gd:80-81, 171-173`: beeps silent at 1300 units, not an
    inverse curve to 11 811.
 5. `src/audio/weapon_sounds.gd:33`: `HIT_SETS` should be the CS2 feedback
    files: body `physics/surfaces/mud_impact_bullet` (damage and kill),

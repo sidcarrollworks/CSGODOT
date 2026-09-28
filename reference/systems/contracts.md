@@ -137,6 +137,8 @@ Rounds and the match
 - `round_prestart`, `round_poststart`, `round_freeze_end`, `round_officially_ended`, `begin_new_match`, `round_announce_warmup`, `warmup_end`, `start_halftime`, `cs_win_panel_match`: (none)
 - `round_announce_match_start`, `round_announce_last_round_half`, `round_announce_match_point`, `round_announce_final`: (none); what CS2 announces of a round as it starts, sent after `round_start` (`MatchState.announce_round`; the moment is inferred from their names)
 - `round_start`: timelimit, fraglimit, objective
+- `cs_round_start_beep`, `cs_round_final_beep`: (none); the freeze time's countdown, a start beep a second over its last `MatchRules.freeze_beeps` seconds and the final beep as it ends, just before `round_freeze_end` (the timing is inferred, `reference/research/audio-round.md` Local check 1)
+- `round_time_warning`: (none); once a round at `MatchRules.time_warning_seconds` left, not once the bomb is down (the threshold is to measure, audio-round.md Local check 2)
 - `round_end`: winner, reason, message, legacy, player_count, nomusic (`nomusic` set: no round-end music, the action goes on)
 - `round_mvp`: userid, reason, value, nomusic; sent by `RoundReport`
   (`src/match/round_report.gd`) right after `round_end`, with CS2's reason

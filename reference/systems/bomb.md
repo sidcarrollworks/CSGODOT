@@ -32,8 +32,8 @@ as a CT. Its blast is dust2's (700).
 | Defuse reach | eyes within 90 units of the bomb, aim within 40 degrees of it | **Guess**, C1 |
 | Pickup | a terrorist's feet within 24 units across and 54 up or down | **Guess** from the hull's size: CS2 picks it up on touch |
 | Dropping it | lands at the dropper's feet; they cannot pick it back up for 1 s | **Guess**: CS2 throws it clear |
-| Beeps | once a second at the plant, closing in steadily to ten a second at the end | **Guess**, C1 |
-| Sounds | `sounds/weapons/c4/c4_beep*` and `c4_explode*` | **Guessed** from CS:GO's names; the extraction's `c4/` folder is not listed in `reference/weapons/sounds.md` yet |
+| Beeps | 1.05 a second at the plant, rising to 7.8 at the end: Gritter's fit to CS:GO (`reference/research/round-bomb-grenades.md` 1.3), `C4.beep_interval` | **Inferred** for CS2 (its client schedules by the share gone), C1 times a few |
+| Sounds | CS2's sound events (`reference/research/audio-gameplay.md` 5): `C4.PlantSound` (`c4_beep2`) on A, `C4.PlantSoundB` (`c4_beep3`, lower) on B, their `_10sec` versions in the last ten seconds, `c4.initiate`, `c4.plant`, `c4.disarmstart`/`finish`, `Player.PickupC4`, `c4.explode` and the `c4.shockwave.*` layers | Read from the game's `.vsndevts` (playtest issue 21, 2026-09-28) |
 
 Not built: CS2's July 2026 shockwave (walls block it, corners weaken it,
 damage baked per map in `baked_bomb_damage.vdata`, whose values C2 has not

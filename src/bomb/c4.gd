@@ -238,13 +238,16 @@ static func blast_damage(distance: float, bomb_damage: float, radius_scale: floa
 
 
 ## Seconds from one beep to the next, with this many seconds left on a
-## timer of this length. A guess, until C1 measures the cadence: a beep a
-## second when it is planted, closing in steadily to ten a second at the
-## end, which is how it sounds. Only what is heard uses it (C4View); the
-## simulation does not beep.
+## timer of this length: the beeps a second, 1.04865 * e^(0.244018 x +
+## 1.763798 x^2) with x the share of the timer gone, from 1.05 at the plant
+## to 7.8 at the end (0.95 s apart to 0.13 s). That is Wouter Gritter's fit
+## to CS:GO's beeps (reference/research/round-bomb-grenades.md 1.3); that CS2
+## kept it is inferred from its client scheduling beeps by the share gone,
+## and the bomb's Local check C1 times a few in CS2. Only what is heard uses
+## it (C4View); the simulation does not beep.
 static func beep_interval(seconds_left_now: float, timer: float) -> float:
-	var left := clampf(seconds_left_now / maxf(timer, 0.001), 0.0, 1.0)
-	return lerpf(0.1, 1.0, left)
+	var gone := 1.0 - clampf(seconds_left_now / maxf(timer, 0.001), 0.0, 1.0)
+	return 1.0 / (1.04865 * exp(0.244018 * gone + 1.763798 * gone * gone))
 
 
 ## Everything the bomb is, as plain data, to put back with load_state.

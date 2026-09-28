@@ -77,6 +77,15 @@ var volume_convar: String
 var duration: float
 var ducking_bypass: float
 var dsp_bypass: float
+## A music cue that plays until it is stopped (loop_track).
+var loops: bool
+## A music cue stopped this many seconds in (stop_at_time); negative for
+## never.
+var stop_at_time: float
+## [[seconds, amount], ...]: how far the mix layer the event's mixgroup
+## triggers is applied, from the start, when set_mixlayer_amount_enable;
+## empty for fully while it plays.
+var mixlayer_curve: Array
 ## Every field, for what the typed ones above leave out (the music kit's
 ## stop flags and sync points, occlusion, reverb).
 var fields: Dictionary
@@ -132,6 +141,11 @@ static func from_fields(event_name: String, event_fields: Dictionary) -> SoundEv
 	if event.type == "csgo_music" or _flag(event_fields, "use_volume_convar"):
 		event.volume_convar = String(event_fields.get("volume_convar", ""))
 	event.duration = _number(event_fields, "vsnd_duration", 0.0)
+	event.loops = event.type == "csgo_music" and _flag(event_fields, "loop_track")
+	event.stop_at_time = _number(event_fields, "stop_at_time", -1.0) if event.type == "csgo_music" else -1.0
+	if _flag(event_fields, "set_mixlayer_amount_enable"):
+		var amount: Variant = event_fields.get("time_mixlayer_amount_curve", [])
+		event.mixlayer_curve = amount if amount is Array else []
 	event.ducking_bypass = _number(event_fields, "ducking_bypass", 0.0)
 	event.dsp_bypass = _number(event_fields, "dsp_bypass", 0.0)
 	return event
@@ -177,8 +191,12 @@ func stereo_at(distance: float) -> float:
 
 
 ## The share left seconds after a stop: the event's fade curve, or a
-## straight fade over voice_fade_out_time.
+## straight fade over voice_fade_out_time (a music cue's over its
+## volume_fade_out_input_max).
 func fade_at(seconds: float) -> float:
+	if type == "csgo_music":
+		var over := _number(fields, "volume_fade_out_input_max", 1.0)
+		return clampf(1.0 - seconds / over, 0.0, 1.0) if over > 0.0 else 0.0
 	if not fadetime_curve.is_empty():
 		return clampf(curve_at(fadetime_curve, seconds), 0.0, 1.0)
 	if voice_fade_out_time <= 0.0:
@@ -188,6 +206,8 @@ func fade_at(seconds: float) -> float:
 
 ## Seconds a stop takes to fall silent.
 func fade_length() -> float:
+	if type == "csgo_music":
+		return maxf(_number(fields, "volume_fade_out_input_max", 1.0), 0.0)
 	if not fadetime_curve.is_empty():
 		return float(fadetime_curve[-1][0])
 	return maxf(voice_fade_out_time, 0.0)

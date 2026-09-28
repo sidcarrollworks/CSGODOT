@@ -473,6 +473,14 @@ only), then grow.
 
 ### 5.3 The repo today (*Read*, `main` at `3975eef`)
 
+*Stale since 2026-09-28 (playtest issue 21):* `MatchState` sends the round's
+events (it has since 2026-09-23), plus `cs_round_start_beep`,
+`cs_round_final_beep` and `round_time_warning`; `default_bus_layout.tres`
+holds CS2's mixgroups; `RoundSounds` (`src/audio/round_sounds.gd`) plays the
+cues of 5.2's items 1 to 3, 7 and 8 through `SoundEvents`, with the music
+volumes in `AudioSettings`; and `C4View` plays the bomb's own events. The
+list below is kept as it was read.
+
 - No round, interface, voice, music or ambient sound exists. The only sound
   code is `src/audio/sound_bank.gd` (files by stem, a randomizer),
   `footsteps.gd`, `weapon_sounds.gd`, `src/combat/bullet_impacts.gd`, and the
@@ -542,7 +550,7 @@ whether it fits this build and at what cost.
    sent, only signals; `round_start`, `round_freeze_end` and `round_end`
    listeners in `src/economy/economy.gd:95-97` and `src/bomb/bomb_system.gd:44-46`
    never fire outside tests (if `main` has not fixed it since `3975eef`).
-8. `src/bomb/c4_view.gd:16-19`: the stems are guesses; the event names are
+8. *(Applied 2026-09-28, playtest issue 21: `C4View` plays these events and `RoundSounds` the announcer and music.)* `src/bomb/c4_view.gd:16-19`: the stems are guesses; the event names are
    `C4.PlantSound`, `C4.PlantSoundB`, `C4.PlantSound_10sec`,
    `C4.PlantSoundB_10sec` and `c4.explode` (`round-bomb-grenades.md` 1.3);
    the bomb-planted announcer and music are missing from any view.

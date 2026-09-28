@@ -32,9 +32,15 @@ extends Node
 ##   loop plays until stop() or its self_destruct_time; a stop fades by the
 ##   event's fade curve, or over voice_fade_out_time.
 ##
-## Not modelled yet: occlusion, reverb, the mix layers (the ducking; their
-## numbers are in the table), doppler, the impact-speed and velocity
-## curves, and the music kit's priorities and stop flags (issue 21).
+## - A music kit's cue (csgo_music) gives way by its priority and stop flags
+##   (MusicRules), loops while loop_track holds, stops itself at
+##   stop_at_time, and fades out over volume_fade_out_input_max.
+## - The mix layers its voices trigger, by mixgroup (the death camera's duck
+##   of everything else), are layer_amounts(); whoever owns the buses applies
+##   them (bus_scales(); RoundSounds does).
+##
+## Not modelled yet: occlusion, reverb, doppler, the impact-speed and
+## velocity curves, and the music's sync points and fade in.
 ##
 ## Sounds are views (CLAUDE.md): a view calls start() from _process, on
 ## what the GameWorld's events handed out, never from inside the tick. The
@@ -182,15 +188,25 @@ static func _stream(file: String) -> AudioStream:
 ## Starts an event. at is where (a Vector3, or a Node3D to follow; null to
 ## play it flat); source is who makes it (a userid or an entity's id), for
 ## the limits and blocks. options: local (the source is the listener's own
-## player), suppressed (a stealthy source: the silent reload). Returns the
-## voice's id, or 0 if the event is not heard (unknown, someone else's
-## localplayeronly sound, or blocked).
+## player), suppressed (a stealthy source: the silent reload), delay
+## (seconds more to wait than the event's own). Returns the voice's id, or 0
+## if the event is not heard (unknown, someone else's localplayeronly sound,
+## blocked, or music that gives way to what plays).
 func start(event_name: String, at: Variant = null, source: int = -1, options := {}) -> int:
 	var event := find(event_name)
 	if event == null:
 		return 0
 	if event.local_player_only and not options.get("local", false):
 		return 0
+	if event.type == "csgo_music":
+		var music := _music_playing()
+		var playing: Array[SoundEvent] = []
+		for voice_playing in music:
+			playing.append(voice_playing.event)
+		if MusicRules.refused(event, playing, _convar(event)):
+			return 0
+		for i in MusicRules.stopped_by(event, playing):
+			_stop_voice(music[i])
 	var voice := Voice.new()
 	voice.event = event
 	voice.source = source
@@ -213,9 +229,9 @@ func start(event_name: String, at: Variant = null, source: int = -1, options := 
 	voice.volume_offset = rng.randf_range(event.volume_random_min, event.volume_random_max) if event.volume_random_max > event.volume_random_min else event.volume_random_min
 	voice.pitch = event.pitch + (rng.randf_range(event.pitch_random_min, event.pitch_random_max) if event.pitch_random_max > event.pitch_random_min else event.pitch_random_min)
 	voice.suppressed = options.get("suppressed", false)
-	voice.starts_at = _now + event.delay
+	voice.starts_at = _now + event.delay + float(options.get("delay", 0.0))
 	_voices.append(voice)
-	if event.delay <= 0.0:
+	if voice.starts_at <= _now:
 		_begin(voice)
 	for child in event.children:
 		# At the same place either way: with set_child_position off, CS2's
@@ -267,6 +283,41 @@ func voices() -> Array[Dictionary]:
 	return result
 
 
+## How far each mix layer is applied by what plays: {layer: 0 to 1}. A
+## layer is triggered by the mixgroup its table entry names (the death
+## camera's DuckingMusic drives DuckingMusicLayer), as far as the event's
+## time_mixlayer_amount_curve says at the time played, or fully while it
+## plays; the largest of its voices.
+func layer_amounts() -> Dictionary:
+	var result := {}
+	var layers: Dictionary = table().get("mixlayers", {})
+	for voice in _voices:
+		if voice.ended or not voice.started or voice.stopped_at >= 0.0:
+			continue
+		for layer: String in layers:
+			for trigger: Dictionary in (layers[layer] as Dictionary).get("Triggers", []):
+				if String(trigger.get("trigger", "")) != voice.event.mixgroup:
+					continue
+				var amount := float(trigger.get("mixamount", 1.0))
+				if not voice.event.mixlayer_curve.is_empty():
+					amount *= SoundEvent.curve_at(voice.event.mixlayer_curve, _now - voice.starts_at)
+				result[layer] = maxf(float(result.get(layer, 0.0)), amount)
+	return result
+
+
+## Each bus's share under these layer amounts: {bus: scale}, the product
+## over the layers of their level for it, as far as each is applied. Buses
+## a layer leaves out keep 1.
+static func bus_scales(amounts: Dictionary) -> Dictionary:
+	var result := {}
+	var layers: Dictionary = table().get("mixlayers", {})
+	for layer: String in amounts:
+		var levels: Dictionary = (layers.get(layer, {}) as Dictionary).get("vol", {})
+		for bus: String in levels:
+			result[bus] = float(result.get(bus, 1.0)) * lerpf(1.0, float(levels[bus]), float(amounts[layer]))
+	return result
+
+
 func _process(delta: float) -> void:
 	advance(delta)
 
@@ -302,6 +353,8 @@ func _begin(voice: Voice) -> void:
 	var event := voice.event
 	if event.self_destruct_time >= 0.0:
 		voice.stops_at = voice.starts_at + event.self_destruct_time
+	if event.stop_at_time >= 0.0:
+		voice.stops_at = minf(voice.stops_at, voice.starts_at + event.stop_at_time)
 	var ears := _listener_position()
 	var distance := _distance(voice, ears)
 	# A sound that starts past its silent end and stays put is never heard:
@@ -309,7 +362,10 @@ func _begin(voice: Voice) -> void:
 	var out_of_reach := voice.placed and voice.follow == null and distance >= event.silent_beyond()
 	var stream := _pick(event) if not out_of_reach else null
 	if stream == null:
-		voice.ends_at = _now + (0.0 if out_of_reach else silent_length)
+		# Without a file, a check's silent voice (silent_length) of a looping
+		# cue lasts until it is stopped.
+		var length := INF if event.loops and silent_length > 0.0 else silent_length
+		voice.ends_at = _now + (0.0 if out_of_reach else length)
 		voice.gain = event.gain(distance, 0.0, voice.volume_offset, voice.suppressed, _convar(event))
 		return
 	var player: Node
@@ -328,7 +384,7 @@ func _begin(voice: Voice) -> void:
 	player.connect("finished", _on_finished.bind(voice))
 	# Ended by its length too, not only by finished, which a paused or
 	# silent (headless) mix never sends.
-	if not _loops(stream) and stream.get_length() > 0.0:
+	if not event.loops and not _loops(stream) and stream.get_length() > 0.0:
 		voice.ends_at = _now + stream.get_length() / maxf(voice.pitch, 0.01) + 0.05
 	add_child(player)
 	voice.player = player
@@ -345,7 +401,20 @@ static func _loops(stream: AudioStream) -> bool:
 
 
 func _on_finished(voice: Voice) -> void:
+	# A kit's looping cue starts its file again until it is stopped.
+	if voice.event.loops and voice.stopped_at < 0.0 and voice.player != null:
+		voice.player.call("play")
+		return
 	voice.ended = true
+
+
+## The music playing, not stopping, oldest first.
+func _music_playing() -> Array[Voice]:
+	var result: Array[Voice] = []
+	for voice in _voices:
+		if voice.event.type == "csgo_music" and not voice.ended and voice.stopped_at < 0.0:
+			result.append(voice)
+	return result
 
 
 func _update(voice: Voice, ears: Vector3) -> void:
