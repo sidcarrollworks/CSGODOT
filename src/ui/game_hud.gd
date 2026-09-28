@@ -18,8 +18,9 @@ extends CanvasLayer
 ## across the middle counting down to the respawn or saying whom you are
 ## watching; "You picked up the bomb" as you walk over it, the bomb's C4
 ## on its carrier's card for your team; and CS2's buy menu on B, over the
-## rest. The rest of a round's
-## HUD (the kill feed, the radar, the scoreboard) is roadmap item 15.
+## rest; in the top right, CS2's kill feed, a row per death read from the
+## game's player_death events (KillFeed). The rest of a round's HUD (the
+## radar, the scoreboard) is roadmap item 15.
 ##
 ## Each piece is a HudElement: it draws itself with HudStyle's colours, font
 ## and icons and redraws only when what it shows changes, so a frame where
@@ -45,6 +46,9 @@ var round_report: RoundReport
 var buy_menu: BuyMenu
 ## The bomb, where the match has one; only read, for who carries it.
 var bomb: C4
+## The game whose deaths the kill feed shows, where there is one; only its
+## events are read.
+var game: GameSystems
 
 var _crosshair: Crosshair
 ## A sniper's scope, over the view while scoped in.
@@ -56,6 +60,8 @@ var team_counter: TeamCounter
 var weapon_selection: WeaponSelection
 ## ROUND WON or ROUND LOST, with the fun fact and the MVP, at a round's end.
 var win_panel: WinPanel
+## Who killed whom with what, in the top right.
+var kill_feed: KillFeed
 ## What part of the match it is, over the health and ammo.
 var alert: HudAlert
 ## Why B would not open the menu, for a moment, under the alert.
@@ -118,6 +124,10 @@ func _ready() -> void:
 	add_child(team_counter)
 	win_panel = WinPanel.new()
 	add_child(win_panel)
+	kill_feed = KillFeed.new()
+	add_child(kill_feed)
+	if game != null:
+		kill_feed.watch(game, userid)
 	alert = HudAlert.new()
 	add_child(alert)
 	hint = HudAlert.new()

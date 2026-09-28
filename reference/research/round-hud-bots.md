@@ -146,6 +146,47 @@ confirms them remotely: every key in the repo's `player_death` is in CS2's.
   `"Notice_Teammate_Death_Location" "%s1 died %s2"` (a teammate died at a
   place) is in GT `game/csgo/pak01_dir/resource/csgo_english.txt`.
 
+**Added 2026-09-28, for the kill feed (`src/ui/kill_feed.gd`).** Read again
+from GT commit 3fc98e7 (2026-09-25): huddeathnotice.xml and .css are as
+above. What the first reading left out:
+- Each row has `margin-top: 3px`; its content is padded 6 px on top, 10 px
+  either side and 3 px under; labels have 2 px either side and under; every
+  icon is 24 px high with `margin: -2px 2px 0px 2px`, and the in-air mark
+  sits 14 px up with its right 4 px over the weapon (`margin-right: -4px`).
+- A plain row is `hud-blur-bg-color` (#000000a0, csgostyles.css) over the
+  world blurred (`hudWorldBlur`, gaussian 2,2,2), 3 px round. The halving
+  class `.csgo-hud--cl_hud_background_alpha` is set from C++ on some panels;
+  measured on Sid's screenshot of 2026-09-26 (3838x2158, the feed at its top
+  right), the row is darker than the halved tint allows, so the feed uses
+  the full #000000a0.
+- Measured on the same screenshot at 1080p: the first row's top 75 px down
+  (72 + 3), its right edge 10 px in, 32 px high.
+- A bot's name is drawn with the clan tag "[BOT]", thinner than the name
+  (the screenshot; `cl_show_clan_in_death_notice` 1 by default).
+- The weapon icon is `textureheight="24"` with `scaling="none"`: the
+  equipment SVG at 24 px high, white.
+- `DeathNotice_Killer` sets 15 px black-weight names with .5 px letter
+  spacing; the build uses Stratum2 bold at 15 px.
+- Still decided in C++ and so guessed in the build: how many rows show
+  (five), whether a new row fades in (it appears at once), and what your own
+  suicide is marked (a death, not a kill).
+
+**Critiques players have of CS2's kill feed.** Few are indexed; Reddit and
+the Steam forums refuse the cloud's fetches, so these rest on search
+summaries:
+- There is no convar for how long a row stays, so in a demo rows go after
+  5 s and casters and editors cannot keep them; CS:GO-era commands no
+  longer work and HLAE's `mirv_deathmsg lifeTime` is the workaround (Steam
+  discussions "How To Stop Kill Feed From Expiring?" and "extended killfeed
+  command(s)", undated in the summaries, CS2-era).
+- Players ask for the feed alone with the HUD off; CS2 answers with
+  `cl_drawhud_force_deathnotices 1` and `cl_draw_only_deathnotices` (Steam
+  discussion "Cl_drawhud 0 but with killfeed", CS2-era).
+- A measurable improvement, as an option: the lifetime and row count as
+  settings (the constants `KillFeed.LIFETIME` and `MOST_SHOWN` now), for
+  demos and for players who miss a trade while reloading. It costs nothing
+  per tick: the feed runs per frame and only while a row is up.
+
 ## A2. The team counter (top centre)
 
 From GT `panorama/layout/hud/hudteamcounter.xml`,

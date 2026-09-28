@@ -104,6 +104,7 @@ func start(game_world: GameWorld, map_contents: MapContents) -> void:
 	hud.round_report = round_report
 	hud.bomb = bomb_system.bomb if bomb_system != null else null
 	hud.userid = (player as PlayerSim).userid
+	hud.game = world.game
 	add_child(hud)
 	_add_views()
 	var impacts := BulletImpacts.new()
