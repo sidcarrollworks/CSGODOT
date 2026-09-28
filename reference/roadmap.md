@@ -255,7 +255,7 @@ issue done here and on the page in the same pull request.
 | 21 | Round sounds (start, end, planted, ten seconds, announcer) | The cues from `reference/research/audio-round.md` | Extract the UI, music and announcer; listen | 16, after 19's groundwork |
 | 22 | Looking down shows the vest where CS2 shows legs | **Done:** the seen body folds from spine_2 up, the shadow and bots whole | Beside CS2 | 6a |
 | 23 | The distant hill missing (the 3D skybox past the camera's far plane, dropped before its depth squeeze can help) | *(done: `FarMaterials.CULL_BOX`, `far_position`)* Far meshes kept in the frustum, and a squeeze that keeps them inside the far plane | The view beside CS2; the cost | R2 |
-| 25 | Red window frames, doors and awnings too vivid (the export's tint over the whole texture, not only the tint mask's paint) | *(done 2026-09-26: `prop_tint`, `LightmapMaterials.carry_features`)* The tint moved off the colour and put back through `g_tTintMask`; the `layers` step fetches the masks | `extract_assets.sh layers`; long doors' windows, doors and awnings beside CS2 | 7, R7 |
+| 25 | Red window frames, doors and awnings too vivid (the export's tint over the whole texture, not only the tint mask's paint) | *(done 2026-09-26: `prop_tint`, `LightmapMaterials.carry_features`)* The tint moved off the colour and put back through `g_tTintMask`; the `layers` step fetches the masks | **Done 2026-09-28:** `layers` fetched 55 masks; long doors' shutters and door from 0.36 to 0.50 saturation to 0.22 to 0.34 (CS2's 0.17 to 0.31), the awning unchanged | 7, R7 |
 
 ### Phase 1: make being shot feel like CS2
 
