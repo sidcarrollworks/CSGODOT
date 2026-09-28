@@ -26,6 +26,11 @@ extends RefCounted
 ## (reference/playtest-2026-09-25.md, issue 23). So the whole skybox is
 ## drawn in every view, occluded or not; scripts/profile_render.gd's
 ## no_skybox measures what that costs.
+##
+## What of it is blended (the clouds, UnlitMaterials) is drawn in the
+## transparent pass, which goes by distance; each mesh is sorted as if past
+## everything (SORTED_BEHIND), so smoke or a flame in front of the sky is
+## drawn over the clouds and not under them.
 
 const SHADER := preload("res://src/map/far.gdshader")
 const INCLUDE := "#include \"res://src/map/far.gdshaderinc\""
@@ -35,12 +40,17 @@ const BLENDED_CUT := 0.5
 ## The box a mesh behind everything is culled by, in its own space: larger
 ## than any view reaches, scaled up or not.
 const CULL_BOX := AABB(Vector3.ONE * -1e7, Vector3.ONE * 2e7)
+## How far a mesh behind everything is moved back when the transparent pass
+## sorts by distance (VisualInstance3D.sorting_offset): more than any map
+## spans, in any direction.
+const SORTED_BEHIND := -1e7
 
 static var _variants := {}  # Shader -> its far variant, and a two-sided one under a string key
 
 
-## Puts every surface of these meshes behind everything, and keeps each
-## mesh in view whatever its distance (CULL_BOX). Returns how many surfaces.
+## Puts every surface of these meshes behind everything, keeps each mesh in
+## view whatever its distance (CULL_BOX), and sorts it behind the rest of
+## the transparent pass (SORTED_BEHIND). Returns how many surfaces.
 static func apply(meshes: Array[MeshInstance3D]) -> int:
 	var far := far_plane_depth()
 	var built := {}
@@ -50,6 +60,7 @@ static func apply(meshes: Array[MeshInstance3D]) -> int:
 		if mesh == null:
 			continue
 		mesh_instance.custom_aabb = CULL_BOX
+		mesh_instance.sorting_offset = SORTED_BEHIND
 		for surface in mesh.get_surface_count():
 			var material := mesh_instance.get_active_material(surface)
 			if material == null:

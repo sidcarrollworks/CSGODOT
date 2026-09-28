@@ -6,6 +6,13 @@ extends SceneTree
 ## between. scripts/extract_assets.sh decompiles those again on their own,
 ## which keeps the alpha, and puts them over the export's copies.
 ##
+## Then one line each, "UNLIT" and the texture's path in the game, for the
+## textures of CS2's csgo_unlitgeneric materials (UnlitMaterials): the
+## colour, which the export wrote without the alpha those materials blend by
+## and marked opaque besides, and the second texture, which it has no slot
+## for. Those are fetched by path under the map's materials/, as the second
+## layers are.
+##
 ##   godot --headless --path . --script scripts/export_alpha.gd -- <world.gltf>
 ##
 ## The export asks the game's compiled shaders which of a texture's channels
@@ -26,6 +33,8 @@ func _init() -> void:
 		return
 	for line in missing_alpha(args[0]):
 		print("ALPHA\t" + line)
+	for vtex in unlit_textures(args[0]):
+		print("UNLIT\t" + vtex)
 	quit(0)
 
 
@@ -59,4 +68,25 @@ static func missing_alpha(gltf_path: String) -> PackedStringArray:
 			continue
 		seen[image_path] = true
 		out.append("%s\t%s" % [vtex, image_path])
+	return out
+
+
+## The textures the export's csgo_unlitgeneric materials name for their
+## colour (g_tColor, g_tColor2), each once, sorted.
+static func unlit_textures(gltf_path: String) -> PackedStringArray:
+	var found := {}
+	var json: Variant = JSON.parse_string(FileAccess.get_file_as_string(gltf_path))
+	if not json is Dictionary:
+		return PackedStringArray()
+	for material: Dictionary in (json as Dictionary).get("materials", []):
+		var vmat: Dictionary = (material.get("extras", {}) as Dictionary).get("vmat", {})
+		if String(vmat.get("ShaderName", "")) != "csgo_unlitgeneric.vfx":
+			continue
+		var textures: Dictionary = vmat.get("TextureParams", {})
+		for parameter in ["g_tColor", "g_tColor2"]:
+			var vtex := String(textures.get(parameter, ""))
+			if not vtex.is_empty():
+				found[vtex] = true
+	var out := PackedStringArray(found.keys())
+	out.sort()
 	return out
