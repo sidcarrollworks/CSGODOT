@@ -42,7 +42,20 @@ its pinned SHA-256, and installs `addons/box3d/`. Restart Godot after
 installation. Binary libraries are ignored by Git; the installer makes
 the dependency reproducible. The release includes Windows x86-64 debug
 and release DLLs, Linux, Android and web libraries; macOS needs a source
-build. Upstream describes the binding as experimental and says its
+build.
+
+The release's Linux libraries need glibc 2.43 (libm) and 2.38 (libc), so
+they don't load on Ubuntu 24.04 (glibc 2.39): CI and the cloud threads.
+On Linux, run `scripts/install_box3d.sh`. It installs the same upstream zip,
+then lays over it the tag's Linux libraries rebuilt against Ubuntu 22.04's
+glibc 2.35 (highest symbol needed: GLIBC_2.34), hosted on this repo's
+release `box3d-v0.4.3-linux-glibc2.35`, both archives checked against a
+pinned SHA-256. `scripts/build_box3d_linux.sh` rebuilds them in Docker
+(gcc 11.4, about 6.5 minutes per target on 4 cores). Built 2026-09-28,
+they load headless in Godot 4.7.2 and pass the same checks as the Windows
+build, including the four AWP settling failures.
+
+Upstream describes the binding as experimental and says its
 cross-compiled Windows binaries were untested by the author.
 
 The trial branch defaults to `box3d` through

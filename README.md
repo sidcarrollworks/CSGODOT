@@ -9,6 +9,8 @@ before opening the project:
 powershell -ExecutionPolicy Bypass -File scripts/install_box3d.ps1
 ```
 
+On Linux, run `scripts/install_box3d.sh` instead (CI does).
+
 Box3D is the branch default (`-- --physics box3d`). A shared native world
 handles collision queries, player hulls and hitboxes, dropped items and
 ragdolls. The Source movement and grenade-flight rules remain game code

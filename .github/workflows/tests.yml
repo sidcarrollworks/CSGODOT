@@ -41,9 +41,10 @@ jobs:
           mv ~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64 ~/godot/godot
           chmod +x ~/godot/godot
 
+      # The upstream zip's Linux libraries need glibc 2.43; this lays the same
+      # tag rebuilt against glibc 2.35 over it (scripts/install_box3d.sh).
       - name: Install pinned Box3D addon
-        shell: pwsh
-        run: ./scripts/install_box3d.ps1
+        run: scripts/install_box3d.sh
 
       - name: Run the tests
         run: GODOT=~/godot/godot scripts/run_tests.sh
