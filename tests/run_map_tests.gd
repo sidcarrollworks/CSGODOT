@@ -77,8 +77,10 @@ func _process(_delta: float) -> bool:
 		_test_blend_materials()
 		_test_lightmap_materials()
 		_test_lightmap_lods()
+		_test_vertex_precision()
 		_test_far_materials()
 		_test_far_squeeze()
+		_test_unlit_materials()
 		_test_light_probes()
 		_test_baked_shadows()
 		_test_prop_features()
@@ -1480,6 +1482,131 @@ func _test_lightmap_lods() -> void:
 	instance.free()
 
 
+## A map's walls are merged into fragments that share edges, each surface
+## spanning hundreds or thousands of units. Compressed, Godot stores each
+## position in 16 bits across its own surface's bounds, so the shared edge
+## lands at a different point in each and the wall shows a crack (playtest
+## of 2026-09-25, issue 9). Shown on a wall 1,600 units long with a
+## 248-unit fragment filling a gap in it: read as the game reads a glTF not
+## yet imported (MapImporter.GLTF_FLAGS), the edge stays where it is, and
+## compressed it does not. And write_import_settings.gd has Godot import
+## every map model the same way.
+func _test_vertex_precision() -> void:
+	var path := "user://export_fixture/precision/seam.gltf"
+	var edge := 3.3777
+	var fixture := Node3D.new()
+	fixture.name = "Seam"
+	fixture.add_child(_wall("Long", [Vector2(-1000.0, edge), Vector2(edge + 248.0, 600.0)]))
+	fixture.add_child(_wall("Fragment", [Vector2(edge, edge + 248.0)]))
+	for child in fixture.get_children():
+		child.owner = fixture
+	if not _write_gltf(fixture, path):
+		return
+
+	var compressed := _edge_positions(path, 0, edge)
+	var exact := _edge_positions(path, MapImporter.GLTF_FLAGS, edge)
+	var drift := absf(compressed["Long"] - compressed["Fragment"])
+	_check(
+		compressed["compressed"] and drift > 0.001,
+		"compressed, the long wall and the fragment put their shared edge %.4f apart" % drift
+	)
+	_check(
+		not exact["compressed"] and exact["Long"] == exact["Fragment"] and absf(exact["Long"] - edge) < 1e-5,
+		"read as the map is, neither is compressed and the edge is where the file puts it"
+	)
+
+	var importer := MapImporter.new()
+	importer.source_path = path
+	importer.report = false
+	root.add_child(importer)
+	var meshes: Array[MeshInstance3D] = []
+	_collect_mesh_instances(importer, meshes)
+	var any_compressed := false
+	for instance in meshes:
+		for surface in instance.mesh.get_surface_count():
+			any_compressed = any_compressed or instance.mesh.surface_get_format(surface) & Mesh.ARRAY_FLAG_COMPRESS_ATTRIBUTES != 0
+	_check(meshes.size() == 2 and not any_compressed, "MapImporter reads a map's glTF without vertex compression")
+	importer.free()
+
+	var settings: GDScript = load("res://scripts/write_import_settings.gd")
+	_check(
+		settings.is_map_model("res://assets/maps/de_dust2/maps/de_dust2/world.gltf")
+			and settings.is_map_model("res://assets/maps/de_dust2_skybox/world.gltf")
+			and settings.is_map_model("res://assets/maps/de_dust2_physics/world_physics_physics.gltf")
+			and not settings.is_map_model("res://assets/weapons/weapons/models/ak47/weapon_rif_ak47.gltf")
+			and not settings.is_map_model("res://assets/maps_old/world.gltf"),
+		"the maps' worlds, skyboxes and hulls are map models, a gun's is not"
+	)
+	var import_path := path + ".import"
+	var existing := ConfigFile.new()
+	existing.set_value("remap", "importer", "scene")
+	existing.set_value("remap", "uid", "uid://kept")
+	existing.set_value("params", "meshes/generate_lods", true)
+	existing.save(import_path)
+	var wanted := {"meshes/force_disable_compression": true}
+	var wrote := settings.apply_scene_params(path, wanted) as bool
+	var written := ConfigFile.new()
+	written.load(import_path)
+	_check(
+		wrote and written.get_value("params", "meshes/force_disable_compression", false) == true
+			and written.get_value("remap", "uid", "") == "uid://kept"
+			and written.get_value("params", "meshes/generate_lods", false) == true
+			and not settings.apply_scene_params(path, wanted),
+		"the setting is written into a model's .import, keeping its uid and other settings, and only once"
+	)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(import_path))
+
+
+## A wall 116 units high at z = -384, one quad for each [from, to] span
+## along x, all on one surface with normals and tangents: what the glTF
+## importer compresses.
+func _wall(wall_name: String, spans: Array) -> MeshInstance3D:
+	var tool := SurfaceTool.new()
+	tool.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for span: Vector2 in spans:
+		var corners := [
+			Vector3(span.x, 0, -384), Vector3(span.y, 0, -384), Vector3(span.y, 116, -384), Vector3(span.x, 116, -384)
+		]
+		for corner in [0, 1, 2, 0, 2, 3]:
+			tool.set_normal(Vector3.BACK)
+			tool.set_uv(Vector2(corners[corner].x, corners[corner].y) / 128.0)
+			tool.add_vertex(corners[corner])
+	tool.generate_tangents()
+	var instance := MeshInstance3D.new()
+	instance.name = wall_name
+	instance.mesh = tool.commit()
+	return instance
+
+
+## Reads a glTF with these flags and returns where each wall puts its
+## vertices nearest x = edge, and whether any surface was compressed.
+func _edge_positions(path: String, flags: int, edge: float) -> Dictionary:
+	var document := GLTFDocument.new()
+	var state := GLTFState.new()
+	document.append_from_file(ProjectSettings.globalize_path(path), state, flags)
+	var scene := document.generate_scene(state)
+	var result := {"compressed": false}
+	for wall_name in ["Long", "Fragment"]:
+		var node := scene.find_child(wall_name, true, false)
+		var mesh: Mesh = node.mesh if node is MeshInstance3D else (node.mesh as ImporterMesh).get_mesh()
+		if mesh.surface_get_format(0) & Mesh.ARRAY_FLAG_COMPRESS_ATTRIBUTES:
+			result["compressed"] = true
+		var nearest := INF
+		for vertex: Vector3 in mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
+			if absf(vertex.x - edge) < absf(nearest - edge):
+				nearest = vertex.x
+		result[wall_name] = nearest
+	scene.free()
+	return result
+
+
+func _collect_mesh_instances(node: Node, out: Array[MeshInstance3D]) -> void:
+	if node is MeshInstance3D and (node as MeshInstance3D).mesh != null:
+		out.append(node as MeshInstance3D)
+	for child in node.get_children():
+		_collect_mesh_instances(child, out)
+
+
 ## A 20 by 20 grid of quads, one unit each, split at x = 10 into two
 ## lightmap charts half the atlas apart: the vertices along the split are
 ## doubled, alike in position, UV and normal, different only in their
@@ -1777,6 +1904,7 @@ func _test_far_materials() -> void:
 	# The skybox's terrain runs out to half a million units, past the far
 	# plane: each mesh is kept in every frustum so the CPU never drops it.
 	var kept := 0
+	var sorted_behind := 0
 	var meshes := 0
 	for node in importer.find_children("*", "MeshInstance3D", true, false):
 		var mesh_instance := node as MeshInstance3D
@@ -1784,12 +1912,109 @@ func _test_far_materials() -> void:
 			continue
 		meshes += 1
 		kept += 1 if mesh_instance.custom_aabb == FarMaterials.CULL_BOX else 0
+		sorted_behind += 1 if is_equal_approx(mesh_instance.sorting_offset, FarMaterials.SORTED_BEHIND) else 0
 	_check(
 		meshes > 0 and kept == meshes
 			and FarMaterials.CULL_BOX.has_point(Vector3.ONE * 1e6) and FarMaterials.CULL_BOX.has_point(Vector3.ONE * -1e6),
 		"behind_everything keeps every mesh of a map in view past any far plane (%d of %d)" % [kept, meshes]
 	)
+	# Its clouds are blended, and the transparent pass sorts by distance.
+	_check(
+		sorted_behind == meshes and FarMaterials.SORTED_BEHIND < -FarMaterials.CULL_BOX.size.x / 4.0,
+		"and sorts each behind anything of the transparent pass, smoke or a flame in front of the sky (%d of %d)" % [sorted_behind, meshes]
+	)
 	importer.free()
+
+
+## UnlitMaterials on made-up materials: CS2's csgo_unlitgeneric under its
+## Additive blend is drawn unlit and added, from its two textures under the
+## materials/ directory, tinted by the export's colour (issue 24 of
+## reference/playtest-2026-09-25.md: dust2's skybox clouds). Without its
+## textures a mesh drawn only by it is hidden; another blend, or another
+## shader, is left as imported. Behind everything it is still added, and
+## squeezed. tests/run_unlit_draw_checks.gd draws it.
+func _test_unlit_materials() -> void:
+	var directory := "user://unlit_fixture"
+	var absolute := ProjectSettings.globalize_path(directory.path_join("materials/clouds"))
+	DirAccess.make_dir_recursive_absolute(absolute)
+	var image := Image.create(4, 4, false, Image.FORMAT_RGBA8)
+	image.fill(Color(1.0, 1.0, 1.0, 0.25))
+	image.save_png(absolute.path_join("clouds_a.png"))
+	image.save_png(absolute.path_join("clouds_b.png"))
+	var clouds := func(blend: int, second: String) -> StandardMaterial3D:
+		var material := StandardMaterial3D.new()
+		material.resource_name = "clouds_%d" % blend
+		material.albedo_color = Color(0.5, 0.25, 0.125)
+		material.set_meta("extras", {"vmat": {
+			"ShaderName": UnlitMaterials.SHADER_NAME,
+			"IntParams": {"F_BLEND_MODE": blend, "F_TWOTEXTURE": 1},
+			"TextureParams": {"g_tColor": "materials/clouds/clouds_a.vtex", "g_tColor2": second},
+		}})
+		return material
+	var additive: StandardMaterial3D = clouds.call(UnlitMaterials.ADDITIVE, "materials/clouds/clouds_b.vtex")
+	var built := UnlitMaterials.build(additive, directory)
+	_check(
+		built != null and built.shader == UnlitMaterials.ADD_SHADER
+			and built.get_shader_parameter("color_texture") is Texture2D
+			and built.get_shader_parameter("color2_texture") is Texture2D
+			and built.get_shader_parameter("tint") == additive.albedo_color
+			and built.get_meta("extras", {}) == additive.get_meta("extras"),
+		"csgo_unlitgeneric under Additive is built on the added shader, from both its textures, tinted by the export's colour"
+	)
+	var code := UnlitMaterials.ADD_SHADER.code
+	var modes := ["blend_add", "unshaded", "fog_disabled", "shadows_disabled", "depth_draw_never"]
+	_check(
+		modes.all(func(mode: String) -> bool: return code.contains(mode))
+			and code.contains("texture(color_texture, UV) * texture(color2_texture, UV) * tint")
+			and code.contains("ALPHA = colour.a;"),
+		"that shader adds unlit and unfogged, its two textures and tint multiplied, alpha too, as UnlitTwoTexture does"
+	)
+	var missing: StandardMaterial3D = clouds.call(UnlitMaterials.ADDITIVE, "materials/clouds/missing.vtex")
+	_check(
+		UnlitMaterials.build(missing, directory) == null and UnlitMaterials.build(additive, "") == null,
+		"without either of its textures on disk it is not built"
+	)
+	var translucent: StandardMaterial3D = clouds.call(1, "materials/clouds/clouds_b.vtex")
+	_check(UnlitMaterials.build(translucent, directory) == null, "under another blend (Translucent) it is not built")
+
+	# apply, on a mesh of each and one of an ordinary material.
+	var ordinary := StandardMaterial3D.new()
+	var meshes: Array[MeshInstance3D] = []
+	for material: StandardMaterial3D in [additive, missing, translucent, ordinary]:
+		var mesh_instance := MeshInstance3D.new()
+		var quad := QuadMesh.new()
+		quad.material = material
+		mesh_instance.mesh = quad
+		meshes.append(mesh_instance)
+	var result := UnlitMaterials.apply(meshes, directory)
+	_check(
+		int(result["surfaces"]) == 1 and meshes[0].get_active_material(0) is ShaderMaterial
+			and (meshes[0].get_active_material(0) as ShaderMaterial).shader == UnlitMaterials.ADD_SHADER,
+		"apply puts the additive surface on its unlit material"
+	)
+	_check(
+		int(result["hidden"]) == 1 and not meshes[1].visible,
+		"and hides the mesh drawn only by one whose textures are not there: as imported it is an opaque, lit sheet"
+	)
+	_check(
+		meshes[2].visible and meshes[2].get_active_material(0) == translucent
+			and meshes[3].visible and meshes[3].get_active_material(0) == ordinary,
+		"another blend is left as imported, and so is another shader's material"
+	)
+	_check_equal(result["left"], PackedStringArray(["clouds_1", "clouds_4"]), "and the materials not built are named")
+	for mesh_instance in meshes:
+		mesh_instance.free()
+
+	# In the skybox: behind everything, and still added.
+	var far := FarMaterials.build(built, FarMaterials.far_plane_depth()) as ShaderMaterial
+	_check(
+		far != null and far.shader == FarMaterials.variant_of(UnlitMaterials.ADD_SHADER)
+			and far.shader.code.contains(FarMaterials.INCLUDE)
+			and far.shader.code.contains(FarMaterials.VERTEX_SQUEEZE + "void fragment() {")
+			and far.shader.code.contains("blend_add")
+			and far.get_shader_parameter("color2_texture") is Texture2D,
+		"behind everything it is squeezed as the rest of the skybox is, and still added, its textures kept"
+	)
 
 
 ## The squeeze (far.gdshaderinc's far_position) as the GPU does it, on the
@@ -3106,7 +3331,9 @@ func _test_reflections() -> void:
 
 ## scripts/export_alpha.gd on a hand-written export: of the materials that
 ## cut or blend by their colour's alpha, the one whose image has none is
-## listed, with the texture it came from, once; an opaque one never is.
+## listed, with the texture it came from, once; an opaque one never is. And
+## the unlit material's two textures are listed to be fetched, which no
+## other material's second colour is.
 func _test_export_alpha() -> void:
 	var directory := "user://export_alpha_fixture"
 	DirAccess.make_dir_recursive_absolute(directory)
@@ -3125,6 +3352,16 @@ func _test_export_alpha() -> void:
 		"materials": [
 			material.call("MASK", 0, "materials/cut.vtex"), material.call("BLEND", 1, "materials/kept.vtex"),
 			material.call("OPAQUE", 0, "materials/solid.vtex"), material.call("MASK", 2, "materials/again.vtex"),
+			# Marked opaque by the export, as dust2's skybox clouds are.
+			{
+				"alphaMode": "OPAQUE", "pbrMetallicRoughness": {"baseColorTexture": {"index": 0}},
+				"extras": {"vmat": {
+					"ShaderName": UnlitMaterials.SHADER_NAME,
+					"TextureParams": {"g_tColor": "materials/clouds_b.vtex", "g_tColor2": "materials/clouds_a.vtex"},
+				}},
+			},
+			# A two-layer material's second colour, as inferno's are.
+			{"extras": {"vmat": {"ShaderName": "csgo_simple_2way_blend.vfx", "TextureParams": {"g_tColor2": "materials/layer.vtex"}}}},
 		],
 		"textures": [{"source": 0}, {"source": 1}, {"source": 0}],
 		"images": [{"uri": "rgb.png"}, {"uri": "rgba.png"}],
@@ -3134,6 +3371,11 @@ func _test_export_alpha() -> void:
 	_check_equal(
 		listed, PackedStringArray(["materials/cut.vtex\t%s" % directory.path_join("rgb.png")]),
 		"an export's alpha-cut colour image without alpha is listed with its texture, once; one with alpha, or opaque, is not"
+	)
+	_check_equal(
+		load("res://scripts/export_alpha.gd").unlit_textures(directory.path_join("world.gltf")),
+		PackedStringArray(["materials/clouds_a.vtex", "materials/clouds_b.vtex"]),
+		"the unlit material's colour and second texture are listed to be fetched, sorted; another shader's second colour is not"
 	)
 
 
