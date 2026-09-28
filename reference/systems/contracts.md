@@ -515,7 +515,8 @@ system, in `attach`), `game.query(&"name", [args], fallback)`,
   player now (the bomb): a living CT in defuse reach of the planted bomb
   and looking at it, or its defuser; a living T within E's reach of the
   dropped bomb and looking at it (CS2's
-  `sv_weapon_swap_difficulty_near_hi_pri`). `ItemDrops` asks it before E
+  `sv_weapon_swap_difficulty_near_hi_pri`); a living human T taking it
+  from a bot teammate who carries it ("[E] Take Bomb", `C4.take_from_bot`). `ItemDrops` asks it before E
   takes anything off the ground. Fallback false.
 - `holds_still(userid: int) -> bool`: true while that player is planting
   or defusing (the bomb). `player_sim` reads it to stop moving and firing

@@ -62,6 +62,8 @@ var win_panel: WinPanel
 var alert: HudAlert
 ## Why B would not open the menu, for a moment, under the alert.
 var hint: HudAlert
+## What E would do, under the crosshair ("[E] Take Bomb" from a bot).
+var use_prompt: UsePrompt
 ## Across the middle while dead.
 var dead_bar: HudAlert
 var damage_indicator: DamageIndicator
@@ -123,6 +125,8 @@ func _ready() -> void:
 	hint = HudAlert.new()
 	hint.kind = HudAlert.Kind.HINT
 	add_child(hint)
+	use_prompt = UsePrompt.new()
+	add_child(use_prompt)
 	dead_bar = HudAlert.new()
 	dead_bar.kind = HudAlert.Kind.NOTE
 	dead_bar.top = DEAD_BAR_TOP
@@ -185,6 +189,12 @@ func _process(delta: float) -> void:
 			_notice_left = NOTICE_SECONDS
 		_bomb_was = bomb.state
 		_carrier_was = bomb.carrier
+		var carrier: PlayerSim = null
+		if match_state != null and bomb.state == C4.State.CARRIED:
+			for sim in match_state.players:
+				if sim.userid == bomb.carrier:
+					carrier = sim
+		use_prompt.say("" if buying else UsePrompt.line_for(player, bomb, carrier), UsePrompt.TAKE_BOMB_COLOUR)
 	if _where.visible:
 		_where.text = where_line(player.global_position, player.input.yaw_degrees, player.input.pitch_degrees) \
 			+ "\n" + _frames.line()

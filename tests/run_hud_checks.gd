@@ -312,6 +312,22 @@ func _test_the_bomb_carrier() -> void:
 		"and again in the column, centred under the gun"
 	)
 
+	# "[E] Take Bomb" under the crosshair, looking at a bot teammate who
+	# carries it.
+	mate.is_bot = true
+	mate.global_position = Vector3(0.0, 0.0, -50.0)
+	you.global_position = Vector3.ZERO
+	you.yaw_degrees = 0.0
+	you.pitch_degrees = rad_to_deg(atan2(C4.BODY_MIDDLE - you.eye_height(), 50.0))
+	bomb.give_to(mate.userid, mate.global_position)
+	_check_equal(UsePrompt.line_for(you, bomb, mate), "[E] Take Bomb", "looking at a bot carrying it: [E] Take Bomb")
+	_check(UsePrompt.TAKE_BOMB_COLOUR == Color("e5da25"), "in CS2's yellow for it")
+	you.yaw_degrees = 180.0
+	_check_equal(UsePrompt.line_for(you, bomb, mate), "", "not looking away")
+	you.yaw_degrees = 0.0
+	mate.is_bot = false
+	_check_equal(UsePrompt.line_for(you, bomb, mate), "", "nor at a person carrying it")
+	bomb.give_to(you.userid)
 	_check_equal(GameHud.bomb_hint(C4.State.NONE, C4.NOBODY, bomb, you.userid), "",
 		"handed it at a round's start, no hint: the card says so")
 	_check_equal(GameHud.bomb_hint(C4.State.DROPPED, C4.NOBODY, bomb, you.userid), "You picked up the bomb",

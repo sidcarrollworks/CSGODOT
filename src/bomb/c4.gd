@@ -39,6 +39,9 @@ enum State {
 const NOBODY := -1
 ## No deadline.
 const NEVER := -1
+## Where a standing player's middle is, above their feet: what E looks at
+## on a bot to take the bomb (take_from_bot).
+const BODY_MIDDLE := 36.0
 const SECOND_USEC := 1_000_000
 
 
@@ -62,7 +65,8 @@ class Actor:
 	## Holding the use key: the defuse.
 	var use_held: bool = false
 	## Pressing the use key this tick: a terrorist takes the bomb off the
-	## ground with it from further than a touch (C4Rules.use_reach).
+	## ground with it from further than a touch (C4Rules.use_reach), or from
+	## a bot teammate carrying it (take_from_bot).
 	var use_pressed: bool = false
 	## Asking to drop the bomb this tick (CS2's drop key with it in hand).
 	var drop: bool = false
@@ -145,7 +149,7 @@ func tick(now_usec: int, actors: Array[Actor], sites: Array[BombSite]) -> void:
 	_track_zones(actors, sites)
 	match state:
 		State.CARRIED:
-			_tick_carried(now_usec, _find(actors, carrier), sites)
+			_tick_carried(now_usec, _find(actors, carrier), sites, actors)
 		State.DROPPED:
 			_tick_dropped(now_usec, actors)
 		State.PLANTED:
@@ -282,7 +286,7 @@ func load_state(saved: Dictionary) -> void:
 	_in_zone = (saved["in_zone"] as Dictionary).duplicate()
 
 
-func _tick_carried(now_usec: int, actor: Actor, sites: Array[BombSite]) -> void:
+func _tick_carried(now_usec: int, actor: Actor, sites: Array[BombSite], actors: Array[Actor] = []) -> void:
 	if actor == null or not actor.alive:
 		# Dropped where its carrier fell (CS2's mp_death_drop_c4).
 		_drop(now_usec, actor.feet if actor != null else position, false)
@@ -291,6 +295,13 @@ func _tick_carried(now_usec: int, actor: Actor, sites: Array[BombSite]) -> void:
 	if actor.drop and not planting():
 		_drop(now_usec, actor.feet, true)
 		return
+	if not planting():
+		var taker := _taker_from(actor, actors)
+		if taker != null:
+			carrier = taker.id
+			position = taker.feet
+			_event("bomb_pickup", {"userid": carrier})
+			return
 
 	var on_site := _site_at(actor.feet, sites)
 	var can_plant := actor.plant_held and actor.on_ground and actor.team == "T" and on_site != ""
@@ -407,8 +418,9 @@ func _tick_planted(now_usec: int, actors: Array[Actor]) -> void:
 ## ground (CS2's sv_weapon_swap_difficulty_near_hi_pri: no cone search near
 ## a high-priority item): a living counter-terrorist in reach of the
 ## planted bomb and looking at it, or its defuser; a living terrorist in
-## E's reach of the dropped bomb and looking at it.
-func claims_use(actor: Actor) -> bool:
+## E's reach of the dropped bomb and looking at it; a human terrorist
+## taking it from a bot (take_from_bot, which needs the carrier).
+func claims_use(actor: Actor, carrier_actor: Actor = null) -> bool:
 	if not actor.alive:
 		return false
 	match state:
@@ -416,13 +428,49 @@ func claims_use(actor: Actor) -> bool:
 			return actor.team == "CT" and (actor.id == defuser or _looked_at(actor, rules.defuse_reach, rules.defuse_cone_degrees))
 		State.DROPPED:
 			return actor.team == "T" and _looked_at(actor, rules.use_reach, rules.use_cone_degrees)
+		State.CARRIED:
+			return take_from_bot(actor, carrier_actor)
 	return false
+
+
+## CS2's "[E] Take Bomb" (Panorama_HUD_botid_request_bomb in
+## csgo_english.txt): whether this actor, pressing E, takes the bomb from
+## its carrier. A living human terrorist, from a living bot terrorist who
+## carries it and is not planting, looking at the bot's middle within E's
+## reach and cone (C4Rules.use_reach, use_cone_degrees). CS2 has the prompt
+## and its string; the reach, the cone and that the bot's body is what is
+## looked at are inferred, as is the event (bomb_pickup for the one who
+## takes it). There is no sight test yet: no new physics query goes in
+## before the Box3D change (playtest-2026-09-25.md issue 18).
+func take_from_bot(actor: Actor, carrier_actor: Actor) -> bool:
+	if actor == null or carrier_actor == null or state != State.CARRIED or planting():
+		return false
+	if not actor.alive or actor.is_bot or actor.team != "T" or actor.id == carrier_actor.id:
+		return false
+	if carrier_actor.id != carrier or not carrier_actor.alive or not carrier_actor.is_bot:
+		return false
+	return _looks_at(actor, carrier_actor.feet + Vector3.UP * BODY_MIDDLE, rules.use_reach, rules.use_cone_degrees)
+
+
+## Whoever takes the bomb from its bot carrier this tick: the first actor
+## pressing E who may (take_from_bot); null if none.
+func _taker_from(carrier_actor: Actor, actors: Array[Actor]) -> Actor:
+	for actor in actors:
+		if actor.use_pressed and take_from_bot(actor, carrier_actor):
+			return actor
+	return null
 
 
 ## Whether the bomb is within reach of the actor's eyes and within
 ## cone_degrees of their aim.
 func _looked_at(actor: Actor, reach: float, cone_degrees: float) -> bool:
-	var to_bomb := position - actor.eyes
+	return _looks_at(actor, position, reach, cone_degrees)
+
+
+## Whether a point is within reach of the actor's eyes and within
+## cone_degrees of their aim.
+func _looks_at(actor: Actor, point: Vector3, reach: float, cone_degrees: float) -> bool:
+	var to_bomb := point - actor.eyes
 	var distance := to_bomb.length()
 	if distance > reach:
 		return false

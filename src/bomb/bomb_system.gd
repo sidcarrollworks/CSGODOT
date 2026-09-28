@@ -104,7 +104,9 @@ func use_claimed(userid: int) -> bool:
 	var player := _game.roster.player(userid) as PlayerSim if _game != null else null
 	if player == null:
 		return false
-	return bomb.claims_use(C4.Actor.of_player(player, userid))
+	var carrier := _game.roster.player(bomb.carrier) as PlayerSim if bomb.carrier != C4.NOBODY else null
+	return bomb.claims_use(C4.Actor.of_player(player, userid),
+		C4.Actor.of_player(carrier, bomb.carrier) if carrier != null else null)
 
 
 ## Whether a player is planting or defusing, which holds them still.
@@ -129,6 +131,10 @@ func _follow(was: C4.State, carrier: int) -> void:
 	if now == was:
 		if _entity != null:
 			_entity.position = bomb.position
+		if now == C4.State.CARRIED and bomb.carrier != carrier:
+			# Taken from a bot by E: from one inventory to the other.
+			_take_from(carrier)
+			_give(bomb.carrier)
 		return
 	match now:
 		C4.State.DROPPED:
@@ -136,12 +142,16 @@ func _follow(was: C4.State, carrier: int) -> void:
 			_put_down("weapon_c4", carrier)
 		C4.State.CARRIED:
 			_forget_entity()
-			var inventory := _game.inventory(bomb.carrier)
-			if inventory != null and not inventory.has("weapon_c4"):
-				inventory.add("weapon_c4")
+			_give(bomb.carrier)
 		C4.State.PLANTED:
 			_take_from(carrier)
 			_put_down("planted_c4", bomb.planter)
+
+
+func _give(userid: int) -> void:
+	var inventory := _game.inventory(userid) if _game != null else null
+	if inventory != null and not inventory.has("weapon_c4"):
+		inventory.add("weapon_c4")
 
 
 func _take_from(userid: int) -> void:

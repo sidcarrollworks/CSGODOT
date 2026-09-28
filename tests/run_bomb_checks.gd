@@ -47,6 +47,7 @@ func _initialize() -> void:
 	_test_dropped_on_death()
 	_test_dropped_by_choice()
 	_test_bots_leave_it_to_a_human()
+	_test_taken_from_a_bot()
 	_test_a_defuse()
 	_test_a_defuse_with_a_kit()
 	_test_letting_go_of_a_defuse()
@@ -331,6 +332,65 @@ func _test_bots_leave_it_to_a_human() -> void:
 	_one_tick(bomb, [dead_carrier, human, bot])
 	_one_tick(bomb, [dead_carrier, human, bot])
 	_check(bomb.state == C4.State.CARRIED and bomb.carrier == OTHER_T_ID, "with the rule off, the bot takes it at once")
+
+
+## CS2's "[E] Take Bomb": a human T pressing E while looking at a bot T who
+## carries it takes it; nobody else does.
+func _test_taken_from_a_bot() -> void:
+	var bomb := C4.new()
+	var bot := _actor(OTHER_T_ID, "T", OFF_SITE + Vector3(0.0, 0.0, -50.0))
+	bot.is_bot = true
+	var human := _actor(T_ID, "T", OFF_SITE)
+	# Looking at the bot's middle, 36 over its feet, from 64 over one's own.
+	human.aim = (bot.feet + Vector3.UP * C4.BODY_MIDDLE - human.eyes).normalized()
+	bomb.give_to(OTHER_T_ID, bot.feet)
+	bomb.take_events()
+	_check(bomb.take_from_bot(human, bot) and bomb.claims_use(human, bot),
+		"a human T looking at a bot T who carries it may take it, and E is the bomb's")
+	_one_tick(bomb, [bot, human])
+	_check_equal(bomb.carrier, OTHER_T_ID, "only on pressing E")
+	human.use_pressed = true
+	_one_tick(bomb, [bot, human])
+	_check_equal(bomb.carrier, T_ID, "pressing E takes it")
+	_check_equal(_names(bomb.take_events()), PackedStringArray(["bomb_pickup"]), "which sends bomb_pickup")
+	_check(bomb.position.is_equal_approx(human.feet), "and it goes with the one who took it")
+
+	var refused := {}
+	var turned := _actor(T_ID, "T", OFF_SITE)
+	turned.aim = -human.aim
+	refused["looking away"] = turned
+	var far := _actor(T_ID, "T", OFF_SITE + Vector3(0.0, 0.0, 200.0))
+	far.aim = (bot.feet + Vector3.UP * C4.BODY_MIDDLE - far.eyes).normalized()
+	refused["past E's reach"] = far
+	var other_bot := _actor(T_ID, "T", OFF_SITE)
+	other_bot.aim = human.aim
+	other_bot.is_bot = true
+	refused["a bot"] = other_bot
+	var ct := _actor(CT_ID, "CT", OFF_SITE)
+	ct.aim = human.aim
+	refused["a CT"] = ct
+	for why: String in refused:
+		var fresh := C4.new()
+		fresh.give_to(OTHER_T_ID, bot.feet)
+		var taker: C4.Actor = refused[why]
+		taker.use_pressed = true
+		_one_tick(fresh, [bot, taker])
+		_check_equal(fresh.carrier, OTHER_T_ID, "not taken by one %s" % why)
+	var human_carrier := _actor(OTHER_T_ID, "T", bot.feet)
+	var fresh := C4.new()
+	fresh.give_to(OTHER_T_ID, bot.feet)
+	_one_tick(fresh, [human_carrier, human])
+	_check_equal(fresh.carrier, OTHER_T_ID, "nor from a human carrier")
+	var planting := C4.new()
+	bot.feet = ON_SITE
+	bot.plant_held = true
+	planting.give_to(OTHER_T_ID, ON_SITE)
+	_one_tick(planting, [bot])
+	human.feet = ON_SITE + Vector3(0.0, 0.0, 50.0)
+	human.eyes = human.feet + Vector3.UP * 64.0
+	human.aim = (bot.feet + Vector3.UP * C4.BODY_MIDDLE - human.eyes).normalized()
+	_one_tick(planting, [bot, human])
+	_check(planting.planting() and planting.carrier == OTHER_T_ID, "nor from a bot in the middle of a plant")
 
 
 # --- Defusing ----------------------------------------------------------------

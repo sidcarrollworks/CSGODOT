@@ -55,6 +55,7 @@ func _run() -> void:
 	_test_the_blast_through_the_damage_path(t_id, ct_id, ct)
 	_test_dropped_and_picked_up(t_id, planter)
 	_test_who_the_round_hands_it_to()
+	_test_taken_from_a_bot()
 	_finish("bomb-system")
 
 
@@ -135,6 +136,53 @@ func _test_who_the_round_hands_it_to() -> void:
 		player.queue_free()
 	for id in bots:
 		roster.player(id).queue_free()
+
+
+## "[E] Take Bomb" through the game: E looking at a bot teammate who carries
+## it moves the bomb from the bot's inventory to yours, and E is the
+## bomb's that tick, so a gun on the ground in the same view stays there.
+func _test_taken_from_a_bot() -> void:
+	var game := GameSystems.new()
+	var system := BombSystem.new([BombSite.of_box("A", SITE_BOX)])
+	var asks := {}
+	system.input_of = func(userid: int, _player_node: Node3D, _inventory: Inventory) -> Dictionary:
+		return asks.get(userid, {})
+	game.add_system(system)
+	var heard: Array[StringName] = []
+	game.events.listen_all(func(event: GameEvent) -> void: heard.append(event.name))
+	var you := _player(OFF_SITE, "T")
+	var you_id := game.add_player(you, you.hit_target)
+	var bot := _player(OFF_SITE + Vector3(0.0, 0.0, -50.0), "T")
+	bot.is_bot = true
+	var bot_id := game.add_player(bot, bot.hit_target)
+	# Facing -Z, down at the bot's middle.
+	you.yaw_degrees = 0.0
+	you.pitch_degrees = rad_to_deg(atan2(C4.BODY_MIDDLE - you.eye_height(), 50.0))
+	system.give_to(bot_id)
+	var drops := game.systems()[0] as ItemDrops
+	drops.use_pressed = func(userid: int, _node: Node3D) -> bool: return userid == you_id
+	var gun := ItemRegistry.item("weapon_ak47")
+	var lying := DroppedItem.drop_from(game, bot_id, Inventory.Entry.new(gun), Transform3D(Basis(), bot.global_position + Vector3(0.0, 30.0, 5.0)), Vector3.ZERO, Vector3.ZERO)
+	# In view by the bot (no floor here, so it stays in the air), long
+	# enough dropped for E to take it, and never walked over.
+	lying.dropped_usec = game.now_usec() - 10_000_000
+	lying.next_pickup_check_usec = 1 << 60
+	_check(system.use_claimed(you_id), "looking at a bot who carries the bomb, E is the bomb's")
+	asks[you_id] = {"use_pressed": true}
+	_tick += 1
+	game.step(_tick)
+	_check_equal(system.bomb.carrier, you_id, "E takes the bomb from the bot")
+	_check(game.inventory(you_id).has("weapon_c4") and not game.inventory(bot_id).has("weapon_c4"),
+		"out of its inventory into yours")
+	_check(heard.has(&"bomb_pickup"), "with bomb_pickup")
+	_check(not game.inventory(you_id).has("weapon_ak47") and lying.entry != null, "and the gun on the ground in view stays there")
+	_check(not system.use_claimed(bot_id), "the bot cannot take it back")
+	asks.clear()
+	_tick += 1
+	game.step(_tick)
+	_check(game.inventory(you_id).has("weapon_ak47"), "and with the bomb yours, the next E takes the gun")
+	for player: Node in [you, bot]:
+		player.queue_free()
 
 
 func _test_no_plant_before_the_round_is_live(t_id: int) -> void:
