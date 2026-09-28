@@ -277,7 +277,12 @@ sounds are on it (`src/audio/round_sounds.gd`): the announcer, the music
 kit's cues giving way to each other by their priorities
 (`src/audio/music_rules.gd`) at CS2's default music volumes
 (`src/audio/audio_settings.gd`), the freeze countdown's beeps, and the
-bomb's beeps, plant and defuse (`C4View`).
+bomb's beeps, plant and defuse (`C4View`). So are the grenades'
+(`src/audio/grenade_sounds.gd`): throws, bounces, the burning bottle in
+flight, every detonation with its distant layer, fires, the decoy's fake
+gunfire as the gun it imitates, and a flash in your own ears, its ring and
+the muffle over everything else (`src/audio/flash_muffle.gd`). The older
+views play on an `Unmixed` bus so the muffle reaches them too.
 
 ## Lighting
 

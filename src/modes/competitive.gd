@@ -354,7 +354,7 @@ static func stand_in_buy_zones(spawns: Dictionary) -> BuyZones:
 
 
 ## What is seen and heard of the systems: the grenades and their smoke and
-## fire, the bomb on the ground and its blast, a flash's white-out over the
+## fire and their sounds, the bomb on the ground and its blast, a flash's white-out over the
 ## HUD, as CS2's covers it, the hits and deaths others hear, the round's
 ## announcer and music, and the rounds' tracers and the guns' muzzle
 ## flashes.
@@ -371,6 +371,11 @@ func _add_views() -> void:
 		overlay.game = world.game
 		overlay.viewer_id = (player as PlayerSim).userid
 		canvas.add_child(overlay)
+		# What this player hears of them, the flash in their ears included.
+		var grenade_sounds := GrenadeSounds.new()
+		grenade_sounds.name = "GrenadeSounds"
+		add_child(grenade_sounds)
+		grenade_sounds.watch(world.game, (player as PlayerSim).userid)
 	if bomb_system != null:
 		var bomb_view := C4View.new()
 		bomb_view.name = "Bomb"
