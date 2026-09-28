@@ -305,15 +305,27 @@ static func build(
 
 
 ## Carries what CS2's prop shaders add that the glTF has no slot for onto a
-## material drawn with prop_features.gdshaderinc: the decal over its colour
-## and its self-illumination, from the material's description (its vmat),
-## with the textures the layers step fetched under textures_dir. Without
-## them, nothing changes.
+## material drawn with prop_features.gdshaderinc: its tint through its tint
+## mask, the decal over its colour and its self-illumination, from the
+## material's description (its vmat), with the textures the layers step
+## fetched under textures_dir. Without them, nothing changes: a tinted
+## material without its mask keeps the tint over all of it, as exported.
 static func carry_features(lit: ShaderMaterial, description: Dictionary, textures_dir: String) -> void:
 	var flags: Dictionary = description.get("IntParams", {})
 	var textures: Dictionary = description.get("TextureParams", {})
 	var floats: Dictionary = description.get("FloatParams", {})
 	var own_uv2 := uses_own_uv2(description)
+	if int(flags.get("F_TINT_MASK", 0)) != 0:
+		var tint_mask := BlendMaterials.load_texture(textures_dir, textures.get("g_tTintMask"))
+		var base: Variant = lit.get_shader_parameter("albedo_color")
+		if tint_mask != null and base is Color:
+			# The export baked the tint into the whole colour; it goes back
+			# on only where the mask says, and the colour keeps its alpha.
+			var tint := base as Color
+			lit.set_shader_parameter("tint_color", Color(tint.r, tint.g, tint.b, 1.0))
+			lit.set_shader_parameter("tint_mask", tint_mask)
+			lit.set_shader_parameter("tint_on_uv2", tint_on_uv2(description))
+			lit.set_shader_parameter("albedo_color", Color(1.0, 1.0, 1.0, tint.a))
 	if int(flags.get("F_DECAL_TEXTURE", 0)) != 0:
 		var decal := BlendMaterials.load_texture(textures_dir, textures.get("g_tDecal"))
 		if decal != null:
@@ -332,6 +344,24 @@ static func carry_features(lit: ShaderMaterial, description: Dictionary, texture
 			lit.set_shader_parameter("self_illum_color", Vector3(colour.r, colour.g, colour.b) * strength)
 			lit.set_shader_parameter("self_illum_albedo_factor", float(floats.get("g_flSelfIllumAlbedoFactor", 0.0)))
 			lit.set_shader_parameter("self_illum_on_uv2", own_uv2 or int(flags.get("g_bUseSecondaryUvForSelfIllum", 0)) != 0)
+
+
+## Whether a material reads its tint mask through its second UV set, as
+## Source 2 Viewer's complex.frag.slang picks it: always under F_FORCE_UV2,
+## and under F_SECONDARY_UV unless g_bUseSecondaryUvForTintMask is off.
+static func tint_on_uv2(description: Dictionary) -> bool:
+	var flags: Dictionary = description.get("IntParams", {})
+	if uses_own_uv2(description):
+		return true
+	return int(flags.get("F_SECONDARY_UV", 0)) != 0 and int(flags.get("g_bUseSecondaryUvForTintMask", 1)) != 0
+
+
+## A surface's colour under a tint mask, as prop_features.gdshaderinc's
+## prop_tint gives it: CS2's 1 - mask * (1 - tint), so the tint is all
+## there where the mask is 1 and none of it where it is 0.
+static func masked_tint(albedo: Color, tint: Color, mask: float) -> Color:
+	var factor := Color(1.0, 1.0, 1.0).lerp(tint, mask)
+	return Color(albedo.r * factor.r, albedo.g * factor.g, albedo.b * factor.b, albedo.a)
 
 
 ## The lightmapped shader for a material: the blended one for an alpha
