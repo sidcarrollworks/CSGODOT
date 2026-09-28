@@ -565,8 +565,13 @@ func _test_on_the_range() -> void:
 		await physics_frame
 	_check(range_map.bomb_sites[0].contains(player.global_position), "site A is behind the spawn")
 	# The rifle in hand, drawn: the attack button fires it and plants nothing.
-	while player.weapon != null and player.weapon.is_drawing(SimClock.now_usec()):
+	# Each wait on the world's clock is capped, so a world that never ticks
+	# (the physics addon missing) fails here rather than waiting for ever.
+	var drawing := 0
+	while player.weapon != null and player.weapon.is_drawing(SimClock.now_usec()) and drawing < SimClock.ticks_in(5.0):
 		await physics_frame
+		drawing += 1
+	_check(player.weapon == null or not player.weapon.is_drawing(SimClock.now_usec()), "the rifle is drawn within 5 s")
 	buttons.held = UserCmd.ATTACK
 	for i in 32:
 		await physics_frame
@@ -581,8 +586,11 @@ func _test_on_the_range() -> void:
 	for i in SimClock.ticks_in(0.5):
 		await physics_frame
 	_check(not bomb.planting() and not player.hand_ready(), "held while the bomb is drawn, the button plants nothing yet")
-	while not player.hand_ready():
+	var readying := 0
+	while not player.hand_ready() and readying < SimClock.ticks_in(5.0):
 		await physics_frame
+		readying += 1
+	_check(player.hand_ready(), "and drawn, in hand and ready, within 5 s")
 	var waited := 0
 	while not bomb.planted() and waited < SimClock.ticks_in(bomb.rules.plant_seconds + 1.0):
 		await physics_frame
