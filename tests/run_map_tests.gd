@@ -78,6 +78,7 @@ func _process(_delta: float) -> bool:
 		_test_lightmap_materials()
 		_test_lightmap_lods()
 		_test_vertex_precision()
+		_test_environment_props()
 		_test_far_materials()
 		_test_far_squeeze()
 		_test_unlit_materials()
@@ -1607,6 +1608,95 @@ func _collect_mesh_instances(node: Node, out: Array[MeshInstance3D]) -> void:
 		_collect_mesh_instances(child, out)
 
 
+## csgo_environment keeps its model's own second UV set and its lightmap in
+## the third (dust2's tarp on xbox, playtest of 2026-09-25 issue 7); a
+## second set that is (0, 0) everywhere is never a lightmap's; and the
+## model tint recolours as Source 2 Viewer's ColorizeTint does, rather than
+## multiplying.
+func _test_environment_props() -> void:
+	var dir := "user://export_fixture/environment"
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir.path_join("lightmaps")))
+	Image.create(64, 64, false, Image.FORMAT_RGBAF).save_exr(dir.path_join(LightmapMaterials.IRRADIANCE_FILE))
+	Image.create(64, 64, false, Image.FORMAT_RGBA8).save_png(dir.path_join(LightmapMaterials.DIRECTION_FILE))
+
+	# The tarp's tint, as the export bakes it (linear [0.178, 0.198, 0.144]).
+	var tint := Color(0.178, 0.198, 0.144).linear_to_srgb()
+	var tarp := StandardMaterial3D.new()
+	tarp.albedo_color = tint
+	tarp.set_meta("extras", {"vmat": {
+		"ShaderName": "csgo_environment.vfx",
+		"FloatParams": {"g_fTintMaskContrast1": 4.0, "g_fTintMaskBrightness1": 4.0},
+	}})
+	var plank := StandardMaterial3D.new()
+	plank.set_meta("extras", {"vmat": {"ShaderName": "csgo_vertexlitgeneric.vfx"}})
+	var crate := StandardMaterial3D.new()
+	crate.set_meta("extras", {"vmat": {"ShaderName": "csgo_vertexlitgeneric.vfx"}})
+	var floor_material := StandardMaterial3D.new()
+	floor_material.set_meta("extras", {"vmat": {"ShaderName": "csgo_lightmappedgeneric.vfx"}})
+	var untinted := StandardMaterial3D.new()
+	untinted.set_meta("extras", {"vmat": {"ShaderName": "csgo_environment.vfx", "IntParams": {"g_bModelTint1": 0}}})
+	untinted.albedo_color = tint
+
+	# The tarp: its own second set dense, the lightmap charted in the third.
+	# A plank whose second set is (0, 0) everywhere but has a third; a crate
+	# the same with no third; a floor the same; a tarp with its tint off.
+	var mesh := ArrayMesh.new()
+	_add_quad(mesh, tarp, 20.0, 1.0, 0.1)
+	_add_quad(mesh, plank, 20.0, 0.0, 0.1, Vector2.ZERO)
+	_add_quad(mesh, crate, 20.0, 0.0, -1.0, Vector2.ZERO)
+	_add_quad(mesh, floor_material, 100.0, 0.0, -1.0, Vector2.ZERO)
+	_add_quad(mesh, untinted, 20.0, 1.0, 0.1)
+	var instance := MeshInstance3D.new()
+	instance.mesh = mesh
+	var meshes: Array[MeshInstance3D] = [instance]
+
+	_check(
+		LightmapMaterials.uses_own_uv2(BlendMaterials.vmat(tarp)) and not LightmapMaterials.uses_own_uv2(BlendMaterials.vmat(plank))
+			and LightmapMaterials.uv2_at_origin(mesh, 1) and not LightmapMaterials.uv2_at_origin(mesh, 0),
+		"csgo_environment's second UV set is its own, and a set at (0, 0) everywhere is found"
+	)
+	var result := LightmapMaterials.apply(meshes, dir)
+	var tarp_lit := instance.get_surface_override_material(0) as ShaderMaterial
+	var plank_lit := instance.get_surface_override_material(1) as ShaderMaterial
+	_check(
+		result["surfaces"] == 3 and tarp_lit != null and tarp_lit.get_shader_parameter("lightmap_uv_in_custom0") == true
+			and plank_lit != null and plank_lit.get_shader_parameter("lightmap_uv_in_custom0") == true
+			and instance.get_surface_override_material(2) == null and instance.get_surface_override_material(3) == null,
+		"the tarp and the plank read the lightmap through their third set; the crate and floor at (0, 0) are not lightmapped (%d surfaces)"
+			% result["surfaces"]
+	)
+	if tarp_lit != null:
+		var amount: float = tarp_lit.get_shader_parameter("colorize_amount")
+		_check(
+			is_equal_approx(amount, 1.0 - 0.144)
+				and (tarp_lit.get_shader_parameter("colorize_tint") as Color).is_equal_approx(tint)
+				and (tarp_lit.get_shader_parameter("albedo_color") as Color).is_equal_approx(Color.WHITE)
+				and tarp_lit.get_shader_parameter("colorize_mask_adjust") == Vector2(4.0, 4.0),
+			"the tarp's tint moves off its colour into the colorize, by one less its lowest channel (%.3f)" % amount
+		)
+	var untinted_lit := instance.get_surface_override_material(4) as ShaderMaterial
+	_check(
+		untinted_lit != null and untinted_lit.get_shader_parameter("colorize_amount") in [null, 0.0]
+			and (untinted_lit.get_shader_parameter("albedo_color") as Color).is_equal_approx(tint),
+		"with g_bModelTint1 off, the tint stays as exported"
+	)
+	# The page's numbers: the near-white tarp texture (linear 0.73) comes out
+	# at about (0.32, 0.35, 0.28), where the multiply gives (0.13, 0.145, 0.105).
+	var linear_tint := Color(0.178, 0.198, 0.144)
+	var recoloured := LightmapMaterials.colorize(Color(0.73, 0.73, 0.73), linear_tint, 1.0 - 0.144)
+	_check(
+		absf(recoloured.r - 0.32) < 0.01 and absf(recoloured.g - 0.35) < 0.01 and absf(recoloured.b - 0.28) < 0.01,
+		"the model tint keeps the tarp's lightness, (%.2f, %.2f, %.2f)" % [recoloured.r, recoloured.g, recoloured.b]
+	)
+	var grey := Color(0.4, 0.4, 0.4)
+	_check(
+		LightmapMaterials.colorize(grey, linear_tint, 0.0).is_equal_approx(grey)
+			and is_zero_approx(LightmapMaterials.model_tint_amount(Color.WHITE)),
+		"no amount changes nothing, and a white tint has none"
+	)
+	instance.free()
+
+
 ## A 20 by 20 grid of quads, one unit each, split at x = 10 into two
 ## lightmap charts half the atlas apart: the vertices along the split are
 ## doubled, alike in position, UV and normal, different only in their
@@ -1675,9 +1765,13 @@ func _straddling(arrays: Array, index: PackedInt32Array, in_custom0: bool) -> in
 
 ## A square of side units on its own surface of mesh with this material,
 ## its second UV set spanning uv2_extent of the lightmap (0 collapses it
-## onto one texel, below 0 leaves it out), and a third, in CUSTOM0 as
-## Godot imports one, spanning custom0_extent where that is not below 0.
-func _add_quad(mesh: ArrayMesh, material: Material, side: float, uv2_extent: float, custom0_extent: float = -1.0) -> void:
+## onto one texel, at collapsed_at, below 0 leaves it out), and a third, in
+## CUSTOM0 as Godot imports one, spanning custom0_extent where that is not
+## below 0.
+func _add_quad(
+	mesh: ArrayMesh, material: Material, side: float, uv2_extent: float, custom0_extent: float = -1.0,
+	collapsed_at := Vector2(0.25, 0.25)
+) -> void:
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array([
@@ -1687,7 +1781,8 @@ func _add_quad(mesh: ArrayMesh, material: Material, side: float, uv2_extent: flo
 	arrays[Mesh.ARRAY_INDEX] = PackedInt32Array([0, 1, 2, 0, 2, 3])
 	if uv2_extent >= 0.0:
 		var e := uv2_extent
-		arrays[Mesh.ARRAY_TEX_UV2] = PackedVector2Array([Vector2(0, 0), Vector2(e, 0), Vector2(e, e), Vector2(0, e)])
+		var o := collapsed_at if e == 0.0 else Vector2.ZERO
+		arrays[Mesh.ARRAY_TEX_UV2] = PackedVector2Array([o, o + Vector2(e, 0), o + Vector2(e, e), o + Vector2(0, e)])
 	var flags := 0
 	if custom0_extent >= 0.0:
 		var c := custom0_extent
