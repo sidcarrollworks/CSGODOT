@@ -27,8 +27,18 @@ extends Node3D
 ## sniper's, which CS2 has left silent since 22 September 2026
 ## (reference/research/audio-gameplay.md 1.3). Everyone near hears it, so a
 ## bot's is heard too.
-## A gun's volumes are set by ear; its sound events (.vsndevts) are not read
-## yet (reference/research/audio.md). The hit feedback's are CS2's (FEEDBACK).
+## A round that leaves the magazine nearly empty (WeaponData.nearly_empty,
+## its threshold provisional) is followed by CS2's low-ammo click,
+## Default.NearlyEmpty, played through SoundEvents from CS2's own event: 0.05
+## s after the shot, heard by everyone near (silent from 1100 units), plain
+## stereo in the shooter's own ears. The gun is the shooter's in hand when
+## the tick hands the event out, if it is the gun the event names.
+## A gun's other volumes are set by ear; its sound events (.vsndevts) are not
+## read yet. The hit feedback's are CS2's (FEEDBACK).
+
+## CS2's low-ammo click, which every gun's vdata names as its
+## WEAPON_SOUND_NEARLYEMPTY (as Default.nearlyempty).
+const NEARLY_EMPTY_EVENT := "Default.NearlyEmpty"
 
 const SOUNDS_PAGE := "res://reference/weapons/sounds.md"
 const TIMINGS := "res://reference/weapons/timings.csv"
@@ -93,6 +103,10 @@ var shooter: PlayerSim
 var _game: GameSystems
 ## The guns fired since the last frame drawn, by weapon_fire.
 var _fired := PackedStringArray()
+## Low-ammo clicks to start on the next frame, one for each such round.
+var _low_ammo: int = 0
+## Plays CS2's sound events (the low-ammo click).
+var events: SoundEvents
 ## The zoom sounds to play on the next frame, by weapon_zoom, as stems.
 var _zooms: Array[PackedStringArray] = []
 ## Every gun's set, by class, read once (sets()).
@@ -105,6 +119,9 @@ static var _loaded_all := false
 func _ready() -> void:
 	_fire = _make_player(4)
 	_handling = _make_player(2)
+	events = SoundEvents.new()
+	events.name = "SoundEvents"
+	add_child(events)
 	if not spatial:
 		for event: StringName in FEEDBACK:
 			var layers: Array = FEEDBACK[event]
@@ -137,6 +154,9 @@ func _process(_delta: float) -> void:
 	for item_class in _fired:
 		shot(item_class)
 	_fired.clear()
+	for i in _low_ammo:
+		nearly_empty_click()
+	_low_ammo = 0
 	for stems in _zooms:
 		_play(_handling, stems, HANDLING_DB)
 	_zooms.clear()
@@ -162,7 +182,13 @@ func _follow_game() -> void:
 func _on_weapon_fire(event: GameEvent) -> void:
 	var userid: int = event.fields["userid"]
 	if is_instance_valid(shooter) and userid == shooter.userid and userid != GameEvents.NOBODY:
-		_fired.append(String(event.fields["weapon"]))
+		var item_class := String(event.fields["weapon"])
+		_fired.append(item_class)
+		# weapon_fire keeps CS2's fields, which carry no ammo: the gun in
+		# hand, once it is the one fired, says what the round left.
+		var weapon := shooter.weapon
+		if weapon != null and weapon.data != null and weapon.data.item_class == item_class and weapon.data.nearly_empty(weapon.ammo):
+			_low_ammo += 1
 
 
 ## Handed out at the tick's end, when the scope has moved: what it sounds
@@ -194,6 +220,21 @@ static func zoom_stems(data: WeaponData, going_in: bool) -> PackedStringArray:
 ## The zoom sounds noted and not heard yet, as a copy.
 func pending_zooms() -> Array[PackedStringArray]:
 	return _zooms.duplicate()
+
+
+## The low-ammo clicks noted and not started yet.
+func pending_low_ammo() -> int:
+	return _low_ammo
+
+
+## CS2's low-ammo click, now: at the shooter for a bot (spatial), flat in
+## the shooter's own ears otherwise. The event's own delay puts it 0.05 s
+## after the shot.
+func nearly_empty_click() -> int:
+	var owner_id := shooter.userid if is_instance_valid(shooter) else -1
+	if spatial:
+		return events.start(NEARLY_EMPTY_EVENT, global_position if is_inside_tree() else Vector3.ZERO, owner_id)
+	return events.start(NEARLY_EMPTY_EVENT, null, owner_id, {"local": true})
 
 
 ## The shots noted and not heard yet, as a copy.
@@ -396,6 +437,7 @@ static func all_stems() -> PackedStringArray:
 static func _load_all() -> void:
 	if not SoundBank.available():
 		return
+	SoundEvents.load_events(PackedStringArray([NEARLY_EMPTY_EVENT]))
 	SoundBank.load_sets(all_stems())
 	for gun: Dictionary in sets().values():
 		SoundBank.randomizer_of(gun["fire"])
