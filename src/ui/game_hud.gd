@@ -238,8 +238,8 @@ static func name_of(roster: Roster, who: int) -> String:
 ## bomb" (research round-bomb-grenades.md 1.6), from how the bomb was last
 ## frame and is now; "" otherwise. Being handed it at a round's start says
 ## nothing here: your card's C4 shows it (TeamCounter).
-static func bomb_hint(was: C4.State, carrier_was: int, bomb: C4, you: int) -> String:
-	var yours := bomb.state == C4.State.CARRIED and bomb.carrier == you
+static func bomb_hint(was: C4.State, carrier_was: int, c4: C4, you: int) -> String:
+	var yours := c4.state == C4.State.CARRIED and c4.carrier == you
 	if yours and was == C4.State.DROPPED and carrier_was != you:
 		return "You picked up the bomb"
 	return ""

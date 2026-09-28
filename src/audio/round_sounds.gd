@@ -104,8 +104,8 @@ func _process(_delta: float) -> void:
 ## Plays what the events handed out since the last frame call for.
 func play_pending() -> void:
 	var side := game.roster.team_of(listener_id) if game != null else ""
-	for pending: Array in _pending:
-		var names := cues_for(pending[0], pending[1], side, listener_id)
+	for heard: Array in _pending:
+		var names := cues_for(heard[0], heard[1], side, listener_id)
 		var delays := line_delays(names)
 		for i in names.size():
 			events.start(names[i], null, -1, {"delay": delays[i]})
@@ -203,11 +203,11 @@ static func cues_for(event_name: StringName, fields: Dictionary, side: String, l
 static func line_delays(names: PackedStringArray) -> Array[float]:
 	var delays: Array[float] = []
 	var free_at := 0.0
-	for name in names:
+	for cue in names:
 		var wait := 0.0
-		if name.begins_with("Announcer."):
+		if cue.begins_with("Announcer."):
 			wait = free_at
-			var event := SoundEvents.find(name)
+			var event := SoundEvents.find(cue)
 			if event != null:
 				free_at = wait + event.delay + event.duration + LINE_GAP
 		delays.append(wait)

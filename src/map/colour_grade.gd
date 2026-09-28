@@ -223,7 +223,7 @@ static func settings(post: MapPostProcessing, exposure: float, texture: Texture3
 	var white := float(post.tonemap["m_flWhitePoint"])
 	var bias := pow(2.0, float(post.tonemap["m_flExposureBias"]))
 	var size := texture.get_width() if texture != null else TABLE_SIZE
-	var values := {
+	var out := {
 		"tonemap_mode": Environment.TONE_MAPPER_LINEAR,
 		# The curve's white on 1, where Godot clamps before the table.
 		"tonemap_exposure": exposure * bias / white,
@@ -235,8 +235,8 @@ static func settings(post: MapPostProcessing, exposure: float, texture: Texture3
 		"adjustment_color_correction": texture,
 		"glow_enabled": post.has_bloom,
 	}
-	values.merge(bloom_settings(post, exposure), true)
-	return values
+	out.merge(bloom_settings(post, exposure), true)
+	return out
 
 
 ## CS2's bloom in Godot's glow, as near as it goes (the research page lists
@@ -246,23 +246,23 @@ static func settings(post: MapPostProcessing, exposure: float, texture: Texture3
 ## graded frame, or mixes it in; Godot's glow fades in over the same span,
 ## times its own exposure, which here has the bias and 1 / W in it, and
 ## screens before the curve.
-static func bloom_settings(post: MapPostProcessing, exposure: float) -> Dictionary:
+static func bloom_settings(post: MapPostProcessing, _exposure: float) -> Dictionary:
 	var bloom := post.bloom
 	var white := float(post.tonemap["m_flWhitePoint"])
 	var bias := pow(2.0, float(post.tonemap["m_flExposureBias"]))
-	var mode := String(bloom["m_blendMode"])
+	var blend_mode := String(bloom["m_blendMode"])
 	var strength := float(bloom["m_flBloomStrength"])
 	var blend := Environment.GLOW_BLEND_MODE_ADDITIVE
-	if mode == "BLOOM_BLEND_SCREEN":
+	if blend_mode == "BLOOM_BLEND_SCREEN":
 		strength = float(bloom["m_flScreenBloomStrength"])
 		blend = Environment.GLOW_BLEND_MODE_SCREEN
-	elif mode == "BLOOM_BLEND_BLUR":
+	elif blend_mode == "BLOOM_BLEND_BLUR":
 		strength = float(bloom["m_flBlurBloomStrength"])
 		blend = Environment.GLOW_BLEND_MODE_MIX
 	# Godot's threshold is on its exposed scene, which carries the bias and
 	# 1 / W that CS2's threshold does not.
 	var scale := bias / white
-	var values := {
+	var out := {
 		"glow_intensity": strength,
 		"glow_strength": 1.0,
 		"glow_bloom": 0.0,
@@ -274,21 +274,21 @@ static func bloom_settings(post: MapPostProcessing, exposure: float) -> Dictiona
 	# Godot's level n is drawn at 1 / 2^n of the screen, as CS2's blur n is.
 	var weights: Array = bloom["m_flBlurWeight"]
 	for level in range(1, 8):
-		values["glow_levels/%d" % level] = float(weights[level - 1]) if level <= weights.size() else 0.0
-	return values
+		out["glow_levels/%d" % level] = float(weights[level - 1]) if level <= weights.size() else 0.0
+	return out
 
 
 ## Grades an Environment MapLighting built with the named mode, from what
 ## it keeps on it: the ACES values it set, and the map's post-processing
 ## and exposure for CS2's, whose table is built the first time and kept.
-static func use(environment: Environment, mode: String) -> void:
-	apply(environment, values(environment, mode))
-	environment.set_meta(&"grade", mode)
+static func use(environment: Environment, grade: String) -> void:
+	apply(environment, values(environment, grade))
+	environment.set_meta(&"grade", grade)
 
 
 ## The values the named mode sets on an Environment MapLighting built.
-static func values(environment: Environment, mode: String) -> Dictionary:
-	if mode != "cs2":
+static func values(environment: Environment, grade: String) -> Dictionary:
+	if grade != "cs2":
 		return environment.get_meta(&"grade_aces", {})
 	if not environment.has_meta(&"grade_cs2"):
 		var post: MapPostProcessing = environment.get_meta(&"grade_post", null)
@@ -301,17 +301,17 @@ static func values(environment: Environment, mode: String) -> Dictionary:
 
 ## Sets an Environment's grade from values (settings, or what a variant
 ## took from it).
-static func apply(environment: Environment, values: Dictionary) -> void:
-	for property: String in values:
-		environment.set(property, values[property])
+static func apply(environment: Environment, to_set: Dictionary) -> void:
+	for property: String in to_set:
+		environment.set(property, to_set[property])
 
 
 ## An Environment's grade as it stands: its PROPERTIES.
 static func current(environment: Environment) -> Dictionary:
-	var values := {}
+	var out := {}
 	for property in PROPERTIES:
-		values[property] = environment.get(property)
-	return values
+		out[property] = environment.get(property)
+	return out
 
 
 static func to_srgb(x: float) -> float:

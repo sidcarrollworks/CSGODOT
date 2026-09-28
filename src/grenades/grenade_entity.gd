@@ -39,7 +39,7 @@ var phase: Phase = Phase.FLYING
 ## Simulation time it left the hand.
 var thrown_usec: int = 0
 ## A seed for its smoke's shape and its decoy's bursts, from its id.
-var seed: int = 0
+var random_seed: int = 0
 
 ## A smoke's cloud once it pops, and when it popped.
 var cloud: SmokeVoxels
@@ -169,7 +169,7 @@ func _flash(t: SimTick) -> void:
 func _pop_smoke(t: SimTick) -> void:
 	phase = Phase.SMOKING
 	popped_usec = t.now_usec
-	cloud = SmokeVoxels.new(position, seed)
+	cloud = SmokeVoxels.new(position, random_seed)
 	system._smoke_popped(position)
 	_send(t, &"smokegrenade_detonate", {"userid": owner_id, "entityid": id}, position)
 	_smoke(t)
@@ -211,7 +211,7 @@ func _break(t: SimTick, ground: Vector3) -> void:
 		inferno.owner_id = owner_id
 		inferno.team = team
 		inferno.weapon_class = weapon_class
-		inferno.fire = FireSpread.new(weapon_class, ground, t.now_usec, seed)
+		inferno.fire = FireSpread.new(weapon_class, ground, t.now_usec, random_seed)
 		inferno.position = ground
 		inferno.previous_position = ground
 		t.game.entities.spawn(inferno)
@@ -227,7 +227,7 @@ func _start_decoy(t: SimTick) -> void:
 		var gun := ItemRegistry.weapon_data(decoy_weapon)
 		if gun != null and gun.cycle_time > 0.0:
 			cycle = gun.cycle_time
-	bursts = DecoyBursts.new(t.now_usec, seed, cycle)
+	bursts = DecoyBursts.new(t.now_usec, random_seed, cycle)
 	_send(t, &"decoy_started", {"userid": owner_id, "entityid": id}, position)
 	_decoy(t)
 
