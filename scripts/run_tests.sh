@@ -11,11 +11,14 @@
 # says how each went. It exits 1 if any file failed or ended without saying
 # how it went (a script error or a crash), which is what CI goes by.
 #
-# Each file has CSGODOT_TEST_TIMEOUT seconds (600 by default; CI sets less)
-# where the `timeout` command exists, so one that hangs fails instead of
-# holding up the rest. The game's physics is the Box3D addon: when it cannot
-# load, the run stops before the tests, saying how to install it, since a
-# match's world does not tick without it.
+# Each file gets CSGODOT_TEST_TIMEOUT seconds (180 by default; the slowest,
+# dust2's bot check, took 69 s with the extracted assets on Sid's machine on
+# 2026-09-28) and is then killed and counted as failed, so one stuck file
+# cannot eat CI's whole job. It needs coreutils' timeout (Linux, Git Bash; common.sh's
+# with_timeout); without it a file runs with no limit. The import runs under
+# a limit too, with one retry (common.sh's run_import). The game's physics is
+# the Box3D addon: when it cannot load, the run stops before the tests, saying
+# how to install it, since a match's world does not tick without it.
 set -uo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -26,43 +29,30 @@ if [[ -z "$GODOT" ]]; then
 	echo "No Godot binary found. Run this with GODOT=/path/to/godot." >&2
 	exit 1
 fi
-LIMIT="${CSGODOT_TEST_TIMEOUT:-600}"
-
-## Runs a command for at most $1 seconds where coreutils' timeout exists
-## (Linux, Git Bash), killing it 10 s after asking it to stop.
-limited() {
-	local seconds="$1"
-	shift
-	if command -v timeout >/dev/null 2>&1; then
-		timeout -k 10 "$seconds" "$@"
-	else
-		"$@"
-	fi
-}
+LIMIT="${CSGODOT_TEST_TIMEOUT:-180}"
 
 # The import pass registers the class_name globals. Without it the test script
 # cannot see MovementSolver and friends, and fails to parse.
 if [[ -d "$PROJECT_DIR/assets" ]]; then
 	# Extracted content has to be imported with its texture settings in place,
-	# here as anywhere else.
-	import_assets "$GODOT" "$PROJECT_DIR"
+	# here as anywhere else. An import that fails twice stops the run, as
+	# below: without it the tests cannot find their classes.
+	if ! import_assets "$GODOT" "$PROJECT_DIR"; then
+		exit 1
+	fi
 else
-	# Godot can finish an import and fail on its way out the first time it
-	# picks up a GDExtension, as a fresh clone does with Box3D; a second run
-	# finds nothing left to do. So a failed import runs once more, and the
-	# log is kept rather than thrown away.
-	mkdir -p "$PROJECT_DIR/.godot"
-	import_log="$PROJECT_DIR/.godot/import.log"
-	if ! limited 300 "$GODOT" --headless --path "$PROJECT_DIR" --import >"$import_log" 2>&1 \
-		&& ! limited 300 "$GODOT" --headless --path "$PROJECT_DIR" --import >"$import_log" 2>&1; then
-		echo "Godot's import failed twice; the tests may not find their classes. The end of $import_log:" >&2
-		tail -n 20 "$import_log" >&2
+	# A fresh clone's first import can also fail on its way out the first
+	# time it picks up a GDExtension (Box3D); run_import retries it once.
+	# It has 300 s here (CI's job has 30 minutes for everything), where a
+	# fresh dust2 on Sid's machine takes about a minute.
+	if ! CSGODOT_IMPORT_TIMEOUT="${CSGODOT_IMPORT_TIMEOUT:-300}" run_import "$GODOT" "$PROJECT_DIR"; then
+		exit 1
 	fi
 fi
 
 if grep -q '^physics/backend="box3d"' "$PROJECT_DIR/project.godot"; then
 	box3d_log="$(mktemp)"
-	limited 120 "$GODOT" --headless --path "$PROJECT_DIR" --script res://scripts/check_box3d.gd >"$box3d_log" 2>&1
+	with_timeout 120 "$GODOT" --headless --path "$PROJECT_DIR" --script res://scripts/check_box3d.gd >"$box3d_log" 2>&1
 	box3d_status=$?
 	grep -av '^Godot Engine' "$box3d_log" | grep -av '^[[:space:]]*$'
 	rm -f "$box3d_log"
@@ -98,16 +88,19 @@ total=0
 failed_files=0
 for name in "${files[@]}"; do
 	echo "=== tests/$name"
-	limited "$LIMIT" "$GODOT" --headless --path "$PROJECT_DIR" --script "tests/$name" 2>&1 | tee "$log"
+	with_timeout "$LIMIT" "$GODOT" --headless --path "$PROJECT_DIR" --script "tests/$name" 2>&1 | tee "$log"
 	status=${PIPESTATUS[0]}
 	result="$(grep -a '^TESTS ' "$log" | tail -n 1)"
 	read -r _ suite checks failures rest <<<"$result"
 	known="$(grep -ac '^KNOWN OPEN (' "$log")"
-	if [[ $status -eq 124 || $status -eq 137 ]]; then
-		if [[ -z "$result" ]]; then
-			summary+=("FAILED   $name timed out after ${LIMIT}s without reporting")
+	if [[ $status -eq 124 || $status -eq 137 ]] && [[ -z "$result" ]]; then
+		summary+=("FAILED   $name timed out after ${LIMIT}s without reporting")
+		failed_files=$((failed_files + 1))
+	elif [[ $status -eq 124 || $status -eq 137 ]]; then
+		if [[ "$checks" == "skipped" ]]; then
+			summary+=("FAILED   $suite skipped, then did not exit within ${LIMIT}s")
 		else
-			summary+=("FAILED   $suite: reported $checks checks, then did not exit within ${LIMIT}s")
+			summary+=("FAILED   $suite hung on exit after reporting $failures of $checks checks failed (killed after ${LIMIT}s)")
 		fi
 		failed_files=$((failed_files + 1))
 	elif [[ -z "$result" ]]; then
