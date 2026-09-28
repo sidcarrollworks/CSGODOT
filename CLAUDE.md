@@ -18,6 +18,9 @@ README says what the game is;
   for what you change (a test file is `tests/run_*.gd`, extending
   `tests/check_suite.gd`). The same run happens on GitHub for every pull
   request (`.github/workflows/tests.yml`); a red run is not ready to merge.
+  It needs the Box3D addon, the game's physics, which is not committed:
+  `scripts/install_box3d.sh` (Linux, macOS, the cloud threads) or
+  `scripts/install_box3d.ps1` (Windows); without it the run stops and says so.
 - CI and the cloud threads have no extracted assets, so the checks that need
   them skip there. A change that touches models, the map, sounds or anything
   else under `assets/` also needs the run on Sid's machine; say in the pull

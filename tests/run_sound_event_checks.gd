@@ -1,5 +1,14 @@
 extends "res://tests/check_suite.gd"
 
+## A player whose buttons the check holds.
+class Commanded extends PlayerSim:
+	var held := 0
+
+	func command_for(tick: int, dt: float) -> UserCmd:
+		var cmd := super.command_for(tick, dt)
+		cmd.buttons = held
+		return cmd
+
 ## Checks the shared sound groundwork (reference/playtest-2026-09-25.md,
 ## issues 19 to 21): the KV3 reader, the table of CS2's sound events
 ## generated from its .vsndevts text (reference/sounds/), the bus layout
@@ -10,7 +19,9 @@ extends "res://tests/check_suite.gd"
 ##
 ## Needs nothing extracted: headless Godot hears nothing (the Dummy audio
 ## driver), so the checks are on what a start decides and what level it
-## sets, not on what sounds. With the extraction, one check more: a start
+## sets, not on what sounds. And issue 20, the low-ammo click on top of it:
+## the provisional rule, and a WeaponSounds noting a click for each round
+## past it, from the game's weapon_fire. With the extraction, one check more: a start
 ## plays a file on its mixgroup's bus.
 
 
@@ -24,6 +35,8 @@ func _run() -> void:
 	_test_the_levels()
 	_test_the_buses()
 	await _test_the_player()
+	_test_the_nearly_empty_rule()
+	await _test_the_low_ammo_click()
 	_finish("sounds")
 
 
@@ -287,3 +300,79 @@ func _by_id(sounds: SoundEvents, id: int) -> Dictionary:
 		if voice.id == id:
 			return voice
 	return {}
+
+
+## The provisional rule (WeaponData.nearly_empty): at or under a fifth of
+## the magazine, rounded down, a shotgun's under three tenths, the emptying
+## round included.
+func _test_the_nearly_empty_rule() -> void:
+	# Magazine, rounds left at the last round that clicks, per plan step 4.
+	var guns := {
+		"weapon_ak47": [30, 6], "weapon_m4a1_silencer": [20, 4], "weapon_deagle": [7, 1],
+		"weapon_awp": [5, 1], "weapon_nova": [8, 2], "weapon_negev": [150, 30],
+	}
+	for weapon_class: String in guns:
+		var data := WeaponLibrary.build(weapon_class)
+		var want: Array = guns[weapon_class]
+		_check_equal(data.magazine_size, want[0], "%s holds %d" % [weapon_class, want[0]])
+		var last := int(want[1])
+		_check(data.nearly_empty(last) and not data.nearly_empty(last + 1) and data.nearly_empty(0),
+			"%s clicks from %d rounds left down to the empty one, not at %d" % [weapon_class, last, last + 1])
+	_check(not WeaponLibrary.build("weapon_ak47").nearly_empty(-1), "no rounds counted, no click")
+	var knife := WeaponData.new()
+	knife.magazine_size = 0
+	_check(not knife.nearly_empty(0), "a weapon with no magazine never clicks")
+
+
+## A WeaponSounds watching a player notes a click for every round that
+## leaves the magazine past the threshold, from the game's weapon_fire as
+## the tick hands it out, and starts the event on the next frame: 0.05 s
+## later, on Foley. Another gun's weapon_fire, or another player's, clicks
+## nothing.
+func _test_the_low_ammo_click() -> void:
+	var holder := Node3D.new()
+	root.add_child(holder)
+	var world := GameWorld.new()
+	holder.add_child(world)
+	world.set_physics_process(false)
+	var player := Commanded.new()
+	player.starting_gun = WeaponLibrary.ak47()
+	player.team = "T"
+	player.collision_layer = 2
+	holder.add_child(player)
+	player.place(Vector3(0, 0, 0), 0.0)
+	player.respawn()
+	world.add_player(player)
+	var sounds := WeaponSounds.new()
+	player.add_child(sounds)
+	sounds.set_process(false)
+	sounds.watch(player)
+	await process_frame
+	_check(player.weapon != null and player.weapon.data.item_class == "weapon_ak47", "the player holds the AK-47")
+	if player.weapon == null:
+		holder.queue_free()
+		return
+	player.weapon.ammo = 9
+	var left: Array[int] = []
+	world.game.events.listen(&"weapon_fire", func(_event: GameEvent) -> void: left.append(player.weapon.ammo))
+	player.held = UserCmd.ATTACK
+	for i in SimClock.ticks_in(ItemRegistry.item("weapon_ak47").deploy_seconds + 0.75):
+		world.step()
+	player.held = 0
+	var clicking := left.filter(func(rounds: int) -> bool: return rounds <= 6).size()
+	_check(left.size() >= 4 and left.any(func(rounds: int) -> bool: return rounds > 6) and clicking > 0,
+		"the AK-47 fired rounds either side of the threshold (%s left after each)" % [left])
+	_check_equal(sounds.pending_low_ammo(), clicking, "a click is noted for each round that left 6 or fewer, none before")
+	world.game.events.send(&"weapon_fire", {"userid": player.userid, "weapon": "weapon_glock"})
+	world.game.events.send(&"weapon_fire", {"userid": player.userid + 100, "weapon": "weapon_ak47"})
+	world.game.events.flush()
+	_check_equal(sounds.pending_low_ammo(), clicking, "another gun's round, or another player's, clicks nothing")
+	sounds._process(0.0)
+	_check_equal(sounds.pending_low_ammo(), 0, "the next frame starts what was noted")
+	var clicks := sounds.events.voices().filter(func(v: Dictionary) -> bool: return v.event == WeaponSounds.NEARLY_EMPTY_EVENT)
+	_check(not clicks.is_empty() and clicks.all(func(v: Dictionary) -> bool: return not v.started and v.bus == &"Foley"),
+		"as CS2's Default.NearlyEmpty, waiting its 0.05 s, on Foley (%d)" % clicks.size())
+	_check(not SoundEvents.find(WeaponSounds.NEARLY_EMPTY_EVENT).local_player_only, "and a bot's is heard by those near it")
+	world.remove_player(player)
+	holder.queue_free()
+	await process_frame

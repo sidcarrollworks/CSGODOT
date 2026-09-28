@@ -1,5 +1,21 @@
 # Box3D physics trial
 
+**Status (2026-09-28).** Sid chose Box3D as the game's physics going forward;
+this page keeps the trial's record. Two choices came with it:
+
+- CI and the cloud threads take the Linux libraries rebuilt against glibc
+  2.35 from this repo's release, or build the library from the release's
+  pinned source where that cannot be fetched (`scripts/install_box3d.sh`): the release's needs glibc 2.43 (libm's
+  `GLIBC_2.43`, from its `.gnu.version_r`), and GitHub's ubuntu-latest, Ubuntu
+  24.04, has 2.39. There it failed to load, a match's world never ticked, and
+  every CI run on this branch hung until the job's limit. `scripts/run_tests.sh`
+  now stops before the tests when Box3D does not load, and gives each file a
+  time limit.
+- The AWP's four settling checks in `tests/run_box3d_drop_checks.gd` are known
+  open (`_check_known_open` in `tests/check_suite.gd`): run and printed every
+  time, not failing the suite, until the AWP comes to rest. The thresholds are
+  unchanged.
+
 The [bridge and movement optimizations](research/box3d-performance-fixes-2026-09-26.md)
 follow Sid's request to address the code bottleneck while leaving effects for
 later. Their measurements supersede the performance figures below; the
@@ -50,7 +66,10 @@ On Linux, run `scripts/install_box3d.sh`. It installs the same upstream zip,
 then lays over it the tag's Linux libraries rebuilt against Ubuntu 22.04's
 glibc 2.35 (highest symbol needed: GLIBC_2.34), hosted on this repo's
 release `box3d-v0.4.3-linux-glibc2.35`, both archives checked against a
-pinned SHA-256. `scripts/build_box3d_linux.sh` rebuilds them in Docker
+pinned SHA-256. Where that release cannot be fetched (it does not exist
+yet, 2026-09-28: `box3d-linux-v0.4.3-glibc2.35.zip`, SHA-256
+`564efa7f…562a2b`, is to be attached to it), the script builds the debug
+library from the tag's source instead, as the status above says. `scripts/build_box3d_linux.sh` rebuilds them in Docker
 (gcc 11.4, about 6.5 minutes per target on 4 cores). Built 2026-09-28,
 they load headless in Godot 4.7.2 and pass the same checks as the Windows
 build, including the four AWP settling failures.

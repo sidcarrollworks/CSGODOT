@@ -158,6 +158,17 @@ class Punch:
 @export var automatic: bool = true
 
 @export var magazine_size: int = 30
+
+## The share of a magazine at or under which each shot also clicks
+## (Default.NearlyEmpty, CS2's low-ammo cue): a shotgun's, and every other
+## gun's. PROVISIONAL: no file of CS2's gives the threshold (it is in the
+## game's code), and these are a community figure (an L4D2 mod's
+## description, "20% (30% if you have a shotgun), similar to CS:GO/CS2",
+## Steam Workshop 3198155663), not measured. Sid measures it in CS2
+## (reference/playtest-2026-09-25.md, issue 20, plan step 1).
+const NEARLY_EMPTY_SHARE := 0.2
+const NEARLY_EMPTY_SHARE_SHOTGUN := 0.3
+
 @export var reserve_ammo: int = 90
 ## Whether the game counts the reserve in magazines (m_bReserveAmmoAsClips),
 ## which is how the HUD shows it: every gun but the shotguns loaded a shell
@@ -199,6 +210,17 @@ class Punch:
 ## recovery (and the sheet's "(scoped)" row for landing and ladders). Null
 ## for a gun with no scope.
 @export var scoped: WeaponData
+
+
+## Whether a round that left rounds_left in the magazine clicks as nearly
+## empty: rounds_left at or under the share of the magazine, rounded down,
+## the round that empties it included (both provisional, see
+## NEARLY_EMPTY_SHARE). A gun with no magazine never does.
+func nearly_empty(rounds_left: int) -> bool:
+	if magazine_size <= 0 or rounds_left < 0:
+		return false
+	var share := NEARLY_EMPTY_SHARE_SHOTGUN if pellets > 1 else NEARLY_EMPTY_SHARE
+	return rounds_left <= floori(magazine_size * share + 0.0001)
 
 
 ## How many zoom levels the gun has: 0 for none.

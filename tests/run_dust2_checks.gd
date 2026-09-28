@@ -272,6 +272,15 @@ func _import() -> bool:
 			"every cut or blended colour texture of the map and skybox has its alpha: the palm and bush cards are cut, not solid (%s; scripts/extract_assets.sh skybox)"
 				% ", ".join(without_alpha)
 		)
+		# Issue 24 of reference/playtest-2026-09-25.md: the clouds as an
+		# opaque, lit sheet over the sky, dark slate under CS2's grade.
+		var unlit: Dictionary = skybox.stats.get("unlit", {})
+		_check(
+			int(unlit.get("surfaces", 0)) > 0 and int(unlit.get("hidden", 0)) == 0
+				and (unlit.get("left", PackedStringArray()) as PackedStringArray).is_empty(),
+			"the skybox's clouds are drawn as CS2 draws them, unlit and added onto the sky (%s; scripts/extract_assets.sh layers fetches their textures)"
+				% unlit
+		)
 		_check(
 			int(skybox.stats.get("behind", 0)) >= 100,
 			"and its surfaces are drawn behind the map (%d of them)" % skybox.stats.get("behind", 0)

@@ -11,6 +11,8 @@ const SLOPE := 14.0
 const GUNS := ["weapon_glock", "weapon_ak47", "weapon_awp"]
 const THROWS := 4
 const SETTLE_TICKS := 64 * 5
+## Where the AWP's settling is tracked while its two checks are known open.
+const AWP_SETTLING := "roadmap 12, Box3D: the AWP's settling, known open since 2026-09-28"
 
 
 func _initialize() -> void:
@@ -197,10 +199,16 @@ func _check_landings(ramp: bool) -> void:
 			item.remove()
 			_step(test)
 		_check(worst_depth > -0.5, "%s hull stays above the %s within 0.5 inch contact tolerance (%.4f in)" % [gun, label, worst_depth])
-		_check(rested == THROWS and worst_gap < 0.5,
-			"%s settles onto the %s in every spin (%d/%d, slowest %.2f s, gap %.4f in)" % [gun, label, rested, THROWS, slowest, worst_gap])
-		_check(drift < 0.01 and turn_drift < 0.002,
-			"%s stays still for a second after settling on the %s (%.5f in, %.5f rad)" % [gun, label, drift, turn_drift])
+		var settles := "%s settles onto the %s in every spin (%d/%d, slowest %.2f s, gap %.4f in)" % [gun, label, rested, THROWS, slowest, worst_gap]
+		var still := "%s stays still for a second after settling on the %s (%.5f in, %.5f rad)" % [gun, label, drift, turn_drift]
+		if gun == "weapon_awp":
+			# Sid chose on 2026-09-28 to take Box3D with the AWP not yet
+			# coming to rest (reference/box3d-trial.md); the thresholds stay.
+			_check_known_open(rested == THROWS and worst_gap < 0.5, settles, AWP_SETTLING)
+			_check_known_open(drift < 0.01 and turn_drift < 0.002, still, AWP_SETTLING)
+		else:
+			_check(rested == THROWS and worst_gap < 0.5, settles)
+			_check(drift < 0.01 and turn_drift < 0.002, still)
 	_close_case(test)
 
 

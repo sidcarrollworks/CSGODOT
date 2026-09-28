@@ -72,6 +72,10 @@ var pitch_degrees: float = 0.0
 var steps: Array[SubtickStep] = []
 ## A slot to take in hand (1 to 5), SELECT_LAST, or SELECT_NONE.
 var weapon_select: int = SELECT_NONE
+## Steps through what is carried since the last command: +1 a notch of the
+## wheel down (CS2's invnext), -1 invprev. A count, not a flag, since
+## several notches can land in one tick.
+var weapon_cycle: int = 0
 ## Noclip on or off this tick. A developer's key; CS has it as a command.
 var toggle_noclip: bool = false
 

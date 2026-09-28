@@ -85,8 +85,10 @@ These come up on several pages; the page named has the detail.
 - Arrays, Dictionaries and packed arrays are shared when passed or returned;
   `duplicate()` is shallow unless `deep` is true, and a Resource's
   `duplicate()` shares its sub-resources by default (gdscript.md).
-- The physics space may only be queried during `_physics_process`
-  (physics.md).
+- The physics space may only be queried during `_physics_process`, and
+  every query goes through `PhysicsQueries`: the game's physics is Box3D,
+  and a query made straight on `direct_space_state` finds no map, players
+  or hitboxes (physics.md).
 - Mouse look must read `InputEventMouseMotion.screen_relative`, not
   `relative`, which the stretch mode scales (input.md).
 - `physics/common/physics_jitter_fix` should be 0 for a network game or
