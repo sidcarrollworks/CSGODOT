@@ -3,10 +3,12 @@
 **Status (2026-09-28).** Sid chose Box3D as the game's physics going forward;
 this page keeps the trial's record. Two choices came with it:
 
-- CI and the cloud threads build the Linux library from the release's pinned
-  source (`scripts/install_box3d.sh`): the release's needs glibc 2.43 (libm's
-  `GLIBC_2.43`, from its `.gnu.version_r`), and GitHub's ubuntu-latest, Ubuntu
-  24.04, has 2.39. There it failed to load, a match's world never ticked, and
+- The release's Linux library needs glibc 2.43 (libm's `GLIBC_2.43`, from
+  its `.gnu.version_r`), and GitHub's ubuntu-latest, Ubuntu 24.04, has 2.39.
+  So on Linux `scripts/install_box3d.sh` lays over it the tag's libraries
+  rebuilt against glibc 2.35 from this repo's release (not attached yet,
+  2026-09-28), and until that can be fetched builds the debug library from
+  the release's pinned source; details below. There it failed to load, a match's world never ticked, and
   every CI run on this branch hung until the job's limit. `scripts/run_tests.sh`
   now stops before the tests when Box3D does not load, and gives each file a
   time limit.
@@ -57,7 +59,30 @@ its pinned SHA-256, and installs `addons/box3d/`. Restart Godot after
 installation. Binary libraries are ignored by Git; the installer makes
 the dependency reproducible. The release includes Windows x86-64 debug
 and release DLLs, Linux, Android and web libraries; macOS needs a source
-build. Upstream describes the binding as experimental and says its
+build.
+
+The release's Linux libraries need glibc 2.43 (libm) and 2.38 (libc), so
+they don't load on Ubuntu 24.04 (glibc 2.39): CI and the cloud threads.
+On Linux, run `scripts/install_box3d.sh`. It installs the same upstream zip
+and keeps its libraries where glibc is 2.43 or newer. With glibc 2.34 to
+2.42 it lays over them the tag's Linux libraries (debug and release)
+rebuilt against Ubuntu 22.04's glibc 2.35 (highest symbol needed:
+GLIBC_2.34), hosted on this repo's release `box3d-v0.4.3-linux-glibc2.35`
+as `box3d-linux-v0.4.3-glibc2.35.zip`, which must hold them under
+`addons/box3d/bin/`. `scripts/build_box3d_linux.sh` rebuilt those in
+Docker (gcc 11.4, about 6.5 minutes per target on 4 cores); built
+2026-09-28, they loaded headless in Godot 4.7.2 and passed the same checks
+as the Windows build, including the four AWP settling failures. Both
+archives are checked against a pinned SHA-256 before anything is unpacked.
+The release does not exist yet (2026-09-28), and the zip with SHA-256
+`564efa7f…562a2b` stayed in the cloud session that built it; a rebuilt zip
+will have another checksum, so attaching one goes with a change to
+`LINUX_SHA256` in the script. Where the release cannot be fetched, or glibc
+is older than 2.34, the script builds the debug library, the one the Godot
+editor binary loads, from the tag's pinned source instead, as the status
+above says; the release library stays the upstream one there.
+
+Upstream describes the binding as experimental and says its
 cross-compiled Windows binaries were untested by the author.
 
 The trial branch defaults to `box3d` through

@@ -47,8 +47,11 @@ jobs:
           chmod +x ~/godot/godot
 
       # The release's Linux library needs glibc 2.43 and this runner has
-      # 2.39, so the install builds it from the release's pinned source
-      # (scripts/install_box3d.sh); the result is kept between runs.
+      # 2.39, so the install lays over it the same tag rebuilt against glibc
+      # 2.35 from this repo's release, or builds it from the release's pinned
+      # source where that cannot be fetched (scripts/install_box3d.sh); the
+      # upstream zip and any build are kept between runs, under a key that
+      # follows the script.
       - name: Cache Box3D
         uses: actions/cache@v4
         with:

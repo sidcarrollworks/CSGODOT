@@ -259,9 +259,11 @@ issue done here and on the page in the same pull request.
 | 25 | Red window frames, doors and awnings too vivid (the export's tint over the whole texture, not only the tint mask's paint) | *(done 2026-09-26: `prop_tint`, `LightmapMaterials.carry_features`)* The tint moved off the colour and put back through `g_tTintMask`; the `layers` step fetches the masks | **Done 2026-09-28:** `layers` fetched 55 masks; long doors' shutters and door from 0.36 to 0.50 saturation to 0.22 to 0.34 (CS2's 0.17 to 0.31), the awning unchanged | 7, R7 |
 
 **Box3D is the game's physics (2026-09-28, Sid).** Sid chose to take the
-trial below forward. CI and the cloud threads build its Linux library from the
-pinned release's source (`scripts/install_box3d.sh`), since the release's
-needs glibc 2.43 and Ubuntu 24.04 has 2.39, and the AWP's four settling checks
+trial below forward. CI and the cloud threads take its Linux libraries rebuilt
+against glibc 2.35 from this repo's release once it is attached, and until
+then build the debug library from the pinned release's source
+(`scripts/install_box3d.sh`), since the release's need glibc 2.43 and Ubuntu
+24.04 has 2.39, and the AWP's four settling checks
 are known open (`_check_known_open`: reported every run, not failing it).
 Every query goes through `PhysicsQueries` (`reference/godot/physics.md`); E's
 sight test (#126), written straight on Godot's space, was ported with #125's
