@@ -204,7 +204,6 @@ const NEARLY_EMPTY_SHARE_SHOTGUN := 0.3
 @export var scoped: WeaponData
 
 
-## How many zoom levels the gun has: 0 for none.
 ## Whether a round that left rounds_left in the magazine clicks as nearly
 ## empty: rounds_left at or under the share of the magazine, rounded down,
 ## the round that empties it included (both provisional, see
@@ -216,6 +215,7 @@ func nearly_empty(rounds_left: int) -> bool:
 	return rounds_left <= floori(magazine_size * share + 0.0001)
 
 
+## How many zoom levels the gun has: 0 for none.
 func zoom_levels() -> int:
 	return zoom_fovs.size()
 
