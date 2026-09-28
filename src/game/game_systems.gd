@@ -34,6 +34,7 @@ var _commands: Array[Array] = []
 func _init() -> void:
 	# Everything read from disk is read now, before play.
 	ItemRegistry.load_all()
+	ItemPhysics.load_all()
 	# The items contract's own system: items on the ground.
 	add_system(ItemDrops.new())
 

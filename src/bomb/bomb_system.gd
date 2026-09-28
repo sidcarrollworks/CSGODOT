@@ -50,8 +50,8 @@ func attach(game: GameSystems) -> void:
 	game.provide(&"holds_still", holds_still)
 
 
-## Hands the bomb to a player now: a round's start does it to a random
-## terrorist; the range to you.
+## Hands the bomb to a player now: a round's start does it to a terrorist
+## (may_be_given); the range to you.
 func give_to(userid: int) -> void:
 	_forget_entity()
 	var inventory := _game.inventory(userid) if _game != null else null
@@ -195,20 +195,36 @@ func _on_round_prestart(_event: GameEvent) -> void:
 			_take_from(userid)
 
 
-## CS2 gives the bomb to one terrorist at random at each round's start.
+## CS2 gives the bomb to one terrorist at random at each round's start:
+## among the living human Ts when there is one and the bots defer to them
+## (C4Rules.bot_defer_to_human_items, competitive's 1), among all of them
+## when not.
 func _on_round_start(_event: GameEvent) -> void:
 	if _game == null:
 		return
-	var terrorists: Array[int] = []
-	for userid in _game.roster.on_team("T"):
-		var player := _game.roster.player(userid) as PlayerSim
-		if player != null and player.alive:
-			terrorists.append(userid)
+	var terrorists := may_be_given(_game.roster, bomb.rules)
 	if terrorists.is_empty():
 		bomb.reset()
 		return
 	_rng.seed = hash(["c4", SimClock.current_tick()])
 	give_to(terrorists[_rng.randi_range(0, terrorists.size() - 1)])
+
+
+## Who the round may hand the bomb to: the living terrorists, only the
+## humans among them where there are any and the bots defer to them.
+static func may_be_given(roster: Roster, rules: C4Rules) -> Array[int]:
+	var terrorists: Array[int] = []
+	var humans: Array[int] = []
+	for userid in roster.on_team("T"):
+		var player := roster.player(userid) as PlayerSim
+		if player == null or not player.alive:
+			continue
+		terrorists.append(userid)
+		if not player.is_bot:
+			humans.append(userid)
+	if rules.bot_defer_to_human_items and not humans.is_empty():
+		return humans
+	return terrorists
 
 
 ## The drop command is the bomb's when the bomb is in hand (ItemDrops

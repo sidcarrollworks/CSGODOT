@@ -155,11 +155,14 @@ no arms, and everything else works. On top of the clips, the weapon bobs as
 you walk and run, settles lower into the hands at speed, and lags a little
 behind a turn (`src/player/view_model_motion.gd`): the bob in Source's own
 shape, the amounts set by eye against CS2. Look down and your own body is
-there, chest and legs, walking the same clips as a bot's, with your shadow
-on the ground: the third-person model with its head and arms folded away
-(`RigModel.fold_bones`), since the camera sits inside the one and the view
-model stands in for the others. The shadow is cast by a twin of that model
-drawn only into the shadow maps, with its head on, so the shadow has one.
+there, belt and legs, walking the same clips as a bot's, with your shadow
+on the ground: the third-person model folded away from the chest up
+(`RigModel.fold_bones` on spine_2), since the camera sits inside the head,
+the view model stands in for the arms, and CS2 shows no chest looking down.
+Looking down it tips back about its feet and its lower back bends forward
+(`LookDownArch`), so the view feels like the back arching over the legs.
+The shadow is cast by a twin of that model drawn only into the shadow maps,
+whole, so the shadow has a head and arms.
 
 Other players are the same agents seen from outside (`src/player/player_model.gd`):
 the body on the third-person rig, the weapon in its hand, moved as CS2's own
@@ -181,13 +184,14 @@ shot: it wears the game's own hitboxes, the nineteen capsules CS2 defines
 for the model, riding its bones (`src/combat/skinned_hitboxes.gd`), so a
 bullet lands on the head, chest, stomach, an arm or a leg and is priced
 accordingly, ahead of the movement hull, which bullets pass. A kill turns
-the body into a ragdoll (`src/combat/ragdoll.gd`): a rigid body on each bone
-with capsules, shaped by them and jointed in cones, knocked the way the last
-round was going, falling and lying where it lands; off the range the bot is back
-at the start of its route a few seconds later, and in a match at the next
-round. (CS2's own ragdoll description is
-not extracted yet; the hitbox capsules stand in for its shapes. Without
-them, the game's death clip for where the round landed plays instead.) And it shoots back:
+the body into a ragdoll (`src/combat/ragdoll.gd`): CS2's own fifteen ragdoll
+shapes from the model description (the hitbox capsules where it has none),
+jointed with limits that differ each way, measured from standing, knocked the
+way the last round was going, lifted clear of the floor, falling and lying
+where it lands; off the range the bot is back at the start of its route a few
+seconds later, and in a match at the next round. (CS2's joints are not read
+yet: `reference/research/ragdoll-joints.md`. Without the model, the game's
+death clip for where the round landed plays instead.) And it shoots back:
 a player in its sight (in the open, within its cone, for half a second)
 stops it in its tracks; it turns, and fires its weapon in bursts with the
 weapon's own spread and recoil, reloading when it runs dry. You have the
@@ -262,6 +266,13 @@ sounds, walking does not, as in CS. A round that meets the world leaves one
 of the game's bullet holes there and the sound of that surface taking it
 (`src/combat/bullet_impacts.gd`). Without `sounds` extracted the game is
 silent, the walls unmarked, and everything else works.
+
+CS2's own sound events, the volume, distance curve, mixgroup, limits and
+layers of every sound, are a table generated from the game's text files
+(`reference/sounds/`, by `scripts/sound_events.sh`), and `SoundEvents`
+(`src/audio/sound_events.gd`) plays any of them the way CS2's sound stack
+does, on the bus of its mixgroup (`default_bus_layout.tres`). New sounds
+are built on it; the ones above still carry levels set by ear.
 
 ## Lighting
 

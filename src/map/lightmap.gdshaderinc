@@ -41,7 +41,7 @@ void vertex() {
 	lightmap_uv = lightmap_uv_in_custom0 ? CUSTOM0.xy : UV2;
 #ifdef FAR_SQUEEZE
 	// Drawn behind everything (far.gdshaderinc), and this is the vertex().
-	POSITION = far_position(PROJECTION_MATRIX * MODELVIEW_MATRIX * vec4(VERTEX, 1.0), CLIP_SPACE_FAR);
+	POSITION = far_position(PROJECTION_MATRIX * MODELVIEW_MATRIX * vec4(VERTEX, 1.0), CLIP_SPACE_FAR, PROJECTION_MATRIX);
 #endif
 }
 

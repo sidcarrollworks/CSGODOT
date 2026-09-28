@@ -12,6 +12,10 @@ extends Resource
 ## Before the match: everyone plays, dies and comes back, and nothing counts
 ## (mp_warmuptime).
 @export var warmup_seconds: float = 120.0
+## Warmup's clock stands still and warmup lasts until it is ended (F5,
+## mp_warmup_end), as mp_warmup_pausetimer 1 has it; off in competitive.
+## Practice turns it on.
+@export var warmup_paused: bool = false
 ## At the start of each round nobody moves or fires (mp_freezetime).
 @export var freeze_seconds: float = 15.0
 ## How long a round is played before it runs out, 1:55 (mp_roundtime_defuse

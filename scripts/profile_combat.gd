@@ -166,7 +166,9 @@ func _process(_delta: float) -> bool:
 		if not _as_played:
 			DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 			Engine.max_fps = 0
-		root.add_child((load("res://maps/de_dust2/de_dust2.tscn") as PackedScene).instantiate())
+		var dust2 := (load("res://maps/de_dust2/de_dust2.tscn") as PackedScene).instantiate()
+		dust2.set("game_mode", "Competitive")
+		root.add_child(dust2)
 		_loaded_at = Time.get_ticks_msec()
 		return false
 	if _player == null:

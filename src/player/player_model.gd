@@ -11,8 +11,12 @@ extends RigModel
 ## the three clips around it. A second space does the same crouched, and how
 ## far down the body is mixes the two. The places and the triangles here are
 ## the game's, read from its locomotion graph into
-## reference/animgraph/locomotion.json. The air is two more spaces of the same
-## kind, with CS2's cross-fades into it and back; a death is blended in over
+## reference/animgraph/locomotion.json. The air is CS2's InAir: a jump
+## plays its take-off (the Jump spaces, once through) and then goes on to
+## the landing spaces, whose clips are not played but posed at the time the
+## height above the ground gives, tucked up high and feet down near the
+## floor; a fall off a ledge goes straight to the landing. CS2's
+## cross-fades take it into the air and back; a death is blended in over
 ## the top and held.
 ##
 ## CS2 keeps the clips it mixes in step: each clip's sync track is its whole
@@ -62,17 +66,43 @@ const SEEN_BOX := AABB(Vector3(-32.0, 0.0, -32.0), Vector3(64.0, 80.0, 64.0))
 ## one.
 const MOST_UNSTEPPED_TICKS := 2
 ## The locomotion clips a variation's set is read for.
-const LOCOMOTION_CLIPS := ["idle_", "run_", "walk_", "crouch_", "inair_", "jump_stand"]
+const LOCOMOTION_CLIPS := ["idle_", "run_", "walk_", "crouch_", "inair_", "jump_"]
+## CS2's jump additives, which every variation shares from SHARED_DIR
+## (worldmodel.md's BodyAdditives: JumpAdditiveStart, JumpAdditiveLand).
+const JUMP_ADDITIVES := "jump_additive_"
 ## How far the spaces reach, beyond CS2's furthest clip (225).
 const SPACE_EXTENT := 300.0
 
 ## Below this the body is standing still, for state().
 const STILL_SPEED := 8.0
-## CS2's cross-fades into the air and back to the ground (locomotion.md).
+## CS2's cross-fades into the air, by a jump or by a fall, and back to the
+## ground (locomotion.md: SM's InAir and Ground). CS2 lands in 0.05 s
+## instead when its MS_AIR_FINISHING event has fired, an event of the
+## landing clips not in our exports, so every landing here takes 0.2 s.
 const TO_AIR := 0.1
+const TO_FALL := 0.3
 const TO_GROUND := 0.2
+## How long CS2 eases the crouch that mixes the air's standing and crouched
+## spaces over (move_crouch_amount_eased, parameters.md).
+const CROUCH_EASE := 0.2
+## The landing clips' pose by height above the ground, (height, share of the
+## clip) points, where locomotion.json has no curve for it: the rifle
+## graph's own (node 695: the whole clip, feet down, up to 5.8 units above
+## the ground, its start, tucked, from 50; read from CS2's graph on Sid's
+## machine for reference/playtest-2026-09-25.md issue 17).
+const LANDING_CURVE: Array[Vector2] = [Vector2(5.8, 1.0), Vector2(50.0, 0.0)]
+## The take-off's length where the variation has no jump_stand clip, and
+## the landing clips' where it has no inair_stand: about the length of
+## CS2's (jump_n_knife 0.4 s, inair_* 0.33 s).
+const JUMP_SECONDS := 0.4
+const LANDING_SECONDS := 0.33
+## The clip a take-off point plays when its own was not extracted (the
+## rifle's and pistol's directional ones, issue 17's Local part).
+const JUMP_FALLBACK := "jump_stand"
 ## How long a clip played once takes to fade back out.
 const BLEND := 0.15
+## CS2's fades into and out of its jump additives (BodyAdditives).
+const ADDITIVE_FADE := 0.2
 
 ## Where a gun's own third-person set is (world_clip_set under it).
 const WORLD_DIR := "res://assets/characters/animation/anims/world"
@@ -88,8 +118,9 @@ const ACTION_FADE := 0.2
 ## it lets them all go and builds again what it holds next.
 const MODELS_KEPT := 4
 
-## The gun clips as the body plays them (prepared_set()), by the clip's path:
-## the rig is the same in every model, and so are they.
+## The gun clips as the body plays them (prepared_set()), by the clip's path,
+## and the jump additives, by name: the rig is the same in every model, and
+## so are they.
 static var _prepared := {}
 ## The locomotion table, read once (read_locomotion()), which hands out
 ## copies of it.
@@ -141,6 +172,25 @@ var _switch_at_usec := 0
 var _speeds := Vector2.ZERO
 var _crouch := 0.0
 var _on_ground := true
+## The crouch as the air mixes it, eased (CROUCH_EASE), and when it last was.
+var _crouch_eased := 0.0
+var _eased_at_usec := -1
+## What the body last did between the ground and the air (PlayerBody's
+## air_action), when, and its height above the ground.
+var _air_action: StringName = PlayerBody.NO_AIR_ACTION
+var _air_action_usec := 0
+var _height := INF
+## By where the locomotion's parameters are (as _rings): the jump each has
+## started the take-off for, by its time; how long its take-off and its
+## landing clips last.
+var _jump_started := {}
+var _jump_seconds := {}
+var _landing_seconds := {}
+## The air action the jump additive was last played for, by its time.
+var _additive_for_usec := -1
+## The landing's pose by height, standing and crouched (LANDING_CURVE, or
+## the table's), by "stand" and "crouch".
+var _landing_curves := {}
 ## The death being held, if any.
 var _dead: StringName = &""
 
@@ -158,20 +208,39 @@ func setup(team: String, weapon_model: String, weapon_set: String = "", holds: b
 	clips.append_array(list_clips(SHARED_DIR, PackedStringArray(["death_"])))
 	if not load_clips(clips, VARIATION):
 		return false
+	# Under their whole names: the rifle's and pistol's end in their
+	# variation, the knife's in nothing. They hold bare differences, as the
+	# guns' additive clips do, and are made ones Godot adds (rest_relative()).
+	# They carry the gun's rig too, which this body's mixer has not got, so
+	# only the body's tracks are kept, as a gun's own clips keep them.
+	var library := animation_player.get_animation_library(&"")
+	var body_node := String(animation_player.get_animation(&"idle").track_get_path(0).get_concatenated_names()) if animation_player.has_animation(&"idle") else ""
+	for additive in add_clips(list_clips(SHARED_DIR, PackedStringArray([JUMP_ADDITIVES])), ""):
+		if not _prepared.has(additive):
+			_prepared[additive] = rest_relative(body_tracks_only(library.get_animation(additive), body_node), character_rig)
+		library.remove_animation(additive)
+		library.add_animation(additive, _prepared[additive])
 	idle = &"idle"
 	holds_items = holds
 	if holds:
 		for variation: String in HELD_VARIATIONS:
 			var added := add_clips(list_clips(WORLD_DIR.path_join(HELD_VARIATIONS[variation]), PackedStringArray(LOCOMOTION_CLIPS)), variation, variation + "_")
 			for clip_name in added:
-				if not clip_name.begins_with(variation + "_jump"):
+				if not is_air_clip(clip_name):
 					animation_player.get_animation(clip_name).loop_mode = Animation.LOOP_LINEAR
 	var weapon_clips := PackedStringArray() if holds else _add_set(weapon_set, WEAPON)
+	# CS2 plays the take-off once and poses the landing clips by height;
+	# neither loops. (load_clips loops every clip but the one-shots.)
+	for clip_name in animation_player.get_animation_list():
+		if is_air_clip(clip_name):
+			animation_player.get_animation(clip_name).loop_mode = Animation.LOOP_NONE
 
 	var agent := instantiate(AGENTS.get(team, AGENTS["T"]))
 	if agent != null:
 		for mesh in agent.find_children("*thirdperson*", "MeshInstance3D", true, false):
 			adopt(mesh, character_rig)
+		# The arms', thighs' and head's twist bones, which the clips do not key.
+		TwistModifier.attach(character_rig, AGENTS.get(team, AGENTS["T"]), TwistModifier.skeleton_of(agent))
 		agent.free()
 
 	if not holds:
@@ -251,10 +320,7 @@ func prepared_set(weapon_set: String) -> Dictionary:
 			var source := clip_animation(path)
 			if source == null:
 				continue
-			var clip := source.duplicate() as Animation
-			for track in range(clip.get_track_count() - 1, -1, -1):
-				if String(clip.track_get_path(track).get_concatenated_names()) != body_node:
-					clip.remove_track(track)
+			var clip := body_tracks_only(source, body_node)
 			if ResourceLoader.exists(path.get_basename() + ".vnmclip+non_additive.gltf"):
 				clip = rest_relative(clip, character_rig)
 			clip.loop_mode = Animation.LOOP_LINEAR if action.begins_with("idle") else Animation.LOOP_NONE
@@ -362,6 +428,18 @@ func show_held() -> void:
 	_update_pins()
 
 
+## A copy of a clip with only the tracks on body_node (the body's
+## skeleton, as its clips name it): a clip that also moves the gun's rig
+## (".../Skeleton3D:weapon") would have the body's mixer look for bones it
+## has not got, and warn every step.
+static func body_tracks_only(clip: Animation, body_node: String) -> Animation:
+	var out := clip.duplicate() as Animation
+	for track in range(out.get_track_count() - 1, -1, -1):
+		if String(out.track_get_path(track).get_concatenated_names()) != body_node:
+			out.remove_track(track)
+	return out
+
+
 ## One of CS2's additive clips made one Godot's additive nodes add as CS2
 ## does. CS2's hold the difference itself, applied in the bone's own space
 ## (Esoterica's AdditiveBlendFunction: base * delta, and base + delta for the
@@ -412,19 +490,25 @@ func upper_body_tracks() -> Array[NodePath]:
 func _build_tree(weapon_clips: PackedStringArray) -> void:
 	var table := read_locomotion()
 	var variations := [VARIATION] + HELD_VARIATIONS.keys() if holds_items else []
-	var root := build_varied_tree(table, variations) if holds_items else build_tree(table, VARIATION)
+	var available := {}
+	for clip in animation_player.get_animation_list():
+		available[String(clip)] = true
+	var root := build_varied_tree(table, variations, available) if holds_items else build_tree(table, VARIATION, available)
 	if root == null:
 		push_warning("no locomotion blend spaces in %s; the body stands in its idle" % LOCOMOTION)
 		play(idle)
 		return
+	var moving := &"variation" if holds_items else &"ground"
+	if animation_player.has_animation(jump_additive(VARIATION, false, false)):
+		moving = add_body_additives(root, moving, jump_additive(VARIATION, false, false))
 	if holds_items:
 		# Nothing in hand yet: the layers stand on the locomotion's idle, and
 		# hold() points them at the clips of whatever is handed over.
-		add_weapon_layers(root, upper_body_tracks(), idle, idle, idle, &"variation")
+		add_weapon_layers(root, upper_body_tracks(), idle, idle, idle, moving)
 		has_weapon_layers = true
 	elif (WEAPON + "idle") in weapon_clips and (WEAPON + "shoot") in weapon_clips:
 		var crouched := StringName(WEAPON + "idle_crouch") if (WEAPON + "idle_crouch") in weapon_clips else StringName(WEAPON + "idle")
-		add_weapon_layers(root, upper_body_tracks(), StringName(WEAPON + "idle"), crouched, StringName(WEAPON + "shoot"))
+		add_weapon_layers(root, upper_body_tracks(), StringName(WEAPON + "idle"), crouched, StringName(WEAPON + "shoot"), moving)
 		has_weapon_layers = true
 		_hold_prefix = WEAPON
 		_has_hold = true
@@ -437,7 +521,11 @@ func _build_tree(weapon_clips: PackedStringArray) -> void:
 		var clip_prefix := "" if variation == VARIATION else variation + "_"
 		for space_name: StringName in [&"stand", &"crouch"]:
 			rings[space_name] = cycle_rings(find_space(table, "/Move/", _centre_of(space_name), variation), variation, lengths, clip_prefix)
-		_rings[variation + "/" if holds_items else ""] = rings
+		var at := variation + "/" if holds_items else ""
+		_rings[at] = rings
+		_jump_seconds[at] = float(lengths.get(clip_prefix + JUMP_FALLBACK, JUMP_SECONDS))
+		_landing_seconds[at] = float(lengths.get(clip_prefix + "inair_stand", LANDING_SECONDS))
+	_landing_curves = {"stand": landing_curve(table, false), "crouch": landing_curve(table, true)}
 	animation_tree = AnimationTree.new()
 	animation_tree.name = "Animation"
 	animation_player.get_parent().add_child(animation_tree)
@@ -450,7 +538,19 @@ func _build_tree(weapon_clips: PackedStringArray) -> void:
 
 
 static func _centre_of(space_name: StringName) -> StringName:
-	return {&"stand": &"idle", &"crouch": &"idle_crouch", &"air_stand": &"inair_stand", &"air_crouch": &"inair_crouch_stand"}[space_name]
+	return {
+		&"stand": &"idle", &"crouch": &"idle_crouch", &"air_stand": &"inair_stand", &"air_crouch": &"inair_crouch_stand",
+		&"jump_stand": &"jump_stand", &"jump_crouch": &"jump_crouch_stand",
+	}[space_name]
+
+
+## Whether a clip is one of the air's, which CS2 never loops: the take-off
+## (jump_*) and the landing (inair_*), by its short name, a held
+## variation's (pistol_inair_n) included.
+static func is_air_clip(clip_name: String) -> bool:
+	for variation: String in HELD_VARIATIONS:
+		clip_name = clip_name.trim_prefix(variation + "_")
+	return clip_name.begins_with("inair_") or clip_name.begins_with("jump_")
 
 
 ## Draws the body alpha of the way from where its player stood and faced a
@@ -465,15 +565,26 @@ func show_between(from: Vector3, to: Vector3, from_yaw_degrees: float, to_yaw_de
 
 ## Moves the animation with the body. velocity is in world space, yaw is
 ## where the body faces in the game's degrees (PlayerInput's), crouch how far
-## down it is, 0 to 1 (PlayerBody.duck_progress).
-func update_motion(velocity: Vector3, yaw_degrees: float, crouch: float, on_ground: bool) -> void:
+## down it is, 0 to 1 (PlayerBody.duck_progress). air_action, its time and
+## the height above the ground are the body's (PlayerBody), for the take-off
+## and the landing; without them leaving the ground is taken as a fall's.
+func update_motion(
+	velocity: Vector3, yaw_degrees: float, crouch: float, on_ground: bool,
+	air_action: StringName = PlayerBody.NO_AIR_ACTION, air_action_usec: int = 0, height_above_ground: float = INF
+) -> void:
 	rotation_degrees.y = 180.0 + yaw_degrees
 	if animation_tree == null or _dead != &"":
 		# A death is held where it fell.
 		return
 	_speeds = body_speeds(velocity, yaw_degrees)
 	_crouch = clampf(crouch, 0.0, 1.0)
+	var now := SimClock.now_usec()
+	_crouch_eased = _crouch if _eased_at_usec < 0 else eased_crouch(_crouch_eased, _crouch, float(now - _eased_at_usec) / 1_000_000.0)
+	_eased_at_usec = now
 	_on_ground = on_ground
+	_air_action = air_action
+	_air_action_usec = air_action_usec
+	_height = height_above_ground
 	_apply()
 
 
@@ -491,20 +602,159 @@ func _apply(all: bool = false) -> void:
 	if has_weapon_layers:
 		animation_tree.set("parameters/hold/add_amount", 1.0 if _has_hold else 0.0)
 		animation_tree.set("parameters/hold_pose/blend_amount", _crouch)
+	_apply_body_additives()
+
+
+## CS2's BodyAdditives: the jump additive added over the whole body as the
+## body leaves the ground, by a jump or a fall, in 0.2 s, and the land
+## additive as it comes down, straight from the start's or in 0.2 s; each
+## the variation's, standing or crouched. A take-off cut short by landing
+## within 0.35 s goes straight to the land's, as CS2's goes to its Off only
+## when no land comes.
+func _apply_body_additives() -> void:
+	if animation_tree == null or not (animation_tree.tree_root as AnimationNodeBlendTree).has_node(&"jump_add") \
+			or _air_action == PlayerBody.NO_AIR_ACTION or _air_action_usec == _additive_for_usec:
+		return
+	_additive_for_usec = _air_action_usec
+	var landing := _air_action == PlayerBody.AIR_LAND
+	var clip := jump_additive(_variation, landing, _crouch >= 0.5)
+	if not animation_player.has_animation(clip):
+		return
+	var from_start := landing and bool(animation_tree.get("parameters/jump_add/active"))
+	(_node(&"jump_add_clip") as AnimationNodeAnimation).animation = clip
+	var add := _node(&"jump_add") as AnimationNodeOneShot
+	add.fadein_time = 0.0 if from_start else ADDITIVE_FADE
+	add.fadeout_time = ADDITIVE_FADE
+	animation_tree.set("parameters/jump_add/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
+
+
+## One of CS2's jump additives by name: the start or the land, standing or
+## crouched, the variation's (worldmodel.md: jump_additive_start_rifle,
+## jump_additive_crouch_land; the knife's end in nothing).
+static func jump_additive(variation: String, landing: bool, crouched: bool) -> StringName:
+	var clip := JUMP_ADDITIVES + ("crouch_" if crouched else "") + ("land" if landing else "start")
+	return StringName(clip if variation == "knife" else clip + "_" + variation)
+
+
+## CS2's BodyAdditives layer between the locomotion (moving, the node it
+## comes out of) and what goes over it: a clip added over the whole body
+## once (jump_add), first_clip until one is played. Returns the node that
+## now carries the locomotion.
+static func add_body_additives(tree: AnimationNodeBlendTree, moving: StringName, first_clip: StringName) -> StringName:
+	tree.disconnect_node(&"action", 0)
+	var add := AnimationNodeOneShot.new()
+	add.mix_mode = AnimationNodeOneShot.MIX_MODE_ADD
+	tree.add_node(&"jump_add", add)
+	tree.add_node(&"jump_add_clip", _clip(first_clip))
+	tree.connect_node(&"jump_add", 0, moving)
+	tree.connect_node(&"jump_add", 1, &"jump_add_clip")
+	tree.connect_node(&"action", 0, &"jump_add")
+	return &"jump_add"
 
 
 func _apply_locomotion(at: String) -> void:
 	var path := "parameters/" + at
-	for space_name in [&"stand", &"crouch", &"air_stand", &"air_crouch"]:
+	for space_name in [&"stand", &"crouch", &"air_stand", &"air_crouch", &"jump_stand", &"jump_crouch"]:
 		animation_tree.set(path + String(space_name) + "/blend_position", _speeds)
 	animation_tree.set(path + "move/blend_amount", _crouch)
-	animation_tree.set(path + "air/blend_amount", _crouch)
+	animation_tree.set(path + "air/blend_amount", _crouch_eased)
+	animation_tree.set(path + "jump/blend_amount", _crouch_eased)
 	animation_tree.set(path + "cycle/scale", 1.0 / cycle_length(_rings[at], _speeds.length(), _crouch))
+	# The landing clips stand still at the time the height gives.
+	for side: String in ["stand", "crouch"]:
+		var curve: Array[Vector2] = _landing_curves.get(side, LANDING_CURVE)
+		animation_tree.set(path + "land_hold_" + side + "/scale", 0.0)
+		animation_tree.set(path + "land_pose_" + side + "/seek_request", landing_share(_height, curve) * float(_landing_seconds.get(at, LANDING_SECONDS)))
+	if _air_action == PlayerBody.AIR_JUMP and int(_jump_started.get(at, -1)) != _air_action_usec:
+		# A new jump: the take-off from its start.
+		_jump_started[at] = _air_action_usec
+		animation_tree.set(path + "jump_start/seek_request", 0.0)
+	var air_wanted := air_state(_air_action, _air_action_usec, SimClock.now_usec(), float(_jump_seconds.get(at, JUMP_SECONDS)))
+	if String(animation_tree.get(path + "air_state/current_state")) != air_wanted:
+		# CS2 goes from the take-off to the landing in 0 s, and a jump
+		# starts its take-off as the air fades in.
+		animation_tree.set(path + "air_state/transition_request", air_wanted)
 	var wanted := "ground" if _on_ground else "air"
 	if String(animation_tree.get(path + "ground/current_state")) != wanted:
-		var ground := _node(&"ground") if at.is_empty() else (_node(StringName(at.trim_suffix("/"))) as AnimationNodeBlendTree).get_node(&"ground")
-		(ground as AnimationNodeTransition).xfade_time = TO_GROUND if _on_ground else TO_AIR
+		var ground := _locomotion_node(at, &"ground") as AnimationNodeTransition
+		ground.xfade_time = TO_GROUND if _on_ground else into_air_fade(_air_action)
 		animation_tree.set(path + "ground/transition_request", wanted)
+
+
+func _locomotion_node(at: String, node_name: StringName) -> AnimationNode:
+	if at.is_empty():
+		return _node(node_name)
+	return (_node(StringName(at.trim_suffix("/"))) as AnimationNodeBlendTree).get_node(node_name)
+
+
+## What InAir plays: the take-off (jump) from a jump until it is done, the
+## landing after it and after a fall. jump_seconds is the take-off's length.
+static func air_state(action: StringName, action_usec: int, now_usec: int, jump_seconds: float) -> String:
+	if action == PlayerBody.AIR_JUMP and now_usec - action_usec < int(jump_seconds * 1_000_000.0):
+		return "jump"
+	return "landing"
+
+
+## CS2's cross-fade into the air: 0.3 s for a fall, 0.1 s otherwise.
+static func into_air_fade(action: StringName) -> float:
+	return TO_FALL if action == PlayerBody.AIR_START_FALL else TO_AIR
+
+
+## Where in the landing clips the body is posed at a height above the
+## ground, as a share of the clip: the curve's, straight between its
+## points and flat beyond its ends. Out of reach (INF) is the curve's far
+## end.
+static func landing_share(height: float, curve: Array[Vector2]) -> float:
+	if curve.is_empty():
+		return 0.0
+	if height <= curve[0].x:
+		return curve[0].y
+	for i in range(1, curve.size()):
+		if height <= curve[i].x:
+			var along := (height - curve[i - 1].x) / maxf(curve[i].x - curve[i - 1].x, 0.0001)
+			return lerpf(curve[i - 1].y, curve[i].y, along)
+	return curve[-1].y
+
+
+## The crouch eased toward where it is going, as CS2's FloatEase does it
+## over CROUCH_EASE: the whole way, from nothing to fully down, in 0.2 s.
+static func eased_crouch(from: float, to: float, seconds: float) -> float:
+	return move_toward(from, to, maxf(seconds, 0.0) / CROUCH_EASE)
+
+
+## The landing's pose curve from the table (scripts/animgraph_tables.gd
+## writes the graph's curves once it has them): the curve that sets the time
+## of the standing or crouched landing clips' poses, by height, mapped
+## through their input range to a share of the clip. CS2's own leave that
+## range unset (FLT_MAX to -FLT_MAX), which Esoterica's AnimationPoseNode
+## takes as the curve giving the share itself. Straight between the points:
+## the crouched curve's tangents are CS2's spline ones, which this leaves
+## out (within a few hundredths of the clip; inferred). LANDING_CURVE where
+## the table has none.
+static func landing_curve(table: Dictionary, crouched: bool = false) -> Array[Vector2]:
+	var values := {}
+	for value: Dictionary in table.get("values", []):
+		values[int(value.get("node", -1))] = value
+	for value: Dictionary in table.get("values", []):
+		if String(value.get("kind", "")) != "AnimationPose" or not String(value.get("path", "")).contains("/InAir/") \
+				or String(value.get("path", "")).get_file().contains("crouch") != crouched:
+			continue
+		var curve: Dictionary = values.get(int(value.get("input_node", -1)), {})
+		if String(curve.get("kind", "")) != "FloatCurve" or not String(curve.get("input", "")).contains("air_height_above_ground"):
+			continue
+		var from := float(value.get("from", 0.0))
+		var span := float(value.get("to", 1.0)) - from
+		if span <= 0.0 or absf(from) > 1e30:
+			# Unset: the curve gives the share.
+			from = 0.0
+			span = 1.0
+		var out: Array[Vector2] = []
+		for point: Array in curve.get("points", []):
+			out.append(Vector2(float(point[0]), clampf((float(point[1]) - from) / span if not is_zero_approx(span) else 0.0, 0.0, 1.0)))
+		out.sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
+		if not out.is_empty():
+			return out
+	return LANDING_CURVE.duplicate()
 
 
 ## Moves the body by another variation's locomotion, its parameters set
@@ -751,9 +1001,9 @@ static func clip_name(point: Dictionary, variation: String) -> StringName:
 ## the cycle's time scale; its two air spaces mixed the same way; the ground
 ## and the air cross-faded; a clip played once over that; a death over it
 ## all. Null when the table lacks a space.
-static func build_tree(table: Dictionary, variation: String) -> AnimationNodeBlendTree:
+static func build_tree(table: Dictionary, variation: String, available: Dictionary = {}) -> AnimationNodeBlendTree:
 	var tree := AnimationNodeBlendTree.new()
-	if not _add_locomotion(tree, table, variation, ""):
+	if not _add_locomotion(tree, table, variation, "", available):
 		return null
 	_add_action_and_death(tree, &"ground")
 	return tree
@@ -762,13 +1012,13 @@ static func build_tree(table: Dictionary, variation: String) -> AnimationNodeBle
 ## The same over each of several variations' locomotion, each its own tree
 ## (named by the variation, its clips under its name but for the first's),
 ## one of them moving the body at a time (variation).
-static func build_varied_tree(table: Dictionary, variations: Array) -> AnimationNodeBlendTree:
+static func build_varied_tree(table: Dictionary, variations: Array, available: Dictionary = {}) -> AnimationNodeBlendTree:
 	var tree := AnimationNodeBlendTree.new()
 	tree.add_node(&"variation", _transition(variations))
 	for i in variations.size():
 		var variation: String = variations[i]
 		var locomotion := AnimationNodeBlendTree.new()
-		if not _add_locomotion(locomotion, table, variation, "" if i == 0 else variation + "_"):
+		if not _add_locomotion(locomotion, table, variation, "" if i == 0 else variation + "_", available):
 			return null
 		locomotion.connect_node(&"output", 0, &"ground")
 		tree.add_node(StringName(variation), locomotion)
@@ -778,12 +1028,16 @@ static func build_varied_tree(table: Dictionary, variations: Array) -> Animation
 
 
 ## One variation's locomotion in a tree: the standing and crouched spaces
-## mixed by the crouch under the cycle's time scale, the air's the same way,
-## the ground and the air cross-faded (ground). False when the table lacks a
-## space.
-static func _add_locomotion(tree: AnimationNodeBlendTree, table: Dictionary, variation: String, clip_prefix: String) -> bool:
+## mixed by the crouch under the cycle's time scale; CS2's InAir (air_state):
+## the take-off's standing and crouched spaces (jump), started from the top
+## by jump_start, and the landing's standing and crouched (air), each held
+## (land_hold_stand) at the time its land_pose_stand seeks; the ground and the air cross-faded (ground). available
+## has the clips there are, by name: a take-off point whose clip is not
+## there plays the variation's JUMP_FALLBACK (with it empty, each point
+## keeps its own). False when the table lacks a space.
+static func _add_locomotion(tree: AnimationNodeBlendTree, table: Dictionary, variation: String, clip_prefix: String, available: Dictionary = {}) -> bool:
 	var spaces := {}
-	for space_name: StringName in [&"stand", &"crouch", &"air_stand", &"air_crouch"]:
+	for space_name: StringName in [&"stand", &"crouch", &"air_stand", &"air_crouch", &"jump_stand", &"jump_crouch"]:
 		spaces[space_name] = find_space(table, "/Move/" if space_name in [&"stand", &"crouch"] else "/InAir/", _centre_of(space_name), variation)
 		if (spaces[space_name] as Dictionary).is_empty():
 			return false
@@ -796,12 +1050,35 @@ static func _add_locomotion(tree: AnimationNodeBlendTree, table: Dictionary, var
 	tree.connect_node(&"cycle", 0, &"move")
 	tree.add_node(&"air_stand", blend_space(spaces[&"air_stand"], variation, false, clip_prefix))
 	tree.add_node(&"air_crouch", blend_space(spaces[&"air_crouch"], variation, false, clip_prefix))
+	# Standing and crouched each posed at its own curve's time, as CS2
+	# times them.
+	for side: String in ["stand", "crouch"]:
+		tree.add_node(StringName("land_hold_" + side), AnimationNodeTimeScale.new())
+		tree.connect_node(StringName("land_hold_" + side), 0, StringName("air_" + side))
+		tree.add_node(StringName("land_pose_" + side), AnimationNodeTimeSeek.new())
+		tree.connect_node(StringName("land_pose_" + side), 0, StringName("land_hold_" + side))
 	tree.add_node(&"air", _blend2())
-	tree.connect_node(&"air", 0, &"air_stand")
-	tree.connect_node(&"air", 1, &"air_crouch")
+	tree.connect_node(&"air", 0, &"land_pose_stand")
+	tree.connect_node(&"air", 1, &"land_pose_crouch")
+	var fallback := StringName(clip_prefix + JUMP_FALLBACK)
+	for space_name: StringName in [&"jump_stand", &"jump_crouch"]:
+		var space := blend_space(spaces[space_name], variation, false, clip_prefix)
+		for i in space.get_blend_point_count():
+			var point := space.get_blend_point_node(i) as AnimationNodeAnimation
+			if not available.is_empty() and not available.has(String(point.animation)) and available.has(String(fallback)):
+				point.animation = fallback
+		tree.add_node(space_name, space)
+	tree.add_node(&"jump", _blend2())
+	tree.connect_node(&"jump", 0, &"jump_stand")
+	tree.connect_node(&"jump", 1, &"jump_crouch")
+	tree.add_node(&"jump_start", AnimationNodeTimeSeek.new())
+	tree.connect_node(&"jump_start", 0, &"jump")
+	tree.add_node(&"air_state", _transition(["jump", "landing"]))
+	tree.connect_node(&"air_state", 0, &"jump_start")
+	tree.connect_node(&"air_state", 1, &"air")
 	tree.add_node(&"ground", _transition(["ground", "air"]))
 	tree.connect_node(&"ground", 0, &"cycle")
-	tree.connect_node(&"ground", 1, &"air")
+	tree.connect_node(&"ground", 1, &"air_state")
 	return true
 
 

@@ -115,7 +115,7 @@ Roughly in order; L1 to L3 can start at once.
   reload time (to rounds in, and to ready), draw time, and for the snipers the
   zoom levels (FOV per level) and time to scope in. Frame-by-frame, the way
   the recoil timings were taken.
-- [ ] **L6. Spray patterns for every "Set Pattern" weapon** *(partly answered 2026-09-24 from a community source, not a measurement: `reference/spray_patterns/weapon_<class>.csv` has the M4A4, Galil AR, FAMAS, unscoped SG 553 and AUG, all seven SMGs, M249, Negev and CZ75-Auto, on the AK's scale, not yet read by the game; its AK-47 and M4A1-S match the plots but for two swapped pairs of rounds each. The R8's fan fire and the XM1014 have no path to learn (Sid, 2026-09-24), and the scoped SG 553 and AUG are likely their unscoped paths scaled down by the game's scoped recoil (19 against 28, 16 against 24). Left: the G3SG1 and SCAR-20, one scoped spray each of the SG 553 and AUG to settle that, and the scale, which the 496-unit AK spray still settles; `README.md` there says how far to trust the rest)*, by the procedure
+- [ ] **L6. Spray patterns for every "Set Pattern" weapon** *(partly answered 2026-09-24 from a community source, not a measurement: `reference/spray_patterns/weapon_<class>.csv` has the M4A4, Galil AR, FAMAS, unscoped SG 553 and AUG, all seven SMGs, M249, Negev and CZ75-Auto, on the AK's scale, read by the game since the playtest of 2026-09-25 (issue 14: `WeaponLibrary.pattern_of`); its AK-47 and M4A1-S match the plots but for two swapped pairs of rounds each. The R8's fan fire and the XM1014 have no path to learn (Sid, 2026-09-24), and the scoped SG 553 and AUG are likely their unscoped paths scaled down by the game's scoped recoil (19 against 28, 16 against 24). Left: the G3SG1 and SCAR-20, one scoped spray each of the SG 553 and AUG to settle that, and the scale, which the 496-unit AK spray still settles; `README.md` there says how far to trust the rest)*, by the procedure
   in `reference/spray_patterns/README.md`, from 496 units at the range's wall
   so every pattern has a known scale: CZ75 Auto, R8 Revolver, XM1014, all
   seven SMGs, Galil AR, FAMAS, M4A4, SG 553 and its scope, AUG and its scope,
@@ -138,7 +138,9 @@ Roughly in order; L1 to L3 can start at once.
   `run_contract_checks.gd` builds every one against the game's damage and
   magazine and fires its first round at a run inside its running cone. No
   spray pattern but the AK-47's and M4A1-S's (L6), and the AK's recoil
-  settling time on the rest.)* *(2026-09-22: numbers now come from the game, not the sheet: `WeaponVData.apply(data, class, alternate)` puts any of the 34 guns' figures on a `WeaponData` from the committed `vdata.csv`; read the sheet first only for landing and ladder, as `WeaponLibrary` does. The files are in `models.md`, `sounds.md`, `timings.csv`.)* One entry per class above:
+  settling time on the rest.)* *(2026-09-26, playtest issue 14: 15 more
+  guns read their pattern from `reference/spray_patterns/weapon_<class>.csv`;
+  the AK's settling time is still on every other gun.)* *(2026-09-22: numbers now come from the game, not the sheet: `WeaponVData.apply(data, class, alternate)` puts any of the 34 guns' figures on a `WeaponData` from the committed `vdata.csv`; read the sheet first only for landing and ladder, as `WeaponLibrary` does. The files are in `models.md`, `sounds.md`, `timings.csv`.)* One entry per class above:
   sheet row and mode rows, model path, clip set, sound set, slot
   (pistol/primary), pattern file, reload and draw time, all read from files
   (`cs2_weapon_sheet.csv`, and `models.md`, `sounds.md`, `measured.csv` as
@@ -188,7 +190,15 @@ Roughly in order; L1 to L3 can start at once.
   those into degrees; research first. *(Researched 2026-09-24,
   `reference/research/combat.md`: every gun has a recoil seed, so
   "Random" kicks are probably a fixed sequence; the conversion to degrees
-  is in no file and comes from a demo.)*
+  is in no file and comes from a demo.)* *(2026-09-26, playtest issue 14:
+  every gun with no pattern file now kicks the view and the weapon model
+  by a PROVISIONAL amount, the AK-47's per-round kick times its
+  `m_flRecoilMagnitude` over the AK's 30 (`WeaponData.view_kick_up`),
+  leaning by `m_nRecoilSeed` and the round where the angle variance is not
+  zero, and shrunk by the scoped magnitude when scoped. Its bullets do not
+  climb: they stay on the cone and the per-shot penalty until the demo
+  gives their path. That demo also decides whether the magnitude-scaled
+  kick stays.)*
 - [ ] **R7. The R8's hammer.** Its first round waits on a trigger pull delay;
   the sheet says "see note". Research first. *(Researched 2026-09-24,
   `reference/research/combat.md`: the shot is postponed to a set tick and

@@ -45,6 +45,18 @@ render_mode blend_mix, depth_draw_opaque, cull_back;
 // own reflection (CS2's EnvBRDFCloth) rides Godot's ambient light, which it
 // multiplies by ALBEDO: the sheen's share goes on the albedo, and light()
 // takes it back off the direct diffuse.
+//
+// Eyes. A material that draws eyes (F_EYEBALLS: the Phoenix's balaclava)
+// has them painted white in its colour texture, and CS2 paints the iris,
+// pupil and sclera over them in the shader, as Source 2 Viewer's
+// reimplementation has it (features/csgo_character_eyes_ps.slang, ApplyEye):
+// the view ray meets a sphere of the eyeball's radius at the eye bone, and
+// the eye's own texture is laid on that sphere around where the eye looks,
+// darker away from it, through the material's eye mask, polished (roughness
+// 0.1) and with the sphere's normal, the iris's tipped back. Where each eye
+// is and where it looks is the rig's, per model and per frame
+// (CharacterEyes); until the rig sets them, eye_scale is 0 and nothing is
+// painted.
 
 #include "res://src/map/probe_lit.gdshaderinc"
 #include "res://src/player/player_draw.gdshaderinc"
@@ -72,6 +84,31 @@ uniform float sheen_scale = 0.667;
 uniform vec3 sheen_tint = vec3(1.0);
 uniform float direct_diffuse_occlusion = 1.0;
 uniform float direct_specular_occlusion = 1.0;
+
+// CS2's eyes (F_EYEBALLS), from the material (CharacterMaterials): the
+// eye's colour, its iris mask (the colour's alpha in CS2, kept apart here,
+// ExportCharacterMasks), where on the model the eyes are, and the eyeball's
+// size in Source units, the iris's and the pupil's, the iris's hue shift
+// and saturation.
+uniform bool eyes = false;
+uniform sampler2D eye_albedo : source_color, filter_linear_mipmap, repeat_disable;
+uniform sampler2D eye_iris : hint_default_black, filter_linear_mipmap, repeat_disable;
+uniform sampler2D eye_mask : hint_default_black, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform float eye_radius = 0.6;
+uniform float eye_iris_size = 1.0;
+uniform float eye_pupil_size = 0.0;
+uniform float eye_hue_shift = 0.0;
+uniform float eye_saturation = 1.0;
+// Per model, each frame (CharacterEyes), in the world: each eyeball's
+// centre, the way it looks and its right hand as the texture lies (the
+// model's left), and world units to a Source unit, 0 until it is set.
+uniform vec3 eye_left_position;
+uniform vec3 eye_left_view = vec3(0.0, 0.0, 1.0);
+uniform vec3 eye_left_across = vec3(1.0, 0.0, 0.0);
+uniform vec3 eye_right_position;
+uniform vec3 eye_right_view = vec3(0.0, 0.0, 1.0);
+uniform vec3 eye_right_across = vec3(1.0, 0.0, 0.0);
+uniform float eye_scale = 0.0;
 
 varying float baked_sun;
 // The albedo before the cloth's reflection went on it, the occlusion, how
@@ -113,6 +150,60 @@ float character_charlie(float alpha, float n_dot_h) {
 	return (inverse + 2.0) * pow(max(1.0 - n_dot_h * n_dot_h, 0.0078125), inverse * 0.5) / TAU;
 }
 
+// Turns a colour about the grey axis (Source 2 Viewer's RotateHue).
+vec3 character_rotate_hue(vec3 colour, float angle) {
+	vec3 grey = vec3(0.57735);
+	float c = cos(angle);
+	return colour * c + cross(grey, colour) * sin(angle) + grey * dot(grey, colour) * (1.0 - c);
+}
+
+// CS2's eye (ApplyEye) at a point of the surface, in the world, seen from
+// camera: how much of the eye covers it (0 where none), and there the
+// eye's colour in linear light and the eyeball's normal. mask is the
+// material's eye mask there. Written without branches on the pixel, so the
+// derivative the far glint reads is defined on every pixel.
+float character_eye(vec3 world, vec3 camera, float mask, out vec3 colour, out vec3 normal) {
+	bool is_right = distance(world, eye_right_position) < distance(world, eye_left_position);
+	vec3 centre = is_right ? eye_right_position : eye_left_position;
+	vec3 look = normalize(is_right ? eye_right_view : eye_left_view);
+	vec3 across = normalize(is_right ? eye_right_across : eye_left_across);
+	vec3 up = normalize(cross(look, across));
+	float radius = eye_radius * eye_scale;
+
+	// Where the ray from the camera through the point first meets the ball.
+	vec3 ray = normalize(world - camera);
+	vec3 from_centre = camera - centre;
+	float along = dot(from_centre, ray);
+	float discriminant = along * along - (dot(from_centre, from_centre) - radius * radius);
+	float hit = discriminant > 0.0 ? -along - sqrt(max(discriminant, 0.0)) : 0.0;
+	normal = normalize(camera + ray * max(hit, 0.0) - centre);
+
+	// The texture lies on the ball around the look, right across and up
+	// the image's down, the iris stretched by its size toward the middle.
+	vec2 on_ball = vec2(dot(normal, across), dot(normal, -up));
+	float out_from_middle = length(on_ball);
+	vec2 coordinate = mix(on_ball * (2.0 - eye_iris_size), on_ball, vec2(out_from_middle));
+	vec2 texel_uv = coordinate * 0.5 + 0.5;
+	vec3 texel = character_to_linear(texture(eye_albedo, texel_uv, -0.5).rgb);
+	float iris = texture(eye_iris, texel_uv, -0.5).r;
+
+	colour = mix(texel, character_rotate_hue(texel, eye_hue_shift), iris);
+	vec3 saturated = mix(vec3(dot(colour, vec3(0.2125, 0.7154, 0.0721))), colour, eye_saturation);
+	colour = mix(colour, saturated, iris);
+	colour *= smoothstep(eye_pupil_size, eye_pupil_size + 0.03, out_from_middle);
+	float facing = clamp(dot(look, normal), 0.0, 1.0);
+	colour *= facing;
+	// An eye a few pixels across gets a glint, from 100 units away to 120.
+	float glint = abs(dFdx(coordinate.x)) > 0.15
+		? clamp((distance(camera, world) / max(eye_scale, 1e-4) - 100.0) * 0.05, 0.0, 1.0) : 0.0;
+	float spot = smoothstep(0.1, 0.08, length(coordinate - vec2(eye_pupil_size, -eye_pupil_size)));
+	colour = mix(colour, colour * 0.8 + vec3(spot), glint);
+
+	// The iris's normal leans back from the look.
+	normal = normalize(mix(normal, normalize(normal - look * 0.5), iris));
+	return hit > 0.0 && mask > 0.0 && eye_scale > 0.0 ? mask * smoothstep(0.1, 0.3, facing) : 0.0;
+}
+
 void vertex() {
 	POSITION = view_model_clip_position((MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz, PROJECTION_MATRIX);
 }
@@ -144,6 +235,26 @@ void fragment() {
 		vec3 mapped = TANGENT * slope.x + BINORMAL * slope.y + NORMAL * sqrt(max(0.0, 1.0 - dot(slope, slope)));
 		shading_normal = normalize(mix(NORMAL, mapped, normal_depth));
 	}
+	// CS2's eye, over the albedo in linear light, the roughness and the
+	// normal, after the roughness has been raised for the geometry, as CS2
+	// does it.
+	vec3 linear_base = character_to_linear(base);
+	if (eyes) {
+		vec3 eye_colour;
+		vec3 eye_normal;
+		float eye = character_eye(
+			(INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz, CAMERA_POSITION_WORLD,
+			texture(eye_mask, UV, -0.5).r, eye_colour, eye_normal
+		);
+		if (eye > 0.0) {
+			linear_base = mix(linear_base, eye_colour, eye);
+			ROUGHNESS = mix(ROUGHNESS, 0.1, eye);
+			shading_normal = normalize(mix(shading_normal, (VIEW_MATRIX * vec4(eye_normal, 0.0)).xyz, sqrt(eye)));
+			// The normal map is in the normal already.
+			NORMAL = shading_normal;
+			NORMAL_MAP_DEPTH = 0.0;
+		}
+	}
 	IRRADIANCE = vec4(probe_ambient((INV_VIEW_MATRIX * vec4(shading_normal, 0.0)).xyz), ambient_from_probes);
 	baked_sun = probe_sun((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz);
 
@@ -152,7 +263,7 @@ void fragment() {
 		vec2 mask = texture(cloth_mask, UV).gb;
 		cloth = mask.y * (1.0 - mask.x);
 	}
-	character_albedo = character_to_linear(base);
+	character_albedo = linear_base;
 	character_occlusion = orm.r;
 	character_cloth = cloth;
 	character_sheen = clamp(sheen_tint * sqrt(character_albedo) * sheen_scale, 0.0, 1.0);

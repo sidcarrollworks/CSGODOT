@@ -31,6 +31,16 @@ const STAY_ON_GROUND_MIN_DELTA := 0.03
 ## sample the floor under the corner rather than the wall beside it.
 const QUADRANT_INSET := 1.0
 
+## air_action's values, CS2's own (reference/animgraph/parameters.md).
+const NO_AIR_ACTION := &""
+const AIR_JUMP := &"air_action_jump"
+const AIR_START_FALL := &"air_action_start_fall"
+const AIR_LAND := &"air_action_land"
+## How far below the feet an airborne body looks for the ground. CS2's
+## graph stops caring beyond 50 units (the landing curve is flat from
+## there), so a little more is enough.
+const AIR_HEIGHT_REACH := 64.0
+
 @export var config: MovementConfig
 
 var on_ground: bool = false
@@ -68,9 +78,28 @@ var previous_position: Vector3 = Vector3.ZERO
 ## tens of microseconds a trace on dust2, counted so the checks can hold the
 ## movement to so many a tick.
 var traces: int = 0
+## How many rays have looked for the ground under an airborne body
+## (height_above_ground): one an airborne tick, none on the ground.
+var ground_rays: int = 0
+
+## The last thing the body did between the ground and the air, as CS2's
+## air_action names it for the animation graph: AIR_JUMP when a jump left
+## the ground, AIR_START_FALL when it left without one (off a ledge, down
+## a drop), AIR_LAND when it came back down; NO_AIR_ACTION before any.
+## Server state, like the rest of the body, so anyone drawing the player
+## sees the take-off they did.
+var air_action: StringName = NO_AIR_ACTION
+## The simulation time it happened at (SimClock), the tick's end.
+var air_action_usec: int = 0
+## In the air, how far the ground is below the feet, up to
+## AIR_HEIGHT_REACH, INF beyond it; 0 on the ground. CS2's
+## air_height_above_ground, which poses the legs for the landing.
+var height_above_ground: float = 0.0
 
 var _collision_shape: CollisionShape3D
 var _jump_held_last_tick: bool = false
+## Whether a jump left the ground this tick (_update_air).
+var _jumped := false
 ## Where the last ground check that looked left the body, and the height of
 ## the hull it looked with (_ground_known).
 var _looked_from := Vector3.INF
@@ -129,7 +158,11 @@ func simulate(dt: float) -> void:
 		global_position += velocity * dt
 		on_ground = false
 		jump_fraction = -1.0
+		height_above_ground = INF
 		return
+
+	var was_on_ground := on_ground
+	_jumped = false
 
 	if (
 		config.subtick_jump
@@ -149,6 +182,31 @@ func simulate(dt: float) -> void:
 
 	_jump_held_last_tick = wants_jump
 	jump_fraction = -1.0
+	_update_air(was_on_ground)
+
+
+## Records what the tick did between the ground and the air (air_action),
+## and, in the air, the height above the ground: one ray a tick, and only
+## in the air.
+func _update_air(was_on_ground: bool) -> void:
+	var action := NO_AIR_ACTION
+	if _jumped:
+		action = AIR_JUMP
+	elif was_on_ground and not on_ground:
+		action = AIR_START_FALL
+	elif not was_on_ground and on_ground:
+		action = AIR_LAND
+	if action != NO_AIR_ACTION:
+		air_action = action
+		air_action_usec = SimClock.now_usec()
+	if on_ground:
+		height_above_ground = 0.0
+		return
+	ground_rays += 1
+	height_above_ground = GroundProbe.height_below(
+		get_world_3d().direct_space_state if is_inside_tree() else null,
+		global_position, AIR_HEIGHT_REACH, [get_rid()]
+	)
 
 
 ## One (possibly partial) simulation step. This is Source's FullWalkMove.
@@ -305,6 +363,7 @@ func _try_jump(dt: float) -> void:
 		return
 	velocity = MovementSolver.clamp_bunnyhop(velocity, config)
 	velocity.y = config.jump_impulse
+	_jumped = true
 	if config.tick_rate_independent_jump:
 		# Put back the leading half-step of gravity that the impulse just
 		# overwrote. See MovementConfig.tick_rate_independent_jump.

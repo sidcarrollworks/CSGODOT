@@ -32,6 +32,19 @@ extends Resource
 @export var defuse_reach: float = 90.0
 @export var defuse_cone_degrees: float = 40.0
 
+## CS2's bot_defer_to_human_items and bot_defer_to_human_goals, under their
+## own names, at competitive's 1 (game/csgo/cfg/gamemode_competitive.cfg in
+## GameTracking-CS2; the convar: "If nonzero and there is a human on the
+## team, the bots will not get scenario items"). With a living human T, the
+## round hands the bomb to a human and never to a bot, and a bot leaves a
+## dropped bomb for them (Sid saw CS2 do so, 2026-09-26:
+## playtest-2026-09-25.md issue 18).
+@export var bot_defer_to_human_items: bool = true
+## The same for the round's goals: with a human on the team, the bots leave
+## the plant to them. Bots have no bomb goals yet (roadmap 24 is to read
+## this when they plant).
+@export var bot_defer_to_human_goals: bool = true
+
 ## How close a terrorist's feet have to come to a dropped bomb to pick it
 ## up, across and up. CS2 picks it up when the hull touches it: a hull is
 ## 32 across, so 16 from its middle plus the bomb's own few inches. The

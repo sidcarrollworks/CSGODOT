@@ -165,8 +165,14 @@ The guns the sheet marks "Random" (every other pistol, the other
 shotguns, the AWP and the SSG 08) are weapons TODO R6. The 496-unit wall
 procedure above still covers any of them.
 
-**Not yet read by the game.** `WeaponLibrary.build` gives every gun but the
-AK-47 and M4A1-S no pattern. Reading these is one line there,
-`data.recoil_pattern = RecoilPattern.load_pattern(weapon_class)` when the
-file exists; the recoil settling time, still the AK-47's on every other
-gun, would want the same care.
+**Read by the game** since the playtest of 2026-09-25 (issue 14):
+`WeaponLibrary.pattern_of` gives each of the 15 guns above its file, and
+the scoped SG 553's and AUG's numbers carry the unscoped path. The AK-47
+and M4A1-S keep `ak47.csv` and `m4a1s.csv`; `weapon_ak47.csv` and
+`weapon_m4a1_silencer.csv` stay for comparison only. The weapon model's
+settling time is still the AK-47's (0.644 s) on every gun but the M4A1-S,
+and the view kick's spray peak (`view_kick_spray_peak`, 0.5) is the one
+read off the AK. `tests/run_recoil_checks.gd` checks that a held spray on
+each lands on its file. The guns with no file kick the view by a
+provisional amount from the game's recoil magnitude, with no bullet path
+(weapons TODO R6).

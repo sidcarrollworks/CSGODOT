@@ -16,7 +16,7 @@ extends RefCounted
 ##
 ## A point is lit by the cube of the smallest volume that holds it, read
 ## with trilinear filtering, in the same units as the lightmaps (so at
-## LightmapMaterials.ENERGY). The maths follows Source 2 Viewer's
+## LightmapMaterials.energy()). The maths follows Source 2 Viewer's
 ## lighting.lpv.slang: local coordinates normalized to the volume's box,
 ## clamped half a texel in, then placed in the atlas.
 ##

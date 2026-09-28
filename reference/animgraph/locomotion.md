@@ -1,6 +1,6 @@
 # The third-person locomotion
 
-Written by `scripts/animgraph_tables.gd` on 2026-09-23 from `animation/graphs/worldmodel/worldmodel_locomotion.vnmgraph+rifle.vnmgraph_c` in CS2 1.41.8.3. Do not edit by hand; `reference/animgraph2.md` says how to read it.
+Written by `scripts/animgraph_tables.gd` on 2026-09-25 from `animation/graphs/worldmodel/worldmodel_locomotion.vnmgraph+rifle.vnmgraph_c` in CS2 1.41.8.5. Do not edit by hand; `reference/animgraph2.md` says how to read it.
 
 `worldmodel_locomotion.vnmgraph`, which the third-person graph runs for the legs and body: idle, starts, moving, turning on the spot, the air and ladders. Its clips are shown for the rifle variation; the pistol and knife ones swap in their own sets, and the blend spaces are the same in all three (`locomotion.json` has each variation's clips).
 
@@ -21,7 +21,7 @@ Starts in Ground.
 | Ground (starts here when move_type is move_type_ground) | state machine SM/Ground/Standing (6 states) | - |
 | Ladder (starts here when move_type is move_type_ladder) | a 1D blend on move_crouch_amount_eased of Standing at 0, Crouched at 1 | - |
 | InAir (starts here when move_type is one of move_type_air, move_type_jump) | state machine SM/InAir/SM (2 states) | Ground when move_type is one of move_type_ground, move_type_ladder and event MS_AIR_FINISHING (0.05 s)<br>Ground when move_type is one of move_type_ground, move_type_ladder and not (event MS_AIR_FINISHING) (0.2 s) |
-| landing_blend | a 1D blend on a curve of air_height_above_ground on a 5 Hz spring of Blend 1D at 10, Blend 1D at 50 | - |
+| landing_blend | a 1D blend on a curve of air_height_above_ground (10 to 0, 40 to 50) on a 5 Hz spring, damping 1.2, from 50 of Blend 1D at 10, Blend 1D at 50 | - |
 | Jump | a 1D blend on move_crouch_amount_eased of Blend 2D at 0, Blend 2D at 1 | landing_blend when the state is done (0 s) |
 
 From more than one state:
@@ -274,7 +274,7 @@ Starts in Jump.
 
 | State | Plays | Goes to |
 |---|---|---|
-| landing_blend (starts here when not (air_action is air_action_jump)) | a 1D blend on a curve of air_height_above_ground on a 5 Hz spring of Blend 1D at 10, Blend 1D at 50 | Jump when air_action is air_action_jump (0.2 s) |
+| landing_blend (starts here when not (air_action is air_action_jump)) | a 1D blend on a curve of air_height_above_ground (10 to 0, 40 to 50) on a 5 Hz spring, damping 1, from 50 of Blend 1D at 10, Blend 1D at 50 | Jump when air_action is air_action_jump (0.2 s) |
 | Jump (starts here when air_action is air_action_jump) | a 1D blend on move_crouch_amount_eased of Blend 2D at 0, Blend 2D at 1 | landing_blend when the state is done (0 s) |
 
 ## Blend spaces

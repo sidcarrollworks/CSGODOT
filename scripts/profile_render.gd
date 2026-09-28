@@ -69,6 +69,7 @@ func _initialize() -> void:
 		DisplayServer.window_set_size(_window_size)
 	_dust2 = (load("res://maps/de_dust2/de_dust2.tscn") as PackedScene).instantiate()
 	_dust2.set("team_size", _team_size)
+	_dust2.set("game_mode", "Competitive")
 	root.add_child(_dust2)
 
 

@@ -22,6 +22,7 @@ func _initialize() -> void:
 	await _test_placement_and_blending()
 	await _test_the_blur()
 	await _test_the_team_counter()
+	await _test_the_bomb_carrier()
 	await _test_the_alert_lines()
 	await _test_the_buy_menu_agent()
 	_finish("HUD")
@@ -258,6 +259,66 @@ func _test_the_team_counter() -> void:
 	_check(is_equal_approx(counter.get_global_rect().position.x + counter._card_left(false, 0), 1004.5),
 		"the first card starts 1004.5 across, as on CS2's screenshot")
 	counter.free()
+
+
+## Who carries the bomb (playtest issue 18): CS2's C4 on the carrier's card,
+## your own team's only, and "You picked up the bomb" when you walk over it
+## on the ground, not when a round hands it to you.
+func _test_the_bomb_carrier() -> void:
+	var state := MatchState.new()
+	root.add_child(state)
+	var you := PlayerSim.new()
+	you.team = "T"
+	var mate := PlayerSim.new()
+	mate.team = "T"
+	var enemy := PlayerSim.new()
+	enemy.team = "CT"
+	for n in 3:
+		var sim: PlayerSim = [you, mate, enemy][n]
+		sim.userid = n
+		root.add_child(sim)
+		state.add_player(sim)
+	var counter := TeamCounter.new()
+	root.add_child(counter)
+	await process_frame
+	var bomb := C4.new()
+	var carrying := func() -> Array:
+		var marked := []
+		for side: String in MatchState.SIDES:
+			for card: TeamCounter.Card in counter.cards[side]:
+				if card.bomb:
+					marked.append(card.name)
+		return marked
+	counter.show_match(state, you, null, 0, bomb)
+	_check(carrying.call().is_empty(), "no card is marked before the bomb is handed out")
+	bomb.give_to(mate.userid)
+	counter.show_match(state, you, null, 0, bomb)
+	_check_equal(carrying.call(), [str(mate.name)], "a teammate carrying it is marked on their card")
+	bomb.give_to(you.userid)
+	counter.show_match(state, you, null, 0, bomb)
+	_check_equal(carrying.call(), [str(you.name)], "and you, on your own")
+	counter.show_match(state, enemy, null, 0, bomb)
+	_check(carrying.call().is_empty(), "the other side's cards never show it")
+	_check(TeamCounter.C4_WASH == Color8(255, 255, 95), "washed CS2's yellow")
+	_check(
+		Rect2(0.0, 0.0, TeamCounter.CARD, TeamCounter.CARD).encloses(TeamCounter.C4_BOX)
+			and TeamCounter.C4_BOX.position.x > TeamCounter.CARD * 0.5 and TeamCounter.C4_BOX.position.y > TeamCounter.CARD * 0.5,
+		"in the portrait's lower right, as on Sid's CS2 screenshot"
+	)
+	_check(
+		TeamCounter.C4_ROW.position.y > TeamCounter.GUN_ROW.end.y and TeamCounter.C4_ROW.end.y < TeamCounter.TOP + TeamCounter.COLUMN_HEIGHT
+			and absf(TeamCounter.C4_ROW.get_center().x - TeamCounter.CARD * 0.5) < 1.0,
+		"and again in the column, centred under the gun"
+	)
+
+	_check_equal(GameHud.bomb_hint(C4.State.NONE, C4.NOBODY, bomb, you.userid), "",
+		"handed it at a round's start, no hint: the card says so")
+	_check_equal(GameHud.bomb_hint(C4.State.DROPPED, C4.NOBODY, bomb, you.userid), "You picked up the bomb",
+		"picked up off the ground, CS2's hint")
+	_check_equal(GameHud.bomb_hint(C4.State.DROPPED, C4.NOBODY, bomb, mate.userid), "",
+		"but not when someone else picks it up")
+	for node: Node in [counter, you, mate, enemy, state]:
+		node.free()
 
 
 func _test_the_alert_lines() -> void:

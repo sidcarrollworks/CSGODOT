@@ -18,7 +18,8 @@ extends RefCounted
 ## or a tint mask reads it), and its lightmap coordinates, where it has any,
 ## in a third, which Godot imports as CUSTOM0: dust2's kasbah towers and
 ## arches. The props with neither are lit by the light probes instead
-## (ProbeMaterials).
+## (ProbeMaterials). Those lit from CUSTOM0 are drawn without the LODs
+## Godot's import made for them (drop_lods).
 
 const OPAQUE_SHADER := preload("res://src/map/lightmapped.gdshader")
 const OVERLAY_SHADER := preload("res://src/map/lightmapped_overlay.gdshader")
@@ -30,8 +31,21 @@ const DIRECTION_FILE := "lightmaps/directional_irradiance.png"
 const AVERAGE_FILE := "lightmaps/average.json"
 
 ## The lightmap is in the game's units; this is the scale into Godot's,
-## alongside the sun as MapLighting sets it (see lightmap.gdshaderinc).
+## alongside the sun as MapLighting sets it (see lightmap.gdshaderinc), under
+## the ACES grade, where it was fitted by eye. Under CS2's own grade
+## (ColourGrade) the game's units are Godot's, CS2_ENERGY: fitted at long
+## doors against Sid's CS2 screenshot, it put the sunlit and shaded ground
+## and the sunlit plaster within 1% of the game's (reference/
+## playtest-2026-09-25.md, issue 10). energy() gives the one in use.
 const ENERGY := 0.4
+const CS2_ENERGY := 1.0
+
+
+## The scale the baked light takes under the grade mode (ColourGrade.mode()
+## unless given).
+static func energy(mode: String = "") -> float:
+	var grade := mode if mode in ColourGrade.MODES else ColourGrade.mode()
+	return CS2_ENERGY if grade == "cs2" else ENERGY
 
 const WORLD_SHADERS := ["csgo_lightmappedgeneric.vfx", "csgo_static_overlay.vfx"]
 const PROP_SHADERS := ["csgo_vertexlitgeneric.vfx", "csgo_foliage.vfx", "csgo_complex.vfx", "csgo_environment.vfx"]
@@ -55,7 +69,8 @@ static var _two_sided := {}
 ## units each; a prop's decal and self-illumination come from textures_dir
 ## (carry_features). With the sun's channel of the map's baked shadows
 ## (MapShadows.sun_channel_at), the page of them goes on too. Returns
-## {"surfaces": how many, "props": how many of those are props, "found":
+## {"surfaces": how many, "props": how many of those are props, "no_lods":
+## how many of those lit from CUSTOM0 lost their LODs (drop_lods), "found":
 ## whether the maps were there, "shadows": whether the sun's baked shadow
 ## was, "ambient": the lightmap's average light as a Color, or null if
 ## unmeasured}; without the maps nothing changes.
@@ -65,7 +80,7 @@ static func apply(
 	var irradiance := _load(map_dir.path_join(IRRADIANCE_FILE))
 	var direction := _load(map_dir.path_join(DIRECTION_FILE))
 	if irradiance == null or direction == null:
-		return {"surfaces": 0, "props": 0, "found": false, "shadows": false, "ambient": null}
+		return {"surfaces": 0, "props": 0, "no_lods": 0, "found": false, "shadows": false, "ambient": null}
 	var lightmap_size := Vector2(irradiance.get_size())
 	var shadows: Texture2D = null
 	if sun_channel >= 0:
@@ -107,6 +122,7 @@ static func apply(
 	var built := {}
 	var surfaces := 0
 	var props := 0
+	var lit_from_custom0 := {}  # ArrayMesh -> PackedInt32Array of its surfaces
 	for candidate in candidates:
 		var mesh_instance: MeshInstance3D = candidate[0]
 		var surface: int = candidate[1]
@@ -118,11 +134,17 @@ static func apply(
 				continue
 			props += 1
 		surfaces += 1
+		if in_custom0:
+			var mesh := mesh_instance.mesh as ArrayMesh
+			var listed: PackedInt32Array = lit_from_custom0.get(mesh, PackedInt32Array())
+			if not surface in listed:
+				listed.append(surface)
+			lit_from_custom0[mesh] = listed
 		if material is ShaderMaterial:
 			# A blend material, which reads the same lightmap uniforms.
 			(material as ShaderMaterial).set_shader_parameter("lightmap_irradiance", irradiance)
 			(material as ShaderMaterial).set_shader_parameter("lightmap_direction", direction)
-			(material as ShaderMaterial).set_shader_parameter("lightmap_energy", ENERGY)
+			(material as ShaderMaterial).set_shader_parameter("lightmap_energy", energy())
 			set_shadows(material as ShaderMaterial, shadows, sun_mask)
 			continue
 		var key := [material, in_custom0]
@@ -130,9 +152,49 @@ static func apply(
 			built[key] = build(material as BaseMaterial3D, irradiance, direction, in_custom0, textures_dir)
 			set_shadows(built[key], shadows, sun_mask)
 		mesh_instance.set_surface_override_material(surface, built[key])
+	var no_lods := 0
+	for mesh: ArrayMesh in lit_from_custom0:
+		no_lods += drop_lods(mesh, lit_from_custom0[mesh])
 	return {
-		"surfaces": surfaces, "props": props, "found": true, "shadows": shadows != null, "ambient": read_average(map_dir),
+		"surfaces": surfaces, "props": props, "no_lods": no_lods, "found": true, "shadows": shadows != null,
+		"ambient": read_average(map_dir),
 	}
+
+
+## Takes the LODs off these surfaces of a mesh, which are then drawn at full
+## detail at every distance; its other surfaces keep theirs. Returns how
+## many had any.
+##
+## Godot's glTF import gives every surface LODs (meshes/generate_lods), and
+## its simplifier welds vertices that share a position, UV, UV2, normal,
+## tangent sign and colour without comparing CUSTOM0 to 3; every LOD's
+## indices then point at the first vertex of each welded group
+## (ImporterMesh::generate_lods, scene/resources/3d/importer_mesh.cpp). A
+## surface lit from CUSTOM0 has seams there, between lightmap charts, that
+## nothing else marks, so in a lower LOD a triangle on one takes a corner
+## from the neighbouring chart and samples the lightmap across the gap:
+## the zigzag stripes on dust2's kasbah towers (playtest of 2026-09-25,
+## issue 12). A surface lit from UV2 keeps its seams, since UV2 is compared.
+##
+## The surfaces go back through the pair ArrayMesh serialises itself with
+## (_get_surfaces, _set_surfaces), less their "lods" entry: nothing is
+## decompressed or compressed again, and they keep their order, names,
+## materials and bounds, so a MeshInstance3D's overrides still line up.
+## At load only, never in the tick; the mesh is uploaded once more.
+static func drop_lods(mesh: ArrayMesh, surfaces: PackedInt32Array) -> int:
+	var data: Array = mesh._get_surfaces()
+	var dropped := 0
+	for surface in surfaces:
+		if surface < 0 or surface >= data.size():
+			continue
+		var entry: Dictionary = data[surface]
+		if (entry.get("lods", []) as Array).is_empty():
+			continue
+		entry.erase("lods")
+		dropped += 1
+	if dropped > 0:
+		mesh._set_surfaces(data)
+	return dropped
 
 
 ## Gives a lightmapped material the page of baked shadows and the sun's
@@ -234,7 +296,7 @@ static func build(
 		)
 	lit.set_shader_parameter("lightmap_irradiance", irradiance)
 	lit.set_shader_parameter("lightmap_direction", direction)
-	lit.set_shader_parameter("lightmap_energy", ENERGY)
+	lit.set_shader_parameter("lightmap_energy", energy())
 	lit.set_shader_parameter("lightmap_uv_in_custom0", in_custom0)
 	carry_features(lit, BlendMaterials.vmat(material), textures_dir)
 	# Kept for whoever reads the material later.
@@ -265,7 +327,7 @@ static func carry_features(lit: ShaderMaterial, description: Dictionary, texture
 			# The tint is read as sRGB; the brightness is a power of two.
 			var colour := Color(float(tint[0]), float(tint[1]), float(tint[2])).srgb_to_linear()
 			var brightness := float(floats.get("g_flSelfIllumBrightness", 0.0))
-			var strength := pow(2.0, brightness) * float(floats.get("g_flSelfIllumScale", 1.0)) * ENERGY
+			var strength := pow(2.0, brightness) * float(floats.get("g_flSelfIllumScale", 1.0)) * energy()
 			lit.set_shader_parameter("self_illum_mask", mask)
 			lit.set_shader_parameter("self_illum_color", Vector3(colour.r, colour.g, colour.b) * strength)
 			lit.set_shader_parameter("self_illum_albedo_factor", float(floats.get("g_flSelfIllumAlbedoFactor", 0.0)))

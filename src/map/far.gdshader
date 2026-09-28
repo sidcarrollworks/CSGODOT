@@ -20,7 +20,7 @@ uniform float alpha_scissor = -1.0;
 uniform bool has_normal_map = true;
 
 void vertex() {
-	POSITION = far_position(PROJECTION_MATRIX * MODELVIEW_MATRIX * vec4(VERTEX, 1.0), CLIP_SPACE_FAR);
+	POSITION = far_position(PROJECTION_MATRIX * MODELVIEW_MATRIX * vec4(VERTEX, 1.0), CLIP_SPACE_FAR, PROJECTION_MATRIX);
 }
 
 void fragment() {

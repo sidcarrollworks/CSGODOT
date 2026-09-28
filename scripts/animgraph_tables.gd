@@ -333,7 +333,9 @@ func _state_names(states: Array, indices: PackedInt32Array) -> String:
 ## points, each with its position (the speeds the clip is authored for, in
 ## units a second, forward and to the left of the body), its clip in every
 ## variation, its playback speed and, where it is made to last a set time,
-## that time; and the triangles the space is cut into.
+## that time; and the triangles the space is cut into. Then the graph's
+## curves, springs and poses (values: NmGraph.value_nodes()), which pose
+## the landing by the height above the ground.
 func _locomotion_data(source: String) -> Dictionary:
 	var variations := {}
 	for resource: String in _blocks:
@@ -360,7 +362,7 @@ func _locomotion_data(source: String) -> Dictionary:
 			for variation: String in variations:
 				clips[variation] = (variations[variation] as NmGraph).clip_of(at).trim_suffix(".vnmclip")
 			points.append({
-				"name": shown.name_of(at), "x": float(values[i][0]), "y": float(values[i][1]),
+				"name": shown.name_of(at), "node": at, "kind": shown.kind(at), "x": float(values[i][0]), "y": float(values[i][1]),
 				"speed": float(shown.node(at).get("m_flSpeedMultiplier", 1.0)), "lasts": lasts, "clips": clips,
 			})
 		var triangles := []
@@ -372,7 +374,7 @@ func _locomotion_data(source: String) -> Dictionary:
 			"inputs": [shown.expression(int(n.get("m_nInputParameterNodeIdx0", -1))), shown.expression(int(n.get("m_nInputParameterNodeIdx1", -1)))],
 			"points": points, "triangles": triangles,
 		})
-	return {"source": LOCOMOTION, "cs2": source, "variations": variations.keys(), "blend_spaces": spaces}
+	return {"source": LOCOMOTION, "cs2": source, "variations": variations.keys(), "blend_spaces": spaces, "values": shown.value_nodes()}
 
 
 static func _cell(text: String) -> String:

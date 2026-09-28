@@ -24,9 +24,18 @@ extends RefCounted
 ## top of mid.
 ##
 ## Left out: the parts that stop only players (player clips) or only
-## grenades, and parts named for something the eye sees through (glass,
-## grates, fences, foliage). Triangles smaller than MIN_AREA are dropped:
-## they hide next to nothing and cost the CPU as much as a large one.
+## grenades, parts named for something the eye sees through (glass, grates,
+## fences, foliage), and parts that are never drawn (NOT_DRAWN). Triangles
+## smaller than MIN_AREA are dropped: they hide next to nothing and cost the
+## CPU as much as a large one.
+##
+## An occluder has to be something drawn and opaque. Godot shifts the
+## occlusion buffer by a third or a sixth of a pixel each way, in a cycle of
+## nine frames (raycast_occlusion_cull.cpp, jitter_projection), so a mesh
+## whose box straddles an occluder's edge is culled on some frames and drawn
+## on others, with the camera still. Along a drawn wall's edge the wall hides that; along
+## an invisible one, the mesh flickers against the sky (Sid's dust2 playtest,
+## 2026-09-25, issue 11).
 
 ## In square units, after the import's scale: a triangle smaller than an
 ## eight-inch square hides nothing worth the test.
@@ -36,9 +45,17 @@ const MIN_AREA := 64.0
 ## lists of parts that are not the world's walls.
 const SEE_THROUGH := ["glass", "grate", "fence", "chain", "wire", "foliage", "passbullets"]
 
+## Hull part name fragments for parts nobody sees. dust2's physics_sky is its
+## sky brushes, 266 triangles, and not only an outer shell: slabs of it hang
+## over mid, one of them just above the rooftops seen from top of mid, and
+## what was behind them flickered. No CS2 surface name holds "sky"
+## (reference/surfaces/surfaces.csv), so it matches only the sky's part.
+const NOT_DRAWN := ["sky"]
+
 
 ## Builds one occluder from these hull meshes, in parent's space, and adds it
-## under parent, leaving out any whose name holds one of skip or SEE_THROUGH.
+## under parent, leaving out any whose name holds one of skip, SEE_THROUGH or
+## NOT_DRAWN.
 ## Returns how many triangles it holds; nothing is added when there are none.
 static func build(parent: Node3D, hull: Array[MeshInstance3D], skip: PackedStringArray = PackedStringArray()) -> int:
 	var vertices := PackedVector3Array()
@@ -64,7 +81,7 @@ static func build(parent: Node3D, hull: Array[MeshInstance3D], skip: PackedStrin
 ## Whether a hull part by this name hides what is behind it.
 static func occludes(part: String, skip: PackedStringArray = PackedStringArray()) -> bool:
 	var lower := part.to_lower()
-	for fragment in SEE_THROUGH + Array(skip):
+	for fragment in SEE_THROUGH + NOT_DRAWN + Array(skip):
 		if lower.contains(String(fragment).to_lower()):
 			return false
 	return true

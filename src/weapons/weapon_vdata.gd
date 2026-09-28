@@ -93,6 +93,14 @@ static func apply(data: WeaponData, weapon_class: String, alternate: bool = fals
 	data.recovery_time_crouch = get_value.call("m_flRecoveryTimeCrouch")
 	data.recovery_time_stand = get_value.call("m_flRecoveryTimeStand")
 
+	# The recoil: only the provisional kick of a gun with no pattern reads it
+	# (WeaponData.recoil_magnitude).
+	data.recoil_magnitude = get_value.call("m_flRecoilMagnitude")
+	data.recoil_magnitude_variance = get_value.call("m_flRecoilMagnitudeVariance")
+	data.recoil_angle = get_value.call("m_flRecoilAngle")
+	data.recoil_angle_variance = get_value.call("m_flRecoilAngleVariance")
+	data.recoil_seed = int(get_value.call("m_nRecoilSeed"))
+
 	# The scope: one value each, the same scoped or not.
 	data.zoom_fovs = PackedFloat32Array()
 	var levels: float = get_value.call("m_nZoomLevels")

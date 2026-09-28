@@ -10,7 +10,7 @@
 # Usage:
 #   scripts/extract_assets.sh list-map        # what is inside the map's VPK
 #   scripts/extract_assets.sh list-weapons    # the gun models the weapons step takes
-#   scripts/extract_assets.sh map             # every step for one map: world, hull, entities, nav, volumes, radar, surfaces, layers, sky, skybox, lightmaps, visibility
+#   scripts/extract_assets.sh map             # every step for one map: world, hull, entities, nav, volumes, radar, surfaces, layers, sky, skybox, lightmaps, visibility, postprocessing
 #   scripts/extract_assets.sh physics         # just the collision hull (seconds)
 #   scripts/extract_assets.sh entities        # just the entity lump (seconds)
 #   scripts/extract_assets.sh nav             # just the nav mesh the bots walk (seconds)
@@ -22,20 +22,23 @@
 #   scripts/extract_assets.sh skybox          # just the 3D skybox: the far buildings and their baked light
 #   scripts/extract_assets.sh lightmaps       # just the baked light: bounce light, the sun's shadow, light probes
 #   scripts/extract_assets.sh visibility      # just which parts of the map can see which (seconds)
+#   scripts/extract_assets.sh postprocessing  # just the map's colour grade: its curve, bloom and colour table (seconds)
 #   scripts/extract_assets.sh weapons         # every gun: models, first- and third-person animations
 #   scripts/extract_assets.sh weapon-animations  # just the guns' animations (a minute)
 #   scripts/extract_assets.sh weapon-data     # just the game's weapon tuning (seconds)
+#   scripts/extract_assets.sh weapon-physics  # just the items' physics blocks: bone, mass, damping (seconds)
 #   scripts/extract_assets.sh equipment       # the bomb and kit, grenades, default knives, Zeus: models and animations
 #   scripts/extract_assets.sh hud             # the scope overlay, the HUD's icons and font
 #   scripts/extract_assets.sh effects         # the tracers' and muzzle flashes' textures
 #   scripts/extract_assets.sh characters      # two player models and their locomotion
 #   scripts/extract_assets.sh animgraphs      # the animation graphs that drive the clips (seconds)
-#   scripts/extract_assets.sh character-masks # just the player models' cloth masks (seconds; the characters step takes them too)
+#   scripts/extract_assets.sh character-masks # just the player models' cloth masks and eye textures (seconds; the characters step takes them too)
+#   scripts/extract_assets.sh character-animations # just the player models' clips and skeletons (no models or materials)
 #   scripts/extract_assets.sh sounds          # the guns' and the equipment's sounds, footsteps by surface, hits
 #   scripts/extract_assets.sh all             # map + weapons + equipment + hud + effects + characters + animgraphs + sounds
 #
 # The steps for one map (list-map, map, physics, entities, nav, volumes,
-# radar, layers, sky, skybox, lightmaps, visibility, and all) take the map's name after
+# radar, layers, sky, skybox, lightmaps, visibility, postprocessing, and all) take the map's name after
 # the step, de_dust2 when there is none:
 #   scripts/extract_assets.sh map de_mirage   # all of de_mirage, into assets/maps/de_mirage
 #   scripts/extract_assets.sh nav de_inferno  # just de_inferno's nav mesh
@@ -176,8 +179,8 @@ usage() {
 
 COMMAND="${1:-}"
 case "$COMMAND" in
-	list-map|map|physics|entities|nav|volumes|radar|layers|sky|skybox|lightmaps|visibility|all|paths) ;;
-	list-weapons|surfaces|weapons|weapon-animations|weapon-data|equipment|hud|effects|characters|character-masks|animgraphs|sounds)
+	list-map|map|physics|entities|nav|volumes|radar|layers|sky|skybox|lightmaps|visibility|postprocessing|all|paths) ;;
+	list-weapons|surfaces|weapons|weapon-animations|weapon-data|weapon-physics|equipment|hud|effects|characters|character-masks|character-animations|animgraphs|sounds)
 		# Not a map's own step: a map name here would be ignored, which is
 		# worse than being told.
 		if [[ $# -gt 1 ]]; then
@@ -692,6 +695,48 @@ extract_visibility() {
 	"$S2V_BIN" -i "$MAP_VPK" -f "$visibility" -o "$MAP_DEST" -d | grep -E '^--- Dump' || true
 }
 
+## The map's colour grade: the post-processing file (.vpost) its
+## post_processing_volume names (as resource_name:"lighting/...vpost" in
+## a compiled lump, whose type prefix is dropped), which holds the filmic curve's numbers, the
+## bloom's, and a 32-cube colour table every other layer is baked into.
+## Decompiled, it is KV3 text with the table beside it as a .raw file (8-bit
+## RGB); MapPostProcessing reads them, and ColourGrade draws with them. The
+## entity lump says which file, so that runs first. The file is looked for
+## in the map's VPK, then the game's main one. A vpost is data, not a
+## shader, so CS2's newer shader format does not stop Source 2 Viewer.
+extract_postprocessing() {
+	local entities
+	entities="$(find "$MAP_DEST" -name 'default_ents.vents' 2>/dev/null | head -n 1)"
+	if [[ -z "$entities" ]]; then
+		echo "No entity lump under $MAP_DEST to read the post-processing file from." >&2
+		echo "Run 'scripts/extract_assets.sh entities $MAP_NAME' first." >&2
+		exit 1
+	fi
+	local files
+	files="$(tr -d '\r' < "$entities" | grep -E '^[[:space:]]*postprocessing ' \
+		| sed -E 's/^[[:space:]]*postprocessing +//; s/^[a-z_]+://; s/"//g; s/[[:space:]]+$//; s/(\.vpost)(_c)?$/\1_c/' \
+		| grep -E '\.vpost_c$' | sort -u || true)"
+	if [[ -z "$files" ]]; then
+		echo "No post_processing_volume in $entities names a file; the map is graded with the defaults."
+		return
+	fi
+	mkdir -p "$MAP_DEST"
+	local listing file vpk
+	listing="$(list_paths "$MAP_VPK")"
+	while IFS= read -r file; do
+		vpk="$PAK_VPK"
+		if grep -qixF "$file" <<<"$listing"; then
+			vpk="$MAP_VPK"
+		fi
+		echo "Extracting $file from $(basename "$vpk")"
+		echo "        -> $MAP_DEST"
+		"$S2V_BIN" -i "$vpk" -f "$file" -o "$MAP_DEST" -d | grep -E '^--- Dump' || true
+		if [[ ! -f "$MAP_DEST/${file%_c}" ]]; then
+			echo "$file did not come out of $(basename "$vpk"); the map is graded with the defaults." >&2
+		fi
+	done <<<"$files"
+}
+
 extract_map() {
 	extract_world
 	echo
@@ -716,6 +761,8 @@ extract_map() {
 	extract_lightmaps
 	echo
 	extract_visibility
+	echo
+	extract_postprocessing
 }
 
 extract_weapons() {
@@ -754,6 +801,7 @@ extract_weapons() {
 		--gltf_textures_adapt
 
 	extract_weapon_data
+	extract_weapon_physics
 	extract_weapon_animations
 }
 
@@ -799,6 +847,7 @@ extract_equipment() {
 		-f "animation/anims/viewmodel/equipment/,animation/anims/viewmodel/grenade/,animation/anims/viewmodel/knife/_default_knife/,animation/anims/viewmodel/knife/knife_default_t/,animation/anims/viewmodel/pistol/pistol_taser/,animation/anims/world/equipment/c4/,animation/anims/world/shared/defuse/" \
 		-e vnmclip_c -b DATA > "$clip_data" 2>/dev/null || true
 
+	extract_weapon_physics
 	write_weapon_tables
 }
 
@@ -919,6 +968,24 @@ extract_weapon_data() {
 	"$S2V_BIN" -i "$PAK_VPK" -f "scripts/weapons.vdata_c" -b DATA > "$dest/weapons.vdata.txt" 2>/dev/null || true
 }
 
+## Every world model's physics block (PHYS), as text: the bone its hull is
+## bound to and that bone's bind pose, the mass, the damping and the
+## surface, for reference/weapons/physics.csv (ItemPhysics; the hull itself
+## is the *_physics.gltf the weapons and equipment steps write beside each
+## model). One pass over weapons/models/, a few seconds. Each block ends in
+## the cloth data (m_pFeModel on, about 36 MB over every model), which
+## nothing reads, so only what comes before it is kept.
+extract_weapon_physics() {
+	require_file "$PAK_VPK"
+	local dest="$OUT_DIR/weapons/weapons/models"
+	mkdir -p "$dest"
+	echo "Reading the items' physics blocks"
+	echo "        -> $dest/physics_data.txt"
+	"$S2V_BIN" -i "$PAK_VPK" -f "weapons/models/" -e vmdl_c -b PHYS 2>/dev/null \
+		| awk '/^\[[0-9]+\/[0-9]+\] /{keep=1} /^[[:space:]]*m_pFeModel/{keep=0} keep' \
+		> "$dest/physics_data.txt" || true
+}
+
 ## The guns' animations, beside the characters' where the view model and the
 ## player model look for them: each gun's first-person set (draw, idle,
 ## inspect, reload, fire; the shared _default_ sets are the M4A1-S's and the
@@ -933,7 +1000,7 @@ extract_weapon_animations() {
 		exit 1
 	fi
 	local clips
-	clips="$(grep -E "^animation/(anims/viewmodel/(rifle/(_default_rifle|rifle_[a-z0-9]+)|pistol/(_default_pistol|pistol_[a-z0-9]+))/|anims/world/(rifle/rifle_[a-z0-9_]+|pistol/pistol_[a-z0-9_]+)/|anims/world/pistol/_default_pistol/(idle|run|walk|crouch|inair|jump_stand|shoot)_[a-z_]*\.vnmclip_c$|skeletons/weapons/($GUN_SKELETONS)\.vnmskel_c$)" <<<"$listing" \
+	clips="$(grep -E "^animation/(anims/viewmodel/(rifle/(_default_rifle|rifle_[a-z0-9]+)|pistol/(_default_pistol|pistol_[a-z0-9]+))/|anims/world/(rifle/rifle_[a-z0-9_]+|pistol/pistol_[a-z0-9_]+)/|anims/world/pistol/_default_pistol/(idle|run|walk|crouch|inair|jump|shoot)_[a-z_]*\.vnmclip_c$|skeletons/weapons/($GUN_SKELETONS)\.vnmskel_c$)" <<<"$listing" \
 		| paste -sd, - || true)"
 	require_filter "$clips" "the gun animations"
 	echo
@@ -1074,14 +1141,36 @@ extract_characters() {
 	done
 	rm -rf "$scratch"
 
+	extract_character_animations "$listing"
+
+	echo
+	# A model whose materials came through without their descriptions is
+	# still worth importing.
+	extract_character_masks || true
+}
+
+## The characters' clips on their own: the rifle set, the shared deaths and
+## jump additives, and the skeletons (extract_characters runs it after the
+## models). Clips carry no materials and need none of CS2's shaders, so this
+## step can run while the models cannot be re-exported whole (CS2's VCS 72
+## shaders, 2026-09-23). listing is the archive's, if already read.
+extract_character_animations() {
+	require_file "$PAK_VPK"
+	mkdir -p "$CHARACTERS_DEST"
+	local listing="${1:-}"
+	if [[ -z "$listing" ]] && ! listing="$(list_paths "$PAK_VPK")"; then
+		echo "Source2Viewer-CLI failed while listing $PAK_VPK." >&2
+		exit 1
+	fi
 	local clips
 	# First person: the AK's clips and the shared rifle set, which is the
 	# M4A1-S's. Third person: the shared set's locomotion (idle, walk, run,
-	# crouch, in the eight directions, plus in-air, jump and shoot), each
-	# weapon's own draw, reload and shoot, and the shared deaths by where the
-	# last round landed. (The flinches beside them are additive layers, not
+	# crouch, in the eight directions, plus in-air, the jump's take-off in
+	# each direction and shoot), each weapon's own draw, reload and shoot,
+	# the shared deaths by where the last round landed, and the shared jump
+	# additives, CS2's BodyAdditives layer. (The flinches beside them are additive layers, not
 	# poses, and wait for an animation tree to add them.)
-	clips="$(grep -E '^animation/(anims/viewmodel/rifle/(_default_rifle|rifle_ak)/|anims/world/rifle/(_default_rifle/(idle|run|walk|crouch|inair|jump_stand|shoot)_[a-z_]*|rifle_ak/|rifle_m4a1_silencer/)|anims/world/shared/death_(chest|gut|rknee|rshoulder)[a-z_]*\.vnmclip_c$|skeletons/characters/(viewmodel|worldmodel)\.vnmskel_c$|skeletons/weapons/(ak47|m4a1)[a-z_]*\.vnmskel_c$)' <<<"$listing" \
+	clips="$(grep -E '^animation/(anims/viewmodel/rifle/(_default_rifle|rifle_ak)/|anims/world/rifle/(_default_rifle/(idle|run|walk|crouch|inair|jump|shoot)_[a-z_]*|rifle_ak/|rifle_m4a1_silencer/)|anims/world/shared/(death_(chest|gut|rknee|rshoulder)|jump_additive_)[a-z_]*\.vnmclip_c$|skeletons/characters/(viewmodel|worldmodel)\.vnmskel_c$|skeletons/weapons/(ak47|m4a1)[a-z_]*\.vnmskel_c$)' <<<"$listing" \
 		| paste -sd, - || true)"
 	require_filter "$clips" "the animations"
 	echo
@@ -1089,11 +1178,6 @@ extract_characters() {
 	echo "        -> $CHARACTERS_DEST/animation"
 	"$S2V_BIN" -i "$PAK_VPK" -f "$clips" -o "$CHARACTERS_DEST" -d --gltf_export_format gltf \
 		| grep -vE '^(Preloading|Added folder|--- )' || true
-
-	echo
-	# A model whose materials came through without their descriptions is
-	# still worth importing.
-	extract_character_masks || true
 }
 
 ## The player models' cloth masks: the blue channel of each agent material's
@@ -1109,14 +1193,17 @@ extract_characters() {
 extract_character_masks() {
 	require_file "$PAK_VPK"
 	local masks
-	masks="$(find "$CHARACTERS_DEST/agents" -name '*.gltf' -exec grep -ohE '"g_tMetalness" *: *"[^"]+"' {} + 2>/dev/null \
+	# The metalness textures carry the cloth mask; the eye textures are the
+	# eyes' colour (its alpha the iris) and where on the model they are.
+	masks="$(find "$CHARACTERS_DEST/agents" -name '*.gltf' \
+		-exec grep -ohE '"(g_tMetalness|g_tEyeAlbedo1|g_tEyeMask1)" *: *"[^"]+"' {} + 2>/dev/null \
 		| sed -E 's/^"[^"]+" *: *"//; s/"$//; s/\.vtex$/.vtex_c/' | sort -u || true)"
 	if [[ -z "$masks" ]]; then
 		echo "No player model under $CHARACTERS_DEST/agents names a metalness texture." >&2
 		echo "Run 'scripts/extract_assets.sh characters' first." >&2
 		return 1
 	fi
-	echo "Extracting $(wc -l <<<"$masks" | tr -d ' ') metalness textures, for the player models' cloth masks"
+	echo "Extracting $(wc -l <<<"$masks" | tr -d ' ') textures, for the player models' cloth masks and eyes"
 	echo "        -> $CHARACTERS_DEST/materials"
 	s2v_batched "$(paste -sd, - <<<"$masks")" -o "$CHARACTERS_DEST" -d \
 		| grep -vE '^(Preloading|Added folder|--- \[)' || true
@@ -1190,12 +1277,15 @@ case "$COMMAND" in
 	skybox) extract_skybox; finish ;;
 	lightmaps) extract_lightmaps; finish ;;
 	visibility) extract_visibility ;;
+	postprocessing) extract_postprocessing ;;
 	characters) extract_characters; finish ;;
 	character-masks) extract_character_masks; finish ;;
+	character-animations) extract_character_animations; finish ;;
 	animgraphs) extract_animgraphs ;;
 	weapons) extract_weapons; finish ;;
 	weapon-animations) extract_weapon_animations; finish ;;
 	weapon-data) extract_weapon_data; write_weapon_tables ;;
+	weapon-physics) extract_weapon_physics; write_weapon_tables ;;
 	equipment) extract_equipment; finish ;;
 	hud) extract_hud; finish ;;
 	effects) extract_effects; finish ;;

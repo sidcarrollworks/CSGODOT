@@ -231,8 +231,10 @@ and lets go of it at its death. Grenades are thrown
 from the hand: the attack buttons pull the pin, letting go throws it (the
 right alone underhand), and the hand is busy for the throw clip's length
 before what is next is drawn. The bomb is planted with it in hand and the
-attack button held, and E defuses. What is dropped is drawn lying on its
-thinnest side (`DroppedItemView`). Every item has its own first-person
+attack button held, and E defuses. What is dropped is a body on its own
+physics hull, turning about its centre of mass and lying as it comes to
+rest (`DroppedItem`, `ItemPhysics`, reference/weapons/physics.csv; issue 2
+of reference/playtest-2026-09-25.md). Every item has its own first-person
 model, built as it comes into the inventory and kept while it is carried,
 so a switch builds nothing.
 
@@ -509,7 +511,11 @@ and the spectator versions.
   been planted", "counter-terrorists win", "fire in the hole"), the buy
   sound, the 10-second warning.
 - **S2.** The sound event files (`soundevents/*.vsndevts_c`) with the game's
-  volumes and distances, which today are set by ear.
+  volumes and distances, which today are set by ear. *(Remote now, and done
+  2026-09-26: GameTracking-CS2 carries them as text, and
+  `scripts/sound_events.sh` generates `reference/sounds/sound_events.json`,
+  which `SoundEvents` plays. The sounds already built still use their levels
+  by ear until each moves onto it.)*
 
 **Remote:** play them from the systems above through `SoundBank`.
 

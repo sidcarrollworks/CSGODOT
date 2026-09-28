@@ -25,7 +25,8 @@ sections 9, 11 and 14 rather than repeating them.
   release notes on bots from 2023 to 2026 could not be read directly**; see
   B9 for the little the snippets gave. Michael Booth's GDC 2004 talk
   (https://media.gdcvault.com/gdc04/slides/making_of_official.pdf) could not
-  be opened either. The classic bot design in B4 therefore rests on what the
+  be opened either (it was on 2026-09-25; B4's addendum quotes it). The
+  classic bot design in B4 therefore rests on what the
   dumped files show (CCSBot's fields, the convars, botchatter.db, the nav
   analysis keys already in the repo), plus clearly marked memory.
 - Forbidden sources were not used. I also avoided ReGameDLL_CS, which is a
@@ -805,6 +806,39 @@ opened to cite**):**
   by skill.
 - **After a kill or when lost:** it hunts.
 - **Late in the round:** bots hurry (`m_hurryTimer`).
+
+**Moving among teammates, and getting unstuck (addendum, 2026-09-26, for
+the playtest of 2026-09-25, issue 6).** Booth's GDC 2004 slides
+("The Making of the Official Counter-Strike Bot", the URL above) were read
+by the playtest's investigator on 2026-09-25 and quoted in
+`reference/playtest-2026-09-25.md`, issue 6; the thread that built on them
+could not open them again (egress blocked, 2026-09-26), so the quotes
+below are as that page gives them. Secondary to CS2's own files, and from
+2004 (Condition Zero's bot), but it is the design CS2's bot still carries:
+the fields in the table above are the same.
+- **The movement stack:** "Pathfinding -> Path Following -> Reactive
+  Obstacle Avoidance Behavior -> Generation of Movement Commands ->
+  Standard Player Movement Physics". Avoiding teammates is its own layer
+  between following the path and building the command, which is where
+  `BotSteering` sits (`src/bots/bot_steering.gd`).
+- **Getting stuck:** among the causes, "Friends blocking your way".
+- **Noticing it:** "Watch average velocity over a short window of time",
+  which is `m_avgVel[10]`.
+- **Getting out:** "Random wiggle", then "Add random jump after a short
+  duration" (`m_wiggleTimer`, `m_stuckJumpTimer`).
+- **Seen in CS2 by Sid** (2026-09-26, primary, by eye): "When colliding
+  they first seem to back up and go forward again, if you are still in the
+  way they will try moving forward and to the side." `BotSteering` follows
+  that order.
+- **Not in the slides or any file:** how far ahead a friend counts as in the
+  way, how far aside a bot steps, how long it wiggles, how long before it
+  jumps, and the window of the average. The code marks each as a choice;
+  the playtest page's issue 6 says how Sid can measure CS2's bot for them
+  (`bot_goto_mark` with a teammate standing in a corridor).
+- **What players say** (none found for CS2 in this session): the playtest
+  itself is the critique, bots of one side pushing at each other and
+  hopping until one dies (Sid, 2026-09-25, dust2's B doors), and the same
+  on de_inferno (roadmap 24b, 2026-09-24).
 
 ## B5. Vision, smoke and flashes
 

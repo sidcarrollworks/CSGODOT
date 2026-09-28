@@ -45,7 +45,10 @@ play.
   scripts/extract_assets.sh all
   ```
 
-  Then press play: `maps/de_dust2/de_dust2.tscn` is the main scene.
+  Then press play: `maps/de_dust2/de_dust2.tscn` is the main scene. It
+  asks for the mode first: Competitive (5 v 5 with bots) or Practice (no
+  bots, and warmup lasts until F5 starts the rounds). `--mode competitive`
+  or `--mode practice` on the command line skips the question.
   [`reference/extracting.md`](reference/extracting.md) covers each step,
   where the script looks for things, and what to do when an import
   misbehaves.

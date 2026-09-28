@@ -23,3 +23,6 @@ inspect-output.txt
 
 # Godot docs fetched by scripts/godot_docs.sh
 .godot-docs/
+
+# CS2 sound event text fetched by scripts/sound_events.sh
+.gametracking-cs2/

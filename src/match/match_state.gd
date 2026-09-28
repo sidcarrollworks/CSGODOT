@@ -236,6 +236,10 @@ func end_warmup_on_next_tick() -> void:
 func tick(now_usec: int) -> void:
 	match phase:
 		Phase.WARMUP:
+			# A paused warmup (mp_warmup_pausetimer) keeps its clock where it
+			# started, so it never runs out and shows the time it would last.
+			if rules.warmup_paused:
+				phase_ends_usec = now_usec + _usec(rules.warmup_seconds)
 			if now_usec >= phase_ends_usec or _warmup_end_asked:
 				_warmup_end_asked = false
 				end_warmup(now_usec)

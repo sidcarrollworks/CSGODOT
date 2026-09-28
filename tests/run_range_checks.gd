@@ -230,16 +230,16 @@ func _test_ragdoll() -> void:
 	)
 	var body_head: RigidBody3D = ragdoll.bodies.get(head)
 	_check(
-		body_head != null and body_head.collision_layer == Ragdoll.LAYER and body_head.collision_mask == Hitscan.WORLD_LAYER,
-		"the bodies touch the world and nothing else, and are nothing a round is traced against"
+		body_head != null and body_head.collision_layer == Ragdoll.LAYER and body_head.collision_mask == Hitscan.WORLD_LAYER | Ragdoll.LAYER
+			and Ragdoll.LAYER & (Hitscan.WORLD_LAYER | Hitbox.LAYER) == 0,
+		"the bodies touch the world and dead bodies alone, and are nothing a round is traced against"
 	)
 	# Jolt ignores a joint's bias and warns on every joint of every death
-	# when one is set; Godot Physics needs Ragdoll.JOINT_BIAS.
+	# when one is set; Godot Physics needs Ragdoll.JOINT_BIAS. The hinges
+	# have one; the other joints (Generic6DOFJoint3D) have none.
 	var biases := []
 	for joint in ragdoll.get_children():
-		if joint is ConeTwistJoint3D:
-			biases.append((joint as ConeTwistJoint3D).get_param(ConeTwistJoint3D.PARAM_BIAS))
-		elif joint is HingeJoint3D:
+		if joint is HingeJoint3D:
 			biases.append((joint as HingeJoint3D).get_param(HingeJoint3D.PARAM_BIAS))
 	var wanted := 0.3 if Ragdoll.on_jolt() else Ragdoll.JOINT_BIAS
 	_check(
@@ -441,11 +441,11 @@ func _test_whole_ragdoll() -> void:
 			["neck_0", "spine_3", Vector3(0, 0.12, 0) * spine, Vector3.ZERO],
 			["head_0", "neck_0", Vector3(0, 0.1, 0), Vector3.ZERO],
 			["clavicle_l", "spine_3", Vector3(0.03, 0.08, 0.02), Vector3.ZERO],
-			["arm_upper_l", "clavicle_l", Vector3(0.17, 0, 0), Vector3(0, 0, -70)],
+			["arm_upper_l", "clavicle_l", Vector3(0.17, 0, 0), Vector3(60, 0, -25)],
 			["arm_lower_l", "arm_upper_l", Vector3(0, -0.28, 0), Vector3(-100, 0, 0)],
 			["hand_l", "arm_lower_l", Vector3(0, -0.26, 0), Vector3.ZERO],
 			["clavicle_r", "spine_3", Vector3(-0.03, 0.08, 0.02), Vector3.ZERO],
-			["arm_upper_r", "clavicle_r", Vector3(-0.17, 0, 0), Vector3(0, 0, 70)],
+			["arm_upper_r", "clavicle_r", Vector3(-0.17, 0, 0), Vector3(60, 0, 25)],
 			["arm_lower_r", "arm_upper_r", Vector3(0, -0.28, 0), Vector3(-100, 0, 0)],
 			["hand_r", "arm_lower_r", Vector3(0, -0.26, 0), Vector3.ZERO],
 			["leg_upper_l", "pelvis", Vector3(0.1, -0.05, 0), Vector3.ZERO],
@@ -488,13 +488,19 @@ func _test_whole_ragdoll() -> void:
 		var ragdoll := Ragdoll.new()
 		_range.add_child(ragdoll)
 		var made := ragdoll.build(skeleton, capsules, scale, case[1], Vector3.FORWARD, Vector3.BACK, skeleton.find_bone("head_0"))
-		# Each joint's pivot as each of its two bodies holds it.
+		# Each joint's pivot, the child bone's head as it died, as each of its
+		# two bodies holds it. (The joints are made with the bodies laid out
+		# at rest, so where a joint node stands says nothing now.)
 		var pivots := []
 		for joint in ragdoll.get_children():
-			if joint is ConeTwistJoint3D:
+			if joint is Generic6DOFJoint3D or joint is HingeJoint3D:
 				var a := joint.get_node(joint.node_a) as RigidBody3D
 				var b := joint.get_node(joint.node_b) as RigidBody3D
-				pivots.append([a, b, a.to_local(joint.global_position), b.to_local(joint.global_position)])
+				var bone := skeleton.find_bone(String(joint.name).trim_prefix("Joint_"))
+				# The body starts lifted clear of the floor, and the skeleton
+				# not yet with it.
+				var at := (skeleton.global_transform * skeleton.get_bone_global_pose(bone)).origin + Vector3.UP * ragdoll.lifted
+				pivots.append([a, b, a.to_local(at), b.to_local(at)])
 		for i in SimClock.ticks_in(4.0):
 			await physics_frame
 
