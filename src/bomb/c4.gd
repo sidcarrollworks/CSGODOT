@@ -61,6 +61,9 @@ class Actor:
 	var plant_held: bool = false
 	## Holding the use key: the defuse.
 	var use_held: bool = false
+	## Pressing the use key this tick: a terrorist takes the bomb off the
+	## ground with it from further than a touch (C4Rules.use_reach).
+	var use_pressed: bool = false
 	## Asking to drop the bomb this tick (CS2's drop key with it in hand).
 	var drop: bool = false
 	## Carrying a defuse kit.
@@ -343,7 +346,7 @@ func _tick_dropped(now_usec: int, actors: Array[Actor]) -> void:
 			continue
 		var across := Vector2(actor.feet.x - position.x, actor.feet.z - position.z).length()
 		var up := position.y - actor.feet.y
-		if across > rules.pickup_reach or absf(up) > rules.pickup_height:
+		if (across > rules.pickup_reach or absf(up) > rules.pickup_height) and not (actor.use_pressed and _looked_at(actor, rules.use_reach, rules.use_cone_degrees)):
 			continue
 		if across < nearest_distance:
 			nearest = actor
@@ -400,18 +403,40 @@ func _tick_planted(now_usec: int, actors: Array[Actor]) -> void:
 	_event("bomb_begindefuse", {"userid": defuser, "haskit": defuse_with_kit})
 
 
+## Whether E is the bomb's for this player now, before anything on the
+## ground (CS2's sv_weapon_swap_difficulty_near_hi_pri: no cone search near
+## a high-priority item): a living counter-terrorist in reach of the
+## planted bomb and looking at it, or its defuser; a living terrorist in
+## E's reach of the dropped bomb and looking at it.
+func claims_use(actor: Actor) -> bool:
+	if not actor.alive:
+		return false
+	match state:
+		State.PLANTED:
+			return actor.team == "CT" and (actor.id == defuser or _looked_at(actor, rules.defuse_reach, rules.defuse_cone_degrees))
+		State.DROPPED:
+			return actor.team == "T" and _looked_at(actor, rules.use_reach, rules.use_cone_degrees)
+	return false
+
+
+## Whether the bomb is within reach of the actor's eyes and within
+## cone_degrees of their aim.
+func _looked_at(actor: Actor, reach: float, cone_degrees: float) -> bool:
+	var to_bomb := position - actor.eyes
+	var distance := to_bomb.length()
+	if distance > reach:
+		return false
+	if distance < 1.0:
+		return true
+	return actor.aim.normalized().dot(to_bomb / distance) >= cos(deg_to_rad(cone_degrees))
+
+
 ## Whether a player holding use now can defuse: a living
 ## counter-terrorist on the ground, close to the bomb and looking at it.
 func _can_defuse(actor: Actor) -> bool:
 	if not actor.alive or actor.team != "CT" or not actor.use_held or not actor.on_ground:
 		return false
-	var to_bomb := position - actor.eyes
-	var distance := to_bomb.length()
-	if distance > rules.defuse_reach:
-		return false
-	if distance < 1.0:
-		return true
-	return actor.aim.normalized().dot(to_bomb / distance) >= cos(deg_to_rad(rules.defuse_cone_degrees))
+	return _looked_at(actor, rules.defuse_reach, rules.defuse_cone_degrees)
 
 
 func _explode(actors: Array[Actor]) -> void:

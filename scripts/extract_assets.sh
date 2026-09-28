@@ -17,7 +17,7 @@
 #   scripts/extract_assets.sh volumes         # just the buy zones, bomb sites and callouts' volumes, and the baked bomb damage
 #   scripts/extract_assets.sh radar           # just the radar image and where it lies
 #   scripts/extract_assets.sh surfaces        # just CS2's surfaces: parents, friction, penetration (seconds)
-#   scripts/extract_assets.sh layers          # just the textures the glTF has no slot for: second layers, decals, glows
+#   scripts/extract_assets.sh layers          # just the textures the glTF has no slot for: second layers, tint masks, decals, glows
 #   scripts/extract_assets.sh sky             # just the sky panorama
 #   scripts/extract_assets.sh skybox          # just the 3D skybox: the far buildings and their baked light
 #   scripts/extract_assets.sh lightmaps       # just the baked light: bounce light, the sun's shadow, light probes
@@ -490,8 +490,14 @@ extract_radar() {
 ## description in its extras, second layer and blend mask included, so the
 ## textures it left behind can be read off the glTF and fetched by name. They
 ## land under materials/, by the same path the material refers to them by.
+## The 3D skybox's too, once the skybox step has exported it, so the textures
+## can be fetched again without exporting the skybox over.
 extract_layers() {
 	extract_layers_under "$MAP_DEST"
+	if [[ -n "$(find "$SKYBOX_DEST" -name 'world.gltf' 2>/dev/null | head -n 1)" ]]; then
+		echo
+		extract_layers_under "$SKYBOX_DEST"
+	fi
 }
 
 extract_layers_under() {
@@ -507,39 +513,52 @@ extract_layers_under() {
 
 	# Every texture a material names that the glTF has no slot for: the two-
 	# layer materials' second layer and blend mask (BlendMaterials), and the
-	# props' decal and self-illumination mask (prop_features.gdshaderinc).
+	# props' tint mask, decal and self-illumination mask (prop_features.gdshaderinc).
 	local textures
-	textures="$(grep -oE '"g_t(Layer2Color|Layer2NormalRoughness|BlendModulation|Decal|SelfIllumMask)" *: *"[^"]+"' "$world" \
+	textures="$(grep -oE '"g_t(Layer2Color|Layer2NormalRoughness|BlendModulation|TintMask|Decal|SelfIllumMask)" *: *"[^"]+"' "$world" \
 		| sed -E 's/^"[^"]+" *: *"//; s/"$//; s/\.vtex$/.vtex_c/' | sort -u || true)"
 	if [[ -z "$textures" ]]; then
-		echo "No layered, decal or self-illuminated materials in $world; nothing to fetch."
+		echo "No layered, tint-masked, decal or self-illuminated materials in $world; nothing to fetch."
 	else
-		echo "Extracting $(echo "$textures" | wc -l | tr -d ' ') second-layer, blend-mask, decal and self-illumination textures"
+		echo "Extracting $(echo "$textures" | wc -l | tr -d ' ') second-layer, blend-mask, tint-mask, decal and self-illumination textures"
 		echo "        -> $dest/materials"
 		"$S2V_BIN" -i "$PAK_VPK" -f "$(echo "$textures" | paste -sd, -)" -o "$dest" -d \
 			| grep -vE '^(Preloading|Added folder|--- \[)' || true
 	fi
-	restore_alpha "$world"
+	restore_alpha "$world" "$dest"
 }
 
 ## Puts back the alpha an export dropped from the colour of an alpha-cut or
 ## translucent material (scripts/export_alpha.gd says which, and why): each
 ## such texture decompiled again on its own, which keeps its alpha, over the
-## export's copy. Needs Godot to read the glTF; without it they are left as
+## export's copy. And fetches the textures of the unlit materials
+## (UnlitMaterials), which blend by an alpha the export dropped and have a
+## second texture it has no slot for, under dest's materials/ as the second
+## layers are. Needs Godot to read the glTF; without it they are left as
 ## they are.
 restore_alpha() {
-	local world="$1"
+	local world="$1" dest="$2"
 	local godot
 	godot="$(find_godot)"
 	if [[ -z "$godot" ]]; then
 		echo "No Godot binary found; colour textures exported without their alpha are left so."
 		return
 	fi
-	local pairs
+	local listed
 	# Godot is given the glTF under res://, which reads the same on every
 	# system, and answers with the images there too.
-	pairs="$("$godot" --headless --path "$PROJECT_DIR" --script scripts/export_alpha.gd -- "res://${world#"$PROJECT_DIR"/}" 2>/dev/null \
-		| tr -d '\r' | sed -n 's/^ALPHA\t//p' || true)"
+	listed="$("$godot" --headless --path "$PROJECT_DIR" --script scripts/export_alpha.gd -- "res://${world#"$PROJECT_DIR"/}" 2>/dev/null \
+		| tr -d '\r' || true)"
+	local unlit
+	unlit="$(sed -n 's/^UNLIT\t//p' <<<"$listed")"
+	if [[ -n "$unlit" ]]; then
+		echo "Extracting $(wc -l <<<"$unlit" | tr -d ' ') textures of unlit materials"
+		echo "        -> $dest/materials"
+		"$S2V_BIN" -i "$PAK_VPK" -f "$(sed 's/\.vtex$/.vtex_c/' <<<"$unlit" | paste -sd, -)" -o "$dest" -d \
+			| grep -vE '^(Preloading|Added folder|--- \[)' || true
+	fi
+	local pairs
+	pairs="$(sed -n 's/^ALPHA\t//p' <<<"$listed")"
 	if [[ -z "$pairs" ]]; then
 		return
 	fi

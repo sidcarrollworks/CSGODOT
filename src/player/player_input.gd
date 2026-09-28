@@ -67,6 +67,11 @@ const GAME_KEYS := {
 	&"slot3": KEY_3, &"slot4": KEY_4, &"slot5": KEY_5,
 	&"lastinv": KEY_Q, &"drop": KEY_G, &"use": KEY_E,
 }
+## The same for the mouse's buttons: CS2's MWHEELDOWN invnext
+## (user_keys_default.vcfg). The wheel going up stays Sid's jump.
+const GAME_MOUSE := {
+	&"invnext": MOUSE_BUTTON_WHEEL_DOWN,
+}
 ## Test keys moved off a key CS2 uses, as [from, to], put right in such a
 ## map too: the range's never-die was on G, which is drop
 ## (reference/binds.md).
@@ -76,6 +81,8 @@ const MOVED_KEYS := {
 
 var _pending: Array[ButtonEvent] = []
 var _weapon_select: int = UserCmd.SELECT_NONE
+## Notches of the wheel since the last command (UserCmd.weapon_cycle).
+var _weapon_cycle: int = 0
 var _toggle_noclip: bool = false
 ## Console commands the keys have asked for since the last command ("drop"),
 ## for whatever runs the player to send to the game.
@@ -100,8 +107,8 @@ const CS_YAW_PER_COUNT := 0.022
 const PITCH_LIMIT := 89.0
 
 
-## Adds every action in GAME_KEYS the input map does not have, and moves
-## each in MOVED_KEYS still on its old key.
+## Adds every action in GAME_KEYS and GAME_MOUSE the input map does not
+## have, and moves each in MOVED_KEYS still on its old key.
 static func ensure_actions() -> void:
 	for action: StringName in GAME_KEYS:
 		if InputMap.has_action(action):
@@ -110,6 +117,13 @@ static func ensure_actions() -> void:
 		var event := InputEventKey.new()
 		event.physical_keycode = GAME_KEYS[action]
 		InputMap.action_add_event(action, event)
+	for action: StringName in GAME_MOUSE:
+		if InputMap.has_action(action):
+			continue
+		InputMap.add_action(action, 0.2)
+		var button := InputEventMouseButton.new()
+		button.button_index = GAME_MOUSE[action]
+		InputMap.action_add_event(action, button)
 	for action: StringName in MOVED_KEYS:
 		if not InputMap.has_action(action):
 			continue
@@ -144,6 +158,10 @@ func handle_event(event: InputEvent) -> void:
 	for i in SLOT_ACTIONS.size():
 		if event.is_action_pressed(SLOT_ACTIONS[i]):
 			_weapon_select = i + 1
+	# The wheel sends a press and a release for each notch; the press
+	# counts (reference/godot/input.md).
+	if event.is_action_pressed(&"invnext"):
+		_weapon_cycle += 1
 	if event.is_action_pressed(&"lastinv"):
 		_weapon_select = UserCmd.SELECT_LAST
 	elif event.is_action_pressed(&"drop"):
@@ -248,8 +266,10 @@ func build_command(tick: int, now_usec: int = -1) -> UserCmd:
 			event.yaw_degrees, event.pitch_degrees
 		))
 	cmd.weapon_select = _weapon_select
+	cmd.weapon_cycle = _weapon_cycle
 	cmd.toggle_noclip = _toggle_noclip
 	_weapon_select = UserCmd.SELECT_NONE
+	_weapon_cycle = 0
 	_toggle_noclip = false
 	_last_sample_usec = now_usec
 	return cmd

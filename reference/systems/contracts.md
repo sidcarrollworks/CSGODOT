@@ -126,6 +126,8 @@ Items
 - `item_purchase`: userid, team, loadout, weapon
 - `item_pickup`: userid, item, silent
 - `item_remove`: userid, item
+- `item_pickup_failed`: userid, item, reason, limit (E on an item there is
+  no room for; reason `ItemDrops.FAILED_NO_ROOM`, CS2's numbers unknown)
 - `item_equip`: userid, item, canzoom, hassilencer, issilenced, weptype
 - `ammo_pickup`: userid, item, index
 - `enter_buyzone` / `exit_buyzone`: userid, canbuy
@@ -136,7 +138,14 @@ Rounds and the match
 - `round_announce_match_start`, `round_announce_last_round_half`, `round_announce_match_point`, `round_announce_final`: (none); what CS2 announces of a round as it starts, sent after `round_start` (`MatchState.announce_round`; the moment is inferred from their names)
 - `round_start`: timelimit, fraglimit, objective
 - `round_end`: winner, reason, message, legacy, player_count, nomusic (`nomusic` set: no round-end music, the action goes on)
-- `round_mvp`: userid, reason, value, nomusic
+- `round_mvp`: userid, reason, value, nomusic; sent by `RoundReport`
+  (`src/match/round_report.gd`) right after `round_end`, with CS2's reason
+  numbers (hudwinpanel.js), when the round has an MVP
+- `cs_win_panel_round`: show_timer_defend, show_timer_attack, timer_time,
+  final_event, funfact_token, funfact_player, funfact_data1 to 3; sent by
+  `RoundReport` after `round_end` every round, the fun fact as CS2's
+  csgo_english.txt token with its '#' ("" for none); the timer keys and
+  final_event are left at their defaults
 - Every round event here, with these keys, is CS2's: its `core.gameevents`,
   `mod.gameevents` and `game.gameevents`, which GameTracking-CS2 keeps as
   text (read 2026-09-24).
@@ -382,8 +391,18 @@ yaw/pitch/crouch approximation still does not read animated bones.
   knife and never the C4 (`item_remove`);
 - picks an item up for a living player standing on it (32 units across,
   72 up) whose slot is free (`item_pickup`, or `defuser_pickup`, and only
-  CTs take the kit). Swapping with the gun in hand (E) waits for a use-key
-  handler; CS2's other way, taking a dropped gun from the buy menu
+  CTs take the kit);
+- takes the item a living player looks at when they press E
+  (`UserCmd.USE`'s first press, read from `PlayerSim.last_command` through
+  `ItemDrops.use_pressed`): within 80 units of the eyes (CS2's
+  `player_use_radius`), within `USE_CONE_DEGREES` of the aim (a guess),
+  nearest the aim first, one ray on the world layer to see it, and only
+  once anyone may take it. A primary or pistol whose slot is taken swaps:
+  the one there is thrown as `drop` throws it (`item_remove`), the one
+  taken has its place, in hand if the old one was (`item_pickup`). An
+  item there is no room for (a grenade past the limits, a kit already
+  worn) sends `item_pickup_failed`. It asks `use_claimed` first, and takes
+  nothing when the bomb claims the press. CS2's other way, taking a dropped gun from the buy menu
   (`UIPanorama.buymenu_pickup_weapon`), is not built. Pickups are silent
   here: CS2 plays `Player.PickupWeaponAudible` (and `PickupGrenadeAudible`,
   `PickupPistol`) to everyone within 1100 units and the picker's own
@@ -583,6 +602,12 @@ system, in `attach`), `game.query(&"name", [args], fallback)`,
   bots, `player_death.attackerblind`). Fallbacks {} and 0.0.
 - `burning_at(point: Vector3) -> bool`: whether fire covers that point
   (grenades; bots keep out of it). Fallback false.
+- `use_claimed(userid: int) -> bool`: whether E is the bomb's for that
+  player now (the bomb): a living CT in defuse reach of the planted bomb
+  and looking at it, or its defuser; a living T within E's reach of the
+  dropped bomb and looking at it (CS2's
+  `sv_weapon_swap_difficulty_near_hi_pri`). `ItemDrops` asks it before E
+  takes anything off the ground. Fallback false.
 - `holds_still(userid: int) -> bool`: true while that player is planting
   or defusing (the bomb). `player_sim` reads it to stop moving and firing
   without touching `frozen`, which the match owns. Fallback false.

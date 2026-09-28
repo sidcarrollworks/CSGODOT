@@ -2,15 +2,21 @@ class_name ItemDrops
 extends RefCounted
 
 ## Items on the ground: what a death leaves, what the drop command throws,
-## and walking over one to pick it up. The items contract's own system, which
-## GameSystems adds first.
+## walking over one to pick it up, and E on the one looked at. The items
+## contract's own system, which GameSystems adds first.
 ##
 ## A death drops what Inventory.drops_on_death says (the C4 is the bomb's to
 ## drop, and is not in it). "drop" throws what is in hand, but never the
 ## knife and never the C4 (the bomb takes that command when the C4 is in
 ## hand). Walking over an item takes it if its slot is free, as CS2 does,
-## measured from the item's centre of mass (DroppedItem.position);
-## swapping with the one in hand (E) is left for when there is a use key.
+## measured from the item's centre of mass (DroppedItem.position).
+## Pressing E (UserCmd.USE) takes the item looked at, within reach and in
+## clear sight, and a gun whose slot is taken takes the place of the one
+## there, which is thrown as a drop throws it (CS2's cone search, player_use_radius
+## 80; issue 3 of reference/playtest-2026-09-25.md). An item there is no
+## room for is refused with item_pickup_failed, as CS2 refuses a fifth
+## grenade. Near the bomb E is the bomb's: the query use_claimed, which
+## the bomb answers, is asked first (sv_weapon_swap_difficulty_near_hi_pri).
 ## What is on the ground goes at round_prestart, CS2's clean-up of the map.
 ##
 ## CS2's values are from its convars (SteamDatabase's DumpSource2
@@ -47,8 +53,25 @@ const THROW_LIFT := 0.25
 const THROW_TUMBLE := 2.5
 const THROW_TWIST := 1.5
 const DEATH_TUMBLE := 2.0
+## How far from the eyes E reaches: CS2's player_use_radius, 80.
+const USE_REACH := 80.0
+## How far off the aim an item may lie for E to take it, in degrees: CS2
+## searches a cone, of an angle in no file (measure). The nearest to the
+## aim is taken.
+const USE_CONE_DEGREES := 30.0
+## Whether a gun E takes into a free slot comes into hand: CS2 leaves it to
+## the client's "Switch to picked up weapon", whose default is in no file
+## (measure). A gun that takes the place of the one in hand always does.
+const USE_DRAWS := false
+## item_pickup_failed's reason for an item there is no room for. CS2's
+## reason numbers are in no file (measure).
+const FAILED_NO_ROOM := 0
 
 var game: GameSystems
+## Whether a player pressed E this tick:
+## func(userid: int, player: Node3D) -> bool. Reads the command the player
+## ran this tick (PlayerSim.last_command); a check may put its own.
+var use_pressed: Callable = _use_from_command
 
 
 func attach(p_game: GameSystems) -> void:
@@ -59,6 +82,10 @@ func attach(p_game: GameSystems) -> void:
 
 
 func tick(t: SimTick) -> void:
+	for userid in t.roster.ids():
+		var node := t.roster.player(userid)
+		if node != null and _alive(userid) and bool(use_pressed.call(userid, node)):
+			_use(t, userid, node)
 	for entity in t.entities.all():
 		var item := entity as DroppedItem
 		if item == null or item.entry == null or t.now_usec < item.next_pickup_check_usec:
@@ -151,6 +178,108 @@ func _try_pickup(t: SimTick, item: DroppedItem, userid: int) -> bool:
 	return true
 
 
+## E: the item looked at, within reach and in sight, unless the bomb claims
+## the press.
+func _use(t: SimTick, userid: int, node: Node3D) -> void:
+	if bool(t.game.query(&"use_claimed", [userid], false)):
+		return
+	var item := use_target(t, node, userid)
+	if item != null:
+		take(t, item, userid)
+
+
+## The item E would take: the one nearest the aim, inside USE_CONE_DEGREES
+## of it and USE_REACH of the eyes, with nothing of the world between, that
+## the player may take yet (DroppedItem.can_be_taken_by). Null if none. One
+## ray for each item in the cone, and only on a press.
+func use_target(t: SimTick, node: Node3D, userid: int) -> DroppedItem:
+	var eyes := _eyes(node)
+	var aim := _aim(node)
+	var least_cos := cos(deg_to_rad(USE_CONE_DEGREES))
+	var candidates: Array[Array] = []
+	for entity in t.entities.all():
+		var item := entity as DroppedItem
+		if item == null or item.entry == null or not item.can_be_taken_by(userid, t.now_usec):
+			continue
+		var to_item := item.position - eyes
+		var distance := to_item.length()
+		if distance > USE_REACH:
+			continue
+		var along := 1.0 if distance < 1e-3 else aim.dot(to_item / distance)
+		if along < least_cos:
+			continue
+		candidates.append([along, distance, item])
+	# Nearest the aim first, then nearest the eyes.
+	candidates.sort_custom(func(a: Array, b: Array) -> bool:
+		return a[0] > b[0] or (a[0] == b[0] and a[1] < b[1]))
+	for candidate in candidates:
+		var item: DroppedItem = candidate[2]
+		if t.space == null or t.space.intersect_ray(PhysicsRayQueryParameters3D.create(eyes, item.position, Hitscan.WORLD_LAYER)).is_empty():
+			return item
+	return null
+
+
+## Takes the item for the player by E: into a free slot, or in place of
+## the gun in its slot, which is thrown from the hand as a drop throws it.
+## An item there is no room for (a grenade past the limits, a kit already
+## worn) is refused with item_pickup_failed; a kit is only a CT's to take.
+## Whether it was taken.
+func take(t: SimTick, item: DroppedItem, userid: int) -> bool:
+	var inventory := game.inventory(userid)
+	if inventory == null or item.entry == null:
+		return false
+	var item_class := item.entry.item.item_class
+	if item_class == "item_defuser" and t.roster.team_of(userid) != "CT":
+		return false
+	var def := item.entry.item
+	var there := inventory.item_in(def.slot, def.slot_position) if def.is_gun else null
+	var can := inventory.can_add(item_class)
+	var swap := there != null and (def.slot == ItemDef.Slot.PRIMARY or def.slot == ItemDef.Slot.PISTOL)
+	if not swap and can != Inventory.Can.OK:
+		t.events.send(&"item_pickup_failed", {"userid": userid, "item": item_class, "reason": FAILED_NO_ROOM,
+			"limit": def.max_carried if def.is_grenade() else 1})
+		return false
+	var in_hand := there != null and inventory.in_hand_class() == there.item.item_class
+	if swap:
+		# The one there goes as a drop throws it, whatever is in hand, and
+		# the one taken has its place; the same gun as the one there
+		# (another AK-47) as well, which add alone would refuse.
+		var node := t.roster.player(userid)
+		var from := _clear_of_walls(node, _held_transform(node), t.space, there.item.item_class)
+		var old := inventory.remove(there.item.item_class)
+		var rng := _seeded(userid, old.item.item_class)
+		var spin := from.basis.x * rng.randf_range(0.5, 1.0) * THROW_TUMBLE \
+			+ Vector3.UP * rng.randf_range(-1.0, 1.0) * THROW_TWIST
+		DroppedItem.drop_from(game, userid, old, from, _throw_velocity(node), spin)
+		t.events.send(&"item_remove", {"userid": userid, "item": old.item.item_class})
+	for i in item.entry.count:
+		inventory.add(item_class, item.entry.weapon)
+	if def.is_gun and (in_hand or USE_DRAWS):
+		inventory.select(item_class)
+	item.remove()
+	if item_class == "item_defuser":
+		t.events.send(&"defuser_pickup", {"entityid": item.id, "userid": userid})
+	else:
+		t.events.send(&"item_pickup", {"userid": userid, "item": item_class})
+	return true
+
+
+## Whether the player pressed E in the command they ran this tick.
+static func _use_from_command(_userid: int, player: Node3D) -> bool:
+	var sim := player as PlayerSim
+	return sim != null and sim.last_command != null and sim.last_command.first_press(UserCmd.USE) != null
+
+
+static func _eyes(node: Node3D) -> Vector3:
+	return node.global_position + Vector3.UP * (float(node.call(&"eye_height")) if node.has_method(&"eye_height") else 64.0)
+
+
+static func _aim(node: Node3D) -> Vector3:
+	var yaw = node.get(&"yaw_degrees")
+	var pitch = node.get(&"pitch_degrees")
+	return PlayerInput.aim_direction(yaw if yaw is float else 0.0, pitch if pitch is float else 0.0)
+
+
 func _alive(userid: int) -> bool:
 	var node := game.roster.player(userid)
 	if node == null:
@@ -164,9 +293,7 @@ func _alive(userid: int) -> bool:
 func _throw_velocity(node: Node3D) -> Vector3:
 	if node == null:
 		return Vector3.ZERO
-	var yaw = node.get(&"yaw_degrees")
-	var pitch = node.get(&"pitch_degrees")
-	var aim := PlayerInput.aim_direction(yaw if yaw is float else 0.0, pitch if pitch is float else 0.0)
+	var aim := _aim(node)
 	var own = node.get(&"velocity")
 	return (aim + Vector3.UP * THROW_LIFT).normalized() * THROW_SPEED + (own if own is Vector3 else Vector3.ZERO)
 
@@ -207,7 +334,7 @@ func _middle(node: Node3D) -> Transform3D:
 static func _clear_of_walls(node: Node3D, from: Transform3D, space: PhysicsDirectSpaceState3D, item_class: String) -> Transform3D:
 	if node == null or space == null:
 		return from
-	var eye := node.global_position + Vector3.UP * (float(node.call(&"eye_height")) if node.has_method(&"eye_height") else 64.0)
+	var eye := _eyes(node)
 	var hull := ItemPhysics.of(item_class)
 	var body := hull.body_of(hull.model_held_at(from))
 	var way := body.origin - eye
