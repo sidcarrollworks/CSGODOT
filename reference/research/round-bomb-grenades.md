@@ -131,11 +131,15 @@ The schemas that decide the rules:
   | Time left (of 40 s) | x | Beeps/s | Interval |
   |---|---|---|---|
   | 40 s | 0 | 1.05 | 0.95 s |
-  | 30 s | 0.25 | 1.23 | 0.81 s |
-  | 20 s | 0.5 | 1.76 | 0.57 s |
-  | 10 s | 0.75 | 3.19 | 0.31 s |
-  | 5 s | 0.875 | 4.93 | 0.20 s |
-  | 0 s | 1 | 7.8 | 0.13 s |
+  | 30 s | 0.25 | 1.24 | 0.80 s |
+  | 20 s | 0.5 | 1.84 | 0.54 s |
+  | 10 s | 0.75 | 3.40 | 0.29 s |
+  | 5 s | 0.875 | 5.01 | 0.20 s |
+  | 0 s | 1 | 7.81 | 0.13 s |
+
+  (Corrected 2026-09-28, playtest issue 21: the rows at 30, 20, 10 and 5 s had left
+  out the 1.04865 factor; these are the formula's own values, which `C4.beep_interval`
+  uses.)
 
   The fit is CS:GO's. The client string suggests CS2 kept the fraction-based schedule
   (**Inferred**). One search summary says "every 1.33 s at 40 s left"

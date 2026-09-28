@@ -18,9 +18,20 @@ extends Resource
 @export var warmup_paused: bool = false
 ## At the start of each round nobody moves or fires (mp_freezetime).
 @export var freeze_seconds: float = 15.0
+## Freeze time's countdown: a beep (cs_round_start_beep) each second over
+## this many of its last seconds, and the final one (cs_round_final_beep) as
+## it ends. Inferred, a beep a second for the last 3 s
+## (reference/research/round-economy.md 4.1); audio-round.md Local check 1
+## counts them in CS2.
+@export var freeze_beeps: int = 3
 ## How long a round is played before it runs out, 1:55 (mp_roundtime_defuse
 ## 1.92 minutes, which the game rounds to 115 s).
 @export var round_seconds: float = 115.0
+## The round's clock at this many seconds left sends round_time_warning,
+## which the music kit's ten-second cue plays on. To measure: no file of
+## CS2's gives it (reference/research/audio-round.md Local check 2); 10 is
+## read from the cue's name.
+@export var time_warning_seconds: float = 10.0
 ## From a round's end to the next one's start (mp_round_restart_delay).
 @export var round_restart_seconds: float = 7.0
 ## From the round before a side swap to the next one's start, in place of

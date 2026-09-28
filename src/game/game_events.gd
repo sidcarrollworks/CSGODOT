@@ -105,6 +105,16 @@ const SCHEMA := {
 	&"round_start": {"timelimit": 0, "fraglimit": 0, "objective": ""},
 	&"round_poststart": {},
 	&"round_freeze_end": {},
+	## The freeze time's countdown: cs_round_start_beep once a second over its
+	## last seconds (MatchRules.freeze_beeps), cs_round_final_beep as it ends,
+	## just before round_freeze_end (mod.gameevents; the timing is inferred,
+	## reference/research/audio-round.md Local check 1).
+	&"cs_round_start_beep": {},
+	&"cs_round_final_beep": {},
+	## The round's clock is nearly out (game.gameevents, no fields): once a
+	## round, at MatchRules.time_warning_seconds left, not once the bomb is
+	## down (audio-round.md Local check 2 measures when CS2 sends it).
+	&"round_time_warning": {},
 	## legacy: "server-generated legacy value"; nomusic: "if set, don't play
 	## round end music, because action is still on-going" (mod.gameevents).
 	&"round_end": {"winner": "", "reason": "", "message": "", "legacy": 0, "player_count": 0, "nomusic": 0},

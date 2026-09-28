@@ -514,7 +514,14 @@ and the spectator versions.
 - **S1.** Extract the round sounds: round start and end (the bomb's and the
   grenades' came with C3 and G6), radio and agent voice lines ("bomb has
   been planted", "counter-terrorists win", "fire in the hole"), the buy
-  sound, the 10-second warning.
+  sound, the 10-second warning. *(Since playtest issue 21, 2026-09-28,
+  `scripts/extract_assets.sh sounds` fetches the round's: the default music
+  kit's cues, the stingers, the countdown beeps, the game-over and round
+  report sounds and the classic announcer, which `RoundSounds` plays. "Bomb
+  has been planted" and "counter-terrorists win" are the announcer's, not
+  agent lines, and the 10-second warning is the kit's music
+  (`reference/research/audio-round.md`, corrections 1). Still to extract:
+  the agents' voice lines and the buy menu's sounds.)*
 - **S2.** The sound event files (`soundevents/*.vsndevts_c`) with the game's
   volumes and distances, which today are set by ear. *(Remote now, and done
   2026-09-26: GameTracking-CS2 carries them as text, and

@@ -11,12 +11,32 @@ extends Node3D
 ## blinks in silence. The beeps are worked out here from how long the bomb
 ## has been down (C4.beep_interval), not sent by the simulation each tick:
 ## what is only heard runs per frame.
+##
+## Every sound is CS2's own sound event (SoundEvents;
+## reference/research/audio-gameplay.md 5): the beep is C4.PlantSound on
+## site A and the lower C4.PlantSoundB on B, their _10sec versions in the
+## last ten seconds, all silent past 1300 units; the plant starting
+## (c4.initiate, to 1100) and done (c4.plant, to 4100), the defuse starting
+## and done (c4.disarmstart and c4.disarmfinish, to 2000), the pickup
+## (Player.PickupC4), and the blast (c4.explode, with the shockwave's
+## c4.shockwave.boom and c4.shockwave.hit layers). The game's events say
+## when (watch()), heard on the next frame from where the bomb is.
 
 const MODEL_PATH := "res://assets/weapons/weapons/models/c4/weapon_c4.gltf"
-## The bomb's sounds, as SoundBank stems. Guessed from CS:GO's file names,
-## until the extraction's c4/ folder is listed in reference/weapons/sounds.md.
-const BEEP_SOUND := "weapons/c4/c4_beep"
-const EXPLODE_SOUND := "weapons/c4/c4_explode"
+## The beeps switch to their last-ten-seconds sounds (the client's
+## m_bTenSecWarning, reference/research/round-bomb-grenades.md 1.3).
+const TEN_SECONDS := 10.0
+## What each of the bomb's events sounds like.
+const EVENT_SOUNDS := {
+	&"bomb_beginplant": ["c4.initiate"],
+	&"bomb_planted": ["c4.plant"],
+	&"bomb_begindefuse": ["c4.disarmstart"],
+	&"bomb_defused": ["c4.disarmfinish"],
+	&"bomb_pickup": ["Player.PickupC4"],
+}
+const EXPLODE_SOUNDS: Array[String] = ["c4.explode", "c4.shockwave.boom", "c4.shockwave.hit"]
+## The source its sounds are made by, for the events' limits and blocks.
+const SOURCE := -2
 ## About the bomb's size, for the box without the model.
 const BOX_SIZE := Vector3(12.0, 4.0, 8.0)
 ## How long the light stays lit after a beep, and the blast stays on screen.
@@ -29,8 +49,11 @@ var _body: Node3D
 var _light: OmniLight3D
 var _lamp: MeshInstance3D
 var _blast: MeshInstance3D
-var _beep_player: AudioStreamPlayer3D
-var _explode_player: AudioStreamPlayer3D
+## The player its sounds go through.
+var sounds: SoundEvents
+var _game: GameSystems
+## The bomb's events handed out and not heard yet, by name.
+var _heard: Array[StringName] = []
 ## The last plant this view saw, the time into it of the next beep, and
 ## when the light went on.
 var _planted_usec: int = C4.NEVER
@@ -77,9 +100,58 @@ func _ready() -> void:
 	_blast.visible = false
 	add_child(_blast)
 
-	_beep_player = _sound(BEEP_SOUND, 10.0)
-	_explode_player = _sound(EXPLODE_SOUND, 60.0)
+	sounds = SoundEvents.new()
+	sounds.name = "Sounds"
+	add_child(sounds)
+	SoundEvents.load_events(all_sounds())
 	visible = false
+
+
+## Hears the bomb's events from a game: when it is picked up, planted and
+## defused.
+func watch(game: GameSystems) -> void:
+	_unwatch()
+	_game = game
+	for event_name: StringName in EVENT_SOUNDS:
+		_game.events.listen(event_name, _on_event)
+
+
+func _exit_tree() -> void:
+	_unwatch()
+
+
+func _unwatch() -> void:
+	if _game == null:
+		return
+	for event_name: StringName in EVENT_SOUNDS:
+		_game.events.unlisten(event_name, _on_event)
+	_game = null
+
+
+func _on_event(event: GameEvent) -> void:
+	_heard.append(event.name)
+
+
+## Every event it can play, to read their files when it is made.
+static func all_sounds() -> PackedStringArray:
+	var names := PackedStringArray(["C4.PlantSound", "C4.PlantSoundB", "C4.PlantSound_10sec", "C4.PlantSoundB_10sec"])
+	for list: Array in EVENT_SOUNDS.values():
+		names.append_array(PackedStringArray(list))
+	names.append_array(PackedStringArray(EXPLODE_SOUNDS))
+	return names
+
+
+## A beep's sound event, by the site the bomb is on and the seconds left:
+## A's, or B's, lower in pitch so a CT can tell the site by ear, and each
+## one's own in the last ten seconds.
+static func beep_event(site: String, seconds_left: float) -> String:
+	var name := "C4.PlantSoundB" if site == "B" else "C4.PlantSound"
+	return name + "_10sec" if seconds_left <= TEN_SECONDS else name
+
+
+## The bomb's events heard since the last frame and not played, as a copy.
+func pending() -> Array[StringName]:
+	return _heard.duplicate()
 
 
 func _process(_delta: float) -> void:
@@ -98,6 +170,11 @@ func _process(_delta: float) -> void:
 		# shadow from the sun; the live shadow map no longer does.
 		ProbeMaterials.light_model(_body, _body.global_position)
 
+	for event_name in _heard:
+		for sound: String in EVENT_SOUNDS[event_name]:
+			sounds.start(sound, bomb.position, SOURCE)
+	_heard.clear()
+
 	if state == C4.State.PLANTED:
 		if bomb.planted_usec != _planted_usec:
 			_planted_usec = bomb.planted_usec
@@ -109,12 +186,12 @@ func _process(_delta: float) -> void:
 				_next_beep += C4.beep_interval(bomb.rules.timer_seconds - _next_beep, bomb.rules.timer_seconds)
 		var down := bomb.seconds_planted(now)
 		while down >= _next_beep:
-			_beep(seconds - (down - _next_beep))
+			_beep(seconds - (down - _next_beep), bomb.rules.timer_seconds - _next_beep)
 			_next_beep += C4.beep_interval(bomb.rules.timer_seconds - _next_beep, bomb.rules.timer_seconds)
 	if state == C4.State.EXPLODED and _last_state != C4.State.EXPLODED:
 		_blast_at = seconds
-		if _explode_player != null:
-			_explode_player.play()
+		for sound in EXPLODE_SOUNDS:
+			sounds.start(sound, bomb.position, SOURCE)
 	_last_state = state
 
 	var lit := state == C4.State.PLANTED and seconds - _lit_at < BLINK_SECONDS
@@ -133,10 +210,10 @@ func _process(_delta: float) -> void:
 		fire.albedo_color.a = 0.8 * (1.0 - blast_age / BLAST_SECONDS)
 
 
-func _beep(at_seconds: float) -> void:
+## A beep at this moment, with this many seconds left on the timer.
+func _beep(at_seconds: float, seconds_left: float) -> void:
 	_lit_at = at_seconds
-	if _beep_player != null:
-		_beep_player.play()
+	sounds.start(beep_event(bomb.site, seconds_left), bomb.position, SOURCE)
 
 
 func _build_body() -> Node3D:
@@ -163,17 +240,3 @@ func _build_body() -> Node3D:
 	holder.add_child(box)
 	return holder
 
-
-func _sound(stem: String, metres: float) -> AudioStreamPlayer3D:
-	if not SoundBank.available():
-		return null
-	var stream := SoundBank.randomizer(stem)
-	if stream == null:
-		return null
-	var placed := AudioStreamPlayer3D.new()
-	placed.stream = stream
-	placed.unit_size = metres * WeaponSounds.METRE
-	placed.max_distance = 300.0 * WeaponSounds.METRE
-	placed.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
-	add_child(placed)
-	return placed

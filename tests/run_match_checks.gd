@@ -61,6 +61,7 @@ func _run() -> void:
 	await _test_a_round_from_warmup_to_its_end()
 	await _test_the_round_events()
 	_test_what_a_round_announces()
+	await _test_the_countdown_and_the_time_warning()
 	await _test_the_score_stays_with_the_team()
 	await _test_overtime()
 	await _test_friendly_fire()
@@ -256,7 +257,8 @@ func _test_the_round_events() -> void:
 	now = game.phase_ends_usec
 	game.tick(now)
 	events.flush()
-	_check_equal(heard, [&"round_freeze_end"], "freeze time's end is said")
+	_check_equal(heard, [&"cs_round_start_beep", &"cs_round_start_beep", &"cs_round_start_beep", &"cs_round_final_beep", &"round_freeze_end"],
+		"freeze time's end is said, after its countdown's beeps (all due at once on a tick this late)")
 	heard.clear()
 	now += 115 * SECOND
 	game.tick(now)
@@ -293,6 +295,85 @@ func _test_the_round_events() -> void:
 			and heard.find(&"start_halftime") > heard.find(&"announce_phase_end"),
 		"and it was the half's last round: announce_phase_end, then start_halftime with the swap (%s)" % [heard]
 	)
+	await _clear([t, ct, game])
+
+
+## Freeze time's countdown and the round's ten-second warning, as the
+## round's sounds hear them (playtest issue 21): a start beep at 3, 2 and 1
+## seconds left, the final beep as freeze ends, just before
+## round_freeze_end; round_time_warning once, at 10 seconds left; neither in
+## warmup, and no warning once the bomb is down. Ticked at the game's rate.
+func _test_the_countdown_and_the_time_warning() -> void:
+	var t := _new_player(Vector3(0.0, 0.0, 600.0), "T")
+	var ct := _new_player(Vector3(0.0, 0.0, -2600.0), "CT")
+	var rules := MatchRules.new()
+	rules.warmup_seconds = 30.0
+	var game := _new_match([t, ct], rules)
+	var events := GameEvents.new()
+	game.events = events
+	var heard := []
+	var tick_usec := int(roundf(DT * SECOND))
+	events.listen_all(func(event: GameEvent) -> void:
+		if event.name in [&"cs_round_start_beep", &"cs_round_final_beep", &"round_freeze_end", &"round_time_warning", &"round_end"]:
+			heard.append([event.name, game.phase_ends_usec - event.at_usec, event.at_usec]))
+	var now := 10 * SECOND
+	game.start(now)
+	while now < 10 * SECOND + 29 * SECOND:
+		now += tick_usec
+		game.tick(now)
+		events.flush()
+	_check(heard.is_empty(), "warmup has no countdown and no warning (%s)" % [heard])
+
+	# Warmup's end, then freeze time tick by tick.
+	now += SECOND
+	game.tick(now)
+	events.flush()
+	var freeze_ends := game.phase_ends_usec
+	while game.phase == MatchState.Phase.FREEZE:
+		now += tick_usec
+		game.tick(now)
+		events.flush()
+	var names := heard.map(func(h: Array) -> StringName: return h[0])
+	_check_equal(names, [&"cs_round_start_beep", &"cs_round_start_beep", &"cs_round_start_beep", &"cs_round_final_beep", &"round_freeze_end"],
+		"freeze time's countdown: three start beeps, the final beep, then freeze's end")
+	var lefts := []
+	for h: Array in heard.slice(0, 4):
+		lefts.append(snappedf(float(freeze_ends - int(h[2])) / SECOND, 0.001))
+	_check(
+		lefts.size() == 4 and absf(lefts[0] - 3.0) <= DT and absf(lefts[1] - 2.0) <= DT and absf(lefts[2] - 1.0) <= DT and absf(lefts[3]) <= DT,
+		"the start beeps at 3, 2 and 1 s left and the final one at 0, each on the first tick at or past it (%s)" % [lefts]
+	)
+	heard.clear()
+
+	while game.phase == MatchState.Phase.LIVE:
+		now += tick_usec
+		game.tick(now)
+		events.flush()
+	var warnings := heard.filter(func(h: Array) -> bool: return h[0] == &"round_time_warning")
+	_check(warnings.size() == 1, "round_time_warning goes out once in a round (%d)" % warnings.size())
+	if warnings.size() == 1:
+		var left := float(int(warnings[0][1])) / SECOND
+		_check(left <= 10.0 and left > 10.0 - DT * 1.01, "at 10 s left, on the first tick at or past it (%.3f s)" % left)
+	heard.clear()
+
+	# The next round: the bomb goes down with 30 s left, and no warning comes.
+	now = game.phase_ends_usec
+	game.tick(now)
+	events.flush()
+	now = game.phase_ends_usec
+	game.tick(now)
+	events.flush()
+	now = game.phase_ends_usec - 30 * SECOND
+	game.tick(now)
+	events.send(&"bomb_planted", {"userid": t.userid, "site": "A"}, now)
+	events.flush()
+	heard.clear()
+	for i in 64 * 40:
+		now += tick_usec
+		game.tick(now)
+		events.flush()
+	_check(heard.filter(func(h: Array) -> bool: return h[0] == &"round_time_warning").is_empty(),
+		"no warning once the bomb is down: its own ten seconds are the bomb's (%s)" % [heard])
 	await _clear([t, ct, game])
 
 

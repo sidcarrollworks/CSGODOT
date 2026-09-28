@@ -130,11 +130,12 @@ ones a player would notice first.
   uses. The bomb's beep stem mixes site A's and site B's beeps at random
   (`sound_bank.gd:46-49`). The AK's fire set includes `ak47_03`, which its
   event leaves out.
-- Round events: `MatchState` only emits Godot signals (`match_state.gd:181`),
-  so `round_start`, `round_freeze_end` and `round_end` never reach the
-  `GameEvents` the economy and the bomb listen to. That wiring is section 5
-  of `reference/systems/contracts.md`, which the local agent is doing now; the
-  round's sounds hang off those events.
+- Round events: *(stale since 2026-09-23)* `MatchState` sends the round's
+  events into `GameEvents` (`reference/systems/contracts.md` section 5), and
+  since playtest issue 21 (2026-09-28) also the freeze countdown's beeps and
+  `round_time_warning`; `RoundSounds` plays the announcer, the music kit and
+  the countdown from them, and the bomb's own sounds are CS2's events
+  (`C4View`).
 
 ## What players criticise and want
 

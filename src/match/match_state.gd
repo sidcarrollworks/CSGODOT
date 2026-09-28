@@ -23,8 +23,9 @@ extends Node
 ## It says what the round is doing as the game's events, as CS2's server
 ## does (reference/systems/contracts.md): round_announce_warmup,
 ## begin_new_match, round_officially_ended, round_prestart, round_start,
-## round_poststart, round_freeze_end, round_end, announce_phase_end and
-## cs_win_panel_match, into the events of the world that runs it (events).
+## round_poststart, the freeze countdown's cs_round_start_beep and
+## cs_round_final_beep, round_freeze_end, round_time_warning, round_end,
+## announce_phase_end and cs_win_panel_match, into the events of the world that runs it (events).
 ## The economy, the bomb, the grenades and what lies on the ground go by
 ## them.
 ##
@@ -127,6 +128,10 @@ var _fielded := {"T": false, "CT": false}
 ## The bomb is down this round (bomb_planted): the clock and a dead T side no
 ## longer end it.
 var _bomb_planted := false
+## Freeze time's countdown beeps still to send this round
+## (MatchRules.freeze_beeps), and whether the round's clock has warned yet.
+var _beeps_left := 0
+var _time_warned := false
 ## Warmup is to end on the next tick (F5, mp_warmup_end), so its spawns and
 ## events happen inside the tick like everything else.
 var _warmup_end_asked := false
@@ -244,6 +249,11 @@ func tick(now_usec: int) -> void:
 				_warmup_end_asked = false
 				end_warmup(now_usec)
 		Phase.FREEZE:
+			# A beep each second over the countdown's last seconds, on the
+			# first tick at or past each.
+			while _beeps_left > 0 and now_usec >= phase_ends_usec - _usec(_beeps_left):
+				_send(&"cs_round_start_beep", {}, now_usec)
+				_beeps_left -= 1
 			if now_usec >= phase_ends_usec:
 				_go_live(now_usec)
 		Phase.LIVE:
@@ -252,6 +262,10 @@ func tick(now_usec: int) -> void:
 				end_round(winner_of(eliminated), eliminated, now_usec)
 			elif now_usec >= phase_ends_usec and not _bomb_planted:
 				end_round("CT", Reason.TIME_RAN_OUT, now_usec)
+			elif not _time_warned and not _bomb_planted \
+					and now_usec >= phase_ends_usec - _usec(rules.time_warning_seconds):
+				_time_warned = true
+				_send(&"round_time_warning", {}, now_usec)
 		Phase.ROUND_END:
 			if now_usec >= phase_ends_usec:
 				_start_round(now_usec, _swap_next)
@@ -350,6 +364,8 @@ func _enter(next: Phase, ends_usec: int) -> void:
 func _go_live(now_usec: int) -> void:
 	for player in players:
 		player.frozen = false
+	if phase == Phase.FREEZE:
+		_send(&"cs_round_final_beep", {}, now_usec)
 	_enter(Phase.LIVE, now_usec + _usec(rules.round_seconds))
 	_send(&"round_freeze_end", {}, now_usec)
 
@@ -375,6 +391,8 @@ func _start_round(now_usec: int, fresh: bool) -> void:
 		_swap_sides()
 		_swap_next = false
 	_bomb_planted = false
+	_time_warned = false
+	_beeps_left = mini(rules.freeze_beeps, floori(rules.freeze_seconds))
 	round_number = rounds_played + 1
 	_spawn_everyone(fresh)
 	for side in SIDES:
