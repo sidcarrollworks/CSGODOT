@@ -137,7 +137,7 @@ func _reaches(space: PhysicsDirectSpaceState3D, player: PlayerSim) -> bool:
 	for height in [36.0, player.eye_height(), 4.0]:
 		var to: Vector3 = player.global_position + Vector3.UP * height
 		var query := PhysicsRayQueryParameters3D.create(from, to, Hitscan.WORLD_LAYER)
-		if space.intersect_ray(query).is_empty():
+		if PhysicsQueries.intersect_ray(space, query).is_empty():
 			return true
 	return false
 
@@ -193,7 +193,7 @@ func _airburst(t: SimTick) -> void:
 	var query := PhysicsRayQueryParameters3D.create(
 		position, position + Vector3.DOWN * GrenadeRules.MOLOTOV_AIRBURST_DROP, Hitscan.WORLD_LAYER
 	)
-	var ground := t.space.intersect_ray(query)
+	var ground := PhysicsQueries.intersect_ray(t.space, query)
 	if ground.is_empty() or (ground["normal"] as Vector3).y < GrenadeRules.FLOOR_NORMAL_Y:
 		_send(t, &"molotov_detonate", {"userid": owner_id}, position)
 		_gone()

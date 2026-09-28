@@ -45,6 +45,18 @@ const RANGES := [
 
 var _world: Node3D
 var _space: PhysicsDirectSpaceState3D
+var _game := GameSystems.new()
+var _adapter: Box3DDrops
+var _tick := 0
+
+
+func _advance() -> void:
+	# Only this explicit tick advances native bodies. Yield for rendering
+	# and queued frees, without waiting for a matching engine physics tick.
+	await process_frame
+	if _adapter != null:
+		_tick += 1
+		_game.step(_tick, _space)
 
 
 func _initialize() -> void:
@@ -55,8 +67,14 @@ func _run() -> void:
 	_test_shape_parser()
 	_world = Node3D.new()
 	root.add_child(_world)
-	await physics_frame
+	await _advance()
 	_space = _world.get_world_3d().direct_space_state
+	_adapter = Box3DDrops.new()
+	_world.add_child(_adapter)
+	if not _adapter.initialize(_game, _world, true):
+		_check(false, "native ragdoll fixture initializes")
+		_report()
+		return
 
 	await _test_the_floor_is_one_sided()
 	for shapes in ["cs2", "hitboxes"]:
@@ -68,6 +86,7 @@ func _run() -> void:
 		await _fall(shapes, "curb", "standing with a foot in the kerb", Vector3.ZERO, -1)
 	await _test_pushed()
 	await _test_parts_and_others()
+	await _test_native_lifecycle()
 	await _test_the_agent()
 	_report()
 
@@ -173,6 +192,7 @@ func _floor(kind: String) -> StaticBody3D:
 	collision.shape = shape
 	body.add_child(collision)
 	_world.add_child(body)
+	_adapter.capture_world(_world)
 	return body
 
 
@@ -197,6 +217,7 @@ func _curb(ground: StaticBody3D) -> void:
 	var collision := CollisionShape3D.new()
 	collision.shape = shape
 	ground.add_child(collision)
+	_adapter.capture_world(_world)
 
 
 ## The road around the kerb and not under it: four pieces of floor.
@@ -236,30 +257,36 @@ func _surface(kind: String) -> Plane:
 ## starts under it falls on through, and one above it lands.
 func _test_the_floor_is_one_sided() -> void:
 	var ground := _floor("flat")
-	var balls: Array[RigidBody3D] = []
+	var down := PhysicsRayQueryParameters3D.create(Vector3.UP * 8.0, Vector3.DOWN * 8.0, Hitscan.WORLD_LAYER)
+	var up := PhysicsRayQueryParameters3D.create(down.to, down.from, Hitscan.WORLD_LAYER)
+	down.hit_back_faces = false
+	up.hit_back_faces = false
+	_check(not (ground.get_child(0).shape as ConcavePolygonShape3D).backface_collision
+		and not PhysicsQueries.intersect_ray(_space, down).is_empty()
+		and PhysicsQueries.intersect_ray(_space, up).is_empty(),
+		"map-style triangles and native floor rays see only the front face")
+	var balls: Array[Node3D] = []
 	for y in [-1.0, 6.0]:
-		var ball := RigidBody3D.new()
-		ball.collision_layer = Ragdoll.LAYER
-		ball.collision_mask = Ragdoll.MASK
-		var collision := CollisionShape3D.new()
-		collision.shape = SphereShape3D.new()
-		(collision.shape as SphereShape3D).radius = 3.0
-		ball.add_child(collision)
-		_world.add_child(ball)
-		ball.global_position = Vector3(0.0, y, 0.0)
-		ball.add_constant_central_force(Vector3.DOWN * Ragdoll.GRAVITY * ball.mass)
+		var ball := ClassDB.instantiate(&"Box3DBody") as Node3D
+		ball.set(&"body_type", ClassDB.class_get_integer_constant(&"Box3DBody", &"DYNAMIC"))
+		ball.set(&"shape_type", ClassDB.class_get_integer_constant(&"Box3DBody", &"SPHERE"))
+		ball.set(&"sphere_radius", 3.0 * Ragdoll.METRES)
+		ball.set(&"collision_layer", Ragdoll.LAYER)
+		ball.set(&"collision_mask", Hitscan.WORLD_LAYER)
+		ball.position = Vector3(0.0, y, 0.0) * Ragdoll.METRES
+		_adapter.native_world.add_child(ball)
 		balls.append(ball)
 	for i in SimClock.ticks_in(1.0):
-		await physics_frame
+		await _advance()
 	_check(
-		balls[0].global_position.y < -100.0 and absf(balls[1].global_position.y - 3.0) < 1.0,
+		balls[0].global_position.y / Ragdoll.METRES < -100.0 and absf(balls[1].global_position.y / Ragdoll.METRES - 3.0) < 1.0,
 		"the stand-in floor is one-sided like dust2's: a ball starting with its centre under it falls through (%.0f), one over it lands (%.1f)"
-			% [balls[0].global_position.y, balls[1].global_position.y]
+			% [balls[0].global_position.y / Ragdoll.METRES, balls[1].global_position.y / Ragdoll.METRES]
 	)
 	for ball in balls:
 		ball.queue_free()
 	ground.queue_free()
-	await physics_frame
+	await _advance()
 
 
 # --- The stand-in body ------------------------------------------------------
@@ -364,8 +391,13 @@ func _shapes(which: String) -> Array[Dictionary]:
 ## How far the lowest point of a set of shapes is under a floor.
 func _deepest(skeleton: Skeleton3D, shapes: Array[Dictionary], surface: Plane) -> float:
 	var deepest := -INF
+	var bones := {}
+	for index in skeleton.get_bone_count():
+		bones[skeleton.get_bone_name(index).to_lower()] = index
 	for shape: Dictionary in shapes:
-		var bone_to_world := skeleton.global_transform * skeleton.get_bone_global_pose(skeleton.find_bone(shape["bone"]))
+		var bone: int = bones.get(String(shape["bone"]).to_lower(), -1)
+		assert(bone >= 0, "Every fixture capsule must have a bone.")
+		var bone_to_world := skeleton.global_transform * skeleton.get_bone_global_pose(bone)
 		for point: Vector3 in [shape["point0"], shape["point1"]]:
 			var at := bone_to_world * (point / SCALE)
 			deepest = maxf(deepest, float(shape["radius"]) - surface.distance_to(at))
@@ -380,7 +412,7 @@ func _fall(which: String, kind: String, how: String, velocity: Vector3, legs_hit
 	var surface := _surface(kind)
 	if kind == "curb":
 		_curb(ground)
-		await physics_frame
+		await _advance()
 	var holder := Node3D.new()
 	holder.scale = Vector3.ONE * SCALE
 	_world.add_child(holder)
@@ -391,7 +423,7 @@ func _fall(which: String, kind: String, how: String, velocity: Vector3, legs_hit
 	# Feet FEET_IN into the floor, as the real ankles start.
 	var into := _deepest(skeleton, shapes, surface) - FEET_IN
 	holder.position = Vector3(0.0, into / surface.normal.y, 0.0)
-	await physics_frame
+	await _advance()
 	var feet_in := _deepest(skeleton, shapes, surface)
 
 	var hit_bone := -1
@@ -408,8 +440,8 @@ func _fall(which: String, kind: String, how: String, velocity: Vector3, legs_hit
 
 	var worst_under := INF
 	for i in SimClock.ticks_in(SETTLE_SECONDS):
-		await physics_frame
-		for body: RigidBody3D in ragdoll.bodies.values():
+		await _advance()
+		for body: Ragdoll.Part in ragdoll.bodies.values():
 			# How far the part is over the floor, less its thickness:
 			# negative once all of it is under.
 			worst_under = minf(worst_under, _over(kind, surface, body.global_position) + _thinnest(body))
@@ -418,7 +450,7 @@ func _fall(which: String, kind: String, how: String, velocity: Vector3, legs_hit
 	var names := []
 	var fastest := 0.0
 	var ends_under := INF
-	for body: RigidBody3D in ragdoll.bodies.values():
+	for body: Ragdoll.Part in ragdoll.bodies.values():
 		fastest = maxf(fastest, body.linear_velocity.length())
 		var over := _over(kind, surface, body.global_position)
 		if over < ends_under:
@@ -443,11 +475,11 @@ func _fall(which: String, kind: String, how: String, velocity: Vector3, legs_hit
 	ragdoll.queue_free()
 	holder.queue_free()
 	ground.queue_free()
-	await physics_frame
+	await _advance()
 
 
 ## The radius of a body's thinnest part.
-func _thinnest(body: RigidBody3D) -> float:
+func _thinnest(body: Ragdoll.Part) -> float:
 	var thinnest := INF
 	for collision in body.get_children():
 		if collision is CollisionShape3D:
@@ -536,7 +568,7 @@ func _killed(at: Vector3, velocity: Vector3, hit_direction: Vector3) -> Array:
 	await process_frame
 	var into := _deepest(skeleton, shapes, _surface("flat")) - FEET_IN
 	holder.position = at + Vector3(0.0, into, 0.0)
-	await physics_frame
+	await _advance()
 	var ragdoll := Ragdoll.new()
 	_world.add_child(ragdoll)
 	ragdoll.build(skeleton, shapes, SCALE, velocity, Vector3.FORWARD, hit_direction, skeleton.find_bone("spine_2"))
@@ -550,10 +582,10 @@ func _test_pushed() -> void:
 	var away := Vector3.RIGHT
 	for case: Array in [["standing", Vector3.ZERO], ["running forward", Vector3.FORWARD * 250.0]]:
 		var made: Array = await _killed(Vector3.ZERO, case[1], away)
-		var pelvis: RigidBody3D = made[2]
+		var pelvis: Ragdoll.Part = made[2]
 		var start := pelvis.global_position
 		for i in SimClock.ticks_in(1.0):
-			await physics_frame
+			await _advance()
 		var moved := pelvis.global_position - start
 		var ok := moved.x > 4.0
 		if case[1] != Vector3.ZERO:
@@ -564,9 +596,9 @@ func _test_pushed() -> void:
 			% [case[0], ", and on forward with the run it had" if case[1] != Vector3.ZERO else "", moved.x, -moved.z])
 		(made[0] as Node).queue_free()
 		(made[1] as Node).queue_free()
-		await physics_frame
+		await _advance()
 	ground.queue_free()
-	await physics_frame
+	await _advance()
 
 
 ## A body's parts collide with each other, but not two parts joined at a
@@ -576,24 +608,24 @@ func _test_parts_and_others() -> void:
 	var ground := _floor("flat")
 	var first: Array = await _killed(Vector3.ZERO, Vector3.ZERO, Vector3.ZERO)
 	var ragdoll: Ragdoll = first[0]
-	var hands: Array = ragdoll.bodies.values().filter(func(body: RigidBody3D) -> bool: return String(body.name).contains("hand"))
-	var head: Array = ragdoll.bodies.values().filter(func(body: RigidBody3D) -> bool: return String(body.name).contains("head"))
-	var shin: Array = ragdoll.bodies.values().filter(func(body: RigidBody3D) -> bool: return String(body.name).contains("leg_lower_l"))
-	var excepted := (head[0] as RigidBody3D).get_collision_exceptions()
+	var hands: Array = ragdoll.bodies.values().filter(func(body: Ragdoll.Part) -> bool: return String(body.name).contains("hand"))
+	var head: Array = ragdoll.bodies.values().filter(func(body: Ragdoll.Part) -> bool: return String(body.name).contains("head"))
+	var shin: Array = ragdoll.bodies.values().filter(func(body: Ragdoll.Part) -> bool: return String(body.name).contains("leg_lower_l"))
+	var excepted := (head[0] as Ragdoll.Part).get_collision_exceptions()
 	_check(
-		(ragdoll.bodies.values()[0] as RigidBody3D).collision_mask & Ragdoll.LAYER != 0
+		(ragdoll.bodies.values()[0] as Ragdoll.Part).collision_mask & Ragdoll.LAYER != 0
 			and not excepted.has(shin[0]) and hands.size() == 2,
 		"a body's parts collide with one another: the head and a shin are no exception to each other"
 	)
 	for i in SimClock.ticks_in(2.0):
-		await physics_frame
-	var lying: float = (first[2] as RigidBody3D).global_position.y
+		await _advance()
+	var lying: float = (first[2] as Ragdoll.Part).global_position.y
 	# A second body killed standing on the first one's spot, 30 units up.
 	var second: Array = await _killed(Vector3(0.0, 30.0, 0.0), Vector3.ZERO, Vector3.ZERO)
-	var theirs := (second[2] as RigidBody3D).get_collision_exceptions()
+	var theirs := (second[2] as Ragdoll.Part).get_collision_exceptions()
 	for i in SimClock.ticks_in(3.0):
-		await physics_frame
-	var fell_to: float = (second[2] as RigidBody3D).global_position.y
+		await _advance()
+	var fell_to: float = (second[2] as Ragdoll.Part).global_position.y
 	_check(
 		theirs.has(first[2]) and fell_to < lying + 4.0,
 		"one dead body falls through another onto the floor, not onto it (its pelvis %.1f up, the one under it %.1f)" % [fell_to, lying]
@@ -602,10 +634,48 @@ func _test_parts_and_others() -> void:
 		(made[0] as Node).queue_free()
 		(made[1] as Node).queue_free()
 	ground.queue_free()
-	await physics_frame
+	await _advance()
 
 
 # --- The real agent -------------------------------------------------------
+
+## Native lifecycle independently of the engine's automatic physics clock.
+func _test_native_lifecycle() -> void:
+	var ground := _floor("flat")
+	var baseline := _adapter.native_world.get_child_count()
+	var made: Array = await _killed(Vector3.UP * 100.0, Vector3.RIGHT * 80.0, Vector3.BACK)
+	var ragdoll: Ragdoll = made[0]
+	var pelvis: Ragdoll.Part = made[2]
+	var before := pelvis.native.global_transform
+	var velocity: Vector3 = pelvis.native.call(&"get_linear_velocity")
+	for i in 3:
+		await physics_frame
+		await process_frame
+	_check(pelvis.native.global_transform.is_equal_approx(before)
+		and (pelvis.native.call(&"get_linear_velocity") as Vector3).is_equal_approx(velocity),
+		"engine frames alone do not advance a native ragdoll")
+	var mass := 0.0
+	var authored_mass := 0.0
+	var matches := true
+	for part: Ragdoll.Part in ragdoll.bodies.values():
+		var actual := float(part.native.call(&"get_mass"))
+		mass += actual
+		authored_mass += part.mass
+		matches = matches and absf(actual - part.mass) < 0.0001
+	_check(matches and absf(mass - authored_mass) < 0.001,
+		"native parts preserve their authored masses, including the 0.5 kg limb minimum (%.3f kg total)" % mass)
+	await _advance()
+	_check(not pelvis.native.global_transform.is_equal_approx(before)
+		and pelvis.global_position.distance_to(pelvis.native.global_position / Ragdoll.METRES) < 0.001,
+		"a game tick advances native physics and updates the Source-unit bone proxy")
+	ragdoll.clear()
+	_check(_adapter.native_world.get_child_count() == baseline and ragdoll.bodies.is_empty(),
+		"clear removes every native part, anatomical joint and collision exclusion")
+	ragdoll.queue_free()
+	(made[1] as Node).queue_free()
+	ground.queue_free()
+	await process_frame
+
 
 ## The extracted agent killed standing on the ramp, with CS2's own shapes
 ## from its model description: only where the assets are.
@@ -625,14 +695,14 @@ func _test_the_agent() -> void:
 	var skeleton := model.find_children("*", "Skeleton3D", true, false)[0] as Skeleton3D
 	var into := _deepest(skeleton, shapes, surface) - FEET_IN
 	model.position = Vector3(0.0, into / surface.normal.y, 0.0)
-	await physics_frame
+	await _advance()
 	var ragdoll := Ragdoll.new()
 	_world.add_child(ragdoll)
 	var made := ragdoll.build(skeleton, shapes, SCALE, Vector3.ZERO, Vector3.FORWARD, Vector3.BACK, -1)
 	for i in SimClock.ticks_in(SETTLE_SECONDS):
-		await physics_frame
+		await _advance()
 	var under := []
-	for body: RigidBody3D in ragdoll.bodies.values():
+	for body: Ragdoll.Part in ragdoll.bodies.values():
 		if surface.distance_to(body.global_position) < 0.0:
 			under.append(String(body.name))
 	_check(made == 15 and under.is_empty(), "the agent's ragdoll, %d bodies, lies on the ramp with no part under it (%s)" % [made, under])

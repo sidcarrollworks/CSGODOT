@@ -59,6 +59,7 @@ class Commanded extends PlayerSim:
 	var held := 0
 	var tap := 0
 	var select := UserCmd.SELECT_NONE
+	var cycle := 0
 	var walks := false
 
 	func command_for(tick: int, dt: float) -> UserCmd:
@@ -69,6 +70,8 @@ class Commanded extends PlayerSim:
 			tap = 0
 		cmd.weapon_select = select
 		select = UserCmd.SELECT_NONE
+		cmd.weapon_cycle = cycle
+		cycle = 0
 		if walks:
 			cmd.move = Vector2(0.0, 1.0)
 		return cmd
@@ -93,6 +96,7 @@ func _run() -> void:
 	_test_presses_land_at_their_instant()
 	_test_the_mouse_turns_as_far_at_any_window_size()
 	_test_an_old_input_map_is_put_right()
+	_test_the_wheel_counts_its_notches()
 
 	_world = Node3D.new()
 	root.add_child(_world)
@@ -221,15 +225,49 @@ func _test_the_mouse_turns_as_far_at_any_window_size() -> void:
 	)
 
 
+## The wheel down is CS2's invnext: each notch's press counts one step in
+## the next command, however many land between two commands; its release
+## counts nothing; the wheel up still jumps (Sid's).
+func _test_the_wheel_counts_its_notches() -> void:
+	var input := PlayerInput.new()
+	var start := 7_000_000
+	input.build_command(1, start)
+	var notch := func(button: MouseButton, pressed: bool) -> void:
+		var event := InputEventMouseButton.new()
+		event.button_index = button
+		event.pressed = pressed
+		input.handle_event(event)
+	notch.call(MOUSE_BUTTON_WHEEL_DOWN, true)
+	notch.call(MOUSE_BUTTON_WHEEL_DOWN, false)
+	var one := input.build_command(2, start + TICK)
+	notch.call(MOUSE_BUTTON_WHEEL_DOWN, true)
+	notch.call(MOUSE_BUTTON_WHEEL_DOWN, false)
+	notch.call(MOUSE_BUTTON_WHEEL_DOWN, true)
+	notch.call(MOUSE_BUTTON_WHEEL_DOWN, false)
+	var two := input.build_command(3, start + 2 * TICK)
+	notch.call(MOUSE_BUTTON_WHEEL_DOWN, false)
+	notch.call(MOUSE_BUTTON_WHEEL_UP, true)
+	notch.call(MOUSE_BUTTON_WHEEL_UP, false)
+	var up := input.build_command(4, start + 3 * TICK)
+	_check(
+		one.weapon_cycle == 1 and two.weapon_cycle == 2 and up.weapon_cycle == 0
+			and up.first_press(UserCmd.JUMP) != null and one.first_press(UserCmd.JUMP) == null,
+		"a notch down is one step, two notches two, a release none, and a notch up still jumps (%d, %d, %d)"
+			% [one.weapon_cycle, two.weapon_cycle, up.weapon_cycle]
+	)
+
+
 ## An input map an open editor wrote back from before the inventory: no
 ## drop, and the range's never-die still on G. The keys come back as CS2
 ## has them, and G does one thing.
 func _test_an_old_input_map_is_put_right() -> void:
 	var kept := {}
-	for action: StringName in [&"drop", &"dummy_immortal"]:
+	for action: StringName in [&"drop", &"dummy_immortal", &"invnext"]:
 		kept[action] = InputMap.action_get_events(action) if InputMap.has_action(action) else []
 	if InputMap.has_action(&"drop"):
 		InputMap.erase_action(&"drop")
+	if InputMap.has_action(&"invnext"):
+		InputMap.erase_action(&"invnext")
 	if not InputMap.has_action(&"dummy_immortal"):
 		InputMap.add_action(&"dummy_immortal", 0.2)
 	InputMap.action_erase_events(&"dummy_immortal")
@@ -244,6 +282,12 @@ func _test_an_old_input_map_is_put_right() -> void:
 		keys_of.call(&"drop") == [KEY_G] and keys_of.call(&"dummy_immortal") == [KEY_BRACKETLEFT],
 		"an old input map gets drop on G and the range's never-die moved to [ (%s, %s)"
 			% [keys_of.call(&"drop"), keys_of.call(&"dummy_immortal")]
+	)
+	var wheel := InputMap.action_get_events(&"invnext") if InputMap.has_action(&"invnext") else []
+	_check(
+		wheel.size() == 1 and wheel[0] is InputEventMouseButton
+			and (wheel[0] as InputEventMouseButton).button_index == MOUSE_BUTTON_WHEEL_DOWN,
+		"and invnext on the wheel down, CS2's own"
 	)
 	for action: StringName in kept:
 		InputMap.action_erase_events(action)
@@ -790,6 +834,29 @@ func _test_the_hand() -> void:
 	ak.ammo = ak_before[0]
 	ak.reserve = ak_before[1]
 
+	# The wheel down, CS2's invnext (reference/playtest-2026-09-25.md, issue
+	# 15): a notch takes the next thing carried and draws it; two notches in
+	# one tick step twice and draw only where they stop.
+	steps.call(ItemRegistry.item("weapon_ak47").deploy_seconds)
+	drawn.clear()
+	player.cycle = 1
+	steps.call(DT)
+	var glock_deploy := int(roundf(ItemRegistry.item("weapon_glock").deploy_seconds * 1_000_000.0))
+	_check(
+		player.weapon == glock and drawn.size() == 1 and drawn[0] == "weapon_glock"
+			and glock.is_drawing(SimClock.now_usec()) and glock.drawn_usec() - glock_deploy <= SimClock.now_usec(),
+		"a notch of the wheel down takes the Glock after the AK-47 and draws it (%s)" % [drawn]
+	)
+	drawn.clear()
+	player.cycle = 2
+	steps.call(DT)
+	var ak_deploy := int(roundf(ItemRegistry.item("weapon_ak47").deploy_seconds * 1_000_000.0))
+	_check(
+		player.weapon == ak and drawn.size() == 1 and drawn[0] == "weapon_ak47"
+			and ak.is_drawing(SimClock.now_usec()) and ak.drawn_usec() > SimClock.now_usec() + ak_deploy - 2 * int(DT * 1_000_000.0),
+		"two notches in one tick go past the knife and round to the AK-47, drawn once, for its whole draw (%s)" % [drawn]
+	)
+
 	player.select = 3
 	steps.call(DT)
 	_check(player.weapon == null and player.in_hand_class() == "weapon_knife"
@@ -854,7 +921,7 @@ func _test_the_hand() -> void:
 		var held_body := hull.body_of(hull.model_held_at(held))
 		_check(
 			dropped.previous_position.is_equal_approx(held_body.origin) and dropped.previous_basis.is_equal_approx(held_body.basis)
-				and held.basis.z.dot(aim) > 0.99,
+				and dropped.previous_basis.z.dot(aim) > 0.99,
 			"it leaves from where the gun was held, pointing where the player looks, as a body at its centre of mass"
 		)
 		var right := Vector3(cos(deg_to_rad(player.yaw_degrees)), 0.0, -sin(deg_to_rad(player.yaw_degrees)))

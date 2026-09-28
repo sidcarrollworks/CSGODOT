@@ -26,10 +26,11 @@ extends SimEntity
 ## player's traces are.
 ##
 ## Nothing cleans it up sooner: CS2's weapon_auto_cleanup_time and
-## weapon_max_before_cleanup are both 0. Bullets pass through it, as
-## mp_shoot_dropped_grenades is false. What blasts do to a gun on the ground
-## is for later (the playtest page's issue 2, plan step 9). How CS2 combines
-## two surfaces, when its bodies sleep and whether dropped guns meet player
+## weapon_max_before_cleanup are both 0. Bullets pass through items; the
+## Box3D trial also applies an impulse to guns at each bullet contact.
+## mp_shoot_dropped_grenades concerns detonation, not gun impulses.
+## Blast impulses are for later (the playtest page's issue 2, plan step 9).
+## How CS2 combines two surfaces, when its bodies sleep and whether drops meet player
 ## clips are in no file (measure; each is a named constant below).
 
 ## sv_gravity, as MovementConfig has it.
@@ -88,8 +89,8 @@ const MOST_MOVING_USEC := 8_000_000
 var entry: Inventory.Entry
 ## Its centre of mass's velocity.
 var velocity := Vector3.ZERO
-## Which way it points: the model's +Z is its muzzle, +Y its top, as a gun
-## is held (PlayerSim.held_transform). And the tick before's, for drawing
+## Which way it points: the model's +Z is its muzzle, +Y its top, after
+## converting the hand's attachment-bone frame. And the tick before's, for drawing
 ## between the two. position is the centre of mass (ItemPhysics.Hull
 ## places the model from the two).
 var basis := Basis.IDENTITY
@@ -116,6 +117,11 @@ var ground_normal := Vector3.ZERO
 ## tick touching something, one more for each surface a move meets and
 ## one more for the corners it lands on, none at rest.
 var queries: int = 0
+
+## A restored or externally woken body must resume its view's interpolation.
+signal motion_started
+## A restored snapshot must also replace the native body's state.
+var physics_revision: int = 0
 
 
 func _init(p_entry: Inventory.Entry = null, p_owner_id: int = GameEvents.NOBODY, p_position := Vector3.ZERO, p_velocity := Vector3.ZERO) -> void:
@@ -172,6 +178,8 @@ func can_be_taken_by(userid: int, now_usec: int) -> bool:
 
 func tick(t: SimTick) -> void:
 	previous_basis = basis
+	if is_instance_valid(t.game.drop_physics):
+		return
 	if resting:
 		return
 	if t.space == null:
@@ -238,7 +246,7 @@ func _contacts(space: PhysicsDirectSpaceState3D, hull: ItemPhysics.Hull) -> Arra
 	var query := _query(hull)
 	query.margin = CONTACT_MARGIN
 	queries += 1
-	var pairs := space.collide_shape(query, MOST_CONTACTS)
+	var pairs := PhysicsQueries.collide_shape(space, query, MOST_CONTACTS)
 	# In pairs: the point on the hull (grown by the margin), and the point
 	# on the world; from the one to the other is the way out.
 	var planes: Array[Dictionary] = []
@@ -282,7 +290,7 @@ func _surface_at(space: PhysicsDirectSpaceState3D, hull: ItemPhysics.Hull) -> St
 	var query := _query(hull)
 	query.margin = CONTACT_MARGIN
 	queries += 1
-	var rest := space.get_rest_info(query)
+	var rest := PhysicsQueries.get_rest_info(space, query)
 	if not rest.is_empty():
 		ground_normal = rest["normal"]
 	return _surface_name(rest)
@@ -374,13 +382,13 @@ func _sweep(space: PhysicsDirectSpaceState3D, hull: ItemPhysics.Hull, motion: Ve
 	var query := _query(hull)
 	query.motion = motion
 	queries += 1
-	var fractions := space.cast_motion(query)
+	var fractions := PhysicsQueries.cast_motion(space, query)
 	if fractions.is_empty() or fractions[1] >= 1.0:
 		return {"safe": 1.0}
 	query.transform = Transform3D(basis, position + motion * fractions[1])
 	query.motion = Vector3.ZERO
 	queries += 1
-	var rest := space.get_rest_info(query)
+	var rest := PhysicsQueries.get_rest_info(space, query)
 	if rest.is_empty():
 		return {"safe": fractions[0]}
 	var normal: Vector3 = rest["normal"]
@@ -469,6 +477,7 @@ func save_state() -> Dictionary:
 
 func load_state(state: Dictionary) -> void:
 	super(state)
+	physics_revision += 1
 	velocity = state.get("velocity", velocity)
 	basis = state.get("basis", basis)
 	previous_basis = state.get("previous_basis", previous_basis)
@@ -481,6 +490,9 @@ func load_state(state: Dictionary) -> void:
 	slow_from = state.get("slow_from", slow_from)
 	slow_basis = state.get("slow_basis", slow_basis)
 	ground_normal = state.get("ground_normal", ground_normal)
+	# A view may have stopped updating this item after it slept. Redraw
+	# a restored pose once, or resume interpolation if it is moving again.
+	motion_started.emit()
 	var def := ItemRegistry.item(state.get("item", ""))
 	if def == null:
 		return

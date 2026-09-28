@@ -26,3 +26,7 @@ inspect-output.txt
 
 # CS2 sound event text fetched by scripts/sound_events.sh
 .gametracking-cs2/
+
+# Box3D experiment: reproducibly installed by scripts/install_box3d.ps1.
+addons/box3d/bin/
+addons/box3d/icons/*.import

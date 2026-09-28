@@ -16,9 +16,10 @@ extends Node
 ## It counts its own ticks from the moment it starts, and SimClock reads the
 ## count, so simulation time starts with the game rather than with the
 ## process, and a check can hold the world and step it itself (step()). What
-## is only drawn or heard of the players (the view, footsteps, ragdolls) runs
+## is only drawn or heard of the players (the view and footsteps) runs
 ## on the engine's ticks as before, after the world's, so it reads the tick
-## just run.
+## just run. Ragdoll physics advances in this world's shared native step;
+## only its skeleton drawing runs between ticks.
 ##
 ## It also holds what a tick gives out, so each tick starts afresh: the nav
 ## mesh's path searches, and the game's shared state (game): its events,
@@ -61,6 +62,8 @@ var tick: int = 0
 var game := GameSystems.new()
 
 var _path_searches_left: int = PATH_SEARCHES_PER_TICK
+var _drop_physics_initialized: bool = false
+var drop_physics_backend: String = ""
 
 
 func _init() -> void:
@@ -71,6 +74,51 @@ func _init() -> void:
 
 func _enter_tree() -> void:
 	current = self
+
+
+func _ready() -> void:
+	# The containing map builds collision after adding this world. Prepare
+	# once after its scene setup, before allowing automatic simulation ticks.
+	initialize_drop_physics.call_deferred()
+
+
+## Explicit for fixtures and profilers. A missing requested addon is an
+## error, never a silent switch back to the legacy solver.
+func initialize_drop_physics(geometry_root: Node = null, backend: String = "") -> bool:
+	if _drop_physics_initialized:
+		return true
+	if backend.is_empty():
+		backend = configured_drop_physics()
+	if backend == "legacy":
+		drop_physics_backend = backend
+		_drop_physics_initialized = true
+		return true
+	if backend != "box3d":
+		push_error("Unknown game physics '%s'; use --physics box3d or legacy." % backend)
+		return false
+	var adapter := Box3DDrops.new()
+	adapter.name = "Box3DPhysics"
+	add_child(adapter)
+	if not adapter.initialize(game, geometry_root if geometry_root != null else get_parent(), true):
+		adapter.free()
+		return false
+	drop_physics_backend = backend
+	_drop_physics_initialized = true
+	print("Game physics: Box3D (%d static shapes, %d triangles)" % [adapter.captured_shapes, adapter.captured_triangles])
+	return true
+
+
+static func configured_drop_physics() -> String:
+	var backend := String(ProjectSettings.get_setting("csgodot/physics/backend", "box3d"))
+	for args in [OS.get_cmdline_args(), OS.get_cmdline_user_args()]:
+		for i in args.size():
+			if args[i] in ["--physics", "--drop-physics"] and i + 1 < args.size():
+				backend = args[i + 1]
+			elif String(args[i]).begins_with("--physics="):
+				backend = String(args[i]).trim_prefix("--physics=")
+			elif String(args[i]).begins_with("--drop-physics="):
+				backend = String(args[i]).trim_prefix("--drop-physics=")
+	return backend.to_lower()
 
 
 func _exit_tree() -> void:
@@ -104,6 +152,8 @@ func remove_player(player: PlayerSim) -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	if not _drop_physics_initialized:
+		return
 	step()
 
 

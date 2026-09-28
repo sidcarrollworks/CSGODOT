@@ -234,9 +234,9 @@ issue done here and on the page in the same pull request.
 |---|---|---|---|---|
 | 1 | A mode chosen at start: Competitive, or Practice with no bots | **Done** (2026-09-26, 24c): a picker, `--mode`, Practice as Competitive with no bots and a warmup that does not end | Try it in fullscreen | 24a, 24c, 26 |
 | 2 | Dropped guns sink into slopes, the magazine goes through the floor, they turn about the wrong point | **Done (#117):** a body on CS2's own hull (one convex hull a gun, mass 3 to 6, from the game's physics), swept against the floor; checks on a one-sided trimesh | `extract_assets.sh weapon-physics` and commit `physics.csv`; look on T spawn's ramp | 12 |
-| 3 | E picks up what you look at, swapping out what is in that slot | The use search (CS2's 80 units, a cone), the swap, one precedence with the bomb | See in CS2 what E takes and from how far | 12, after 2 |
+| 3 | E picks up what you look at, swapping out what is in that slot | **Done:** E takes the item looked at within CS2's 80 units, in a cone (a guess) and in sight; a gun swaps with the one in its slot, thrown down as a drop; no room sends `item_pickup_failed`; near the bomb E is the bomb's (`use_claimed`), and a T's E takes the dropped bomb | See in CS2 what E takes and from how far | 12, after 2 |
 | 4 | Ragdoll legs through the floor, joints bending too far | **Done** (#121, `reference/research/ragdoll-joints.md`): start clear of the floor and kept over it, CS2's own shapes (in the agents' `.vmdl`), joint limits from standing; checks on a one-sided trimesh | Dump CS2's joints; deaths on the ramp | Housekeeping |
-| 5 | Bots hover over T spawn's ramp in freeze time (the hull rests on the uphill edge; there is no foot IK) | Research, then draw-only foot IK and a ground fit | CS2's feet on the ramp | After 17 |
+| 5 | Bots hover over T spawn's ramp in freeze time (the hull rests on the uphill edge; there is no foot IK) | *(Remote done, PR #131)* Research, then foot IK and a ground fit | CS2's feet on the ramp | After 17 |
 | 6 | Bots meet head-on and hop at each other forever | **Done** (PR #113): making way for teammates (`BotSteering`), stuck handling that never jumps at one, goals spread over a site | dust2's chokepoints and 24b's inferno spot; `scripts/run_tests.sh dust2` runs the new no-stall check | 24b, 23 |
 | 7 | The xbox tarp far too dark (its lightmap read from the wrong UV set) | The UV set for `csgo_environment`, and its tint | `extract_assets.sh layers`; an xbox shot in CS2 | After 12 |
 | 8 | Wrists wrung on the knife (the forearm twist bones are never posed) | **Done:** CS2's tilt-twist constraints from the agents' `.vmdl` on the drawn arms and bodies (`TwistModifier`), the maths in `reference/research/twist-constraints.md` | `scripts/run_tests.sh twist` with the agents and knife extracted; the knife and AK beside CS2, both teams; the cost in `profile_dust2.gd` | 6 |
@@ -246,16 +246,93 @@ issue done here and on the page in the same pull request.
 | 12 | Zigzag stripes on the kasbah towers (Godot's mesh LODs break the third UV set's lightmap) | *(done: `LightmapMaterials.drop_lods`)* No LODs, or LODs that keep that UV set, on those props | Look, profile | |
 | 13 | White eyes | CS2's eye shader on the character shader *(done, 2026-09-26: `CharacterEyes`, the eye path in `character.gdshader`)* | Extract the eye textures (`character-masks`), `run_tests.sh model`; the Phoenix face and the SAS lenses beside CS2 | R7 |
 | 14 | Recoil on the AK-47 and M4A1-S only | *(done 2026-09-26, PR #111)* The 15 more patterns already in `reference/spray_patterns/`, solved at load; a provisional kick for the rest | Spray the rest in CS2 (TODO L6); the R6 demo | 8 |
-| 15 | Mouse wheel down to the next weapon | CS2's `invnext` | Its order in CS2 | 12a, after 16 |
+| 15 | Mouse wheel down to the next weapon | **Done 2026-09-28:** CS2's `invnext`, and what you carry in the bottom right after each switch | Its order in CS2, and how long the list stays up | 12a, after 16 |
 | 16 | A quick switch cuts the draw short | **Done 2026-09-26:** the draw restarted on every switch, as CS2's graph does, and R during it reloads once it ends (Sid's CS2 check) | Play quick switches beside CS2 | 12 |
 | 17 | Running into a jump snaps to the air pose | *(Remote done, PR #114)* The take-off from CS2's graph | Extract the jump clips; regenerate the tables | 6 |
 | 18 | Nobody seems to get the bomb | *(done 2026-09-26, except "[E] Take Bomb", which waits on 3)* A check end to end, CS2's handing it to the human T (`bot_defer_to_human_items`), a cue for who carries it | Rounds as T and CT; CS2's warmup | 16, 15 |
 | 19 | Grenade sounds and effects | The shared sound-event table and player (**done** 2026-09-26: `reference/sounds/`, `SoundEvents`, `default_bus_layout.tres`), then the grenades' sounds; the effects after research | Extract the missing sounds and the particles | 17 to 20 |
-| 20 | A click as the magazine nears empty (CS2's `Default.NearlyEmpty`) | On the shared sound player, the threshold provisional | Measure the threshold in CS2 | After 19's groundwork |
+| 20 | A click as the magazine nears empty (CS2's `Default.NearlyEmpty`) | On the shared sound player, the threshold provisional (**done** 2026-09-28) | Measure the threshold in CS2 | After 19's groundwork |
 | 21 | Round sounds (start, end, planted, ten seconds, announcer) | The cues from `reference/research/audio-round.md` | Extract the UI, music and announcer; listen | 16, after 19's groundwork |
 | 22 | Looking down shows the vest where CS2 shows legs | **Done:** the seen body folds from spine_2 up, the shadow and bots whole | Beside CS2 | 6a |
 | 23 | The distant hill missing (the 3D skybox past the camera's far plane, dropped before its depth squeeze can help) | *(done: `FarMaterials.CULL_BOX`, `far_position`)* Far meshes kept in the frustum, and a squeeze that keeps them inside the far plane | The view beside CS2; the cost | R2 |
 | 24 | The sky dark slate grey (the skybox's clouds, CS2's additive `csgo_unlitgeneric`, imported as an opaque, lit sheet) | **Done 2026-09-28:** `UnlitMaterials`, unlit and added; its textures listed by `export_alpha.gd` | **Done:** `extract_assets.sh layers`; long doors' sky 0.39 of CS2's to 0.86. The rest of the gap, the sky's own brightness and haze, needs research | 10, 23 |
+| 25 | Red window frames, doors and awnings too vivid (the export's tint over the whole texture, not only the tint mask's paint) | *(done 2026-09-26: `prop_tint`, `LightmapMaterials.carry_features`)* The tint moved off the colour and put back through `g_tTintMask`; the `layers` step fetches the masks | **Done 2026-09-28:** `layers` fetched 55 masks; long doors' shutters and door from 0.36 to 0.50 saturation to 0.22 to 0.34 (CS2's 0.17 to 0.31), the awning unchanged | 7, R7 |
+
+**Box3D is the game's physics (2026-09-28, Sid).** Sid chose to take the
+trial below forward. CI and the cloud threads build its Linux library from the
+pinned release's source (`scripts/install_box3d.sh`), since the release's
+needs glibc 2.43 and Ubuntu 24.04 has 2.39, and the AWP's four settling checks
+are known open (`_check_known_open`: reported every run, not failing it).
+Every query goes through `PhysicsQueries` (`reference/godot/physics.md`); E's
+sight test (#126), written straight on Godot's space, was ported with #125's
+merge and is checked on a Box3D world (`tests/run_box3d_pickup_checks.gd`).
+Left: the AWP's settling; ragdoll visual acceptance; movement at real map
+edges; FootPlant on flat floors under Box3D's rest clearance (playtest issue
+5); the 6 ms frame target; tick-owned hitbox poses for multiplayer; and
+`scripts/profile_dust2.gd` at 5 and 10 a side on both backends, for
+`reference/performance.md`.
+
+**Box3D physics trial (2026-09-26, Sid).** The branch
+`codex/box3d-dropped-guns` started with dropped-gun jitter and now follows
+Sid's request to convert all game physics. The shared native world owns
+map collision, player/hitbox queries, dropped bodies and ragdolls;
+movement, hitscan/penetration, live-grenade collision, sight and surface
+queries use it. Source movement and grenade-flight rules remain game
+code. The branch defaults to `--physics box3d`; the old `--drop-physics`
+flag remains an alias. Original Godot collision RIDs are detached while
+the full adapter is active.
+
+**Frame-time audit done (2026-09-26).** Repeated 4K ten-player p99 is
+12.5–12.8 ms on Box3D, versus 9.1 ms through legacy. Disjoint CPU attribution
+finds 3.47 ms/tick in proxy synchronization against 0.42 ms in the native-step
+interval; first-use weapon/grenade spikes are a separate issue. The audit
+records rendering ablations, a live round, focus-filtered tails and one-bot
+scaling. It prioritized incremental proxy updates, contact trace amplification
+and actual first-use prewarming; that audit changed no gameplay/graphics defaults.
+Evidence and reproduction: [frame-times-2026-09-26.md](research/frame-times-2026-09-26.md).
+
+**Bridge and recovery optimization done (2026-09-26; 6 ms target still open).** Query-only
+proxies update on demand, reuse authored geometry, and avoid native kinematic
+stepping. Movement groups its recovery casts, skips excluded self updates,
+and stops identical failed searches; proven deep player overlap needs one
+cast instead of sixty. Same-tick poses and geometry/lifecycle changes have
+dedicated regression coverage. Effects and graphics settings are unchanged.
+The **6 ms maximum frame-time target remains open**; measured results and
+remaining costs are in [the follow-up](research/box3d-performance-fixes-2026-09-26.md).
+
+**Repeated player-update work reduced (2026-09-26).** Per-tree animation
+bindings skip unchanged persistent values while retaining consumed requests;
+bot sight shares observer setup and visits nearest candidates first without
+changing reaction timing. Static crouch-path data, shooter state, and recoil
+damping constants are reused. The ordinary ten-player simulation averages
+3.217 to 3.095 ms with the same shots and hull traces. This is a modest CPU
+gain, not proof of a lower rendered maximum or multiplayer-ready pose timing.
+Measurements and remaining work: [player-update-performance-2026-09-26.md](research/player-update-performance-2026-09-26.md).
+
+Before that optimization, native gameplay integration passed 43/43, world/hitbox lifecycle 20/20,
+ragdolls 67/67, focused movement 22/22, and real Dust2 integration 10/10;
+the movement course passes 80/80 on each backend. The final seeded 5v5
+CPU comparison averages 7.091 ms per native tick versus 3.296 ms for the
+legacy query/drop path (see the trial notes for scope); this is not a
+full-game speedup. The full suite and final targeted reruns cover 3,750
+assertions: 3,746 pass and the four known AWP settling checks fail; one
+draw-only suite skips headless. Implementation of the full-physics trial
+is done; acceptance and its remaining quality/performance work stay open.
+Ragdoll ball/hinge joints approximate the previous independent-axis
+limits with conservative offset cones and need visual acceptance.
+
+Sid's positive drop playtest led to release-orientation and bullet-push
+fixes. A later failed shooting playtest exposed floor friction absorbing
+downward shots; the supported-gun reaction now reflects the into-surface
+component outward. Its current strength is 6.9 kg·inch/s per remaining
+base-damage point: a 15% increase from 6.0, chosen for Sid's request for
+a slight increase. Both reaction and strength are experimental; the
+legacy comparison has no bullet push
+and requires the native world for converted ragdolls. Setup, dated test
+results and the original drop-only benchmarks are in
+[box3d-trial.md](box3d-trial.md). Human acceptance and the quality decision
+came with Sid's choice on 2026-09-28; the four AWP settling checks are known
+open; the old timings do not measure the full conversion.
 
 ### Phase 1: make being shot feel like CS2
 
@@ -564,8 +641,9 @@ list, split into Local and Remote items, with the measurements.
     thrower. Left for the item that brings it: the round's full HUD (15).
     Guessed, not from CS2: both sides wiped out on one tick goes to the Ts,
     and half time's 15 s replaces the 7 s pause rather than following it.
-12. **Inventory.** *(done 2026-09-23 but for E to swap and guns on the
-    ground as physics objects; Sid checks it on the range)* Slots, switching
+12. **Inventory.** *(done 2026-09-23; E to swap done with the playtest's
+    issue 3, guns on the ground as bodies with its issue 2; Sid checks it on
+    the range)* Slots, switching
     with draw times, dropping (G), picking up and swapping, drops on death.
     `Inventory` with CS2's carrying rules, slots, Q and cycling grenades,
     each gun its own `Weapon`; `DroppedItem` and `ItemDrops` for dropping,
@@ -582,16 +660,26 @@ list, split into Local and Remote items, with the measurements.
     300 u/s where they look, turning as it flies,
     bouncing, and laid on its side where it stops; a death lets the gun go
     from the hand, moving as the body was. Left: E to swap with the gun in
-    hand, and a gun on the ground as a rigid body that blasts and rounds
-    push, on its own physics hull (`reference/cs2-systems.md` section 4);
-    the playtest of 2026-09-25's issues 2 and 3 plan both.
+    hand, and blast impulses on dropped guns. The 2026-09-26 Box3D trial
+    gives dropped items native rigid bodies on their own physics hulls;
+    its follow-up adds bullet impulses to guns and corrects their held
+    orientation at release. After a failed shooting playtest, a
+    grounded-contact response passes realistic downward-shot
+    regressions. The subsequent full-physics conversion raises its
+    experimental impulse strength by 15% for Sid's requested slight
+    increase, to 6.9 kg·inch/s per remaining
+    base-damage point; human acceptance remains pending. See
+    [box3d-trial.md](box3d-trial.md). The playtest of
+    2026-09-25's issues 2 and 3 track the broader work.
 12a. **Binds: the same keys everywhere, the test range included.** *(Remote;
     Local wires section 5's keys through it and checks CS2's defaults; new
     2026-09-24, Sid: "Ideally the same keys are used everywhere even in
     testing")* One table maps a key to a command, as CS2's `bind "g"
     "drop"`, starting from CS2's own defaults
     (`game/csgo/cfg/user_keys_default.vcfg`) with Sid's two departures,
-    the wheel's jump and noclip on V. A `+` command is a held button in the
+    the wheel's jump and noclip on V (the wheel down is `invnext`, CS2's
+    own, since playtest issue 15: the table takes over its `invnext`
+    action as it takes the rest). A `+` command is a held button in the
     next `UserCmd`; any other goes to `game.command` or runs on the client,
     so keys never reach the simulation. The range's and the developer's
     actions become named commands (CS2's names where it has them: `god`,
@@ -642,13 +730,22 @@ list, split into Local and Remote items, with the measurements.
     panels as Panorama does. Local: checked on Sid's machine against
     `In_game_ui.webp` at 1080p and 4K, where it matches to the pixel but
     for the player's portrait and colour. Still to do: the kill feed,
-    radar, scoreboard, round-end panel, the bomb's icon on the clock, the
+    radar, scoreboard, the bomb's icon on the clock, the
     kill marks over the health and the low health and ammo glow. The buy
     menu rebuilt 2026-09-25 to Sid's screenshots of CS2's: its columns in
     CS2's order, CS2's word on each item, the countdown in warmup and freeze
     time, and your agent in CS2's own pose for what is in hand or under the
     mouse, holding it, framed by CS2's buy-menu camera. Each player's colour
     is drawn at random for the match until a setting chooses it (item 26).)*
+    *(Round-end panel done 2026-09-26: CS2's win panel from its own
+    hudwinpanel layout, styles and strings, ROUND WON or ROUND LOST with the
+    round's fun fact and the MVP's band (`WinPanel`), from what the server
+    now says on round_end, round_mvp and cs_win_panel_round (`RoundReport`
+    in `src/match/`, which picks the MVP and the fun fact by the
+    community's rules until CS2's are measured). Left: the glitch video, the
+    MVP's 3D agent on the band, the damage under dead enemies' cards (the
+    report keeps it, `RoundReport.damage_between`) and the team income line
+    in the chat. Local: a round won and lost beside CS2's at 1080p.)*
 
 ### Phase 5: the bomb
 

@@ -846,7 +846,10 @@ func _test_air_action() -> void:
 	_place(Vector3(0.0, 8.0, 256.0))
 	for i in SETTLE_TICKS:
 		_step()
-	var floor_y := _player.global_position.y
+	# The course floor's top is y=0 (course_builder._build_floor). Resting
+	# feet retain the query backend's collision clearance, so their height
+	# is not the surface height that the airborne ground ray measures.
+	var floor_y := 0.0
 	var rays := _player.ground_rays
 	_step()
 	var standing_rays := _player.ground_rays - rays

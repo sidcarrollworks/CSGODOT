@@ -17,8 +17,9 @@ extends RefCounted
 ## the eye is a stand-in until that page's section 7 measures it. The bodies
 ## drawn here do not bend with the aim yet, so a death looking far up or
 ## down lets the gun go from where the drawn body did not hold it. The pose
-## is in the world models' own axes: +Z the muzzle, +Y the top, +X the gun's
-## left side. It follows the body's crouch as PlayerBody moves it
+## aims the world model's +Z muzzle and +Y top, then returns the attachment
+## bone's frame at the hand. That bone has its own axes in the model, kept
+## in ItemPhysics.Hull.held_bone. It follows the body's crouch as PlayerBody moves it
 ## (duck_progress), so an eased duck in the air comes with the movement's.
 
 ## rifle/rifle_ak, standing and crouched; every long gun is held so.
@@ -46,7 +47,11 @@ static func of(node: Node3D, item_class: String) -> Transform3D:
 	var offsets := offsets_for(item_class)
 	var off: Vector3 = (offsets[0] as Vector3).lerp(offsets[1], crouch)
 	var eye := node.global_position + Vector3.UP * eye_height
-	return Transform3D(view, eye + aim * off.x + right * off.y + view.y * off.z)
+	# drop_from places the model by this bone and removes its rest transform.
+	# Return the bone's axes as well as its hand position: using the model's
+	# axes here would turn the barrel by the inverse rest rotation.
+	var root_basis := view * ItemPhysics.of(item_class).held_bone.basis
+	return Transform3D(root_basis, eye + aim * off.x + right * off.y + view.y * off.z)
 
 
 ## [standing, crouched] offsets from the eye for an item: forward, right, up.

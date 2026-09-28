@@ -1,10 +1,19 @@
 // What CS2's prop shaders add to a surface that the glTF has no slot for,
-// after Source 2 Viewer's ApplyDecalTexture (texturing.slang) and
-// GetStandardSelfIllumination (complex.frag.slang): a decal texture over
-// the colour (F_DECAL_TEXTURE: the dirt down dust2's kasbah towers) and
-// self-illumination (F_SELF_ILLUM: the tunnels' hanging lamps). Set from
-// the material's description by LightmapMaterials.carry_features; at their
-// defaults neither does anything.
+// after Source 2 Viewer's ApplyDecalTexture (texturing.slang),
+// GetStandardSelfIllumination and its tinting (complex.frag.slang): the
+// tint only where the tint mask is white (F_TINT_MASK: the paint on
+// dust2's window frames, doors and awnings, not their chips, bare wood and
+// hinges), a decal texture over the colour (F_DECAL_TEXTURE: the dirt down
+// dust2's kasbah towers) and self-illumination (F_SELF_ILLUM: the tunnels'
+// hanging lamps). Set from the material's description by
+// LightmapMaterials.carry_features; at their defaults none does anything.
+
+// The draw call's tint, which Source 2 Viewer's export bakes into the
+// glTF's base colour and carry_features moves here, and the mask saying
+// where it goes (red, 1 for all of it). White for none.
+uniform vec4 tint_color : source_color = vec4(1.0);
+uniform sampler2D tint_mask : hint_default_white, filter_linear_mipmap, repeat_enable;
+uniform bool tint_on_uv2 = false;
 
 uniform sampler2D decal_texture : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 // -1 none; 0 laid over by its alpha, 1 multiplied in (F_DECAL_BLEND_MODE).
@@ -16,6 +25,15 @@ uniform sampler2D self_illum_mask : hint_default_black, filter_linear_mipmap, re
 uniform vec3 self_illum_color = vec3(0.0);
 uniform float self_illum_albedo_factor = 0.0;
 uniform bool self_illum_on_uv2 = false;
+
+// CS2's form: 1 - mask * (1 - tint), which is mix(1, tint, mask).
+vec3 prop_tint(vec3 albedo, vec2 uv, vec2 uv2) {
+	if (tint_color == vec4(1.0)) {
+		return albedo;
+	}
+	float mask = texture(tint_mask, tint_on_uv2 ? uv2 : uv).r;
+	return albedo * mix(vec3(1.0), tint_color.rgb, mask);
+}
 
 vec3 prop_decal(vec3 albedo, vec2 uv, vec2 uv2) {
 	if (decal_mode < 0) {

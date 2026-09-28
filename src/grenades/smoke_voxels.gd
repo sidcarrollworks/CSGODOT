@@ -237,7 +237,7 @@ func _open(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3) -> bool
 		traces += 1
 		var query := PhysicsRayQueryParameters3D.create(start, to, Hitscan.WORLD_LAYER)
 		query.hit_from_inside = true
-		var hit := space.intersect_ray(query)
+		var hit := PhysicsQueries.intersect_ray(space, query)
 		if hit.is_empty():
 			return true
 		var surface := Penetration.surface_for(Hitscan._surface_name(hit))

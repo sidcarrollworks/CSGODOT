@@ -67,6 +67,7 @@ func _on_spawned(entity: SimEntity) -> void:
 	if item == null or item.entry == null:
 		return
 	_items[item.id] = item
+	item.motion_started.connect(_on_motion_started.bind(item.id))
 	_arriving.append(item.id)
 
 
@@ -94,6 +95,11 @@ func _build_arrived() -> void:
 		_place(item, model, 0.0)
 		ProbeMaterials.light_model(model, item.position)
 	_arriving = waiting
+
+
+func _on_motion_started(entity_id: int) -> void:
+	if _models.has(entity_id):
+		_moving[entity_id] = true
 
 
 func _on_removed(entity: SimEntity) -> void:

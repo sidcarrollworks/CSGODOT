@@ -126,6 +126,8 @@ Items
 - `item_purchase`: userid, team, loadout, weapon
 - `item_pickup`: userid, item, silent
 - `item_remove`: userid, item
+- `item_pickup_failed`: userid, item, reason, limit (E on an item there is
+  no room for; reason `ItemDrops.FAILED_NO_ROOM`, CS2's numbers unknown)
 - `item_equip`: userid, item, canzoom, hassilencer, issilenced, weptype
 - `ammo_pickup`: userid, item, index
 - `enter_buyzone` / `exit_buyzone`: userid, canbuy
@@ -136,7 +138,14 @@ Rounds and the match
 - `round_announce_match_start`, `round_announce_last_round_half`, `round_announce_match_point`, `round_announce_final`: (none); what CS2 announces of a round as it starts, sent after `round_start` (`MatchState.announce_round`; the moment is inferred from their names)
 - `round_start`: timelimit, fraglimit, objective
 - `round_end`: winner, reason, message, legacy, player_count, nomusic (`nomusic` set: no round-end music, the action goes on)
-- `round_mvp`: userid, reason, value, nomusic
+- `round_mvp`: userid, reason, value, nomusic; sent by `RoundReport`
+  (`src/match/round_report.gd`) right after `round_end`, with CS2's reason
+  numbers (hudwinpanel.js), when the round has an MVP
+- `cs_win_panel_round`: show_timer_defend, show_timer_attack, timer_time,
+  final_event, funfact_token, funfact_player, funfact_data1 to 3; sent by
+  `RoundReport` after `round_end` every round, the fun fact as CS2's
+  csgo_english.txt token with its '#' ("" for none); the timer keys and
+  final_event are left at their defaults
 - Every round event here, with these keys, is CS2's: its `core.gameevents`,
   `mod.gameevents` and `game.gameevents`, which GameTracking-CS2 keeps as
   text (read 2026-09-24).
@@ -349,9 +358,10 @@ var saved := inv.save_state(); inv.load_state(saved)
 ammo, and a `basis` (the world model's axes: +Z the muzzle, +Y the top) and
 spin; `position` is its centre of mass. It is a body on the item's own
 convex hull (`ItemPhysics`): it flies under gravity, turning about its
-centre of mass, meets the world with impulses at its contacts (its hull
-swept while it moves, no queries at rest), and sleeps; drawn, it is where
-its body is (`DroppedItemView`). `DroppedItem.drop(game, userid,
+centre of mass, meets the world with impulses at its contacts, and
+sleeps under the native solver; drawn, it is where its body is
+(`DroppedItemView`). The explicit legacy comparison uses the custom
+GDScript contact solver over Jolt queries. `DroppedItem.drop(game, userid,
 entry, velocity)` puts one on the ground at a player's middle: buying uses
 it for the gun a purchase replaced. `DroppedItem.drop_from(game, userid,
 entry, from, velocity, spin)` starts it from a transform: a drop and a
@@ -364,15 +374,35 @@ position, view and crouch alone, never an animated bone), at 300 u/s
 where they look, a little lifted, with their own motion;
 a death with the body's motion as it died (`PlayerSim.death_velocity`,
 since the body stops before `player_death` is handed out).
+
+`HeldPose` returns an attachment-bone transform, not the world model's
+transform: its aim basis includes the extracted
+`ItemPhysics.held_bone.basis`. `drop_from` removes that rest frame to
+recover the model pose and places its centre of mass accordingly. This
+preserves the gun's aimed orientation at release and the measured hand
+position. Tumble uses the model's lateral axis; the existing
+yaw/pitch/crouch approximation still does not read animated bones.
+
 `ItemDrops`, the items contract's own system (GameSystems adds it first):
+
 - hears `player_death` and drops what `drops_on_death()` gives
   (`defuser_dropped` for the kit);
 - takes the `drop` command for what is in hand, grenades too, never the
   knife and never the C4 (`item_remove`);
 - picks an item up for a living player standing on it (32 units across,
   72 up) whose slot is free (`item_pickup`, or `defuser_pickup`, and only
-  CTs take the kit). Swapping with the gun in hand (E) waits for a use-key
-  handler; CS2's other way, taking a dropped gun from the buy menu
+  CTs take the kit);
+- takes the item a living player looks at when they press E
+  (`UserCmd.USE`'s first press, read from `PlayerSim.last_command` through
+  `ItemDrops.use_pressed`): within 80 units of the eyes (CS2's
+  `player_use_radius`), within `USE_CONE_DEGREES` of the aim (a guess),
+  nearest the aim first, one ray on the world layer to see it, and only
+  once anyone may take it. A primary or pistol whose slot is taken swaps:
+  the one there is thrown as `drop` throws it (`item_remove`), the one
+  taken has its place, in hand if the old one was (`item_pickup`). An
+  item there is no room for (a grenade past the limits, a kit already
+  worn) sends `item_pickup_failed`. It asks `use_claimed` first, and takes
+  nothing when the bomb claims the press. CS2's other way, taking a dropped gun from the buy menu
   (`UIPanorama.buymenu_pickup_weapon`), is not built. Pickups are silent
   here: CS2 plays `Player.PickupWeaponAudible` (and `PickupGrenadeAudible`,
   `PickupPistol`) to everyone within 1100 units and the picker's own
@@ -380,6 +410,46 @@ since the body stops before `player_death` is handed out).
   a view will play from `item_pickup` once the files are extracted;
 - clears what lies on the ground at `round_prestart`.
 The C4 on the ground is the bomb's own entity, not a `DroppedItem`.
+
+On `codex/box3d-dropped-guns`, the `box3d` backend owns the shared game
+physics world, including dropped-item dynamics. `legacy` selects the
+old collision/drop comparison; converted ragdolls require a native
+world and have no equivalent legacy fallback.
+Bullet impulses are restricted to native drops with `ItemDef.is_gun`.
+The world/player trace, now routed through `PhysicsQueries`, and the
+existing damage path supply open bullet
+segments, stopping at obstructions and resuming after successful wall
+penetration within range. Each segment queries the native gun hulls and
+applies an impulse at each actual contact point, without changing the
+bullet's damage path. Every pellet adds its own impulse; off-centre hits
+add angular motion, and hits wake both a sleeping gun and its view.
+
+For a grounded gun, the response reflects an impulse component pointing
+into its support away from that surface, keeping the tangential
+component and total impulse magnitude. Support requires a native
+contact with upward normal component at least 0.5, positive contact
+impulse and separation at most 0.005 metres. Unsupported guns and
+impulses pointing away from the support are unchanged; the application
+point remains the actual bullet contact. This experimental gameplay
+reaction addresses downward shots whose motion was absorbed by the
+floor and friction; it is not extracted or verified CS2 physics.
+The binding reports one normal for points from potentially multiple
+contact manifolds, so support selection at a shared floor/wall collider
+remains an open limitation.
+
+The experimental `Box3DDrops.BULLET_IMPULSE_PER_DAMAGE` is 6.9 kg·inch/s
+per point of base damage remaining at that contact, including range
+falloff and penetration loss, before player armour/hitgroup multipliers.
+The 15% increase from the initial 6.0 was chosen for Sid's request for
+a slight increase; it is not extracted or verified from CS2. Other dropped item
+types, the legacy solver and blast impulses are outside this bullet-push
+change. The initial horizontal bullet checks passed but missed the
+failed grounded shooting playtest. The expanded native suite passes
+38/38 and actual player-command suite 36/36 at the earlier 6.0 strength,
+including downward shots and drawn motion. Human acceptance of the
+current conversion and the original four AWP settling
+failures remain open. The dated measurements and validation counts are in
+[the trial notes](../box3d-trial.md).
 
 CS2's values, from its convar dump (SteamDatabase's `DumpSource2/convars.txt`)
 and `game/csgo/cfg/gamemode_competitive.cfg`, sent by Sid's local agent
@@ -395,13 +465,15 @@ on 2026-09-23 and checked against both files:
 | `mp_death_drop_grenade` | 2 (current or best) | the grenade in hand, or else the best; one |
 | `mp_death_drop_taser`, `_defuser`, `_c4` | true | the Zeus and the kit; the C4 is the bomb's |
 | `weapon_auto_cleanup_time`, `weapon_max_before_cleanup` | 0, 0 | nothing is cleaned up before the round ends |
-| `mp_shoot_dropped_grenades` | false | bullets pass through items on the ground |
+| `mp_shoot_dropped_grenades` | false | shooting a dropped grenade does not detonate it; this says nothing about bullet impulses on dropped guns |
 
 In no file (measure): the throw's split between forward and up
 (`ItemDrops.THROW_LIFT`; the speed is CS2's `m_flDropSpeed` 300), the
-spin (by eye), the pickup reach, which grenade counts as best, a gun's
-mass and bounce on the ground, and how blasts and bullets push it. The bomb's dropped C4 takes
-the same two waits if it follows CS2.
+spin (by eye), the pickup reach, which grenade counts as best, the final
+bounce/settling behavior and how blasts and bullets push a gun. Gun mass
+comes from CS2's PHYS data through `ItemPhysics`; the trial's bullet
+impulse strength remains experimental. The bomb's dropped C4 takes the
+same two waits if it follows CS2.
 
 ## 4. The tick, and how systems join it
 
@@ -413,8 +485,9 @@ tick; this branch is merged with it and fits it. Each tick the GameWorld:
 2. runs each player's command, in the order they joined;
 3. runs the match (`MatchState.tick`);
 4. calls `world.game.step(tick, space)`: the players' queued commands,
-   then every entity, then every system in the order added, then the
-   tick's events handed out.
+   then every entity, then the shared native physics step, then every
+   system in the order added, then the tick's events handed out. Native
+   ragdolls synchronize through the physics step's pre/post hooks.
 
 `world.game` is the one `GameSystems`. `GameWorld.add_player` puts the
 player on its `Roster` (and `remove_player` takes them off), so a system
@@ -447,6 +520,43 @@ grenades, the bomb and buying add their systems there
   player's own `hit_target` once it has one; sets `HitTarget.userid`),
   `userid_of(node)`, `ids()`, `team_of(userid)` (the node's `team`),
   `on_team(team)`. Use it, not group scans.
+
+### Native collision boundary
+
+`GameWorld` initializes Box3D before automatic ticks. The backend is
+`csgodot/physics/backend`, default `box3d`; `--physics` overrides it and
+the former `--drop-physics` flag is an alias. The historical
+`game.drop_physics: Box3DDrops` field now owns the shared native world.
+Godot static-body, character-body and hitbox nodes retain authoring
+geometry and identity, but their RIDs are detached from Godot's physics
+space while represented natively. The Jolt project setting remains for
+the explicit comparison and unattached test spaces.
+
+Game callers use `PhysicsQueries` with the existing
+`PhysicsDirectSpaceState3D`/query-parameter types. `SimTick.space`
+identifies which world's native adapter handles the query; it is not a
+reason to call the Godot space directly. The facade converts inches to
+metres, preserves original collider/RID/shape-index identities, masks,
+area flags and exclusions, and returns the usual empty dictionary on a
+miss. Original shape indices still resolve material names and original
+hitboxes still receive damage. Player/hitbox proxies synchronize before
+queries, and scene additions/removals update their native counterparts.
+
+A solid-body ray starting inside skips the containing body when
+`hit_from_inside` is false, as penetration requires; true reports its
+origin with a zero normal, as smoke requires. Grenades keep their
+custom ballistic, bounce and detonation rules over native sweeps.
+Sweeps keep about 0.197 inches of native surface tolerance plus
+0.06 inches of normal clearance so an outgoing bounce can leave its
+last contact. The following `get_rest_info` reads that sweep's contact.
+Boolean overlap checks use `intersect_shape`; raw `collide_shape`
+contact pairs are legacy-only and fail explicitly in a native world.
+
+Native ragdoll capsules and ball/hinge/filter joints share the world's
+64 Hz stepping. Their circular, offset swing cones conservatively
+approximate the former independent-axis 6DOF limits; exact equivalence
+and visual acceptance are not established. Full conversion validation
+and current limitations are in [the trial notes](../box3d-trial.md).
 
 ### Buttons
 
@@ -492,6 +602,12 @@ system, in `attach`), `game.query(&"name", [args], fallback)`,
   bots, `player_death.attackerblind`). Fallbacks {} and 0.0.
 - `burning_at(point: Vector3) -> bool`: whether fire covers that point
   (grenades; bots keep out of it). Fallback false.
+- `use_claimed(userid: int) -> bool`: whether E is the bomb's for that
+  player now (the bomb): a living CT in defuse reach of the planted bomb
+  and looking at it, or its defuser; a living T within E's reach of the
+  dropped bomb and looking at it (CS2's
+  `sv_weapon_swap_difficulty_near_hi_pri`). `ItemDrops` asks it before E
+  takes anything off the ground. Fallback false.
 - `holds_still(userid: int) -> bool`: true while that player is planting
   or defusing (the bomb). `player_sim` reads it to stop moving and firing
   without touching `frozen`, which the match owns. Fallback false.

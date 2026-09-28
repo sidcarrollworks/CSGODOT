@@ -41,6 +41,35 @@ const AIR_LAND := &"air_action_land"
 ## there), so a little more is enough.
 const AIR_HEIGHT_REACH := 64.0
 
+## Native casts stop 0.005 m (0.197 inches) short of a surface, but treat
+## starts within about 0.246 inches as overlap, with no collision normal.
+## This extra clearance keeps the next tangential/upward sweep usable.
+## The half-inch recovery is only for those initial overlaps (for example,
+## spawning exactly on the floor), never part of acceleration or sliding.
+const NATIVE_QUERY_MARGIN := 0.06
+const NATIVE_RECOVERY_REACH := 0.5
+const NATIVE_RECOVERY_PADDING := 0.01
+
+## The movement solver only needs how far a trace went and the plane it
+## met. Keep that interface independent of the engine's collision object.
+class TraceResult:
+	var travel: Vector3
+	var normal: Vector3
+	## Positional depenetration belongs in travel, but consumes no move time.
+	var recovery: Vector3
+
+	func _init(p_travel: Vector3, p_normal: Vector3, p_recovery: Vector3 = Vector3.ZERO) -> void:
+		travel = p_travel
+		normal = p_normal
+		recovery = p_recovery
+
+	func get_travel() -> Vector3:
+		return travel
+
+	func get_normal() -> Vector3:
+		return normal
+
+
 @export var config: MovementConfig
 
 var on_ground: bool = false
@@ -105,6 +134,9 @@ var _jumped := false
 var _looked_from := Vector3.INF
 var _looked_with := 0.0
 var _hull_height := 0.0
+var _motion_query := PhysicsShapeQueryParameters3D.new()
+var _native_recovery_direction := Vector3.UP
+var _last_native_trace_recovery := Vector3.ZERO
 
 
 func _ready() -> void:
@@ -152,6 +184,8 @@ func _find_collision_shape() -> CollisionShape3D:
 ## when you pressed them rather than up to a tick later.
 func simulate(dt: float) -> void:
 	previous_position = global_position
+	# This is only a hint between sweeps of one tick, not replay state.
+	_native_recovery_direction = Vector3.UP
 
 	if noclip:
 		velocity = wish_dir * config.noclip_speed
@@ -159,6 +193,7 @@ func simulate(dt: float) -> void:
 		on_ground = false
 		jump_fraction = -1.0
 		height_above_ground = INF
+		PhysicsQueries.sync_object(self, false)
 		return
 
 	var was_on_ground := on_ground
@@ -183,6 +218,8 @@ func simulate(dt: float) -> void:
 	_jump_held_last_tick = wants_jump
 	jump_fraction = -1.0
 	_update_air(was_on_ground)
+	# Later players and shots in this same tick see the completed movement.
+	PhysicsQueries.sync_object(self, false)
 
 
 ## Records what the tick did between the ground and the air (air_action),
@@ -338,6 +375,7 @@ func _set_hull(height: float) -> void:
 	shape.size = Vector3(config.hull_width, height, config.hull_width)
 	_collision_shape.position.y = height * 0.5
 	_hull_height = height
+	PhysicsQueries.sync_object(self)
 
 
 ## The eye offset above the feet for the current duck state.
@@ -411,6 +449,11 @@ func _stay_on_ground() -> void:
 
 	_trace(Vector3.UP * STAY_ON_GROUND_UP)
 	var raised := global_position
+	# Keep separation from a starting floor/wall/player overlap, including a
+	# vertical correction below the ordinary snap threshold. Only the probe's
+	# intentional upward travel is discarded; losing the clearance repeats
+	# the recovery during categorization and every later tangential sweep.
+	start += _last_native_trace_recovery
 
 	# Down to a full step height below where the move ended, from wherever the
 	# upward trace actually got to.
@@ -430,6 +473,8 @@ func _stay_on_ground() -> void:
 
 	var landing := raised + collision.get_travel()
 	if absf(landing.y - start.y) < STAY_ON_GROUND_MIN_DELTA:
+		global_position.x += _last_native_trace_recovery.x
+		global_position.z += _last_native_trace_recovery.z
 		return
 	global_position = landing
 
@@ -521,11 +566,21 @@ func _try_player_move(dt: float) -> bool:
 			all_fraction += 1.0
 			break
 		met_something = true
+		# An unresolved initial overlap has neither progress nor a plane to
+		# clip against. Retrying the same motion cannot change that result:
+		# nobody else moves during this player's slide. In the native path
+		# each retry otherwise repeats the entire local recovery search.
+		# Keep any velocity from earlier progress, as the loop did before;
+		# all_fraction below still stops a move that made no progress at all.
+		if collision.get_travel() == Vector3.ZERO and collision.get_normal() == Vector3.ZERO:
+			break
 
 		var motion_length := motion.length()
 		var fraction := 0.0
 		if motion_length > 0.0:
-			fraction = collision.get_travel().length() / motion_length
+			# Native overlap recovery can be longer than a low-speed move.
+			# Only commanded motion consumes the time left for sliding.
+			fraction = clampf((collision.get_travel() - collision.recovery).length() / motion_length, 0.0, 1.0)
 		all_fraction += fraction
 
 		if fraction > 0.0:
@@ -639,11 +694,146 @@ func _categorize_position() -> void:
 	_looked_with = _hull_height
 
 
-## A trace of the hull along motion, as move_and_collide makes it, counted
-## (traces).
-func _trace(motion: Vector3, test_only: bool = false) -> KinematicCollision3D:
+## A counted hull trace; both engines supply travel and a collision plane
+## to the same Source movement solver. Test traces never move the player.
+func _trace(motion: Vector3, test_only: bool = false) -> TraceResult:
+	_last_native_trace_recovery = Vector3.ZERO
+	var adapter := PhysicsQueries.adapter_for_node(self)
+	if adapter == null:
+		traces += 1
+		var collision := move_and_collide(motion, test_only)
+		return TraceResult.new(collision.get_travel(), collision.get_normal()) if collision != null else null
+	if _collision_shape == null or _collision_shape.shape == null:
+		if not test_only:
+			global_position += motion
+		return null
+	_motion_query.shape = _collision_shape.shape
+	_motion_query.transform = _collision_shape.global_transform
+	_motion_query.motion = motion
+	_motion_query.margin = maxf(safe_margin, NATIVE_QUERY_MARGIN)
+	_motion_query.collision_mask = collision_mask
+	_motion_query.exclude = [get_rid()]
+	# These casts only move the query's starting transform. No game object
+	# moves until the group ends, so synchronize proxies and exclude our
+	# own hull once for the whole synchronous recovery search.
+	var queries := adapter.queries
+	var excluded := queries.begin_shape_cast(_motion_query)
+	var hit := _cast_hull(queries)
+	var recovery := Vector3.ZERO
+	if not hit.is_empty() and (hit["normal"] as Vector3).is_zero_approx():
+		# Player hulls are axis-aligned. Their current separation identifies
+		# the nearest side to try even when this is the first sweep this tick.
+		# It is only a candidate: the native sweep must verify it clears.
+		var other := hit.get("collider") as CharacterBody3D
+		if is_instance_valid(other):
+			var away := global_position - other.global_position
+			if absf(away.x) > absf(away.z):
+				_native_recovery_direction = Vector3.RIGHT * signf(away.x)
+			elif absf(away.z) > 0.000001:
+				_native_recovery_direction = Vector3.BACK * signf(away.z)
+		if not _recovery_blocked_by_player(hit):
+			recovery = _recover_trace_start(queries)
+		if not recovery.is_zero_approx():
+			_motion_query.transform.origin += recovery
+			hit = _cast_hull(queries)
+	queries.end_shape_cast(excluded)
+	_last_native_trace_recovery = recovery
+	if not hit.is_empty() and not (hit["normal"] as Vector3).is_zero_approx():
+		var normal: Vector3 = hit["normal"]
+		# The ordinary floor probe between side sweeps must not erase the
+		# useful wall/player plane. Fresh bodies still prefer upward recovery.
+		if not MovementSolver.is_walkable(normal, config):
+			_native_recovery_direction = normal
+	var travel := recovery + motion * float(hit.get("fraction", 1.0))
+	if not test_only:
+		global_position += travel
+		# The next query that can hit this body refreshes its proxy. Our own
+		# next sweep excludes it; simulate publishes the final pose once.
+	return TraceResult.new(travel, hit["normal"], recovery) if not hit.is_empty() else null
+
+
+func _cast_hull(queries: Box3DQueries) -> Dictionary:
 	traces += 1
-	return move_and_collide(motion, test_only)
+	PhysicsQueries.native_queries += 1
+	return queries.shape_cast_prepared(_motion_query)
+
+
+## Prove a local recovery cannot escape the actual player box just hit.
+## Every search offset has at most half an inch on each axis. If even that
+## leaves the two real boxes intersecting on all axes, native tolerance can
+## only make the overlap larger. No candidate needs to be cast in that case.
+## Restrict the proof to one enabled, axis-aligned box shape; rotated or
+## compound hulls and shallow contact bands keep the ordinary native search.
+func _recovery_blocked_by_player(hit: Dictionary) -> bool:
+	var other := hit.get("collider") as PlayerBody
+	var shape := _motion_query.shape as BoxShape3D
+	var index := int(hit.get("shape", -1))
+	if not is_instance_valid(other) or shape == null or index < 0:
+		return false
+	var owners := other.get_shape_owners()
+	if owners.size() != 1:
+		return false
+	var owner: int = owners[0]
+	if other.is_shape_owner_disabled(owner) or other.shape_owner_get_shape_count(owner) != 1 \
+		or other.shape_owner_get_shape_index(owner, 0) != index:
+		return false
+	var other_shape := other.shape_owner_get_shape(owner, 0) as BoxShape3D
+	if other_shape == null:
+		return false
+	var at := _motion_query.transform
+	var other_at := other.global_transform * other.shape_owner_get_transform(owner)
+	var scale := at.basis.get_scale()
+	var other_scale := other_at.basis.get_scale()
+	# Exact diagonal bases rule out rotation and shear. Positive scale is
+	# enough for the player hulls; uncommon transforms take the native path.
+	if at.basis != Basis.from_scale(scale) or other_at.basis != Basis.from_scale(other_scale) \
+		or minf(scale.x, minf(scale.y, scale.z)) <= 0.0 \
+		or minf(other_scale.x, minf(other_scale.y, other_scale.z)) <= 0.0:
+		return false
+	var half_extents := (shape.size * scale + other_shape.size * other_scale) * 0.5
+	var overlap := half_extents - (at.origin - other_at.origin).abs()
+	# The measured direction is normally a unit normal. Include its actual
+	# component reach and the existing padding as a conservative float guard.
+	var reach := _native_recovery_direction.abs().max(Vector3.ONE) * NATIVE_RECOVERY_REACH \
+		+ Vector3.ONE * NATIVE_RECOVERY_PADDING
+	return overlap.x > reach.x and overlap.y > reach.y and overlap.z > reach.z
+
+
+## Search only the native tolerance around the starting hull. A candidate
+## must give a usable sweep; a zero normal remains blocked, never invented
+## as a plane. A recent side plane, then up, precedes wall/corner escapes.
+## Binary search keeps the correction close to the minimum clearance.
+func _recover_trace_start(queries: Box3DQueries) -> Vector3:
+	var original := _motion_query.transform
+	var directions := [Vector3.UP, Vector3.LEFT, Vector3.RIGHT, Vector3.FORWARD, Vector3.BACK, Vector3.DOWN]
+	# Sliding usually re-enters the tolerance of the plane just encountered.
+	# Try its measured normal first, then the general spawn/corner search.
+	directions.erase(_native_recovery_direction)
+	directions.push_front(_native_recovery_direction)
+	for horizontal in [Vector3.LEFT, Vector3.RIGHT, Vector3.FORWARD, Vector3.BACK,
+		Vector3(-1.0, 0.0, -1.0), Vector3(-1.0, 0.0, 1.0),
+		Vector3(1.0, 0.0, -1.0), Vector3(1.0, 0.0, 1.0)]:
+		directions.append(Vector3.UP + horizontal)
+	for direction: Vector3 in directions:
+		var offset := direction * NATIVE_RECOVERY_REACH
+		_motion_query.transform = original.translated(offset)
+		var hit := _cast_hull(queries)
+		if not hit.is_empty() and (hit["normal"] as Vector3).is_zero_approx():
+			continue
+		var low := 0.0
+		var high := 1.0
+		for i in 7:
+			var middle := (low + high) * 0.5
+			_motion_query.transform = original.translated(offset * middle)
+			hit = _cast_hull(queries)
+			if hit.is_empty() or not (hit["normal"] as Vector3).is_zero_approx():
+				high = middle
+			else:
+				low = middle
+		_motion_query.transform = original
+		return offset * high + direction.normalized() * NATIVE_RECOVERY_PADDING
+	_motion_query.transform = original
+	return Vector3.ZERO
 
 
 ## Source's TryTouchGroundInQuadrants (gamemovement.cpp:3731): when the centre
@@ -672,7 +862,7 @@ func _ground_normal_in_quadrants() -> Vector3:
 		var query := PhysicsRayQueryParameters3D.create(from, to)
 		query.collision_mask = collision_mask
 		query.exclude = [get_rid()]
-		var hit := space.intersect_ray(query)
+		var hit := PhysicsQueries.intersect_ray(space, query)
 		if hit.is_empty():
 			continue
 		var normal: Vector3 = hit["normal"]

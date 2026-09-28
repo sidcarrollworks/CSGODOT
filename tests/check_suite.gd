@@ -16,9 +16,15 @@ extends SceneTree
 ##
 ## A file that ends without it (a script error, a crash, a quit of its own)
 ## counts as failed.
+##
+## A check Sid has chosen to leave failing for now is a known-open one
+## (_check_known_open): it still runs and is printed, as "KNOWN OPEN (where
+## it is tracked): ...", but does not fail the file; the runner's summary
+## counts them. Once one passes it says so, so it can go back to a _check.
 
 var _checks: int = 0
 var _failures: int = 0
+var _known_open: int = 0
 
 
 ## Whether a passing check is printed as well as a failing one. Some files
@@ -42,6 +48,18 @@ func _check(condition: bool, description: String) -> void:
 	printerr("FAIL: %s" % description)
 
 
+## A check that is known to fail and left open by Sid's choice: run and
+## reported every time, not failing the file. tracked says where the gap is
+## written down (a roadmap item, a playtest issue).
+func _check_known_open(condition: bool, description: String, tracked: String) -> void:
+	_checks += 1
+	if condition:
+		print("KNOWN OPEN NOW PASSES (%s): %s; make it a _check again" % [tracked, description])
+		return
+	_known_open += 1
+	print("KNOWN OPEN (%s): %s" % [tracked, description])
+
+
 func _check_equal(actual: Variant, expected: Variant, description: String) -> void:
 	_check(actual == expected, description if actual == expected
 		else "%s (expected %s, got %s)" % [description, expected, actual])
@@ -57,7 +75,7 @@ func _check_near(actual: float, expected: float, description: String) -> void:
 ## name is what the checks are of ("weapon", "match"), as the summary says.
 func _finish(name: String) -> void:
 	if _failures == 0:
-		print("%d %s checks passed." % [_checks, name])
+		print("%d %s checks passed%s." % [_checks, name, "" if _known_open == 0 else ", %d of them known open" % _known_open])
 	else:
 		printerr("%d of %d %s checks failed." % [_failures, _checks, name])
 	print("TESTS %s %d %d" % [name, _checks, _failures])

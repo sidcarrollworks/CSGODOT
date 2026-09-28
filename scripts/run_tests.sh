@@ -11,8 +11,14 @@
 # says how each went. It exits 1 if any file failed or ended without saying
 # how it went (a script error or a crash), which is what CI goes by.
 #
-# Each file gets CSGODOT_TEST_TIMEOUT seconds (180 by default) and is then
-# killed and counted as failed, so one stuck file cannot eat CI's whole job.
+# Each file gets CSGODOT_TEST_TIMEOUT seconds (180 by default; the slowest,
+# dust2's bot check, took 69 s with the extracted assets on Sid's machine on
+# 2026-09-28) and is then killed and counted as failed, so one stuck file
+# cannot eat CI's whole job. It needs coreutils' timeout (Linux, Git Bash; common.sh's
+# with_timeout); without it a file runs with no limit. The import runs under
+# a limit too, with one retry (common.sh's run_import). The game's physics is
+# the Box3D addon: when it cannot load, the run stops before the tests, saying
+# how to install it, since a match's world does not tick without it.
 set -uo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -23,6 +29,7 @@ if [[ -z "$GODOT" ]]; then
 	echo "No Godot binary found. Run this with GODOT=/path/to/godot." >&2
 	exit 1
 fi
+LIMIT="${CSGODOT_TEST_TIMEOUT:-180}"
 
 # The import pass registers the class_name globals. Without it the test script
 # cannot see MovementSolver and friends, and fails to parse.
@@ -31,7 +38,21 @@ if [[ -d "$PROJECT_DIR/assets" ]]; then
 	# here as anywhere else.
 	import_assets "$GODOT" "$PROJECT_DIR"
 else
+	# A fresh clone's first import can also fail on its way out the first
+	# time it picks up a GDExtension (Box3D); run_import retries it once.
 	if ! run_import "$GODOT" "$PROJECT_DIR"; then
+		exit 1
+	fi
+fi
+
+if grep -q '^physics/backend="box3d"' "$PROJECT_DIR/project.godot"; then
+	box3d_log="$(mktemp)"
+	with_timeout 120 "$GODOT" --headless --path "$PROJECT_DIR" --script res://scripts/check_box3d.gd >"$box3d_log" 2>&1
+	box3d_status=$?
+	grep -av '^Godot Engine' "$box3d_log" | grep -av '^[[:space:]]*$'
+	rm -f "$box3d_log"
+	if [[ $box3d_status -ne 0 ]]; then
+		echo "The game's physics, Box3D, did not load, so no test can run a match. See above." >&2
 		exit 1
 	fi
 fi
@@ -62,16 +83,16 @@ total=0
 failed_files=0
 for name in "${files[@]}"; do
 	echo "=== tests/$name"
-	with_timeout "${CSGODOT_TEST_TIMEOUT:-180}" \
-		"$GODOT" --headless --path "$PROJECT_DIR" --script "tests/$name" 2>&1 | tee "$log"
+	with_timeout "$LIMIT" "$GODOT" --headless --path "$PROJECT_DIR" --script "tests/$name" 2>&1 | tee "$log"
 	status=${PIPESTATUS[0]}
 	result="$(grep -a '^TESTS ' "$log" | tail -n 1)"
 	read -r _ suite checks failures rest <<<"$result"
+	known="$(grep -ac '^KNOWN OPEN (' "$log")"
 	if [[ $status -eq 124 || $status -eq 137 ]] && [[ -z "$result" ]]; then
-		summary+=("FAILED   $name timed out after ${CSGODOT_TEST_TIMEOUT:-180}s without reporting")
+		summary+=("FAILED   $name timed out after ${LIMIT}s without reporting")
 		failed_files=$((failed_files + 1))
 	elif [[ $status -eq 124 || $status -eq 137 ]]; then
-		summary+=("FAILED   $suite hung on exit after reporting $failures of $checks checks failed (killed after ${CSGODOT_TEST_TIMEOUT:-180}s)")
+		summary+=("FAILED   $suite hung on exit after reporting $failures of $checks checks failed (killed after ${LIMIT}s)")
 		failed_files=$((failed_files + 1))
 		[[ "$checks" =~ ^[0-9]+$ ]] && total=$((total + checks))
 	elif [[ -z "$result" ]]; then
@@ -84,7 +105,7 @@ for name in "${files[@]}"; do
 		failed_files=$((failed_files + 1))
 		total=$((total + checks))
 	else
-		summary+=("ok       $suite: $checks checks")
+		summary+=("ok       $suite: $checks checks$([[ $known -gt 0 ]] && echo ", $known known open")")
 		total=$((total + checks))
 	fi
 done

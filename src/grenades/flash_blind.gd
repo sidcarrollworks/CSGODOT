@@ -30,7 +30,7 @@ static func from(
 	at_usec: int, exclude: Array[RID] = []
 ) -> FlashBlind:
 	var query := PhysicsRayQueryParameters3D.create(flash, eyes, Hitscan.WORLD_LAYER, exclude)
-	if not space.intersect_ray(query).is_empty():
+	if not PhysicsQueries.intersect_ray(space, query).is_empty():
 		return null
 	var strength := facing_share(flash, eyes, forward) * distance_share(flash.distance_to(eyes))
 	if strength <= 0.0:
