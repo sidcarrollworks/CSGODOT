@@ -70,6 +70,7 @@ change.
 | MOUSE2 | nothing yet (in the input map, not in `PlayerInput.BUTTONS`) | player | `+attack2` | stays; sends `ATTACK2` (contract section 5). *Done: the inventory PR* |
 | 1, 2 | slot 1, slot 2 | player | `slot1`, `slot2` | stays |
 | MWHEELUP | jump | player | `invprev` | stays: Sid's choice |
+| MWHEELDOWN | the next thing carried | player | `invnext` | stays: CS2's own (Sid, 2026-09-25; playtest issue 15). `UserCmd.weapon_cycle` counts the notches, `Inventory.select_next` steps |
 | V | noclip | player | `+radialradio2` | stays: Sid's choice, bound to the `noclip` command (a cheat command in CS2 too) |
 | ESCAPE | frees or captures the mouse; closes the buy menu | player, buy menu | `cancelselect` | stays until item 26's pause menu |
 | B | buy menu | range, dust2 | `buymenu` | stays |
@@ -109,7 +110,8 @@ new bomb went from 5 to `O`, its reset), and moves the never-die to `[`.
 The table takes those over as it takes the rest.
 
 Still to adopt from CS2's list as the systems arrive (3, Q `lastinv` and
-G `drop` came with the inventory): MWHEELDOWN `invnext`, 6 to 0 and X
+G `drop` came with the inventory, MWHEELDOWN `invnext` with playtest issue
+15): 6 to 0 and X
 (each grenade and the Zeus), F `+lookatweapon`, TAB (item 15's
 scoreboard), `,` `.` DEL F4 (buying's extras), `` ` `` (the console,
 `systemization.md` step 4).

@@ -246,7 +246,7 @@ issue done here and on the page in the same pull request.
 | 12 | Zigzag stripes on the kasbah towers (Godot's mesh LODs break the third UV set's lightmap) | *(done: `LightmapMaterials.drop_lods`)* No LODs, or LODs that keep that UV set, on those props | Look, profile | |
 | 13 | White eyes | CS2's eye shader on the character shader *(done, 2026-09-26: `CharacterEyes`, the eye path in `character.gdshader`)* | Extract the eye textures (`character-masks`), `run_tests.sh model`; the Phoenix face and the SAS lenses beside CS2 | R7 |
 | 14 | Recoil on the AK-47 and M4A1-S only | *(done 2026-09-26, PR #111)* The 15 more patterns already in `reference/spray_patterns/`, solved at load; a provisional kick for the rest | Spray the rest in CS2 (TODO L6); the R6 demo | 8 |
-| 15 | Mouse wheel down to the next weapon | CS2's `invnext` | Its order in CS2 | 12a, after 16 |
+| 15 | Mouse wheel down to the next weapon | **Done 2026-09-28:** CS2's `invnext`, and what you carry in the bottom right after each switch | Its order in CS2, and how long the list stays up | 12a, after 16 |
 | 16 | A quick switch cuts the draw short | **Done 2026-09-26:** the draw restarted on every switch, as CS2's graph does, and R during it reloads once it ends (Sid's CS2 check) | Play quick switches beside CS2 | 12 |
 | 17 | Running into a jump snaps to the air pose | *(Remote done, PR #114)* The take-off from CS2's graph | Extract the jump clips; regenerate the tables | 6 |
 | 18 | Nobody seems to get the bomb | *(done 2026-09-26, except "[E] Take Bomb", which waits on 3)* A check end to end, CS2's handing it to the human T (`bot_defer_to_human_items`), a cue for who carries it | Rounds as T and CT; CS2's warmup | 16, 15 |
@@ -592,7 +592,9 @@ list, split into Local and Remote items, with the measurements.
     testing")* One table maps a key to a command, as CS2's `bind "g"
     "drop"`, starting from CS2's own defaults
     (`game/csgo/cfg/user_keys_default.vcfg`) with Sid's two departures,
-    the wheel's jump and noclip on V. A `+` command is a held button in the
+    the wheel's jump and noclip on V (the wheel down is `invnext`, CS2's
+    own, since playtest issue 15: the table takes over its `invnext`
+    action as it takes the rest). A `+` command is a held button in the
     next `UserCmd`; any other goes to `game.command` or runs on the client,
     so keys never reach the simulation. The range's and the developer's
     actions become named commands (CS2's names where it has them: `god`,

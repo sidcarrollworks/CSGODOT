@@ -328,6 +328,35 @@ func select_slot(slot: ItemDef.Slot) -> bool:
 	return select(there[(at + 1) % there.size()].item.item_class)
 
 
+## The wheel down, CS2's invnext: the next thing carried after what is in
+## hand, in slot order (primary, pistol, knife, Zeus, each grenade, C4),
+## round from the last to the first. False with nothing else to take.
+## Built to Source's order; whether CS2 steps through every grenade and
+## wraps is Sid's check (reference/playtest-2026-09-25.md, issue 15).
+func select_next() -> bool:
+	return _select_by(1)
+
+
+## The other way, CS2's invprev (the wheel up, Sid's jump; bindable).
+func select_prev() -> bool:
+	return _select_by(-1)
+
+
+func _select_by(step: int) -> bool:
+	if _entries.size() < 2 and in_hand() != null:
+		return false
+	if _entries.is_empty():
+		return false
+	var at := -1
+	for i in _entries.size():
+		if _entries[i].item.item_class == _active:
+			at = i
+	if at < 0:
+		# Nothing in hand: the first thing, or the last going back.
+		return select(_entries[0 if step > 0 else _entries.size() - 1].item.item_class)
+	return select(_entries[posmod(at + step, _entries.size())].item.item_class)
+
+
 ## Q: back to what was in hand before. False if that is gone.
 func select_last() -> bool:
 	if _previous.is_empty():

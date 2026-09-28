@@ -34,6 +34,8 @@ const ACTIONS := {
 const MOUSE_ACTIONS := {
 	&"attack": MOUSE_BUTTON_LEFT,
 	&"attack2": MOUSE_BUTTON_RIGHT,
+	# CS2's MWHEELDOWN invnext: the next thing carried.
+	&"invnext": MOUSE_BUTTON_WHEEL_DOWN,
 }
 
 ## Extra bindings added to an action that already exists. Scroll-up jump is how
