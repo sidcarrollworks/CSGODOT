@@ -464,7 +464,9 @@ func shape_cast_prepared(query: PhysicsShapeQueryParameters3D) -> Dictionary:
 	var normal: Vector3 = result.get("normal", Vector3.ZERO)
 	var approach := absf(query.motion.dot(normal)) if normal.length_squared() > 0.5 else query.motion.length()
 	result["fraction"] = maxf(0.0, unsafe - maxf(query.margin, CAST_CLEARANCE) / maxf(approach, 0.000001))
-	_cast_cache = {query.get_instance_id(): {"result": result, "at": query.transform.origin + query.motion * unsafe}}
+	# The cache keeps its own copy: a caller that edits the hit it is handed
+	# must not change what get_rest_info reads next.
+	_cast_cache = {query.get_instance_id(): {"result": result.duplicate(), "at": query.transform.origin + query.motion * unsafe}}
 	return result
 
 

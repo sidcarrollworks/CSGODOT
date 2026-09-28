@@ -258,6 +258,20 @@ issue done here and on the page in the same pull request.
 | 24 | The sky dark slate grey (the skybox's clouds, CS2's additive `csgo_unlitgeneric`, imported as an opaque, lit sheet) | **Done 2026-09-28:** `UnlitMaterials`, unlit and added; its textures listed by `export_alpha.gd` | **Done:** `extract_assets.sh layers`; long doors' sky 0.39 of CS2's to 0.86. The rest of the gap, the sky's own brightness and haze, needs research | 10, 23 |
 | 25 | Red window frames, doors and awnings too vivid (the export's tint over the whole texture, not only the tint mask's paint) | *(done 2026-09-26: `prop_tint`, `LightmapMaterials.carry_features`)* The tint moved off the colour and put back through `g_tTintMask`; the `layers` step fetches the masks | **Done 2026-09-28:** `layers` fetched 55 masks; long doors' shutters and door from 0.36 to 0.50 saturation to 0.22 to 0.34 (CS2's 0.17 to 0.31), the awning unchanged | 7, R7 |
 
+**Box3D is the game's physics (2026-09-28, Sid).** Sid chose to take the
+trial below forward. CI and the cloud threads build its Linux library from the
+pinned release's source (`scripts/install_box3d.sh`), since the release's
+needs glibc 2.43 and Ubuntu 24.04 has 2.39, and the AWP's four settling checks
+are known open (`_check_known_open`: reported every run, not failing it).
+Every query goes through `PhysicsQueries` (`reference/godot/physics.md`); E's
+sight test (#126), written straight on Godot's space, was ported with #125's
+merge and is checked on a Box3D world (`tests/run_box3d_pickup_checks.gd`).
+Left: the AWP's settling; ragdoll visual acceptance; movement at real map
+edges; FootPlant on flat floors under Box3D's rest clearance (playtest issue
+5); the 6 ms frame target; tick-owned hitbox poses for multiplayer; and
+`scripts/profile_dust2.gd` at 5 and 10 a side on both backends, for
+`reference/performance.md`.
+
 **Box3D physics trial (2026-09-26, Sid).** The branch
 `codex/box3d-dropped-guns` started with dropped-gun jitter and now follows
 Sid's request to convert all game physics. The shared native world owns
@@ -316,9 +330,9 @@ a slight increase. Both reaction and strength are experimental; the
 legacy comparison has no bullet push
 and requires the native world for converted ragdolls. Setup, dated test
 results and the original drop-only benchmarks are in
-[box3d-trial.md](box3d-trial.md). Human acceptance, the original four AWP
-settling failures and the quality decision remain open; the old timings
-do not measure the full conversion.
+[box3d-trial.md](box3d-trial.md). Human acceptance and the quality decision
+came with Sid's choice on 2026-09-28; the four AWP settling checks are known
+open; the old timings do not measure the full conversion.
 
 ### Phase 1: make being shot feel like CS2
 
