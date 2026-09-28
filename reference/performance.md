@@ -492,6 +492,10 @@ nothing):
 
     godot --headless --path . --script scripts/profile_hull_traces.gd -- 5 60
 
+And a walking bot's tick, function by function:
+
+    godot --headless --path . --script scripts/profile_player_tick.gd -- 5 60
+
 Five bots walk dust2's site routes for a minute of game. A figure on a page
 is not a baseline for any of these: a tick's mean moved from 4.45 ms to
 3.68 on the same code within an afternoon (2026-09-28). Run the other build

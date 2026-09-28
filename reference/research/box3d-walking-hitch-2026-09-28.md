@@ -163,39 +163,92 @@ server has nothing in it: Box3D's step is inside `GameWorld.end_tick`.
 - The whole suite with the extracted assets: 4,301 checks in 56 files, all
   passed, the AWP's four settling checks known open as before.
 
+## A walking bot's tick, function by function
+
+`scripts/profile_player_tick.gd -- 5 60`, after the change: five bots walk
+the site routes holding fire, 88% of their ticks at a run, a bot script
+putting a clock round each function of the tick. Microseconds a bot a tick;
+a function's own time is without the functions it called, and without the
+clocks (0.5 us a pair).
+
+| | Calls | With what it calls | Its own |
+|---|---:|---:|---:|
+| The bot thinks (`command_for`), holding fire | 1 | 31 | 10 |
+| Its way (`_way_on`) | 1 | 21 | 21 |
+| `run_command`: its own is the body's animation parameters | 1 | 212 | 23 |
+| `_run`, the weapon, the hits, held still | 1 | 189 | 15 |
+| `simulate`: its own is the scope, the others synchronized, the pose published | 1 | 172 | 24 |
+| `_simulate_step`, `_walk_move`, `_air_move`, the duck, the air | | | 12 |
+| `_step_move` and its `_try_player_move` | 0.84 | 53 | 5 |
+| `_stay_on_ground` | 0.84 | 44 | 5 |
+| `_categorize_position` | 1.03 | 30 | 7 |
+| `_trace`, 4.5 a tick: the script round the cast | 4.51 | 112 | 43 |
+| `_cast_hull`, 5.0 a tick: the bridge's wrapper and the native cast | 5.00 | 66 | 66 |
+
+243 us a walking bot, so 2.4 ms for ten. Nearly half of it is traces, and
+of a trace's 25 us the native cast is 10, the bridge's wrapper 3 and the
+script round it 10. Staying on the ground and the ground check that
+follows it are 74 us between them, three casts to find the floor the hull
+is standing on.
+
+The frame's own work, headless, ten players in freeze time
+(`scripts/profile_dust2.gd -- 5 3 round --physics box3d
+--skip-single-operations`): 1.35 to 1.43 ms a frame, of which the skeletons
+posed and the hitboxes moved to them 0.51, the bodies' own step 0.37 to
+0.40, the HUD 0.18, the view's two animation trees 0.11. The tick there,
+everyone standing, 1.62 ms: a standing bot's `run_command` is 107 us.
+
 ## What is left of the 6 ms
 
-The goal is every frame under 6 ms at 4K with nine bots. A frame that runs
-a tick is the tick and the frame's own work on one thread; on 26 September
-those frames' 99th percentile was 10.3 to 10.5 ms with a tick of 3.2 ms, and
-the frames that run no tick 5.6 ms, with the GPU at 4.4 ms. So the tick has
-to come to about 1.5 ms, or leave the thread that draws, and neither is a
-matter of tuning. Drawn frames were not measured for this page
+The goal is every frame under 6 ms at 4K with nine bots. Sid's CS2 on the
+same machine reads 5.5 ms at most alone on dust2 and 7 to 8 with nine bots,
+with spikes to 13 when shooting
+([player-update-performance-2026-09-26.md](player-update-performance-2026-09-26.md)),
+so the goal is past CS2's own worst with bots. Ours, drawn, on 26 September:
+5.4 ms mean, 9.5 at the 99th, 13.6 to 15.5 at worst, with a tick of 2.9 ms
+and the GPU at 4.4. A frame that runs a tick is the tick and the frame's
+own work on one thread: those frames' 99th was 10.3 to 10.5 ms, the others'
+5.6. Drawn frames were not measured for this page
 (`scripts/profile_combat.gd` does, on Sid's machine).
 
-What the tick is now, and what each part could give:
+What keeps Source's rules and results as they are, in the order of what it
+is worth with ten players:
 
-| Part | Now | What could be done | Worth |
-|---|---:|---|---|
-| Commands run, in GDScript | 1.14 ms | The movement solver (`PlayerBody`, `MovementSolver`) in C++, a GDExtension beside Box3D's, calling its casts directly | most of 1.1 ms, and most of the two rows below: no wrapper, no dictionaries |
-| Native casts | 0.50 ms | Fewer traces: the stay-on-ground pair only when the move met something or left the ground, as the step already is | 0.1 to 0.2 ms |
-| The sweep's wrapper | 0.26 ms | Hand the movement a result without a dictionary's copy and three `get_meta` | 0.1 ms |
-| Bots thinking | 0.45 ms | Sight every fourth tick, staggered by bot (performance.md, "Next", 7) | 0.3 ms |
-| Rays | 0.23 ms | The scope round a player's whole command, so sight rays start in the open too | 0.1 ms |
-| Animation parameters | 0.21 ms | Per frame, for the bodies drawn, until a server needs them per tick | 0.2 ms |
-| Proxies synchronized | 0.21 ms | Nothing asked inside the scope at all | 0.15 ms |
+| What | Where the time is now | Worth |
+|---|---|---|
+| The floor found once a walking tick: stay on ground sweeps down from where the hull is (its sweep up is for a hull sunk in the floor, which the clearance rules out), and the ground check takes its answer rather than sweeping again | 74 us a walking bot, three casts | 0.4 to 0.5 ms a tick |
+| The trace's script: the query's shape, margin, mask and exclusion set once a tick; nothing asked of the bridge inside a scope but the cast | 43 us a walking bot | 0.2 ms |
+| Bots' sight every fourth tick, staggered by bot (performance.md, "Next", 7), and their way cheaper | 0.45 ms in the seeded tick, 21 us a bot for its way | 0.3 ms |
+| Box3D not stepped while nothing in it is awake | 0.15 ms a tick, four steps | 0.15 ms |
+| The other hulls compared once a tick, not once a player | 24 us a bot in `simulate`'s own | 0.1 ms |
+| The sweep's wrapper without a dictionary's copy and three `get_meta` | 3 us a cast | 0.1 ms |
+| Hitboxes moved to their bones when a round asks, not every frame | 0.51 ms a frame with the skeletons | 0.2 to 0.3 ms a frame |
+| The HUD set only when what it shows changes | 0.18 ms a frame | 0.1 ms a frame |
 
-The small ones together are under a millisecond. The two that reach the
-goal are the movement in native code, which keeps everything on one thread
-and keeps Source's rules line for line, and the simulation in a process of
-its own, a listen server, which is where the game is going anyway
-(performance.md, "Going online") and takes the whole tick out of the frame.
-They are Sid's to choose between.
+About 1.2 ms of the tick and 0.4 ms of every frame. With them a tick of ten
+walking is about 2 ms, which shortens the frames that run one to perhaps
+8.5 ms at the 99th: CS2's with bots, not 6.
+
+What reaches 6, each a decision:
+
+- **Godot's renderer on a thread of its own**
+  (`rendering/driver/threads/thread_model`): a setting, so the first to
+  try, measured drawn on Sid's machine. It takes the renderer's share of
+  the frame off the thread that runs the tick. What it gives here is not
+  known.
+- **The movement in native code**: `PlayerBody` and `MovementSolver` as a
+  GDExtension beside Box3D's, calling its casts directly. It takes most of
+  a walking bot's 243 us (all but the native casts' 50), keeps everything
+  on one thread and Source's rules line for line, and pays on a server too.
+- **The simulation in a process of its own**, a listen server, which is
+  where the game is going (performance.md, "Going online"): the whole tick
+  out of the frame. The largest of the three.
 
 ## Reproduce
 
 ```text
 godot --headless --path . --script scripts/profile_hull_traces.gd -- 5 60
+godot --headless --path . --script scripts/profile_player_tick.gd -- 5 60
 godot --headless --path . --script scripts/profile_box3d_match.gd -- --physics box3d
 godot --headless --path . --script scripts/profile_box3d_costs.gd -- --physics box3d
 godot --headless --path . --script tests/run_dust2_bot_checks.gd
