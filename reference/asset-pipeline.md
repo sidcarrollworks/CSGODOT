@@ -154,6 +154,16 @@ What dust2 turned out to be:
   times its scale and sRGB tint, through the mask, over the colour by
   `g_flSelfIllumAlbedoFactor`, at the lightmap's energy (0.4) to sit in the
   same units as the rest of the light.
+- **A tinted prop's tint belongs on its paint only.** Source 2 Viewer's
+  export writes the draw call's tint into the glTF's base colour, so the
+  import multiplies the whole texture by it; CS2 tints only where the
+  material's tint mask is white (`F_TINT_MASK`, `g_tTintMask`: 296 of
+  dust2's materials, 49 masks, the red window frames, doors and awnings).
+  `scripts/extract_assets.sh layers` fetches the masks, and where one is
+  there `LightmapMaterials.carry_features` moves the tint off the colour and
+  `prop_features.gdshaderinc` puts it back as `albedo * mix(1, tint, mask)`,
+  after Source 2 Viewer's `complex.frag.slang` (playtest of 2026-09-25,
+  issue 25).
 - **The player models' cloth has no slot either.** CS2's character shader
   (`csgo_character`) shades a material with `F_CLOTH_SHADING` as cloth
   wherever the blue channel of its metalness texture (`g_tMetalness`) says,

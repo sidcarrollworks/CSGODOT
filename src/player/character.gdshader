@@ -211,7 +211,7 @@ void vertex() {
 void fragment() {
 	vec4 albedo = texture(albedo_texture, UV) * albedo_color;
 	vec3 orm = texture(orm_texture, UV).rgb;
-	vec3 base = prop_decal(albedo.rgb, UV, UV2);
+	vec3 base = prop_decal(prop_tint(albedo.rgb, UV, UV2), UV, UV2);
 	EMISSION = prop_self_illum(base, UV, UV2);
 	vec3 geometric_normal = normalize(NORMAL);
 	vec3 across = dFdx(geometric_normal);

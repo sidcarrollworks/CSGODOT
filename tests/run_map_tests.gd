@@ -1742,6 +1742,73 @@ func _test_prop_features() -> void:
 		"without the textures extracted neither is set, and the shader's defaults leave the surface as it was"
 	)
 
+	# A window frame's paint (issue 25 of the 2026-09-25 playtest): the
+	# export baked the draw call's red into the whole colour; with the tint
+	# mask there, the red goes on only where the mask is white.
+	var mask_image := Image.create(8, 8, false, Image.FORMAT_RGB8)
+	mask_image.fill(Color.BLACK)
+	mask_image.fill_rect(Rect2i(0, 0, 4, 8), Color.WHITE)
+	mask_image.save_png(dir.path_join("materials/props/frame_tintmask.png"))
+	var red := Color(0.6, 0.04, 0.03, 0.75)
+	var frame := StandardMaterial3D.new()
+	frame.albedo_color = red
+	frame.set_meta("extras", {"vmat": {
+		"ShaderName": "csgo_vertexlitgeneric.vfx",
+		"IntParams": {"F_TINT_MASK": 1.0},
+		"TextureParams": {"g_tTintMask": "materials/props/frame_tintmask.vtex"},
+	}})
+	for frame_lit: ShaderMaterial in [
+		LightmapMaterials.build(frame, lightmap, lightmap, false, dir), ProbeMaterials.build(frame, dir)
+	]:
+		_check(
+			(frame_lit.get_shader_parameter("tint_color") as Color).is_equal_approx(Color(red.r, red.g, red.b, 1.0))
+				and (frame_lit.get_shader_parameter("albedo_color") as Color).is_equal_approx(Color(1.0, 1.0, 1.0, red.a))
+				and frame_lit.get_shader_parameter("tint_mask") is Texture2D
+				and frame_lit.get_shader_parameter("tint_on_uv2") == false,
+			"a tint-masked material's tint moves off its colour, which keeps its alpha, onto the mask (%s)" % frame_lit.shader.resource_path
+		)
+	var untinted := StandardMaterial3D.new()
+	untinted.albedo_color = red
+	untinted.set_meta("extras", frame.get_meta("extras"))
+	var unmasked := LightmapMaterials.build(untinted, lightmap, lightmap, false, "user://export_fixture/nowhere")
+	_check(
+		unmasked.get_shader_parameter("tint_color") == null
+			and (unmasked.get_shader_parameter("albedo_color") as Color).is_equal_approx(red),
+		"without the mask extracted the tint stays over the whole colour, as exported"
+	)
+	var uv2_cases := [
+		[{}, false, "on the first UV set by default"],
+		[{"F_FORCE_UV2": 1.0}, true, "on the model's own second set under F_FORCE_UV2"],
+		[{"F_SECONDARY_UV": 1.0}, true, "on the second set under F_SECONDARY_UV"],
+		[{"F_SECONDARY_UV": 1.0, "g_bUseSecondaryUvForTintMask": 0.0}, false, "on the first under F_SECONDARY_UV when the material says so"],
+		[{"F_FORCE_UV2": 1.0, "g_bUseSecondaryUvForTintMask": 0.0}, true, "on the second under F_FORCE_UV2 whatever the material says"],
+	]
+	for case: Array in uv2_cases:
+		_check_equal(LightmapMaterials.tint_on_uv2({"IntParams": case[0]}), case[1], "the tint mask is read %s" % case[2])
+	# CS2's numbers: 1 - mask * (1 - tint).
+	var grey := Color(0.5, 0.5, 0.5, 1.0)
+	var paint := LightmapMaterials.masked_tint(grey, red, 1.0)
+	var bare_wood := LightmapMaterials.masked_tint(grey, red, 0.0)
+	var worn := LightmapMaterials.masked_tint(grey, red, 0.5)
+	_check(
+		paint.is_equal_approx(Color(0.3, 0.02, 0.015, 1.0)) and bare_wood.is_equal_approx(grey)
+			and worn.is_equal_approx(Color(0.4, 0.26, 0.2575, 1.0)),
+		"the tint is all there under a white mask, none under black, and halfway under grey (%s, %s, %s)" % [paint, bare_wood, worn]
+	)
+	var features := (load("res://src/map/prop_features.gdshaderinc") as ShaderInclude).code
+	_check(
+		features.contains("albedo * mix(vec3(1.0), tint_color.rgb, mask)"),
+		"the shader tints as masked_tint does"
+	)
+	for path in [
+		"res://src/map/lightmapped.gdshader", "res://src/map/lightmapped_overlay.gdshader",
+		"res://src/map/probe_lit.gdshader", "res://src/player/character.gdshader",
+	]:
+		_check(
+			(load(path) as Shader).code.contains("prop_decal(prop_tint(albedo.rgb, UV, UV2), UV, UV2)"),
+			"%s tints under the mask before the decal, as CS2 does" % path.get_file()
+		)
+
 
 ## Drawn behind everything: every material becomes one that squeezes its
 ## depth to the far plane, carrying what it had, and the importer does it to
