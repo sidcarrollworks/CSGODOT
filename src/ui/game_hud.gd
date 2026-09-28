@@ -10,8 +10,6 @@ extends CanvasLayer
 ## who is alive and a card for each player at the top in the middle
 ## (TeamCounter), what you carry in the bottom right for a moment after
 ## each switch (WeaponSelection), and a bar over the cluster saying what part of the match
-## it is (HudAlert: warmup, the round's announcement, who won). A red arc
-## (TeamCounter), and a bar over the cluster saying what part of the match
 ## it is (HudAlert: warmup, the round's announcement, half time); from a
 ## round's end to the next round, CS2's win panel under the team counter,
 ## ROUND WON or ROUND LOST with the round's fun fact and its MVP (WinPanel,
