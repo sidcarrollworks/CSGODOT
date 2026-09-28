@@ -8,7 +8,8 @@ extends CanvasLayer
 ## (HealthAmmoCenter); your money in the bottom left with the buy zone's
 ## cart while you may buy (MoneyPanel); in a match, the clock, the scores,
 ## who is alive and a card for each player at the top in the middle
-## (TeamCounter), and a bar over the cluster saying what part of the match
+## (TeamCounter), what you carry in the bottom right for a moment after
+## each switch (WeaponSelection), and a bar over the cluster saying what part of the match
 ## it is (HudAlert: warmup, the round's announcement, who won). A red arc
 ## round the crosshair on the side each hit came from; when dead, a bar
 ## across the middle counting down to the respawn or saying whom you are
@@ -45,6 +46,8 @@ var scope: ScopeOverlay
 var health_ammo: HealthAmmoCenter
 var money: MoneyPanel
 var team_counter: TeamCounter
+## What you carry, in the bottom right, for a moment after each switch.
+var weapon_selection: WeaponSelection
 ## What part of the match it is, over the health and ammo.
 var alert: HudAlert
 ## Why B would not open the menu, for a moment, under the alert.
@@ -95,6 +98,8 @@ func _ready() -> void:
 			_agent_team = player.team
 	health_ammo = HealthAmmoCenter.new()
 	add_child(health_ammo)
+	weapon_selection = WeaponSelection.new()
+	add_child(weapon_selection)
 	money = MoneyPanel.new()
 	money.visible = economy != null
 	add_child(money)
@@ -137,6 +142,10 @@ func _process(delta: float) -> void:
 		buy_menu.build_agent(player.team)
 		_agent_team = player.team
 	health_ammo.visible = player.alive and not buying
+	if player.alive and not buying:
+		weapon_selection.show_inventory(team, WeaponSelection.rows_for(player.inventory), player.in_hand_class())
+	elif weapon_selection.is_showing():
+		weapon_selection.hide_now()
 	alert.visible = not buying
 	hint.visible = not buying
 	dead_bar.visible = not buying

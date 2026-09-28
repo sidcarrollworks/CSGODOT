@@ -243,7 +243,11 @@ so a switch builds nothing.
   own physics hull is extracted beside each model, `*_physics.gltf`), and E
   to swap with the one in hand.
 - Scroll wheel: CS2 cycles weapons with it, and here scroll up jumps (Sid's
-  choice). Keep scroll for jumping unless Sid says otherwise.
+  choice). *Done 2026-09-28 (playtest issue 15, Sid asked):* the wheel
+  down is CS2's `invnext`, the next thing carried in slot order, round
+  from the C4 to the primary; the wheel up stays the jump. What you carry
+  shows in the bottom right after each switch (`WeaponSelection`,
+  CS2's CSGOHudWeaponSelection).
 - **Measure** in CS2: whether a release throws before the pin-pull clip
   (0.97 s) has finished; how long the hand is busy after a throw (here the
   throw clip's length, 0.77 s overhand and 0.50 s underhand); whether a gun

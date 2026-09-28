@@ -65,6 +65,7 @@ func _run() -> void:
 	_test_grenade_limits()
 	await _test_armour_and_the_kit()
 	_test_switching_keeps_the_gun()
+	_test_the_wheel_steps_through_what_is_carried()
 	_test_dropped_on_death()
 	_test_saving_an_inventory()
 
@@ -649,6 +650,34 @@ func _test_switching_keeps_the_gun() -> void:
 	inv.select("weapon_m4a1_silencer")
 	inv.remove("weapon_m4a1_silencer")
 	_check_equal(inv.in_hand_class(), "weapon_knife", "dropping what is in hand goes back to what was before it")
+
+
+## The wheel down, CS2's invnext (reference/playtest-2026-09-25.md, issue
+## 15): the next thing carried in slot order, each grenade kind its own
+## step, round from the C4 to the primary; back the other way for invprev.
+## Source's order, to correct after Sid's check in CS2.
+func _test_the_wheel_steps_through_what_is_carried() -> void:
+	var inv := Inventory.new()
+	inv.give_starting_items("T")
+	for item_class in ["weapon_ak47", "weapon_taser", "weapon_flashbang", "weapon_flashbang", "weapon_smokegrenade", "weapon_c4"]:
+		inv.add(item_class)
+	inv.select("weapon_ak47")
+	var order := PackedStringArray([inv.in_hand_class()])
+	for i in 7:
+		inv.select_next()
+		order.append(inv.in_hand_class())
+	var carried := PackedStringArray(inv.entries().map(func(e: Inventory.Entry) -> String: return e.item_class()))
+	_check_equal(order, PackedStringArray([
+		"weapon_ak47", "weapon_glock", "weapon_knife_t" if carried.has("weapon_knife_t") else "weapon_knife", "weapon_taser",
+		"weapon_flashbang", "weapon_smokegrenade", "weapon_c4", "weapon_ak47",
+	]), "the wheel down steps rifle, pistol, knife, Zeus, the flashbangs once, the smoke, the C4, and round to the rifle (carried %s)" % [carried])
+	_check(inv.select_prev() and inv.in_hand_class() == "weapon_c4" and inv.select_prev() and inv.in_hand_class() == "weapon_smokegrenade",
+		"back the other way: from the rifle round to the C4, then the smoke")
+	var alone := Inventory.new()
+	alone.add("weapon_knife")
+	alone.select("weapon_knife")
+	_check(not alone.select_next() and not alone.select_prev() and alone.in_hand_class() == "weapon_knife",
+		"with only the knife there is nothing to step to")
 
 
 func _test_dropped_on_death() -> void:

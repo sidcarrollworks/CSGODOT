@@ -25,6 +25,7 @@ func _initialize() -> void:
 	await _test_the_bomb_carrier()
 	await _test_the_alert_lines()
 	await _test_the_buy_menu_agent()
+	await _test_the_weapon_selection()
 	_finish("HUD")
 
 
@@ -411,3 +412,56 @@ func _test_the_buy_menu_agent() -> void:
 		"over the armour the agent holds nothing, in the armour's pose")
 	agent.queue_free()
 	await process_frame
+
+
+## What you carry, in the bottom right (reference/playtest-2026-09-25.md,
+## issue 15): a row for each slot carried in, the primary's first; it comes
+## up when what is in hand changes, not for the first look, slides in, holds
+## and fades, and stops working once gone; icons in the team's colour turned
+## as CS2's css turns them, brighter in hand, the C4 in its own.
+func _test_the_weapon_selection() -> void:
+	var inventory := Inventory.new()
+	inventory.give_starting_items("T")
+	for item_class in ["weapon_ak47", "weapon_flashbang", "weapon_flashbang", "weapon_smokegrenade", "weapon_c4"]:
+		inventory.add(item_class)
+	inventory.select("weapon_ak47")
+	var rows := WeaponSelection.rows_for(inventory)
+	var keys := rows.map(func(row: Array) -> int: return row[0])
+	_check(keys == [1, 2, 3, 4, 5] and rows[3][1] == [["weapon_flashbang", 2], ["weapon_smokegrenade", 1]]
+		and rows[4][1] == [["weapon_c4", 1]],
+		"a row a slot, 1 to 5, the grenades in one row with the two flashbangs counted (%s)" % [rows])
+
+	var list := WeaponSelection.new()
+	root.add_child(list)
+	await process_frame
+	var box := list.get_global_rect()
+	_check(is_equal_approx(box.end.x, 1920.0 - WeaponSelection.ROW_RIGHT) and is_equal_approx(box.end.y, 1080.0 - WeaponSelection.ALWAYS_ON)
+		and is_equal_approx(box.size.x, WeaponSelection.ROW_WIDTH),
+		"it stands in the bottom right, 300 wide, 6 in from the edge, on the always-on row's 84 (%s)" % box)
+	var added := list.material as CanvasItemMaterial
+	_check(added != null and added.blend_mode == CanvasItemMaterial.BLEND_MODE_ADD and list.mouse_filter == Control.MOUSE_FILTER_IGNORE,
+		"it adds its light, as the items' `additive` class does, and never takes the mouse")
+	list.show_inventory("T", rows, "weapon_ak47")
+	_check(not list.is_showing() and not list.is_processing(), "the first look at what you carry brings nothing up")
+	list.show_inventory("T", rows, "weapon_ak47")
+	_check(not list.is_showing(), "nor does the same again")
+	list.show_inventory("T", rows, "weapon_glock")
+	_check(list.is_showing() and list.is_processing() and is_zero_approx(list._slide), "a switch brings it up, sliding in")
+	list._process(WeaponSelection.SLIDE_SECONDS)
+	_check(is_equal_approx(list._slide, 1.0) and is_equal_approx(list.opacity, 1.0), "in after 0.2 s")
+	list._process(WeaponSelection.HOLD_SECONDS - WeaponSelection.SLIDE_SECONDS + 0.01)
+	list._process(WeaponSelection.FADE_SECONDS * 0.5)
+	_check(list.opacity > 0.0 and list.opacity < 1.0, "held, then fading (%.2f)" % list.opacity)
+	list._process(WeaponSelection.FADE_SECONDS)
+	_check(not list.is_showing() and not list.is_processing(), "gone in 0.1 s, with no _process left running")
+	list.show_inventory("T", rows, "weapon_ak47")
+	list.hide_now()
+	_check(not list.is_showing(), "dying or opening the buy menu puts it away at once")
+	list.free()
+
+	var turned := Color.from_hsv(HudStyle.T_COLOUR.h, HudStyle.T_COLOUR.s * 0.96, HudStyle.T_COLOUR.v * 0.9)
+	var idle := WeaponSelection.wash("T", "weapon_glock", false)
+	var held := WeaponSelection.wash("T", "weapon_glock", true)
+	_check(idle.is_equal_approx(Color(turned, 0.8)) and is_equal_approx(held.a, 1.0) and held.b > idle.b
+		and not WeaponSelection.wash("T", "weapon_c4", false).is_equal_approx(idle),
+		"icons in the team's colour turned by 0, 0.96, 0.9 at 0.8 light, the one in hand brighter at full, the C4 in its own (%s, %s)" % [idle, held])

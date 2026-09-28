@@ -601,6 +601,19 @@ func _run(cmd: UserCmd, dt: float) -> void:
 		inventory.select_last()
 	elif cmd.weapon_select > 0:
 		inventory.select_slot((cmd.weapon_select - 1) as ItemDef.Slot)
+	# The wheel (invnext): a step through what is carried for each notch,
+	# and only where it stops is drawn, with its deploy time. More notches
+	# than things carried go round again, no further than once.
+	if cmd.weapon_cycle != 0:
+		var notches := signi(cmd.weapon_cycle) * mini(absi(cmd.weapon_cycle), inventory.entries().size())
+		_changing_inventory = true
+		for i in absi(notches):
+			if notches > 0:
+				inventory.select_next()
+			else:
+				inventory.select_prev()
+		_changing_inventory = false
+		_follow_hand()
 
 	yaw_degrees = cmd.yaw_degrees
 	pitch_degrees = cmd.pitch_degrees
