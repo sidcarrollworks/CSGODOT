@@ -18,7 +18,7 @@ scripts/install_box3d.sh
 The release's Linux library needs glibc 2.43, so on an older Linux the script
 lays over it the same tag rebuilt against glibc 2.35, from this repo's
 release, or builds it from the release's pinned source (a few minutes, once)
-where that cannot be fetched. A shared native world handles collision
+where that cannot be fetched or glibc is older than 2.34. A shared native world handles collision
 queries, player hulls and hitboxes, dropped items and ragdolls. The Source
 movement and grenade-flight rules remain game code using Box3D collision;
 `-- --physics legacy` runs Godot's own physics for comparison, without
