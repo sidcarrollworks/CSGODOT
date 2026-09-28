@@ -16,7 +16,8 @@ var sites: Array[BombSite] = []
 ## Whether a plant may be made: between round_freeze_end and round_end in a
 ## match. With no match (the range) always.
 var live: bool = true
-## What each player asks of the bomb this tick, as {plant, use}:
+## What each player asks of the bomb this tick, as {plant, use,
+## use_pressed}:
 ## func(userid: int, player: Node3D, inventory: Inventory) -> Dictionary.
 ## Reads the player's command by default. The range reads its own keys, and
 ## may add "team" to plant as a T and defuse as a CT with one player.
@@ -48,6 +49,9 @@ func attach(game: GameSystems) -> void:
 	# Whether a player is planting or defusing, for whatever runs the
 	# player to hold them still (the contract's holds_still query).
 	game.provide(&"holds_still", holds_still)
+	# Whether E is the bomb's for a player now, which ItemDrops asks before
+	# it takes anything off the ground (the contract's use_claimed query).
+	game.provide(&"use_claimed", use_claimed)
 
 
 ## Hands the bomb to a player now: a round's start does it to a terrorist
@@ -77,6 +81,7 @@ func tick(t: SimTick) -> void:
 		var asked: Dictionary = input_of.call(userid, player, inventory)
 		actor.plant_held = may_plant and bool(asked.get("plant", false))
 		actor.use_held = bool(asked.get("use", false))
+		actor.use_pressed = bool(asked.get("use_pressed", false))
 		actor.drop = _drop_asked.has(userid)
 		actor.has_kit = inventory != null and inventory.has_defuser
 		if asked.has("team"):
@@ -90,6 +95,16 @@ func tick(t: SimTick) -> void:
 	_send_events()
 	for record in bomb.take_blast():
 		_deal(record, t)
+
+
+## Whether E is the bomb's for a player now: near the planted bomb for a
+## CT, near the dropped one for a T (C4.claims_use). From where they stand
+## after their command this tick.
+func use_claimed(userid: int) -> bool:
+	var player := _game.roster.player(userid) as PlayerSim if _game != null else null
+	if player == null:
+		return false
+	return bomb.claims_use(C4.Actor.of_player(player, userid))
 
 
 ## Whether a player is planting or defusing, which holds them still.
@@ -249,4 +264,5 @@ func _input_from_command(_userid: int, player: Node3D, inventory: Inventory) -> 
 	return {
 		"plant": in_hand and cmd.held(UserCmd.ATTACK),
 		"use": cmd.held(UserCmd.USE),
+		"use_pressed": cmd.first_press(UserCmd.USE) != null,
 	}

@@ -234,7 +234,7 @@ issue done here and on the page in the same pull request.
 |---|---|---|---|---|
 | 1 | A mode chosen at start: Competitive, or Practice with no bots | **Done** (2026-09-26, 24c): a picker, `--mode`, Practice as Competitive with no bots and a warmup that does not end | Try it in fullscreen | 24a, 24c, 26 |
 | 2 | Dropped guns sink into slopes, the magazine goes through the floor, they turn about the wrong point | **Done (#117):** a body on CS2's own hull (one convex hull a gun, mass 3 to 6, from the game's physics), swept against the floor; checks on a one-sided trimesh | `extract_assets.sh weapon-physics` and commit `physics.csv`; look on T spawn's ramp | 12 |
-| 3 | E picks up what you look at, swapping out what is in that slot | The use search (CS2's 80 units, a cone), the swap, one precedence with the bomb | See in CS2 what E takes and from how far | 12, after 2 |
+| 3 | E picks up what you look at, swapping out what is in that slot | **Done:** E takes the item looked at within CS2's 80 units, in a cone (a guess) and in sight; a gun swaps with the one in its slot, thrown down as a drop; no room sends `item_pickup_failed`; near the bomb E is the bomb's (`use_claimed`), and a T's E takes the dropped bomb | See in CS2 what E takes and from how far | 12, after 2 |
 | 4 | Ragdoll legs through the floor, joints bending too far | **Done** (#121, `reference/research/ragdoll-joints.md`): start clear of the floor and kept over it, CS2's own shapes (in the agents' `.vmdl`), joint limits from standing; checks on a one-sided trimesh | Dump CS2's joints; deaths on the ramp | Housekeeping |
 | 5 | Bots hover over T spawn's ramp in freeze time (the hull rests on the uphill edge; there is no foot IK) | *(Remote done, PR #131)* Research, then foot IK and a ground fit | CS2's feet on the ramp | After 17 |
 | 6 | Bots meet head-on and hop at each other forever | **Done** (PR #113): making way for teammates (`BotSteering`), stuck handling that never jumps at one, goals spread over a site | dust2's chokepoints and 24b's inferno spot; `scripts/run_tests.sh dust2` runs the new no-stall check | 24b, 23 |
@@ -565,8 +565,9 @@ list, split into Local and Remote items, with the measurements.
     thrower. Left for the item that brings it: the round's full HUD (15).
     Guessed, not from CS2: both sides wiped out on one tick goes to the Ts,
     and half time's 15 s replaces the 7 s pause rather than following it.
-12. **Inventory.** *(done 2026-09-23 but for E to swap and guns on the
-    ground as physics objects; Sid checks it on the range)* Slots, switching
+12. **Inventory.** *(done 2026-09-23; E to swap done with the playtest's
+    issue 3, guns on the ground as bodies with its issue 2; Sid checks it on
+    the range)* Slots, switching
     with draw times, dropping (G), picking up and swapping, drops on death.
     `Inventory` with CS2's carrying rules, slots, Q and cycling grenades,
     each gun its own `Weapon`; `DroppedItem` and `ItemDrops` for dropping,
@@ -582,10 +583,11 @@ list, split into Local and Remote items, with the measurements.
     the aim's pitch, from where the player stands and looks), at CS2's
     300 u/s where they look, turning as it flies,
     bouncing, and laid on its side where it stops; a death lets the gun go
-    from the hand, moving as the body was. Left: E to swap with the gun in
-    hand, and a gun on the ground as a rigid body that blasts and rounds
-    push, on its own physics hull (`reference/cs2-systems.md` section 4);
-    the playtest of 2026-09-25's issues 2 and 3 plan both.
+    from the hand, moving as the body was. E takes the item looked at and
+    swaps it with the one in its slot (the playtest of 2026-09-25's issue
+    3), and a gun on the ground is a body on its own physics hull (issue 2).
+    Left: blasts and rounds pushing it (`reference/cs2-systems.md` section
+    4).
 12a. **Binds: the same keys everywhere, the test range included.** *(Remote;
     Local wires section 5's keys through it and checks CS2's defaults; new
     2026-09-24, Sid: "Ideally the same keys are used everywhere even in

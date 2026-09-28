@@ -240,8 +240,9 @@ so a switch builds nothing.
 
 **Remote**
 - The weapon on the ground as a rigid body (blasts and rounds push it; its
-  own physics hull is extracted beside each model, `*_physics.gltf`), and E
-  to swap with the one in hand.
+  own physics hull is extracted beside each model, `*_physics.gltf`). E to
+  take the item looked at and swap it with the one in its slot is done
+  (issue 3 of `reference/playtest-2026-09-25.md`).
 - Scroll wheel: CS2 cycles weapons with it, and here scroll up jumps (Sid's
   choice). *Done 2026-09-28 (playtest issue 15, Sid asked):* the wheel
   down is CS2's `invnext`, the next thing carried in slot order, round
