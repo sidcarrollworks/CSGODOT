@@ -142,6 +142,9 @@ var holds_items := false
 var holding: String = ""
 ## Stepped by itself rather than by the engine (step_off_tick_frames).
 var stepped_by_hand := false
+## Plants the feet on the ground under them while it stands there and is
+## drawn (setup; playtest 2026-09-25 issue 5).
+var foot_plant: FootPlant
 var _on_screen: VisibleOnScreenNotifier3D
 var _unstepped := 0.0
 var _last_physics_frame := -1
@@ -234,6 +237,12 @@ func setup(team: String, weapon_model: String, weapon_set: String = "", holds: b
 	for clip_name in animation_player.get_animation_list():
 		if is_air_clip(clip_name):
 			animation_player.get_animation(clip_name).loop_mode = Animation.LOOP_NONE
+
+	# The feet on the ground under them, before the twist bones follow the
+	# legs (FootPlant; modifiers run in child order).
+	foot_plant = FootPlant.new()
+	foot_plant.name = "FootPlant"
+	character_rig.add_child(foot_plant)
 
 	var agent := instantiate(AGENTS.get(team, AGENTS["T"]))
 	if agent != null:
@@ -914,6 +923,10 @@ func is_seen() -> bool:
 
 
 func _process(delta: float) -> void:
+	if foot_plant != null:
+		# A death or a ragdoll has the legs at once.
+		foot_plant.active = is_animating() and _dead == &""
+		foot_plant.planting = plants_feet(_on_ground, _dead != &"")
 	# Stopped, a ragdoll has the bones (set_animating).
 	if not stepped_by_hand or not is_animating():
 		return
@@ -923,6 +936,13 @@ func _process(delta: float) -> void:
 	if is_seen() or not ticked or _unstepped >= MOST_UNSTEPPED_TICKS * SimClock.tick_seconds():
 		step(_unstepped)
 		_unstepped = 0.0
+
+
+## Whether a body plants its feet (FootPlant): alive and on the ground,
+## seen or not, since the hitboxes ride the legs it bends, as CS2's server
+## poses its own with the foot IK (reference/research/foot-ik.md 4).
+static func plants_feet(on_ground: bool, dead: bool) -> bool:
+	return on_ground and not dead
 
 
 ## Moves the animation on by delta seconds.
@@ -935,6 +955,8 @@ func step(delta: float) -> void:
 
 ## Stops the animation, for a ragdoll to have the bones, or starts it again.
 func set_animating(on: bool) -> void:
+	if foot_plant != null:
+		foot_plant.active = on and _dead == &""
 	if animation_tree != null:
 		animation_tree.active = on
 	elif animation_player != null:
