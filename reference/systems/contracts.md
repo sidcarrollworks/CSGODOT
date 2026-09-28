@@ -672,7 +672,8 @@ None of these are changed by the contract threads; this branch changes
   (a `project.godot` an open editor wrote back over).
 - `de_dust2.gd`: *(done 2026-09-23)* the economy, the bomb and the
   grenades added to `world.game`, and their drawing (grenades, smoke and
-  fire, the flash's white-out, the bomb). Still to do: the kill feed.
+  fire, the flash's white-out, the bomb). The kill feed is done
+  (2026-09-28, `KillFeed` in `src/ui/`, listening to `player_death`).
 
 ## Asked for by the other threads
 
