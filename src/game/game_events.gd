@@ -82,6 +82,9 @@ const SCHEMA := {
 	&"item_purchase": {"userid": NOBODY, "team": "", "loadout": 0, "weapon": ""},
 	&"item_pickup": {"userid": NOBODY, "item": "", "silent": false},
 	&"item_remove": {"userid": NOBODY, "item": ""},
+	## E on an item there is no room for (CS2's mod.gameevents): reason is
+	## ItemDrops.FAILED_NO_ROOM, limit how many of it may be carried.
+	&"item_pickup_failed": {"userid": NOBODY, "item": "", "reason": 0, "limit": 0},
 	&"item_equip": {
 		"userid": NOBODY, "item": "", "canzoom": false, "hassilencer": false,
 		"issilenced": false, "weptype": "",

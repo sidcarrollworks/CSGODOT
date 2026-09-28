@@ -29,7 +29,7 @@ console on a fresh config (Local, below).
 | MOUSE4 | `+voicerecord` | |
 | MWHEELUP, MWHEELDOWN | `invprev`, `invnext` | |
 | R | `+reload` | |
-| E | `+use` | plant, defuse, swap a gun on the ground |
+| E | `+use` | defuse; take the item looked at, swapping the gun in its slot; take the dropped bomb (plant with E is not built) |
 | F | `+lookatweapon` | inspect |
 | G | `drop` | |
 | Q | `lastinv` | the last weapon held |
