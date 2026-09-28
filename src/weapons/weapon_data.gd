@@ -41,6 +41,14 @@ static var _hold_times := {}
 ## provisional_kick_per_magnitude, once worked out.
 static var _kick_per_magnitude := -1.0
 
+## The spring's peak and frequency numerator depend only on damping, not
+## the recovery time. All four recoil springs reuse them on every tick.
+## Runtime-only: duplicated resources rebuild them, and live tuning of the
+## authored ratio invalidates them without changing the integration.
+var _cached_punch_ratio := NAN
+var _cached_punch_peak := 0.0
+var _cached_punch_frequency_numerator := 0.0
+
 ## A punch angle with its own velocity, damped, with a spring pulling it back
 ## to zero. Source's DecayPunchAngle.
 ##
@@ -492,9 +500,18 @@ const UNZOOMED_FOV := ViewModelProjection.WORLD_FOV
 ## spring's frequency: peak = impulse / frequency * this. Depends only on the
 ## damping ratio.
 func punch_peak_ratio() -> float:
+	_prepare_punch_constants()
+	return _cached_punch_peak
+
+
+func _prepare_punch_constants() -> void:
+	if _cached_punch_ratio == punch_damping_ratio:
+		return
+	_cached_punch_ratio = punch_damping_ratio
 	var z := _damping_ratio()
 	var ringing := sqrt(1.0 - z * z)
-	return exp(-z * atan(ringing / z) / ringing)
+	_cached_punch_peak = exp(-z * atan(ringing / z) / ringing)
+	_cached_punch_frequency_numerator = -log(SETTLE_FRACTION * (ringing * _cached_punch_peak))
 
 
 ## A spring's undamped frequency, in radians per second, for a punch that
@@ -505,9 +522,12 @@ func punch_peak_ratio() -> float:
 ## because the peak is reached some way into the response, well below where
 ## the envelope starts.
 func punch_frequency_for(recovery: float, ratio: float = -1.0) -> float:
+	_prepare_punch_constants()
 	var z := _damping_ratio(ratio)
+	if ratio < 0.0:
+		return _cached_punch_frequency_numerator / maxf(z * recovery, 0.0001)
 	var ringing := sqrt(1.0 - z * z)
-	var peak := ringing * punch_peak_ratio()
+	var peak := ringing * _cached_punch_peak
 	return -log(SETTLE_FRACTION * peak) / maxf(z * recovery, 0.0001)
 
 

@@ -1,8 +1,16 @@
 # Box3D: what it would mean for the game
 
 Sid asked (2026-09-24) what Box3D, and the box3d-godot binding for it, would
-mean for us. This is an evaluation, not a plan. **Recommendation: stay on
-Jolt.** Nothing here changes the roadmap.
+mean for us. The original recommendation below concerned a whole-game
+conversion. **Updated 2026-09-26:** Sid requested a branch to try Box3D for
+dropped guns, whose current simulation still jitters, and chose dropped
+guns first. That request supersedes the earlier recommendation for this
+limited trial. After successful playtests, Sid expanded the request on
+2026-09-26 to **all physics on the same branch**. That instruction now
+supersedes the original whole-game recommendation too; implementation
+and current limits belong in [the trial notes](../box3d-trial.md). The
+original research below records the starting assessment. The notes describe scope,
+setup and comparison procedure; this page remains the wider assessment.
 
 ## Sources
 
@@ -11,6 +19,11 @@ Jolt.** Nothing here changes the roadmap.
   `include/box3d/box3d.h`, `constants.h`. **Primary.**
 - `Stink-O/box3d-godot` at `87c5ac9` (2026-09-20), release v0.4.3, MIT.
   Its README, `godot/README.md` and `godot/src/`. **Primary.**
+- Rechecked 2026-09-26 against the release-tagged
+  [world source](https://github.com/Stink-O/box3d-godot/blob/v0.4.3/godot/src/box3d_world.cpp),
+  [body source](https://github.com/Stink-O/box3d-godot/blob/v0.4.3/godot/src/box3d_body.cpp)
+  and in-editor class documentation. The binding exposes length-unit
+  configuration; the earlier claim below that it did not has been corrected.
 - Erin Catto's "Announcing Box3D" (box2d.org, June 2026) is refused by the
   thread's network proxy, as is a translation of it. The lineage below comes
   from search summaries of that post (developersdigest.tech, desdelinux.net,
@@ -47,7 +60,7 @@ Jolt.** Nothing here changes the roadmap.
 ## What box3d-godot is
 
 - A GDExtension that adds its own nodes (`Box3DWorld`, `Box3DBody`,
-  `Box3DCollisionShape`, nine joints, `Box3DCharacter`) and runs its own
+  `Box3DCollisionShape`, nine joints, `Box3DCharacterBody`) and runs its own
   world beside Godot's. **It is not a physics server.** Nothing in
   `godot/src/` extends `PhysicsServer3DExtension`, so it cannot be picked in
   `3d/physics_engine` the way Jolt is. `get_world_3d().direct_space_state`,
@@ -57,10 +70,15 @@ Jolt.** Nothing here changes the roadmap.
   `shape_cast_box`, `shape_cast_capsule`, `shape_cast_sphere`,
   `shape_cast_convex` and overlaps. A box cast exists, which our hull would
   need.
-- It works in meters. Box3D can be told another length unit
-  (`b3SetLengthUnitsPerMeter`, which scales its slop and margins), but the
-  binding does not expose it; our world is in inches, and project.godot
-  already rescales five of Jolt's tolerances for that.
+- It defaults to metres. Version 0.4.3 exposes
+  `physics/box3d/length_units_per_meter`, applied when the extension loads,
+  and `Box3DWorld.set_length_units_per_meter()`, which refuses a change
+  while any native world exists. These scale the engine's tolerances;
+  they do not convert coordinates, density or the binding's separately
+  authored distance/speed properties. The opening paragraph in upstream's
+  world XML still says the scale is fixed, but the implementation and the
+  setter's documentation show otherwise. The dropped-gun trial keeps the
+  default of 1 and converts inches to metres at its boundary.
 - Godot 4.7 is its minimum, which matches ours. Prebuilt for Windows, Linux,
   Android and web; not macOS.
 
@@ -84,7 +102,9 @@ Moving to Box3D would mean:
    the hitbox capsules, which are `Area3D`s on their own layer today.
 3. **Ragdolls rebuilt** (`ragdoll.gd`, 25 lines that use `RigidBody3D` and
    `Joint3D`) on Box3D joints.
-4. **Units patched** into the binding, or every tolerance off by 39 times.
+4. **Units handled explicitly:** either convert to metres at the boundary,
+   or configure the length scale before creating a world and scale every
+   distance/speed property too. A binding patch is not required.
 5. **Its own Source-style mover left unused.** Box3D's mover is a capsule
    that slides by solving planes; Source's is a box hull that clips its
    velocity against each plane it meets (ClipVelocity), which is what
@@ -110,10 +130,14 @@ What it could give:
 
 ## Recommendation
 
-Stay on Jolt. The swap costs a rewrite of every query, a second copy of
-every map's collision and a units patch to a v0.1 engine and a young
-binding, to gain nothing in how movement and shooting feel, and a
-determinism the game does not need.
+The original recommendation was to stay on Jolt for a whole-game
+conversion: it would require changing every query and building the map's
+collision for a v0.1 engine and a young binding, without evidence that it
+improves movement or shooting. The units patch originally cited here is
+unnecessary, as corrected above. Sid's 2026-09-26 request authorizes the
+separate dropped-gun trial; it does not require those other systems to
+move. Its baseline is the custom GDScript contact/impulse solver querying
+Jolt in `DroppedItem`, not Jolt's native rigid-body solver.
 
 Worth revisiting if any of these happen:
 
@@ -127,6 +151,9 @@ Worth revisiting if any of these happen:
 
 ## Local checks
 
-None needed for this decision. If Sid wants a number anyway: the binding's
-demo reruns its samples on Godot Physics, Jolt and Box3D side by side, and
-its "ragdoll" sample shows the joint behaviour on his machine.
+The active dropped-gun trial needs settling and cost measurements on
+synthetic floors and ramps, then drops on dust2 with the extracted weapon
+hulls and a visual comparison to CS2. See [the trial notes](../box3d-trial.md).
+The binding's demo also reruns its samples on Godot Physics, Jolt and
+Box3D side by side, and its ragdoll sample remains useful if the scope
+later expands to bodies.

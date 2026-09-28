@@ -129,7 +129,7 @@ func surface_below() -> String:
 	var space := get_world_3d().direct_space_state
 	var from := body.global_position + Vector3.UP * 8.0
 	var query := PhysicsRayQueryParameters3D.create(from, from + Vector3.DOWN * 24.0, Hitscan.WORLD_LAYER, [body.get_rid()])
-	var hit := space.intersect_ray(query)
+	var hit := PhysicsQueries.intersect_ray(space, query)
 	if hit.is_empty():
 		return DEFAULT_SET
 	var collider: Object = hit["collider"]

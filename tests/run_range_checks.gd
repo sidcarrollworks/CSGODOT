@@ -26,6 +26,7 @@ func _run() -> void:
 	root.add_child(_range)
 	for i in 8:
 		await physics_frame
+	await _test_native_cover_changes()
 
 	var dummy: Bot = _range.dummy
 	_check(dummy != null and dummy.holds_fire and dummy.target == null and dummy.route.is_empty(),
@@ -172,6 +173,52 @@ func _run() -> void:
 	_report()
 
 
+## The range's adjustable wall must change in the native collision mirror
+## too. Short rays stay within its lane and do not meet the back wall.
+func _test_native_cover_changes() -> void:
+	var adapter: Box3DDrops = _range.world.game.drop_physics
+	if not is_instance_valid(adapter):
+		return
+	var cover: CoverPanel = _range.cover
+	var target: Vector3 = _range.dummy_position()
+	var centre := cover.global_position
+	_check(not _native_cover_ray(adapter, centre).get("hit", false),
+		"disabled range cover is absent from Box3D collision")
+	cover.show_choice(1)
+	await process_frame
+	await process_frame
+	var hit := _native_cover_ray(adapter, centre)
+	_check(hit.get("hit", false)
+		and absf((hit.get("position", Vector3.ZERO) as Vector3).z / Box3DDrops.METRES_PER_UNIT - centre.z - 2.0) < 0.05,
+		"enabling range cover adds its four-inch panel to Box3D collision")
+	cover.show_choice(2)
+	await process_frame
+	await process_frame
+	hit = _native_cover_ray(adapter, centre)
+	_check(hit.get("hit", false)
+		and absf((hit.get("position", Vector3.ZERO) as Vector3).z / Box3DDrops.METRES_PER_UNIT - centre.z - 6.0) < 0.05,
+		"changing range cover thickness updates the Box3D surface")
+	cover.stand_before(target + Vector3(0.0, 0.0, 128.0))
+	await process_frame
+	await process_frame
+	_check(not _native_cover_ray(adapter, centre).get("hit", false)
+		and _native_cover_ray(adapter, cover.global_position).get("hit", false),
+		"moving range cover removes the old Box3D shape and adds it at the new lane distance")
+	cover.show_choice(0)
+	await process_frame
+	await process_frame
+	_check(not _native_cover_ray(adapter, cover.global_position).get("hit", false),
+		"disabling range cover removes it from Box3D collision")
+	cover.stand_before(target)
+
+
+func _native_cover_ray(adapter: Box3DDrops, centre: Vector3) -> Dictionary:
+	return adapter.native_world.call(&"raycast",
+		(centre + Vector3(0.0, 0.0, 32.0)) * Box3DDrops.METRES_PER_UNIT,
+		(centre - Vector3(0.0, 0.0, 32.0)) * Box3DDrops.METRES_PER_UNIT,
+		Hitscan.WORLD_LAYER, Box3DDrops.ITEM_LAYER)
+
+
 ## A ragdoll on a small skeleton of its own, in metres under a node scaled
 ## to units the way the character is: a pelvis, a spine, a head and two legs
 ## of thigh and shin, standing, with a capsule on each. Pushed backward, it
@@ -221,30 +268,26 @@ func _test_ragdoll() -> void:
 	_range.add_child(ragdoll)
 	var made := ragdoll.build(skeleton, capsules, scale, Vector3.ZERO, Vector3.FORWARD, Vector3.BACK, head)
 	var pelvis := skeleton.find_bone("pelvis")
-	_check(made == 7 and ragdoll.get_children().filter(func(n: Node) -> bool: return n is Joint3D).size() == 6,
+	_check(made == 7 and ragdoll.get_children().filter(func(n: Node) -> bool: return n is Ragdoll.Link).size() == 6,
 		"a body for every bone with a capsule and a joint to each one's parent (%d bodies)" % made)
 	_check(
 		ragdoll.body_for(skeleton.find_bone("spine_0")) == ragdoll.body_for(pelvis)
 			and ragdoll.body_for(skeleton.find_bone("spine_2")) != ragdoll.body_for(pelvis),
 		"a spine bone close over the pelvis rides the pelvis's body; the chest has its own"
 	)
-	var body_head: RigidBody3D = ragdoll.bodies.get(head)
+	var body_head: Ragdoll.Part = ragdoll.bodies.get(head)
 	_check(
 		body_head != null and body_head.collision_layer == Ragdoll.LAYER and body_head.collision_mask == Hitscan.WORLD_LAYER | Ragdoll.LAYER
 			and Ragdoll.LAYER & (Hitscan.WORLD_LAYER | Hitbox.LAYER) == 0,
 		"the bodies touch the world and dead bodies alone, and are nothing a round is traced against"
 	)
-	# Jolt ignores a joint's bias and warns on every joint of every death
-	# when one is set; Godot Physics needs Ragdoll.JOINT_BIAS. The hinges
-	# have one; the other joints (Generic6DOFJoint3D) have none.
-	var biases := []
+	var joints := []
 	for joint in ragdoll.get_children():
-		if joint is HingeJoint3D:
-			biases.append((joint as HingeJoint3D).get_param(HingeJoint3D.PARAM_BIAS))
-	var wanted := 0.3 if Ragdoll.on_jolt() else Ragdoll.JOINT_BIAS
+		if joint is Ragdoll.Link:
+			joints.append(joint)
 	_check(
-		not biases.is_empty() and biases.all(func(bias: float) -> bool: return is_equal_approx(bias, wanted)),
-		"its joints' bias is %s (%s)" % ["left alone on Jolt, which has none" if Ragdoll.on_jolt() else "Ragdoll.JOINT_BIAS on Godot Physics", biases]
+		not joints.is_empty() and joints.all(func(joint: Ragdoll.Link) -> bool: return joint.native.call(&"is_joint_valid") and joint.torque > 0.0),
+		"each anatomical joint exists in the native world with a friction motor"
 	)
 
 	for i in SimClock.ticks_in(4.0):
@@ -253,7 +296,7 @@ func _test_ragdoll() -> void:
 
 	var lowest := INF
 	var fastest := 0.0
-	for body: RigidBody3D in ragdoll.bodies.values():
+	for body: Ragdoll.Part in ragdoll.bodies.values():
 		lowest = minf(lowest, body.global_position.y)
 		fastest = maxf(fastest, body.linear_velocity.length())
 	_check(
@@ -310,27 +353,23 @@ func _test_ragdoll() -> void:
 
 
 ## A body falling for a second under the ragdoll's gravity is going 800 u/s.
-## Jolt caps every body's speed at 500 "m/s", which in this project's inches
-## is 500 u/s, what a body has after falling 156 units; the project raises
-## the cap to Jolt's 500 m/s in inches.
+## The metre bridge preserves gravity in Source units without a 500 u/s cap.
 func _test_fall_speed() -> void:
-	var body := RigidBody3D.new()
-	body.collision_layer = Ragdoll.LAYER
-	body.collision_mask = Ragdoll.MASK
-	body.linear_damp_mode = RigidBody3D.DAMP_MODE_REPLACE
-	body.linear_damp = 0.0
-	var shape := CollisionShape3D.new()
-	shape.shape = SphereShape3D.new()
-	(shape.shape as SphereShape3D).radius = 4.0
-	body.add_child(shape)
-	body.position = Vector3(-512.0, 5000.0, -256.0)
-	_range.add_child(body)
-	body.add_constant_central_force(Vector3.DOWN * Ragdoll.GRAVITY * body.mass)
+	var body := ClassDB.instantiate(&"Box3DBody") as Node3D
+	body.set(&"body_type", ClassDB.class_get_integer_constant(&"Box3DBody", &"DYNAMIC"))
+	body.set(&"shape_type", ClassDB.class_get_integer_constant(&"Box3DBody", &"SPHERE"))
+	body.set(&"sphere_radius", 4.0 * Ragdoll.METRES)
+	body.set(&"collision_layer", Ragdoll.LAYER)
+	body.set(&"collision_mask", Ragdoll.MASK)
+	body.set(&"linear_damping", 0.0)
+	body.position = Vector3(-512.0, 5000.0, -256.0) * Ragdoll.METRES
+	PhysicsQueries.adapter_for_node(_range).native_world.add_child(body)
 	for i in SimClock.ticks_in(1.0):
 		await physics_frame
+	var velocity := (body.call(&"get_linear_velocity") as Vector3) / Ragdoll.METRES
 	_check(
-		absf(-body.linear_velocity.y - Ragdoll.GRAVITY) < 10.0,
-		"a body falling for a second goes %.0f u/s, as gravity has it, not held to a speed cap" % -body.linear_velocity.y
+		absf(-velocity.y - Ragdoll.GRAVITY) < 10.0,
+		"a body falling for a second goes %.0f u/s, as gravity has it, not held to a speed cap" % -velocity.y
 	)
 	body.queue_free()
 
@@ -493,9 +532,9 @@ func _test_whole_ragdoll() -> void:
 		# at rest, so where a joint node stands says nothing now.)
 		var pivots := []
 		for joint in ragdoll.get_children():
-			if joint is Generic6DOFJoint3D or joint is HingeJoint3D:
-				var a := joint.get_node(joint.node_a) as RigidBody3D
-				var b := joint.get_node(joint.node_b) as RigidBody3D
+			if joint is Ragdoll.Link:
+				var a := joint.get_node(joint.node_a) as Ragdoll.Part
+				var b := joint.get_node(joint.node_b) as Ragdoll.Part
 				var bone := skeleton.find_bone(String(joint.name).trim_prefix("Joint_"))
 				# The body starts lifted clear of the floor, and the skeleton
 				# not yet with it.
@@ -507,16 +546,16 @@ func _test_whole_ragdoll() -> void:
 		var highest := -INF
 		var lowest := INF
 		var fastest := 0.0
-		for body: RigidBody3D in ragdoll.bodies.values():
+		for body: Ragdoll.Part in ragdoll.bodies.values():
 			highest = maxf(highest, body.global_position.y)
 			lowest = minf(lowest, body.global_position.y)
 			fastest = maxf(fastest, body.linear_velocity.length())
 		var widest := 0.0
 		var spinning := 0.0
 		for pivot: Array in pivots:
-			widest = maxf(widest, (pivot[0] as RigidBody3D).to_global(pivot[2]).distance_to((pivot[1] as RigidBody3D).to_global(pivot[3])))
-			spinning = maxf(spinning, rad_to_deg(((pivot[1] as RigidBody3D).angular_velocity - (pivot[0] as RigidBody3D).angular_velocity).length()))
-		var hinges := ragdoll.get_children().filter(func(n: Node) -> bool: return n is HingeJoint3D).map(func(n: Node) -> String: return String(n.name))
+			widest = maxf(widest, (pivot[0] as Ragdoll.Part).to_global(pivot[2]).distance_to((pivot[1] as Ragdoll.Part).to_global(pivot[3])))
+			spinning = maxf(spinning, rad_to_deg(((pivot[1] as Ragdoll.Part).angular_velocity - (pivot[0] as Ragdoll.Part).angular_velocity).length()))
+		var hinges := ragdoll.get_children().filter(func(n: Node) -> bool: return n is Ragdoll.Link and n.is_hinge).map(func(n: Node) -> String: return String(n.name))
 		_check(
 			hinges.size() == 4 and spinning < 60.0,
 			"its knees and elbows are hinges (%s), and once it lies no joint is still turning (%.0f deg/s at most)" % [", ".join(hinges), spinning]

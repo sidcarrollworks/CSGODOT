@@ -156,9 +156,19 @@ var target: Node3D
 signal died(zone: StringName)
 
 var _next: int = 0
+## The crouch areas of the current path. Nav flags are fixed map data;
+## proximity and floor height are still evaluated at the bot's current feet.
+var _crouch_areas: Array[SourceNavMesh.Area] = []
 ## The way to route[_next] over the nav mesh, and the corner of it it is
 ## heading for; null to find it again.
-var _path: SourceNavMesh.WalkPath
+var _path: SourceNavMesh.WalkPath:
+	set(value):
+		_path = value
+		_crouch_areas.clear()
+		if value != null:
+			for area in value.areas:
+				if area.flags & SourceNavMesh.FLAG_CROUCH:
+					_crouch_areas.append(area)
 var _corner: int = 0
 ## Its flat speed on the ground, the last STUCK_SAMPLES samples, one every
 ## _sample_ticks() ticks, oldest overwritten; how many are in, and the tick
@@ -642,9 +652,7 @@ func _forget_speeds() -> void:
 ## Whether an area whose ceiling is too low to stand under is on its path
 ## and within CROUCH_AHEAD of it, about as high as its feet.
 func _under_low_ceiling() -> bool:
-	for area in _path.areas:
-		if (area.flags & SourceNavMesh.FLAG_CROUCH) == 0:
-			continue
+	for area in _crouch_areas:
 		if absf(area.floor_at(global_position) - global_position.y) < 36.0 \
 				and area.distance_in_plan(global_position) < CROUCH_AHEAD:
 			return true
@@ -657,19 +665,33 @@ func _under_low_ceiling() -> bool:
 func _look_for_target() -> Node3D:
 	if not is_instance_valid(world):
 		return null
-	var best: Node3D = null
-	var best_distance := SIGHT_RANGE
+	var candidates: Array[PlayerSim] = []
+	var distances: Array[float] = []
+	var here := global_position
 	for candidate in world.players:
 		if candidate == self or not candidate.alive or candidate.team == team:
 			continue
-		var distance := global_position.distance_to(candidate.global_position)
-		if distance >= best_distance:
+		var distance := here.distance_to(candidate.global_position)
+		if distance >= SIGHT_RANGE:
 			continue
-		if not can_see(candidate):
-			continue
-		best = candidate
-		best_distance = distance
-	return best
+		# At most the opposing team's players. Stable insertion preserves the
+		# original roster-first choice when two visible players are equidistant.
+		var index := distances.size()
+		while index > 0 and distance < distances[index - 1]:
+			index -= 1
+		candidates.insert(index, candidate)
+		distances.insert(index, distance)
+	if candidates.is_empty():
+		return null
+	var eyes := here + Vector3.UP * eye_height()
+	var yaw := deg_to_rad(yaw_degrees)
+	var forward := Vector3(-sin(yaw), 0.0, -cos(yaw))
+	var query := PhysicsRayQueryParameters3D.create(eyes, Vector3.ZERO, Hitscan.WORLD_LAYER, [get_rid()])
+	var space := get_world_3d().direct_space_state
+	for candidate in candidates:
+		if _can_see_from(candidate, forward, space, query):
+			return candidate
+	return null
 
 
 ## Whether a body is within the cone the bot faces, nothing of the map
@@ -677,18 +699,29 @@ func _look_for_target() -> Node3D:
 ## through.
 func can_see(other: Node3D) -> bool:
 	var eyes := global_position + Vector3.UP * eye_height()
+	var yaw := deg_to_rad(yaw_degrees)
+	var forward := Vector3(-sin(yaw), 0.0, -cos(yaw))
+	var query := PhysicsRayQueryParameters3D.create(eyes, Vector3.ZERO, Hitscan.WORLD_LAYER, [get_rid()])
+	return _can_see_from(other, forward, get_world_3d().direct_space_state, query)
+
+
+## One visibility test with the observer's eye/cone and ray already set up.
+## A target search shares these while checking nearer candidates first;
+## the map and smoke are still queried afresh on every tick.
+func _can_see_from(other: Node3D, forward: Vector3, space: PhysicsDirectSpaceState3D,
+		query: PhysicsRayQueryParameters3D) -> bool:
+	var eyes := query.from
 	var theirs: Vector3 = other.global_position + Vector3.UP * 60.0
 	if other is PlayerBody:
 		theirs = other.global_position + Vector3.UP * (other as PlayerBody).eye_height()
 	var to_them := theirs - eyes
 	if to_them.length() > SIGHT_RANGE:
 		return false
-	var forward := Vector3(-sin(deg_to_rad(yaw_degrees)), 0.0, -cos(deg_to_rad(yaw_degrees)))
 	var flat := Vector3(to_them.x, 0.0, to_them.z)
 	if flat.length_squared() > 1e-6 and rad_to_deg(forward.angle_to(flat.normalized())) > SIGHT_HALF_ANGLE:
 		return false
-	var query := PhysicsRayQueryParameters3D.create(eyes, theirs, Hitscan.WORLD_LAYER, [get_rid()])
-	if not get_world_3d().direct_space_state.intersect_ray(query).is_empty():
+	query.to = theirs
+	if not PhysicsQueries.intersect_ray(space, query).is_empty():
 		return false
 	return not _smoke_between(eyes, theirs)
 

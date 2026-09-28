@@ -130,14 +130,14 @@ static func _sweep(
 	query.motion = motion
 	query.collision_mask = GrenadeRules.COLLIDE_MASK
 	query.exclude = exclude
-	var fractions := space.cast_motion(query)
+	var fractions := PhysicsQueries.cast_motion(space, query)
 	if fractions.is_empty() or fractions[1] >= 1.0:
 		return {"safe": 1.0}
 	var safe: float = fractions[0]
 	# What it met: the contact just past where it could go.
 	query.transform = Transform3D(Basis.IDENTITY, from + motion * fractions[1])
 	query.motion = Vector3.ZERO
-	var rest := space.get_rest_info(query)
+	var rest := PhysicsQueries.get_rest_info(space, query)
 	if rest.is_empty():
 		return {"safe": safe}
 	var collider := instance_from_id(int(rest.get("collider_id", 0)))

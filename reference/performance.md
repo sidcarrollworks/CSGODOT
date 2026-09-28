@@ -1,5 +1,12 @@
 # What everything costs, and what going online will
 
+For the current Box3D branch, see the [bridge and movement fixes](research/box3d-performance-fixes-2026-09-26.md)
+and their measured remaining gap to the 6 ms maximum target. The preceding
+[26 September frame-time audit](research/frame-times-2026-09-26.md) records:
+4K foreground distributions, paired legacy comparison, native/synchronization
+attribution, first-use spikes and reproducible captures. The older Jolt
+measurements below are historical and do not describe the current full port.
+
 An audit of every system's cost, measured on dust2 with ten and twenty
 players (you and bots) on 2026-09-23: Godot 4.7.2 headless, Jolt, 64 ticks a
 second, an AMD Ryzen 7 7800X3D. A slower CPU pays more for all of it; the

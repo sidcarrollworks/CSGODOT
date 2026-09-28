@@ -89,6 +89,7 @@ var previous_viewmodel_punch := Vector2.ZERO
 ## (the knife, a grenade, the bomb) or nothing. And how the player was
 ## moving when it was last told: what its cone is judged by.
 var weapon: Weapon
+## Owned current state, reused each update; callers needing history copy its fields.
 var shooter_state := Weapon.ShooterState.new()
 var rounds_fired: int = 0
 
@@ -507,10 +508,10 @@ func hand_ready() -> bool:
 	return not _throwing and SimClock.now_usec() >= _drawn_until_usec
 
 
-## Where the thing in hand is, and which way it points, in the world, as the
-## world models are built (+Z the muzzle, +Y the top): CS2's hold for it,
-## from where the player stands and looks (HeldPose). What a drop throws
-## from (ItemDrops).
+## The item's attachment-bone frame at the hand, in the world: CS2's hold
+## from where the player stands and looks (HeldPose). Converting through
+## ItemPhysics.Hull.model_held_at gives the model's +Z muzzle and +Y top.
+## What a drop throws from (ItemDrops).
 func held_transform() -> Transform3D:
 	return HeldPose.of(self, _held_class)
 
@@ -525,6 +526,7 @@ func place(spawn_position: Vector3, yaw: float) -> void:
 	pitch_degrees = 0.0
 	previous_yaw_degrees = yaw
 	previous_pitch_degrees = 0.0
+	PhysicsQueries.sync_object(self)
 
 
 ## The match puts the player at a spawn point for a round. Fresh (the
@@ -700,10 +702,10 @@ func _update_weapon(cmd: UserCmd, dt: float, still: bool) -> void:
 	if still:
 		presses.clear()
 	weapon.trigger_held = not still and (cmd.held(UserCmd.ATTACK) or not presses.is_empty())
-	shooter_state = Weapon.ShooterState.new(
-		Vector2(velocity.x, velocity.z).length(), on_ground, is_ducked,
-		cmd.held(UserCmd.WALK)
-	)
+	shooter_state.speed = Vector2(velocity.x, velocity.z).length()
+	shooter_state.on_ground = on_ground
+	shooter_state.ducked = is_ducked
+	shooter_state.walking = cmd.held(UserCmd.WALK)
 	weapon.update(dt, now, shooter_state)
 
 	# Right clicks step a scope through its zoom levels and the trigger's
@@ -773,6 +775,8 @@ func _try_shoot(at_usec: int, tick_fraction: float, yaw: float, pitch: float) ->
 		userid, team, team_damage_scale, exclude,
 		world.game.events if is_instance_valid(world) else null
 	)
+	if is_instance_valid(world) and is_instance_valid(world.game.drop_physics):
+		shooter.on_free_segment = world.game.drop_physics.push_bullet_segment.bind(weapon.data, shot.origin)
 	# A shotgun's pellets are each traced and do their damage on their own.
 	for i in shot.pellets():
 		var pellet := shot.pellet_shot(i)
@@ -977,7 +981,7 @@ func body_centre() -> Vector3:
 	if ragdoll == null or ragdoll.bodies.is_empty():
 		return global_position + Vector3.UP * 36.0
 	var sum := Vector3.ZERO
-	for body: RigidBody3D in ragdoll.bodies.values():
+	for body: Ragdoll.Part in ragdoll.bodies.values():
 		sum += body.global_position
 	return sum / ragdoll.bodies.size()
 

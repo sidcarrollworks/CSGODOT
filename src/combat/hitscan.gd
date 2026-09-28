@@ -75,7 +75,8 @@ static func trace(
 	space: PhysicsDirectSpaceState3D,
 	shot: Weapon.Shot,
 	data: WeaponData,
-	exclude: Array[RID] = []
+	exclude: Array[RID] = [],
+	on_free_segment: Callable = Callable()
 ) -> Result:
 	var result := Result.new()
 	var end := shot.origin + shot.direction * data.max_range
@@ -86,7 +87,12 @@ static func trace(
 		# Hitboxes are areas, so they have to be opted into explicitly.
 		query.collide_with_areas = true
 		query.collide_with_bodies = true
-		var collision := space.intersect_ray(query)
+		var collision := PhysicsQueries.intersect_ray(space, query)
+		# Physics reactions only follow the distance the bullet really crosses:
+		# up to this wall/person, then beyond its exit if penetration succeeds.
+		# Plain trace callers leave this callback empty.
+		if on_free_segment.is_valid():
+			on_free_segment.call(from, collision.get("position", end), result.kept)
 		if collision.is_empty():
 			return result
 
@@ -138,7 +144,7 @@ static func trace(
 		var inside := PhysicsRayQueryParameters3D.create(entry, wall.exit, Hitbox.LAYER, exclude)
 		inside.collide_with_areas = true
 		inside.collide_with_bodies = false
-		var person := space.intersect_ray(inside)
+		var person := PhysicsQueries.intersect_ray(space, inside)
 		if not person.is_empty() and person["collider"] is Hitbox:
 			_hit_person(result, shot, data, person["collider"], person["position"], person["normal"])
 			return result
@@ -213,7 +219,7 @@ static func _find_exit(
 		var back := PhysicsRayQueryParameters3D.create(far, near, WORLD_LAYER, exclude)
 		back.hit_back_faces = false
 		back.hit_from_inside = false
-		var exit := space.intersect_ray(back)
+		var exit := PhysicsQueries.intersect_ray(space, back)
 		if exit.is_empty():
 			return {}
 		var ahead := PhysicsRayQueryParameters3D.create(
@@ -221,7 +227,7 @@ static func _find_exit(
 		)
 		ahead.hit_back_faces = false
 		ahead.hit_from_inside = false
-		var between := space.intersect_ray(ahead)
+		var between := PhysicsQueries.intersect_ray(space, ahead)
 		if between.is_empty():
 			return exit
 		far = (between["position"] as Vector3) - direction * EXIT_GAP
@@ -239,6 +245,9 @@ class Shooter:
 	var team_damage_scale: float = 1.0
 	var exclude: Array[RID] = []
 	var events: GameEvents
+	## Optional reaction along each free-flight segment (from, to, damage
+	## share after walls), called on the simulation tick for each pellet.
+	var on_free_segment := Callable()
 
 	func _init(
 		p_userid: int = GameEvents.NOBODY, p_team: String = "", p_team_damage_scale: float = 1.0,
@@ -277,7 +286,7 @@ static func fire_as(
 	data: WeaponData,
 	shooter: Shooter
 ) -> Result:
-	var result := trace(space, shot, data, shooter.exclude)
+	var result := trace(space, shot, data, shooter.exclude, shooter.on_free_segment)
 	if shooter.events != null:
 		for wall in result.walls:
 			_send_impact(shooter, wall.entry, shot)

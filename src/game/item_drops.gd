@@ -113,7 +113,8 @@ func _on_death(event: GameEvent) -> void:
 	for entry in inventory.drops_on_death():
 		var from := hand if entry.item.item_class == held else _middle(node)
 		var rng := _seeded(userid, entry.item.item_class)
-		var spin := from.basis.x * rng.randf_range(-DEATH_TUMBLE, DEATH_TUMBLE) + Vector3.UP * rng.randf_range(-DEATH_TUMBLE, DEATH_TUMBLE)
+		var model_basis := ItemPhysics.of(entry.item.item_class).model_held_at(from).basis
+		var spin := model_basis.x * rng.randf_range(-DEATH_TUMBLE, DEATH_TUMBLE) + Vector3.UP * rng.randf_range(-DEATH_TUMBLE, DEATH_TUMBLE)
 		var dropped := DroppedItem.drop_from(game, userid, entry, from, velocity, spin)
 		if entry.item.item_class == "item_defuser":
 			game.events.send(&"defuser_dropped", {"entityid": dropped.id})
@@ -139,11 +140,7 @@ func _on_drop(userid: int, _args: PackedStringArray, t: SimTick) -> bool:
 	var from := _clear_of_walls(node, _held_transform(node), t.space, held.item.item_class)
 	var entry := inventory.remove(held.item.item_class)
 	var rng := _seeded(userid, entry.item.item_class)
-	# End over end, the muzzle dipping away from the thrower, and a little
-	# twist.
-	var spin := from.basis.x * rng.randf_range(0.5, 1.0) * THROW_TUMBLE \
-		+ Vector3.UP * rng.randf_range(-1.0, 1.0) * THROW_TWIST
-	DroppedItem.drop_from(game, userid, entry, from, _throw_velocity(node), spin)
+	DroppedItem.drop_from(game, userid, entry, from, _throw_velocity(node), _throw_spin(from, entry.item.item_class, rng))
 	game.events.send(&"item_remove", {"userid": userid, "item": entry.item.item_class})
 	return true
 
@@ -210,7 +207,10 @@ func use_target(t: SimTick, node: Node3D, userid: int) -> DroppedItem:
 		return a[0] > b[0] or (a[0] == b[0] and a[1] < b[1]))
 	for candidate in candidates:
 		var item: DroppedItem = candidate[2]
-		if t.space == null or t.space.intersect_ray(PhysicsRayQueryParameters3D.create(eyes, item.position, Hitscan.WORLD_LAYER)).is_empty():
+		# Through PhysicsQueries, as every query is: once Box3D owns the map,
+		# Godot's own space has no walls in it, and a ray cast straight into
+		# it saw every gun through them.
+		if PhysicsQueries.intersect_ray(t.space, PhysicsRayQueryParameters3D.create(eyes, item.position, Hitscan.WORLD_LAYER)).is_empty():
 			return item
 	return null
 
@@ -241,12 +241,10 @@ func take(t: SimTick, item: DroppedItem, userid: int) -> bool:
 		# the one taken has its place; the same gun as the one there
 		# (another AK-47) as well, which add alone would refuse.
 		var node := t.roster.player(userid)
-		var from := _clear_of_walls(node, _held_transform(node), t.space, there.item.item_class)
+		var from := _clear_of_walls(node, _held_transform_of(node, there.item.item_class), t.space, there.item.item_class)
 		var old := inventory.remove(there.item.item_class)
 		var rng := _seeded(userid, old.item.item_class)
-		var spin := from.basis.x * rng.randf_range(0.5, 1.0) * THROW_TUMBLE \
-			+ Vector3.UP * rng.randf_range(-1.0, 1.0) * THROW_TWIST
-		DroppedItem.drop_from(game, userid, old, from, _throw_velocity(node), spin)
+		DroppedItem.drop_from(game, userid, old, from, _throw_velocity(node), _throw_spin(from, old.item.item_class, rng))
 		t.events.send(&"item_remove", {"userid": userid, "item": old.item.item_class})
 	for i in item.entry.count:
 		inventory.add(item_class, item.entry.weapon)
@@ -315,6 +313,23 @@ func _held_transform(node: Node3D) -> Transform3D:
 	return _middle(node)
 
 
+## Where item_class would be in the player's hand, whatever is in it: the
+## gun E swaps out is thrown from its own hold, not the one in hand's.
+func _held_transform_of(node: Node3D, item_class: String) -> Transform3D:
+	if node != null and node.has_method(&"held_transform"):
+		return HeldPose.of(node, item_class)
+	return _middle(node)
+
+
+## How a thrown gun turns: end over end, the muzzle dipping away from the
+## thrower, and a little twist. from is the attachment bone, whose local X
+## is not the gun's lateral axis, so the tumble is about the model's.
+func _throw_spin(from: Transform3D, item_class: String, rng: RandomNumberGenerator) -> Vector3:
+	var model_basis := ItemPhysics.of(item_class).model_held_at(from).basis
+	return model_basis.x * rng.randf_range(0.5, 1.0) * THROW_TUMBLE \
+		+ Vector3.UP * rng.randf_range(-1.0, 1.0) * THROW_TWIST
+
+
 func _middle(node: Node3D) -> Transform3D:
 	var at := node.global_position + Vector3.UP * 36.0 if node != null else Vector3.ZERO
 	var yaw = node.get(&"yaw_degrees") if node != null else null
@@ -341,13 +356,13 @@ static func _clear_of_walls(node: Node3D, from: Transform3D, space: PhysicsDirec
 	query.shape = hull.shape
 	query.transform = Transform3D(body.basis, eye)
 	query.collision_mask = Hitscan.WORLD_LAYER
-	if space.collide_shape(query, 1).is_empty():
+	if PhysicsQueries.intersect_shape(space, query, 1).is_empty():
 		query.motion = way
-		var fractions := space.cast_motion(query)
+		var fractions := PhysicsQueries.cast_motion(space, query)
 		if not fractions.is_empty():
 			free = fractions[0]
 	else:
-		var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(eye, body.origin, Hitscan.WORLD_LAYER))
+		var hit := PhysicsQueries.intersect_ray(space, PhysicsRayQueryParameters3D.create(eye, body.origin, Hitscan.WORLD_LAYER))
 		if not hit.is_empty():
 			free = maxf(0.0, ((hit["position"] as Vector3) - eye).length() - 4.0) / way.length()
 	if free >= 1.0:

@@ -2,6 +2,28 @@
 
 **Counter-Strike 2, rebuilt from scratch in Godot 4.7.**
 
+The game's physics is **Box3D**, a GDExtension that is not committed. Install
+its pinned addon before opening the project or running the tests. On Windows:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/install_box3d.ps1
+```
+
+On Linux and macOS (and in CI and the cloud threads):
+
+```bash
+scripts/install_box3d.sh
+```
+
+The release's Linux library needs glibc 2.43, so on an older Linux the script
+builds it from the release's pinned source (a few minutes, once). A shared
+native world handles collision queries, player hulls and hitboxes, dropped
+items and ragdolls. The Source movement and grenade-flight rules remain game
+code using Box3D collision; `-- --physics legacy` runs Godot's own physics for
+comparison, without ragdolls. See
+[`reference/box3d-trial.md`](reference/box3d-trial.md) for setup and the
+repeatable performance/settling comparison.
+
 [![Tests](https://github.com/sidcarrollworks/CSGODOT/actions/workflows/tests.yml/badge.svg)](https://github.com/sidcarrollworks/CSGODOT/actions/workflows/tests.yml)
 ![Godot 4.7](https://img.shields.io/badge/Godot-4.7-478cbf?logo=godotengine&logoColor=white)
 ![64 tick](https://img.shields.io/badge/tick-64%20Hz-555)

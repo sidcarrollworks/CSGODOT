@@ -258,6 +258,82 @@ issue done here and on the page in the same pull request.
 | 24 | The sky dark slate grey (the skybox's clouds, CS2's additive `csgo_unlitgeneric`, imported as an opaque, lit sheet) | **Done 2026-09-28:** `UnlitMaterials`, unlit and added; its textures listed by `export_alpha.gd` | **Done:** `extract_assets.sh layers`; long doors' sky 0.39 of CS2's to 0.86. The rest of the gap, the sky's own brightness and haze, needs research | 10, 23 |
 | 25 | Red window frames, doors and awnings too vivid (the export's tint over the whole texture, not only the tint mask's paint) | *(done 2026-09-26: `prop_tint`, `LightmapMaterials.carry_features`)* The tint moved off the colour and put back through `g_tTintMask`; the `layers` step fetches the masks | **Done 2026-09-28:** `layers` fetched 55 masks; long doors' shutters and door from 0.36 to 0.50 saturation to 0.22 to 0.34 (CS2's 0.17 to 0.31), the awning unchanged | 7, R7 |
 
+**Box3D is the game's physics (2026-09-28, Sid).** Sid chose to take the
+trial below forward. CI and the cloud threads build its Linux library from the
+pinned release's source (`scripts/install_box3d.sh`), since the release's
+needs glibc 2.43 and Ubuntu 24.04 has 2.39, and the AWP's four settling checks
+are known open (`_check_known_open`: reported every run, not failing it).
+Every query goes through `PhysicsQueries` (`reference/godot/physics.md`); E's
+sight test (#126), written straight on Godot's space, was ported with #125's
+merge and is checked on a Box3D world (`tests/run_box3d_pickup_checks.gd`).
+Left: the AWP's settling; ragdoll visual acceptance; movement at real map
+edges; FootPlant on flat floors under Box3D's rest clearance (playtest issue
+5); the 6 ms frame target; tick-owned hitbox poses for multiplayer; and
+`scripts/profile_dust2.gd` at 5 and 10 a side on both backends, for
+`reference/performance.md`.
+
+**Box3D physics trial (2026-09-26, Sid).** The branch
+`codex/box3d-dropped-guns` started with dropped-gun jitter and now follows
+Sid's request to convert all game physics. The shared native world owns
+map collision, player/hitbox queries, dropped bodies and ragdolls;
+movement, hitscan/penetration, live-grenade collision, sight and surface
+queries use it. Source movement and grenade-flight rules remain game
+code. The branch defaults to `--physics box3d`; the old `--drop-physics`
+flag remains an alias. Original Godot collision RIDs are detached while
+the full adapter is active.
+
+**Frame-time audit done (2026-09-26).** Repeated 4K ten-player p99 is
+12.5–12.8 ms on Box3D, versus 9.1 ms through legacy. Disjoint CPU attribution
+finds 3.47 ms/tick in proxy synchronization against 0.42 ms in the native-step
+interval; first-use weapon/grenade spikes are a separate issue. The audit
+records rendering ablations, a live round, focus-filtered tails and one-bot
+scaling. It prioritized incremental proxy updates, contact trace amplification
+and actual first-use prewarming; that audit changed no gameplay/graphics defaults.
+Evidence and reproduction: [frame-times-2026-09-26.md](research/frame-times-2026-09-26.md).
+
+**Bridge and recovery optimization done (2026-09-26; 6 ms target still open).** Query-only
+proxies update on demand, reuse authored geometry, and avoid native kinematic
+stepping. Movement groups its recovery casts, skips excluded self updates,
+and stops identical failed searches; proven deep player overlap needs one
+cast instead of sixty. Same-tick poses and geometry/lifecycle changes have
+dedicated regression coverage. Effects and graphics settings are unchanged.
+The **6 ms maximum frame-time target remains open**; measured results and
+remaining costs are in [the follow-up](research/box3d-performance-fixes-2026-09-26.md).
+
+**Repeated player-update work reduced (2026-09-26).** Per-tree animation
+bindings skip unchanged persistent values while retaining consumed requests;
+bot sight shares observer setup and visits nearest candidates first without
+changing reaction timing. Static crouch-path data, shooter state, and recoil
+damping constants are reused. The ordinary ten-player simulation averages
+3.217 to 3.095 ms with the same shots and hull traces. This is a modest CPU
+gain, not proof of a lower rendered maximum or multiplayer-ready pose timing.
+Measurements and remaining work: [player-update-performance-2026-09-26.md](research/player-update-performance-2026-09-26.md).
+
+Before that optimization, native gameplay integration passed 43/43, world/hitbox lifecycle 20/20,
+ragdolls 67/67, focused movement 22/22, and real Dust2 integration 10/10;
+the movement course passes 80/80 on each backend. The final seeded 5v5
+CPU comparison averages 7.091 ms per native tick versus 3.296 ms for the
+legacy query/drop path (see the trial notes for scope); this is not a
+full-game speedup. The full suite and final targeted reruns cover 3,750
+assertions: 3,746 pass and the four known AWP settling checks fail; one
+draw-only suite skips headless. Implementation of the full-physics trial
+is done; acceptance and its remaining quality/performance work stay open.
+Ragdoll ball/hinge joints approximate the previous independent-axis
+limits with conservative offset cones and need visual acceptance.
+
+Sid's positive drop playtest led to release-orientation and bullet-push
+fixes. A later failed shooting playtest exposed floor friction absorbing
+downward shots; the supported-gun reaction now reflects the into-surface
+component outward. Its current strength is 6.9 kg·inch/s per remaining
+base-damage point: a 15% increase from 6.0, chosen for Sid's request for
+a slight increase. Both reaction and strength are experimental; the
+legacy comparison has no bullet push
+and requires the native world for converted ragdolls. Setup, dated test
+results and the original drop-only benchmarks are in
+[box3d-trial.md](box3d-trial.md). Human acceptance and the quality decision
+came with Sid's choice on 2026-09-28; the four AWP settling checks are known
+open; the old timings do not measure the full conversion.
+
 ### Phase 1: make being shot feel like CS2
 
 This was the unfinished half of hit registration. Items 1 to 4 are in (PR
@@ -583,11 +659,18 @@ list, split into Local and Remote items, with the measurements.
     the aim's pitch, from where the player stands and looks), at CS2's
     300 u/s where they look, turning as it flies,
     bouncing, and laid on its side where it stops; a death lets the gun go
-    from the hand, moving as the body was. E takes the item looked at and
-    swaps it with the one in its slot (the playtest of 2026-09-25's issue
-    3), and a gun on the ground is a body on its own physics hull (issue 2).
-    Left: blasts and rounds pushing it (`reference/cs2-systems.md` section
-    4).
+    from the hand, moving as the body was. Left: E to swap with the gun in
+    hand, and blast impulses on dropped guns. The 2026-09-26 Box3D trial
+    gives dropped items native rigid bodies on their own physics hulls;
+    its follow-up adds bullet impulses to guns and corrects their held
+    orientation at release. After a failed shooting playtest, a
+    grounded-contact response passes realistic downward-shot
+    regressions. The subsequent full-physics conversion raises its
+    experimental impulse strength by 15% for Sid's requested slight
+    increase, to 6.9 kg·inch/s per remaining
+    base-damage point; human acceptance remains pending. See
+    [box3d-trial.md](box3d-trial.md). The playtest of
+    2026-09-25's issues 2 and 3 track the broader work.
 12a. **Binds: the same keys everywhere, the test range included.** *(Remote;
     Local wires section 5's keys through it and checks CS2's defaults; new
     2026-09-24, Sid: "Ideally the same keys are used everywhere even in

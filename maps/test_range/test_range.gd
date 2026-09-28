@@ -759,7 +759,15 @@ func _build_cover() -> void:
 	cover = CoverPanel.new()
 	cover.name = "Cover"
 	add_child(cover)
+	cover.collision_changed.connect(_refresh_drop_collision, CONNECT_DEFERRED)
 	cover.stand_before(dummy_position())
+
+
+func _refresh_drop_collision() -> void:
+	# A cover choice or lane move changes static collision after startup.
+	# The deferred signal keeps rebuilding the mirror outside simulation.
+	if is_instance_valid(world.game.drop_physics):
+		world.game.drop_physics.capture_world(self)
 
 
 func next_cover() -> void:

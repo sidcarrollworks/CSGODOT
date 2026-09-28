@@ -3453,6 +3453,9 @@ func _spawn_player() -> void:
 	_export_importer.add_child(_export_player)
 	world.add_player(_export_player as PlayerSim)
 	_export_player.global_position = EXPORT_OFFSET + Vector3(0.0, 160.0, 0.0)
+	# These fixtures are siblings in one World3D, so the native world must
+	# capture their shared root, not just the first importer's subtree.
+	world.initialize_drop_physics(root)
 
 
 ## The point of the whole exercise: can you stand on an imported map.
@@ -3490,8 +3493,8 @@ func _test_player_stands_on_the_hull() -> void:
 	var space := body.get_world_3d().direct_space_state
 	var from := EXPORT_OFFSET + Vector3(150.0, 40.0, 0.0)
 	var to := EXPORT_OFFSET + Vector3(300.0, 40.0, 0.0)
-	var shot := space.intersect_ray(PhysicsRayQueryParameters3D.create(from, to, Hitscan.WORLD_LAYER | Hitbox.LAYER))
-	var walker := space.intersect_ray(PhysicsRayQueryParameters3D.create(from, to, body.collision_mask))
+	var shot := PhysicsQueries.intersect_ray(space, PhysicsRayQueryParameters3D.create(from, to, Hitscan.WORLD_LAYER | Hitbox.LAYER))
+	var walker := PhysicsQueries.intersect_ray(space, PhysicsRayQueryParameters3D.create(from, to, body.collision_mask))
 	_check(
 		shot.is_empty() and not walker.is_empty() and absf((walker["position"] as Vector3).x - (EXPORT_OFFSET.x + 192.0)) < 0.5,
 		"a round passes through the player clip that a player's movement meets (%s)" % [walker.get("position", "nothing")]

@@ -112,12 +112,12 @@ func _try_place(space: PhysicsDirectSpaceState3D) -> Dictionary:
 	# No wall between the flame and the new one, a little off the ground.
 	var lift := Vector3.UP * 8.0
 	traces += 1
-	var wall := space.intersect_ray(PhysicsRayQueryParameters3D.create(parent + lift, toward + lift, Hitscan.WORLD_LAYER))
+	var wall := PhysicsQueries.intersect_ray(space, PhysicsRayQueryParameters3D.create(parent + lift, toward + lift, Hitscan.WORLD_LAYER))
 	if not wall.is_empty():
 		return {}
 	# Ground under it, facing up enough to be a floor.
 	traces += 1
-	var ground := space.intersect_ray(PhysicsRayQueryParameters3D.create(
+	var ground := PhysicsQueries.intersect_ray(space, PhysicsRayQueryParameters3D.create(
 		toward + Vector3.UP * 32.0, toward + Vector3.DOWN * 64.0, Hitscan.WORLD_LAYER
 	))
 	if ground.is_empty() or (ground["normal"] as Vector3).y < GrenadeRules.FLOOR_NORMAL_Y:

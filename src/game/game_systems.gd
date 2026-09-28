@@ -24,6 +24,10 @@ var roster := Roster.new()
 ## first step.
 var last_tick: SimTick
 
+## Shared native physics world, stepped after entity motion and before
+## pickup systems. The historical property name remains for fixtures.
+var drop_physics: Box3DDrops
+
 var _systems: Array = []
 var _inventories := {}
 var _queries := {}
@@ -134,6 +138,8 @@ func step(tick: int, space: PhysicsDirectSpaceState3D = null) -> SimTick:
 	last_tick = t
 	_run_commands(t)
 	entities.tick_all(t)
+	if is_instance_valid(drop_physics):
+		drop_physics.tick(t)
 	for system in _systems:
 		system.call(&"tick", t)
 	events.flush()

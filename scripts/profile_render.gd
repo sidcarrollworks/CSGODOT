@@ -48,6 +48,7 @@ var _undo := Callable()
 var _last_usec := 0
 var _samples := {}  # what -> Array of numbers, this variant
 var _results: Array[Dictionary] = []
+var _freeze_simulation := false
 
 
 func _initialize() -> void:
@@ -58,6 +59,20 @@ func _initialize() -> void:
 		_measure_frames = maxi(1, int(args[1]))
 	if args.size() >= 3 and args[2].contains("x"):
 		_window_size = Vector2i(int(args[2].get_slice("x", 0)), int(args[2].get_slice("x", 1)))
+	# Optional comma-separated subset, beginning with baseline; repeats allowed.
+	# --freeze holds the same living players/map state for all variants.
+	if args.size() >= 4 and not args[3].begins_with("--"):
+		_variants = args[3].split(",")
+		for variant in _variants:
+			if not RenderVariants.VARIANTS.has(variant):
+				printerr("Unknown render variant: " + variant)
+				quit(1)
+				return
+		if _variants[0] != "baseline":
+			printerr("Render variant subsets must begin with baseline for GPU savings to be meaningful.")
+			quit(2)
+			return
+	_freeze_simulation = args.has("--freeze")
 	if DisplayServer.get_name() == "headless":
 		printerr("profile_render draws, so it cannot run headless. Leave out --headless.")
 		quit(1)
@@ -71,6 +86,9 @@ func _initialize() -> void:
 	_dust2.set("team_size", _team_size)
 	_dust2.set("game_mode", "Competitive")
 	root.add_child(_dust2)
+	if _freeze_simulation:
+		for player in GameWorld.current.players:
+			player.hit_target.immortal = true
 
 
 func _process(_delta: float) -> bool:
@@ -114,6 +132,8 @@ func _process(_delta: float) -> bool:
 
 ## A camera of its own, and the views it takes.
 func _begin() -> void:
+	if _freeze_simulation:
+		GameWorld.current.set_physics_process(false)
 	# The game's view caps the frame rate under the refresh (PlayerView);
 	# measured, nothing is held back.
 	Engine.max_fps = 0
@@ -229,6 +249,7 @@ func _report() -> void:
 		# base (1920x1080), whatever the window is.
 		DisplayServer.window_get_size().x, DisplayServer.window_get_size().y,
 		_team_size * 2, _views.size(), _measure_frames])
+	print("- Simulation frozen during variants: %s" % _freeze_simulation)
 	print("- Scene: %d mesh instances, %d surfaces, %d triangles, %d materials; %d instances cast shadows (%d from both faces, %d triangles), %d of them into the sun's; the 3D skybox %d instances, %d triangles" % [
 		stats["instances"], stats["surfaces"], stats["triangles"], stats["materials"],
 		stats["casting_instances"], stats["double_sided_casters"], stats["casting_triangles"], stats["sun_casting_instances"],

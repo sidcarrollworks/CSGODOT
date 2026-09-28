@@ -33,7 +33,7 @@ static func ground_below(space: PhysicsDirectSpaceState3D, point: Vector3, reach
 	if space == null:
 		return {}
 	var query := PhysicsRayQueryParameters3D.create(point + Vector3.UP * LIFT, point + Vector3.DOWN * reach, MASK, exclude)
-	var hit := space.intersect_ray(query)
+	var hit := PhysicsQueries.intersect_ray(space, query)
 	if hit.is_empty():
 		return {}
 	return {"height": maxf(0.0, point.y - (hit["position"] as Vector3).y), "normal": hit["normal"] as Vector3}
