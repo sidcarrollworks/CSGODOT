@@ -10,6 +10,9 @@
 # Every file runs even when one before it fails, and the summary at the end
 # says how each went. It exits 1 if any file failed or ended without saying
 # how it went (a script error or a crash), which is what CI goes by.
+#
+# Each file gets CSGODOT_TEST_TIMEOUT seconds (180 by default) and is then
+# killed and counted as failed, so one stuck file cannot eat CI's whole job.
 set -uo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -28,7 +31,9 @@ if [[ -d "$PROJECT_DIR/assets" ]]; then
 	# here as anywhere else.
 	import_assets "$GODOT" "$PROJECT_DIR"
 else
-	"$GODOT" --headless --path "$PROJECT_DIR" --import >/dev/null
+	if ! run_import "$GODOT" "$PROJECT_DIR"; then
+		exit 1
+	fi
 fi
 
 files=()
@@ -57,11 +62,19 @@ total=0
 failed_files=0
 for name in "${files[@]}"; do
 	echo "=== tests/$name"
-	"$GODOT" --headless --path "$PROJECT_DIR" --script "tests/$name" 2>&1 | tee "$log"
+	with_timeout "${CSGODOT_TEST_TIMEOUT:-180}" \
+		"$GODOT" --headless --path "$PROJECT_DIR" --script "tests/$name" 2>&1 | tee "$log"
 	status=${PIPESTATUS[0]}
 	result="$(grep -a '^TESTS ' "$log" | tail -n 1)"
 	read -r _ suite checks failures rest <<<"$result"
-	if [[ -z "$result" ]]; then
+	if [[ $status -eq 124 || $status -eq 137 ]] && [[ -z "$result" ]]; then
+		summary+=("FAILED   $name timed out after ${CSGODOT_TEST_TIMEOUT:-180}s without reporting")
+		failed_files=$((failed_files + 1))
+	elif [[ $status -eq 124 || $status -eq 137 ]]; then
+		summary+=("FAILED   $suite hung on exit after reporting $failures of $checks checks failed (killed after ${CSGODOT_TEST_TIMEOUT:-180}s)")
+		failed_files=$((failed_files + 1))
+		[[ "$checks" =~ ^[0-9]+$ ]] && total=$((total + checks))
+	elif [[ -z "$result" ]]; then
 		summary+=("FAILED   $name ended without reporting (exit $status): a script error or a crash, see above")
 		failed_files=$((failed_files + 1))
 	elif [[ "$checks" == "skipped" ]]; then

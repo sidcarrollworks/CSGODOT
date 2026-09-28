@@ -565,8 +565,14 @@ func _test_on_the_range() -> void:
 		await physics_frame
 	_check(range_map.bomb_sites[0].contains(player.global_position), "site A is behind the spawn")
 	# The rifle in hand, drawn: the attack button fires it and plants nothing.
-	while player.weapon != null and player.weapon.is_drawing(SimClock.now_usec()):
+	# Every wait here is capped, so a draw that never ends fails a check
+	# rather than hanging the file until CI's job limit.
+	var drawn_in := 0
+	while player.weapon != null and player.weapon.is_drawing(SimClock.now_usec()) and drawn_in < SimClock.ticks_in(3.0):
 		await physics_frame
+		drawn_in += 1
+	_check(player.weapon != null and not player.weapon.is_drawing(SimClock.now_usec()),
+		"the rifle is drawn within 3 s")
 	buttons.held = UserCmd.ATTACK
 	for i in 32:
 		await physics_frame
@@ -581,8 +587,11 @@ func _test_on_the_range() -> void:
 	for i in SimClock.ticks_in(0.5):
 		await physics_frame
 	_check(not bomb.planting() and not player.hand_ready(), "held while the bomb is drawn, the button plants nothing yet")
-	while not player.hand_ready():
+	var ready_in := 0
+	while not player.hand_ready() and ready_in < SimClock.ticks_in(3.0):
 		await physics_frame
+		ready_in += 1
+	_check(player.hand_ready(), "and the bomb is ready in hand within 3 s")
 	var waited := 0
 	while not bomb.planted() and waited < SimClock.ticks_in(bomb.rules.plant_seconds + 1.0):
 		await physics_frame

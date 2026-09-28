@@ -36,6 +36,52 @@ find_godot() {
 	echo "$found"
 }
 
+## Runs a command under coreutils' timeout: with_timeout <seconds> <command...>
+##
+## A stuck Godot is killed once its seconds are up (and 10 s later with
+## SIGKILL if it ignores that), and the command's status is timeout's: 124,
+## or 137 when it had to be killed. Without coreutils' timeout (Windows' own
+## timeout.exe only pauses a console, so it does not count) the command runs
+## with no limit.
+with_timeout() {
+	local seconds="$1"
+	shift
+	if command -v timeout >/dev/null 2>&1 && timeout --help 2>&1 | grep -q -- '--kill-after'; then
+		timeout -k 10 "$seconds" "$@"
+	else
+		"$@"
+	fi
+}
+
+## Runs Godot's import pass: run_import <godot> <project dir>
+##
+## Its output, a progress bar per file, goes to .godot/import.log, and only
+## trouble is shown. It runs under a time limit (CSGODOT_IMPORT_TIMEOUT
+## seconds, 1800 by default: a fresh dust2 takes about a minute), so a hung
+## import fails instead of eating CI's whole job.
+run_import() {
+	local godot="$1" project="$2"
+	local log="$project/.godot/import.log"
+	local limit="${CSGODOT_IMPORT_TIMEOUT:-1800}"
+	mkdir -p "$project/.godot"
+	rm -f "$log.first"
+	if ! with_timeout "$limit" "$godot" --headless --path "$project" --import >"$log" 2>&1; then
+		# Godot can finish an import and crash on its way out: on Sid's
+		# machine it did the first time dust2's baked shadow pages were
+		# imported (2026-09-25), and a second run found nothing left to do
+		# and exited cleanly. So it runs once more, and only a second
+		# failure is a real one. A run that hit the time limit gets the same
+		# second chance.
+		mv "$log" "$log.first"
+		echo "Godot's import exited with an error or ran past ${limit}s; running it once more. The first run's log: $log.first" >&2
+		if ! with_timeout "$limit" "$godot" --headless --path "$project" --import >"$log" 2>&1; then
+			echo "Godot's import failed. The end of $log:" >&2
+			tail -n 20 "$log" >&2
+			return 1
+		fi
+	fi
+}
+
 ## Imports whatever is in assets/: import_assets <godot> <project dir>
 ##
 ## The texture settings go down first, so a fresh extraction is imported once,
@@ -56,21 +102,7 @@ import_assets() {
 	done
 
 	local started=$SECONDS
-	rm -f "$log.first"
-	if ! "$godot" --headless --path "$project" --import >"$log" 2>&1; then
-		# Godot can finish an import and crash on its way out: on Sid's
-		# machine it did the first time dust2's baked shadow pages were
-		# imported (2026-09-25), and a second run found nothing left to do
-		# and exited cleanly. So it runs once more, and only a second
-		# failure is a real one.
-		mv "$log" "$log.first"
-		echo "Godot's import exited with an error; running it once more. The first run's log: $log.first" >&2
-		if ! "$godot" --headless --path "$project" --import >"$log" 2>&1; then
-			echo "Godot's import failed. The end of $log:" >&2
-			tail -n 20 "$log" >&2
-			return 1
-		fi
-	fi
+	run_import "$godot" "$project" || return 1
 	echo "Imported in $((SECONDS - started))s."
 	cat "$log.first" "$log" 2>/dev/null | grep -aE '^(ERROR|WARNING):' | grep -v 'load-time scene is not defined' \
 		| sort | uniq -c | head -n 10 || true
