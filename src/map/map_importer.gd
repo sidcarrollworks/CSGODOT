@@ -22,6 +22,13 @@ signal import_finished(stats: Dictionary)
 ## file and have to land on the geometry.
 const SOURCE2_VIEWER_SCALE := 1.0 / 0.0254
 
+## How a glTF not yet imported by Godot is read: at full vertex precision,
+## as write_import_settings.gd has Godot import the maps. Compressed, two
+## surfaces sharing an edge round it to different points, each to a 16-bit
+## step across its own bounds, and the wall shows a crack between them
+## (playtest of 2026-09-25, issue 9).
+const GLTF_FLAGS := GLTFDocument.IMPORT_FLAG_FORCE_DISABLE_MESH_COMPRESSION
+
 ## Path to the exported glTF. Under res:// if the editor has imported it,
 ## otherwise it is loaded straight off disk.
 @export_file("*.gltf", "*.glb") var source_path: String = ""
@@ -486,7 +493,7 @@ func _load_scene(path: String) -> Node3D:
 
 	var document := GLTFDocument.new()
 	var state := GLTFState.new()
-	var error := document.append_from_file(absolute, state)
+	var error := document.append_from_file(absolute, state, GLTF_FLAGS)
 	if error != OK:
 		push_error("glTF load failed for %s (error %d)" % [path, error])
 		return null

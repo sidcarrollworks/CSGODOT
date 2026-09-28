@@ -77,6 +77,7 @@ func _process(_delta: float) -> bool:
 		_test_blend_materials()
 		_test_lightmap_materials()
 		_test_lightmap_lods()
+		_test_vertex_precision()
 		_test_far_materials()
 		_test_far_squeeze()
 		_test_unlit_materials()
@@ -1479,6 +1480,131 @@ func _test_lightmap_lods() -> void:
 		"a surface with no LODs left, or none at all, is passed over"
 	)
 	instance.free()
+
+
+## A map's walls are merged into fragments that share edges, each surface
+## spanning hundreds or thousands of units. Compressed, Godot stores each
+## position in 16 bits across its own surface's bounds, so the shared edge
+## lands at a different point in each and the wall shows a crack (playtest
+## of 2026-09-25, issue 9). Shown on a wall 1,600 units long with a
+## 248-unit fragment filling a gap in it: read as the game reads a glTF not
+## yet imported (MapImporter.GLTF_FLAGS), the edge stays where it is, and
+## compressed it does not. And write_import_settings.gd has Godot import
+## every map model the same way.
+func _test_vertex_precision() -> void:
+	var path := "user://export_fixture/precision/seam.gltf"
+	var edge := 3.3777
+	var fixture := Node3D.new()
+	fixture.name = "Seam"
+	fixture.add_child(_wall("Long", [Vector2(-1000.0, edge), Vector2(edge + 248.0, 600.0)]))
+	fixture.add_child(_wall("Fragment", [Vector2(edge, edge + 248.0)]))
+	for child in fixture.get_children():
+		child.owner = fixture
+	if not _write_gltf(fixture, path):
+		return
+
+	var compressed := _edge_positions(path, 0, edge)
+	var exact := _edge_positions(path, MapImporter.GLTF_FLAGS, edge)
+	var drift := absf(compressed["Long"] - compressed["Fragment"])
+	_check(
+		compressed["compressed"] and drift > 0.001,
+		"compressed, the long wall and the fragment put their shared edge %.4f apart" % drift
+	)
+	_check(
+		not exact["compressed"] and exact["Long"] == exact["Fragment"] and absf(exact["Long"] - edge) < 1e-5,
+		"read as the map is, neither is compressed and the edge is where the file puts it"
+	)
+
+	var importer := MapImporter.new()
+	importer.source_path = path
+	importer.report = false
+	root.add_child(importer)
+	var meshes: Array[MeshInstance3D] = []
+	_collect_mesh_instances(importer, meshes)
+	var any_compressed := false
+	for instance in meshes:
+		for surface in instance.mesh.get_surface_count():
+			any_compressed = any_compressed or instance.mesh.surface_get_format(surface) & Mesh.ARRAY_FLAG_COMPRESS_ATTRIBUTES != 0
+	_check(meshes.size() == 2 and not any_compressed, "MapImporter reads a map's glTF without vertex compression")
+	importer.free()
+
+	var settings: GDScript = load("res://scripts/write_import_settings.gd")
+	_check(
+		settings.is_map_model("res://assets/maps/de_dust2/maps/de_dust2/world.gltf")
+			and settings.is_map_model("res://assets/maps/de_dust2_skybox/world.gltf")
+			and settings.is_map_model("res://assets/maps/de_dust2_physics/world_physics_physics.gltf")
+			and not settings.is_map_model("res://assets/weapons/weapons/models/ak47/weapon_rif_ak47.gltf")
+			and not settings.is_map_model("res://assets/maps_old/world.gltf"),
+		"the maps' worlds, skyboxes and hulls are map models, a gun's is not"
+	)
+	var import_path := path + ".import"
+	var existing := ConfigFile.new()
+	existing.set_value("remap", "importer", "scene")
+	existing.set_value("remap", "uid", "uid://kept")
+	existing.set_value("params", "meshes/generate_lods", true)
+	existing.save(import_path)
+	var wanted := {"meshes/force_disable_compression": true}
+	var wrote := settings.apply_scene_params(path, wanted) as bool
+	var written := ConfigFile.new()
+	written.load(import_path)
+	_check(
+		wrote and written.get_value("params", "meshes/force_disable_compression", false) == true
+			and written.get_value("remap", "uid", "") == "uid://kept"
+			and written.get_value("params", "meshes/generate_lods", false) == true
+			and not settings.apply_scene_params(path, wanted),
+		"the setting is written into a model's .import, keeping its uid and other settings, and only once"
+	)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(import_path))
+
+
+## A wall 116 units high at z = -384, one quad for each [from, to] span
+## along x, all on one surface with normals and tangents: what the glTF
+## importer compresses.
+func _wall(wall_name: String, spans: Array) -> MeshInstance3D:
+	var tool := SurfaceTool.new()
+	tool.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for span: Vector2 in spans:
+		var corners := [
+			Vector3(span.x, 0, -384), Vector3(span.y, 0, -384), Vector3(span.y, 116, -384), Vector3(span.x, 116, -384)
+		]
+		for corner in [0, 1, 2, 0, 2, 3]:
+			tool.set_normal(Vector3.BACK)
+			tool.set_uv(Vector2(corners[corner].x, corners[corner].y) / 128.0)
+			tool.add_vertex(corners[corner])
+	tool.generate_tangents()
+	var instance := MeshInstance3D.new()
+	instance.name = wall_name
+	instance.mesh = tool.commit()
+	return instance
+
+
+## Reads a glTF with these flags and returns where each wall puts its
+## vertices nearest x = edge, and whether any surface was compressed.
+func _edge_positions(path: String, flags: int, edge: float) -> Dictionary:
+	var document := GLTFDocument.new()
+	var state := GLTFState.new()
+	document.append_from_file(ProjectSettings.globalize_path(path), state, flags)
+	var scene := document.generate_scene(state)
+	var result := {"compressed": false}
+	for wall_name in ["Long", "Fragment"]:
+		var node := scene.find_child(wall_name, true, false)
+		var mesh: Mesh = node.mesh if node is MeshInstance3D else (node.mesh as ImporterMesh).get_mesh()
+		if mesh.surface_get_format(0) & Mesh.ARRAY_FLAG_COMPRESS_ATTRIBUTES:
+			result["compressed"] = true
+		var nearest := INF
+		for vertex: Vector3 in mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
+			if absf(vertex.x - edge) < absf(nearest - edge):
+				nearest = vertex.x
+		result[wall_name] = nearest
+	scene.free()
+	return result
+
+
+func _collect_mesh_instances(node: Node, out: Array[MeshInstance3D]) -> void:
+	if node is MeshInstance3D and (node as MeshInstance3D).mesh != null:
+		out.append(node as MeshInstance3D)
+	for child in node.get_children():
+		_collect_mesh_instances(child, out)
 
 
 ## A 20 by 20 grid of quads, one unit each, split at x = 10 into two

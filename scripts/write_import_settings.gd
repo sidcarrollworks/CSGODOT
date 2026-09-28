@@ -1,8 +1,8 @@
 extends SceneTree
 
 ## Sets the import settings of every extracted texture, before Godot imports
-## them, and the import script of the weapons' models
-## (weapon_model_import.gd).
+## them, the import script of the weapons' models
+## (weapon_model_import.gd), and the maps' models' vertex precision.
 ##
 ##   godot --headless --path . --script scripts/write_import_settings.gd
 ##
@@ -27,6 +27,15 @@ extends SceneTree
 ## and window, and the printable ASCII is drawn at import, so a number's
 ## first appearance in a match rasterizes nothing (reference/godot/ui.md).
 ##
+## A map's models (its world, 3D skybox and collision hull, everything under
+## assets/maps) are imported without vertex compression. Compressed, each
+## position is stored in 16 bits across its own surface's bounds, so two
+## surfaces that share an edge but differ in size round it to different
+## points: dust2's merged wall fragments span up to thousands of units, a
+## step of 0.02 units or more, and the gap between them is a line you can see
+## through (playtest of 2026-09-25, issue 9). MapImporter asks the same of a
+## glTF it reads before Godot has imported it.
+##
 ## Godot keeps a texture's settings in a .import file next to it, and reimports
 ## when that file changes, so this writes those. Only [params] is touched; an
 ## existing file keeps its uid. Safe to run repeatedly: a file that is already
@@ -48,6 +57,8 @@ const SHADOW_MASK := "direct_light_shadows"
 ## which leaves out the second body a gun carries for legacy skins.
 const WEAPON_MODELS_DIR := "res://assets/weapons/weapons/models"
 const WEAPON_MODEL_IMPORT := "res://scripts/weapon_model_import.gd"
+## The maps' exports, every one imported at full vertex precision.
+const MAPS_DIR := "res://assets/maps"
 
 
 func _init() -> void:
@@ -86,6 +97,15 @@ func _init() -> void:
 			if _apply_import_script(gltf, WEAPON_MODEL_IMPORT):
 				models_updated += 1
 	print("weapon model import script: %d models, %d updated" % [models, models_updated])
+
+	var map_models := 0
+	var map_models_updated := 0
+	for gltf in gltfs:
+		if is_map_model(gltf):
+			map_models += 1
+			if apply_scene_params(gltf, {"meshes/force_disable_compression": true}):
+				map_models_updated += 1
+	print("map models without vertex compression: %d models, %d updated" % [map_models, map_models_updated])
 	quit(0)
 
 
@@ -203,16 +223,34 @@ func _write(source_path: String, importer: String, type: String, wanted: Diction
 ## Sets a glTF's import script, keeping its other settings. Returns true if
 ## the .import file had to be written (and so the model is imported again).
 func _apply_import_script(gltf_path: String, script_path: String) -> bool:
+	return apply_scene_params(gltf_path, {"import_script/path": script_path})
+
+
+## Whether a glTF is one of a map's exports (world, skybox, hull, brush
+## models), which are imported without vertex compression.
+static func is_map_model(gltf_path: String) -> bool:
+	return gltf_path.begins_with(MAPS_DIR + "/")
+
+
+## Sets these [params] of a glTF's .import file, keeping its other settings
+## and its uid. Returns true if the file had to be written (and so the model
+## is imported again).
+static func apply_scene_params(gltf_path: String, wanted: Dictionary) -> bool:
 	var import_path := gltf_path + ".import"
 	var config := ConfigFile.new()
+	var dirty := false
 	if config.load(import_path) != OK:
 		# Not imported yet: Godot fills in the rest when it imports.
 		config.set_value("remap", "importer", "scene")
 		config.set_value("remap", "type", "PackedScene")
 		config.set_value("deps", "source_file", gltf_path)
-	elif config.get_value("params", "import_script/path", "") == script_path:
+		dirty = true
+	for key: String in wanted:
+		if not config.has_section_key("params", key) or config.get_value("params", key) != wanted[key]:
+			config.set_value("params", key, wanted[key])
+			dirty = true
+	if not dirty:
 		return false
-	config.set_value("params", "import_script/path", script_path)
 	if config.save(import_path) != OK:
 		push_error("Could not write %s" % import_path)
 		return false
