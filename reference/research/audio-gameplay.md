@@ -760,6 +760,7 @@ on the research branch (95b7d4f, e218e23), so the line numbers hold on both.
 | 21 | `c4_view.gd` | No plant, defuse, pickup or 10-second sounds | `c4.plant` to 4100, `c4.disarmstart` to 2000, `Player.PickupC4` to 1100, `C4.10Seconds` | Missing |
 | 22 | `reference/systems/bomb.md:35-36` | "Sounds `c4_beep*` and `c4_explode*` guessed" | Settled by name here (section 5) | Doc |
 | 23 | `weapon_sounds.gd:40-41` | Your own shot plays flat (2D), others' in 3D | Matches CS2's local-player handling in spirit (`is_tagged_1p_sound`, STK); fine | Same |
+| 24 | `weapon_sounds.gd` (none until 2026-09-28) | No low-ammo click | `Default.NearlyEmpty` after each round once the magazine is nearly empty (1.3), heard by everyone near. **Done 2026-09-28** (playtest 2026-09-25, issue 20): played through `SoundEvents` from CS2's event; the threshold (`WeaponData.nearly_empty`, 20% of the magazine, 30% for shotguns) is a community figure until measured | Missing |
 
 ## 10. What players criticise and want
 
