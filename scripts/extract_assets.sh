@@ -513,9 +513,10 @@ extract_layers_under() {
 
 	# Every texture a material names that the glTF has no slot for: the two-
 	# layer materials' second layer and blend mask (BlendMaterials), and the
-	# props' tint mask, decal and self-illumination mask (prop_features.gdshaderinc).
+	# props' tint mask, decal and self-illumination mask, and csgo_environment's
+	# height map, whose green masks its model tint (prop_features.gdshaderinc).
 	local textures
-	textures="$(grep -oE '"g_t(Layer2Color|Layer2NormalRoughness|BlendModulation|TintMask|Decal|SelfIllumMask)" *: *"[^"]+"' "$world" \
+	textures="$(grep -oE '"g_t(Layer2Color|Layer2NormalRoughness|BlendModulation|TintMask|Height1|Decal|SelfIllumMask)" *: *"[^"]+"' "$world" \
 		| sed -E 's/^"[^"]+" *: *"//; s/"$//; s/\.vtex$/.vtex_c/' | sort -u || true)"
 	if [[ -z "$textures" ]]; then
 		echo "No layered, tint-masked, decal or self-illuminated materials in $world; nothing to fetch."

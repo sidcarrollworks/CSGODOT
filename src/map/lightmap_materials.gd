@@ -17,7 +17,9 @@ extends RefCounted
 ## material says F_FORCE_UV2 carries its model's own second UV set (a decal
 ## or a tint mask reads it), and its lightmap coordinates, where it has any,
 ## in a third, which Godot imports as CUSTOM0: dust2's kasbah towers and
-## arches. The props with neither are lit by the light probes instead
+## arches. csgo_environment always carries its model's own second set, so
+## its lightmap is in the third too: dust2's tarp on xbox. A second set that
+## is (0, 0) at every vertex is never read as a lightmap's. The props with neither are lit by the light probes instead
 ## (ProbeMaterials). Those lit from CUSTOM0 are drawn without the LODs
 ## Godot's import made for them (drop_lods).
 
@@ -48,6 +50,13 @@ static func energy(mode: String = "") -> float:
 	return CS2_ENERGY if grade == "cs2" else ENERGY
 
 const WORLD_SHADERS := ["csgo_lightmappedgeneric.vfx", "csgo_static_overlay.vfx"]
+## The prop shaders whose second UV set is always the model's own (Source 2
+## Viewer's csgo_environment.vert.slang carries it as vTEXCOORD1), which
+## puts a lightmap in the third.
+const OWN_UV2_SHADERS := ["csgo_environment.vfx", "csgo_environment_blend.vfx"]
+## How many of a surface's second UV set's coordinates are looked at to tell
+## whether it is (0, 0) everywhere (uv2_at_origin).
+const SAMPLE_VERTICES := 64
 const PROP_SHADERS := ["csgo_vertexlitgeneric.vfx", "csgo_foliage.vfx", "csgo_complex.vfx", "csgo_environment.vfx"]
 
 ## A prop's charts sit at the world's texel density, give or take a
@@ -107,6 +116,13 @@ static func apply(
 			if not (is_prop or shader in WORLD_SHADERS):
 				continue
 			var in_custom0 := is_prop and uses_own_uv2(description)
+			if not in_custom0 and uv2_at_origin(mesh, surface):
+				# Every pixel would read the lightmap's corner texel; the
+				# third set holds the lightmap if anything does, and
+				# otherwise the probes light it.
+				if not is_prop:
+					continue
+				in_custom0 = true
 			if in_custom0 and not has_third_uv(mesh, surface):
 				continue
 			var density := chart_density(mesh, surface, unit_scale, lightmap_size, in_custom0)
@@ -211,9 +227,30 @@ static func is_lightmapped(description: Dictionary) -> bool:
 
 
 ## Whether a material's second UV set is the model's own rather than a
-## lightmap's: F_FORCE_UV2 keeps it for a decal or a tint mask.
+## lightmap's: F_FORCE_UV2 keeps it for a decal or a tint mask, and
+## csgo_environment always does (OWN_UV2_SHADERS).
 static func uses_own_uv2(description: Dictionary) -> bool:
+	if String(description.get("ShaderName", "")) in OWN_UV2_SHADERS:
+		return true
 	return int((description.get("IntParams", {}) as Dictionary).get("F_FORCE_UV2", 0)) != 0
+
+
+## Whether a surface's second UV set is (0, 0) at every vertex, judged on
+## up to SAMPLE_VERTICES of them spread over the surface: a set the export
+## wrote but nothing filled, as on dust2's tarp.
+static func uv2_at_origin(mesh: Mesh, surface: int) -> bool:
+	if mesh.surface_get_format(surface) & Mesh.ARRAY_FORMAT_TEX_UV2 == 0:
+		return false
+	var uv2: Variant = mesh.surface_get_arrays(surface)[Mesh.ARRAY_TEX_UV2]
+	if not uv2 is PackedVector2Array or (uv2 as PackedVector2Array).is_empty():
+		return false
+	var coordinates: PackedVector2Array = uv2
+	@warning_ignore("integer_division")
+	var step := maxi(1, coordinates.size() / SAMPLE_VERTICES)
+	for i in range(0, coordinates.size(), step):
+		if coordinates[i] != Vector2.ZERO:
+			return false
+	return true
 
 
 ## Whether a surface has a third UV set: two floats a vertex in CUSTOM0,
@@ -326,6 +363,8 @@ static func carry_features(lit: ShaderMaterial, description: Dictionary, texture
 			lit.set_shader_parameter("tint_mask", tint_mask)
 			lit.set_shader_parameter("tint_on_uv2", tint_on_uv2(description))
 			lit.set_shader_parameter("albedo_color", Color(1.0, 1.0, 1.0, tint.a))
+	elif String(description.get("ShaderName", "")) in OWN_UV2_SHADERS:
+		carry_model_tint(lit, description, textures_dir)
 	if int(flags.get("F_DECAL_TEXTURE", 0)) != 0:
 		var decal := BlendMaterials.load_texture(textures_dir, textures.get("g_tDecal"))
 		if decal != null:
@@ -344,6 +383,60 @@ static func carry_features(lit: ShaderMaterial, description: Dictionary, texture
 			lit.set_shader_parameter("self_illum_color", Vector3(colour.r, colour.g, colour.b) * strength)
 			lit.set_shader_parameter("self_illum_albedo_factor", float(floats.get("g_flSelfIllumAlbedoFactor", 0.0)))
 			lit.set_shader_parameter("self_illum_on_uv2", own_uv2 or int(flags.get("g_bUseSecondaryUvForSelfIllum", 0)) != 0)
+
+
+## csgo_environment's model tint, which recolours the texture to the tint's
+## hue and keeps its lightness, where the plain multiply the export bakes
+## into the base colour darkens it too (dust2's tarp on xbox, 2.5 times too
+## dark). After Source 2 Viewer's csgo_environment (frag.slang's
+## ColorizeTint and its first layer; vert.slang for the amount): the tint
+## comes off the colour into prop_features.gdshaderinc's colorize, by
+## g_flModelTintAmount times one less the tint's lowest channel, where
+## g_tHeight1's green says (through its contrast and brightness), or all
+## over while the layers step has not fetched it. Nothing under
+## g_bModelTint1 off, or with no tint.
+static func carry_model_tint(lit: ShaderMaterial, description: Dictionary, textures_dir: String) -> void:
+	var flags: Dictionary = description.get("IntParams", {})
+	var floats: Dictionary = description.get("FloatParams", {})
+	var base: Variant = lit.get_shader_parameter("albedo_color")
+	if not base is Color or int(flags.get("g_bModelTint1", 1)) == 0:
+		return
+	var tint := base as Color
+	var amount := model_tint_amount(tint, float(floats.get("g_flModelTintAmount", 1.0)))
+	if amount <= 0.0:
+		return
+	lit.set_shader_parameter("colorize_tint", Color(tint.r, tint.g, tint.b, 1.0))
+	lit.set_shader_parameter("colorize_amount", amount)
+	lit.set_shader_parameter(
+		"colorize_mask_adjust",
+		Vector2(float(floats.get("g_fTintMaskContrast1", 1.0)), float(floats.get("g_fTintMaskBrightness1", 1.0)))
+	)
+	var mask := BlendMaterials.load_texture(textures_dir, (description.get("TextureParams", {}) as Dictionary).get("g_tHeight1"))
+	if mask != null:
+		lit.set_shader_parameter("colorize_mask", mask)
+	lit.set_shader_parameter("albedo_color", Color(1.0, 1.0, 1.0, tint.a))
+
+
+## How much of the model tint csgo_environment applies, from the tint as
+## the material holds it (sRGB): the scale times one less its lowest
+## channel in linear light, so a white tint does nothing.
+static func model_tint_amount(tint: Color, scale: float = 1.0) -> float:
+	var linear := tint.srgb_to_linear()
+	return scale * (1.0 - minf(linear.r, minf(linear.g, linear.b)))
+
+
+## A colour recoloured by csgo_environment's model tint, as
+## prop_features.gdshaderinc's prop_colorize gives it, all in linear light:
+## the tint's hue at the colour's luma, no brighter than three times the
+## luma times the tint's brightest channel, mixed in by the amount.
+static func colorize(albedo: Color, tint: Color, amount: float) -> Color:
+	var luma_weights := Vector3(0.2125, 0.7154, 0.0721)
+	var colour := Vector3(albedo.r, albedo.g, albedo.b)
+	var hue := Vector3(maxf(tint.r, 0.001), maxf(tint.g, 0.001), maxf(tint.b, 0.001)).normalized()
+	var luma := colour.dot(luma_weights)
+	var tinted := minf(luma / hue.dot(luma_weights), 3.0 * luma * maxf(tint.r, maxf(tint.g, tint.b)))
+	var result := colour.lerp(hue * tinted, amount).clamp(Vector3.ZERO, Vector3.ONE)
+	return Color(result.x, result.y, result.z, albedo.a)
 
 
 ## Whether a material reads its tint mask through its second UV set, as
