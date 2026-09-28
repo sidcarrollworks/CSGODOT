@@ -35,12 +35,17 @@ LIMIT="${CSGODOT_TEST_TIMEOUT:-180}"
 # cannot see MovementSolver and friends, and fails to parse.
 if [[ -d "$PROJECT_DIR/assets" ]]; then
 	# Extracted content has to be imported with its texture settings in place,
-	# here as anywhere else.
-	import_assets "$GODOT" "$PROJECT_DIR"
+	# here as anywhere else. An import that fails twice stops the run, as
+	# below: without it the tests cannot find their classes.
+	if ! import_assets "$GODOT" "$PROJECT_DIR"; then
+		exit 1
+	fi
 else
 	# A fresh clone's first import can also fail on its way out the first
 	# time it picks up a GDExtension (Box3D); run_import retries it once.
-	if ! run_import "$GODOT" "$PROJECT_DIR"; then
+	# It has 300 s here (CI's job has 30 minutes for everything), where a
+	# fresh dust2 on Sid's machine takes about a minute.
+	if ! CSGODOT_IMPORT_TIMEOUT="${CSGODOT_IMPORT_TIMEOUT:-300}" run_import "$GODOT" "$PROJECT_DIR"; then
 		exit 1
 	fi
 fi
@@ -92,9 +97,12 @@ for name in "${files[@]}"; do
 		summary+=("FAILED   $name timed out after ${LIMIT}s without reporting")
 		failed_files=$((failed_files + 1))
 	elif [[ $status -eq 124 || $status -eq 137 ]]; then
-		summary+=("FAILED   $suite hung on exit after reporting $failures of $checks checks failed (killed after ${LIMIT}s)")
+		if [[ "$checks" == "skipped" ]]; then
+			summary+=("FAILED   $suite skipped, then did not exit within ${LIMIT}s")
+		else
+			summary+=("FAILED   $suite hung on exit after reporting $failures of $checks checks failed (killed after ${LIMIT}s)")
+		fi
 		failed_files=$((failed_files + 1))
-		[[ "$checks" =~ ^[0-9]+$ ]] && total=$((total + checks))
 	elif [[ -z "$result" ]]; then
 		summary+=("FAILED   $name ended without reporting (exit $status): a script error or a crash, see above")
 		failed_files=$((failed_files + 1))

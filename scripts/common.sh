@@ -40,14 +40,15 @@ find_godot() {
 ##
 ## A stuck Godot is killed once its seconds are up (and 10 s later with
 ## SIGKILL if it ignores that), and the command's status is timeout's: 124,
-## or 137 when it had to be killed. Without coreutils' timeout (Windows' own
-## timeout.exe only pauses a console, so it does not count) the command runs
-## with no limit.
+## or 137 when it had to be killed. It runs in the foreground, in the
+## terminal's process group, so Ctrl-C still stops it and the script that
+## ran it. Without coreutils' timeout (Windows' own timeout.exe only pauses a
+## console, so it does not count) the command runs with no limit.
 with_timeout() {
 	local seconds="$1"
 	shift
 	if command -v timeout >/dev/null 2>&1 && timeout --help 2>&1 | grep -q -- '--kill-after'; then
-		timeout -k 10 "$seconds" "$@"
+		timeout --foreground -k 10 "$seconds" "$@"
 	else
 		"$@"
 	fi
@@ -57,8 +58,9 @@ with_timeout() {
 ##
 ## Its output, a progress bar per file, goes to .godot/import.log, and only
 ## trouble is shown. It runs under a time limit (CSGODOT_IMPORT_TIMEOUT
-## seconds, 1800 by default: a fresh dust2 takes about a minute), so a hung
-## import fails instead of eating CI's whole job.
+## seconds, 1800 by default, since a fresh dust2 takes about a minute), so a
+## hung import fails rather than running for ever; scripts/run_tests.sh gives
+## a fresh clone's import 300 s, so one cannot take CI's whole job.
 run_import() {
 	local godot="$1" project="$2"
 	local log="$project/.godot/import.log"
