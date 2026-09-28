@@ -1757,6 +1757,24 @@ func _test_player_model() -> void:
 		rig != null and rig.find_bone("arm_lower_R_TWIST") >= 0,
 		"the twist bones the body is skinned to were added to the rig"
 	)
+	# The foot fit (FootPlant) bends each leg by its hip, knee and ankle, as
+	# CS2's FootIK does from the ankle up (reference/research/foot-ik.md 1),
+	# and runs before the twist bones follow the legs.
+	var chains_ok := rig.find_bone(FootPlant.PELVIS) >= 0 and model.foot_plant != null
+	for leg: Array in FootPlant.LEGS:
+		var hip := rig.find_bone(leg[0])
+		var knee := rig.find_bone(leg[1])
+		var foot := rig.find_bone(leg[2])
+		chains_ok = chains_ok and hip >= 0 and knee >= 0 and foot >= 0 \
+			and rig.get_bone_parent(foot) == knee and rig.get_bone_parent(knee) == hip
+	var twist_after := true
+	for child in rig.get_children():
+		if child is SkeletonModifier3D and child != model.foot_plant and child.get_index() < model.foot_plant.get_index():
+			twist_after = false
+	_check(
+		chains_ok and twist_after,
+		"the rig's legs run hip, knee, ankle from the pelvis, and the foot fit runs before the other modifiers on the rig"
+	)
 	var weapon_root: Node3D = null
 	for child in rig.get_parent().get_children():
 		if child.name.contains("weapon_rif"):

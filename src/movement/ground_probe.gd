@@ -23,10 +23,17 @@ const LIFT := 1.0
 ## further than reach; INF when there is none that close. exclude takes
 ## bodies to look through.
 static func height_below(space: PhysicsDirectSpaceState3D, point: Vector3, reach: float, exclude: Array[RID] = []) -> float:
+	var ground := ground_below(space, point, reach, exclude)
+	return INF if ground.is_empty() else float(ground["height"])
+
+
+## The same, with the surface's normal: {"height": distance down,
+## "normal": the surface's}, or empty when there is no ground that close.
+static func ground_below(space: PhysicsDirectSpaceState3D, point: Vector3, reach: float, exclude: Array[RID] = []) -> Dictionary:
 	if space == null:
-		return INF
+		return {}
 	var query := PhysicsRayQueryParameters3D.create(point + Vector3.UP * LIFT, point + Vector3.DOWN * reach, MASK, exclude)
 	var hit := space.intersect_ray(query)
 	if hit.is_empty():
-		return INF
-	return maxf(0.0, point.y - (hit["position"] as Vector3).y)
+		return {}
+	return {"height": maxf(0.0, point.y - (hit["position"] as Vector3).y), "normal": hit["normal"] as Vector3}
