@@ -22,6 +22,13 @@ signal import_finished(stats: Dictionary)
 ## file and have to land on the geometry.
 const SOURCE2_VIEWER_SCALE := 1.0 / 0.0254
 
+## How a glTF not yet imported by Godot is read: at full vertex precision,
+## as write_import_settings.gd has Godot import the maps. Compressed, two
+## surfaces sharing an edge round it to different points, each to a 16-bit
+## step across its own bounds, and the wall shows a crack between them
+## (playtest of 2026-09-25, issue 9).
+const GLTF_FLAGS := GLTFDocument.IMPORT_FLAG_FORCE_DISABLE_MESH_COMPRESSION
+
 ## Path to the exported glTF. Under res:// if the editor has imported it,
 ## otherwise it is loaded straight off disk.
 @export_file("*.gltf", "*.glb") var source_path: String = ""
@@ -36,7 +43,8 @@ const SOURCE2_VIEWER_SCALE := 1.0 / 0.0254
 ## Optional: the directory scripts/extract_assets.sh put the map's materials/
 ## under, which is where the second layers of its blend materials are. With
 ## it, walls and ground that mix two textures do; without it they show their
-## first layer only. See BlendMaterials.
+## first layer only. See BlendMaterials. The unlit materials' textures are
+## there too (UnlitMaterials).
 @export_dir var layer_textures_dir: String = ""
 
 ## Optional: where the map's lightmaps are, relative to the world glTF's
@@ -275,6 +283,8 @@ func import_map() -> Dictionary:
 		)
 
 	var blend := BlendMaterials.apply(visible_meshes, layer_textures_dir)
+	# Unlit before the lighting below, which leaves a shader material be.
+	var unlit := UnlitMaterials.apply(visible_meshes, layer_textures_dir)
 	var lightmaps := {"surfaces": 0, "props": 0, "no_lods": 0, "found": false, "shadows": false, "ambient": null}
 	var probes := {"volumes": 0, "surfaces": 0, "shadows": false, "rest": 0}
 	var sun_shadow := ""
@@ -378,6 +388,7 @@ func import_map() -> Dictionary:
 		"collision_from": collision_from,
 		"loaded_from": loaded_from,
 		"blend": blend,
+		"unlit": unlit,
 		"lightmaps": lightmaps,
 		"behind": behind,
 		"occluder_triangles": occluder_triangles,
@@ -482,7 +493,7 @@ func _load_scene(path: String) -> Node3D:
 
 	var document := GLTFDocument.new()
 	var state := GLTFState.new()
-	var error := document.append_from_file(absolute, state)
+	var error := document.append_from_file(absolute, state, GLTF_FLAGS)
 	if error != OK:
 		push_error("glTF load failed for %s (error %d)" % [path, error])
 		return null
@@ -717,6 +728,16 @@ func _report_text() -> String:
 			% (blend["missing"] as PackedStringArray).size()
 		)
 		lines.append("    Run 'scripts/extract_assets.sh layers' to fetch them.")
+	var unlit: Dictionary = stats["unlit"]
+	if int(unlit["surfaces"]) > 0:
+		lines.append("    unlit materials: %d surfaces, drawn as CS2's csgo_unlitgeneric" % unlit["surfaces"])
+	if int(unlit["hidden"]) > 0:
+		lines.append(
+			"    %d meshes of unlit materials hidden, their textures not being on disk; 'scripts/extract_assets.sh layers' fetches them"
+			% unlit["hidden"]
+		)
+	if not (unlit["left"] as PackedStringArray).is_empty():
+		lines.append("    unlit materials left as imported: %s" % ", ".join(unlit["left"] as PackedStringArray))
 	if int(stats["visibility_clusters"]) > 0:
 		lines.append("    visibility: %d clusters; what the camera's cannot see is not drawn" % stats["visibility_clusters"])
 	elif not behind_everything:

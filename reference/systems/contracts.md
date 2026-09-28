@@ -136,7 +136,14 @@ Rounds and the match
 - `round_announce_match_start`, `round_announce_last_round_half`, `round_announce_match_point`, `round_announce_final`: (none); what CS2 announces of a round as it starts, sent after `round_start` (`MatchState.announce_round`; the moment is inferred from their names)
 - `round_start`: timelimit, fraglimit, objective
 - `round_end`: winner, reason, message, legacy, player_count, nomusic (`nomusic` set: no round-end music, the action goes on)
-- `round_mvp`: userid, reason, value, nomusic
+- `round_mvp`: userid, reason, value, nomusic; sent by `RoundReport`
+  (`src/match/round_report.gd`) right after `round_end`, with CS2's reason
+  numbers (hudwinpanel.js), when the round has an MVP
+- `cs_win_panel_round`: show_timer_defend, show_timer_attack, timer_time,
+  final_event, funfact_token, funfact_player, funfact_data1 to 3; sent by
+  `RoundReport` after `round_end` every round, the fun fact as CS2's
+  csgo_english.txt token with its '#' ("" for none); the timer keys and
+  final_event are left at their defaults
 - Every round event here, with these keys, is CS2's: its `core.gameevents`,
   `mod.gameevents` and `game.gameevents`, which GameTracking-CS2 keeps as
   text (read 2026-09-24).

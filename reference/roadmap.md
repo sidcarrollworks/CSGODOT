@@ -240,7 +240,7 @@ issue done here and on the page in the same pull request.
 | 6 | Bots meet head-on and hop at each other forever | **Done** (PR #113): making way for teammates (`BotSteering`), stuck handling that never jumps at one, goals spread over a site | dust2's chokepoints and 24b's inferno spot; `scripts/run_tests.sh dust2` runs the new no-stall check | 24b, 23 |
 | 7 | The xbox tarp far too dark (its lightmap read from the wrong UV set) | The UV set for `csgo_environment`, and its tint | `extract_assets.sh layers`; an xbox shot in CS2 | After 12 |
 | 8 | Wrists wrung on the knife (the forearm twist bones are never posed) | **Done:** CS2's tilt-twist constraints from the agents' `.vmdl` on the drawn arms and bodies (`TwistModifier`), the maths in `reference/research/twist-constraints.md` | `scripts/run_tests.sh twist` with the agents and knife extracted; the knife and AK beside CS2, both teams; the cost in `profile_dust2.gd` | 6 |
-| 9 | A see-through seam in a wall (Godot's vertex compression) | The map imported without it | Reimport, look, profile | After 12 |
+| 9 | A see-through seam in a wall (Godot's vertex compression) | *(done: `write_import_settings.gd`, `MapImporter.GLTF_FLAGS`)* The map imported without it | **Done:** reimported, the seam gone from Sid's spot, no measurable GPU cost at 4K | After 12 |
 | 10 | Too saturated and contrasty against CS2 | *Done:* CS2's grade (its Hable curve and the map's post-processing file), the default since 2026-09-26 (`--grade aces` for the old) | *Done:* extracted, calibrated at long doors (sun and bounce in CS2's units, exposure x1.2); B site waits for a CS2 shot | R0 |
 | 11 | Geometry flickering (the sky's brushes used as occluders) | The sky's brushes out of the occluders (`MapOccluders.NOT_DRAWN`, 2026-09-26): top of mid fixed, **lower mid still flickers**; next is Sid's call: shrink the occluders or turn Godot's occlusion culling off | `profile_render.gd`'s `no_occlusion` to decide; walk R3's spots; `run_tests.sh dust2` | R3 |
 | 12 | Zigzag stripes on the kasbah towers (Godot's mesh LODs break the third UV set's lightmap) | *(done: `LightmapMaterials.drop_lods`)* No LODs, or LODs that keep that UV set, on those props | Look, profile | |
@@ -251,10 +251,12 @@ issue done here and on the page in the same pull request.
 | 17 | Running into a jump snaps to the air pose | *(Remote done, PR #114)* The take-off from CS2's graph | Extract the jump clips; regenerate the tables | 6 |
 | 18 | Nobody seems to get the bomb | *(done 2026-09-26, except "[E] Take Bomb", which waits on 3)* A check end to end, CS2's handing it to the human T (`bot_defer_to_human_items`), a cue for who carries it | Rounds as T and CT; CS2's warmup | 16, 15 |
 | 19 | Grenade sounds and effects | The shared sound-event table and player (**done** 2026-09-26: `reference/sounds/`, `SoundEvents`, `default_bus_layout.tres`), then the grenades' sounds; the effects after research | Extract the missing sounds and the particles | 17 to 20 |
-| 20 | A click as the magazine nears empty (CS2's `Default.NearlyEmpty`) | On the shared sound player, the threshold provisional | Measure the threshold in CS2 | After 19's groundwork |
+| 20 | A click as the magazine nears empty (CS2's `Default.NearlyEmpty`) | On the shared sound player, the threshold provisional (**done** 2026-09-28) | Measure the threshold in CS2 | After 19's groundwork |
 | 21 | Round sounds (start, end, planted, ten seconds, announcer) | The cues from `reference/research/audio-round.md` | Extract the UI, music and announcer; listen | 16, after 19's groundwork |
 | 22 | Looking down shows the vest where CS2 shows legs | **Done:** the seen body folds from spine_2 up, the shadow and bots whole | Beside CS2 | 6a |
 | 23 | The distant hill missing (the 3D skybox past the camera's far plane, dropped before its depth squeeze can help) | *(done: `FarMaterials.CULL_BOX`, `far_position`)* Far meshes kept in the frustum, and a squeeze that keeps them inside the far plane | The view beside CS2; the cost | R2 |
+| 24 | The sky dark slate grey (the skybox's clouds, CS2's additive `csgo_unlitgeneric`, imported as an opaque, lit sheet) | **Done 2026-09-28:** `UnlitMaterials`, unlit and added; its textures listed by `export_alpha.gd` | **Done:** `extract_assets.sh layers`; long doors' sky 0.39 of CS2's to 0.86. The rest of the gap, the sky's own brightness and haze, needs research | 10, 23 |
+| 25 | Red window frames, doors and awnings too vivid (the export's tint over the whole texture, not only the tint mask's paint) | *(done 2026-09-26: `prop_tint`, `LightmapMaterials.carry_features`)* The tint moved off the colour and put back through `g_tTintMask`; the `layers` step fetches the masks | **Done 2026-09-28:** `layers` fetched 55 masks; long doors' shutters and door from 0.36 to 0.50 saturation to 0.22 to 0.34 (CS2's 0.17 to 0.31), the awning unchanged | 7, R7 |
 
 ### Phase 1: make being shot feel like CS2
 
@@ -643,13 +645,22 @@ list, split into Local and Remote items, with the measurements.
     panels as Panorama does. Local: checked on Sid's machine against
     `In_game_ui.webp` at 1080p and 4K, where it matches to the pixel but
     for the player's portrait and colour. Still to do: the kill feed,
-    radar, scoreboard, round-end panel, the bomb's icon on the clock, the
+    radar, scoreboard, the bomb's icon on the clock, the
     kill marks over the health and the low health and ammo glow. The buy
     menu rebuilt 2026-09-25 to Sid's screenshots of CS2's: its columns in
     CS2's order, CS2's word on each item, the countdown in warmup and freeze
     time, and your agent in CS2's own pose for what is in hand or under the
     mouse, holding it, framed by CS2's buy-menu camera. Each player's colour
     is drawn at random for the match until a setting chooses it (item 26).)*
+    *(Round-end panel done 2026-09-26: CS2's win panel from its own
+    hudwinpanel layout, styles and strings, ROUND WON or ROUND LOST with the
+    round's fun fact and the MVP's band (`WinPanel`), from what the server
+    now says on round_end, round_mvp and cs_win_panel_round (`RoundReport`
+    in `src/match/`, which picks the MVP and the fun fact by the
+    community's rules until CS2's are measured). Left: the glitch video, the
+    MVP's 3D agent on the band, the damage under dead enemies' cards (the
+    report keeps it, `RoundReport.damage_between`) and the team income line
+    in the chat. Local: a round won and lost beside CS2's at 1080p.)*
 
 ### Phase 5: the bomb
 
