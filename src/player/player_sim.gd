@@ -915,8 +915,11 @@ func _forget_hits() -> void:
 func _on_hit_target_died() -> void:
 	alive = false
 	hit_target.set_active(false)
-	# Nobody walks into a body that is not there.
+	# Nobody walks into a body that is not there, from this moment: whoever
+	# moves after it in this tick meets nothing (the hulls are looked over
+	# once a tick, so what changes one in a tick says so).
 	collision_layer = 0
+	PhysicsQueries.sync_object(self, false)
 	_died_at_usec = SimClock.now_usec()
 	_respawn_at_usec = _died_at_usec + int(respawn_seconds * 1_000_000.0)
 	var zone: StringName = hit_target.last_hitbox.zone if hit_target.last_hitbox != null else &"chest"
@@ -1022,6 +1025,7 @@ func _revive() -> void:
 	hit_target.reset()
 	hit_target.set_active(true)
 	collision_layer = PLAYER_LAYER
+	PhysicsQueries.sync_object(self, false)
 	observing = null
 	observing_chase = false
 

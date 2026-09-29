@@ -171,6 +171,9 @@ func step() -> void:
 func begin_tick() -> void:
 	tick += 1
 	_path_searches_left = PATH_SEARCHES_PER_TICK
+	var queries := _native_queries()
+	if queries != null:
+		queries.begin_tick()
 
 
 ## The tick ends, every player having run it: the match judges it, then the
@@ -180,6 +183,15 @@ func end_tick() -> void:
 		match_state.tick(SimClock.tick_end_usec(tick))
 	var viewport := get_viewport() if is_inside_tree() else null
 	game.step(tick, viewport.find_world_3d().direct_space_state if viewport != null else null)
+	var queries := _native_queries()
+	if queries != null:
+		queries.end_tick()
+
+
+## The native physics' queries, which are told when a tick begins and ends;
+## null on Godot's own physics.
+func _native_queries() -> Box3DQueries:
+	return game.drop_physics.queries if is_instance_valid(game.drop_physics) else null
 
 
 ## Whether a path over the nav mesh may be searched for this tick, counting

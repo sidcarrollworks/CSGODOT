@@ -4,12 +4,14 @@ extends SceneTree
 ## hitches: bots walk Competitive's site routes as
 ## tests/run_dust2_bot_checks.gd has them, holding fire, and every trace
 ## each makes is counted by its kind (the move, the step up and down, the
-## stay-on-ground's up and down, the ground check), with the casts it took,
+## sweep that stays on the ground, the ground check), with the casts it took,
 ## whether it started in overlap and with what, whether it was pushed clear
 ## (a recovery, or a grazing hit's offset) and whether it went nowhere yet
 ## met a plane. A tick that starts at a run on the ground with a move held
-## and ends at no speed is a hitch, and the first few are printed trace by
-## trace. It found playtest issue 26
+## and ends at no speed is a stop: a hitch where none of its traces met
+## anything too steep to walk on, a stop against a wall where one did
+## (walked into a corner, anyone stops). The first few hitches are printed
+## trace by trace. It found playtest issue 26
 ## (reference/research/box3d-walking-hitch-2026-09-28.md).
 ##
 ##   godot --headless --path . --script scripts/profile_hull_traces.gd -- 5 60
@@ -61,6 +63,22 @@ class TracedBot:
 		})
 		return result
 
+	## The sweep that stays on the ground, which is a cast of its own and
+	## no trace: written down as one, from where it started.
+	func _cast_from(from: Vector3, motion: Vector3, queries: Box3DQueries) -> Dictionary:
+		var hit := super(from, motion, queries)
+		var travel: Variant = null
+		var normal: Variant = null
+		if not hit.is_empty():
+			normal = hit["normal"]
+			travel = from + motion * float(hit["fraction"])
+		trace_log.append({
+			"motion": motion, "test": true, "floor": true, "casts": 1,
+			"overlap": "world" if normal != null and (normal as Vector3).is_zero_approx() else "",
+			"travel": travel, "normal": normal, "pushed": hit.get("offset", Vector3.ZERO),
+		})
+		return hit
+
 
 var _bots_wanted := 5
 var _seconds := 60.0
@@ -69,6 +87,7 @@ var _bots: Array[Bot] = []
 var _ticks := 0
 var _end_tick := 0
 var _hitches := 0
+var _wall_stops := 0
 var _busy_ticks := 0
 var _most_traces := 0
 var _shown := 0
@@ -155,10 +174,13 @@ func _physics_process(_delta: float) -> bool:
 			ground_before and speed_before >= HITCH_FROM and speed < HITCH_TO
 			and player.wish_speed > 0.0 and not player.frozen and not player.held_still
 		):
-			_hitches += 1
-			if _shown < SHOWN:
-				_shown += 1
-				_show(bot, from, speed_before, cmd, traces)
+			if _met_a_wall(bot):
+				_wall_stops += 1
+			else:
+				_hitches += 1
+				if _shown < SHOWN:
+					_shown += 1
+					_show(bot, from, speed_before, cmd, traces)
 	_world.end_tick()
 	_ticks += 1
 	if _ticks < _end_tick:
@@ -168,10 +190,24 @@ func _physics_process(_delta: float) -> bool:
 	return true
 
 
+## Whether any of the tick's traces met something too steep to walk on, or
+## started in something and found no way out.
+func _met_a_wall(bot: TracedBot) -> bool:
+	for entry in bot.trace_log:
+		if entry["normal"] == null:
+			continue
+		var normal: Vector3 = entry["normal"]
+		if normal.is_zero_approx() or not MovementSolver.is_walkable(normal, bot.config):
+			return true
+	return false
+
+
 func _count(entry: Dictionary) -> void:
 	var motion: Vector3 = entry["motion"]
 	var kind := "move"
-	if motion.x == 0.0 and motion.z == 0.0:
+	if entry.get("floor", false):
+		kind = "the floor, from %.1f up" % (absf(motion.y) - _bots[0].config.step_height)
+	elif motion.x == 0.0 and motion.z == 0.0:
 		kind = "%s %.1f%s" % ["up" if motion.y > 0.0 else "down", absf(motion.y), " (test)" if entry["test"] else ""]
 	if not _kinds.has(kind):
 		_kinds[kind] = {"calls": 0, "casts": 0, "searched": 0, "world": 0, "player": 0, "pushed": 0, "nowhere": 0}
@@ -184,7 +220,7 @@ func _count(entry: Dictionary) -> void:
 		counts["searched"] += 1
 	if not (entry["pushed"] as Vector3).is_zero_approx():
 		counts["pushed"] += 1
-	if entry["travel"] != null and (entry["travel"] as Vector3).is_zero_approx() and not (entry["normal"] as Vector3).is_zero_approx():
+	if not entry.get("floor", false) and entry["travel"] != null and (entry["travel"] as Vector3).is_zero_approx() and not (entry["normal"] as Vector3).is_zero_approx():
 		counts["nowhere"] += 1
 
 
@@ -201,16 +237,16 @@ func _report() -> void:
 	var casts := 0
 	for kind: String in _kinds:
 		casts += _kinds[kind]["casts"]
-	print("\nover %d ticks and %d bots: %d hitches, %d casts (%.2f a bot a tick), %d ticks of more than 12 traces, the most in one %d" % [
-		_ticks, _bots.size(), _hitches, casts, float(casts) / maxf(_ticks * _bots.size(), 1.0), _busy_ticks, _most_traces])
+	print("\nover %d ticks and %d bots: %d hitches, %d stops against a wall, %d casts (%.2f a bot a tick), %d ticks of more than 12 traces, the most in one %d" % [
+		_ticks, _bots.size(), _hitches, _wall_stops, casts, float(casts) / maxf(_ticks * _bots.size(), 1.0), _busy_ticks, _most_traces])
 	var kinds := _kinds.keys()
 	kinds.sort()
-	print("%-18s %8s %8s %9s %10s %10s %8s %8s" % ["trace", "calls", "casts", "searched", "in world", "in player", "pushed", "nowhere"])
+	print("%-24s %8s %8s %9s %10s %10s %8s %8s" % ["trace", "calls", "casts", "searched", "in world", "in player", "pushed", "nowhere"])
 	for kind: String in kinds:
 		var counts: Dictionary = _kinds[kind]
 		# Only the kinds that matter: a duck's or a landing's odd lengths
 		# come to a handful.
 		if int(counts["calls"]) < 20:
 			continue
-		print("%-18s %8d %8d %9d %10d %10d %8d %8d" % [
+		print("%-24s %8d %8d %9d %10d %10d %8d %8d" % [
 			kind, counts["calls"], counts["casts"], counts["searched"], counts["world"], counts["player"], counts["pushed"], counts["nowhere"]])

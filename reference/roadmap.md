@@ -286,13 +286,15 @@ leaves its own out once; a ray from the open is one native call. The seeded
 ten-player tick went from 3.68 to 3.09 ms, its 95th from 4.79 to 4.05, and a
 minute's walk from 117,000 hull casts to 96,000. The merges of 27 and 28
 September had not slowed the tick: main ran level with #125's merge, 0.2 ms
-over the branch. A walking bot's tick is 243 us, nearly half of it traces;
-what keeps Source's results as they are is worth about 1.2 ms of a
-ten-player tick (the floor found once a walking tick most of all) and
-0.4 ms of every frame, which is CS2's frames with bots (7 to 8 ms at worst
-on Sid's machine), not 6. What reaches 6 is Sid's to choose: Godot's
-renderer on a thread of its own, the movement in native code, or the
-simulation in a process of its own. Measurements and the list:
+over the branch. **The contained changes (2026-09-28, perf/tick-contained)**
+took it on to 2.31 ms: the floor found once a walking tick, a trace asking
+the bridge for its cast alone, the hulls looked over once a tick, and Box3D
+left alone with nothing awake; a walking bot's tick 243 us to 192. Sid
+(2026-09-28): the bots' thinking is to go on worker threads, and the
+movement into native code. Left besides: Godot's renderer on a thread of
+its own, to be measured drawn; hitboxes posed when a round asks rather
+than every frame; a ragdoll at rest letting go of the native step.
+Measurements and the list:
 [box3d-walking-hitch-2026-09-28.md](research/box3d-walking-hitch-2026-09-28.md).
 
 **Box3D physics trial (2026-09-26, Sid).** The branch
