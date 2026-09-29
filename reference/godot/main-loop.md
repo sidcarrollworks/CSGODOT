@@ -76,6 +76,7 @@ Docs: `classes/class_node.rst`, `classes/class_object.rst`, `tutorials/scripting
 - `reparent(new_parent, keep_global_transform := true)` moves a node in one call.
 - `replace_by(node, keep_groups := false)` swaps a node in place and does not delete the old one.
 - `duplicate(flags := 15)` copies signals, groups, scripts and uses instantiation (flags 1|2|4|8). `DUPLICATE_INTERNAL_STATE` (16) also copies non-exported script variables; it is not in the default.
+- **A node queued to be freed goes on running until the frame's end**: its `_process` is called once more if the frame has not reached it yet, and its signals' handlers. A ragdoll freed at a respawn, in the tick, posed the skeleton again in that frame's `_process`, where it lay (2026-09-29). What must stop at once is stopped by hand before it is queued (`Ragdoll.let_go` clears it first).
 - `queue_free()` deletes "at the end of the current frame after all other deferred calls". Safe to call more than once. `is_queued_for_deletion()` is true only on the node that was queued, not on its children.
 - `free()` deletes at once; anything still holding the node then holds a freed object. Use `is_instance_valid()` before touching a node that may have been freed.
 - `Node.print_orphan_nodes()` and `Node.get_orphan_node_ids()` work only in debug builds. `Performance.OBJECT_ORPHAN_NODE_COUNT` likewise.

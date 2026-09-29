@@ -28,6 +28,11 @@ var _bot_events: Array[String] = []
 var _victim: PlayerController
 var _victim_events: Array[String] = []
 var _victim_at_respawn: Dictionary = {}
+## Where the bot's pelvis was, from its feet, at the last skeleton update of
+## the frame it came back in: what that frame drew.
+var _bot_back_pelvis := Vector3.INF
+## And how far its hands were from their grips on the gun.
+var _bot_back_hands := Vector2.INF
 var _combat_started_usec: int = 0
 
 
@@ -871,7 +876,17 @@ func _start_bot() -> void:
 	_bot.died.connect(func(zone: StringName) -> void:
 		_bot_events.append("died:" + zone)
 		_bot_died_usec = Time.get_ticks_usec())
-	_bot.respawned.connect(func() -> void: _bot_events.append("respawned"))
+	_bot.respawned.connect(func() -> void:
+		_bot_events.append("respawned")
+		var frame := Engine.get_process_frames()
+		var rig := _bot.model.character_rig
+		rig.skeleton_updated.connect(func() -> void:
+			if Engine.get_process_frames() == frame:
+				_bot_back_pelvis = (rig.global_transform * rig.get_bone_global_pose(rig.find_bone("pelvis"))).origin - _bot.global_position
+				var units := rig.global_basis.get_scale().x
+				_bot_back_hands = Vector2(
+					rig.get_bone_global_pose(rig.find_bone("hand_L")).origin.distance_to(rig.get_bone_global_pose(rig.find_bone("wpnHand_L")).origin),
+					rig.get_bone_global_pose(rig.find_bone("hand_R")).origin.distance_to(rig.get_bone_global_pose(rig.find_bone("wpnHand_R")).origin)) * units))
 	_bot_started_frame = _frames
 	var impacts := BulletImpacts.new()
 	impacts.max_holes = 2
@@ -1320,6 +1335,19 @@ func _test_bot_comes_back() -> void:
 			and _bot.model.state() == &"idle",
 		"after its respawn time it is back at the start of its route, whole, standing, the ragdoll gone (%s)"
 			% [_bot.model.state()]
+	)
+	# The ragdoll is freed at the frame's end, and until it was let go of at
+	# once it posed the body again that frame, lying where it died, under a
+	# gun drawn where it stood.
+	_check(
+		_bot_back_pelvis.is_finite() and _bot_back_pelvis.y > 25.0 and Vector2(_bot_back_pelvis.x, _bot_back_pelvis.z).length() < 20.0,
+		"the frame it comes back in shows it stood at its spawn, not lying where it died (its pelvis %.1f over its feet, %.1f aside)"
+			% [_bot_back_pelvis.y, Vector2(_bot_back_pelvis.x, _bot_back_pelvis.z).length()]
+	)
+	_check(
+		_bot_back_hands.is_finite() and _bot_back_hands.x < 2.0 and _bot_back_hands.y < 2.0,
+		"and posed, its hands on the gun it draws (%.2f and %.2f units from their grips), not at rest with its arms out"
+			% [_bot_back_hands.x, _bot_back_hands.y]
 	)
 
 
@@ -1799,6 +1827,20 @@ func _test_player_model() -> void:
 		# The foot fit's pelvis drop on a slope takes the gun down with it
 		# (FootPlant.lower_gun), so the hands stay on it (Sid, 2026-09-29, T ramp).
 		var wpn_bone := rig.find_bone("wpn")
+		# How the gun's bones hang, which the checks without the models take
+		# from here (tests/run_hand_grip_checks.gd's stand-in).
+		var hangs := PackedStringArray()
+		var up := rig.get_bone_parent(wpn_bone)
+		while up >= 0:
+			hangs.append(rig.get_bone_name(up))
+			up = rig.get_bone_parent(up)
+		var targets_under_wpn := true
+		for arm: Array in HandGrip.ARMS:
+			targets_under_wpn = targets_under_wpn and rig.get_bone_parent(rig.find_bone(arm[3])) == wpn_bone
+		_check(
+			hangs == PackedStringArray(["wpnPivot", "root_motion"]) and targets_under_wpn,
+			"the gun's bone hangs under wpnPivot under root_motion, not under the pelvis, and the hands' targets under it (wpn < %s)" % " < ".join(hangs)
+		)
 		var gun_before := (rig.global_transform * rig.get_bone_global_pose(wpn_bone)).origin
 		FootPlant.fit(rig, FootPlant.MOST_DROP, [FootPlant.MOST_DROP, FootPlant.MOST_DROP], [Vector3.UP, Vector3.UP])
 		var gun_lowered := gun_before.y - (rig.global_transform * rig.get_bone_global_pose(wpn_bone)).origin.y

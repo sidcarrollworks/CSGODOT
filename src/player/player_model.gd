@@ -972,6 +972,17 @@ func pose_now() -> void:
 		animation_player.advance(0.0)
 
 
+## Poses the skeleton now, on a tree already going: once, where pose_now
+## steps a fresh tree three times. The step is the one the next frame
+## would have made, and costs what that would have (2 to 3 ms for a body
+## that has just taken something in hand), a frame sooner.
+func pose_again() -> void:
+	if animation_tree != null:
+		animation_tree.advance(0.0)
+	elif animation_player != null:
+		animation_player.advance(0.0)
+
+
 ## Steps its own animation from now on rather than leaving it to every frame
 ## (_process): on every frame while a camera draws it, so it moves smoothly
 ## where it is looked at; otherwise only in frames that ran no tick, by the
@@ -1047,6 +1058,13 @@ func step(delta: float) -> void:
 		animation_tree.advance(delta)
 	elif animation_player != null:
 		animation_player.advance(delta)
+
+
+## The body has been put somewhere else at once (a spawn, a respawn, up
+## from where it died): its feet take the floor there as they find it.
+func put_at_once() -> void:
+	if foot_plant != null:
+		foot_plant.snap()
 
 
 ## Stops the animation, for a ragdoll to have the bones, or starts it again.

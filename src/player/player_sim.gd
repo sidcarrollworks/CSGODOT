@@ -423,7 +423,7 @@ func change_team(new_team: String) -> void:
 	team = new_team
 	hit_target.team = team
 	if ragdoll != null:
-		ragdoll.queue_free()
+		ragdoll.let_go()
 		ragdoll = null
 	# Out of the tree now, so no round meets the old hitboxes on this tick.
 	for part: Node in [model, hitboxes]:
@@ -569,6 +569,8 @@ func place(spawn_position: Vector3, yaw: float) -> void:
 	previous_yaw_degrees = yaw
 	previous_pitch_degrees = 0.0
 	PhysicsQueries.sync_object(self)
+	if model != null:
+		model.put_at_once()
 
 
 ## The match puts the player at a spawn point for a round. Fresh (the
@@ -1005,12 +1007,15 @@ func _fall() -> void:
 ## Up off the floor: the ragdoll gone and the model animated again.
 func _get_up() -> void:
 	if ragdoll != null:
-		ragdoll.queue_free()
+		ragdoll.let_go()
 		ragdoll = null
 		if model != null:
 			model.character_rig.reset_bone_poses()
 			model.set_animating(true)
 	if model != null:
+		# Up somewhere else, as often as not (a bot back at its route's start
+		# is moved by hand, not placed).
+		model.put_at_once()
 		model.play(model.idle)
 		if model.holds_items and not _held_class.is_empty() and model.holding == _held_class:
 			# Alive and spawned fresh, the body took what is in hand a moment
@@ -1018,6 +1023,10 @@ func _get_up() -> void:
 			model.play(&"draw")
 		else:
 			_body_holds(inventory.in_hand())
+		# Posed now. Its bones were put back at rest, and until its animation
+		# next stepped, a frame or two on, it stood so: arms out, and the gun
+		# two feet from its hands.
+		model.pose_again()
 
 
 ## Where the body is: the middle of the ragdoll while there is one, or

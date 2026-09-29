@@ -3,7 +3,9 @@ extends "res://tests/check_suite.gd"
 ## Checks the hands going back on the gun (HandGrip) without the extracted
 ## models: a stand-in upper body shaped like the agents', scaled from metres
 ## to units as the models are, its gun bone wpn off the hips and not under
-## the arms, and each hand's target (wpnHand_L, wpnHand_R) under it where
+## the arms (under wpnPivot, under root_motion, as the agents' is: the model
+## checks hold the rigs to that), and each hand's target (wpnHand_L,
+## wpnHand_R) under it where
 ## the hand is. Lowering the pelvis, as FootPlant does on a slope, takes the
 ## hands off the gun; the fit puts them back. Whether it looks right on the
 ## agents is Sid's to see.
@@ -25,10 +27,16 @@ func _initialize() -> void:
 	_finish("hand-grip")
 
 
+## How the gun's bones hang on the stand-in: as on the agents' rigs; with
+## no wpnPivot; and with the hands' targets under wpnPivot beside wpn.
+enum Hung { AS_THE_AGENTS, NO_PIVOT, TARGETS_BESIDE }
+
+
 ## An upper body as the agents' stand (metres), facing -Z, the gun held
-## across the chest: its wpn bone under root_motion, as CS2's UpperBody
-## mask names it apart from the spine, and the hands' targets on the hands.
-func _stand_in() -> Node3D:
+## across the chest: its wpn bone under wpnPivot under root_motion, as
+## CS2's UpperBody mask names it apart from the spine, and the hands'
+## targets on the hands.
+func _stand_in(hung: Hung = Hung.AS_THE_AGENTS) -> Node3D:
 	var model := Node3D.new()
 	model.scale = Vector3.ONE * UNIT_SCALE
 	var skeleton := Skeleton3D.new()
@@ -55,14 +63,22 @@ func _stand_in() -> Node3D:
 		skeleton.set_bone_rest(index, Transform3D(Basis.IDENTITY, bone[2]))
 		at[bone[0]] = (at.get(bone[1], Vector3.ZERO) as Vector3) + (bone[2] as Vector3)
 	# The gun and its grips, off the root, where the hands are at rest.
+	var hangs_from := skeleton.find_bone("root_motion")
+	var pivot_at := Vector3.ZERO
+	if hung != Hung.NO_PIVOT:
+		pivot_at = Vector3(0, 1.1, -0.1)
+		hangs_from = skeleton.add_bone("wpnPivot")
+		skeleton.set_bone_parent(hangs_from, skeleton.find_bone("root_motion"))
+		skeleton.set_bone_rest(hangs_from, Transform3D(Basis.IDENTITY, pivot_at))
 	var wpn := skeleton.add_bone("wpn")
-	skeleton.set_bone_parent(wpn, skeleton.find_bone("root_motion"))
+	skeleton.set_bone_parent(wpn, hangs_from)
 	var wpn_at: Vector3 = at["hand_R"]
-	skeleton.set_bone_rest(wpn, Transform3D(Basis.IDENTITY, wpn_at))
+	skeleton.set_bone_rest(wpn, Transform3D(Basis.IDENTITY, wpn_at - pivot_at))
 	for side in ["L", "R"]:
 		var target := skeleton.add_bone("wpnHand_" + side)
-		skeleton.set_bone_parent(target, wpn)
-		skeleton.set_bone_rest(target, Transform3D(Basis.IDENTITY, (at["hand_" + side] as Vector3) - wpn_at))
+		var beside := hung == Hung.TARGETS_BESIDE
+		skeleton.set_bone_parent(target, hangs_from if beside else wpn)
+		skeleton.set_bone_rest(target, Transform3D(Basis.IDENTITY, (at["hand_" + side] as Vector3) - (pivot_at if beside else wpn_at)))
 	skeleton.reset_bone_poses()
 	return model
 
@@ -163,7 +179,12 @@ func _test_far_hand() -> void:
 ## so the hands stay on it whatever the drop (Sid, 2026-09-29: on T ramp the
 ## gun rose off the hands, past what HandGrip reaches).
 func _test_foot_fit_lowers_gun() -> void:
-	var model := _stand_in()
+	for hung: Hung in [Hung.AS_THE_AGENTS, Hung.NO_PIVOT, Hung.TARGETS_BESIDE]:
+		_lowers_gun(hung, ["as on the agents' rigs, wpn under wpnPivot", "with no wpnPivot", "with the hands' targets beside wpn under wpnPivot"][hung])
+
+
+func _lowers_gun(hung: Hung, named: String) -> void:
+	var model := _stand_in(hung)
 	var skeleton := model.get_node("Skeleton3D") as Skeleton3D
 	root.add_child(model)
 	var at := func(bone_name: String) -> Vector3:
@@ -180,7 +201,7 @@ func _test_foot_fit_lowers_gun() -> void:
 	var lowered := wpn_before.y - (at.call("wpn") as Vector3).y
 	_check(
 		absf(lowered - drop) < 0.01 and off[0] < 0.01 and off[1] < 0.01,
-		"the pelvis %.0f units down takes the gun %.2f down with it, the hands still on its grips (%.3f, %.3f)" % [drop, lowered, off[0], off[1]]
+		"%s: the pelvis %.0f units down takes the gun %.2f down with it, the hands still on its grips (%.3f, %.3f)" % [named, drop, lowered, off[0], off[1]]
 	)
 	model.free()
 

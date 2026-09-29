@@ -26,7 +26,10 @@ const LEGS := [
 	["leg_upper_R", "leg_lower_R", "ankle_R"],
 ]
 const PELVIS := "pelvis"
-## The gun's bones, which go down with the pelvis (lower_gun()).
+## The gun's bones, which go down with the pelvis (lower_gun()), in no
+## order. Every body's rig is the rifle locomotion clips' (RigModel), on
+## which wpnPivot hangs under root_motion, wpn under it, and the rest
+## under wpn.
 const GUN_BONES: Array[String] = ["wpn", "wpnHand_L", "wpnHand_R", "wpnTip", "wpnEnd", "wpnPivot"]
 ## The furthest the pelvis is lowered, in units: a foot over a deeper gap
 ## than this is left where the clip has it, as over a ledge.
@@ -46,6 +49,7 @@ var rays := 0
 
 var _weight := 0.0
 var _drop := 0.0
+var _at_once := false
 var _gaps := PackedFloat32Array([0.0, 0.0])
 var _cast_at: Array[Vector3] = [Vector3.INF, Vector3.INF]
 var _cast_gap := PackedFloat32Array([0.0, 0.0])
@@ -58,12 +62,25 @@ func drop() -> float:
 	return _drop * _weight
 
 
+## Takes the floor as it finds it at the next update, not eased from where
+## the body last stood: for a body put somewhere else at once, a spawn or
+## a respawn. The fit is switched off while a body lies dead and keeps what
+## it had, so one that died on the flat and came back on T ramp hung over
+## it, and one the other way round stood in the floor, easing to where it
+## should be over a third of a second.
+func snap() -> void:
+	_cast_at = [Vector3.INF, Vector3.INF]
+	_at_once = true
+
+
 func _process_modification_with_delta(delta: float) -> void:
 	var skeleton := get_skeleton()
 	if skeleton == null or not skeleton.is_inside_tree():
 		return
-	var follow := 1.0 if delta <= 0.0 else 1.0 - exp(-delta / EASE)
-	_weight = move_toward(_weight, 1.0 if planting else 0.0, 1.0 if delta <= 0.0 else delta / EASE)
+	var at_once := _at_once or delta <= 0.0
+	_at_once = false
+	var follow := 1.0 if at_once else 1.0 - exp(-delta / EASE)
+	_weight = move_toward(_weight, 1.0 if planting else 0.0, 1.0 if at_once else delta / EASE)
 	if planting:
 		var space := skeleton.get_world_3d().direct_space_state
 		var floor_y := skeleton.global_position.y
@@ -144,15 +161,22 @@ static func fit(skeleton: Skeleton3D, drop_units: float, gaps: Array, normals: A
 ## gun hangs off wpn, which is not under the pelvis (CS2's UpperBody mask
 ## names it apart from the spine: PlayerModel.UPPER_BODY), so lowering only
 ## the pelvis took the body down a slope and left the gun in the air above
-## its hands (Sid, 2026-09-29). Each of GUN_BONES not already under the
-## pelvis or another of them moves, so the rest come along under it.
+## its hands (Sid, 2026-09-29). Of GUN_BONES those move that hang under
+## neither the pelvis nor another of them, and the rest come along under
+## them: whichever they are on the rig, in whatever order they are named.
+## (Taken in the list's order, with only those already moved counted, wpn
+## moved and then wpnPivot, which it hangs under on the agents' rigs,
+## moved it again: the gun went down twice as far as the body, 24 units
+## for 12, and was under the hands where it had been over them.)
 static func lower_gun(skeleton: Skeleton3D, pelvis: int, by: Vector3) -> void:
-	var moving: Array[int] = [pelvis]
+	var moved_with: Array[int] = [pelvis]
 	for bone_name: String in GUN_BONES:
-		var bone := skeleton.find_bone(bone_name)
-		if bone < 0 or _under_any(skeleton, bone, moving):
+		var found := skeleton.find_bone(bone_name)
+		if found >= 0:
+			moved_with.append(found)
+	for bone: int in moved_with:
+		if bone == pelvis or _under_any(skeleton, bone, moved_with):
 			continue
-		moving.append(bone)
 		var parent := skeleton.get_bone_parent(bone)
 		var into_parent := skeleton.get_bone_global_pose(parent).basis.inverse() if parent >= 0 else Basis.IDENTITY
 		skeleton.set_bone_pose_position(bone, skeleton.get_bone_pose_position(bone) + into_parent * by)
