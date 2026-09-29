@@ -110,8 +110,10 @@ profiler measures, and the tick rate (64 since PR #46, set in
 (dust2, the range, the movement course) starts a `GameWorld` and every
 player joins it; no player and no match runs itself any more. Each tick
 the world asks each player for its command (`PlayerSim.command_for`: your
-keys, a bot's choices), runs them in the order they joined (on dust2 you,
-then the bots), then the match at the tick's end. It counts its own ticks,
+keys, a bot's choices; since 2026-09-28 everyone's before anyone runs, the
+bots' thought of on worker threads, `GameWorld.commands_for`), runs them in
+the order they joined (on dust2 you, then the bots), then the match at the
+tick's end. It counts its own ticks,
 which `SimClock` reads, holds the players that a bot's sight and a dead
 player's spectating look through instead of the scene's group, and gives
 out the two path searches a tick. The profiler runs its tick in the

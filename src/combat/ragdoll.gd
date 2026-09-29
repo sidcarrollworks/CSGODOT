@@ -450,11 +450,11 @@ func _under(collision: CollisionShape3D, reach: float, whole: bool) -> float:
 		below = capsule.radius + (capsule.height / 2.0 - capsule.radius) * absf(collision.global_basis.y.normalized().y)
 	_down.from = centre + Vector3.UP * reach
 	_down.to = centre + Vector3.DOWN * below * 2.0
-	var floor := PhysicsQueries.intersect_ray(space, _down)
-	if floor.is_empty():
+	var ground := PhysicsQueries.intersect_ray(space, _down)
+	if ground.is_empty():
 		return 0.0
-	var normal: Vector3 = floor["normal"]
-	var top: Vector3 = floor["position"]
+	var normal: Vector3 = ground["normal"]
+	var top: Vector3 = ground["position"]
 	if normal.y < 0.1:
 		return 0.0
 	if top.y > centre.y:

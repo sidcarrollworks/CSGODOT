@@ -69,8 +69,8 @@ func _ready() -> void:
 static func prepare() -> void:
 	for kind: StringName in Tracers.ROPES:
 		SpriteSheet.named(Tracers.ROPES[kind]["texture"])
-	for name: String in FlashTable.LAYERS:
-		var layer: Dictionary = FlashTable.LAYERS[name]
+	for layer_name: String in FlashTable.LAYERS:
+		var layer: Dictionary = FlashTable.LAYERS[layer_name]
 		if layer.has("tex"):
 			SpriteSheet.named(MuzzleFlashes.texture_path(String(layer["tex"])))
 
@@ -82,15 +82,15 @@ func _exit_tree() -> void:
 
 
 func _on_fire_bullets(event: GameEvent) -> void:
-	var round := {"fields": event.fields, "impacts": [], "at_usec": event.at_usec}
-	_pending.append(round)
-	_open[event.fields["userid"]] = round
+	var fired_round := {"fields": event.fields, "impacts": [], "at_usec": event.at_usec}
+	_pending.append(fired_round)
+	_open[event.fields["userid"]] = fired_round
 
 
 func _on_bullet_impact(event: GameEvent) -> void:
-	var round: Dictionary = _open.get(event.fields["userid"], {})
-	if not round.is_empty():
-		(round["impacts"] as Array).append(Vector3(event.fields["x"], event.fields["y"], event.fields["z"]))
+	var fired_round: Dictionary = _open.get(event.fields["userid"], {})
+	if not fired_round.is_empty():
+		(fired_round["impacts"] as Array).append(Vector3(event.fields["x"], event.fields["y"], event.fields["z"]))
 
 
 func _process(_delta: float) -> void:
@@ -100,8 +100,8 @@ func _process(_delta: float) -> void:
 		return
 	var eye := camera.global_transform
 	var narrowing := ViewModelProjection.narrowing_under(camera)
-	for round in _pending:
-		_start(round, eye, narrowing)
+	for fired_round in _pending:
+		_start(fired_round, eye, narrowing)
 	_pending.clear()
 	_open.clear()
 
@@ -116,9 +116,9 @@ func _process(_delta: float) -> void:
 ## A round's flash and tracer, from where its gun is drawn: a shotgun's
 ## pellets a tracer each and the pull one flash. narrowing is the arms' as
 ## drawn this frame.
-func _start(round: Dictionary, eye: Transform3D, narrowing: float) -> void:
-	var fields: Dictionary = round["fields"]
-	var fired: int = round["at_usec"]
+func _start(fired_round: Dictionary, eye: Transform3D, narrowing: float) -> void:
+	var fields: Dictionary = fired_round["fields"]
+	var fired: int = fired_round["at_usec"]
 	var userid: int = fields["userid"]
 	var weapon_class := String(fields["weapon"])
 	var mode := int(fields["mode"])
@@ -146,7 +146,7 @@ func _start(round: Dictionary, eye: Transform3D, narrowing: float) -> void:
 		start = (muzzle as Transform3D).origin
 		if first_person:
 			start = Muzzles.as_drawn(eye, start, narrowing)
-	var impacts: Array = round["impacts"]
+	var impacts: Array = fired_round["impacts"]
 	var stop: Vector3 = impacts[0] if not impacts.is_empty() \
 		else origin + direction * WeaponVData.number(weapon_class, "m_flRange")
 	# Pressed against a wall, the muzzle can be past where the round stopped:

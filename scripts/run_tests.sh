@@ -11,6 +11,12 @@
 # says how each went. It exits 1 if any file failed or ended without saying
 # how it went (a script error or a crash), which is what CI goes by.
 #
+# A file that printed a script error has failed, whatever its checks say. A
+# script error stops the function it is in and nothing else, so the checks
+# after it can all pass: on 2026-09-28 the HUD's health panel read its
+# node's name where a clock's was meant, the run printed the error five
+# times and was green, and the game stopped on it in the editor.
+#
 # Each file gets CSGODOT_TEST_TIMEOUT seconds (180 by default; the slowest,
 # dust2's bot check, took 69 s with the extracted assets on Sid's machine on
 # 2026-09-28) and is then killed and counted as failed, so one stuck file
@@ -93,6 +99,7 @@ for name in "${files[@]}"; do
 	result="$(grep -a '^TESTS ' "$log" | tail -n 1)"
 	read -r _ suite checks failures rest <<<"$result"
 	known="$(grep -ac '^KNOWN OPEN (' "$log")"
+	script_errors="$(grep -ac '^SCRIPT ERROR' "$log")"
 	if [[ $status -eq 124 || $status -eq 137 ]] && [[ -z "$result" ]]; then
 		summary+=("FAILED   $name timed out after ${LIMIT}s without reporting")
 		failed_files=$((failed_files + 1))
@@ -109,7 +116,12 @@ for name in "${files[@]}"; do
 	elif [[ "$checks" == "skipped" ]]; then
 		summary+=("skipped  $suite: $failures $rest")
 	elif [[ "$failures" != "0" || $status -ne 0 ]]; then
-		summary+=("FAILED   $suite: $failures of $checks checks failed")
+		summary+=("FAILED   $suite: $failures of $checks checks failed$([[ $script_errors -gt 0 ]] && echo ", and $script_errors script errors printed")")
+		failed_files=$((failed_files + 1))
+		total=$((total + checks))
+	elif [[ $script_errors -gt 0 ]]; then
+		first="$(grep -a -m1 -A1 '^SCRIPT ERROR' "$log" | tr -s '[:space:]' ' ' | cut -c1-220)"
+		summary+=("FAILED   $suite: its $checks checks passed, and it printed $script_errors script errors. The first: $first")
 		failed_files=$((failed_files + 1))
 		total=$((total + checks))
 	else

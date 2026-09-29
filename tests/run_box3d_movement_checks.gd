@@ -50,6 +50,13 @@ func _initialize() -> void:
 	await _check_shallow_player_recovery()
 	await _check_steps_and_jump()
 	await _check_ramps()
+	await _check_gentle_slopes()
+	await _check_slope_beside()
+	await _check_lips()
+	await _check_under_a_friend()
+	await _check_sweep_contract()
+	await _check_other_sweeps()
+	await _check_respawn_in_a_tick()
 	_finish("box3d-movement")
 
 
@@ -146,16 +153,18 @@ func _check_floor_wall_spawn() -> void:
 
 func _check_small_ground_recovery() -> void:
 	_setup()
-	# Inside native initial-contact tolerance by less than Source's 0.03-inch
-	# ground-snap threshold: separation still has to survive the probe reset.
-	var player := _player(Vector3.UP * 0.23)
+	# Inside the tolerance a hull is in overlap from (0.12, the sweep's
+	# shape being an eighth smaller all round), and once clear of it within
+	# Source's 0.03-inch ground-snap threshold of where it rests: the
+	# separation still has to survive the probe reset.
+	var player := _player(Vector3.UP * 0.1)
 	_start()
 	await physics_frame
 	player._stay_on_ground()
 	var before := player.position
 	var traces := player.traces
 	var hit := player._trace(Vector3.RIGHT * 16.0, true)
-	_check(before.y > 0.25 and before.y < 0.5 and hit == null
+	_check(before.y > 0.2 and before.y < 0.5 and hit == null
 		and player.position == before and player.traces == traces + 1,
 		"a sub-threshold floor recovery survives ground probing and leaves a one-cast tangential sweep")
 	_close()
@@ -366,6 +375,328 @@ func _check_ramps() -> void:
 				"the Source solver keeps sliding and falling along a steep native surf ramp")
 		_close()
 		await process_frame
+
+
+## Floors rising a few degrees, as dust2's do everywhere: walked up at a
+## run, a hull keeps its speed, stays on the ground and spends an ordinary
+## tick's traces (playtest issue 26: a move grazing the floor ahead backed
+## off further than it went, the step that should have saved it found no
+## floor on its way down, and the hull stopped dead for a tick).
+func _check_gentle_slopes() -> void:
+	for angle: float in [1.0, 2.0, 3.0, 5.0]:
+		_setup()
+		var rotation := Basis(Vector3.BACK, deg_to_rad(angle))
+		# Its top through the origin, rising toward +x from the flat floor.
+		var ramp := _box(-rotation.y * 8.0, Vector3(1024.0, 16.0, 256.0))
+		ramp.basis = rotation
+		var player := _player(Vector3(-60.0, 1.0, 0.0))
+		_start()
+		await physics_frame
+		for tick in 24:
+			player.simulate(DT)
+		player.wish_dir = Vector3.RIGHT
+		player.wish_speed = player.config.max_speed
+		var slowest := INF
+		var grounded := 0
+		var most_traces := 0
+		var ticks := 96
+		for tick in ticks:
+			var traces := player.traces
+			player.simulate(DT)
+			most_traces = maxi(most_traces, player.traces - traces)
+			if player.on_ground:
+				grounded += 1
+			# Up to speed, and on the slope, by then.
+			if tick >= 32:
+				slowest = minf(slowest, Vector2(player.velocity.x, player.velocity.z).length())
+		# Its uphill edge is what rests on the slope.
+		var over := player.position.y - (player.position.x + 16.0) * tan(deg_to_rad(angle))
+		_check(slowest > 0.9 * player.config.max_speed and player.position.x > 250.0 and grounded == ticks
+			and most_traces <= 10 and over > 0.0 and over < 0.6,
+			"a floor rising %d degrees is walked up at a run: never under %.0f u/s, on the ground, %.2f over it, %d traces a tick at most" % [
+				int(angle), slowest, over, most_traces])
+		_close()
+		await process_frame
+
+
+## A floor rising to one side of the way walked, met a few degrees off
+## its foot: where dust2 stopped a hull dead (playtest issue 26). The move
+## comes at the slope's plane so shallowly that its clearance, taken along
+## the motion, was more than the whole move.
+func _check_slope_beside() -> void:
+	for drift: float in [1.0, 2.0, 5.0, 10.0]:
+		_setup()
+		var rotation := Basis(Vector3.BACK, deg_to_rad(4.0))
+		# Rising toward +x from the line x = 0 on the flat floor.
+		var slope := _box(-rotation.y * 8.0 + Vector3.FORWARD * 400.0, Vector3(1024.0, 16.0, 2048.0))
+		slope.basis = rotation
+		var player := _player(Vector3(-30.0, 1.0, 0.0))
+		_start()
+		await physics_frame
+		for tick in 24:
+			player.simulate(DT)
+		# Along the slope's foot, -z, and a little toward it.
+		player.wish_dir = Vector3.FORWARD.rotated(Vector3.UP, -deg_to_rad(drift))
+		player.wish_speed = player.config.max_speed
+		var slowest := INF
+		var slowest_at := -1
+		var grounded := 0
+		var most_traces := 0
+		var ticks := 192
+		for tick in ticks:
+			var traces := player.traces
+			player.simulate(DT)
+			most_traces = maxi(most_traces, player.traces - traces)
+			if player.on_ground:
+				grounded += 1
+			var speed := Vector2(player.velocity.x, player.velocity.z).length()
+			if tick >= 32 and speed < slowest:
+				slowest = speed
+				slowest_at = tick
+		_check(slowest > 0.9 * player.config.max_speed and grounded == ticks and most_traces <= 10
+			and player.position.z < -600.0,
+			"a slope beside the way, met %d degrees off its foot, is walked along at a run: never under %.0f u/s (tick %d), %d traces a tick at most, to x %.1f" % [
+				int(drift), slowest, slowest_at, most_traces, player.position.x])
+		_close()
+		await process_frame
+
+
+## A level floor of triangles a fraction higher than the last, as dust2's
+## floors meet: Box3D's sweep only looks at a triangle the swept hull
+## reaches the plane of, so a level move does not meet it and ends a hair
+## over it, or in it. Staying on the ground sweeps down from a unit up
+## (STAY_ON_GROUND_LIFT), so it lands on the higher floor in one cast, at
+## its clearance, and the walk goes on at a run.
+func _check_lips() -> void:
+	for lip: float in [0.05, 0.2, 0.5]:
+		# The most traces a tick: the move and the floor's sweep, and two
+		# more where the lip is deeper than the hull's clearance and the
+		# hull has to get clear of it.
+		var budget := 2 if lip < 0.25 else 4
+		_host = Node3D.new()
+		root.add_child(_host)
+		_triangles(-1024.0, 0.0, 0.0)
+		_triangles(0.0, 1024.0, lip)
+		var player := _player(Vector3(-100.0, 1.0, 0.0))
+		_start()
+		await physics_frame
+		for tick in 24:
+			player.simulate(DT)
+		player.wish_dir = Vector3.RIGHT
+		player.wish_speed = player.config.max_speed
+		var slowest := INF
+		var grounded := 0
+		var most_traces := 0
+		var ticks := 96
+		for tick in ticks:
+			var traces := player.traces
+			player.simulate(DT)
+			most_traces = maxi(most_traces, player.traces - traces)
+			if player.on_ground:
+				grounded += 1
+			if tick >= 32:
+				slowest = minf(slowest, Vector2(player.velocity.x, player.velocity.z).length())
+		var over := player.position.y - lip
+		_check(slowest > 0.9 * player.config.max_speed and player.position.x > 150.0 and grounded == ticks
+			and most_traces <= budget and over > 0.2 and over < 0.3,
+			"a level floor %.2f higher is walked onto at a run: never under %.0f u/s, on the ground, %.3f over it, %d traces a tick at most" % [
+				lip, slowest, over, most_traces])
+		_close()
+		await process_frame
+
+
+## Someone standing on a player's head, as a boost has them and as bots
+## walking a stair end up: the one underneath rests its clearance over the
+## floor and the one on top its clearance over the head under it, and the
+## one underneath walks out from under at a run. Box3D's overlap band is
+## nearly that clearance deep, and with a whole hull swept it held the one
+## underneath between the two, going nowhere.
+func _check_under_a_friend() -> void:
+	_host = Node3D.new()
+	root.add_child(_host)
+	_triangles(-1024.0, 1024.0, 0.0)
+	var under := _player(Vector3(0.0, 1.0, 0.0))
+	var over := _player(Vector3(6.0, 80.0, 4.0))
+	_start()
+	await physics_frame
+	for tick in 48:
+		under.simulate(DT)
+		over.simulate(DT)
+	var stood := over.position.y - (under.position.y + 72.0)
+	_check(under.on_ground and over.on_ground and stood > 0.2 and stood < 0.3,
+		"a player comes to rest on another's head, its clearance over it (%.3f)" % stood)
+	# As dust2 left the one underneath when it stopped dead: 0.21 over the
+	# floor, a little under where it rests, the other as far over its head
+	# as before.
+	under.position.y -= 0.045
+	over.position.y -= 0.045
+	PhysicsQueries.sync_object(under, false)
+	PhysicsQueries.sync_object(over, false)
+	under.wish_dir = Vector3.RIGHT
+	under.wish_speed = under.config.max_speed
+	var most_traces := 0
+	var stalled := 0
+	for tick in 32:
+		var before := under.position
+		var traces := under.traces
+		under.simulate(DT)
+		over.simulate(DT)
+		most_traces = maxi(most_traces, under.traces - traces)
+		if tick >= 2 and under.position.distance_to(before) < 0.01:
+			stalled += 1
+	_check(under.position.x > 60.0 and stalled == 0 and most_traces <= 10,
+		"the one underneath walks out from under at a run (to x %.1f, stalled %d ticks, %d traces a tick at most)" % [
+			under.position.x, stalled, most_traces])
+	_close()
+	await process_frame
+
+
+## A level floor of triangles from x = from to x = to, at a height, facing
+## up: squares of 64 units, two triangles each, as a map's floor is.
+func _triangles(from: float, to: float, height: float) -> StaticBody3D:
+	var body := StaticBody3D.new()
+	body.collision_layer = 1
+	body.collision_mask = 0
+	var faces := PackedVector3Array()
+	var x := from
+	while x < to:
+		for iz in range(-4, 4):
+			var a := Vector3(x, height, iz * 64.0)
+			var b := Vector3(x + 64.0, height, iz * 64.0)
+			var c := Vector3(x + 64.0, height, (iz + 1) * 64.0)
+			var d := Vector3(x, height, (iz + 1) * 64.0)
+			faces.append_array([a, b, c, a, c, d])
+		x += 64.0
+	var shape := ConcavePolygonShape3D.new()
+	shape.set_faces(faces)
+	var collision := CollisionShape3D.new()
+	collision.shape = shape
+	body.add_child(collision)
+	_host.add_child(body)
+	return body
+
+
+## What a native sweep hands back (Box3DQueries.shape_cast_prepared): a
+## motion that would end inside the contact band without touching is a hit,
+## stopped with its clearance; one that ends clear of the band is none; and
+## one grazing a floor goes on, pushed off the floor for its clearance.
+func _check_sweep_contract() -> void:
+	_setup()
+	_start()
+	await physics_frame
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(32.0, 72.0, 32.0)
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = shape
+	query.collision_mask = 1
+	query.margin = PlayerBody.NATIVE_QUERY_MARGIN
+	# Its feet an inch over the floor, down 0.9: it would end a tenth over.
+	query.transform.origin = Vector3(0.0, 37.0, 0.0)
+	query.motion = Vector3.DOWN * 0.9
+	var near := _hull_sweep(query)
+	var rest := 1.0 - 0.9 * float(near.get("fraction", 1.0))
+	_check(not near.is_empty() and rest > 0.24 and rest < 0.28
+		and (near.get("normal", Vector3.ZERO) as Vector3).is_equal_approx(Vector3.UP)
+		and (near.get("offset", Vector3.ONE) as Vector3) == Vector3.ZERO,
+		"a sweep that would end inside the contact band stops with its clearance (%.3f over the floor)" % rest)
+	query.motion = Vector3.DOWN * 0.5
+	_check(_hull_sweep(query).is_empty(),
+		"a sweep that ends clear of the band meets nothing")
+	# Along the floor and a little into it: four units on and three tenths
+	# down, from 0.3 over.
+	query.transform.origin = Vector3(0.0, 36.3, 0.0)
+	query.motion = Vector3(4.0, -0.3, 0.0)
+	var grazing := _hull_sweep(query)
+	var fraction := float(grazing.get("fraction", 0.0))
+	var offset: Vector3 = grazing.get("offset", Vector3.ZERO)
+	var over := 0.3 - 0.3 * fraction + offset.y
+	_check(not grazing.is_empty() and fraction > 0.5 and fraction <= 1.0 and offset.y > 0.0
+		and is_zero_approx(offset.x) and is_zero_approx(offset.z) and over > 0.24 and over < 0.28,
+		"a sweep grazing the floor goes on (%.2f of its motion) and is pushed off it for its clearance (%.3f over)" % [fraction, over])
+	_close()
+	await process_frame
+
+
+## What anything but a hull sweeps with (PhysicsQueries.cast_motion: a
+## grenade, a dropped item, handed two fractions and nothing else): it
+## stops its clearance off where the native cast stopped, backed off along
+## the motion however shallowly it came, with no push to take besides, and
+## a motion that ends short of that meets nothing. The native cast stops
+## a box 0.197 short of touching and a sphere 0.197 past it (v0.4.3), so a
+## grenade rests 0.137 into a floor and a dropped box 0.257 over it.
+func _check_other_sweeps() -> void:
+	_setup()
+	_start()
+	await physics_frame
+	var space := _host.get_world_3d().direct_space_state
+	var sphere := SphereShape3D.new()
+	sphere.radius = GrenadeRules.RADIUS
+	var box := BoxShape3D.new()
+	box.size = Vector3(8.0, 4.0, 16.0)
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.collision_mask = 1
+	for shape: Shape3D in [sphere, box]:
+		query.shape = shape
+		var half := GrenadeRules.RADIUS
+		var rests := -0.137 if shape == sphere else 0.257
+		var named := "a grenade's" if shape == sphere else "a dropped box's"
+		for motion: Vector3 in [Vector3(0.0, -2.0, 0.0), Vector3(4.0, -2.0, 0.0), Vector3(24.0, -2.0, 0.0), Vector3(30.0, -1.5, 0.0)]:
+			query.transform.origin = Vector3(-60.0, half + 1.0, 0.0)
+			query.motion = motion
+			var fractions := PhysicsQueries.cast_motion(space, query)
+			var met := PhysicsQueries.shape_cast(space, query)
+			var over := 1.0 + motion.y * fractions[0]
+			_check(fractions[1] < 1.0 and fractions[0] < fractions[1] and absf(over - rests) < 0.01
+				and not met.has("offset") and (met.get("normal", Vector3.ZERO) as Vector3).is_equal_approx(Vector3.UP),
+				"%s sweep %s into the floor stops its clearance off where the native cast did (%.3f over), with no push to take" % [
+					named, motion, over])
+		# A tenth short of where the native cast would stop.
+		query.transform.origin = Vector3(0.0, half + 1.0, 0.0)
+		query.motion = Vector3(4.0, -(1.0 - rests - 0.06 - 0.1), 0.0)
+		var short := PhysicsQueries.cast_motion(space, query)
+		_check(short[0] == 1.0 and short[1] == 1.0 and PhysicsQueries.shape_cast(space, query).is_empty(),
+			"%s sweep that ends short of there meets nothing" % named)
+	_close()
+	await process_frame
+
+
+## A bot that walks a route and was given no spawn point comes back at the
+## route's start (Bot.respawn), in a tick, after the tick's one look at the
+## hulls: whoever sweeps or shoots later in that tick finds it there, and
+## not where it died.
+func _check_respawn_in_a_tick() -> void:
+	_setup()
+	var bot := (load("res://src/bots/bot.tscn") as PackedScene).instantiate() as Bot
+	bot.route = PackedVector3Array([Vector3(200.0, 1.0, 0.0), Vector3(400.0, 1.0, 0.0)])
+	bot.position = Vector3(0.0, 1.0, 0.0)
+	_host.add_child(bot)
+	_start()
+	_world.add_player(bot)
+	await physics_frame
+	var space := _host.get_world_3d().direct_space_state
+	var queries := PhysicsQueries.for_space(space)
+	var across := func(at: Vector3) -> Dictionary:
+		return PhysicsQueries.intersect_ray(space, PhysicsRayQueryParameters3D.create(
+			at + Vector3(0.0, 36.0, 64.0), at + Vector3(0.0, 36.0, -64.0), PlayerSim.PLAYER_LAYER))
+	queries.begin_tick()
+	var died_at := bot.global_position
+	_check(across.call(died_at).get("collider") == bot, "the tick's first look finds the bot where it stands")
+	bot.respawn()
+	_check(bot.global_position.is_equal_approx(bot.route[0])
+		and across.call(bot.route[0]).get("collider") == bot and across.call(died_at).is_empty(),
+		"a bot back at its route's start is found there by the same tick's queries, and not where it died")
+	queries.end_tick()
+	_close()
+	await process_frame
+
+
+## The hull's sweep, asked of the bridge as the movement asks it.
+func _hull_sweep(query: PhysicsShapeQueryParameters3D) -> Dictionary:
+	var queries := PhysicsQueries.for_space(_host.get_world_3d().direct_space_state)
+	var disabled := queries.begin_shape_cast(query)
+	var hit := queries.shape_cast_prepared(query)
+	queries.end_shape_cast(disabled)
+	return hit
 
 
 func _setup() -> void:

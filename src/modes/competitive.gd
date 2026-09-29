@@ -225,9 +225,9 @@ const SITE_SPREAD := 128.0
 static func site_spot(nav_mesh: SourceNavMesh, middle: Vector3, team: String, nth: int) -> Vector3:
 	if nav_mesh == null:
 		return middle
-	var start := float(posmod(hash(["bot_site", team, nth]), 360))
+	var first_angle := float(posmod(hash(["bot_site", team, nth]), 360))
 	for i in 8:
-		var angle := deg_to_rad(start + 45.0 * i)
+		var angle := deg_to_rad(first_angle + 45.0 * i)
 		var spot := middle + Vector3(cos(angle), 0.0, sin(angle)) * SITE_SPREAD
 		var area := nav_mesh.area_at(spot, 36.0, 36.0)
 		if area != null:

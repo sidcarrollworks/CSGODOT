@@ -484,7 +484,10 @@ tick; this branch is merged with it and fits it. Each tick the GameWorld:
 
 1. counts the tick (`GameWorld.tick`, which `SimClock.current_tick()`
    reads, so events carry it);
-2. runs each player's command, in the order they joined;
+2. asks everyone for their command, each from the world as the last tick
+   left it (the bots think on worker threads, all at once: what a bot's
+   thinking shares it does first, in `prepare_to_think`), then runs each
+   player's, in the order they joined;
 3. runs the match (`MatchState.tick`);
 4. calls `world.game.step(tick, space)`: the players' queued commands,
    then every entity, then the shared native physics step, then every
@@ -550,7 +553,10 @@ origin with a zero normal, as smoke requires. Grenades keep their
 custom ballistic, bounce and detonation rules over native sweeps.
 Sweeps keep about 0.197 inches of native surface tolerance plus
 0.06 inches of normal clearance so an outgoing bounce can leave its
-last contact. The following `get_rest_info` reads that sweep's contact.
+last contact (a box; Box3D stops a sphere 0.197 past touching, so a
+grenade rests 0.137 into a floor). The following `get_rest_info` reads
+that sweep's contact. The player's hull has a rule of its own
+(`Box3DQueries.shape_cast_prepared`, `reference/godot/physics.md`).
 Boolean overlap checks use `intersect_shape`; raw `collide_shape`
 contact pairs are legacy-only and fail explicitly in a native world.
 
@@ -580,7 +586,12 @@ Handlers of one command are asked in the order added until one takes it,
 so each takes only its own case: `drop` is `ItemDrops`' for what is in
 hand, and the bomb's when the C4 is in hand. Commands so far:
 - `buy <item>` (buying): CS2's short names (`ak47`, `vest`, `vesthelm`,
-  ...) or a class name.
+  ...) or a class name. `buy <item> throw` buys it and throws it out in
+  front of the buyer instead, for a teammate (CS2's buy and throw, Left
+  Control held in the buy menu): held to the purchase rules less what is
+  carried, anything that can lie on the ground (not armour), not
+  undoable. How CS2's client asks its server for it is in none of its
+  strings; the second word is ours.
 - `sellback <item>` (buying): undoes a purchase made this round, while
   buying is still open.
 - `drop` (`ItemDrops`; the bomb's with the C4 in hand).
@@ -620,6 +631,12 @@ system, in `attach`), `game.query(&"name", [args], fallback)`,
   side, alive, buying open, in their buy zone (the economy's
   `shop_refusal` is OK). Fallback false, so with no economy a bot never
   buys.
+- `throw_item(userid: int, entry: Inventory.Entry) -> DroppedItem`:
+  throws an item that was never in that player's inventory out in front
+  of them, as `drop` throws what is in hand (`ItemDrops`). The economy's
+  buy and throw (`buy ak47 throw`) asks it; nothing is announced, as
+  nothing left an inventory. Fallback null (the economy then lets it fall
+  at the buyer's feet).
 A new query is a line here.
 
 ## 5. What the local agent's files need, to wire this in

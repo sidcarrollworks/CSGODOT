@@ -164,7 +164,9 @@ func _on_death(event: GameEvent) -> void:
 ## are from the feet.
 func _where(userid: int) -> Variant:
 	var node := game.roster.player(userid) if game != null else null
-	return node.global_position if node != null else null
+	if node == null:
+		return null
+	return node.global_position
 
 
 func _process(_delta: float) -> void:

@@ -44,7 +44,9 @@ static func sync_object(node: CollisionObject3D, refresh_shapes: bool = true) ->
 static func intersect_ray(space: PhysicsDirectSpaceState3D, query: PhysicsRayQueryParameters3D) -> Dictionary:
 	var native := for_space(space)
 	if native != null:
-		native_queries += 1
+		# Several threads asking at once count their own (Bot.thought).
+		if not native.reading:
+			native_queries += 1
 		return native.intersect_ray(query)
 	legacy_queries += 1
 	return space.intersect_ray(query) if space != null else {}

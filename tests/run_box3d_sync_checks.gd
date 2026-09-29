@@ -19,6 +19,8 @@ func _initialize() -> void:
 	_check_shared_resources()
 	_check_bone_poses()
 	_check_lifecycle_and_masks()
+	_check_scope()
+	_check_tick()
 	_check(Engine.get_physics_frames() == frame,
 		"all proxy edits are observed within the same physics frame")
 	_finish("box3d-sync")
@@ -256,6 +258,82 @@ func _check_lifecycle_and_masks() -> void:
 	floor_body.free()
 	_check(PhysicsQueries.intersect_ray(test.space(), ground).is_empty(),
 		"freeing a late static body also removes its world-only query hit")
+	_close(test)
+
+
+## A player's tick is a scope (Box3DQueries.begin_scope): its owner is out
+## of the native world for it, whether a query leaves it out or not, the
+## others are met, and all is as it was when the scope ends.
+func _check_scope() -> void:
+	var test := _case()
+	var mover := _hull(test.host, Vector3(0, 32, -64))
+	var other := _hull(test.host, Vector3(128, 32, -64))
+	_check(_ray(test, mover.global_position).get("collider") == mover
+		and _ray(test, other.global_position).get("collider") == other,
+		"two hulls are met before any scope")
+	var queries := test.adapter.queries
+	queries.begin_scope(mover.get_rid())
+	_check(_ray(test, mover.global_position).is_empty() and _ray(test, other.global_position).get("collider") == other,
+		"a scope's owner is out of the native world, left out of the query or not, and the others are met")
+	var sweep := PhysicsShapeQueryParameters3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(16, 16, 16)
+	sweep.shape = box
+	sweep.collision_mask = HULL_LAYER
+	sweep.exclude = [mover.get_rid()]
+	sweep.transform.origin = mover.global_position
+	sweep.motion = Vector3.RIGHT * 200
+	var left_out := queries.begin_shape_cast(sweep)
+	var met := queries.shape_cast_prepared(sweep)
+	queries.end_shape_cast(left_out)
+	_check(left_out.is_empty() and met.get("collider") == other,
+		"the owner's own sweep leaves nothing more out, and meets the other hull")
+	other.position.x = 96
+	_check(_ray(test, other.global_position).is_empty() and _ray(test, Vector3(128, 32, -64)).get("collider") == other,
+		"another hull moved by hand inside the scope is not looked for again until it ends")
+	queries.end_scope()
+	_check(_ray(test, mover.global_position).get("collider") == mover
+		and _ray(test, other.global_position).get("collider") == other,
+		"the scope over, its owner is back in the world and the other is found where it went")
+	queries.begin_scope(mover.get_rid())
+	((mover.get_child(0) as CollisionShape3D).shape as BoxShape3D).size = Vector3(16, 8, 16)
+	PhysicsQueries.sync_object(mover)
+	_check(_ray(test, mover.global_position).is_empty(),
+		"a hull resized inside its own scope (a duck) stays out of the world")
+	queries.end_scope()
+	_check(_ray(test, mover.global_position).get("collider") == mover
+		and _ray(test, mover.global_position + Vector3.UP * 6.0).is_empty(),
+		"and is back, at its new size, when the scope ends")
+	_close(test)
+
+
+## In a tick (Box3DQueries.begin_tick) the hulls are looked over once:
+## what moves one in a tick publishes it, and one moved without is where it
+## was until the tick ends.
+func _check_tick() -> void:
+	var test := _case()
+	var first := _hull(test.host, Vector3(0, 32, -64))
+	var second := _hull(test.host, Vector3(128, 32, -64))
+	var queries := test.adapter.queries
+	first.position.x = 32
+	queries.begin_tick()
+	_check(_ray(test, first.global_position).get("collider") == first and _ray(test, Vector3(0, 32, -64)).is_empty(),
+		"a hull moved before the tick is found by the tick's first query")
+	second.position.x = 96
+	_check(_ray(test, second.global_position).is_empty() and _ray(test, Vector3(128, 32, -64)).get("collider") == second,
+		"one moved by hand inside the tick is not looked for again")
+	PhysicsQueries.sync_object(second, false)
+	_check(_ray(test, second.global_position).get("collider") == second and _ray(test, Vector3(128, 32, -64)).is_empty(),
+		"and is found where it is once it is published")
+	first.collision_layer = 0
+	PhysicsQueries.sync_object(first, false)
+	_check(_ray(test, first.global_position).is_empty(),
+		"a hull taken off its layer in the tick and published, as a death does, is met by nobody after it")
+	first.collision_layer = HULL_LAYER
+	first.position.x = 64
+	queries.end_tick()
+	_check(_ray(test, first.global_position).get("collider") == first,
+		"the tick over, a hull moved by hand is found by the next query, as before")
 	_close(test)
 
 

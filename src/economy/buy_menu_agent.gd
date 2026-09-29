@@ -197,9 +197,9 @@ func _build_tree() -> void:
 	var library := body.animation_player.get_animation_library(&"")
 	var paths := PackedStringArray([BREATH])
 	for item_class: String in POSES:
-		var pose := pose_for(item_class, team)
-		if not pose.is_empty() and not paths.has(pose_path(pose)):
-			paths.append(pose_path(pose))
+		var held := pose_for(item_class, team)
+		if not held.is_empty() and not paths.has(pose_path(held)):
+			paths.append(pose_path(held))
 	for path in paths:
 		var clip := _clip(path)
 		var clip_name := StringName(path.get_file().get_basename())
@@ -209,9 +209,9 @@ func _build_tree() -> void:
 	# when the sides swap and the agent is built again mid-match.
 	var other := "T" if team == "CT" else "CT"
 	for item_class: String in POSES:
-		var pose := pose_for(item_class, other)
-		if not pose.is_empty():
-			_clip(pose_path(pose))
+		var held := pose_for(item_class, other)
+		if not held.is_empty():
+			_clip(pose_path(held))
 	RigModel.preload_scene(PlayerModel.AGENTS.get(other, PlayerModel.AGENTS["T"]))
 	var root := AnimationNodeBlendTree.new()
 	var pose := AnimationNodeAnimation.new()

@@ -18,6 +18,7 @@ const HULL_HALF := 16.0
 func _initialize() -> void:
 	_test_knee_bend()
 	_test_tipped()
+	_test_eased_normal()
 	await _test_ramp()
 	await _test_flat()
 	await _test_air()
@@ -126,6 +127,24 @@ func _free(stood: Dictionary) -> void:
 
 ## The knee lands where both bones keep their lengths and the ankle meets
 ## the target, bent the way it was.
+## A foot's ground normal eased toward the next: a unit between the two,
+## and whole between two a hair apart, where Vector3.slerp printed an error
+## and gave back a normal off its length (dust2's floor triangles, a
+## fraction of a degree from one to the next).
+func _test_eased_normal() -> void:
+	var flat := Vector3.UP
+	var tipped := Vector3(0.0, 1.0, 0.0).rotated(Vector3.BACK, deg_to_rad(10.0))
+	var half := FootPlant.eased_normal(flat, tipped, 0.5)
+	_check(half.is_normalized() and absf(rad_to_deg(flat.angle_to(half)) - 5.0) < 0.05,
+		"a normal eased half way to one ten degrees off is a unit five degrees off (%.2f)" % rad_to_deg(flat.angle_to(half)))
+	var near := Vector3(-0.000491, 0.9999999, 0.000008).normalized()
+	var eased := FootPlant.eased_normal(flat, near, 0.3)
+	_check(eased.is_normalized() and eased.is_finite() and eased.dot(near) > 0.9999999,
+		"and between two a hair apart, a unit still")
+	_check(FootPlant.eased_normal(flat, tipped, 0.0).is_equal_approx(flat) and FootPlant.eased_normal(flat, tipped, 1.0).is_equal_approx(tipped),
+		"none of the way is the first, all of it the second")
+
+
 func _test_knee_bend() -> void:
 	var hip := Vector3(0, 40, 0)
 	var knee := Vector3(0, 23, -1.5)

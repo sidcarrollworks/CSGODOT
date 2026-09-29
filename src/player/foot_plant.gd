@@ -81,12 +81,22 @@ func _process_modification_with_delta(delta: float) -> void:
 			at.y = floor_y
 			_cast(space, leg, at)
 			_gaps[leg] = lerpf(_gaps[leg], _cast_gap[leg], follow)
-			_normals[leg] = _normals[leg].slerp(_cast_normal[leg], follow).normalized()
+			_normals[leg] = eased_normal(_normals[leg], _cast_normal[leg], follow)
 		_drop = lerpf(_drop, maxf(_cast_gap[0], _cast_gap[1]), follow)
 	# Flat ground, or eased away: the clip's pose stands.
 	if _weight <= 0.0 or maxf(_drop, maxf(_gaps[0], _gaps[1])) * _weight < 0.01:
 		return
 	fit(skeleton, _drop * _weight, [_gaps[0] * _weight, _gaps[1] * _weight], _normals, _weight)
+
+
+## A floor's normal eased toward another's, follow of the way: eased
+## straight and made a unit again. Both are floors' normals, a few degrees
+## apart at most, and Vector3.slerp between two that near finds its axis
+## from a cross product too small to make a unit of, which printed an
+## error a frame for every such foot.
+static func eased_normal(from: Vector3, to: Vector3, follow: float) -> Vector3:
+	var eased := from.lerp(to, follow)
+	return eased.normalized() if eased.length_squared() > 0.000001 else to
 
 
 ## The gap under a foot at point, cast again only once it has moved RECAST.

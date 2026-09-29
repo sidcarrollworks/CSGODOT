@@ -145,8 +145,8 @@ static func all_sounds() -> PackedStringArray:
 ## A's, or B's, lower in pitch so a CT can tell the site by ear, and each
 ## one's own in the last ten seconds.
 static func beep_event(site: String, seconds_left: float) -> String:
-	var name := "C4.PlantSoundB" if site == "B" else "C4.PlantSound"
-	return name + "_10sec" if seconds_left <= TEN_SECONDS else name
+	var event := "C4.PlantSoundB" if site == "B" else "C4.PlantSound"
+	return event + "_10sec" if seconds_left <= TEN_SECONDS else event
 
 
 ## The bomb's events heard since the last frame and not played, as a copy.

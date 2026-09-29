@@ -423,8 +423,8 @@ func _draw_dots(on: CanvasItem, box: Rect2, opacity: float) -> void:
 	var dots := HudStyle.icon("backgrounds/bluedots_large_png")
 	if dots == null:
 		return
-	var scale := dots.get_size().x / DOTS_SIZE
-	on.draw_texture_rect_region(dots, box, Rect2(Vector2.ZERO, box.size * scale), Color(1, 1, 1, opacity))
+	var dot_scale := dots.get_size().x / DOTS_SIZE
+	on.draw_texture_rect_region(dots, box, Rect2(Vector2.ZERO, box.size * dot_scale), Color(1, 1, 1, opacity))
 
 
 ## Head and shoulders, where there is no portrait.
