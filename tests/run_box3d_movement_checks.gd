@@ -56,6 +56,7 @@ func _initialize() -> void:
 	await _check_under_a_friend()
 	await _check_sweep_contract()
 	await _check_other_sweeps()
+	await _check_respawn_in_a_tick()
 	_finish("box3d-movement")
 
 
@@ -655,6 +656,36 @@ func _check_other_sweeps() -> void:
 		var short := PhysicsQueries.cast_motion(space, query)
 		_check(short[0] == 1.0 and short[1] == 1.0 and PhysicsQueries.shape_cast(space, query).is_empty(),
 			"%s sweep that ends short of there meets nothing" % named)
+	_close()
+	await process_frame
+
+
+## A bot that walks a route and was given no spawn point comes back at the
+## route's start (Bot.respawn), in a tick, after the tick's one look at the
+## hulls: whoever sweeps or shoots later in that tick finds it there, and
+## not where it died.
+func _check_respawn_in_a_tick() -> void:
+	_setup()
+	var bot := (load("res://src/bots/bot.tscn") as PackedScene).instantiate() as Bot
+	bot.route = PackedVector3Array([Vector3(200.0, 1.0, 0.0), Vector3(400.0, 1.0, 0.0)])
+	bot.position = Vector3(0.0, 1.0, 0.0)
+	_host.add_child(bot)
+	_start()
+	_world.add_player(bot)
+	await physics_frame
+	var space := _host.get_world_3d().direct_space_state
+	var queries := PhysicsQueries.for_space(space)
+	var across := func(at: Vector3) -> Dictionary:
+		return PhysicsQueries.intersect_ray(space, PhysicsRayQueryParameters3D.create(
+			at + Vector3(0.0, 36.0, 64.0), at + Vector3(0.0, 36.0, -64.0), PlayerSim.PLAYER_LAYER))
+	queries.begin_tick()
+	var died_at := bot.global_position
+	_check(across.call(died_at).get("collider") == bot, "the tick's first look finds the bot where it stands")
+	bot.respawn()
+	_check(bot.global_position.is_equal_approx(bot.route[0])
+		and across.call(bot.route[0]).get("collider") == bot and across.call(died_at).is_empty(),
+		"a bot back at its route's start is found there by the same tick's queries, and not where it died")
+	queries.end_tick()
 	_close()
 	await process_frame
 
