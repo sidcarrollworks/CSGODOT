@@ -8,8 +8,9 @@ extends "res://tests/check_suite.gd"
 ## issue 6; tests/run_bot_move_checks.gd checks the same on hand-built
 ## corridors, without the map). Nor is any of them stopped dead in a tick
 ## with nothing in its way: at a run on the ground one tick, its move still
-## held, and at no speed the next (issue 26, dust2's floors rising a few
-## degrees beside the way walked).
+## held, and at no speed the next, with no wall within a few units the way
+## it meant to go (issue 26, dust2's floors rising a few degrees beside the
+## way walked). Walked into a corner it stops, as anyone does.
 ##
 ##   godot --headless --path . --script tests/run_dust2_bot_checks.gd
 ##
@@ -24,6 +25,9 @@ const LONGEST_STALL_SECONDS := 3.0
 ## A run, and a stop: the speeds a tick apart that make a hitch.
 const HITCH_FROM := 100.0
 const HITCH_TO := 1.0
+## How far the way it meant to go is looked along for a wall, which is
+## anything too steep to walk on.
+const WALL_WITHIN := 4.0
 
 var _world: GameWorld
 var _bots: Array[Bot] = []
@@ -102,6 +106,7 @@ func _run() -> void:
 			if (
 				speed_before[i] >= HITCH_FROM and speeds[i][t % window] < HITCH_TO
 				and not in_air_before[i] and bot.wish_speed > 0.0 and not bot.frozen and not bot.held_still
+				and not _wall_ahead(bot)
 			):
 				hitches += 1
 				hitch_at = bot.global_position
@@ -134,3 +139,20 @@ func _run() -> void:
 	loader.queue_free()
 	await physics_frame
 	_finish("dust2_bots")
+
+
+## Whether something too steep to walk on is within WALL_WITHIN of a bot
+## the way it means to go, or it stands in something: what stops anyone.
+func _wall_ahead(bot: Bot) -> bool:
+	var shape_node: CollisionShape3D = bot.get("_collision_shape")
+	if shape_node == null or bot.wish_dir.length_squared() == 0.0:
+		return false
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = shape_node.shape
+	query.transform = shape_node.global_transform
+	query.motion = bot.wish_dir.normalized() * WALL_WITHIN
+	query.margin = PlayerBody.NATIVE_QUERY_MARGIN
+	query.collision_mask = bot.collision_mask
+	query.exclude = [bot.get_rid()]
+	var hit := PhysicsQueries.shape_cast(bot.get_world_3d().direct_space_state, query)
+	return not hit.is_empty() and not MovementSolver.is_walkable(hit["normal"], bot.config)

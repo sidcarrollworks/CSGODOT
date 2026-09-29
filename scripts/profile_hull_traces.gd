@@ -8,8 +8,10 @@ extends SceneTree
 ## whether it started in overlap and with what, whether it was pushed clear
 ## (a recovery, or a grazing hit's offset) and whether it went nowhere yet
 ## met a plane. A tick that starts at a run on the ground with a move held
-## and ends at no speed is a hitch, and the first few are printed trace by
-## trace. It found playtest issue 26
+## and ends at no speed is a stop: a hitch where none of its traces met
+## anything too steep to walk on, a stop against a wall where one did
+## (walked into a corner, anyone stops). The first few hitches are printed
+## trace by trace. It found playtest issue 26
 ## (reference/research/box3d-walking-hitch-2026-09-28.md).
 ##
 ##   godot --headless --path . --script scripts/profile_hull_traces.gd -- 5 60
@@ -83,6 +85,7 @@ var _bots: Array[Bot] = []
 var _ticks := 0
 var _end_tick := 0
 var _hitches := 0
+var _wall_stops := 0
 var _busy_ticks := 0
 var _most_traces := 0
 var _shown := 0
@@ -169,10 +172,13 @@ func _physics_process(_delta: float) -> bool:
 			ground_before and speed_before >= HITCH_FROM and speed < HITCH_TO
 			and player.wish_speed > 0.0 and not player.frozen and not player.held_still
 		):
-			_hitches += 1
-			if _shown < SHOWN:
-				_shown += 1
-				_show(bot, from, speed_before, cmd, traces)
+			if _met_a_wall(bot):
+				_wall_stops += 1
+			else:
+				_hitches += 1
+				if _shown < SHOWN:
+					_shown += 1
+					_show(bot, from, speed_before, cmd, traces)
 	_world.end_tick()
 	_ticks += 1
 	if _ticks < _end_tick:
@@ -180,6 +186,18 @@ func _physics_process(_delta: float) -> bool:
 	_report()
 	quit(0)
 	return true
+
+
+## Whether any of the tick's traces met something too steep to walk on, or
+## started in something and found no way out.
+func _met_a_wall(bot: TracedBot) -> bool:
+	for entry in bot.trace_log:
+		if entry["normal"] == null:
+			continue
+		var normal: Vector3 = entry["normal"]
+		if normal.is_zero_approx() or not MovementSolver.is_walkable(normal, bot.config):
+			return true
+	return false
 
 
 func _count(entry: Dictionary) -> void:
@@ -217,8 +235,8 @@ func _report() -> void:
 	var casts := 0
 	for kind: String in _kinds:
 		casts += _kinds[kind]["casts"]
-	print("\nover %d ticks and %d bots: %d hitches, %d casts (%.2f a bot a tick), %d ticks of more than 12 traces, the most in one %d" % [
-		_ticks, _bots.size(), _hitches, casts, float(casts) / maxf(_ticks * _bots.size(), 1.0), _busy_ticks, _most_traces])
+	print("\nover %d ticks and %d bots: %d hitches, %d stops against a wall, %d casts (%.2f a bot a tick), %d ticks of more than 12 traces, the most in one %d" % [
+		_ticks, _bots.size(), _hitches, _wall_stops, casts, float(casts) / maxf(_ticks * _bots.size(), 1.0), _busy_ticks, _most_traces])
 	var kinds := _kinds.keys()
 	kinds.sort()
 	print("%-24s %8s %8s %9s %10s %10s %8s %8s" % ["trace", "calls", "casts", "searched", "in world", "in player", "pushed", "nowhere"])
