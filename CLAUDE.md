@@ -21,6 +21,9 @@ README says what the game is;
   It needs the Box3D addon, the game's physics, which is not committed:
   `scripts/install_box3d.sh` (Linux, macOS, the cloud threads) or
   `scripts/install_box3d.ps1` (Windows); without it the run stops and says so.
+  The game's own native code is not committed either
+  (`scripts/build_native.sh`, `.ps1`); without it the run passes on the
+  script alone, and CI builds it.
 - CI and the cloud threads have no extracted assets, so the checks that need
   them skip there. A change that touches models, the map, sounds or anything
   else under `assets/` also needs the run on Sid's machine; say in the pull
@@ -86,6 +89,14 @@ in the same pull request.
   of the physics it asks only rays. `tests/run_bot_think_checks.gd` plays
   a fight both ways and `tests/run_dust2_think_checks.gd` dust2's match,
   and hold them to the same result.
+- The movement's step is written twice: the script's (`PlayerBody`,
+  `MovementSolver`, the box sweep in `Box3DQueries`) is the reference, and
+  `native/src/hull_mover.cpp` the same step in C++, which runs where it
+  has been built (`scripts/build_native.sh`, `.ps1`; `native/README.md`).
+  A change to one is made in both, in the same pull request. Every check
+  file runs each step both ways and holds them to the same body to the
+  last bit, so build the library before running the checks on a change
+  to either.
 - A server's cost comes first, since Sid chose 64 Hz to leave room for
   more players: nothing reads the disk during a tick; what is only seen or
   heard runs per frame, not per tick; a change to the movement counts the

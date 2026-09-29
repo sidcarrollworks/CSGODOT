@@ -311,8 +311,19 @@ twenty a quarter of what they were, and dust2's match the same match, byte
 for byte ([hitboxes-for-shots-2026-09-28.md](research/hitboxes-for-shots-2026-09-28.md)).
 **Next: what a death costs on the tick, 2 to 3 ms in the shooter's run and
 1.1 ms at the tick's end (Remote).**
-Left: the movement in native code, which needs SCons and
-godot-cpp's source on Sid's machine and a build in CI; hitboxes posed
+**The movement's step in native code (2026-09-29,
+perf/native-movement):** `PlayerBody`'s step and the hull's sweep under it
+are also C++ (`native/src/hull_mover.cpp`, a GDExtension of the game's
+own, built by `scripts/build_native.sh` and `.ps1`, not committed). The
+script is the reference and runs wherever the library is not built; every
+check file runs each native step by the script as well and holds the two
+to the same body to the last bit, 171,636 steps of them in the suite's run. A walking bot's
+movement 102 to 107 us a tick down to 67 to 70, and the seeded ten-player
+tick 1.8 to 1.95 ms down to 1.55 to 1.7
+([native-movement-2026-09-29.md](research/native-movement-2026-09-29.md)).
+Local: build it in the main checkout and play a match with it.
+Left: the bridge's work around the step (27 us a bot a tick, script over
+dictionaries) into the same library; hitboxes posed
 when a round asks rather than every frame; a ragdoll at rest letting go
 of the native step; Godot's renderer on a thread of its own measured
 drawn, not shipped on (Godot marks it experimental).
