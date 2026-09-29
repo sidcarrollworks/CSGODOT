@@ -238,21 +238,21 @@ func _grenades() -> Array[GrenadeEntity]:
 
 ## What a bottle breaking at a point was: the class of the fire it lit
 ## there, or of the thrower's bottle nearest it when none was lit.
-func _fire_start(owner: int, at: Vector3) -> Dictionary:
+func _fire_start(thrower: int, at: Vector3) -> Dictionary:
 	for entity: SimEntity in _known.values():
-		if entity is InfernoEntity and entity.owner_id == owner and entity.position.distance_to(at) <= SAME_POINT:
+		if entity is InfernoEntity and entity.owner_id == thrower and entity.position.distance_to(at) <= SAME_POINT:
 			return {"weapon_class": (entity as InfernoEntity).weapon_class, "lit": true}
-	var bottle := nearest(_grenades(), owner, at, FIRE_STARTS.keys())
+	var bottle := nearest(_grenades(), thrower, at, FIRE_STARTS.keys())
 	return {"weapon_class": bottle.weapon_class if bottle != null else GrenadeRules.MOLOTOV, "lit": false}
 
 
-## Of these grenades, the one thrown by owner, of one of these classes,
+## Of these grenades, the one thrown by thrower, of one of these classes,
 ## nearest a point; null if they threw none.
-static func nearest(grenades: Array[GrenadeEntity], owner: int, at: Vector3, classes: Array) -> GrenadeEntity:
+static func nearest(grenades: Array[GrenadeEntity], thrower: int, at: Vector3, classes: Array) -> GrenadeEntity:
 	var best: GrenadeEntity = null
 	var best_distance := INF
 	for grenade in grenades:
-		if grenade.owner_id != owner or grenade.weapon_class not in classes:
+		if grenade.owner_id != thrower or grenade.weapon_class not in classes:
 			continue
 		var distance := grenade.position.distance_to(at)
 		if distance < best_distance:
@@ -334,9 +334,9 @@ static func cues_for(event_name: StringName, fields: Dictionary, grenade := {}, 
 static func all_events() -> PackedStringArray:
 	var names := PackedStringArray()
 	for table: Dictionary in [THROWS, BOUNCES, FLIGHT_LOOPS, DETONATIONS, DECOY_SHOTS, FlashMuffle.RINGS]:
-		for name: String in table.values():
-			if name not in names:
-				names.append(name)
+		for event_name: String in table.values():
+			if event_name not in names:
+				names.append(event_name)
 	for starts: Array in FIRE_STARTS.values():
 		names.append_array(PackedStringArray(starts))
 	names.append(FIRE_IGNITE)
