@@ -12,10 +12,17 @@ extends SceneTree
 ## commands as on the worker threads.
 ##
 ##   godot --headless --path . --script scripts/profile_player_tick.gd -- 5 60
+##   godot --headless --path . --script scripts/profile_player_tick.gd -- 5 60 --movement native
 ##
 ## Bots (5) and seconds of game (60), run at eight ticks a frame. The
 ## overrides must keep the signatures of the functions they wrap. Needs
 ## dust2 and its nav mesh extracted.
+##
+## The script runs the movement's step here, the clocks being in its
+## functions (a body with its own of them is the script's to step,
+## PlayerBody.STEP_FUNCTIONS). `--movement native` has the native code run
+## it, as the game does where it is built: the step is then one call,
+## inside `simulate`'s own time, and the lines under it are gone.
 
 class TimedBot:
 	extends Bot
@@ -218,6 +225,11 @@ func _initialize() -> void:
 	_run()
 
 
+## Whether the command line asks for the native code by name.
+func _native_asked_for() -> bool:
+	return PlayerBody.movement_named(OS.get_cmdline_user_args(), "") == "native"
+
+
 func _run() -> void:
 	await process_frame
 	var loader := MapLoader.new()
@@ -237,6 +249,7 @@ func _run() -> void:
 	for i in _bots_wanted:
 		var bot := scene.instantiate() as Bot
 		bot.set_script(TimedBot)
+		bot.native_over_own_functions = _native_asked_for()
 		bot.name = "Walker%d" % i
 		bot.team = "T"
 		bot.holds_fire = true
@@ -265,6 +278,12 @@ func _run() -> void:
 	_end_tick = SimClock.ticks_in(_seconds)
 	print("player tick: %d bots for %d ticks, physics %s, a pair of clocks %.2f us" % [_bots.size(), _end_tick, _world.drop_physics_backend, _pair_usec])
 	print("the bots think in turn here whatever --think says, the clocks being one thread's")
+	if not _native_asked_for():
+		print("the script runs the movement's step (--movement native for the native code, the step then one call in simulate's own time)")
+	elif PlayerBody.native_built():
+		print("the native code runs the movement's step, inside simulate's own time")
+	else:
+		print("the native code was asked for and the script runs the movement's step: %s" % PlayerBody.native_missing)
 	_started = true
 
 

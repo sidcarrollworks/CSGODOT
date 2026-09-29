@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# Builds the game's native code (native/src: the movement's step) on Linux
-# and macOS: CI, the cloud threads and anyone off Windows
-# (scripts/build_native.ps1 there; this one also runs under Git Bash).
+# Builds the game's native code (native/src: the movement's step) on
+# Linux: CI, the cloud threads and anyone off Windows
+# (scripts/build_native.ps1 there; this one also runs under Git Bash). It
+# builds for what native/csgodot_native.gdextension lists, x86-64 Linux and
+# Windows, which is where the native code has been held to the script's
+# results; anywhere else it says so and builds nothing.
 #
 #   scripts/build_native.sh            the library the editor binary loads
 #   scripts/build_native.sh release    and the one an exported game loads
@@ -61,6 +64,14 @@ case "$(uname -m)" in
 		;;
 esac
 
+# Only what is listed is built: a library Godot has no name for is a
+# build's time spent and errors at every start after.
+if ! grep -q "^$platform\.debug\.$arch *=" "$PROJECT_DIR/native/csgodot_native.gdextension"; then
+	echo "The native code is not listed for $platform $arch (native/csgodot_native.gdextension), and the script runs the movement here." >&2
+	echo "To try it: list its libraries there, build, and run scripts/run_tests.sh, which holds every step to the script's." >&2
+	exit 1
+fi
+
 python="$(command -v python3 || command -v python || true)"
 if [[ -z "$python" ]]; then
 	echo "Python 3 is needed to build (SCons runs on it)." >&2
@@ -87,7 +98,10 @@ else
 	venv="$BUILD/venv"
 	venv_python="$venv/bin/python"
 	[[ "$platform" == "windows" ]] && venv_python="$venv/Scripts/python.exe"
-	if [[ ! -x "$venv_python" ]]; then
+	# Made again when it no longer runs SCons: one kept from another Python
+	# (CI's cache, across a new runner image) has a python and no SCons.
+	if ! "$venv_python" -m SCons --version >/dev/null 2>&1; then
+		rm -rf "$venv"
 		"$python" -m venv "$venv"
 		"$venv_python" -m pip install -q "scons==$SCONS_VERSION"
 	fi
@@ -114,7 +128,12 @@ if [[ -n "$godot" ]]; then
 	else
 		run_import "$godot" "$PROJECT_DIR"
 	fi
-	echo "Built, and listed for Godot to load. Restart Godot if this project is open."
+	# Built is not loaded: Godot is asked.
+	if ! "$godot" --headless --path "$PROJECT_DIR" --script scripts/native_loaded.gd; then
+		echo "Built, but Godot does not load it: see what it says above." >&2
+		exit 1
+	fi
+	echo "Built, and Godot loads it. Restart Godot if this project is open."
 else
 	echo "Built. No Godot binary was found to list it with: open the project in the editor once, or run scripts/run_tests.sh."
 fi

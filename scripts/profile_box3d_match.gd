@@ -12,6 +12,17 @@ extends "res://tests/run_box3d_match_checks.gd"
 ## Only GameWorld.step() is timed, including commands, movement, gameplay
 ## and native stepping. Animation poses are refreshed outside the interval;
 ## rendering, audio/UI callbacks and Godot's automatic server step are excluded.
+##
+## The checks it is built on compare as they go, every step of the movement
+## run by the script and by the native code and every hitbox set looked
+## over: a profile turns both off, and times the game's own tick.
+## `--movement script` has the script run the movement's step.
+
+
+func _init() -> void:
+	super()
+	Box3DQueries.check_sets = false
+	PlayerBody.check_steps = false
 
 
 func _initialize() -> void:
@@ -42,6 +53,7 @@ func _initialize() -> void:
 			world.game.command(local.userid, "throw %s 1" % GrenadeRules.HE)
 		_tick()
 	_report_costs("dust2-5v5-" + backend)
+	print("PROFILE movement=%s" % _movement())
 	var shots := 0
 	for bot in mode.bots:
 		shots += bot.rounds_fired
@@ -51,3 +63,15 @@ func _initialize() -> void:
 	scene.free()
 	await process_frame
 	quit(0)
+
+
+## What ran the movement's step in this run.
+func _movement() -> String:
+	if not PlayerBody.native_steps:
+		return "script"
+	if not PlayerBody.native_built():
+		return "script (the native code: %s)" % PlayerBody.native_missing
+	for player in world.players:
+		if player.get("_mover") != null:
+			return "native"
+	return "script (nobody's step could be run by the native code)"

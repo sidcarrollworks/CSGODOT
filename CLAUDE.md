@@ -96,7 +96,9 @@ in the same pull request.
   A change to one is made in both, in the same pull request. Every check
   file runs each step both ways and holds them to the same body to the
   last bit, so build the library before running the checks on a change
-  to either.
+  to either, and again after a pull that changed `native/` or a script it
+  copies (`PlayerBody.NATIVE_COPIES`): a library built from other sources
+  is not run, and the game says so.
 - A server's cost comes first, since Sid chose 64 Hz to leave room for
   more players: nothing reads the disk during a tick; what is only seen or
   heard runs per frame, not per tick; a change to the movement counts the

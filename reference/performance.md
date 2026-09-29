@@ -503,10 +503,13 @@ And a walking bot's tick, function by function:
 
     godot --headless --path . --script scripts/profile_player_tick.gd -- 5 60
 
-Five bots walk dust2's site routes for a minute of game. `--movement script`
-after the numbers has the script run the movement's step where the native
-code would (`native/README.md`): by the native code the step is one call,
-and the table has no lines under `simulate`. A figure on a page
+Five bots walk dust2's site routes for a minute of game. The script runs
+the movement's step there, the clocks being in its functions;
+`--movement native` after the numbers has the native code run it as the
+game does (`native/README.md`), the step then one call inside `simulate`'s
+own time. `scripts/profile_box3d_match.gd` and `scripts/profile_dust2.gd`
+time the tick with whichever the game would run, and take
+`--movement script`. A figure on a page
 is not a baseline for any of these: a tick's mean moved from 4.45 ms to
 3.68 on the same code within an afternoon (2026-09-28). Run the other build
 beside this one, from a worktree of it, the two alternated.

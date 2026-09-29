@@ -230,6 +230,12 @@ func _initialize() -> void:
 	super._initialize()
 
 
+## The timed bridge has a script of its own, and a body whose bridge has
+## one is the script's to step (PlayerBody._native_mover).
+func _movement() -> String:
+	return "script, through the timed bridge"
+
+
 func _load_match(backend: String) -> void:
 	await super._load_match(backend)
 	_adapter = world.game.drop_physics
@@ -256,6 +262,7 @@ func _load_match(backend: String) -> void:
 		int(_adapter.native_world.get(&"substep_count"))])
 	print("COST_SCOPE explicit hull sync remains in caller self time; pose_batch is one manual ten-player batch per simulation tick, not render-frame time")
 	print("COST_SCOPE the bots think in turn here whatever --think says, the clocks being one thread's; the game has them think on worker threads, and scripts/profile_dust2.gd times that")
+	print("COST_SCOPE the script runs the movement's step here, through the timed bridge; the native code asks the physics itself and would go past it (scripts/profile_box3d_match.gd times the tick with it)")
 
 
 func _tick() -> void:

@@ -91,6 +91,26 @@ const MOVEMENT_SETTING := "csgodot/simulation/movement"
 ## The native code's class (native/src/hull_mover.cpp), there once it has
 ## been built (scripts/build_native.sh, .ps1).
 const NATIVE_CLASS := &"HullMover"
+## Where the build puts what Godot finds the library by.
+const NATIVE_LISTING := "res://addons/csgodot_native/csgodot_native.gdextension"
+## The scripts the native code is a copy of, which it is built again after a
+## change to (native/SConstruct has the same list, in the same order).
+const NATIVE_COPIES: Array[String] = [
+	"src/movement/player_body.gd",
+	"src/movement/movement_solver.gd",
+	"src/movement/movement_config.gd",
+	"src/physics/box3d_queries.gd",
+]
+## The functions the native step stands in for. A body whose script has its
+## own of any of them (a profile's timed bot, a check's double) is stepped by
+## the script, or its own would not run (native_over_own_functions).
+const STEP_FUNCTIONS: Array[StringName] = [
+	&"_simulate_step", &"_ground_known", &"_update_duck", &"_duck_height_delta", &"_finish_duck",
+	&"_finish_unduck", &"_can_unduck", &"_try_jump", &"_walk_move", &"_stay_on_ground",
+	&"_stay_on_native_ground", &"_air_move", &"_step_move", &"_horizontal_distance", &"_trace_move",
+	&"_try_player_move", &"_categorize_position", &"_trace", &"_cast_from", &"_cast_hull",
+	&"_recovery_blocked_by_player", &"_recover_trace_start", &"_ground_normal_in_quadrants",
+]
 
 ## Whether the step is run in native code where it can be: the library
 ## built, the game's physics Box3D, the hull an upright box. The script
@@ -104,8 +124,11 @@ static var native_steps: bool = configured_movement() == "native"
 static var check_steps := false
 static var steps_checked: int = 0
 static var step_faults: PackedStringArray = PackedStringArray()
-## Whether the native code was found: -1 before anyone has looked.
-static var _native_found: int = -1
+## Why the native code runs no step here, or nothing where it may. Found
+## out as the script is loaded, since it reads the sources: never in a tick.
+static var native_missing: String = _why_no_native()
+## Whether a script has its own of the step's functions, by script.
+static var _own_functions: Dictionary = {}
 
 @export var config: MovementConfig
 
@@ -188,6 +211,12 @@ var _floor_with := 0.0
 var _floor_normal := Vector3.UP
 ## The native code's mover, made the first time a step can be run by it.
 var _mover: Object
+## Has the native code step this body though its script has its own of the
+## step's functions, which then do not run: for what times the step from
+## outside, or checks the comparison.
+var native_over_own_functions := false
+## Whether this body's script has its own: -1 before anyone has looked.
+var _own_step_functions: int = -1
 
 
 ## What runs the step: "native", or "script" where the setting or the
@@ -214,12 +243,67 @@ static func movement_named(args: PackedStringArray, otherwise: String) -> String
 	return which.to_lower()
 
 
-## Whether the native code is there to run a step: looked for once, since a
-## library is loaded as the game starts or not at all.
+## Whether the native code is there to run a step, and was built from the
+## sources and scripts that are here (native_missing says why not).
 static func native_built() -> bool:
-	if _native_found < 0:
-		_native_found = 1 if ClassDB.class_exists(NATIVE_CLASS) else 0
-	return _native_found == 1
+	return native_missing.is_empty()
+
+
+## Whether the build has put a library here for Godot to load, loaded or
+## not.
+static func native_installed() -> bool:
+	return FileAccess.file_exists(NATIVE_LISTING)
+
+
+static func _why_no_native() -> String:
+	if not ClassDB.class_exists(NATIVE_CLASS):
+		if native_installed():
+			return "it is installed and Godot did not load it (what Godot says as it starts says why): build it again"
+		return "it has not been built"
+	var here := native_sources()
+	if here.is_empty():
+		# An exported game has no sources to hold its library to.
+		return ""
+	var made: Object = ClassDB.instantiate(NATIVE_CLASS)
+	var built_from := ""
+	if made != null and made.has_method(&"get_sources"):
+		built_from = String(made.call(&"get_sources"))
+	if built_from != here:
+		# The library is a copy of the script, and a copy of another script
+		# would move a body as this game does not.
+		push_warning("The native code was built from other sources than are here, and the script runs the movement until it is built again (scripts/build_native.sh, .ps1).")
+		return "it was built from other sources than are here: build it again"
+	return ""
+
+
+## The stamp of what the native code is built from, as the build works it
+## out (native/SConstruct): its own sources and the scripts they copy. Empty
+## where there are no sources, as in an exported game. It reads them, so it
+## is not for a tick.
+static func native_sources() -> String:
+	if not FileAccess.file_exists("res://native/SConstruct"):
+		return ""
+	var names: Array[String] = ["native/SConstruct"]
+	var own := DirAccess.get_files_at("res://native/src")
+	own.sort()
+	for file_name in own:
+		if file_name.get_extension() in ["cpp", "h"]:
+			names.append("native/src/" + file_name)
+	names.append_array(NATIVE_COPIES)
+	var texts: Array[String] = []
+	for source in names:
+		texts.append(FileAccess.get_file_as_string("res://" + source))
+	return stamp_of(names, texts)
+
+
+## The stamp of these sources: each by its name, in order, its line endings
+## left out, since a checkout on Windows may have changed them.
+static func stamp_of(names: Array[String], texts: Array[String]) -> String:
+	var hashing := HashingContext.new()
+	hashing.start(HashingContext.HASH_SHA256)
+	for i in names.size():
+		hashing.update((names[i] + "\n" + texts[i].replace("\r", "") + "\n").to_utf8_buffer())
+	return hashing.finish().hex_encode()
 
 
 func _ready() -> void:
@@ -325,10 +409,21 @@ func simulate(dt: float) -> void:
 ## standing half its height over the body's feet, in a world the body's
 ## place is told to as it is (nothing above it turned, moved or scaled, so
 ## that a place written and read back is the place written): anything else
-## is the script's. Inside the body's own tick, after its scope has begun.
+## is the script's, and so is a body whose script has its own of the step's
+## functions, or whose bridge has a script of its own. Inside the body's own
+## tick, after its scope has begun.
 func _native_mover() -> Object:
 	if not native_steps or _adapter == null or _collision_shape == null:
 		return null
+	# The native code asks the physics itself: a bridge with a script of its
+	# own over the game's (a profile's, timing its parts) would be gone past.
+	if _adapter.queries.get_script() != Box3DQueries:
+		return null
+	if not native_over_own_functions:
+		if _own_step_functions < 0:
+			_own_step_functions = 1 if _has_own_step_functions() else 0
+		if _own_step_functions == 1:
+			return null
 	if not _collision_shape.shape is BoxShape3D:
 		return null
 	if _mover == null:
@@ -347,6 +442,28 @@ func _native_mover() -> Object:
 	return _mover
 
 
+## Whether this body's script has its own of any function the native step
+## stands in for. A script lists what it has with what it inherits, so its
+## own of one is that one listed twice. Looked up once for each script.
+func _has_own_step_functions() -> bool:
+	var script: Script = get_script()
+	if script == null:
+		return false
+	if not _own_functions.has(script):
+		var listed := {}
+		var own := false
+		for method: Dictionary in script.get_script_method_list():
+			var method_name := StringName(method["name"])
+			if method_name not in STEP_FUNCTIONS:
+				continue
+			if listed.has(method_name):
+				own = true
+				break
+			listed[method_name] = true
+		_own_functions[script] = own
+	return _own_functions[script]
+
+
 ## One step, by the native code where there is a mover and by the script
 ## where there is none.
 func _step(mover: Object, dt: float) -> void:
@@ -361,7 +478,13 @@ func _step(mover: Object, dt: float) -> void:
 
 func _native_step(mover: Object, dt: float) -> void:
 	var queries := _adapter.queries
-	mover.call(&"step", self, queries.native_world, dt, cos(deg_to_rad(config.max_ground_angle_deg)))
+	if not mover.call(&"step", self, queries.native_world, dt, cos(deg_to_rad(config.max_ground_angle_deg))):
+		# It moved nothing: the physics has no sweep by the name it asks for.
+		# The script runs this step and every one after.
+		native_steps = false
+		push_warning("The native code could not run the movement's step (%s in %s), and the script runs it from here on." % [name, queries.native_world])
+		_simulate_step(dt)
+		return
 	PhysicsQueries.native_queries += int(mover.call(&"get_casts"))
 	if int(mover.call(&"get_hits")) > 0:
 		# A sweep that met something is the last the bridge remembers.

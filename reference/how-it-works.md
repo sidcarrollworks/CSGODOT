@@ -91,7 +91,9 @@ in the same order with the same arithmetic, a third faster, and runs
 where it has been built and its assumptions hold (`PlayerBody._native_mover`).
 It gives the same body as the script's to the last bit of every part, so
 a match played by one is the match played by the other, and a server and
-a client may differ in which they run. `--movement script` has the script
+a client may differ in which they run. A library built from other sources
+than the checkout's is not run: it carries a stamp of what it copies, and
+the game compares it as it starts. `--movement script` has the script
 run every step. `native/README.md` has the rules for changing either.
 
 ## Shooting

@@ -80,7 +80,14 @@ Invoke-Program $python @('-m', 'SCons', '--version') -Quietly
 if ($LASTEXITCODE -ne 0) {
     $venv = Join-Path $buildPath 'venv'
     $venvPython = Join-Path $venv 'Scripts/python.exe'
-    if (-not (Test-Path -LiteralPath $venvPython)) {
+    $made = Test-Path -LiteralPath $venvPython
+    if ($made) {
+        Invoke-Program $venvPython @('-m', 'SCons', '--version') -Quietly
+        $made = $LASTEXITCODE -eq 0
+    }
+    if (-not $made) {
+        # None, or one that no longer runs SCons (kept from another Python).
+        if (Test-Path -LiteralPath $venv) { Remove-Item -LiteralPath $venv -Recurse -Force }
         Invoke-Program $python @('-m', 'venv', $venv)
         if ($LASTEXITCODE -ne 0) { throw 'No virtual environment could be made for SCons.' }
         Invoke-Program $venvPython @('-m', 'pip', 'install', '-q', "scons==$sconsVersion")
@@ -123,13 +130,18 @@ if ($godot) {
     # waited for (it is no console program, and PowerShell would go on
     # without it), and what it says is kept beside the build.
     $log = Join-Path $buildPath 'import.log'
-    $import = Start-Process -FilePath $godot -ArgumentList @('--headless', '--path', ('"{0}"' -f $projectPath), '--import') `
-        -Wait -PassThru -NoNewWindow -RedirectStandardOutput $log -RedirectStandardError "$log.err"
-    $listed = Join-Path $projectPath '.godot/extension_list.cfg'
-    if (-not (Test-Path -LiteralPath $listed) -or -not (Select-String -LiteralPath $listed -SimpleMatch 'csgodot_native' -Quiet)) {
-        throw "Built, but Godot's import (exit code $($import.ExitCode)) did not list the extension: see $log."
+    $project = '"{0}"' -f $projectPath
+    Start-Process -FilePath $godot -ArgumentList @('--headless', '--path', $project, '--import') `
+        -Wait -NoNewWindow -RedirectStandardOutput $log -RedirectStandardError "$log.err"
+    # Built is not loaded: Godot is asked.
+    $asked = Join-Path $buildPath 'loaded.log'
+    $loaded = Start-Process -FilePath $godot -ArgumentList @('--headless', '--path', $project, '--script', 'scripts/native_loaded.gd') `
+        -Wait -PassThru -NoNewWindow -RedirectStandardOutput $asked -RedirectStandardError "$asked.err"
+    Get-Content -LiteralPath $asked, "$asked.err" -ErrorAction SilentlyContinue | Where-Object { $_ -match 'NATIVE|ERROR' } | Out-Host
+    if ($loaded.ExitCode -ne 0) {
+        throw "Built, but Godot does not load it: see $asked.err and $log.err."
     }
-    Write-Output 'Built, and listed for Godot to load. Restart Godot if this project is open.'
+    Write-Output 'Built, and Godot loads it. Restart Godot if this project is open.'
 } else {
     Write-Output 'Built. No Godot binary was found to list it with: open the project in the editor once.'
 }

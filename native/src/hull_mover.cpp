@@ -77,7 +77,20 @@ bool is_player_body(Object *p_object) {
 
 } // namespace
 
+// The stamp comes from the build as a bare word (native/SConstruct), an "s"
+// before it so that it is one whatever it begins with.
+#ifndef CSGODOT_NATIVE_SOURCES
+#define CSGODOT_NATIVE_SOURCES s
+#endif
+#define CSGODOT_WORD_OF(word) #word
+#define CSGODOT_WORD(word) CSGODOT_WORD_OF(word)
+
+String HullMover::get_sources() const {
+	return String(CSGODOT_WORD(CSGODOT_NATIVE_SOURCES)).substr(1);
+}
+
 void HullMover::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("get_sources"), &HullMover::get_sources);
 	ClassDB::bind_method(D_METHOD("step", "body", "world", "dt", "walkable_y"), &HullMover::step);
 	ClassDB::bind_method(D_METHOD("get_casts"), &HullMover::get_casts);
 	ClassDB::bind_method(D_METHOD("get_hits"), &HullMover::get_hits);
@@ -208,11 +221,20 @@ void HullMover::write_body(const Vector3 &p_position_before) {
 	}
 }
 
-void HullMover::step(Object *p_body, Object *p_world, double p_dt, double p_walkable_y) {
+bool HullMover::step(Object *p_body, Object *p_world, double p_dt, double p_walkable_y) {
 	casts = 0;
 	hits = 0;
 	if (p_body == nullptr || p_world == nullptr) {
-		return;
+		return false;
+	}
+	// A call by name to what is not there says nothing and answers nothing,
+	// which would read as a sweep that met nothing: asked once of a world.
+	const uint64_t world_id = p_world->get_instance_id();
+	if (world_id != world_known) {
+		if (!p_world->has_method(names::shape_cast_box())) {
+			return false;
+		}
+		world_known = world_id;
 	}
 	body = p_body;
 	world = p_world;
@@ -220,7 +242,7 @@ void HullMover::step(Object *p_body, Object *p_world, double p_dt, double p_walk
 	if (config == nullptr) {
 		body = nullptr;
 		world = nullptr;
-		return;
+		return false;
 	}
 	read_config(config);
 	cfg.walkable_y = p_walkable_y;
@@ -232,6 +254,7 @@ void HullMover::step(Object *p_body, Object *p_world, double p_dt, double p_walk
 	write_body(written);
 	body = nullptr;
 	world = nullptr;
+	return true;
 }
 
 // --- MovementSolver ---------------------------------------------------------

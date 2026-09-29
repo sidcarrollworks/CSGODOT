@@ -16,10 +16,30 @@ script fetches godot-cpp 10.0.0-stable at a pinned commit into
 `-BuildDirectory`: it is 300 MB built), puts SCons 4.8.1 in a virtual
 environment there when there is none, builds
 `addons/csgodot_native/bin/libcsgodot_native.<platform>.template_debug.<arch>`,
-copies `csgodot_native.gdextension` beside it and runs Godot's import pass,
-which lists the extension for the game to load. The first build compiles
-godot-cpp, about six minutes; later ones only what changed. `release` after
+copies `csgodot_native.gdextension` beside it, runs Godot's import pass,
+which lists the extension for the game to load, and ends by asking Godot
+whether it loads (`scripts/native_loaded.gd`): built is not loaded, and a
+build that does not load has failed. The first build compiles godot-cpp,
+two to six minutes; later ones the library's two files. `release` after
 the script's name builds the library an exported game loads as well.
+
+**Build it again after a change** to anything under `native/`, or to a
+script it copies: `src/movement/player_body.gd`, `movement_solver.gd`,
+`movement_config.gd`, `src/physics/box3d_queries.gd`. The library carries a
+stamp of all of them as they were when it was built
+(`HullMover.get_sources`), the game works the same stamp out of what is
+there when it starts (`PlayerBody.native_sources`), and where the two differ
+the script runs the movement, with a warning that says so. A copy of another
+script would move a body as this game does not. The checks fail on a
+library that is installed and does not run
+(`tests/run_native_movement_checks.gd`), since nothing would be compared.
+
+It builds for what `csgodot_native.gdextension` lists, x86-64 Windows and
+Linux, which is where the native code has been held to the script's
+results. Anywhere else the build script says so and builds nothing. On
+arm64 a compiler may fuse a multiply and an add in the engine's own vector
+arithmetic, which this library's build does not: list a platform after the
+checks have passed on it.
 
 Neither the library nor the copied `.gdextension` is committed. A checkout
 without them runs the movement by the script, as it always did, and says
@@ -51,10 +71,18 @@ script's, to the last bit of every part, or it is wrong.
   `Box3DQueries` (`shape_cast_prepared`, `_native_cast`, `_mapped`) is made
   in both, in the same pull request. The checks fail until it is.
 - Where the native code cannot run a step, the script does:
-  `PlayerBody._native_mover` says when (no library, Godot's own physics, a
-  hull that is no upright box, a body under anything moved or turned).
-  `--movement script` after `--`, or the project setting
-  `csgodot/simulation/movement`, has the script run every step.
+  `PlayerBody._native_mover` says when (no library, or one built from
+  other sources; Godot's own physics; a hull that is no upright box; a body
+  under anything moved or turned). `--movement script` after `--`, or the
+  project setting `csgodot/simulation/movement`, has the script run every
+  step.
+- A script's own function in the step's place is run. A body whose script
+  has its own of any function the native step stands in for
+  (`PlayerBody.STEP_FUNCTIONS`: a profile's timed bot, a check's double) is
+  stepped by the script, and so is any body while the bridge has a script
+  of its own over `Box3DQueries`. `native_over_own_functions` on a body has
+  the native code step it all the same. A function added to the step goes
+  on that list.
 
 ## Writing it to give the same bits
 
@@ -87,4 +115,7 @@ corners. It asks Box3D's binding for its sweeps by name
 alone and not against Box3D's.
 
 A property it reads that `PlayerBody` no longer has comes back as nil and
-reads as zero: rename one in both.
+reads as zero, and a call by name to what is not there answers nothing and
+says nothing. The stamp is what keeps a library from meeting a script it
+was not built from; `step` hands back false, and the script takes over,
+where the physics has no sweep by the name it asks for.

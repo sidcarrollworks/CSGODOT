@@ -19,6 +19,7 @@
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
+#include <godot_cpp/variant/string.hpp>
 #include <godot_cpp/variant/string_name.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 
@@ -54,12 +55,19 @@ public:
 	// sweep that did (Box3DQueries.forget_cast).
 	int get_hits() const { return hits; }
 
+	// What this library was built from: the stamp native/SConstruct worked
+	// out of the sources and of the scripts they copy. The script works out
+	// the same of what it finds (PlayerBody.native_sources), and runs the
+	// step itself where the two differ.
+	String get_sources() const;
+
 	// One step of `body` (a PlayerBody inside its own tick's scope) against
 	// `world` (the bridge's Box3DWorld). walkable_y is the least a floor's
 	// normal may rise by and be walked on: the script's
 	// cos(deg_to_rad(max_ground_angle_deg)), worked out there so that both
-	// use the one value.
-	void step(Object *p_body, Object *p_world, double p_dt, double p_walkable_y);
+	// use the one value. False, with nothing moved, where the step could not
+	// be run: no body, no config, or a world that has no sweep to ask for.
+	bool step(Object *p_body, Object *p_world, double p_dt, double p_walkable_y);
 
 protected:
 	static void _bind_methods();
@@ -115,6 +123,8 @@ private:
 	Config cfg;
 	Object *body = nullptr;
 	Object *world = nullptr;
+	// The world last found to have the sweep, by its instance.
+	uint64_t world_known = 0;
 	int casts = 0;
 	int hits = 0;
 

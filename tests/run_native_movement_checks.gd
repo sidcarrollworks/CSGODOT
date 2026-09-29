@@ -27,24 +27,46 @@ var _world: GameWorld
 var DT := SimClock.tick_seconds()
 
 
-## A body whose script step is not the native one: it drifts.
+## A body whose script step is not the native one: it drifts. The native
+## code steps it all the same, for the two to be compared.
 class Drifting:
 	extends PlayerBody
+
+	func _init() -> void:
+		native_over_own_functions = true
 
 	func _simulate_step(dt: float) -> void:
 		super._simulate_step(dt)
 		velocity.x += 0.001
 
 
+## A body with its own of one of the step's functions, as a profile's timed
+## bot has.
+class Counting:
+	extends PlayerBody
+
+	var ducks := 0
+
+	func _update_duck(dt: float) -> void:
+		ducks += 1
+		super._update_duck(dt)
+
+
+## A bridge with a script of its own, as a profile's timed bridge has.
+class OwnBridge:
+	extends Box3DQueries
+
+
 func _initialize() -> void:
 	_test_which_runs_the_step()
+	_test_what_it_was_built_from()
 	if not Box3DDrops.available():
 		_skip("native-movement", "Box3D native addon is not installed; run scripts/install_box3d.ps1")
 		return
 	await physics_frame
 	if not PlayerBody.native_built():
 		await _test_the_script_runs_alone()
-		print("The native code is not built (scripts/build_native.sh, .ps1): the script runs every step and nothing is compared.")
+		print("The native code does not run here (%s; scripts/build_native.sh, .ps1): the script runs every step and nothing is compared." % PlayerBody.native_missing)
 		_finish("native-movement")
 		return
 	await _test_the_course()
@@ -68,6 +90,33 @@ func _test_which_runs_the_step() -> void:
 	_check_equal(PlayerBody.movement_named(PackedStringArray(["--movement"]), "native"), "native",
 		"a --movement with nothing after it is not a choice")
 	_check(PlayerBody.configured_movement() in ["native", "script"], "what is configured is one of the two (%s)" % PlayerBody.configured_movement())
+
+
+## The library is a copy of scripts, and runs only where it was built from
+## the ones that are here. One that was built and does not run is a fault:
+## nothing would be compared, and nothing would say so.
+func _test_what_it_was_built_from() -> void:
+	var names: Array[String] = ["a", "b"]
+	_check_equal(PlayerBody.stamp_of(names, ["x", "y z"]), "ed57b9d11eeca8ecfd21f93bb4e187265459f237b7b1761943476603e8497349",
+		"a stamp is the SHA-256 of each source's name and text, a line each, as the build works it out")
+	_check_equal(PlayerBody.stamp_of(names, ["one\r\ntwo\r\n", "y"]), PlayerBody.stamp_of(names, ["one\ntwo\n", "y"]),
+		"whatever a checkout made of the line endings")
+	_check(PlayerBody.stamp_of(names, ["x", "y z"]) != PlayerBody.stamp_of(names, ["x", "y  z"]),
+		"a space more in a source is another stamp")
+	var others: Array[String] = ["a", "c"]
+	_check(PlayerBody.stamp_of(names, ["x", "y z"]) != PlayerBody.stamp_of(others, ["x", "y z"]),
+		"and so is a source by another name")
+	var here := PlayerBody.native_sources()
+	_check(here.length() == 64 and here.is_valid_hex_number(),
+		"the sources here have a stamp (%s)" % here.left(12))
+	for copied in PlayerBody.NATIVE_COPIES:
+		_check(FileAccess.file_exists("res://" + copied), "%s, which the native code copies, is here" % copied)
+	if PlayerBody.native_built():
+		var made: Object = ClassDB.instantiate(PlayerBody.NATIVE_CLASS)
+		_check_equal(String(made.call(&"get_sources")), here, "the library that runs was built from them")
+	else:
+		_check(not PlayerBody.native_installed(),
+			"no native code is installed here that does not run (%s)" % PlayerBody.native_missing)
 
 
 ## Without the library a body moves by the script, asked for native steps
@@ -206,9 +255,12 @@ func _test_the_course() -> void:
 
 ## What the native code does not run is the script's: a body under
 ## something moved or turned, a body turned itself, a hull that is no box,
-## and any body once native steps are switched off.
+## a body or a bridge with functions of its own in the step's place, and
+## any body once native steps are switched off.
 func _test_what_is_left_to_the_script() -> void:
-	for case: String in ["as the game has it", "under something moved", "under something turned", "turned itself", "a capsule for a hull", "native steps off"]:
+	for case: String in ["as the game has it", "under something moved", "under something turned", "turned itself",
+			"a capsule for a hull", "a function of its own", "a function of its own, and the native code asked for",
+			"a bridge of its own", "native steps off"]:
 		_setup()
 		var over := Node3D.new()
 		_host.add_child(over)
@@ -216,7 +268,8 @@ func _test_what_is_left_to_the_script() -> void:
 			over.position = Vector3(3.0, 0.0, 0.0)
 		elif case == "under something turned":
 			over.rotation.y = 0.5
-		var player := PlayerBody.new()
+		var player: PlayerBody = Counting.new() if case.begins_with("a function of its own") else PlayerBody.new()
+		player.native_over_own_functions = case.ends_with("asked for")
 		player.position = Vector3(0.0, 1.0, 0.0)
 		player.collision_layer = 2
 		player.collision_mask = 1 | 2 | MapImporter.PLAYER_CLIP_LAYER
@@ -236,6 +289,17 @@ func _test_what_is_left_to_the_script() -> void:
 		if case == "turned itself":
 			player.rotation.y = 0.3
 		_start()
+		if case == "a bridge of its own":
+			var physics: Box3DDrops = _world.game.drop_physics
+			# As scripts/profile_box3d_costs.gd changes bridges: the first
+			# one's copy of the body goes, or the body stands inside it.
+			for native in physics.native_world.get_children():
+				var source_id := int(native.get_meta(&"source_id", 0))
+				if source_id != 0 and instance_from_id(source_id) is CharacterBody3D:
+					native.free()
+			physics.queries.close()
+			physics.queries = OwnBridge.new()
+			physics.queries.initialize(physics, _host)
 		await physics_frame
 		var wanted := PlayerBody.native_steps
 		PlayerBody.native_steps = case != "native steps off"
@@ -246,9 +310,13 @@ func _test_what_is_left_to_the_script() -> void:
 			player.simulate(DT)
 		PlayerBody.native_steps = wanted
 		var compared := PlayerBody.steps_checked - checked
-		if case == "as the game has it":
+		if case == "as the game has it" or case.ends_with("asked for"):
 			_check(compared == 32 and player.velocity.length() > 100.0,
 				"%s, the native code runs a body's steps (%d of 32 compared)" % [case, compared])
+		elif case == "a function of its own":
+			_check(compared == 0 and (player as Counting).ducks == 32 and player.velocity.length() > 100.0,
+				"%s in the step's place: the script runs the steps and its function with them (%d compared, %d of its own run)" % [
+					case, compared, (player as Counting).ducks])
 		else:
 			_check(compared == 0 and player.velocity.length() > 100.0,
 				"%s: the script runs the steps, and the body walks (%d compared, going %.0f)" % [case, compared, player.velocity.length()])

@@ -153,6 +153,27 @@ In order of what it would give:
    for every answer. Bound against Box3D's own headers a sweep would be a
    plain call; it would tie the library's build to Box3D's.
 
+## What the review found
+
+Three reviewers read the change (the port against the script, how the
+script uses it, the build), and each finding was then argued against by
+another. The port itself stood: no place was found where the C++ does not
+do what the script does. Six findings around it were confirmed, and are
+fixed in the same pull request:
+
+| Found | Fixed by |
+|---|---|
+| A library built from an older script ran in the game, and nothing said so: `addons/csgodot_native/` is not committed and stays through a pull | The library carries a stamp of its sources and of the scripts it copies; the game works the same out as it starts and runs the script where they differ, with a warning |
+| A library that was built and did not load left every check passing with nothing compared | The build scripts end by asking Godot whether it loads; the checks fail on a library that is installed and does not run |
+| `build_native.ps1` ended at its first probe under Windows PowerShell 5.1, which makes an error of what a program writes to stderr | Programs are run with errors continuing and judged by their exit codes; run under 5.1 and 7 |
+| The profiles built on the checks (`profile_box3d_match.gd`, `profile_box3d_costs.gd`) ran every step both ways and timed it | They turn the comparisons off, and say which movement they timed |
+| A bot with its own of the step's functions (`profile_player_tick.gd`, `profile_hull_traces.gd`) had them go unrun, and the trace profile counted every stop as a hitch | A body whose script has its own of them is the script's to step; so is any body while the bridge has a script of its own |
+| The shell script built for macOS and arm64, which the `.gdextension` does not list | It builds what is listed, and says so of anything else |
+
+Left as found: CI's cache keeps the virtual environment SCons is in, which
+a new runner image's Python would not run. The script now makes it again
+when it no longer runs SCons.
+
 ## Code fixes and Local checks
 
 - **CI's build has not run.** The step added to
@@ -167,3 +188,6 @@ In order of what it would give:
 - **Local: play with it.** Build it in the main checkout
   (`scripts/build_native.ps1`), restart Godot, and play a Competitive
   match: the HUD's frame meter against a run with `--movement script`.
+- **Build it again after a pull** that changed `native/` or a script it
+  copies. Until then the game says the library is from other sources and
+  runs the script, which is the slower of the two and never the wrong one.
