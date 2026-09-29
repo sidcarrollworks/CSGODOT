@@ -26,6 +26,8 @@ const LEGS := [
 	["leg_upper_R", "leg_lower_R", "ankle_R"],
 ]
 const PELVIS := "pelvis"
+## The gun's bones, which go down with the pelvis (lower_gun()).
+const GUN_BONES: Array[String] = ["wpn", "wpnHand_L", "wpnHand_R", "wpnTip", "wpnEnd", "wpnPivot"]
 ## The furthest the pelvis is lowered, in units: a foot over a deeper gap
 ## than this is left where the clip has it, as over a ledge.
 const MOST_DROP := 12.0
@@ -133,8 +135,36 @@ static func fit(skeleton: Skeleton3D, drop_units: float, gaps: Array, normals: A
 		var parent := skeleton.get_bone_parent(pelvis)
 		var into_parent := skeleton.get_bone_global_pose(parent).basis.inverse() if parent >= 0 else Basis.IDENTITY
 		skeleton.set_bone_pose_position(pelvis, skeleton.get_bone_pose_position(pelvis) + into_parent * (down * drop_units))
+		lower_gun(skeleton, pelvis, down * drop_units)
 	for leg in LEGS.size():
 		reach(skeleton, LEGS[leg], targets[leg], facing[leg])
+
+
+## Lowers the gun's bones by by (the skeleton's space) with the pelvis. The
+## gun hangs off wpn, which is not under the pelvis (CS2's UpperBody mask
+## names it apart from the spine: PlayerModel.UPPER_BODY), so lowering only
+## the pelvis took the body down a slope and left the gun in the air above
+## its hands (Sid, 2026-09-29). Each of GUN_BONES not already under the
+## pelvis or another of them moves, so the rest come along under it.
+static func lower_gun(skeleton: Skeleton3D, pelvis: int, by: Vector3) -> void:
+	var moving: Array[int] = [pelvis]
+	for bone_name: String in GUN_BONES:
+		var bone := skeleton.find_bone(bone_name)
+		if bone < 0 or _under_any(skeleton, bone, moving):
+			continue
+		moving.append(bone)
+		var parent := skeleton.get_bone_parent(bone)
+		var into_parent := skeleton.get_bone_global_pose(parent).basis.inverse() if parent >= 0 else Basis.IDENTITY
+		skeleton.set_bone_pose_position(bone, skeleton.get_bone_pose_position(bone) + into_parent * by)
+
+
+static func _under_any(skeleton: Skeleton3D, bone: int, ancestors: Array[int]) -> bool:
+	var at := skeleton.get_bone_parent(bone)
+	while at >= 0:
+		if at in ancestors:
+			return true
+		at = skeleton.get_bone_parent(at)
+	return false
 
 
 ## The rotation that tips a foot from up toward normal, share of the way
