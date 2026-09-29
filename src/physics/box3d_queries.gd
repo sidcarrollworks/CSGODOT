@@ -330,7 +330,11 @@ func _put(of_set: Dictionary, hung: SkinnedHitboxes, at: Transform3D, live: bool
 		if not is_instance_valid(node) or not node.is_inside_tree():
 			continue
 		var record: Dictionary = _objects[id]
-		if record.get("at") != node.global_transform or int(record["layer"]) != node.collision_layer or record.get("geometry_dirty", false):
+		var layer := node.collision_layer
+		# Off its layer and put so: nothing to meet, wherever it is.
+		if (layer | int(record["layer"])) & _hitbox_layers == 0:
+			continue
+		if record.get("at") != node.global_transform or int(record["layer"]) != layer or record.get("geometry_dirty", false):
 			sync_object(node, false)
 	_putting = false
 	if live:
@@ -608,7 +612,10 @@ func _sync_object(source: CollisionObject3D, refresh_shapes: bool) -> void:
 				if int(record["layer"]) != source_layer and not record["disabled"][slot]:
 					proxy.set(&"collision_layer", source_layer)
 				var native_at := Transform3D(at.basis.orthonormalized(), at.origin * SCALE)
-				if not proxy.transform.is_equal_approx(native_at):
+				# A hitbox's proxy stands just where its capsule does, so that
+				# where it is says nothing of which rays brought it there. A
+				# hull's stays where it was when that is nearly the same.
+				if proxy.transform != native_at if source is Hitbox else not proxy.transform.is_equal_approx(native_at):
 					proxy.call(&"teleport", native_at)
 			record["at"] = source_at
 			record["layer"] = source_layer
@@ -658,7 +665,7 @@ func _sync_object(source: CollisionObject3D, refresh_shapes: bool) -> void:
 			if int(proxy.get(&"collision_layer")) != layer:
 				proxy.set(&"collision_layer", layer)
 			var native_at := Transform3D(at.basis.orthonormalized(), at.origin * SCALE)
-			if not proxy.transform.is_equal_approx(native_at):
+			if proxy.transform != native_at if source is Hitbox else not proxy.transform.is_equal_approx(native_at):
 				proxy.call(&"teleport", native_at)
 			slot += 1
 	while record["proxies"].size() > slot:

@@ -303,8 +303,14 @@ ms of a mean of 4.4 and 0.45 of a 95th of 6.9. The worst ticks, 7 ms and
 more, are not the thinking's: they are shots (`scripts/profile_worst_ticks.gd`),
 a round paying 0.85 ms to bring 190 hitboxes to their bones before it is
 traced and 0.2 ms for every ray after, a shooter's run 1.5 to 5 ms where
-a bot's is 0.17. **Next: hitboxes published by their player and brought up
-to date only where a ray passes (Remote).**
+a bot's is 0.17. **Hitboxes for shots (2026-09-29,
+perf/hitboxes-for-shots):** a body's hitboxes are a set, brought up to date
+only for a ray that could meet it; a round fired is 0.6 to 0.7 ms less
+with ten players and 1.3 to 1.6 with twenty, the ticks over 6 ms with
+twenty a quarter of what they were, and dust2's match the same match, byte
+for byte ([hitboxes-for-shots-2026-09-28.md](research/hitboxes-for-shots-2026-09-28.md)).
+**Next: what a death costs on the tick, 2 to 3 ms in the shooter's run and
+1.1 ms at the tick's end (Remote).**
 Left: the movement in native code, which needs SCons and
 godot-cpp's source on Sid's machine and a build in CI; hitboxes posed
 when a round asks rather than every frame; a ragdoll at rest letting go

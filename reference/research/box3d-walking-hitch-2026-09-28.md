@@ -440,7 +440,10 @@ hit and take a hull's proxies off their layer.
 Sid, 2026-09-28, having played Competitive on dust2 with the three changes
 merged: "This is feeling quite a bit smoother, though I still only hit
 6.6ms frametime once." His reading, drawn, on his machine; which readout
-he did not say.
+he did not say. And on 2026-09-29, on main at #148, before the hitboxes'
+change: "Feeling pretty good, frametimes consistently around 7-8ms. Doesn't
+meet our goal yet but feels like an improvement. The screen tearing is far
+less noticeable."
 
 The goal is every frame under 6 ms at 4K with nine bots. Sid's CS2 on the
 same machine reads 5.5 ms at most alone on dust2 and 7 to 8 with nine bots,
@@ -485,11 +488,18 @@ dropped gun) is the rest of the 2 to 5. Two bots firing in a tick is a
 tick of 5 ms. This is the first thing to take down, and none of it needs
 a thread or native code:
 
-1. A player's hitboxes published when the player has run and been posed,
-   as its hull is, so a ray looks nothing over: 0.2 ms a ray, and most of
-   the first ray's 0.85.
-2. Only the hitboxes of players the ray passes brought up to date: the
-   ray against the hulls first, grown by what a limb reaches past them.
+1. **Done 2026-09-29**, as one: a body's hitboxes are a set that counts
+   its changes, brought up to date only for a ray whose line passes where
+   they are or where they were put. Nothing is published, which would
+   cost every tick; and the box is measured from the capsules, not grown
+   from the hull, which a body drawn behind its hull or a revived one
+   would be outside of. A round fired is 0.6 to 0.7 ms less with ten
+   players, 1.3 to 1.6 with twenty, and meets what it met
+   (`hitboxes-for-shots-2026-09-28.md`).
+2. **What a death costs**, measured inside the tick for the first time
+   there: 1.8 to 3.1 ms in the shooter's run when its round kills, and 1.1
+   ms more at the tick's end. It is what the ticks over 6 ms are with ten
+   players. Next.
 3. What a round does when it lands split into what decides the game, on
    the tick, and what is seen and heard, which is the frame's
    (`CLAUDE.md`): not measured apart yet.
@@ -505,7 +515,7 @@ has what is done):
 | A ragdoll at rest letting go of the native step | 0.16 ms a tick once anyone has died | 0.15 ms |
 | The sweep's wrapper without a dictionary's copy and three `get_meta` | 3 us a cast | 0.1 ms |
 | Hitboxes moved to their bones when a round asks, not every frame | 0.51 ms a frame with the skeletons | 0.2 to 0.3 ms a frame |
-| Hitboxes published by their player, and only those a ray passes brought up to date ("The worst ticks are shots") | 0.85 ms a round's first ray, 0.2 ms each ray after | 1 to 3 ms of a tick a round is fired in |
+| What a death does on the tick ("The worst ticks are shots") | 1.8 to 3.1 ms in the shooter's run, 1.1 ms at the tick's end | not measured apart yet |
 | The HUD set only when what it shows changes | 0.18 ms a frame | 0.1 ms a frame |
 
 With the tick at 2.3 ms the frames that run one should be about 8.5 ms at
