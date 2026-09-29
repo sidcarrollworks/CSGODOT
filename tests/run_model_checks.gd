@@ -1775,6 +1775,27 @@ func _test_player_model() -> void:
 		chains_ok and twist_after,
 		"the rig's legs run hip, knee, ankle from the pelvis, and the foot fit runs before the other modifiers on the rig"
 	)
+	# The hands back on the gun (HandGrip) after the foot fit and before the
+	# twist bones follow the forearms; its targets are where the clip has the
+	# hands, so in the clip's own hold, before anything moves the hips, it has
+	# nothing to do. That is what HandGrip assumes of wpnHand_L and _R.
+	var grip_ok := model.hand_grip != null and model.hand_grip.get_index() > model.foot_plant.get_index()
+	for child in rig.get_children():
+		if child is TwistModifier and model.hand_grip != null and child.get_index() < model.hand_grip.get_index():
+			grip_ok = false
+	for arm: Array in HandGrip.ARMS:
+		for bone_name: String in arm:
+			grip_ok = grip_ok and rig.find_bone(bone_name) >= 0
+	_check(grip_ok, "the rig has both arms and the hands' targets on the gun, and the hands go back on it after the foot fit and before the twist bones")
+	if grip_ok:
+		var units := rig.global_basis.get_scale().x
+		var standing_gaps := []
+		for arm: Array in HandGrip.ARMS:
+			standing_gaps.append(HandGrip.fit(rig, arm, 0.0, units))
+		_check(
+			standing_gaps[0] < 1.0 and standing_gaps[1] < 1.0,
+			"standing with the AK-47, each hand is on its target on the gun, as the clips key them (left %.2f, right %.2f units off)" % standing_gaps
+		)
 	var weapon_root: Node3D = null
 	for child in rig.get_parent().get_children():
 		if child.name.contains("weapon_rif"):
@@ -1807,6 +1828,13 @@ func _test_player_model() -> void:
 		"running forward at 240, the tree is at (240, 0) in CS2's standing space, a stride each run cycle, and the feet move (%s, %.2f, %.1f units)"
 			% [tree.get("parameters/stand/blend_position"), float(tree.get("parameters/cycle/scale")), stride]
 	)
+	if model.hand_grip != null:
+		# How far the run under the gun's hold takes the hands off the gun,
+		# which HandGrip puts back: printed for Sid's runs, to compare with
+		# his screenshot of 2026-09-28.
+		var units := rig.global_basis.get_scale().x
+		print("  running with the AK-47, the hands are %.2f (left) and %.2f (right) units off the gun before HandGrip" % [
+			HandGrip.fit(rig, HandGrip.ARMS[0], 0.0, units), HandGrip.fit(rig, HandGrip.ARMS[1], 0.0, units)])
 	model.update_motion(Vector3(0, 0, 180), 180.0, 0.0, true)
 	tree.advance(1.3)
 	var run_at := float(tree.get("parameters/stand/run_n/current_position"))

@@ -453,6 +453,13 @@ item 6 is built.
    server, so the hitboxes move with it. Here bodies and their hitboxes
    stand as if looking level (`reference/research/hitboxes-aim.md`: a
    Local measurement, then the aim stage after systemization step 8).
+   The hands' IK onto the gun, the other half of AimCS, is done
+   (`HandGrip`, Sid 2026-09-29: guns floating out of the bots' hands): each
+   frame after the foot fit, each arm is bent so its hand lands on the
+   clip's `wpnHand_L`/`_R`, easing off over CS2's 0.3 s for a draw or a
+   reload. Local: Sid's run of `tests/run_model_checks.gd` confirms the
+   targets sit on the hands standing and prints how far a run takes them
+   off; then a look at a running bot on dust2's slopes.
 
 6a. **Your shadow has no arms.** *(done; Sid checks it in play)* Sid noticed
    2026-09-22 22:06. The shadow twin now keeps its arms and holds what is in
