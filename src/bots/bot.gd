@@ -851,6 +851,8 @@ func respawn() -> void:
 		place(_spawn_position, _spawn_yaw)
 	elif not route.is_empty():
 		global_position = route[0]
+		# Moved inside a tick, in which the hulls are looked over once.
+		PhysicsQueries.sync_object(self, false)
 		_next = 1 % route.size()
 	_path = null
 	_no_way_to = -1

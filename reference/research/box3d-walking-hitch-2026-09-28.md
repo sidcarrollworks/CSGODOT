@@ -56,8 +56,7 @@ starts in overlap and searches for a way out, eight casts a direction.
 
 ## What was changed
 
-- **`Box3DQueries.shape_cast_prepared`**, which every sweep goes through
-  (the hull's, a grenade's): it sweeps 0.5 further than asked
+- **`Box3DQueries.shape_cast_prepared`**, the hull's sweep: it sweeps 0.5 further than asked
   (`CAST_REACH`) and reports a hit wherever the motion's end would be
   inside the clearance; it backs off along the motion by 0.25 at most
   (`CAST_BACK_OFF`), and hands back what the clearance still lacks as
@@ -66,6 +65,17 @@ starts in overlap and searches for a way out, eight casts a direction.
   move's time. A hit can now come back with `fraction` 1: the whole motion,
   and the push. (The reach is 0.75 and the back-off 0.5 since the sweep's
   shape was made smaller, "The contained changes".)
+- **Anything else sweeps as it did** (`Box3DQueries.shape_cast`, which
+  `PhysicsQueries.shape_cast` and `cast_motion` ask: a grenade, a dropped
+  item). At first every sweep took the hull's rule, and a review found what
+  that did to those handed two fractions and no push: a dropped box coming
+  at a floor at 3 degrees was told it might go to 0.209 over it, inside
+  the band where its next sweep starts in overlap. It stops 0.257 over
+  again, at any angle. Box3D's sphere cast turned out not to be its box
+  cast: it stops a sphere 0.197 past touching, not short of it, and knows
+  no overlap at the start, so a grenade rests 0.137 into a floor, as it has
+  since the game went over to Box3D. Whether that shows, or a grenade's
+  bounce wants the hull's rule and its push, is for a playtest.
 - **A recovery tries 0.125 first** (`NATIVE_RECOVERY_STEP`) along a
   direction that clears, before the binary search: two casts where eight
   were, the correction 0.07 more at most.
@@ -149,7 +159,8 @@ server has nothing in it: Box3D's step is inside `GameWorld.end_tick`.
 
 - `tests/run_dust2_bot_checks.gd` (dust2, so Sid's machine): five Ts walk
   for a minute and none is stopped dead in a tick. On main's code it fails,
-  13 times.
+  13 times (12 as the check is since it leaves out a stop with a wall
+  within four units the way meant: one of the 13 had one).
 - `tests/run_box3d_movement_checks.gd`: what a sweep hands back (one that
   would end in the band, one that ends clear of it, one grazing the floor);
   floors rising 1, 2, 3 and 5 degrees walked up at a run; a slope rising
@@ -248,12 +259,16 @@ changes what a move does:
   publishes it: a player's tick and a spawn did, and a death and a revival
   now do, so nobody walks into the hull of someone killed earlier in the
   tick. Outside a tick every query looks, as the checks move hulls by hand.
+  A review found one move in a tick that was not published: a bot with a
+  route and no spawn point, back at its route's start (`Bot.respawn`). It
+  is now.
 - **Box3D is not stepped while nothing in it is awake**
   (`get_awake_body_count`) and no ragdoll lies: a ragdoll writes its bodies
   before every step for as long as it lies, so with one in the world it is
   stepped as ever. Left: a ragdoll at rest letting go of the step.
-- **A sweep's shape is an eighth of a unit smaller all round**
-  (`CAST_INSET`), and kept as much further from what it meets, so it stops
+- **The hull's sweep's shape is an eighth of a unit smaller all round**
+  (`CAST_INSET`; a grenade's and a dropped item's are swept whole, by the
+  rule they had), and kept as much further from what it meets, so it stops
   where it did, 0.257 from it. Box3D's overlap is of the shape swept: a
   whole hull at rest 0.257 over a floor was 0.011 from being in overlap,
   and a hull is now in overlap within 0.12 of what it is near. It was
@@ -293,10 +308,9 @@ and 0.5 higher walked onto at a run in two traces a tick (four on the code
 before, seven for the last);
 the movement course's budgets, two traces a tick running in the open and
 four up a stair where they were four and seven; a tick's hulls looked over
-once, a death's published; the native world left alone with nothing awake
-and stepped again when a gun is moved. The whole suite with the extracted
-assets: 4,318 checks in 56 files, all
-passed.
+once, a death's published, and a bot's return to its route's start; the
+native world left alone with nothing awake and stepped again when a gun is
+moved. The whole suite with the extracted assets: 4,330 checks in 56 files, all passed.
 
 ## What is left of the 6 ms
 

@@ -55,6 +55,8 @@ func _initialize() -> void:
 	await _check_lips()
 	await _check_under_a_friend()
 	await _check_sweep_contract()
+	await _check_other_sweeps()
+	await _check_respawn_in_a_tick()
 	_finish("box3d-movement")
 
 
@@ -582,7 +584,6 @@ func _check_sweep_contract() -> void:
 	_setup()
 	_start()
 	await physics_frame
-	var space := _host.get_world_3d().direct_space_state
 	var shape := BoxShape3D.new()
 	shape.size = Vector3(32.0, 72.0, 32.0)
 	var query := PhysicsShapeQueryParameters3D.new()
@@ -592,20 +593,20 @@ func _check_sweep_contract() -> void:
 	# Its feet an inch over the floor, down 0.9: it would end a tenth over.
 	query.transform.origin = Vector3(0.0, 37.0, 0.0)
 	query.motion = Vector3.DOWN * 0.9
-	var near := PhysicsQueries.shape_cast(space, query)
+	var near := _hull_sweep(query)
 	var rest := 1.0 - 0.9 * float(near.get("fraction", 1.0))
 	_check(not near.is_empty() and rest > 0.24 and rest < 0.28
 		and (near.get("normal", Vector3.ZERO) as Vector3).is_equal_approx(Vector3.UP)
 		and (near.get("offset", Vector3.ONE) as Vector3) == Vector3.ZERO,
 		"a sweep that would end inside the contact band stops with its clearance (%.3f over the floor)" % rest)
 	query.motion = Vector3.DOWN * 0.5
-	_check(PhysicsQueries.shape_cast(space, query).is_empty(),
+	_check(_hull_sweep(query).is_empty(),
 		"a sweep that ends clear of the band meets nothing")
 	# Along the floor and a little into it: four units on and three tenths
 	# down, from 0.3 over.
 	query.transform.origin = Vector3(0.0, 36.3, 0.0)
 	query.motion = Vector3(4.0, -0.3, 0.0)
-	var grazing := PhysicsQueries.shape_cast(space, query)
+	var grazing := _hull_sweep(query)
 	var fraction := float(grazing.get("fraction", 0.0))
 	var offset: Vector3 = grazing.get("offset", Vector3.ZERO)
 	var over := 0.3 - 0.3 * fraction + offset.y
@@ -614,6 +615,88 @@ func _check_sweep_contract() -> void:
 		"a sweep grazing the floor goes on (%.2f of its motion) and is pushed off it for its clearance (%.3f over)" % [fraction, over])
 	_close()
 	await process_frame
+
+
+## What anything but a hull sweeps with (PhysicsQueries.cast_motion: a
+## grenade, a dropped item, handed two fractions and nothing else): it
+## stops its clearance off where the native cast stopped, backed off along
+## the motion however shallowly it came, with no push to take besides, and
+## a motion that ends short of that meets nothing. The native cast stops
+## a box 0.197 short of touching and a sphere 0.197 past it (v0.4.3), so a
+## grenade rests 0.137 into a floor and a dropped box 0.257 over it.
+func _check_other_sweeps() -> void:
+	_setup()
+	_start()
+	await physics_frame
+	var space := _host.get_world_3d().direct_space_state
+	var sphere := SphereShape3D.new()
+	sphere.radius = GrenadeRules.RADIUS
+	var box := BoxShape3D.new()
+	box.size = Vector3(8.0, 4.0, 16.0)
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.collision_mask = 1
+	for shape: Shape3D in [sphere, box]:
+		query.shape = shape
+		var half := GrenadeRules.RADIUS
+		var rests := -0.137 if shape == sphere else 0.257
+		var named := "a grenade's" if shape == sphere else "a dropped box's"
+		for motion: Vector3 in [Vector3(0.0, -2.0, 0.0), Vector3(4.0, -2.0, 0.0), Vector3(24.0, -2.0, 0.0), Vector3(30.0, -1.5, 0.0)]:
+			query.transform.origin = Vector3(-60.0, half + 1.0, 0.0)
+			query.motion = motion
+			var fractions := PhysicsQueries.cast_motion(space, query)
+			var met := PhysicsQueries.shape_cast(space, query)
+			var over := 1.0 + motion.y * fractions[0]
+			_check(fractions[1] < 1.0 and fractions[0] < fractions[1] and absf(over - rests) < 0.01
+				and not met.has("offset") and (met.get("normal", Vector3.ZERO) as Vector3).is_equal_approx(Vector3.UP),
+				"%s sweep %s into the floor stops its clearance off where the native cast did (%.3f over), with no push to take" % [
+					named, motion, over])
+		# A tenth short of where the native cast would stop.
+		query.transform.origin = Vector3(0.0, half + 1.0, 0.0)
+		query.motion = Vector3(4.0, -(1.0 - rests - 0.06 - 0.1), 0.0)
+		var short := PhysicsQueries.cast_motion(space, query)
+		_check(short[0] == 1.0 and short[1] == 1.0 and PhysicsQueries.shape_cast(space, query).is_empty(),
+			"%s sweep that ends short of there meets nothing" % named)
+	_close()
+	await process_frame
+
+
+## A bot that walks a route and was given no spawn point comes back at the
+## route's start (Bot.respawn), in a tick, after the tick's one look at the
+## hulls: whoever sweeps or shoots later in that tick finds it there, and
+## not where it died.
+func _check_respawn_in_a_tick() -> void:
+	_setup()
+	var bot := (load("res://src/bots/bot.tscn") as PackedScene).instantiate() as Bot
+	bot.route = PackedVector3Array([Vector3(200.0, 1.0, 0.0), Vector3(400.0, 1.0, 0.0)])
+	bot.position = Vector3(0.0, 1.0, 0.0)
+	_host.add_child(bot)
+	_start()
+	_world.add_player(bot)
+	await physics_frame
+	var space := _host.get_world_3d().direct_space_state
+	var queries := PhysicsQueries.for_space(space)
+	var across := func(at: Vector3) -> Dictionary:
+		return PhysicsQueries.intersect_ray(space, PhysicsRayQueryParameters3D.create(
+			at + Vector3(0.0, 36.0, 64.0), at + Vector3(0.0, 36.0, -64.0), PlayerSim.PLAYER_LAYER))
+	queries.begin_tick()
+	var died_at := bot.global_position
+	_check(across.call(died_at).get("collider") == bot, "the tick's first look finds the bot where it stands")
+	bot.respawn()
+	_check(bot.global_position.is_equal_approx(bot.route[0])
+		and across.call(bot.route[0]).get("collider") == bot and across.call(died_at).is_empty(),
+		"a bot back at its route's start is found there by the same tick's queries, and not where it died")
+	queries.end_tick()
+	_close()
+	await process_frame
+
+
+## The hull's sweep, asked of the bridge as the movement asks it.
+func _hull_sweep(query: PhysicsShapeQueryParameters3D) -> Dictionary:
+	var queries := PhysicsQueries.for_space(_host.get_world_3d().direct_space_state)
+	var disabled := queries.begin_shape_cast(query)
+	var hit := queries.shape_cast_prepared(query)
+	queries.end_shape_cast(disabled)
+	return hit
 
 
 func _setup() -> void:

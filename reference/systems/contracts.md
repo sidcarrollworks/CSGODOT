@@ -550,7 +550,10 @@ origin with a zero normal, as smoke requires. Grenades keep their
 custom ballistic, bounce and detonation rules over native sweeps.
 Sweeps keep about 0.197 inches of native surface tolerance plus
 0.06 inches of normal clearance so an outgoing bounce can leave its
-last contact. The following `get_rest_info` reads that sweep's contact.
+last contact (a box; Box3D stops a sphere 0.197 past touching, so a
+grenade rests 0.137 into a floor). The following `get_rest_info` reads
+that sweep's contact. The player's hull has a rule of its own
+(`Box3DQueries.shape_cast_prepared`, `reference/godot/physics.md`).
 Boolean overlap checks use `intersect_shape`; raw `collide_shape`
 contact pairs are legacy-only and fail explicitly in a native world.
 
