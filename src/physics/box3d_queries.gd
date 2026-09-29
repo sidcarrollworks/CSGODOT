@@ -260,7 +260,7 @@ func sync_dynamic(mask: int = ALL_LAYERS, exclude: Array[RID] = []) -> void:
 			# No line to go by (a ray has one, intersect_ray): every set that
 			# has changed.
 			_sync_group(_loose, mask, exclude)
-			_sync_sets(false, Vector3.ZERO, Vector3.ZERO)
+			_sync_sets(false, Vector3.ZERO, Vector3.ZERO, [])
 		else:
 			# Outside a tick nothing is taken on trust, a set's count of its
 			# changes neither: every hitbox is looked over, as the checks
@@ -286,12 +286,23 @@ const SET_MARGIN := 0.5
 ## what they were then. One that is not is wanted by a ray if the line
 ## passes the box its capsules are in now, or the box its proxies were put
 ## in: nothing else of it could be on the line. A set put off its layer,
-## and off it still, has nothing to meet. (The research is
-## reference/research/hitboxes-for-shots-2026-09-28.md.)
-func _sync_sets(by_line: bool, from: Vector3, to: Vector3) -> void:
+## and off it still, has nothing to meet. Nor has a set the ray leaves out
+## whole, the shooter's own: whatever the ray meets of it is passed over,
+## and the native list of every hit is nearest first (v0.4.3, 40 lists of
+## 8 to 12 made in no order), so what is met after it is what would have
+## been. It is left as it is, for the next ray that does not leave it out.
+## (The research is reference/research/hitboxes-for-shots-2026-09-28.md.)
+func _sync_sets(by_line: bool, from: Vector3, to: Vector3, exclude: Array[RID]) -> void:
+	var left_out := {}
+	for rid: RID in exclude:
+		var set_id: int = _set_of.get(int(_by_rid.get(rid, 0)), 0)
+		if set_id != 0:
+			left_out[set_id] = int(left_out.get(set_id, 0)) + 1
 	for of_set: Dictionary in _sets.values():
 		var hung := (of_set["set"] as WeakRef).get_ref() as SkinnedHitboxes
 		if not is_instance_valid(hung) or not hung.is_inside_tree():
+			continue
+		if not left_out.is_empty() and int(left_out.get(hung.get_instance_id(), 0)) >= (of_set["members"] as Dictionary).size():
 			continue
 		var at := hung.global_transform
 		var live := hung.on_layer > 0
@@ -338,19 +349,28 @@ func _put(of_set: Dictionary, hung: SkinnedHitboxes, at: Transform3D, live: bool
 func _measure(of_set: Dictionary, hung: SkinnedHitboxes, at: Transform3D) -> void:
 	if of_set["measured"] == hung.changes and of_set["held_basis"] == at.basis:
 		return
+	# Its hitboxes and how far each reaches, listed once for those it has.
+	if not of_set.has("nodes"):
+		var nodes: Array[Node3D] = []
+		var reaches: Array[Vector3] = []
+		for id: int in of_set["members"]:
+			var member := (_dynamic[id] as WeakRef).get_ref() as CollisionObject3D
+			if is_instance_valid(member) and member.is_inside_tree():
+				nodes.append(member)
+				reaches.append(Vector3.ONE * (_reach(member) + SET_MARGIN))
+		of_set["nodes"] = nodes
+		of_set["reaches"] = reaches
+	var listed: Array[Node3D] = of_set["nodes"]
+	var round_each: Array[Vector3] = of_set["reaches"]
 	var low := Vector3(INF, INF, INF)
 	var high := Vector3(-INF, -INF, -INF)
-	for id: int in of_set["members"]:
-		var node := (_dynamic[id] as WeakRef).get_ref() as CollisionObject3D
-		if not is_instance_valid(node) or not node.is_inside_tree():
+	for index in listed.size():
+		var node := listed[index]
+		if not is_instance_valid(node):
 			continue
-		var record: Dictionary = _objects[id]
-		if not record.has("reach") or record.get("geometry_dirty", false):
-			record["reach"] = _reach(node)
-		var round_it := Vector3.ONE * (float(record["reach"]) + SET_MARGIN)
 		var middle := node.global_position
-		low = low.min(middle - round_it)
-		high = high.max(middle + round_it)
+		low = low.min(middle - round_each[index])
+		high = high.max(middle + round_each[index])
 	of_set["held"] = AABB(low - at.origin, high - low) if low.x <= high.x else AABB()
 	of_set["held_basis"] = at.basis
 	of_set["measured"] = hung.changes
@@ -412,6 +432,7 @@ func _join_set(hitbox: Hitbox, id: int) -> void:
 	_sets[set_id]["members"][id] = true
 	_sets[set_id]["known"] = false
 	_sets[set_id]["measured"] = -1
+	_sets[set_id].erase("nodes")
 	_set_of[id] = set_id
 
 
@@ -425,6 +446,7 @@ func _leave_set(id: int) -> void:
 		var of_set: Dictionary = _sets[set_id]
 		of_set["members"].erase(id)
 		of_set["measured"] = -1
+		of_set.erase("nodes")
 		if of_set["members"].is_empty():
 			_sets.erase(set_id)
 
@@ -474,6 +496,12 @@ func _invalidate_shape_resource(shape_id: int) -> void:
 	for id: int in _shape_watchers[shape_id]["sources"]:
 		if _objects.has(id):
 			_objects[id]["geometry_dirty"] = true
+			# How far it reaches is to be read again, and its set put.
+			var of_set: Dictionary = _sets.get(_set_of.get(id, 0), {})
+			if not of_set.is_empty():
+				of_set.erase("nodes")
+				of_set["measured"] = -1
+				of_set["known"] = false
 
 
 func _unwatch_shapes(record: Dictionary) -> void:
@@ -713,7 +741,7 @@ func _ray(query: PhysicsRayQueryParameters3D) -> Dictionary:
 		# hitboxes those its line could meet.
 		sync_dynamic(query.collision_mask & ~_hitbox_layers)
 		_sync_group(_loose, query.collision_mask, [])
-		_sync_sets(true, query.from, query.to)
+		_sync_sets(true, query.from, query.to, query.exclude)
 	else:
 		sync_dynamic(query.collision_mask)
 	var mask := _mask(query.collision_mask, query.collide_with_bodies, query.collide_with_areas)
