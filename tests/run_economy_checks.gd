@@ -4,7 +4,9 @@ extends "res://tests/check_suite.gd"
 ## round by round against the loss ladder, kill awards by weapon, the bomb's
 ## money, the round lost on time, half time and overtime, and every rule a
 ## purchase is held to (the buy zone, buy time, the side, money, what is
-## carried, armour's prices, undoing it), and the buy menu buying by keys.
+## carried, armour's prices, undoing it), buying to throw, and the buy menu
+## buying by keys, greying what cannot be bought and outlining what is
+## owned.
 ##
 ##   godot --headless --path . --script tests/run_economy_checks.gd
 ##
@@ -78,7 +80,9 @@ func _run() -> void:
 	_test_a_purchase()
 	_test_a_buy_from_before_the_round()
 	_test_undoing_a_purchase()
+	_test_buy_and_throw()
 	_test_the_menu_buys_by_keys()
+	_test_the_menu_greys_and_outlines()
 	_test_the_menu_counts_down_buying()
 	for body in _bodies.values():
 		body.free()
@@ -460,6 +464,93 @@ func _test_undoing_a_purchase() -> void:
 	_buy(ct, "weapon_p250")
 	_send(&"round_start")
 	_check(not _economy.can_undo(ct, "weapon_p250"), "nor last round's purchase")
+
+
+## CS2's buy and throw (Left Control held in the menu): paid for and
+## counted as any purchase, but thrown out in front of the buyer rather than
+## taken, so what they carry does not stop it and it is not theirs to undo.
+func _test_buy_and_throw() -> void:
+	_new_game(1)
+	_send(&"begin_new_match")
+	_send(&"round_start")
+	var t := _ts[0]
+	var inv := _game.inventory(t)
+	inv.give_starting_items("T")
+	_economy.set_money(t, 10000)
+	_buy(t, "weapon_ak47")
+	_check(_economy.refusal(t, "weapon_ak47") == Economy.ALREADY_HAVE and _economy.throw_refusal(t, "weapon_ak47") == Economy.OK,
+		"an AK-47 in hand stops buying another for yourself, not buying one to throw")
+	_sent.clear()
+	_economy.buy_and_throw(t, "weapon_ak47")
+	_step()
+	_check(inv.has("weapon_ak47") and inv.in_hand_class() == "weapon_ak47", "the buyer keeps their own AK-47, in hand")
+	_check_equal(_economy.money(t), 10000 - 2700 - 2700, "and paid for the one thrown")
+	var thrown := _game.entities.of_class("weapon_ak47")
+	_check(thrown.size() == 1 and thrown[0].owner_id == t and (thrown[0] as DroppedItem).entry.weapon != null,
+		"the one bought is on the ground, the buyer's drop, a gun of its own")
+	var entry := Inventory.Entry.new(ItemRegistry.item("weapon_deagle"))
+	var throw := _game.query(&"throw_item", [t, entry]) as DroppedItem
+	_check(throw != null and throw.velocity.length() > 250.0 and throw.owner_id == t,
+		"the throw is ItemDrops', as a drop throws: where the buyer looks, at CS2's drop speed")
+	throw.remove()
+	var purchases := _sent_named(&"item_purchase")
+	_check(purchases.size() == 1 and purchases[0].fields["weapon"] == "weapon_ak47", "item_purchase says it was bought")
+	_check(_sent_named(&"item_remove").is_empty(), "and nothing left an inventory, so no item_remove")
+	_undo(t, "weapon_ak47")
+	_check(not inv.has("weapon_ak47") and _game.entities.of_class("weapon_ak47").size() == 1,
+		"undoing takes back the one bought for yourself, and leaves the thrown one where it lies")
+	_check_equal(_economy.throw_refusal(t, "item_assaultsuit"), Economy.CANNOT_THROW, "armour cannot be thrown")
+	_buy(t, "weapon_flashbang")
+	_buy(t, "weapon_flashbang")
+	_check_equal(_economy.throw_refusal(t, "weapon_flashbang"), Economy.OK, "two flashbangs carried, a third can still be bought to throw")
+	_economy.buy_and_throw(t, "weapon_flashbang")
+	_step()
+	_check(inv.count("weapon_flashbang") == 2 and _game.entities.of_class("weapon_flashbang").size() == 1, "and is thrown")
+	_economy.set_money(t, 100)
+	_check_equal(_economy.throw_refusal(t, "weapon_glock"), Economy.NO_MONEY, "one that cannot be paid for is refused")
+	_economy.buy_and_throw(t, "weapon_glock")
+	_step()
+	_check(_economy.money(t) == 100 and _game.entities.of_class("weapon_glock").is_empty(), "and nothing is thrown")
+	_economy.set_money(t, 10000)
+	_place(t, MID)
+	_check_equal(_economy.throw_refusal(t, "weapon_ak47"), Economy.NOT_IN_BUY_ZONE, "out of the buy zone, no buying to throw either")
+	_place(t, T_SPAWN)
+	_check_equal(_economy.throw_refusal(t, "weapon_m4a1_silencer"), Economy.WRONG_TEAM, "nor the other side's guns")
+
+
+## Every card the server would refuse is grey, want of money included; what
+## is owned is outlined; with Left Control held, the cards are read for a
+## buy and throw.
+func _test_the_menu_greys_and_outlines() -> void:
+	_new_game(1)
+	_send(&"begin_new_match")
+	_send(&"round_start")
+	var t := _ts[0]
+	var inv := _game.inventory(t)
+	inv.give_starting_items("T")
+	_economy.set_money(t, 5000)
+	_buy(t, "weapon_ak47")
+	_buy(t, "item_assaultsuit")
+	_buy(t, "weapon_smokegrenade")
+	var menu := BuyMenu.new()
+	menu.economy = _economy
+	menu.userid = t
+	root.add_child(menu)
+	menu.open()
+	var money := _economy.money(t)
+	_check_equal(money, 5000 - 2700 - 1000 - 300, "an AK-47, vest and helmet and a smoke bought")
+	var cant := func(item: String) -> bool: return menu._items[item][0] != Economy.OK
+	var owned := func(item: String) -> bool: return menu._items[item][2]
+	_check(cant.call("weapon_galilar") and ItemRegistry.item("weapon_galilar").price > money,
+		"a card that cannot be paid for is greyed, as one refused for any other reason")
+	_check(cant.call("weapon_ak47") and owned.call("weapon_ak47"), "the AK-47 carried is grey and outlined")
+	_check(owned.call("weapon_glock") and owned.call("item_assaultsuit") and not owned.call("item_kevlar"),
+		"the stock pistol and the vest and helmet worn are outlined; the vest alone is not")
+	_check(owned.call("weapon_smokegrenade") and cant.call("weapon_smokegrenade"),
+		"a smoke carried is outlined, and grey at its limit of one")
+	_check(not owned.call("weapon_flashbang") and not cant.call("weapon_flashbang"), "a flashbang, neither carried nor refused, is plain")
+	menu.close()
+	menu.free()
 
 
 func _test_the_menu_buys_by_keys() -> void:

@@ -15,10 +15,13 @@ extends HudElement
 ## A card is CS2's: a soft grey from the middle out, 5 px corners, the key at
 ## 40 % in the top left, the name top right, the icon in the middle at 45 % of
 ## the height and the price bottom right, in the team's colour; under the
-## mouse twice as bright (brightness 2.2). One you cannot buy is dark with
-## its icon and words grey; one you own is outlined in white, with a pip in
-## the colour of each of your team who carries it; one you cannot afford
-## has its price grey.
+## mouse twice as bright (brightness 2.2). One you cannot buy, for want of
+## money as for any other reason, is dark with its icon, name and price
+## grey (buymenu.css's buywheel-cant-buy: CS2 greys a card it cannot afford
+## the same way, as Sid's screenshot of 2026-09-26 shows at $550, the
+## Kevlar Vest at $650 as dark as the owned AK-47); one you own is outlined
+## in white (buywheel-already-own), with a pip in the colour of each of
+## your team who carries it.
 ##
 ## It only reads the economy and asks it for purchases (Economy.buy and
 ## undo), which the next tick carries out, so it is drawing, not game state,
@@ -29,7 +32,11 @@ extends HudElement
 ## B opens and closes it, as in CS2, and so does Escape. With it open the
 ## mouse is free and the view holds still; moving still works. Click an item
 ## to buy it, right-click one bought this round to refund it, Delete refunds
-## them all (CS2's sellbackall). The keys work as CS2's do: a number picks a
+## them all (CS2's sellbackall). Holding Left Control, a click buys the item
+## and throws it out in front of you rather than taking it, for a teammate
+## (CS2's buy and throw, buywheel_donate_key): every card that can be bought
+## that way is washed green (.in-donate's donate-bg), and the key says so
+## first along the bottom (BuyMenu_BuyForTeammate). The keys work as CS2's do: a number picks a
 ## column, a second number an item in it (B 4 2 is the AK-47 or the M4A1-S),
 ## and no other key press gets past it while it is open. It closes itself
 ## when buying is over for you: buy time ends, you leave the buy zone, or
@@ -101,6 +108,11 @@ const ITEM_PANEL_FILL := Color(0, 0, 0, 208.0 / 255.0)
 const FAILURE_FILL := Color(163.0 / 255.0, 148.0 / 255.0, 14.0 / 255.0, 0.87)
 const STOCK_NAME := Color8(153, 153, 153)
 const TIME_TITLE := Color(1, 1, 1, 0.356)
+## A card that can be bought to throw while Left Control is held (.donate-bg),
+## and the key's word along the bottom (.buymenu__for-teammate's grey, which
+## the bar's team wash tints).
+const DONATE_FILL := Color(59.0 / 255.0, 1.0, 75.0 / 255.0, 0.1)
+const DONATE_KEY_SHADE := 161.0 / 255.0
 const DOTS_OPACITY := 0.01
 const DOTS_SIZE := 360.0
 ## How strongly the game behind is blurred: lightly, since the letters of a
@@ -124,8 +136,10 @@ var _hovered: String = ""
 var _mouse_before: Input.MouseMode = Input.MOUSE_MODE_CAPTURED
 ## Each item's card this frame: item class to its rectangle.
 var _cards := {}
-## What each card shows this frame: item class to [refusal, price, owned].
+## What each card shows this frame: item class to [refusal, price, owned,
+## carriers' colours]; and whether it was read for a buy and throw.
 var _items := {}
+var _throwing := false
 var _failure := ""
 var _failure_left := 0.0
 static var _usage := {}
@@ -258,7 +272,7 @@ func _gui_input(event: InputEvent) -> void:
 	if item.is_empty():
 		return
 	if click.button_index == MOUSE_BUTTON_LEFT:
-		_try_buy(item)
+		_try_buy(item, click.ctrl_pressed)
 	elif click.button_index == MOUSE_BUTTON_RIGHT:
 		economy.undo(userid, item)
 	accept_event()
@@ -288,17 +302,27 @@ func _press_number(number: int) -> void:
 	_picked_column = -1
 	_refresh()
 	if not item.is_empty():
-		_try_buy(item)
+		_try_buy(item, donating())
 
 
-## Asks for it; one that will not go through says why in the failure's bar,
-## as CS2's does.
-func _try_buy(item: String) -> void:
-	var why := economy.refusal(userid, item)
+## Asks for it, for yourself or to throw; one that will not go through says
+## why in the failure's bar, as CS2's does.
+func _try_buy(item: String, throw := false) -> void:
+	var why := economy.throw_refusal(userid, item) if throw else economy.refusal(userid, item)
 	if why != Economy.OK and why != Economy.ALREADY_HAVE:
 		_failure = Economy.MESSAGES.get(why, "")
 		_failure_left = FAILURE_SECONDS
-	economy.buy(userid, item)
+	if throw:
+		economy.buy_and_throw(userid, item)
+	else:
+		economy.buy(userid, item)
+
+
+## Whether Left Control is held: a buy now is a buy and throw. It decides
+## only what the menu shows and which command it sends; the server rules on
+## the buy.
+func donating() -> bool:
+	return visible and Input.is_physical_key_pressed(KEY_CTRL)
 
 
 func _process(delta: float) -> void:
@@ -318,12 +342,13 @@ func _refresh() -> void:
 	_layout(side)
 	_items.clear()
 	var seconds := buy_seconds_shown()
+	_throwing = donating()
 	var signature: Array = [side, economy.money(userid), _hovered, _picked_column,
-		-1 if is_inf(seconds) else ceili(seconds), size, _failure_left > 0.0]
+		-1 if is_inf(seconds) else ceili(seconds), size, _failure_left > 0.0, _throwing]
 	for item: String in _cards:
-		var why := economy.refusal(userid, item)
-		var owned := why == Economy.ALREADY_HAVE or economy.can_undo(userid, item)
-		_items[item] = [why, economy.price_for(userid, item), owned, _carriers(item)]
+		var why := economy.throw_refusal(userid, item) if _throwing else economy.refusal(userid, item)
+		var price := ItemRegistry.item(item).price if _throwing else economy.price_for(userid, item)
+		_items[item] = [why, price, owns(item), _carriers(item)]
 		signature.append_array(_items[item])
 	show_state(signature)
 
@@ -454,7 +479,7 @@ func _draw() -> void:
 			_failure, 22, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, &"condensed")
 
 	# The keys along the bottom.
-	var keys := PackedStringArray(["[Right click] Refund", "[Del] Refund all", "[Escape] Back"])
+	var keys := PackedStringArray(["Hold [Left Control] Buy & Throw", "[Right click] Refund", "[Del] Refund all", "[Escape] Back"])
 	var widths: Array[float] = []
 	var total := 0.0
 	var nav_font := HudStyle.face(&"bold_condensed")
@@ -467,8 +492,9 @@ func _draw() -> void:
 		Color(1, 1, 1, 0.05), 1.0)
 	x = size.x * 0.5 - total * 0.5
 	for i in keys.size():
-		HudStyle.draw_text(self, Vector2(x, NAV_BASELINE), keys[i].to_upper(), NAV_SIZE, colour, HORIZONTAL_ALIGNMENT_LEFT,
-			&"bold_condensed")
+		var shade := DONATE_KEY_SHADE if i == 0 else 1.0
+		HudStyle.draw_text(self, Vector2(x, NAV_BASELINE), keys[i].to_upper(), NAV_SIZE,
+			Color(colour.r * shade, colour.g * shade, colour.b * shade, colour.a), HORIZONTAL_ALIGNMENT_LEFT, &"bold_condensed")
 		x += widths[i] + 32.0
 
 
@@ -490,7 +516,7 @@ func _draw_card(item: String, card: Rect2, colour: Color, body: Rect2) -> void:
 	while column + 1 < COLUMN_ORDER.size() and card.position.x >= _column(column + 1, body).position.x:
 		column += 1
 	var dim := 1.0 if _picked_column < 0 or _picked_column == column else 0.3
-	var cant := why != Economy.OK and why != Economy.NO_MONEY
+	var cant := why != Economy.OK
 	var bright := HOVER if item == _hovered else 1.0
 	var lit := func(tint: Color) -> Color:
 		return Color(minf(tint.r * bright * dim, 1.0), minf(tint.g * bright * dim, 1.0), minf(tint.b * bright * dim, 1.0), tint.a)
@@ -501,6 +527,8 @@ func _draw_card(item: String, card: Rect2, colour: Color, body: Rect2) -> void:
 		_draw_rounded(card, lit.call(CARD_CANT), lit.call(CARD_CANT))
 	else:
 		_draw_rounded(card, lit.call(CARD_CENTRE), lit.call(CARD_EDGE))
+		if _throwing:
+			_draw_rounded(card, DONATE_FILL, DONATE_FILL)
 	if owned:
 		var border := StyleBoxFlat.new()
 		border.draw_center = false
@@ -519,7 +547,7 @@ func _draw_card(item: String, card: Rect2, colour: Color, body: Rect2) -> void:
 	var icon_box := Rect2(card.position.x, card.get_center().y - CARD_HEIGHT * 0.45 * 0.5, card.size.x, CARD_HEIGHT * 0.45)
 	if icon != null:
 		HudStyle.draw_fitted(self, icon, icon_box, lit.call(CANT_ICON if cant else colour))
-	var price_colour: Color = lit.call(GREY if cant or why == Economy.NO_MONEY else colour)
+	var price_colour: Color = lit.call(GREY if cant else colour)
 	var price_at := Vector2(inner.end.x, inner.end.y - HudStyle.face(&"mono_bold").get_descent(14))
 	HudStyle.draw_text(self, price_at, "$%d" % price, 14, price_colour, HORIZONTAL_ALIGNMENT_RIGHT, &"mono_bold",
 		Color(0, 0, 0, 0.53), 0)
@@ -639,6 +667,19 @@ func _place_of(item: String) -> int:
 			if Loadout.item_at(side, column, row) == item:
 				return row
 	return 0
+
+
+## Whether you own it: carry it, wear it (the vest alone, or the vest and
+## helmet), or bought it this round.
+func owns(item: String) -> bool:
+	if economy.can_undo(userid, item):
+		return true
+	var mine := economy.game.inventory(userid) if economy.game != null else null
+	if mine == null:
+		return false
+	if item == "item_kevlar":
+		return mine.armor > 0.0 and not mine.helmet
+	return mine.has(item)
 
 
 ## The colour of each of your team who carries an item, you first.

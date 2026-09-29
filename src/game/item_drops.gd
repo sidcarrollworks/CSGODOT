@@ -79,6 +79,8 @@ func attach(p_game: GameSystems) -> void:
 	game.events.listen(&"player_death", _on_death)
 	game.events.listen(&"round_prestart", _on_round_prestart)
 	game.on_command(&"drop", _on_drop)
+	# A purchase thrown out rather than taken (the economy's buy and throw).
+	game.provide(&"throw_item", throw_item)
 
 
 func tick(t: SimTick) -> void:
@@ -143,6 +145,19 @@ func _on_drop(userid: int, _args: PackedStringArray, t: SimTick) -> bool:
 	DroppedItem.drop_from(game, userid, entry, from, _throw_velocity(node), _throw_spin(from, entry.item.item_class, rng))
 	game.events.send(&"item_remove", {"userid": userid, "item": entry.item.item_class})
 	return true
+
+
+## Throws an item that was never in the player's inventory (a purchase
+## bought to throw) as the drop command throws what is in hand: from where
+## they would hold it, where they look, at CS2's drop speed. The entity,
+## already spawned; it announces nothing, as nothing left an inventory.
+func throw_item(userid: int, entry: Inventory.Entry) -> DroppedItem:
+	var node := game.roster.player(userid)
+	var item_class := entry.item.item_class
+	var space := game.last_tick.space if game.last_tick != null else null
+	var from := _clear_of_walls(node, _held_transform_of(node, item_class), space, item_class)
+	var rng := _seeded(userid, item_class)
+	return DroppedItem.drop_from(game, userid, entry, from, _throw_velocity(node), _throw_spin(from, item_class, rng))
 
 
 func _try_pickup(t: SimTick, item: DroppedItem, userid: int) -> bool:
