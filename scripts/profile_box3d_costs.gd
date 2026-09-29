@@ -98,6 +98,10 @@ class TimedQueries:
 	var scans_hitboxes := 0
 	var hull_entries := 0
 	var hitbox_entries := 0
+	## The sets of hitboxes a ray in a tick looked at, and how many of
+	## their hitboxes it brought up to date (Box3DQueries._sync_sets).
+	var sets_looked_at := 0
+	var sets_put := 0
 
 	func sync_dynamic(mask: int = ALL_LAYERS, exclude: Array[RID] = []) -> void:
 		if meter.enabled:
@@ -114,6 +118,24 @@ class TimedQueries:
 		super.sync_dynamic(mask, exclude)
 		sync_scan_depth -= 1
 		meter.leave()
+
+	# A round's ray brings the bodies' hitboxes up to date by their sets,
+	# not through sync_dynamic: counted as synchronizing all the same.
+	func _sync_sets(by_line: bool, from: Vector3, to: Vector3, exclude: Array[RID]) -> void:
+		if meter.enabled:
+			scans_hitboxes += 1
+			sets_looked_at += _sets.size()
+		meter.enter(CostMeter.Part.SYNC)
+		sync_scan_depth += 1
+		super._sync_sets(by_line, from, to, exclude)
+		sync_scan_depth -= 1
+		meter.leave()
+
+	func _put(of_set: Dictionary, hung: SkinnedHitboxes, at: Transform3D, live: bool) -> void:
+		if meter.enabled:
+			sets_put += 1
+			hitbox_entries += (of_set["members"] as Dictionary).size()
+		super._put(of_set, hung, at, live)
 
 	func intersect_ray(query: PhysicsRayQueryParameters3D) -> Dictionary:
 		meter.enter(CostMeter.Part.RAY)
@@ -336,6 +358,7 @@ func _report_costs(label: String) -> void:
 		print("COST_NATIVE_LAST_CALL samples=%d mean_ms=%.4f p95_ms=%.4f scope=b3World_Step_last_of_four_calls" % [
 			_last_native_step_ms.size(), native_step_sum / _last_native_step_ms.size(),
 			_last_native_step_ms[int(ceil(_last_native_step_ms.size() * 0.95)) - 1]])
-	print("COST_SYNC_SCANS world_only=%d with_hulls=%d with_hitboxes=%d hull_entries=%d hitbox_entries=%d" % [
-		_queries.scans_world_only, _queries.scans_hulls, _queries.scans_hitboxes, _queries.hull_entries, _queries.hitbox_entries])
+	print("COST_SYNC_SCANS world_only=%d with_hulls=%d with_hitboxes=%d hull_entries=%d hitbox_entries=%d hitbox_sets_looked_at=%d hitbox_sets_put=%d" % [
+		_queries.scans_world_only, _queries.scans_hulls, _queries.scans_hitboxes, _queries.hull_entries, _queries.hitbox_entries,
+		_queries.sets_looked_at, _queries.sets_put])
 	print("COST_NATIVE_STEPS calls=%d most=%d (none on a tick with nothing awake)" % [_adapter.native_steps - _native_steps_before, TICKS * Box3DDrops.COLLISION_STEPS])

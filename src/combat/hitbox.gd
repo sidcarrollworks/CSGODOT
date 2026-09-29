@@ -26,6 +26,20 @@ func _ready() -> void:
 	collision_mask = 0
 	monitoring = false
 	monitorable = true
+	var hung_under := get_parent() as SkinnedHitboxes
+	if hung_under != null:
+		hung_under.layers_changed()
+
+
+## On its layer, where a round can meet it, or off it. Its layer is set
+## here and nowhere else: a body's hitboxes are a set that counts its
+## changes (SkinnedHitboxes.changes), and what keeps a copy of them
+## (Box3DQueries) looks again only when the count has moved on.
+func set_on_layer(on: bool) -> void:
+	collision_layer = LAYER if on else 0
+	var hung_under := get_parent() as SkinnedHitboxes
+	if hung_under != null:
+		hung_under.layers_changed()
 
 
 ## Zone colours for a drawn hitbox, the way a hitbox viewer paints them:
