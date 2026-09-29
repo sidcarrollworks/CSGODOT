@@ -165,12 +165,12 @@ func _advance(delta: float) -> bool:
 			continue
 		t += delta
 		var length: float = {&"_damage": DAMAGE_SECONDS, &"_jitter": JITTER_SECONDS, &"_fired": FIRED_SECONDS,
-			&"_change": CHANGE_SECONDS, &"_reload": RELOAD_SECONDS}[name]
+			&"_change": CHANGE_SECONDS, &"_reload": RELOAD_SECONDS}[timer]
 		if t >= length:
 			t = -1.0
 		else:
 			running = true
-		set(name, t)
+		set(timer, t)
 	return running
 
 

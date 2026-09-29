@@ -437,6 +437,11 @@ hit and take a hull's proxies off their layer.
 
 ## What is left of the 6 ms
 
+Sid, 2026-09-28, having played Competitive on dust2 with the three changes
+merged: "This is feeling quite a bit smoother, though I still only hit
+6.6ms frametime once." His reading, drawn, on his machine; which readout
+he did not say.
+
 The goal is every frame under 6 ms at 4K with nine bots. Sid's CS2 on the
 same machine reads 5.5 ms at most alone on dust2 and 7 to 8 with nine bots,
 with spikes to 13 when shooting
