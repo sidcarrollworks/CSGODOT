@@ -285,6 +285,18 @@ func clear() -> void:
 	adapter = null
 
 
+## The body is wanted back, at a respawn or a side swap: the bodies go and
+## the skeleton is written no more, from now and not from the frame's end,
+## when the node is freed. Freed and no more, it posed the skeleton once
+## again in that frame, where it lay, after the player had been put at its
+## spawn: for a frame the body was drawn where it died and the gun it
+## holds, which hangs on a bone the ragdoll does not write, where it
+## spawned, in the air with nobody under it (Sid, 2026-09-29).
+func let_go() -> void:
+	clear()
+	queue_free()
+
+
 func _exit_tree() -> void:
 	clear()
 

@@ -465,9 +465,28 @@ item 6 is built.
    clip's `wpnHand_L`/`_R`, easing off over CS2's 0.3 s for a draw or a
    reload. The foot fit now lowers the gun with the pelvis
    (`FootPlant.lower_gun`), since on T ramp the drop took the hands past
-   what the IK reaches (Sid, 2026-09-29). Local: Sid's run of `tests/run_model_checks.gd` confirms the
-   targets sit on the hands standing and prints how far a run takes them
-   off; then a look at a running bot on dust2's slopes.
+   what the IK reaches (Sid, 2026-09-29). As merged it lowered the gun
+   twice as far as the body, 12 units for 6 on a 13 degree ramp: on the
+   rig `wpn` hangs under `wpnPivot`, and both were moved. The check that
+   said so needs the models, so it first ran on Sid's machine, after the
+   merge. **Put right 2026-09-29 (fix/gun-with-the-pelvis):** only the
+   topmost of the gun's bones moves; a bot stood on ramps of 8 to 25
+   degrees has its gun down by what its pelvis is and its hands on their
+   grips, and walked up and down ones of 13 and 18 its hands are within
+   0.01 of them, where they were up to 4.7 off. And at a
+   respawn, which is where a slope's spawn showed it: the ragdoll, freed
+   at the frame's end, posed the body once more where it lay, so for a
+   frame the body was drawn where it died and its gun where it spawned,
+   and for a frame or two after the body stood at rest, arms out, until
+   its animation stepped. The ragdoll is let go of at once
+   (`Ragdoll.let_go`), the body posed as it gets up
+   (`PlayerModel.pose_again`), and the foot fit takes the floor as it finds
+   it (`FootPlant.snap`) where it eased from the drop it had where the
+   body died. Left: while a draw or a reload plays the hands are let go
+   of, and part-way through a draw they are 4.7 units from their grips,
+   on the flat as on a slope, since Godot blends the draw bone by bone
+   where CS2 blends it in the model's space. Local: a look at bots on
+   dust2's slopes and at a round's start on T spawn.
 
 6a. **Your shadow has no arms.** *(done; Sid checks it in play)* Sid noticed
    2026-09-22 22:06. The shadow twin now keeps its arms and holds what is in

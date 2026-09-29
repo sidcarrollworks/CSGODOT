@@ -87,6 +87,7 @@ func _run() -> void:
 	await _test_pushed()
 	await _test_parts_and_others()
 	await _test_native_lifecycle()
+	await _test_let_go()
 	await _test_the_agent()
 	_report()
 
@@ -673,6 +674,43 @@ func _test_native_lifecycle() -> void:
 		"clear removes every native part, anatomical joint and collision exclusion")
 	ragdoll.queue_free()
 	(made[1] as Node).queue_free()
+	ground.queue_free()
+	await process_frame
+
+
+## A body wanted back, as a respawn wants it: its skeleton put elsewhere and
+## its bones back at rest, and the ragdoll let go of. The frame that follows
+## shows the bones at rest. Freed and no more, the ragdoll is there until
+## the frame's end and writes them once again, where it lay.
+func _test_let_go() -> void:
+	var ground := _floor("flat")
+	for told: bool in [true, false]:
+		var made: Array = await _killed(Vector3.UP * 40.0, Vector3.ZERO, Vector3.BACK)
+		var ragdoll: Ragdoll = made[0]
+		var holder: Node3D = made[1]
+		var skeleton := holder.get_child(0) as Skeleton3D
+		var pelvis := skeleton.find_bone("pelvis")
+		for i in 40:
+			await _advance()
+		var lay := (skeleton.global_transform * skeleton.get_bone_global_pose(pelvis)).origin
+		# Back, 500 units from where it fell.
+		holder.position += Vector3(500.0, 0.0, 0.0)
+		skeleton.reset_bone_poses()
+		var rest := (skeleton.global_transform * skeleton.get_bone_global_pose(pelvis)).origin
+		if told:
+			ragdoll.let_go()
+		else:
+			ragdoll.queue_free()
+		await process_frame
+		var shown := (skeleton.global_transform * skeleton.get_bone_global_pose(pelvis)).origin
+		if told:
+			_check(shown.distance_to(rest) < 0.01 and rest.distance_to(lay) > 400.0,
+				"a ragdoll let go of writes the skeleton no more: the frame after shows the pelvis where the body was put, %.0f units from where it lay" % rest.distance_to(lay))
+		else:
+			_check(shown.distance_to(lay) < 1.0,
+				"one freed and no more writes it once again that frame, where it lay (%.1f from there, %.0f from where the body was put)" % [shown.distance_to(lay), shown.distance_to(rest)])
+		holder.queue_free()
+		await process_frame
 	ground.queue_free()
 	await process_frame
 
