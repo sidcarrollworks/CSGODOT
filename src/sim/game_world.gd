@@ -211,13 +211,13 @@ func _physics_process(_delta: float) -> void:
 ## What is only seen and can be made ahead, on the frames: the body each
 ## player dies into (PlayerSim.prepare_to_fall), one a frame, 1.5 ms each,
 ## so that no tick makes one. Nothing is looked at until someone says there
-## may be one to make.
+## may be one to make. A player whose body cannot be made does not hold up
+## those after it, and once a frame has made none nobody is asked again.
 func _process(_delta: float) -> void:
 	if not bodies_to_make or not _drop_physics_initialized or drop_physics_backend != "box3d":
 		return
 	for player in players:
-		if is_instance_valid(player) and player.wants_body_made():
-			player.prepare_to_fall()
+		if is_instance_valid(player) and player.wants_body_made() and player.prepare_to_fall():
 			return
 	bodies_to_make = false
 

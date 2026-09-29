@@ -203,6 +203,9 @@ var ragdoll: Ragdoll
 ## at the death (prepare_to_fall). Null until it has been made, and while
 ## it lies as `ragdoll`.
 var _ragdoll_ready: Ragdoll
+## The body on now could not have one made (its capsules are on none of its
+## bones): nobody asks again until another body is put on.
+var _no_body_to_make: bool = false
 var _respawn_at_usec: int = 0
 var _died_at_usec: int = 0
 var _spawn_position: Vector3 = Vector3.ZERO
@@ -391,6 +394,7 @@ func wear_body(weapon_model: String, drawn: bool) -> void:
 		for hitbox in hit_target.hitboxes():
 			hitbox.drawn_layers = UNSEEN_LAYER
 	# The body it dies into is made on a frame soon (GameWorld._process).
+	_no_body_to_make = false
 	if is_instance_valid(world):
 		world.bodies_to_make = true
 
@@ -398,7 +402,7 @@ func wear_body(weapon_model: String, drawn: bool) -> void:
 ## Whether the body it dies into is still to be made: alive or dead with
 ## none lying, a model and its capsules on, and none made yet.
 func wants_body_made() -> bool:
-	return _ragdoll_ready == null and ragdoll == null and model != null \
+	return _ragdoll_ready == null and ragdoll == null and not _no_body_to_make and model != null \
 		and model.character_rig != null and not _capsules.is_empty() and is_inside_tree()
 
 
@@ -412,12 +416,19 @@ func wants_body_made() -> bool:
 func prepare_to_fall() -> bool:
 	if not wants_body_made():
 		return _ragdoll_ready != null
+	var physics := PhysicsQueries.adapter_for_node(self)
+	if not is_instance_valid(physics) or not physics.initialized:
+		# Not yet: whoever asks may ask again.
+		return false
 	var made := Ragdoll.new()
 	made.name = "Ragdoll"
 	add_child(made)
 	if made.prepare(
-		model.character_rig, _capsules, MapImporter.SOURCE2_VIEWER_SCALE, _model_faces(), null, true
+		model.character_rig, _capsules, MapImporter.SOURCE2_VIEWER_SCALE, _model_faces(), physics, true
 	) == 0:
+		# With the world's physics there, it is this body that none can be
+		# made for, and asking again would find the same.
+		_no_body_to_make = true
 		remove_child(made)
 		made.free()
 		return false

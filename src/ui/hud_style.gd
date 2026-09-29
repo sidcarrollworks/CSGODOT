@@ -112,10 +112,11 @@ static func face(name: StringName = &"bold_tf") -> Font:
 
 ## Reads from the disk, before a match is played, what its HUD may show
 ## during it: every face, every item's icon, and the images at `images`
-## (the kill feed's marks). A face is 3 to 5 ms to read and an icon 1 to 6,
-## and whatever showed one first read it then: the first death of a match
-## read its gun's icon and the feed's face on the tick it was told in, 5 ms.
-## All of them are 0.15 s, once, as the HUD is made.
+## (GameHud.IMAGES, what the HUD's parts ask icon() for). A face is 3 to 5
+## ms to read and an icon 1 to 6, and whatever showed one first read it
+## then: the first death of a match read its gun's icon and the feed's face
+## on the tick it was told in, 5 ms. All of them are 0.15 s, once, as the
+## HUD is made.
 static func read_ahead(images: Array = []) -> void:
 	for name: StringName in FACES:
 		face(name)

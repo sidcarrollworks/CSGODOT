@@ -134,9 +134,12 @@ var adapter: Box3DDrops
 var slot := -1
 ## Whether it lies in the world: dropped, and not yet parked or cleared.
 var fallen := false
-## Whether it lies still, every part asleep, and is stepped and posed no
-## more (_rest).
+## Whether it lies still, every part asleep, and is stepped no more, and
+## posed again only when what it hangs under moves (_rest).
 var resting := false
+## Where the skeleton was in the world when the body at rest was last
+## posed.
+var _rested_under := Transform3D.IDENTITY
 ## The exclusions that are the body's own, however it dies: two parts a
 ## joint apart.
 var _filters: Array[Node3D] = []
@@ -449,6 +452,15 @@ func _exit_tree() -> void:
 
 
 func _process(_delta: float) -> void:
+	if resting:
+		# The bones are written relative to the skeleton, and the parts lie
+		# in the world: if what the skeleton hangs under moves, the body
+		# drawn moves with it unless it is posed again. A model moved every
+		# frame would shake its dead body.
+		if is_instance_valid(_skeleton) and not _skeleton.global_transform.is_equal_approx(_rested_under):
+			pose_skeleton(1.0)
+			_rested_under = _skeleton.global_transform
+		return
 	pose_skeleton()
 
 
@@ -473,15 +485,16 @@ func _after_native_step(_tick: SimTick) -> void:
 
 
 ## Every part has come to rest, and nothing a dead body touches moves: it is
-## left lying as it is, stepped and posed no more. While a body listens to
-## the step the world is stepped for it, a quarter of a millisecond of every
-## tick for the rest of the round, and every frame posed it again where it
-## already lay.
+## left lying as it is, stepped no more, and posed again only if its
+## skeleton is moved (_process). While a body listens to the step the world
+## is stepped for it, a quarter of a millisecond of every tick for the rest
+## of the round, and every frame posed it again where it already lay.
 func _rest() -> void:
 	_leave_the_step()
 	_before_step.clear()
 	pose_skeleton(1.0)
-	set_process(false)
+	if is_instance_valid(_skeleton):
+		_rested_under = _skeleton.global_transform
 	resting = true
 
 

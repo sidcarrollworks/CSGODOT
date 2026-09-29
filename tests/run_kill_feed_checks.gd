@@ -147,9 +147,18 @@ func _test_the_feed() -> void:
 	# frame finds them.
 	_game.events.send(&"player_death", {"userid": _id("C2"), "attacker": _id("T1"), "weapon": "weapon_ak47"})
 	_game.events.flush()
-	var told: KillFeed.Notice = feed._waiting[0]
-	_check(told.victim == "C2" and told.victim_side == "CT" and told.attacker_side == "T",
-		"what it says is read as it is told (%s of %s, by %s)" % [told.victim, told.victim_side, told.attacker_side])
+	# The sides swap before the frame comes.
+	var victim := _game.roster.player(_id("C2")) as Someone
+	var killer := _game.roster.player(_id("T1")) as Someone
+	victim.team = "T"
+	killer.team = "CT"
+	await process_frame
+	var told: KillFeed.Notice = feed._notices[-1]
+	_check(told.victim == "C2" and told.victim_side == "CT" and told.attacker_side == "T" and feed._waiting.is_empty(),
+		"what a row says is read as the death is told, not as the frame that makes the row finds it: the sides swapped between the two (%s of %s, by %s)"
+			% [told.victim, told.victim_side, told.attacker_side])
+	victim.team = "CT"
+	killer.team = "T"
 	feed._process(100.0)
 	_check(feed.notices().is_empty(), "(and both rows have gone)")
 	_game.events.send(&"player_death", {"userid": _id("C1"), "attacker": _id("T2"), "weapon": "weapon_ak47"})

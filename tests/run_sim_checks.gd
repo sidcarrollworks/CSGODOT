@@ -53,6 +53,24 @@ class Scripted extends PlayerSim:
 		return cmd
 
 
+## A player who says whether the body it dies into is to be made and
+## whether it can be, and counts the times it is asked to make it.
+class Mortal extends PlayerSim:
+	var wanted := true
+	var can := true
+	var forgets := false
+	var asked := 0
+
+	func wants_body_made() -> bool:
+		return wanted
+
+	func prepare_to_fall() -> bool:
+		asked += 1
+		if can or not forgets:
+			wanted = false
+		return can
+
+
 ## A player that runs what the check asks of it, on the world's tick: the
 ## buttons it holds, a tap of one, a slot to take in hand, walking forward.
 class Commanded extends PlayerSim:
@@ -109,6 +127,7 @@ func _run() -> void:
 	_test_the_world_gives_out_path_searches()
 	await _test_nothing_runs_itself()
 	await _test_joining_and_leaving()
+	await _test_bodies_are_made_a_frame_apart()
 	await _test_the_same_commands_give_the_same_game()
 	await _test_a_held_trigger_fires_on_simulation_time()
 	await _test_a_press_fires_from_where_the_player_was()
@@ -495,6 +514,89 @@ func _script(seconds: float) -> Array[UserCmd]:
 			cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.RELOAD, true, 0.1, cmd.yaw_degrees, -2.0))
 		cmds.append(cmd)
 	return cmds
+
+
+## The world has the bodies the players die into made on the frames, one a
+## frame; one that cannot be made holds nobody up, and once a frame has made
+## none nobody is asked again until someone says so.
+func _test_bodies_are_made_a_frame_apart() -> void:
+	var holder := Node3D.new()
+	_world.add_child(holder)
+	var world := GameWorld.new()
+	holder.add_child(world)
+	world.set_physics_process(false)
+	world.set_process(false)
+	var players: Array[Mortal] = []
+	for i in 4:
+		var player := Mortal.new()
+		player.name = "Mortal%d" % i
+		_new_player(Vector3(1536.0 + 100.0 * i, 0.0, 2536.0), "T", player)
+		world.add_player(player)
+		players.append(player)
+	# The second's cannot be made, and it goes on wanting one.
+	players[1].can = false
+	players[1].forgets = true
+	var asked := func() -> Array: return players.map(func(p: Mortal) -> int: return p.asked)
+	world._process(0.01)
+	_check(asked.call() == [0, 0, 0, 0] and world.bodies_to_make,
+		"before the world's physics is there nobody is asked for a body (%s)" % [asked.call()])
+	if not world.initialize_drop_physics(_world, "box3d"):
+		_check(false, "the world's physics starts, for the bodies to be made in")
+		holder.queue_free()
+		await process_frame
+		return
+	var by_frame := []
+	for frame in 5:
+		world._process(0.01)
+		by_frame.append(asked.call())
+	_check(
+		by_frame[0] == [1, 0, 0, 0] and by_frame[1] == [1, 1, 1, 0] and by_frame[2] == [1, 2, 1, 1],
+		"one body is made a frame, in the order the players joined, and one that cannot be made holds up nobody after it (asked, by frame: %s)"
+			% [by_frame.slice(0, 3)]
+	)
+	_check(
+		by_frame[3] == [1, 3, 1, 1] and not world.bodies_to_make and by_frame[4] == by_frame[3],
+		"a frame that made none ends it: nobody is asked again, the one who wants what cannot be made neither (%s, then %s)"
+			% [by_frame[3], by_frame[4]]
+	)
+	# Someone puts a body on: the world looks again.
+	players[2].wanted = true
+	world.bodies_to_make = true
+	world._process(0.01)
+	_check(players[2].asked == 2 and not players[2].wanted, "told there is one to make, it makes it on the next frame")
+	var joined := Mortal.new()
+	joined.name = "Late"
+	_new_player(Vector3(1536.0, 0.0, 2736.0), "T", joined)
+	world._process(0.01)
+	world._process(0.01)
+	var before_joining := joined.asked
+	world.add_player(joined)
+	world._process(0.01)
+	_check(before_joining == 0 and joined.asked == 1, "and one who joins is asked on the frame after")
+	# A player as the game makes one: with its model on (the extraction) it
+	# has the body made and wants no other; without, it wants none.
+	var plain := PlayerSim.new()
+	plain.name = "Plain"
+	_new_player(Vector3(1736.0, 0.0, 2736.0), "T", plain)
+	world.add_player(plain)
+	if plain.model != null and not plain._capsules.is_empty():
+		var wanted := plain.wants_body_made()
+		var made := plain.prepare_to_fall()
+		var ahead := plain._ragdoll_ready
+		_check(
+			wanted and made and not plain.wants_body_made() and plain.ragdoll == null
+				and ahead != null and ahead.prepared_for(plain.model.character_rig) and not ahead.fallen
+				and ahead.bodies.values().all(func(body: Ragdoll.Part) -> bool: return not bool(body.native.get(&"enabled"))),
+			"a player with its model on has the body it dies into made, its parts switched off, and wants no other"
+		)
+	else:
+		_check(not plain.wants_body_made() and not plain.prepare_to_fall() and plain._ragdoll_ready == null,
+			"a player with no model (nothing extracted) wants no body made, and makes none")
+	holder.queue_free()
+	for player: Node in players + [joined, plain]:
+		if is_instance_valid(player):
+			player.queue_free()
+	await process_frame
 
 
 func _test_the_same_commands_give_the_same_game() -> void:

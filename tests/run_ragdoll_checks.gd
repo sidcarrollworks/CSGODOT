@@ -663,6 +663,10 @@ func _test_parts_and_others() -> void:
 func _test_more_bodies_than_layers() -> void:
 	var ground := _floor("flat")
 	var made: Array = []
+	# Every body the checks before this made has been taken away.
+	await process_frame
+	var held_before := _layers_held()
+	_check(held_before == 0, "every body made and taken away so far has given its upper layer back (%d still held)" % held_before)
 	var first: Array = await _killed(Vector3.ZERO, Vector3.ZERO, Vector3.ZERO)
 	made.append(first)
 	# Far off, only made: they hold a layer each.
@@ -702,12 +706,35 @@ func _test_more_bodies_than_layers() -> void:
 		"and passes through the body it falls on all the same (its pelvis %.1f up, the one under it %.1f; on the same layer %s)"
 			% [fell_to, lying, last.slot == (first[0] as Ragdoll).slot]
 	)
+	var with_all := _layers_held()
+	var theirs := PackedInt32Array()
 	for ragdoll in waiting:
+		theirs.append(ragdoll.slot)
 		ragdoll.free()
+	var still := 0
+	for slot in theirs:
+		if slot != last.slot:
+			still += Ragdoll._slot_users[slot]
+	_check(
+		with_all == Ragdoll.SLOTS + 1 and _layers_held() == 2 and still == 0 and Ragdoll._slot_users[last.slot] == 2,
+		"a body taken away gives its layer back: %d held with all of them, %d with the %d waiting gone, none of theirs held still (%d)"
+			% [with_all, _layers_held(), waiting.size(), still]
+	)
 	var freed := Ragdoll.new()
 	_world.add_child(freed)
 	freed.prepare(skeleton, _shapes("cs2"), SCALE, Vector3.FORWARD)
-	_check(freed.slot != last.slot or Ragdoll.SLOTS <= 2, "a body taken away gives its layer back: the next made has one to itself (%d)" % freed.slot)
+	_check(freed.slot != last.slot and Ragdoll._slot_users[freed.slot] == 1, "and the next made has one to itself (%d)" % freed.slot)
+	# Parked and dropped again it keeps the layer it has; cleared it gives
+	# it back once, and once only.
+	var kept := freed.slot
+	freed.drop(Vector3.ZERO)
+	freed.park()
+	freed.drop(Vector3.ZERO)
+	var while_lying := _layers_held()
+	freed.clear()
+	freed.clear()
+	_check(while_lying == 3 and freed.slot == -1 and _layers_held() == 2 and Ragdoll._slot_users[kept] == 0,
+		"dropped, parked and dropped it holds the one layer, and cleared twice it gives it back once (%d held)" % _layers_held())
 	freed.free()
 	holder.queue_free()
 	for one: Array in made:
@@ -715,6 +742,16 @@ func _test_more_bodies_than_layers() -> void:
 		(one[1] as Node).queue_free()
 	ground.queue_free()
 	await _advance()
+	await process_frame
+	_check(_layers_held() == 0, "and with every body gone none is held (%d)" % _layers_held())
+
+
+## How many upper layers are held, by however many bodies.
+func _layers_held() -> int:
+	var held := 0
+	for users in Ragdoll._slot_users:
+		held += users
+	return held
 
 
 ## A body made ahead of the death waits switched off, falls from how the
@@ -800,9 +837,16 @@ func _test_made_ahead() -> void:
 		"parked, it writes the skeleton no more from that moment, its parts are switched off, and what was only of that death is gone (%d exceptions)"
 			% of_the_death
 	)
+	var parked_at := pelvis.native.global_transform
+	var idle_parked := _adapter.idle_ticks
 	for i in 16:
 		await _advance()
-	_check(pelvis.global_position.distance_to(lay) < 0.01, "and it lies where it was parked, unmoved, until it is wanted")
+	_check(
+		pelvis.native.global_transform.is_equal_approx(parked_at) and _adapter.idle_ticks - idle_parked == 16
+			and pelvis.global_position.distance_to(lay) < 0.01,
+		"and its parts lie in the native world where they were parked, unmoved and unstepped (%d of 16 ticks stepped nothing), until it is wanted"
+			% (_adapter.idle_ticks - idle_parked)
+	)
 	# And dies again, there.
 	_pose_as_killed(skeleton)
 	await process_frame
@@ -856,11 +900,33 @@ func _test_left_lying() -> void:
 	var skeleton := (made[1] as Node).get_child(0) as Skeleton3D
 	var pelvis := skeleton.find_bone("pelvis")
 	var shown := (skeleton.global_transform * skeleton.get_bone_global_pose(pelvis)).origin
+	var posed := [0]
+	var count := func() -> void: posed[0] += 1
+	skeleton.skeleton_updated.connect(count)
+	for i in 8:
+		await process_frame
 	_check(
-		ragdoll.resting and ragdoll.fallen and not ragdoll.is_processing()
+		ragdoll.resting and ragdoll.fallen
 			and not _adapter.pre_step.is_connected(ragdoll._before_native_step)
-			and not _adapter.post_step.is_connected(ragdoll._after_native_step),
-		"a body come to rest, every part asleep, is left lying (after %.1f s): it listens to the step no more and no frame poses it" % (ticks * SimClock.tick_seconds())
+			and not _adapter.post_step.is_connected(ragdoll._after_native_step)
+			and posed[0] == 0,
+		"a body come to rest, every part asleep, is left lying (after %.1f s): it listens to the step no more and no frame poses it (%d poses in 8 frames)"
+			% [ticks * SimClock.tick_seconds(), posed[0]]
+	)
+	# What the skeleton hangs under moved, as a bot's model was every frame
+	# between the two ticks it died between: the body stays where it lies.
+	var lay_shown := (skeleton.global_transform * skeleton.get_bone_global_pose(pelvis)).origin
+	(made[1] as Node3D).position += Vector3(3.0, 0.0, 2.0)
+	await process_frame
+	var moved_shown := (skeleton.global_transform * skeleton.get_bone_global_pose(pelvis)).origin
+	(made[1] as Node3D).position -= Vector3(3.0, 0.0, 2.0)
+	await process_frame
+	var back_shown := (skeleton.global_transform * skeleton.get_bone_global_pose(pelvis)).origin
+	skeleton.skeleton_updated.disconnect(count)
+	_check(
+		moved_shown.distance_to(lay_shown) < 0.01 and back_shown.distance_to(lay_shown) < 0.01 and posed[0] >= 2,
+		"what its skeleton hangs under moved 3.6 units and back, the body at rest is drawn where it lies all the same (%.3f and %.3f from there)"
+			% [moved_shown.distance_to(lay_shown), back_shown.distance_to(lay_shown)]
 	)
 	_check(
 		_adapter.idle_ticks - idle == 32 and (made[2] as Ragdoll.Part).global_position.distance_to(lay) < 0.01
