@@ -85,6 +85,28 @@ class TraceResult:
 		return normal
 
 
+## The project setting that says what runs the movement's step, "native" or
+## "script"; the command line's --movement <which> wins over it.
+const MOVEMENT_SETTING := "csgodot/simulation/movement"
+## The native code's class (native/src/hull_mover.cpp), there once it has
+## been built (scripts/build_native.sh, .ps1).
+const NATIVE_CLASS := &"HullMover"
+
+## Whether the step is run in native code where it can be: the library
+## built, the game's physics Box3D, the hull an upright box. The script
+## below is the reference and runs wherever it cannot; the two give the
+## same body to the last bit (check_steps).
+static var native_steps: bool = configured_movement() == "native"
+## Whether every step is run both ways from the same start and the two
+## held to the same result, the native one kept. Off in the game; every
+## check has it on (tests/check_suite.gd), and a check file with a fault
+## has failed.
+static var check_steps := false
+static var steps_checked: int = 0
+static var step_faults: PackedStringArray = PackedStringArray()
+## Whether the native code was found: -1 before anyone has looked.
+static var _native_found: int = -1
+
 @export var config: MovementConfig
 
 var on_ground: bool = false
@@ -164,6 +186,40 @@ var _native: Box3DDrops
 var _floor_at := Vector3.INF
 var _floor_with := 0.0
 var _floor_normal := Vector3.UP
+## The native code's mover, made the first time a step can be run by it.
+var _mover: Object
+
+
+## What runs the step: "native", or "script" where the setting or the
+## command line says so. Anything else is said to be neither, and is
+## "native".
+static func configured_movement() -> String:
+	var which := String(ProjectSettings.get_setting(MOVEMENT_SETTING, "native"))
+	which = movement_named(OS.get_cmdline_user_args(), movement_named(OS.get_cmdline_args(), which))
+	if which not in ["native", "script"]:
+		push_warning("--movement and %s take \"native\" or \"script\", not \"%s\": the movement is native" % [MOVEMENT_SETTING, which])
+		return "native"
+	return which
+
+
+## What --movement <which> or --movement=<which> among args names, in small
+## letters, or `otherwise` where neither is there. The last said wins.
+static func movement_named(args: PackedStringArray, otherwise: String) -> String:
+	var which := otherwise
+	for i in args.size():
+		if args[i] == "--movement" and i + 1 < args.size():
+			which = args[i + 1]
+		elif args[i].begins_with("--movement="):
+			which = args[i].trim_prefix("--movement=")
+	return which.to_lower()
+
+
+## Whether the native code is there to run a step: looked for once, since a
+## library is loaded as the game starts or not at all.
+static func native_built() -> bool:
+	if _native_found < 0:
+		_native_found = 1 if ClassDB.class_exists(NATIVE_CLASS) else 0
+	return _native_found == 1
 
 
 func _ready() -> void:
@@ -237,6 +293,7 @@ func simulate(dt: float) -> void:
 			_prepare_motion_query()
 			_adapter.queries.sync_dynamic(_motion_query.collision_mask, _motion_query.exclude)
 
+	var mover := _native_mover()
 	if (
 		config.subtick_jump
 		and wants_jump
@@ -247,11 +304,11 @@ func simulate(dt: float) -> void:
 		# down, so the impulse happens at the fraction it was pressed at.
 		var pressed := wants_jump
 		wants_jump = false
-		_simulate_step(dt * jump_fraction)
+		_step(mover, dt * jump_fraction)
 		wants_jump = pressed
-		_simulate_step(dt * (1.0 - jump_fraction))
+		_step(mover, dt * (1.0 - jump_fraction))
 	else:
-		_simulate_step(dt)
+		_step(mover, dt)
 
 	_jump_held_last_tick = wants_jump
 	jump_fraction = -1.0
@@ -261,6 +318,117 @@ func simulate(dt: float) -> void:
 		# Later players and shots in this same tick see the completed movement.
 		_adapter.queries.sync_object(self, false)
 	_adapter = null
+
+
+## The native code's mover when this tick's steps can be run by it, else
+## null and the script runs them. It takes the hull as an upright box
+## standing half its height over the body's feet, in a world the body's
+## place is told to as it is (nothing above it turned, moved or scaled, so
+## that a place written and read back is the place written): anything else
+## is the script's. Inside the body's own tick, after its scope has begun.
+func _native_mover() -> Object:
+	if not native_steps or _adapter == null or _collision_shape == null:
+		return null
+	if not _collision_shape.shape is BoxShape3D:
+		return null
+	if _mover == null:
+		if not native_built():
+			return null
+		_mover = ClassDB.instantiate(NATIVE_CLASS)
+		if _mover == null:
+			return null
+	var over := get_parent_node_3d()
+	if over != null and over.global_transform != Transform3D.IDENTITY:
+		return null
+	if _collision_shape.global_transform != Transform3D(Basis.IDENTITY, global_position + Vector3(0.0, _hull_height * 0.5, 0.0)):
+		return null
+	if (_collision_shape.shape as BoxShape3D).size != Vector3(config.hull_width, _hull_height, config.hull_width):
+		return null
+	return _mover
+
+
+## One step, by the native code where there is a mover and by the script
+## where there is none.
+func _step(mover: Object, dt: float) -> void:
+	if mover == null:
+		_simulate_step(dt)
+		return
+	if check_steps:
+		_step_both_ways(mover, dt)
+		return
+	_native_step(mover, dt)
+
+
+func _native_step(mover: Object, dt: float) -> void:
+	var queries := _adapter.queries
+	mover.call(&"step", self, queries.native_world, dt, cos(deg_to_rad(config.max_ground_angle_deg)))
+	PhysicsQueries.native_queries += int(mover.call(&"get_casts"))
+	if int(mover.call(&"get_hits")) > 0:
+		# A sweep that met something is the last the bridge remembers.
+		queries.forget_cast()
+
+
+## What a step reads and writes of the body, for a step run twice from the
+## same start (check_steps).
+func _step_state() -> Dictionary:
+	return {
+		"position": global_position, "velocity": velocity, "on_ground": on_ground,
+		"ground_normal": ground_normal, "is_ducked": is_ducked, "duck_progress": duck_progress,
+		"jumped": _jumped, "looked_from": _looked_from, "looked_with": _looked_with,
+		"hull_height": _hull_height, "floor_at": _floor_at, "floor_with": _floor_with,
+		"floor_normal": _floor_normal, "recovery_direction": _native_recovery_direction,
+		"last_recovery": _last_native_trace_recovery, "traces": traces,
+	}
+
+
+func _restore_step_state(state: Dictionary) -> void:
+	if _hull_height != float(state["hull_height"]):
+		_set_hull(state["hull_height"])
+	global_position = state["position"]
+	velocity = state["velocity"]
+	on_ground = state["on_ground"]
+	ground_normal = state["ground_normal"]
+	is_ducked = state["is_ducked"]
+	duck_progress = state["duck_progress"]
+	_jumped = state["jumped"]
+	_looked_from = state["looked_from"]
+	_looked_with = state["looked_with"]
+	_floor_at = state["floor_at"]
+	_floor_with = state["floor_with"]
+	_floor_normal = state["floor_normal"]
+	_native_recovery_direction = state["recovery_direction"]
+	_last_native_trace_recovery = state["last_recovery"]
+	traces = state["traces"]
+
+
+## The step by the script and then by the native code, from the same
+## start, the native one's result kept and the two held to be the same in
+## every part, to the last bit. A difference is a fault, said with where
+## the body stood and what differed.
+func _step_both_ways(mover: Object, dt: float) -> void:
+	var start := _step_state()
+	var queries_before := PhysicsQueries.native_queries
+	_simulate_step(dt)
+	var by_script := _step_state()
+	var script_queries := PhysicsQueries.native_queries - queries_before
+	_restore_step_state(start)
+	PhysicsQueries.native_queries = queries_before
+	_native_step(mover, dt)
+	var by_native := _step_state()
+	var native_queries := PhysicsQueries.native_queries - queries_before
+	steps_checked += 1
+	var differs := PackedStringArray()
+	for part: String in by_script:
+		var a: Variant = by_script[part]
+		var b: Variant = by_native[part]
+		if typeof(a) != typeof(b) or a != b:
+			differs.append("%s: the script %s, the native code %s" % [part, var_to_str(a), var_to_str(b)])
+	if script_queries != native_queries:
+		differs.append("queries: the script %d, the native code %d" % [script_queries, native_queries])
+	if not differs.is_empty() and step_faults.size() < 40:
+		step_faults.append("%s stepped %s s from %s going %s (on the ground %s, ducked %s, wishing %s at %s, jump %s, duck %s): %s" % [
+			name, var_to_str(dt), var_to_str(start["position"]), var_to_str(start["velocity"]), start["on_ground"], start["is_ducked"],
+			var_to_str(wish_dir), var_to_str(wish_speed), wants_jump, wants_duck, "; ".join(differs)])
 
 
 ## The native physics this body is in, found once and kept while both
@@ -999,6 +1167,12 @@ func _recover_trace_start(queries: Box3DQueries) -> Vector3:
 ## which is the outer extent those boxes reach and is what decides whether an
 ## edge holds you up. Returns the normal found, or ZERO for none.
 func _ground_normal_in_quadrants() -> Vector3:
+	return _ground_normal_in_quadrants_at(global_position)
+
+
+## The same for a body standing at `at`: the native step asks from where it
+## has the body, which the node is told when the step is over.
+func _ground_normal_in_quadrants_at(at: Vector3) -> Vector3:
 	var space := get_world_3d().direct_space_state
 	if space == null:
 		return Vector3.ZERO
@@ -1012,7 +1186,7 @@ func _ground_normal_in_quadrants() -> Vector3:
 	]
 
 	for corner in corners:
-		var from: Vector3 = global_position + corner + Vector3.UP * QUADRANT_INSET
+		var from: Vector3 = at + corner + Vector3.UP * QUADRANT_INSET
 		var to: Vector3 = from + Vector3.DOWN * (GROUND_TRACE_DISTANCE + QUADRANT_INSET)
 		var query := PhysicsRayQueryParameters3D.create(from, to)
 		query.collision_mask = collision_mask

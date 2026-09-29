@@ -1,0 +1,36 @@
+#!/usr/bin/env python
+# Builds the game's native code (native/src) against godot-cpp into
+# addons/csgodot_native/bin. scripts/build_native.sh and .ps1 run it; by hand:
+#
+#   scons -C native godot_cpp=/path/to/godot-cpp platform=windows target=template_debug
+#
+# godot_cpp is a checkout of godot-cpp at the commit the scripts pin. The
+# Godot editor binary, which runs the game and the checks, loads the
+# template_debug library; an exported game the template_release one.
+import os
+
+godot_cpp = ARGUMENTS.pop("godot_cpp", os.environ.get("GODOT_CPP", "godot-cpp"))
+if not os.path.isfile(os.path.join(godot_cpp, "SConstruct")):
+    raise SystemExit("No godot-cpp at %s: pass godot_cpp=<its checkout>, or run scripts/build_native" % godot_cpp)
+
+env = SConscript(os.path.join(godot_cpp, "SConstruct"), {"api_version": "4.7"})
+env.Append(CPPPATH=["src/"])
+# The arithmetic as it is written: the native step has to give the script's
+# results to the last bit, and a multiply and an add fused into one
+# instruction round once where the script rounds twice.
+if env.get("is_msvc", False):
+    env.Append(CCFLAGS=["/fp:precise"])
+else:
+    env.Append(CCFLAGS=["-ffp-contract=off"])
+# Objects under native/build, not beside the sources.
+env.VariantDir("build/" + env["suffix"].lstrip("."), "src", duplicate=False)
+sources = [
+    "build/" + env["suffix"].lstrip(".") + "/" + os.path.basename(str(source))
+    for source in Glob("src/*.cpp")
+]
+
+library = env.SharedLibrary(
+    "../addons/csgodot_native/bin/libcsgodot_native{}{}".format(env["suffix"], env["SHLIBSUFFIX"]),
+    source=sources,
+)
+Default(library)

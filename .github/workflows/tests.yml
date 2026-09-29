@@ -25,8 +25,9 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     # The first run on a new install script builds Box3D's Linux library
-    # (a few minutes); later ones take it from the cache.
-    timeout-minutes: 30
+    # (a few minutes), and the first on a new build script godot-cpp (a few
+    # more); later ones take them from the cache.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -62,6 +63,23 @@ jobs:
 
       - name: Install pinned Box3D addon
         run: scripts/install_box3d.sh
+
+      # The game's own native code, the movement's step, which every check
+      # file then holds to the script's results (tests/check_suite.gd).
+      # godot-cpp at its pinned commit and what was compiled are kept between
+      # runs, with SCons' record of what it built from, so a change under
+      # native/src compiles those files and no more.
+      - name: Cache the native build
+        uses: actions/cache@v4
+        with:
+          path: |
+            .godot/native-build
+            native/build
+            native/.sconsign.dblite
+          key: native-${{ runner.os }}-${{ hashFiles('scripts/build_native.sh', 'native/SConstruct') }}
+
+      - name: Build the native code
+        run: GODOT=~/godot/godot scripts/build_native.sh
 
       - name: Run the tests
         run: GODOT=~/godot/godot scripts/run_tests.sh
