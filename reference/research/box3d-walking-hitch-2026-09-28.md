@@ -448,6 +448,49 @@ own work on one thread: those frames' 99th was 10.3 to 10.5 ms, the others'
 5.6. Drawn frames were not measured for this page
 (`scripts/profile_combat.gd` does, on Sid's machine).
 
+**The worst ticks are shots** (`scripts/profile_worst_ticks.gd`,
+2026-09-28, headless, dust2's seeded match with nine bots, fifty seconds,
+the second play of it). The tick's mean is 1.9 ms and its 99th 3.6; two
+or three ticks of 3,200 take more than 6 ms, and every one of the twelve
+worst but two has a round fired in it:
+
+| Tick | Took | Of it | Events |
+|---|---:|---|---|
+| The match's first | 18.6 to 20.2 ms | 13 ms everyone's command, which is the bots' shopping | the spawns, the match begun |
+| A kill | 8.4 to 8.6 ms | the shooter's run 4.6 to 5.2 ms, the tick's end 2.0 to 2.5 | weapon_fire, bullet_impact, player_hurt, player_death |
+| A kill | 6.0 to 6.9 ms | the shooter's run 3.0 to 3.7 ms, the end 1.4 | the same |
+| A round fired, nobody killed | 4.0 to 4.7 ms | the shooter's run 1.5 to 2.1 ms | weapon_fire, bullet_impact |
+
+A bot's run with no round fired is 0.17 ms. What a round pays before it
+has met anything is the hitboxes: a ray that can meet one brings all 190
+of ten players' to where their bones are first
+(`Box3DQueries.sync_dynamic`), and looks all 190 over again for every ray
+after it, moved or not.
+
+| A ray after a tick, from over a player's head | Mean | 95th | Worst |
+|---|---:|---:|---:|
+| The first that can meet a hitbox | 843 us | 1,266 us | 2,705 us |
+| The same again, nothing having moved | 202 us | 312 us | |
+| One that meets the world alone | 15 us | | |
+
+So a round is 0.85 ms before it is traced, 0.2 ms more for every wall it
+goes through and every other round of the tick, and what it does when it
+lands (the hole, the sound, the body's flinch, a death's ragdoll and
+dropped gun) is the rest of the 2 to 5. Two bots firing in a tick is a
+tick of 5 ms. This is the first thing to take down, and none of it needs
+a thread or native code:
+
+1. A player's hitboxes published when the player has run and been posed,
+   as its hull is, so a ray looks nothing over: 0.2 ms a ray, and most of
+   the first ray's 0.85.
+2. Only the hitboxes of players the ray passes brought up to date: the
+   ray against the hulls first, grown by what a limb reaches past them.
+3. What a round does when it lands split into what decides the game, on
+   the tick, and what is seen and heard, which is the frame's
+   (`CLAUDE.md`): not measured apart yet.
+4. The match's first tick: the bots' shopping spread over freeze time's
+   ticks, as CS2's bots buy over its seconds.
+
 What keeps Source's rules and results as they are and is still to do, in
 the order of what it is worth with ten players ("The contained changes"
 has what is done):
@@ -457,6 +500,7 @@ has what is done):
 | A ragdoll at rest letting go of the native step | 0.16 ms a tick once anyone has died | 0.15 ms |
 | The sweep's wrapper without a dictionary's copy and three `get_meta` | 3 us a cast | 0.1 ms |
 | Hitboxes moved to their bones when a round asks, not every frame | 0.51 ms a frame with the skeletons | 0.2 to 0.3 ms a frame |
+| Hitboxes published by their player, and only those a ray passes brought up to date ("The worst ticks are shots") | 0.85 ms a round's first ray, 0.2 ms each ray after | 1 to 3 ms of a tick a round is fired in |
 | The HUD set only when what it shows changes | 0.18 ms a frame | 0.1 ms a frame |
 
 With the tick at 2.3 ms the frames that run one should be about 8.5 ms at

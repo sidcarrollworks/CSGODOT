@@ -13,7 +13,9 @@ measurements below are historical and do not describe the current full port.
 An audit of every system's cost, measured on dust2 with ten and twenty
 players (you and bots) on 2026-09-23: Godot 4.7.2 headless, Jolt, 64 ticks a
 second, an AMD Ryzen 7 7800X3D. A slower CPU pays more for all of it; the
-proportions hold. `scripts/profile_dust2.gd` measures it all again (the last
+proportions hold. `scripts/profile_worst_ticks.gd` says what the worst ticks of a match are
+made of, which a mean does not (2026-09-28: shots, the hitboxes brought
+up to date for every ray). `scripts/profile_dust2.gd` measures it all again (the last
 section says how).
 
 ## The budget

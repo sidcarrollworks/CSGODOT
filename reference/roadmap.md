@@ -300,7 +300,11 @@ runs, the seeded tick 2.02 ms where thinking in turn is 2.03, its
 95th 2.68 against 2.92, and dust2's match the same match
 either way. With nine bots that is all they are worth; with nineteen, 0.3
 ms of a mean of 4.4 and 0.45 of a 95th of 6.9. The worst ticks, 7 ms and
-more, are not the thinking's: what they are is the next thing to find.
+more, are not the thinking's: they are shots (`scripts/profile_worst_ticks.gd`),
+a round paying 0.85 ms to bring 190 hitboxes to their bones before it is
+traced and 0.2 ms for every ray after, a shooter's run 1.5 to 5 ms where
+a bot's is 0.17. **Next: hitboxes published by their player and brought up
+to date only where a ray passes (Remote).**
 Left: the movement in native code, which needs SCons and
 godot-cpp's source on Sid's machine and a build in CI; hitboxes posed
 when a round asks rather than every frame; a ragdoll at rest letting go
