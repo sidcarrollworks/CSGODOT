@@ -79,6 +79,17 @@ func _test_animations_stop() -> void:
 	cluster.show_values("T", HudStyle.T_COLOUR, 100, 0, false, "", false, 0, 1, 0, true, false)
 	cluster.show_values("T", HudStyle.T_COLOUR, 73, 0, false, "", false, 0, 1, 0, true, false)
 	_check(cluster.is_processing() and cluster.is_animating(), "a hit throws the red copy of the health, running _process while it falls")
+	# Its clocks run by name (_advance): one that did not advance stopped
+	# the panel as one that had run out does, and read as nothing wrong.
+	var part := HealthAmmoCenter.JITTER_SECONDS * 0.5
+	cluster._process(part)
+	_check(cluster.is_animating() and is_equal_approx(float(cluster.get("_damage")), part)
+		and is_equal_approx(float(cluster.get("_jitter")), part),
+		"part of the way through it is falling still, its clocks as far on as the frame was long (%.3f and %.3f of %.3f)" % [
+			float(cluster.get("_damage")), float(cluster.get("_jitter")), part])
+	cluster._process(HealthAmmoCenter.JITTER_SECONDS)
+	_check(cluster.is_animating() and float(cluster.get("_jitter")) < 0.0 and float(cluster.get("_damage")) > 0.0,
+		"its shake is over before its fall is")
 	cluster._process(HealthAmmoCenter.DAMAGE_SECONDS + 0.01)
 	_check(not cluster.is_processing(), "and stops once it is gone")
 	cluster.free()
