@@ -13,7 +13,9 @@ measurements below are historical and do not describe the current full port.
 An audit of every system's cost, measured on dust2 with ten and twenty
 players (you and bots) on 2026-09-23: Godot 4.7.2 headless, Jolt, 64 ticks a
 second, an AMD Ryzen 7 7800X3D. A slower CPU pays more for all of it; the
-proportions hold. `scripts/profile_dust2.gd` measures it all again (the last
+proportions hold. `scripts/profile_worst_ticks.gd` says what the worst ticks of a match are
+made of, which a mean does not (2026-09-28: shots, the hitboxes brought
+up to date for every ray). `scripts/profile_dust2.gd` measures it all again (the last
 section says how).
 
 ## The budget
@@ -359,6 +361,7 @@ workers). No buy or pickup in a match reads a model any more.
 | A stepped move takes its landing from its own trace down; bodies nobody sees stepped only in frames without a tick; a body's probe light put on only when sampled again | perf/bot-tick | drawn at 4K from your spawn, the live round 5.67 to 5.82 ms a frame to 5.26 to 5.31, what freeze time now costs, and freeze time 5.5 to 5.25; the GPU 0.24 ms less ("Still and moving") |
 | A sweep keeps its clearance along the hit's normal and looks past its end; a recovery tries an eighth of a unit first; a player's tick synchronizes the other hulls once and leaves its own out once; a ray from the open is one native call (`Box3DQueries`, `PlayerBody`) | playtest issue 26 | walking dust2 stopped a player dead for a tick, 13 times a minute among five bots, now never; a minute's walk 117,000 hull casts to 96,000, its ticks of more than 12 traces 3,093 to 71; the seeded ten-player tick 3.68 ms to 3.09, its 95th 4.79 to 4.05 (`research/box3d-walking-hitch-2026-09-28.md`) |
 | The floor found once a walking tick (one sweep down from a unit up, which the ground check takes, where Source's StayOnGround and ground check are three); a trace asking the bridge for its cast alone; the hulls looked over once a tick; Box3D not stepped with nothing awake | perf/tick-contained | the seeded ten-player tick 3.12 ms to 2.31, its 95th 4.06 to 3.10, its worst 6.2 to 5.0; a walking bot 243 us to 192 and 5.0 hull casts to 2.8; and with the sweep's shape an eighth smaller all round, 172 us and 2.4 casts, and a player with another on its head no longer stopped dead (`research/box3d-walking-hitch-2026-09-28.md`, "The contained changes") |
+| Everyone's command asked for before anyone runs, and the bots thinking theirs out on worker threads, all at once (`GameWorld.commands_for`) | perf/bots-think-together | the seeded ten-player tick 2.03 ms to 2.02, its 95th 2.92 to 2.68; with nineteen bots in dust2's match a mean of 4.41 ms to 4.11 and a 95th of 6.93 to 6.48; the same commands as thinking in turn (`tests/run_bot_think_checks.gd`, `tests/run_dust2_think_checks.gd`) |
 | The foot plant's floor normals eased with `lerp`, not `slerp` | playtest issue 26 | an error printed a frame for every foot on ground a hair off level, 1,000 a minute with five bots; none |
 | Every gun's spray pattern solved as the registry builds it (`WeaponData.recoil_impulses`) | playtest issue 14 | 15 more guns read a pattern, and the first of each built in a tick (a buy, a pickup) would have solved it there: the M249's 100 rounds 33 to 39 ms, the Negev's 150 36 to 41, the Bizon 17 to 20; now 0.05 ms, and `ItemRegistry.load_all` 88 ms to about 320 (headless, a cloud container, three runs each) |
 

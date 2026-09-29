@@ -60,7 +60,9 @@ Updated 2026-09-25: Sid's dust2 playtest, 22 issues with plans ("Playtest of 202
   moves on with the tick and changes the game only through the players.
 - One world runs the tick (`src/sim/game_world.gd`, 2026-09-23): every
   player's command in the order they joined, then the match. Nothing runs
-  itself, and its tick count is simulation time.
+  itself, and its tick count is simulation time. Everyone's command is
+  asked for before anyone runs, and the bots think theirs out on worker
+  threads (2026-09-28).
 - A movement test course: strafe lane, stairs, ramps at 20/35/44/50 degrees,
   surf lane, jump gauges.
 
@@ -289,11 +291,25 @@ September had not slowed the tick: main ran level with #125's merge, 0.2 ms
 over the branch. **The contained changes (2026-09-28, perf/tick-contained)**
 took it on to 2.31 ms: the floor found once a walking tick, a trace asking
 the bridge for its cast alone, the hulls looked over once a tick, and Box3D
-left alone with nothing awake; a walking bot's tick 243 us to 192. Sid
-(2026-09-28): the bots' thinking is to go on worker threads, and the
-movement into native code. Left besides: Godot's renderer on a thread of
-its own, to be measured drawn; hitboxes posed when a round asks rather
-than every frame; a ragdoll at rest letting go of the native step.
+left alone with nothing awake; a walking bot's tick 243 us to 172, with the
+hull's sweep's shape an eighth smaller all round. Sid (2026-09-28): the
+bots' thinking is to go on worker threads, and the movement into native
+code. **The bots think on worker threads (2026-09-28,
+perf/bots-think-together):** everyone's command asked for before anyone
+runs, the seeded tick 2.02 ms where thinking in turn is 2.03, its
+95th 2.68 against 2.92, and dust2's match the same match
+either way. With nine bots that is all they are worth; with nineteen, 0.3
+ms of a mean of 4.4 and 0.45 of a 95th of 6.9. The worst ticks, 7 ms and
+more, are not the thinking's: they are shots (`scripts/profile_worst_ticks.gd`),
+a round paying 0.85 ms to bring 190 hitboxes to their bones before it is
+traced and 0.2 ms for every ray after, a shooter's run 1.5 to 5 ms where
+a bot's is 0.17. **Next: hitboxes published by their player and brought up
+to date only where a ray passes (Remote).**
+Left: the movement in native code, which needs SCons and
+godot-cpp's source on Sid's machine and a build in CI; hitboxes posed
+when a round asks rather than every frame; a ragdoll at rest letting go
+of the native step; Godot's renderer on a thread of its own measured
+drawn, not shipped on (Godot marks it experimental).
 Measurements and the list:
 [box3d-walking-hitch-2026-09-28.md](research/box3d-walking-hitch-2026-09-28.md).
 

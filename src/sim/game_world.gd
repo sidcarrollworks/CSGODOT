@@ -4,10 +4,12 @@ extends Node
 ## The simulation's owner: it runs the tick.
 ##
 ## Every tick it asks each player for one command (your keys, a bot's
-## choices, later what a client sends: PlayerSim.command_for), runs the
-## players one after another in the order they joined, and then the rules on
-## the tick they have just run: the match, and after it the economy when
-## there is one (roadmap item 13). No player ticks itself and neither does the
+## choices, later what a client sends: PlayerSim.command_for), all of them
+## from the world as the last tick left it, as a server has its clients'
+## commands before it runs any; then runs the players one after another in
+## the order they joined, and then the rules on the tick they have just
+## run: the match, and after it the economy when there is one (roadmap item
+## 13). The bots think on worker threads, all at once (commands_for). No player ticks itself and neither does the
 ## match, so nothing that decides the game runs anywhere else, and the order
 ## things run in is this one rather than whatever order they were added to the
 ## scene. It is what CS2's server is to its players; single player is this
@@ -32,6 +34,19 @@ extends Node
 ## same tick: nine to twenty searches, a tick of five to ten ms. The rest wait
 ## a tick or two, standing, which freeze time hides.
 const PATH_SEARCHES_PER_TICK := 2
+
+## How many have to be thinking for the worker threads to be woken for it.
+const THINK_TOGETHER_FROM := 2
+## How many worker threads the thinking is shared between at most. Waking a
+## thread costs, and nine bots' thinking is a third of a millisecond: in
+## dust2's match four threads were worth 0.2 ms at the tick's 95th and
+## nothing at its mean, every thread the machine has (16) no more at the
+## 95th and 0.05 ms worse at the mean, and two nothing at either
+## (reference/research/box3d-walking-hitch-2026-09-28.md).
+const THINK_THREADS := 4
+## The project setting that says where the bots think, "threads" or "main";
+## the command line's --think <where> wins over it.
+const THINK_SETTING := "csgodot/simulation/think"
 
 ## The world being run, whose tick SimClock reads: the last one into the
 ## scene tree. There is one at a time, as a server runs one match.
@@ -61,7 +76,16 @@ var tick: int = 0
 ## the end of every tick, after the match (GameSystems.step).
 var game := GameSystems.new()
 
+## Whether the bots think on worker threads (configured_thinking).
+var think_on_threads: bool = configured_thinking() == "threads"
+## How many worker threads the bots' thinking is shared between at most; -1
+## for as many as there are thinkers and workers.
+var think_tasks: int = THINK_THREADS
+
 var _path_searches_left: int = PATH_SEARCHES_PER_TICK
+## Who is thinking on the worker threads, for the tick being run.
+var _thinkers: Array[PlayerSim] = []
+var _think_dt := 0.0
 var _drop_physics_initialized: bool = false
 var drop_physics_backend: String = ""
 
@@ -121,6 +145,25 @@ static func configured_drop_physics() -> String:
 	return backend.to_lower()
 
 
+## Where the bots think: "threads", all at once on the worker threads, or
+## "main", one after another on the thread that runs the tick. The same
+## commands either way. Anything else is said to be neither, and is
+## "threads".
+static func configured_thinking() -> String:
+	var where := String(ProjectSettings.get_setting(THINK_SETTING, "threads"))
+	for args in [OS.get_cmdline_args(), OS.get_cmdline_user_args()]:
+		for i in args.size():
+			if args[i] == "--think" and i + 1 < args.size():
+				where = args[i + 1]
+			elif String(args[i]).begins_with("--think="):
+				where = String(args[i]).trim_prefix("--think=")
+	where = where.to_lower()
+	if where not in ["threads", "main"]:
+		push_warning("--think and %s take \"threads\" or \"main\", not \"%s\": the bots think on the worker threads" % [THINK_SETTING, where])
+		return "threads"
+	return where
+
+
 func _exit_tree() -> void:
 	if current == self:
 		current = null
@@ -157,14 +200,89 @@ func _physics_process(_delta: float) -> void:
 	step()
 
 
-## One tick: each player's command run, in order, then the rules.
+## One tick: everyone's command, then each run, in order, then the rules.
 func step() -> void:
 	begin_tick()
 	var dt := SimClock.tick_seconds()
-	for player: PlayerSim in players.duplicate():
-		if player.is_inside_tree():
-			player.run_command(player.command_for(tick, dt), dt)
+	var running := playing()
+	var commands := commands_for(running, dt)
+	for i in running.size():
+		if running[i].is_inside_tree():
+			running[i].run_command(commands[i], dt)
 	end_tick()
+
+
+## Who runs this tick, in the order they run: everyone in the scene tree.
+func playing() -> Array[PlayerSim]:
+	var running: Array[PlayerSim] = []
+	for player in players:
+		if player.is_inside_tree():
+			running.append(player)
+	return running
+
+
+## Everyone's command for the tick, in their order, each from the world as
+## the last tick left it. Whoever can think apart (the bots) does what of
+## its thinking touches what is shared first, here, in its turn
+## (PlayerSim.prepare_to_think: its shopping, its way found), and the rest
+## on a worker thread, all of them at once, while this thread waits: they
+## read the world and write only themselves. Everyone else, you among them,
+## is asked here, in turn.
+func commands_for(running: Array[PlayerSim], dt: float) -> Array[UserCmd]:
+	var commands: Array[UserCmd] = []
+	commands.resize(running.size())
+	_thinkers.clear()
+	var places := PackedInt32Array()
+	for i in running.size():
+		var player := running[i]
+		if player.thinks_apart():
+			player.prepare_to_think(tick)
+			_thinkers.append(player)
+			places.append(i)
+		else:
+			commands[i] = player.command_for(tick, dt)
+	# On Godot's own physics they think in turn: its space is for the thread
+	# that runs the tick.
+	var queries := _native_queries()
+	# Those with something to think about: in freeze time nobody has, and
+	# the threads' waking was a fifth of a millisecond for nothing.
+	var busy := 0
+	for thinker in _thinkers:
+		if thinker.alive and not thinker.frozen:
+			busy += 1
+	if not think_on_threads or queries == null or busy < THINK_TOGETHER_FROM:
+		for i in _thinkers.size():
+			commands[places[i]] = _thinkers[i].think(tick, dt)
+		_thinkers.clear()
+		return commands
+	queries.begin_reading()
+	# Where a node is in the world is worked out when it is first asked
+	# for after a move, and kept: asked for here, so that the threads only
+	# read what is kept.
+	for player in running:
+		var _kept := player.global_transform
+	_think_dt = dt
+	var task := WorkerThreadPool.add_group_task(_think_apart, _thinkers.size(), think_tasks, true, "The bots thinking")
+	WorkerThreadPool.wait_for_group_task_completion(task)
+	queries.end_reading()
+	for i in _thinkers.size():
+		var cmd := _thinkers[i].thought()
+		if cmd == null:
+			# Its thinking failed on its thread, and said why there: it
+			# stands this tick rather than the tick fail with it.
+			cmd = _thinkers[i].standing(tick)
+		commands[places[i]] = cmd
+	_thinkers.clear()
+	return commands
+
+
+## One of the thinkers, on a worker thread.
+func _think_apart(index: int) -> void:
+	# Nodes are read here, none written but the thinker's own: the checks
+	# that keep a thread off the scene tree are for writers.
+	Thread.set_thread_safety_checks_enabled(false)
+	_thinkers[index].think_apart(tick, _think_dt)
+	Thread.set_thread_safety_checks_enabled(true)
 
 
 ## A tick starts: its number, and what it has to give out.

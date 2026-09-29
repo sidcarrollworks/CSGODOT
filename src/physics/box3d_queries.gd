@@ -50,6 +50,8 @@ var _scope_synced: int = 0
 var _scope_left_out: Array = []
 var _tick_open := false
 var _tick_synced: int = 0
+## Whether several threads are asking at once (begin_reading).
+var reading := false
 ## How much smaller all round the last native cast's shape was (CAST_INSET,
 ## less for a shape too small for it, none for a convex one).
 var _inset := 0.0
@@ -191,7 +193,25 @@ func end_tick() -> void:
 	_tick_synced = 0
 
 
+## Several threads ask at once from here on (the bots thinking together),
+## until end_reading: what is new is taken in and the hulls looked over
+## first, and nothing is synchronized or written while they ask. Box3D's
+## queries read the world and write their own locals, so they may run
+## beside each other while nothing moves; the bridge's sweeps keep their
+## last hit and are not for then. Hitboxes are as the last query that
+## asked for them left them.
+func begin_reading() -> void:
+	sync_dynamic(_hull_layers)
+	reading = true
+
+
+func end_reading() -> void:
+	reading = false
+
+
 func sync_dynamic(mask: int = ALL_LAYERS, exclude: Array[RID] = []) -> void:
+	if reading:
+		return
 	flush_pending()
 	if mask & _dynamic_layers == 0:
 		return

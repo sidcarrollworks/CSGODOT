@@ -233,6 +233,7 @@ func _load_match(backend: String) -> void:
 		_queries._hitboxes.size(), _adapter.captured_triangles, Box3DDrops.COLLISION_STEPS,
 		int(_adapter.native_world.get(&"substep_count"))])
 	print("COST_SCOPE explicit hull sync remains in caller self time; pose_batch is one manual ten-player batch per simulation tick, not render-frame time")
+	print("COST_SCOPE the bots think in turn here whatever --think says, the clocks being one thread's; the game has them think on worker threads, and scripts/profile_dust2.gd times that")
 
 
 func _tick() -> void:
@@ -248,13 +249,17 @@ func _tick() -> void:
 	world.begin_tick()
 	_meter.leave()
 	var dt := SimClock.tick_seconds()
-	for player: PlayerSim in world.players.duplicate():
-		if player.is_inside_tree():
-			_meter.enter(CostMeter.Part.COMMAND)
-			var command := player.command_for(world.tick, dt)
-			_meter.leave()
+	var running := world.playing()
+	# The clocks are this thread's: the bots think in turn for them, which
+	# is the same commands (tests/run_bot_think_checks.gd).
+	world.think_on_threads = false
+	_meter.enter(CostMeter.Part.COMMAND)
+	var commands := world.commands_for(running, dt)
+	_meter.leave()
+	for i in running.size():
+		if running[i].is_inside_tree():
 			_meter.enter(CostMeter.Part.PLAYER)
-			_run_player(player, command, dt)
+			_run_player(running[i], commands[i], dt)
 			_meter.leave()
 	_meter.enter(CostMeter.Part.END)
 	world.end_tick()
