@@ -121,6 +121,7 @@ func _test_the_course() -> void:
 		Vector3(1.0, 0.0, -1.0).normalized(), Vector3(-1.0, 0.0, -1.0).normalized(),
 	]
 	var seen := {"ground": 0, "air": 0, "ducked": 0, "recovered": 0, "stepped": 0, "split": 0, "swept": 0, "landed": 0, "slid": 0}
+	var settings := [0]
 	for tick in TICKS:
 		# Half of it as the game runs it, inside a tick of the world's.
 		var in_tick := tick % 2000 < 1000
@@ -147,8 +148,23 @@ func _test_the_course() -> void:
 				walker.jump_fraction = chance.randf_range(0.0, 1.0)
 				if walker.jump_fraction > 0.0 and walker.jump_fraction < 1.0 and walker.config.subtick_jump:
 					seen["split"] += 1
-			if chance.randf() < 0.001:
-				walker.config.auto_bunnyhop = not walker.config.auto_bunnyhop
+			if chance.randf() < 0.004:
+				# The settings a match leaves alone, each way.
+				var config := walker.config
+				match chance.randi_range(0, 11):
+					0: config.auto_bunnyhop = not config.auto_bunnyhop
+					1: config.enable_bunnyhopping = not config.enable_bunnyhopping
+					2: config.tick_rate_independent_jump = not config.tick_rate_independent_jump
+					3: config.project_wish_dir_on_ground = not config.project_wish_dir_on_ground
+					4: config.source_deadstrafe = not config.source_deadstrafe
+					5: config.stay_on_ground = not config.stay_on_ground
+					6: config.subtick_jump = not config.subtick_jump
+					7: config.trace_epsilon = 0.0 if config.trace_epsilon != 0.0 else 0.03125
+					8: config.gravity = [800.0, 600.0, 1000.0][chance.randi_range(0, 2)]
+					9: config.max_ground_angle_deg = [45.57, 30.0, 60.0][chance.randi_range(0, 2)]
+					10: config.step_height = [18.0, 12.0, 24.0][chance.randi_range(0, 2)]
+					11: config.duck_time = [0.4, 0.1, 0.0][chance.randi_range(0, 2)]
+				settings[0] += 1
 			var was_on_ground := walker.on_ground
 			var traces := walker.traces
 			var from := walker.global_position
@@ -181,6 +197,7 @@ func _test_the_course() -> void:
 		"on the ground and in the air, ducked, stepping up, landing, sliding on what it met in the air, and getting clear of what it stood in: %s"
 			% [seen]
 	)
+	_check(settings[0] > 100, "with the movement's settings changed under them %d times: bunny hopping, the jump's gravity, the wish along the slope, the dead strafe, staying on the ground, the split tick, the trace's epsilon, gravity, the steepest floor, the step and the duck's time" % settings[0])
 	_check(walkers.all(func(walker: PlayerBody) -> bool: return walker.global_position.is_finite() and walker.velocity.is_finite()),
 		"and both bodies are still somewhere (%s and %s)" % [walkers[0].global_position.snapped(Vector3.ONE), walkers[1].global_position.snapped(Vector3.ONE)])
 	_close()
