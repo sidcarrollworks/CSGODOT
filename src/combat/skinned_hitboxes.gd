@@ -11,6 +11,18 @@ extends Node3D
 
 var hitboxes: Array[Hitbox] = []
 
+## Counts every change to where the capsules are, which are on their layer
+## and which there are: the bones followed, a death, a revival, the set
+## built or cleared. Between two of them the capsules move only as this
+## node does. What keeps a copy of the capsules (Box3DQueries, for a
+## round's ray) goes by it, so a capsule moved or taken off its layer any
+## other way is not seen: Hitbox.set_on_layer for its layer, follow() for
+## its place.
+var changes: int = 0
+## How many of the capsules are on their layer, where a round can meet
+## them: none of a dead body's.
+var on_layer: int = 0
+
 var _skeleton: Skeleton3D
 var _entries: Array[Dictionary] = []
 
@@ -50,6 +62,7 @@ func build(skeleton: Skeleton3D, capsules: Array[Dictionary], target: HitTarget,
 		})
 	if not skeleton.skeleton_updated.is_connected(follow):
 		skeleton.skeleton_updated.connect(follow)
+	layers_changed()
 	follow()
 	return hitboxes.size()
 
@@ -62,6 +75,8 @@ func clear() -> void:
 		hitbox.queue_free()
 	hitboxes.clear()
 	_entries.clear()
+	on_layer = 0
+	changes += 1
 
 
 ## The skeleton's bone a hitbox rides, or -1 for one that is not here.
@@ -75,7 +90,16 @@ func bone_of(hitbox: Hitbox) -> int:
 ## Turns the hitboxes on or off together: off, a body cannot be shot.
 func set_active(active: bool) -> void:
 	for hitbox in hitboxes:
-		hitbox.collision_layer = Hitbox.LAYER if active else 0
+		hitbox.set_on_layer(active)
+
+
+## A capsule has gone on its layer or off it (Hitbox.set_on_layer).
+func layers_changed() -> void:
+	on_layer = 0
+	for hitbox in hitboxes:
+		if hitbox.collision_layer != 0:
+			on_layer += 1
+	changes += 1
 
 
 ## Moves every capsule to its bone.
@@ -87,6 +111,7 @@ func follow() -> void:
 		var a: Vector3 = bone_to_world * entry["point0"]
 		var b: Vector3 = bone_to_world * entry["point1"]
 		(entry["hitbox"] as Hitbox).global_transform = capsule_transform(a, b)
+	changes += 1
 
 
 ## Where a capsule between two world points stands: Godot's capsules run
