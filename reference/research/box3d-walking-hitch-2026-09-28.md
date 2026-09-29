@@ -312,6 +312,129 @@ once, a death's published, and a bot's return to its route's start; the
 native world left alone with nothing awake and stepped again when a gun is
 moved. The whole suite with the extracted assets: 4,330 checks in 56 files, all passed.
 
+## The bots thinking together
+
+Sid, 2026-09-28, on hearing the game ran on one thread: the bots'
+thinking is to use several (`perf/bots-think-together`).
+
+- **Everyone's command is asked for before anyone runs**
+  (`GameWorld.commands_for`), each from the world as the last tick left
+  it, as a server has its clients' commands before it runs any. Before,
+  each player was asked just before it ran, and saw those before it in
+  the order already moved. A bot now reacts to the others as of the last
+  tick, 16 ms earlier for some of them; the same fight takes other paths.
+- **What of a bot's thinking touches what is shared is done first**, in
+  its turn, on the thread that runs the tick (`Bot.prepare_to_think`): its
+  shopping, which sends the game commands; its way over the nav mesh,
+  whose searches are the world's to give out, two a tick, and cannot run
+  beside each other (`AStar3D` keeps a search's working in its points);
+  and the space its sight is asked of, which only that thread may ask
+  Godot for. Its way is looked for only if the last tick left it walking,
+  neither fighting nor blinded: whom it sees this tick it sees on its
+  thread, afterwards, and a bot a fight has just let go of waits a tick
+  for its way, as one the world had no search left for does.
+- **The rest runs on worker threads, the bots shared between four**
+  (`WorkerThreadPool.add_group_task`), while the tick's thread waits: its
+  sight, its steering, its aim and its trigger. It reads the world and
+  writes only the bot. The bridge is reading then
+  (`Box3DQueries.begin_reading`): nothing is synchronized and no counter
+  written; each bot counts its own rays and hands the count over
+  afterwards. What it reads of the game besides, the smoke between two
+  points and how blind it is, reads and builds its own lists.
+- **On Godot's own physics, and with one bot, they think in turn**, and
+  `--think main` (or `csgodot/simulation/think`) has them think in turn
+  anywhere: the same commands. Anything but `threads` or `main` is said to
+  be neither, and is `threads`.
+
+**What Box3D does under a query**, read from its source at v0.4.3
+(github.com/Stink-O/box3d-godot, `src/physics_world.c` and
+`godot/src/box3d_world.cpp`), since the bridge's own care is worth nothing
+if the library writes: a ray or a cast walks the world's trees with its
+own locals; it writes to the world only for a recording, which the game
+never starts; the binding waits for an asynchronous step only when one is
+in flight (an atomic flag), and the game steps it in line (`async_step`
+false); and it leaves the visit's two counts in the binding
+(`last_query_stats`), unguarded, two integers nothing of the game's reads
+while the bots think. So the rays may run beside each other while nothing
+in the world moves, which is what the bridge's reading holds to. It was
+read, not proven: no thread sanitizer has run over it. The checks below
+are what stands for it.
+
+The seeded ten-player tick, five runs of each, alternated, nothing else
+running (mean, and the 95th, each the median of the five):
+
+| | Mean | 95th |
+|---|---:|---:|
+| The contained changes, each asked as it runs | 2.18 ms | 3.12 ms |
+| Everyone asked first, the bots thinking in turn | 2.03 ms | 2.92 ms |
+| Everyone asked first, the bots thinking on worker threads | 2.02 ms | 2.68 ms |
+
+The order by itself changed the workload (23.3 hull traces a
+tick where there were 24.6), so its row is not a saving. The
+worst tick of a run was no better on the threads (4.9 ms in turn, 5.8 on
+them, the medians of five that ran from 4.7 to 6.7 either way).
+
+**What the threads are worth, plainly: little with nine bots, and more
+with more.** Nine bots' thinking is a third of a millisecond of a tick of
+two, and waking the threads costs a fifth of one. Dust2's match, the
+seeded one of `tests/run_dust2_think_checks.gd`, the round's 2,808 ticks
+(freeze time apart), in turn and on the threads alternated in one run:
+
+| | Mean | 95th | 99th | Worst |
+|---|---:|---:|---:|---:|
+| Five a side, in turn (three plays) | 1.93 ms | 2.89 ms | 3.48 ms | 7.1 to 14.0 ms |
+| Five a side, on the threads | 1.95 ms | 2.72 ms | 3.46 ms | 7.4 to 8.6 ms |
+| Ten a side, in turn (the second of two plays) | 4.41 ms | 6.93 ms | 8.59 ms | 15.7 ms |
+| Ten a side, on the threads | 4.11 ms | 6.48 ms | 8.65 ms | 19.9 ms |
+
+With nine bots the mean is the same and the 95th 0.2 ms better in two
+plays of three; with nineteen the mean is 0.3 ms better and the 95th
+0.45. The worst ticks, 7 ms and more, are not the thinking's, on the
+threads or off them, and they are what stands between the game and 6 ms:
+what they are is the next thing to find.
+
+Two things were settled by measuring (`GameWorld.THINK_THREADS`, and who
+is counted as thinking):
+
+- **Four threads at most.** Every thread the machine has (16) gave the
+  same 95th and a mean 0.05 ms worse than in turn; two gave nothing at
+  either; eight, with nineteen bots, the same as four.
+- **In turn while fewer than two bots have anything to think about**,
+  frozen or dead: in freeze time the threads' waking made a tick of 1.2
+  ms one of 1.5.
+
+Checks:
+
+- `tests/run_bot_think_checks.gd` (nothing extracted): eight bots, four a
+  side, find their way over a nav mesh at each other through the gap
+  between two walls and fight for 448 ticks, one a side through a scope,
+  with a flash before one side's faces and a smoke in the gap, played
+  with the bots thinking on the threads and in turn: every bot is where
+  it was, facing as it faced, its view as kicked, and has fired as often
+  at every tick. The bodies are posed on the tick for it: left to the
+  frames drawn, a body a frame further into its stride had its hitboxes
+  elsewhere, a round met the floor in one play and nothing in the other,
+  and the queries counted differed by one, one run in two. 4,096
+  rays asked of the bridge from the worker threads at once meet what they
+  meet asked one after another. They think on more than one worker thread
+  where the machine has more than one, and on the tick's in turn; as many
+  queries are counted either way; and a player asked for its command sees
+  the one who runs before it where the last tick left it.
+- `tests/run_dust2_think_checks.gd` (dust2, so Sid's machine): the
+  seeded Competitive match, nine bots with money to buy with, fifty
+  seconds of game, played in turn and on the threads: every player is
+  where it was, facing as it faced, has fired as often, is as hurt, as
+  rich and holds the same gun at every tick (6 guns bought, 30 rounds, 3
+  dead). Where they differ it plays the match in turn again, to say
+  whether the match is the same twice at all.
+- The whole suite with the extracted assets: 4,340 checks in 58 files, all passed.
+
+What keeps it safe, for whoever changes a bot: anything its thinking
+newly reads must not be written by anyone's thinking, and anything it
+newly writes that is not the bot's own goes in `prepare_to_think`. Only
+rays are asked of the bridge from a thread: its sweeps keep their last
+hit and take a hull's proxies off their layer.
+
 ## What is left of the 6 ms
 
 The goal is every frame under 6 ms at 4K with nine bots. Sid's CS2 on the
@@ -331,7 +454,6 @@ has what is done):
 
 | What | Where the time is now | Worth |
 |---|---|---|
-| The bots thinking on worker threads: everyone's command first, from the world as the last tick left it, then everyone run in turn | 0.45 ms in the seeded tick, 33 us a walking bot | 0.3 to 0.4 ms |
 | A ragdoll at rest letting go of the native step | 0.16 ms a tick once anyone has died | 0.15 ms |
 | The sweep's wrapper without a dictionary's copy and three `get_meta` | 3 us a cast | 0.1 ms |
 | Hitboxes moved to their bones when a round asks, not every frame | 0.51 ms a frame with the skeletons | 0.2 to 0.3 ms a frame |
@@ -343,10 +465,12 @@ the 99th, which is CS2's with bots, not 6; not measured drawn yet.
 What reaches 6, each a decision:
 
 - **Godot's renderer on a thread of its own**
-  (`rendering/driver/threads/thread_model`): a setting, so the first to
-  try, measured drawn on Sid's machine. It takes the renderer's share of
-  the frame off the thread that runs the tick. What it gives here is not
-  known.
+  (`rendering/driver/threads/thread_model`, or `--render-thread separate`)
+  would take the renderer's share of the frame off the thread that runs
+  the tick, but Godot marks it experimental, with known bugs that crash,
+  and not for production (`reference/godot/engine.md`). It can be measured,
+  drawn, on Sid's machine, to know what a thread of its own is worth; it
+  is not to be shipped on.
 - **The movement in native code**: `PlayerBody` and `MovementSolver` as a
   GDExtension beside Box3D's, calling its casts directly. It takes most of
   a walking bot's 243 us (all but the native casts' 50), keeps everything

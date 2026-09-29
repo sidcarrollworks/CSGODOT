@@ -233,6 +233,7 @@ func _load_match(backend: String) -> void:
 		_queries._hitboxes.size(), _adapter.captured_triangles, Box3DDrops.COLLISION_STEPS,
 		int(_adapter.native_world.get(&"substep_count"))])
 	print("COST_SCOPE explicit hull sync remains in caller self time; pose_batch is one manual ten-player batch per simulation tick, not render-frame time")
+	print("COST_SCOPE the bots think in turn here whatever --think says, the clocks being one thread's; the game has them think on worker threads, and scripts/profile_dust2.gd times that")
 
 
 func _tick() -> void:

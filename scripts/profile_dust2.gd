@@ -101,6 +101,18 @@ func _initialize() -> void:
 				printerr("--physics requires box3d or legacy")
 				quit(2)
 				return
+		elif argument == "--think":
+			# The world reads it (GameWorld.configured_thinking).
+			index += 1
+			if index >= args.size() or args[index] not in ["threads", "main"]:
+				printerr("--think requires threads or main")
+				quit(2)
+				return
+		elif argument.begins_with("--think="):
+			if argument.get_slice("=", 1) not in ["threads", "main"]:
+				printerr("--think requires threads or main")
+				quit(2)
+				return
 		elif argument == "--immortal":
 			_immortal = true
 		elif argument == "--skip-single-operations":

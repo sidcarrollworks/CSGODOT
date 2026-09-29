@@ -484,7 +484,10 @@ tick; this branch is merged with it and fits it. Each tick the GameWorld:
 
 1. counts the tick (`GameWorld.tick`, which `SimClock.current_tick()`
    reads, so events carry it);
-2. runs each player's command, in the order they joined;
+2. asks everyone for their command, each from the world as the last tick
+   left it (the bots think on worker threads, all at once: what a bot's
+   thinking shares it does first, in `prepare_to_think`), then runs each
+   player's, in the order they joined;
 3. runs the match (`MatchState.tick`);
 4. calls `world.game.step(tick, space)`: the players' queued commands,
    then every entity, then the shared native physics step, then every

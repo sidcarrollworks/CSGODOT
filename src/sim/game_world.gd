@@ -37,6 +37,13 @@ const PATH_SEARCHES_PER_TICK := 2
 
 ## How many have to be thinking for the worker threads to be woken for it.
 const THINK_TOGETHER_FROM := 2
+## How many worker threads the thinking is shared between at most. Waking a
+## thread costs, and nine bots' thinking is a third of a millisecond: in
+## dust2's match four threads were worth 0.2 ms at the tick's 95th and
+## nothing at its mean, every thread the machine has (16) no more at the
+## 95th and 0.05 ms worse at the mean, and two nothing at either
+## (reference/research/box3d-walking-hitch-2026-09-28.md).
+const THINK_THREADS := 4
 ## The project setting that says where the bots think, "threads" or "main";
 ## the command line's --think <where> wins over it.
 const THINK_SETTING := "csgodot/simulation/think"
@@ -71,6 +78,9 @@ var game := GameSystems.new()
 
 ## Whether the bots think on worker threads (configured_thinking).
 var think_on_threads: bool = configured_thinking() == "threads"
+## How many worker threads the bots' thinking is shared between at most; -1
+## for as many as there are thinkers and workers.
+var think_tasks: int = THINK_THREADS
 
 var _path_searches_left: int = PATH_SEARCHES_PER_TICK
 ## Who is thinking on the worker threads, for the tick being run.
@@ -137,7 +147,8 @@ static func configured_drop_physics() -> String:
 
 ## Where the bots think: "threads", all at once on the worker threads, or
 ## "main", one after another on the thread that runs the tick. The same
-## commands either way.
+## commands either way. Anything else is said to be neither, and is
+## "threads".
 static func configured_thinking() -> String:
 	var where := String(ProjectSettings.get_setting(THINK_SETTING, "threads"))
 	for args in [OS.get_cmdline_args(), OS.get_cmdline_user_args()]:
@@ -146,7 +157,11 @@ static func configured_thinking() -> String:
 				where = args[i + 1]
 			elif String(args[i]).begins_with("--think="):
 				where = String(args[i]).trim_prefix("--think=")
-	return where.to_lower()
+	where = where.to_lower()
+	if where not in ["threads", "main"]:
+		push_warning("--think and %s take \"threads\" or \"main\", not \"%s\": the bots think on the worker threads" % [THINK_SETTING, where])
+		return "threads"
+	return where
 
 
 func _exit_tree() -> void:
@@ -229,7 +244,13 @@ func commands_for(running: Array[PlayerSim], dt: float) -> Array[UserCmd]:
 	# On Godot's own physics they think in turn: its space is for the thread
 	# that runs the tick.
 	var queries := _native_queries()
-	if not think_on_threads or queries == null or _thinkers.size() < THINK_TOGETHER_FROM:
+	# Those with something to think about: in freeze time nobody has, and
+	# the threads' waking was a fifth of a millisecond for nothing.
+	var busy := 0
+	for thinker in _thinkers:
+		if thinker.alive and not thinker.frozen:
+			busy += 1
+	if not think_on_threads or queries == null or busy < THINK_TOGETHER_FROM:
 		for i in _thinkers.size():
 			commands[places[i]] = _thinkers[i].think(tick, dt)
 		_thinkers.clear()
@@ -241,7 +262,7 @@ func commands_for(running: Array[PlayerSim], dt: float) -> Array[UserCmd]:
 	for player in running:
 		var _kept := player.global_transform
 	_think_dt = dt
-	var task := WorkerThreadPool.add_group_task(_think_apart, _thinkers.size(), -1, true, "The bots thinking")
+	var task := WorkerThreadPool.add_group_task(_think_apart, _thinkers.size(), think_tasks, true, "The bots thinking")
 	WorkerThreadPool.wait_for_group_task_completion(task)
 	queries.end_reading()
 	for i in _thinkers.size():

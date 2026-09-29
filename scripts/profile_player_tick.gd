@@ -264,6 +264,7 @@ func _run() -> void:
 		TimedBot.child_calls[i] = 0
 	_end_tick = SimClock.ticks_in(_seconds)
 	print("player tick: %d bots for %d ticks, physics %s, a pair of clocks %.2f us" % [_bots.size(), _end_tick, _world.drop_physics_backend, _pair_usec])
+	print("the bots think in turn here whatever --think says, the clocks being one thread's")
 	_started = true
 
 

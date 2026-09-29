@@ -283,7 +283,7 @@ func _body_weapon_set() -> String:
 
 func command_for(tick: int, dt: float) -> UserCmd:
 	prepare_to_think(tick)
-	return _think(tick, dt)
+	return think(tick, dt)
 
 
 ## A bot thinks on a worker thread, beside the other bots
@@ -303,7 +303,19 @@ func prepare_to_think(tick: int) -> void:
 		return
 	if not buy_template.is_empty():
 		_shop(tick)
-	_find_way()
+	if _walked_on():
+		_find_way()
+
+
+## Whether it was walking its way when the last tick left it, neither
+## fighting nor blinded: whom it sees this tick it sees as it thinks, after
+## its way is found, so its way is found by what it last knew. A bot a
+## fight lets go of waits a tick for its way, as one the world had no
+## search left for does.
+func _walked_on() -> bool:
+	if _blind_firing or is_blind():
+		return false
+	return not (is_instance_valid(target) and _seen_for >= REACTION_SECONDS)
 
 
 func think(tick: int, dt: float) -> UserCmd:
@@ -313,7 +325,7 @@ func think(tick: int, dt: float) -> UserCmd:
 func think_apart(tick: int, dt: float) -> void:
 	_asked_apart = true
 	_asked = 0
-	_thought = _think(tick, dt)
+	_thought = think(tick, dt)
 	_asked_apart = false
 
 
