@@ -64,7 +64,8 @@ starts in overlap and searches for a way out, eight casts a direction.
   `offset`, a push along the hit's normal (0.06 at most). `PlayerBody._trace`
   adds the offset as it adds a recovery: part of the travel, none of the
   move's time. A hit can now come back with `fraction` 1: the whole motion,
-  and the push.
+  and the push. (The reach is 0.75 and the back-off 0.5 since the sweep's
+  shape was made smaller, "The contained changes".)
 - **A recovery tries 0.125 first** (`NATIVE_RECOVERY_STEP`) along a
   direction that clears, before the binary search: two casts where eight
   were, the correction 0.07 more at most.
@@ -251,6 +252,20 @@ changes what a move does:
   (`get_awake_body_count`) and no ragdoll lies: a ragdoll writes its bodies
   before every step for as long as it lies, so with one in the world it is
   stepped as ever. Left: a ragdoll at rest letting go of the step.
+- **A sweep's shape is an eighth of a unit smaller all round**
+  (`CAST_INSET`), and kept as much further from what it meets, so it stops
+  where it did, 0.257 from it. Box3D's overlap is of the shape swept: a
+  whole hull at rest 0.257 over a floor was 0.011 from being in overlap,
+  and a hull is now in overlap within 0.12 of what it is near. It was
+  found by a bot with another standing on its head on dust2, as a boost
+  has them: 0.21 over the floor and 0.257 under the other, it was in
+  overlap with one or the other wherever it looked for a way out, 91
+  casts, and stopped dead for the tick. The figures in the table are from
+  before it; with it the seeded tick is 2.02 ms where it was 2.12 (four
+  runs of each, alternated), its traces 24.6 a tick where they were 30.2,
+  the most in a tick 48; and the walk's casts 2.37 a bot a tick, 103 of its
+  moves starting in overlap and none of its other traces, the most traces
+  in a tick 29 where they were 79, a walking bot's tick 172 us.
 
 | | The hitch's fix | With these |
 |---|---:|---:|
@@ -271,13 +286,16 @@ bots thinking 0.45, native casts 0.32, rays 0.23, animation parameters
 the animation parameters 24, its way 22, the script round its two traces
 11, the bridge and the native cast 43 for 2.8 casts.
 
-Checks: a level floor of triangles 0.05, 0.2 and 0.5 higher walked onto at
-a run in two traces a tick (four on the code before, seven for the last);
+Checks: someone standing on a player's head, the one underneath a little
+under where it rests, who walks out from under at a run in four traces a
+tick (47 before the smaller shape); a level floor of triangles 0.05, 0.2
+and 0.5 higher walked onto at a run in two traces a tick (four on the code
+before, seven for the last);
 the movement course's budgets, two traces a tick running in the open and
 four up a stair where they were four and seven; a tick's hulls looked over
 once, a death's published; the native world left alone with nothing awake
 and stepped again when a gun is moved. The whole suite with the extracted
-assets: 4,316 checks in 56 files, all
+assets: 4,318 checks in 56 files, all
 passed.
 
 ## What is left of the 6 ms

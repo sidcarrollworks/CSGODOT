@@ -53,6 +53,7 @@ func _initialize() -> void:
 	await _check_gentle_slopes()
 	await _check_slope_beside()
 	await _check_lips()
+	await _check_under_a_friend()
 	await _check_sweep_contract()
 	_finish("box3d-movement")
 
@@ -150,16 +151,18 @@ func _check_floor_wall_spawn() -> void:
 
 func _check_small_ground_recovery() -> void:
 	_setup()
-	# Inside native initial-contact tolerance by less than Source's 0.03-inch
-	# ground-snap threshold: separation still has to survive the probe reset.
-	var player := _player(Vector3.UP * 0.23)
+	# Inside the tolerance a hull is in overlap from (0.12, the sweep's
+	# shape being an eighth smaller all round), and once clear of it within
+	# Source's 0.03-inch ground-snap threshold of where it rests: the
+	# separation still has to survive the probe reset.
+	var player := _player(Vector3.UP * 0.1)
 	_start()
 	await physics_frame
 	player._stay_on_ground()
 	var before := player.position
 	var traces := player.traces
 	var hit := player._trace(Vector3.RIGHT * 16.0, true)
-	_check(before.y > 0.25 and before.y < 0.5 and hit == null
+	_check(before.y > 0.2 and before.y < 0.5 and hit == null
 		and player.position == before and player.traces == traces + 1,
 		"a sub-threshold floor recovery survives ground probing and leaves a one-cast tangential sweep")
 	_close()
@@ -500,6 +503,52 @@ func _check_lips() -> void:
 		await process_frame
 
 
+## Someone standing on a player's head, as a boost has them and as bots
+## walking a stair end up: the one underneath rests its clearance over the
+## floor and the one on top its clearance over the head under it, and the
+## one underneath walks out from under at a run. Box3D's overlap band is
+## nearly that clearance deep, and with a whole hull swept it held the one
+## underneath between the two, going nowhere.
+func _check_under_a_friend() -> void:
+	_host = Node3D.new()
+	root.add_child(_host)
+	_triangles(-1024.0, 1024.0, 0.0)
+	var under := _player(Vector3(0.0, 1.0, 0.0))
+	var over := _player(Vector3(6.0, 80.0, 4.0))
+	_start()
+	await physics_frame
+	for tick in 48:
+		under.simulate(DT)
+		over.simulate(DT)
+	var stood := over.position.y - (under.position.y + 72.0)
+	_check(under.on_ground and over.on_ground and stood > 0.2 and stood < 0.3,
+		"a player comes to rest on another's head, its clearance over it (%.3f)" % stood)
+	# As dust2 left the one underneath when it stopped dead: 0.21 over the
+	# floor, a little under where it rests, the other as far over its head
+	# as before.
+	under.position.y -= 0.045
+	over.position.y -= 0.045
+	PhysicsQueries.sync_object(under, false)
+	PhysicsQueries.sync_object(over, false)
+	under.wish_dir = Vector3.RIGHT
+	under.wish_speed = under.config.max_speed
+	var most_traces := 0
+	var stalled := 0
+	for tick in 32:
+		var before := under.position
+		var traces := under.traces
+		under.simulate(DT)
+		over.simulate(DT)
+		most_traces = maxi(most_traces, under.traces - traces)
+		if tick >= 2 and under.position.distance_to(before) < 0.01:
+			stalled += 1
+	_check(under.position.x > 60.0 and stalled == 0 and most_traces <= 10,
+		"the one underneath walks out from under at a run (to x %.1f, stalled %d ticks, %d traces a tick at most)" % [
+			under.position.x, stalled, most_traces])
+	_close()
+	await process_frame
+
+
 ## A level floor of triangles from x = from to x = to, at a height, facing
 ## up: squares of 64 units, two triangles each, as a map's floor is.
 func _triangles(from: float, to: float, height: float) -> StaticBody3D:
@@ -552,14 +601,14 @@ func _check_sweep_contract() -> void:
 	query.motion = Vector3.DOWN * 0.5
 	_check(PhysicsQueries.shape_cast(space, query).is_empty(),
 		"a sweep that ends clear of the band meets nothing")
-	# Along the floor and a little into it: four units on and a tenth down,
-	# from 0.3 over.
+	# Along the floor and a little into it: four units on and three tenths
+	# down, from 0.3 over.
 	query.transform.origin = Vector3(0.0, 36.3, 0.0)
-	query.motion = Vector3(4.0, -0.1, 0.0)
+	query.motion = Vector3(4.0, -0.3, 0.0)
 	var grazing := PhysicsQueries.shape_cast(space, query)
 	var fraction := float(grazing.get("fraction", 0.0))
 	var offset: Vector3 = grazing.get("offset", Vector3.ZERO)
-	var over := 0.3 - 0.1 * fraction + offset.y
+	var over := 0.3 - 0.3 * fraction + offset.y
 	_check(not grazing.is_empty() and fraction > 0.5 and fraction <= 1.0 and offset.y > 0.0
 		and is_zero_approx(offset.x) and is_zero_approx(offset.z) and over > 0.24 and over < 0.28,
 		"a sweep grazing the floor goes on (%.2f of its motion) and is pushed off it for its clearance (%.3f over)" % [fraction, over])
