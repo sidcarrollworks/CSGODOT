@@ -586,7 +586,12 @@ Handlers of one command are asked in the order added until one takes it,
 so each takes only its own case: `drop` is `ItemDrops`' for what is in
 hand, and the bomb's when the C4 is in hand. Commands so far:
 - `buy <item>` (buying): CS2's short names (`ak47`, `vest`, `vesthelm`,
-  ...) or a class name.
+  ...) or a class name. `buy <item> throw` buys it and throws it out in
+  front of the buyer instead, for a teammate (CS2's buy and throw, Left
+  Control held in the buy menu): held to the purchase rules less what is
+  carried, anything that can lie on the ground (not armour), not
+  undoable. How CS2's client asks its server for it is in none of its
+  strings; the second word is ours.
 - `sellback <item>` (buying): undoes a purchase made this round, while
   buying is still open.
 - `drop` (`ItemDrops`; the bomb's with the C4 in hand).
@@ -626,6 +631,12 @@ system, in `attach`), `game.query(&"name", [args], fallback)`,
   side, alive, buying open, in their buy zone (the economy's
   `shop_refusal` is OK). Fallback false, so with no economy a bot never
   buys.
+- `throw_item(userid: int, entry: Inventory.Entry) -> DroppedItem`:
+  throws an item that was never in that player's inventory out in front
+  of them, as `drop` throws what is in hand (`ItemDrops`). The economy's
+  buy and throw (`buy ak47 throw`) asks it; nothing is announced, as
+  nothing left an inventory. Fallback null (the economy then lets it fall
+  at the buyer's feet).
 A new query is a line here.
 
 ## 5. What the local agent's files need, to wire this in

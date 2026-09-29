@@ -157,7 +157,13 @@ The numbers, their sources and the guesses: `reference/systems/economy.md`.
   machine guns) and five rifles (rifles and snipers), chosen from the
   inventory. The old paired slots (M4A4 or M4A1-S, CZ75 or Tec-9) are gone;
   only the starting pistol is fixed (Glock-18 for T, P2000 or USP-S for CT).
-- Buying for a teammate is done by dropping.
+- Buying for a teammate is done by dropping, or in one go: holding Left
+  Control in the buy menu, a click buys the item and throws it out in front
+  of you (EN `BuyMenu_BuyForTeammate` "Hold [{s:buywheel_donate_key}] Buy &
+  Throw"; the key is the setting `SFUI_Settings_BuyWheelDonateKey`, Left
+  Control, Left Alt, Left Shift or unbound; buymenu.css washes every card
+  that can be bought so green, `.in-donate ... .donate-bg`). GT 2026-09-28
+  (ce2a2de). **Built** 2026-09-29 as `buy <item> throw`.
 
 **Built** (2026-09-23): buy zones, buy time, CS2's buy menu with the
 default loadout (items_game's `flexible_loadout_slot`), undoing a purchase,
