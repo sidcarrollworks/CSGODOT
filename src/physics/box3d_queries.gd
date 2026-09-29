@@ -39,6 +39,8 @@ var _shape_watchers: Dictionary = {}
 var _scope_owner := RID()
 var _scope_synced: int = 0
 var _scope_left_out: Array = []
+var _tick_open := false
+var _tick_synced: int = 0
 
 
 func initialize(owner: Node3D, geometry_root: Node) -> void:
@@ -160,10 +162,31 @@ func _leave_out_scope_owner() -> void:
 		native.set(&"collision_layer", 0)
 
 
+## A tick begins (GameWorld.begin_tick). Until it ends the hulls are looked
+## over once, by the first query that could meet one, rather than by every
+## query or every player's scope: in a tick a hull moves by its player's
+## own tick, a spawn or a death, each of which publishes it
+## (PhysicsQueries.sync_object), and whatever else moves one in a tick has
+## to. Outside a tick nothing is taken on trust: a hull moved by hand is
+## found by the next query, as the checks move them.
+func begin_tick() -> void:
+	_tick_open = true
+	_tick_synced = 0
+
+
+func end_tick() -> void:
+	_tick_open = false
+	_tick_synced = 0
+
+
 func sync_dynamic(mask: int = ALL_LAYERS, exclude: Array[RID] = []) -> void:
 	flush_pending()
 	if mask & _dynamic_layers == 0:
 		return
+	if _tick_open:
+		mask &= ~_tick_synced
+		if mask & _dynamic_layers == 0:
+			return
 	if _scope_owner.is_valid():
 		# Only the owner moves in the scope: a layer synchronized once in it
 		# stays synchronized.
@@ -174,7 +197,13 @@ func sync_dynamic(mask: int = ALL_LAYERS, exclude: Array[RID] = []) -> void:
 	# Movement never needs to revisit every bone capsule. Keep separate
 	# registries so a hull sweep only synchronizes the character hulls.
 	if mask & _hull_layers != 0:
-		_sync_group(_hulls, mask, exclude)
+		if _tick_open:
+			# Every hull, whatever this query leaves out: nobody looks again
+			# this tick. A layer hitboxes share is looked over as before.
+			_sync_group(_hulls, mask, [])
+			_tick_synced |= mask & _hull_layers & ~_hitbox_layers
+		else:
+			_sync_group(_hulls, mask, exclude)
 	if mask & _hitbox_layers != 0:
 		_sync_group(_hitboxes, mask, exclude)
 

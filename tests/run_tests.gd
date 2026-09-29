@@ -792,11 +792,16 @@ func _test_player_lands() -> void:
 ## each on dust2 and most of a tick. Standing still, one: the ground check
 ## at the end of the move (Source's WalkMove moves nobody slower than a unit
 ## a second, and the check at the start is the last one's while nothing has
-## moved the body, sv_optimizedmovement). Running in the open, four: the
-## move, StayOnGround's two, the check. A third and a fourth running tick
-## are counted, the first ones having started from where the body was put.
-## Stepping up a stair, seven.
+## moved the body, sv_optimizedmovement). Running in the open, two on the
+## native physics: the move, and one sweep down that stays on the ground
+## and is the ground check's as well (on Godot's own, four: the move,
+## StayOnGround's two, the check). A third and a fourth running tick are
+## counted, the first ones having started from where the body was put.
+## Stepping up a stair, four: the move that met the riser, the step up, the
+## move, and the step down, which is the floor found (on Godot's own seven,
+## with StayOnGround's two and the check).
 func _test_traces_a_tick() -> void:
+	var native := PhysicsQueries.adapter_for_node(_player) != null
 	_place(Vector3(0.0, 8.0, 256.0))
 	for i in SETTLE_TICKS:
 		_step()
@@ -811,13 +816,14 @@ func _test_traces_a_tick() -> void:
 	_step(forward)
 	var running := _player.traces - before
 	_check(
-		standing == 1 and running == 8 and _player.on_ground,
-		"a tick traces the hull once standing still and four times running in the open (%d, then %d in two)" % [standing, running]
+		standing == 1 and running == (4 if native else 8) and _player.on_ground,
+		"a tick traces the hull once standing still and %s running in the open (%d, then %d in two)" % [
+			"twice" if native else "four times", standing, running]
 	)
 	# Up the eight-step flight, a tick that steps up traces the hull no more
-	# than the flat move that met the riser, the step up, the move, the step
-	# down, StayOnGround's two and the check: what the step landed on is what
-	# its trace down met, as Source's StepMove reads it, not a trace of its own.
+	# than the flat move that met the riser, the step up, the move and the
+	# step down: what the step landed on is what its trace down met, as
+	# Source's StepMove reads it, not a trace of its own.
 	_place(Vector3(-512.0, 8.0, -256.0 + 48.0))
 	for i in SETTLE_TICKS:
 		_step()
@@ -831,8 +837,9 @@ func _test_traces_a_tick() -> void:
 			steps += 1
 			most = maxi(most, _player.traces - before)
 	_check(
-		steps == 8 and most == 7,
-		"running up the flight steps up each of its eight steps, tracing the hull at most seven times a tick (%d steps, %d traces)" % [steps, most]
+		steps == 8 and most == (4 if native else 7),
+		"running up the flight steps up each of its eight steps, tracing the hull at most %s times a tick (%d steps, %d traces)" % [
+			"four" if native else "seven", steps, most]
 	)
 	_place(Vector3(0.0, 8.0, 256.0))
 

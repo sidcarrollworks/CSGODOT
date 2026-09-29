@@ -333,4 +333,4 @@ func _report_costs(label: String) -> void:
 			_last_native_step_ms[int(ceil(_last_native_step_ms.size() * 0.95)) - 1]])
 	print("COST_SYNC_SCANS world_only=%d with_hulls=%d with_hitboxes=%d hull_entries=%d hitbox_entries=%d" % [
 		_queries.scans_world_only, _queries.scans_hulls, _queries.scans_hitboxes, _queries.hull_entries, _queries.hitbox_entries])
-	print("COST_NATIVE_STEPS calls=%d expected=%d" % [_adapter.native_steps - _native_steps_before, TICKS * Box3DDrops.COLLISION_STEPS])
+	print("COST_NATIVE_STEPS calls=%d most=%d (none on a tick with nothing awake)" % [_adapter.native_steps - _native_steps_before, TICKS * Box3DDrops.COLLISION_STEPS])

@@ -52,6 +52,7 @@ func _initialize() -> void:
 	await _check_ramps()
 	await _check_gentle_slopes()
 	await _check_slope_beside()
+	await _check_lips()
 	await _check_sweep_contract()
 	_finish("box3d-movement")
 
@@ -453,6 +454,75 @@ func _check_slope_beside() -> void:
 				int(drift), slowest, slowest_at, most_traces, player.position.x])
 		_close()
 		await process_frame
+
+
+## A level floor of triangles a fraction higher than the last, as dust2's
+## floors meet: Box3D's sweep only looks at a triangle the swept hull
+## reaches the plane of, so a level move does not meet it and ends a hair
+## over it, or in it. Staying on the ground sweeps down from a unit up
+## (STAY_ON_GROUND_LIFT), so it lands on the higher floor in one cast, at
+## its clearance, and the walk goes on at a run.
+func _check_lips() -> void:
+	for lip: float in [0.05, 0.2, 0.5]:
+		# The most traces a tick: the move and the floor's sweep, and two
+		# more where the lip is deeper than the hull's clearance and the
+		# hull has to get clear of it.
+		var budget := 2 if lip < 0.25 else 4
+		_host = Node3D.new()
+		root.add_child(_host)
+		_triangles(-1024.0, 0.0, 0.0)
+		_triangles(0.0, 1024.0, lip)
+		var player := _player(Vector3(-100.0, 1.0, 0.0))
+		_start()
+		await physics_frame
+		for tick in 24:
+			player.simulate(DT)
+		player.wish_dir = Vector3.RIGHT
+		player.wish_speed = player.config.max_speed
+		var slowest := INF
+		var grounded := 0
+		var most_traces := 0
+		var ticks := 96
+		for tick in ticks:
+			var traces := player.traces
+			player.simulate(DT)
+			most_traces = maxi(most_traces, player.traces - traces)
+			if player.on_ground:
+				grounded += 1
+			if tick >= 32:
+				slowest = minf(slowest, Vector2(player.velocity.x, player.velocity.z).length())
+		var over := player.position.y - lip
+		_check(slowest > 0.9 * player.config.max_speed and player.position.x > 150.0 and grounded == ticks
+			and most_traces <= budget and over > 0.2 and over < 0.3,
+			"a level floor %.2f higher is walked onto at a run: never under %.0f u/s, on the ground, %.3f over it, %d traces a tick at most" % [
+				lip, slowest, over, most_traces])
+		_close()
+		await process_frame
+
+
+## A level floor of triangles from x = from to x = to, at a height, facing
+## up: squares of 64 units, two triangles each, as a map's floor is.
+func _triangles(from: float, to: float, height: float) -> StaticBody3D:
+	var body := StaticBody3D.new()
+	body.collision_layer = 1
+	body.collision_mask = 0
+	var faces := PackedVector3Array()
+	var x := from
+	while x < to:
+		for iz in range(-4, 4):
+			var a := Vector3(x, height, iz * 64.0)
+			var b := Vector3(x + 64.0, height, iz * 64.0)
+			var c := Vector3(x + 64.0, height, (iz + 1) * 64.0)
+			var d := Vector3(x, height, (iz + 1) * 64.0)
+			faces.append_array([a, b, c, a, c, d])
+		x += 64.0
+	var shape := ConcavePolygonShape3D.new()
+	shape.set_faces(faces)
+	var collision := CollisionShape3D.new()
+	collision.shape = shape
+	body.add_child(collision)
+	_host.add_child(body)
+	return body
 
 
 ## What a native sweep hands back (Box3DQueries.shape_cast_prepared): a

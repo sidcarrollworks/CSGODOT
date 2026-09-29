@@ -27,6 +27,15 @@ const STAY_ON_GROUND_UP := 2.0
 ## every tick on a perfectly flat floor.
 const STAY_ON_GROUND_MIN_DELTA := 0.03
 
+## Over native collision StayOnGround sweeps down from this far over where
+## the move ended, without sweeping up to it. A walking move is level, and
+## Box3D's sweep only looks at a triangle the swept hull reaches the plane
+## of, so a level floor a fraction higher than the last is not met by the
+## move: the hull ends a hair over it, or a hair in it, and a sweep down
+## from there would start in overlap. A unit covers floors three quarters
+## of a unit higher; a riser higher than that has a face the move meets.
+const STAY_ON_GROUND_LIFT := 1.0
+
 ## The quadrant ground traces are inset this far from the hull corners, so they
 ## sample the floor under the corner rather than the wall beside it.
 const QUADRANT_INSET := 1.0
@@ -143,6 +152,15 @@ var _last_native_trace_recovery := Vector3.ZERO
 ## The native physics while this body's tick runs (simulate), looked up
 ## once for its traces rather than by each; null between ticks.
 var _adapter: Box3DDrops
+## The native physics this body was last found in (_native_physics).
+var _native: Box3DDrops
+## The floor a walking move was put on, by its step's sweep down or by
+## staying on the ground: where the body stood on it, with what hull, and
+## the floor's normal. The ground check at the move's end takes it rather
+## than sweeping for the same floor again, and forgets it.
+var _floor_at := Vector3.INF
+var _floor_with := 0.0
+var _floor_normal := Vector3.UP
 
 
 func _ready() -> void:
@@ -199,16 +217,22 @@ func simulate(dt: float) -> void:
 		on_ground = false
 		jump_fraction = -1.0
 		height_above_ground = INF
-		PhysicsQueries.sync_object(self, false)
+		if _native_physics() != null:
+			_native.queries.sync_object(self, false)
 		return
 
 	var was_on_ground := on_ground
 	_jumped = false
 	# Nothing but this body moves until its tick is done, and every query it
 	# makes excludes it, so the bridge synchronizes the others once for it.
-	_adapter = PhysicsQueries.adapter_for_node(self)
+	_adapter = _native_physics()
 	if _adapter != null:
 		_adapter.queries.begin_scope(get_rid())
+		if _collision_shape != null and _collision_shape.shape != null:
+			# What every sweep of the tick shares is set once, and the others
+			# synchronized once, here rather than by each trace.
+			_prepare_motion_query()
+			_adapter.queries.sync_dynamic(_motion_query.collision_mask, _motion_query.exclude)
 
 	if (
 		config.subtick_jump
@@ -231,9 +255,27 @@ func simulate(dt: float) -> void:
 	_update_air(was_on_ground)
 	if _adapter != null:
 		_adapter.queries.end_scope()
+		# Later players and shots in this same tick see the completed movement.
+		_adapter.queries.sync_object(self, false)
 	_adapter = null
-	# Later players and shots in this same tick see the completed movement.
-	PhysicsQueries.sync_object(self, false)
+
+
+## The native physics this body is in, found once and kept while both
+## stand: the way to it is through the viewport and its world, which was
+## three calls a trace and then two lookups a tick. Null on Godot's own
+## physics, and then looked for again the next time: a match's physics is
+## made after its players are.
+func _native_physics() -> Box3DDrops:
+	if is_instance_valid(_native) and _native.initialized and _native.is_inside_tree():
+		return _native
+	_native = PhysicsQueries.adapter_for_node(self)
+	return _native
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_EXIT_TREE:
+		# Wherever it goes next may be another world.
+		_native = null
 
 
 ## Records what the tick did between the ground and the air (air_action),
@@ -458,6 +500,9 @@ func _walk_move(surface_friction: float, dt: float) -> void:
 func _stay_on_ground() -> void:
 	if not config.stay_on_ground:
 		return
+	if _adapter != null:
+		_stay_on_native_ground()
+		return
 
 	var start := global_position
 
@@ -491,6 +536,49 @@ func _stay_on_ground() -> void:
 		global_position.z += _last_native_trace_recovery.z
 		return
 	global_position = landing
+
+
+## Staying on the ground over native collision: one sweep down to a step's
+## height under where the move ended, and none where the step's own sweep
+## down has just put the body on a floor. Source sweeps up two units and
+## down from there, so that a hull sunk a little in the floor sweeps down
+## from clear of it; this starts STAY_ON_GROUND_LIFT up without sweeping
+## there, which is a cast fewer, and sweeps from where the hull stands,
+## getting clear first (_trace), only where something is over its head.
+## The body is put on the floor found whatever the distance: under Source's
+## half unit it used to be left, and the ground check then closed the gap
+## by its own sweep. The floor is kept for that check to take (_floor_at).
+func _stay_on_native_ground() -> void:
+	if _floor_at == global_position and _floor_with == _hull_height:
+		return
+	if _collision_shape == null or _collision_shape.shape == null:
+		return
+	var start := global_position
+	var lift := Vector3.UP * STAY_ON_GROUND_LIFT
+	var motion := Vector3.DOWN * (STAY_ON_GROUND_LIFT + config.step_height)
+	var hit := _cast_from(lift, motion, _adapter.queries)
+	if hit.is_empty():
+		# Nothing to stand on within a step.
+		return
+	var normal: Vector3 = hit["normal"]
+	var landing: Vector3
+	if normal.is_zero_approx():
+		# Something over its head where it would start: from where it
+		# stands, then, clear of what it stands in first.
+		var collision := _trace(Vector3.DOWN * config.step_height, true)
+		if collision == null or not MovementSolver.is_walkable(collision.get_normal(), config):
+			global_position = start + _last_native_trace_recovery
+			return
+		normal = collision.get_normal()
+		landing = start + collision.get_travel()
+	elif not MovementSolver.is_walkable(normal, config):
+		return
+	else:
+		landing = start + lift + motion * float(hit["fraction"]) + (hit.get("offset", Vector3.ZERO) as Vector3)
+	global_position = landing
+	_floor_at = global_position
+	_floor_with = _hull_height
+	_floor_normal = normal
 
 
 func _air_move(surface_friction: float, dt: float) -> void:
@@ -544,6 +632,11 @@ func _step_move(dt: float) -> void:
 		# carries the step-down trace's Z into the next tick, which reads as a
 		# small downward kick every stair.
 		velocity.y = flat_velocity.y
+		if _adapter != null:
+			# The sweep down put it on this floor: nothing more to find.
+			_floor_at = global_position
+			_floor_with = _hull_height
+			_floor_normal = landing.get_normal()
 		return
 	global_position = flat_position
 	velocity = flat_velocity
@@ -671,7 +764,18 @@ func _categorize_position() -> void:
 		on_ground = false
 		ground_normal = Vector3.UP
 		_looked_from = Vector3.INF
+		_floor_at = Vector3.INF
 		return
+	if _floor_at == global_position and _floor_with == _hull_height:
+		# The walking move has just been put on this floor by a sweep of its
+		# own, which is the sweep this would make.
+		on_ground = true
+		ground_normal = _floor_normal
+		_looked_from = global_position
+		_looked_with = _hull_height
+		_floor_at = Vector3.INF
+		return
+	_floor_at = Vector3.INF
 
 	var collision := _trace(
 		Vector3.DOWN * GROUND_TRACE_DISTANCE, true
@@ -712,7 +816,10 @@ func _categorize_position() -> void:
 ## to the same Source movement solver. Test traces never move the player.
 func _trace(motion: Vector3, test_only: bool = false) -> TraceResult:
 	_last_native_trace_recovery = Vector3.ZERO
-	var adapter := _adapter if _adapter != null else PhysicsQueries.adapter_for_node(self)
+	# Inside the body's own tick the bridge is known, the others are
+	# synchronized and its own hull is out of the world (simulate).
+	var in_scope := _adapter != null
+	var adapter := _adapter if in_scope else PhysicsQueries.adapter_for_node(self)
 	if adapter == null:
 		traces += 1
 		var collision := move_and_collide(motion, test_only)
@@ -721,17 +828,15 @@ func _trace(motion: Vector3, test_only: bool = false) -> TraceResult:
 		if not test_only:
 			global_position += motion
 		return null
-	_motion_query.shape = _collision_shape.shape
+	if not in_scope:
+		_prepare_motion_query()
 	_motion_query.transform = _collision_shape.global_transform
 	_motion_query.motion = motion
-	_motion_query.margin = maxf(safe_margin, NATIVE_QUERY_MARGIN)
-	_motion_query.collision_mask = collision_mask
-	_motion_query.exclude = [get_rid()]
 	# These casts only move the query's starting transform. No game object
 	# moves until the group ends, so synchronize proxies and exclude our
 	# own hull once for the whole synchronous recovery search.
 	var queries := adapter.queries
-	var excluded := queries.begin_shape_cast(_motion_query)
+	var excluded: Array = [] if in_scope else queries.begin_shape_cast(_motion_query)
 	var hit := _cast_hull(queries)
 	var recovery := Vector3.ZERO
 	if not hit.is_empty() and (hit["normal"] as Vector3).is_zero_approx():
@@ -750,7 +855,8 @@ func _trace(motion: Vector3, test_only: bool = false) -> TraceResult:
 		if not recovery.is_zero_approx():
 			_motion_query.transform.origin += recovery
 			hit = _cast_hull(queries)
-	queries.end_shape_cast(excluded)
+	if not in_scope:
+		queries.end_shape_cast(excluded)
 	if not hit.is_empty() and not (hit["normal"] as Vector3).is_zero_approx():
 		var normal: Vector3 = hit["normal"]
 		# The ordinary floor probe between side sweeps must not erase the
@@ -767,6 +873,24 @@ func _trace(motion: Vector3, test_only: bool = false) -> TraceResult:
 		# The next query that can hit this body refreshes its proxy. Our own
 		# next sweep excludes it; simulate publishes the final pose once.
 	return TraceResult.new(travel, hit["normal"], recovery) if not hit.is_empty() else null
+
+
+## What every sweep of the hull asks alike: its shape, its margin, what it
+## meets and that it leaves itself out.
+func _prepare_motion_query() -> void:
+	_motion_query.shape = _collision_shape.shape
+	_motion_query.margin = maxf(safe_margin, NATIVE_QUERY_MARGIN)
+	_motion_query.collision_mask = collision_mask
+	_motion_query.exclude = [get_rid()]
+
+
+## One sweep of the hull from where it stands moved by from, as the bridge
+## answers it: nothing, a hit, or a start in overlap (a hit with no
+## normal), with no getting clear of that. Inside the body's own tick.
+func _cast_from(from: Vector3, motion: Vector3, queries: Box3DQueries) -> Dictionary:
+	_motion_query.transform = _collision_shape.global_transform.translated(from)
+	_motion_query.motion = motion
+	return _cast_hull(queries)
 
 
 func _cast_hull(queries: Box3DQueries) -> Dictionary:

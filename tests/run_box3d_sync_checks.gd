@@ -20,6 +20,7 @@ func _initialize() -> void:
 	_check_bone_poses()
 	_check_lifecycle_and_masks()
 	_check_scope()
+	_check_tick()
 	_check(Engine.get_physics_frames() == frame,
 		"all proxy edits are observed within the same physics frame")
 	_finish("box3d-sync")
@@ -303,6 +304,36 @@ func _check_scope() -> void:
 	_check(_ray(test, mover.global_position).get("collider") == mover
 		and _ray(test, mover.global_position + Vector3.UP * 6.0).is_empty(),
 		"and is back, at its new size, when the scope ends")
+	_close(test)
+
+
+## In a tick (Box3DQueries.begin_tick) the hulls are looked over once:
+## what moves one in a tick publishes it, and one moved without is where it
+## was until the tick ends.
+func _check_tick() -> void:
+	var test := _case()
+	var first := _hull(test.host, Vector3(0, 32, -64))
+	var second := _hull(test.host, Vector3(128, 32, -64))
+	var queries := test.adapter.queries
+	first.position.x = 32
+	queries.begin_tick()
+	_check(_ray(test, first.global_position).get("collider") == first and _ray(test, Vector3(0, 32, -64)).is_empty(),
+		"a hull moved before the tick is found by the tick's first query")
+	second.position.x = 96
+	_check(_ray(test, second.global_position).is_empty() and _ray(test, Vector3(128, 32, -64)).get("collider") == second,
+		"one moved by hand inside the tick is not looked for again")
+	PhysicsQueries.sync_object(second, false)
+	_check(_ray(test, second.global_position).get("collider") == second and _ray(test, Vector3(128, 32, -64)).is_empty(),
+		"and is found where it is once it is published")
+	first.collision_layer = 0
+	PhysicsQueries.sync_object(first, false)
+	_check(_ray(test, first.global_position).is_empty(),
+		"a hull taken off its layer in the tick and published, as a death does, is met by nobody after it")
+	first.collision_layer = HULL_LAYER
+	first.position.x = 64
+	queries.end_tick()
+	_check(_ray(test, first.global_position).get("collider") == first,
+		"the tick over, a hull moved by hand is found by the next query, as before")
 	_close(test)
 
 

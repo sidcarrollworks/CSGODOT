@@ -4,7 +4,7 @@ extends SceneTree
 ## hitches: bots walk Competitive's site routes as
 ## tests/run_dust2_bot_checks.gd has them, holding fire, and every trace
 ## each makes is counted by its kind (the move, the step up and down, the
-## stay-on-ground's up and down, the ground check), with the casts it took,
+## sweep that stays on the ground, the ground check), with the casts it took,
 ## whether it started in overlap and with what, whether it was pushed clear
 ## (a recovery, or a grazing hit's offset) and whether it went nowhere yet
 ## met a plane. A tick that starts at a run on the ground with a move held
@@ -58,6 +58,22 @@ class TracedBot:
 			"travel": travel, "normal": normal, "pushed": _last_native_trace_recovery,
 		})
 		return result
+
+	## The sweep that stays on the ground, which is a cast of its own and
+	## no trace: written down as one, from where it started.
+	func _cast_from(from: Vector3, motion: Vector3, queries: Box3DQueries) -> Dictionary:
+		var hit := super(from, motion, queries)
+		var travel: Variant = null
+		var normal: Variant = null
+		if not hit.is_empty():
+			normal = hit["normal"]
+			travel = from + motion * float(hit["fraction"])
+		trace_log.append({
+			"motion": motion, "test": true, "floor": true, "casts": 1,
+			"overlap": "world" if normal != null and (normal as Vector3).is_zero_approx() else "",
+			"travel": travel, "normal": normal, "pushed": hit.get("offset", Vector3.ZERO),
+		})
+		return hit
 
 
 var _bots_wanted := 5
@@ -169,7 +185,9 @@ func _physics_process(_delta: float) -> bool:
 func _count(entry: Dictionary) -> void:
 	var motion: Vector3 = entry["motion"]
 	var kind := "move"
-	if motion.x == 0.0 and motion.z == 0.0:
+	if entry.get("floor", false):
+		kind = "the floor, from %.1f up" % (absf(motion.y) - _bots[0].config.step_height)
+	elif motion.x == 0.0 and motion.z == 0.0:
 		kind = "%s %.1f%s" % ["up" if motion.y > 0.0 else "down", absf(motion.y), " (test)" if entry["test"] else ""]
 	if not _kinds.has(kind):
 		_kinds[kind] = {"calls": 0, "casts": 0, "searched": 0, "world": 0, "player": 0, "pushed": 0, "nowhere": 0}
@@ -182,7 +200,7 @@ func _count(entry: Dictionary) -> void:
 		counts["searched"] += 1
 	if not (entry["pushed"] as Vector3).is_zero_approx():
 		counts["pushed"] += 1
-	if entry["travel"] != null and (entry["travel"] as Vector3).is_zero_approx() and not (entry["normal"] as Vector3).is_zero_approx():
+	if not entry.get("floor", false) and entry["travel"] != null and (entry["travel"] as Vector3).is_zero_approx() and not (entry["normal"] as Vector3).is_zero_approx():
 		counts["nowhere"] += 1
 
 
@@ -203,12 +221,12 @@ func _report() -> void:
 		_ticks, _bots.size(), _hitches, casts, float(casts) / maxf(_ticks * _bots.size(), 1.0), _busy_ticks, _most_traces])
 	var kinds := _kinds.keys()
 	kinds.sort()
-	print("%-18s %8s %8s %9s %10s %10s %8s %8s" % ["trace", "calls", "casts", "searched", "in world", "in player", "pushed", "nowhere"])
+	print("%-24s %8s %8s %9s %10s %10s %8s %8s" % ["trace", "calls", "casts", "searched", "in world", "in player", "pushed", "nowhere"])
 	for kind: String in kinds:
 		var counts: Dictionary = _kinds[kind]
 		# Only the kinds that matter: a duck's or a landing's odd lengths
 		# come to a handful.
 		if int(counts["calls"]) < 20:
 			continue
-		print("%-18s %8d %8d %9d %10d %10d %8d %8d" % [
+		print("%-24s %8d %8d %9d %10d %10d %8d %8d" % [
 			kind, counts["calls"], counts["casts"], counts["searched"], counts["world"], counts["player"], counts["pushed"], counts["nowhere"]])

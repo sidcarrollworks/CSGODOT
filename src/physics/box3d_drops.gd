@@ -21,6 +21,8 @@ var game: GameSystems
 var native_world: Node3D
 var steps: int = 0
 var native_steps: int = 0
+## Ticks the native world was left as it was, nothing in it being awake.
+var idle_ticks: int = 0
 var bullet_queries: int = 0
 var captured_shapes: int = 0
 var captured_triangles: int = 0
@@ -386,6 +388,9 @@ func tick(t: SimTick) -> void:
 	# including on ticks with no gameplay query to flush the pending nodes.
 	if queries != null:
 		queries.flush_pending()
+	# A ragdoll listens to the step for as long as it lies, and writes its
+	# bodies before every one: with one in the world it is stepped as ever.
+	var listened_to := pre_step.has_connections() or post_step.has_connections()
 	pre_step.emit(t)
 	for id: int in _bodies.keys():
 		var item: DroppedItem = _items[id]
@@ -393,6 +398,13 @@ func tick(t: SimTick) -> void:
 			_on_removed(item)
 		elif item.physics_revision != int(_revisions[id]):
 			_write_state(item, _bodies[id])
+	if not listened_to and int(native_world.call(&"get_awake_body_count")) == 0:
+		# Nothing to solve: every body in the world is asleep (a dropped gun
+		# wakes when it is written to or a round moves it, and says so), and
+		# the players' and hitboxes' proxies are placed as they are asked
+		# for. Four steps of nothing were 0.15 ms of every tick.
+		idle_ticks += 1
+		return
 	for collision_step in COLLISION_STEPS:
 		native_world.call(&"step", t.dt / COLLISION_STEPS)
 		native_steps += 1
