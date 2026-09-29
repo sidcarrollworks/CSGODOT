@@ -239,7 +239,7 @@ func commands_for(running: Array[PlayerSim], dt: float) -> Array[UserCmd]:
 	# for after a move, and kept: asked for here, so that the threads only
 	# read what is kept.
 	for player in running:
-		player.force_update_transform()
+		var _kept := player.global_transform
 	_think_dt = dt
 	var task := WorkerThreadPool.add_group_task(_think_apart, _thinkers.size(), -1, true, "The bots thinking")
 	WorkerThreadPool.wait_for_group_task_completion(task)
