@@ -13,7 +13,8 @@ extends SkeletonModifier3D
 ## the gun as wpnHand_L and wpnHand_R, but whatever turns the spine or the
 ## hips after them carries the hands away and leaves the gun where it was:
 ## the rifle locomotion under the gun's additive hold, the shot and jump
-## additives, and FootPlant lowering the pelvis by up to 12 units on a slope.
+## additives. (FootPlant lowering the pelvis on a slope did too, by up to 12
+## units, until it took the gun down with it: FootPlant.lower_gun.)
 ## So each frame, after the foot fit and before the twist bones follow the
 ## forearms, this bends each arm with two-bone IK (FootPlant.reach) so its
 ## hand lands on its target, keeping the hand's own turn and the elbow on the
