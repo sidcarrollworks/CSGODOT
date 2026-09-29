@@ -86,7 +86,10 @@ func _run() -> void:
 		await _fall(shapes, "curb", "standing with a foot in the kerb", Vector3.ZERO, -1)
 	await _test_pushed()
 	await _test_parts_and_others()
+	await _test_more_bodies_than_layers()
 	await _test_native_lifecycle()
+	await _test_made_ahead()
+	await _test_left_lying()
 	await _test_let_go()
 	await _test_the_agent()
 	_report()
@@ -613,27 +616,270 @@ func _test_parts_and_others() -> void:
 	var head: Array = ragdoll.bodies.values().filter(func(body: Ragdoll.Part) -> bool: return String(body.name).contains("head"))
 	var shin: Array = ragdoll.bodies.values().filter(func(body: Ragdoll.Part) -> bool: return String(body.name).contains("leg_lower_l"))
 	var excepted := (head[0] as Ragdoll.Part).get_collision_exceptions()
+	var one := ragdoll.bodies.values()[0] as Ragdoll.Part
 	_check(
-		(ragdoll.bodies.values()[0] as Ragdoll.Part).collision_mask & Ragdoll.LAYER != 0
+		one.layer_high != 0 and one.mask_high == one.layer_high
+			and int(one.native.get(&"collision_layer_high")) == one.layer_high
+			and int(one.native.get(&"collision_mask_high")) == one.mask_high
+			and ragdoll.bodies.values().all(func(body: Ragdoll.Part) -> bool: return body.layer_high == one.layer_high)
 			and not excepted.has(shin[0]) and hands.size() == 2,
-		"a body's parts collide with one another: the head and a shin are no exception to each other"
+		"a body's parts collide with one another, by an upper layer of the body's own: the head and a shin are no exception to each other"
+	)
+	_check(
+		one.collision_mask & Ragdoll.LAYER == 0 and one.collision_layer == Ragdoll.LAYER,
+		"and not by the layer every dead body is on, which would have them meet another's"
 	)
 	for i in SimClock.ticks_in(2.0):
 		await _advance()
 	var lying: float = (first[2] as Ragdoll.Part).global_position.y
+	var exclusions := _adapter.native_world.get_child_count()
 	# A second body killed standing on the first one's spot, 30 units up.
 	var second: Array = await _killed(Vector3(0.0, 30.0, 0.0), Vector3.ZERO, Vector3.ZERO)
-	var theirs := (second[2] as Ragdoll.Part).get_collision_exceptions()
+	var theirs := second[0] as Ragdoll
+	var made_for_it := _adapter.native_world.get_child_count() - exclusions
 	for i in SimClock.ticks_in(3.0):
 		await _advance()
 	var fell_to: float = (second[2] as Ragdoll.Part).global_position.y
 	_check(
-		theirs.has(first[2]) and fell_to < lying + 4.0,
-		"one dead body falls through another onto the floor, not onto it (its pelvis %.1f up, the one under it %.1f)" % [fell_to, lying]
+		theirs.slot != ragdoll.slot and not theirs.meets(ragdoll) and not ragdoll.meets(theirs) and fell_to < lying + 4.0,
+		"one dead body falls through another onto the floor, not onto it (its pelvis %.1f up, the one under it %.1f), on an upper layer of its own (%d and %d)"
+			% [fell_to, lying, theirs.slot, ragdoll.slot]
+	)
+	_check(
+		made_for_it < 225,
+		"and nothing is made to say so: %d things in the native world for the second body, where 225 exceptions were made for the pair besides"
+			% made_for_it
 	)
 	for made: Array in [first, second]:
 		(made[0] as Node).queue_free()
 		(made[1] as Node).queue_free()
+	ground.queue_free()
+	await _advance()
+
+
+## More dead bodies than there are upper layers: the one past the last
+## shares a layer with another, and is told to pass through it part by part
+## where it lies near.
+func _test_more_bodies_than_layers() -> void:
+	var ground := _floor("flat")
+	var made: Array = []
+	var first: Array = await _killed(Vector3.ZERO, Vector3.ZERO, Vector3.ZERO)
+	made.append(first)
+	# Far off, only made: they hold a layer each.
+	var holder := Node3D.new()
+	holder.scale = Vector3.ONE * SCALE
+	holder.position = Vector3(400.0, 40.0, 400.0)
+	_world.add_child(holder)
+	var skeleton := _skeleton(holder)
+	await process_frame
+	var waiting: Array[Ragdoll] = []
+	for i in Ragdoll.SLOTS - 1:
+		var ragdoll := Ragdoll.new()
+		_world.add_child(ragdoll)
+		ragdoll.prepare(skeleton, _shapes("cs2"), SCALE, Vector3.FORWARD)
+		waiting.append(ragdoll)
+	var slots := {}
+	slots[(first[0] as Ragdoll).slot] = true
+	for ragdoll in waiting:
+		slots[ragdoll.slot] = true
+	_check(slots.size() == Ragdoll.SLOTS, "%d bodies have an upper layer each (%d layers held)" % [Ragdoll.SLOTS, slots.size()])
+	for i in SimClock.ticks_in(2.0):
+		await _advance()
+	var lying: float = (first[2] as Ragdoll.Part).global_position.y
+	# One more, killed over the first.
+	var over: Array = await _killed(Vector3(0.0, 30.0, 0.0), Vector3.ZERO, Vector3.ZERO)
+	made.append(over)
+	var last := over[0] as Ragdoll
+	var shares: Array = ([first[0]] + waiting).filter(func(ragdoll: Ragdoll) -> bool: return ragdoll.slot == last.slot)
+	for i in SimClock.ticks_in(3.0):
+		await _advance()
+	var fell_to: float = (over[2] as Ragdoll.Part).global_position.y
+	_check(shares.size() == 1, "the one after shares a layer with one of them (%d)" % shares.size())
+	# Whichever it shares with, it lies through the first: by its layer, or
+	# by being told to.
+	_check(
+		not last.meets(first[0]) and fell_to < lying + 4.0,
+		"and passes through the body it falls on all the same (its pelvis %.1f up, the one under it %.1f; on the same layer %s)"
+			% [fell_to, lying, last.slot == (first[0] as Ragdoll).slot]
+	)
+	for ragdoll in waiting:
+		ragdoll.free()
+	var freed := Ragdoll.new()
+	_world.add_child(freed)
+	freed.prepare(skeleton, _shapes("cs2"), SCALE, Vector3.FORWARD)
+	_check(freed.slot != last.slot or Ragdoll.SLOTS <= 2, "a body taken away gives its layer back: the next made has one to itself (%d)" % freed.slot)
+	freed.free()
+	holder.queue_free()
+	for one: Array in made:
+		(one[0] as Node).queue_free()
+		(one[1] as Node).queue_free()
+	ground.queue_free()
+	await _advance()
+
+
+## A body made ahead of the death waits switched off, falls from how the
+## skeleton stands when it is dropped, is parked, and falls again from
+## somewhere else: what a player's does at every death and respawn.
+func _test_made_ahead() -> void:
+	var ground := _floor("flat")
+	var holder := Node3D.new()
+	holder.scale = Vector3.ONE * SCALE
+	_world.add_child(holder)
+	var skeleton := _skeleton(holder)
+	var shapes := _shapes("hitboxes")
+	await process_frame
+	var into := _deepest(skeleton, shapes, _surface("flat")) - FEET_IN
+	holder.position = Vector3(0.0, into + 60.0, 0.0)
+	await _advance()
+	var baseline := _adapter.native_world.get_child_count()
+	var ragdoll := Ragdoll.new()
+	_world.add_child(ragdoll)
+	var started := Time.get_ticks_usec()
+	var made := ragdoll.prepare(skeleton, shapes, SCALE, Vector3.FORWARD)
+	var making := Time.get_ticks_usec() - started
+	var pelvis: Ragdoll.Part = ragdoll.bodies[skeleton.find_bone("pelvis")]
+	var with_it := _adapter.native_world.get_child_count()
+	var posed_before := skeleton.get_bone_global_pose(skeleton.find_bone("pelvis"))
+	var waited_at := pelvis.native.global_transform
+	var idle := _adapter.idle_ticks
+	for i in 32:
+		await _advance()
+	_check(
+		made == 15 and ragdoll.prepared_for(skeleton) and not ragdoll.fallen and not ragdoll.is_processing()
+			and ragdoll.bodies.values().all(func(body: Ragdoll.Part) -> bool: return not bool(body.native.get(&"enabled")))
+			and pelvis.native.global_transform.is_equal_approx(waited_at)
+			and skeleton.get_bone_global_pose(skeleton.find_bone("pelvis")).is_equal_approx(posed_before),
+		"a body made ahead (%d parts, in %.2f ms) waits switched off: half a second on it has not moved, and the skeleton is left to its animation"
+			% [made, making / 1000.0]
+	)
+	_check(
+		_adapter.idle_ticks - idle == 32 and not _adapter.pre_step.is_connected(ragdoll._before_native_step),
+		"and the world is not stepped for it (%d of 32 ticks stepped nothing)" % (_adapter.idle_ticks - idle)
+	)
+	# It dies 60 units over the floor, moving right, bent at the waist.
+	for bent: String in ["spine_0", "spine_1"]:
+		skeleton.set_bone_pose_rotation(skeleton.find_bone(bent), Quaternion(Vector3.RIGHT, deg_to_rad(15.0)))
+	await process_frame
+	var folded := PackedStringArray()
+	started = Time.get_ticks_usec()
+	var fell := ragdoll.drop(Vector3.RIGHT * 100.0, Vector3.RIGHT, skeleton.find_bone("spine_2"))
+	var dropping := Time.get_ticks_usec() - started
+	var on_its_bone := pelvis.global_position.distance_to((skeleton.global_transform * skeleton.get_bone_global_pose(skeleton.find_bone("pelvis"))).origin)
+	var spine_kept := 0.0
+	for bone: int in ragdoll._order:
+		var posed := (skeleton.global_transform * skeleton.get_bone_global_pose(bone)).origin + Vector3.UP * ragdoll.lifted
+		spine_kept = maxf(spine_kept, _bone_by_its_part(ragdoll, bone).origin.distance_to(posed))
+		if ragdoll.body_for(bone) != ragdoll.bodies.get(bone):
+			folded.append(skeleton.get_bone_name(bone))
+	_check(
+		fell == 15 and ragdoll.fallen and ragdoll.is_processing() and on_its_bone < 12.0 + ragdoll.lifted
+			and ragdoll.bodies.values().all(func(body: Ragdoll.Part) -> bool: return bool(body.native.get(&"enabled")))
+			and (pelvis.linear_velocity - Vector3.RIGHT * (100.0 + Ragdoll.BODY_SPEED)).length() < 0.5,
+		"dropped (in %.2f ms) its parts are on the bones as the skeleton is posed, switched on and moving as the body was and the round pushed (%s)"
+			% [dropping / 1000.0, pelvis.linear_velocity]
+	)
+	_check(not folded.is_empty() and spine_kept < 0.01,
+		"every bone is where the skeleton had it at the death, those folded into another's part too (%s), bent as it was (%.3f units off at most)"
+			% [", ".join(folded), spine_kept])
+	for i in SimClock.ticks_in(3.0):
+		await _advance()
+	var lay := pelvis.global_position
+	_check(lay.y < 20.0 and lay.x > 20.0, "it falls to the floor and on the way it was going (its pelvis %.1f up, %.0f along)" % [lay.y, lay.x])
+	var of_the_death := _adapter.native_world.get_child_count() - with_it
+	# Back, as at a respawn: the skeleton elsewhere, at rest.
+	ragdoll.park()
+	holder.position = Vector3(300.0, into, 0.0)
+	skeleton.reset_bone_poses()
+	var rest := (skeleton.global_transform * skeleton.get_bone_global_pose(skeleton.find_bone("pelvis"))).origin
+	await process_frame
+	var shown := (skeleton.global_transform * skeleton.get_bone_global_pose(skeleton.find_bone("pelvis"))).origin
+	_check(
+		not ragdoll.fallen and not ragdoll.is_processing() and shown.distance_to(rest) < 0.01
+			and _adapter.native_world.get_child_count() == with_it
+			and ragdoll.bodies.values().all(func(body: Ragdoll.Part) -> bool: return not bool(body.native.get(&"enabled"))),
+		"parked, it writes the skeleton no more from that moment, its parts are switched off, and what was only of that death is gone (%d exceptions)"
+			% of_the_death
+	)
+	for i in 16:
+		await _advance()
+	_check(pelvis.global_position.distance_to(lay) < 0.01, "and it lies where it was parked, unmoved, until it is wanted")
+	# And dies again, there.
+	_pose_as_killed(skeleton)
+	await process_frame
+	fell = ragdoll.drop(Vector3.ZERO)
+	var again := pelvis.global_position.distance_to((skeleton.global_transform * skeleton.get_bone_global_pose(skeleton.find_bone("pelvis"))).origin)
+	_check(fell == 15 and again < 12.0 + ragdoll.lifted and pelvis.global_position.distance_to(lay) > 100.0,
+		"dropped again it falls from where the skeleton stands now, not from where it lay (%.0f units from there)" % pelvis.global_position.distance_to(lay))
+	for i in SimClock.ticks_in(3.0):
+		await _advance()
+	var under := PackedStringArray()
+	for body: Ragdoll.Part in ragdoll.bodies.values():
+		if body.global_position.y < 0.0:
+			under.append(String(body.name))
+	_check(under.is_empty() and pelvis.global_position.y < 20.0 and absf(pelvis.global_position.x - 300.0) < 60.0,
+		"and lies on the floor there, no part under it (%s)" % [under])
+	ragdoll.clear()
+	_check(_adapter.native_world.get_child_count() == baseline, "cleared, nothing of it is left in the native world")
+	ragdoll.queue_free()
+	holder.queue_free()
+	ground.queue_free()
+	await _advance()
+
+
+## Where a ragdoll has a bone, from the part that carries it.
+func _bone_by_its_part(ragdoll: Ragdoll, bone: int) -> Transform3D:
+	return ragdoll.body_for(bone).global_transform * (ragdoll._offsets[bone] as Transform3D)
+
+
+## The stand-in skeleton posed as it is killed: a rifle up, mid-stride.
+func _pose_as_killed(skeleton: Skeleton3D) -> void:
+	skeleton.reset_bone_poses()
+	for bone: Array in BONES:
+		if bone[4] != null:
+			skeleton.set_bone_pose_rotation(skeleton.find_bone(bone[0]), Basis.from_euler(bone[4] * PI / 180.0).get_rotation_quaternion())
+
+
+## A body come to rest is left lying: the world is stepped for it no more,
+## and no frame poses it again.
+func _test_left_lying() -> void:
+	var ground := _floor("flat")
+	var made: Array = await _killed(Vector3.ZERO, Vector3.ZERO, Vector3.ZERO)
+	var ragdoll: Ragdoll = made[0]
+	var ticks := 0
+	while not ragdoll.resting and ticks < SimClock.ticks_in(10.0):
+		await _advance()
+		ticks += 1
+	var lay: Vector3 = (made[2] as Ragdoll.Part).global_position
+	var idle := _adapter.idle_ticks
+	for i in 32:
+		await _advance()
+	var skeleton := (made[1] as Node).get_child(0) as Skeleton3D
+	var pelvis := skeleton.find_bone("pelvis")
+	var shown := (skeleton.global_transform * skeleton.get_bone_global_pose(pelvis)).origin
+	_check(
+		ragdoll.resting and ragdoll.fallen and not ragdoll.is_processing()
+			and not _adapter.pre_step.is_connected(ragdoll._before_native_step)
+			and not _adapter.post_step.is_connected(ragdoll._after_native_step),
+		"a body come to rest, every part asleep, is left lying (after %.1f s): it listens to the step no more and no frame poses it" % (ticks * SimClock.tick_seconds())
+	)
+	_check(
+		_adapter.idle_ticks - idle == 32 and (made[2] as Ragdoll.Part).global_position.distance_to(lay) < 0.01
+			and shown.distance_to(_bone_by_its_part(ragdoll, pelvis).origin) < 0.01,
+		"the world is stepped for it no more (%d of 32 ticks stepped nothing), and the skeleton stays as it lay" % (_adapter.idle_ticks - idle)
+	)
+	# Parked from rest and dropped again, it falls as any.
+	ragdoll.park()
+	(made[1] as Node3D).position += Vector3(0.0, 50.0, 0.0)
+	_pose_as_killed(skeleton)
+	await process_frame
+	ragdoll.drop(Vector3.ZERO)
+	var from: Vector3 = (made[2] as Ragdoll.Part).global_position
+	for i in SimClock.ticks_in(1.0):
+		await _advance()
+	_check(not ragdoll.resting and from.y - (made[2] as Ragdoll.Part).global_position.y > 20.0,
+		"dropped again from rest it falls (%.0f units in a second)" % (from.y - (made[2] as Ragdoll.Part).global_position.y))
+	(made[0] as Node).queue_free()
+	(made[1] as Node).queue_free()
 	ground.queue_free()
 	await _advance()
 

@@ -199,6 +199,10 @@ var _capsules: Array[Dictionary] = []
 ## are no capsules to build one from. It only draws: the simulation goes on
 ## without it (CS2 ragdolls its dead on each client, not on the server).
 var ragdoll: Ragdoll
+## The same body while alive: made ahead, its parts switched off, to fall
+## at the death (prepare_to_fall). Null until it has been made, and while
+## it lies as `ragdoll`.
+var _ragdoll_ready: Ragdoll
 var _respawn_at_usec: int = 0
 var _died_at_usec: int = 0
 var _spawn_position: Vector3 = Vector3.ZERO
@@ -386,6 +390,49 @@ func wear_body(weapon_model: String, drawn: bool) -> void:
 	if not drawn:
 		for hitbox in hit_target.hitboxes():
 			hitbox.drawn_layers = UNSEEN_LAYER
+	# The body it dies into is made on a frame soon (GameWorld._process).
+	if is_instance_valid(world):
+		world.bodies_to_make = true
+
+
+## Whether the body it dies into is still to be made: alive or dead with
+## none lying, a model and its capsules on, and none made yet.
+func wants_body_made() -> bool:
+	return _ragdoll_ready == null and ragdoll == null and model != null \
+		and model.character_rig != null and not _capsules.is_empty() and is_inside_tree()
+
+
+## Makes the body it dies into ahead of the death, its parts and joints,
+## and leaves it switched off (Ragdoll.prepare). A death then only puts the
+## parts where the bones are. Made at the death it was 2 ms of the 3 the
+## death cost the run it happened in; here it is on a frame, off the tick,
+## where the world asks for it (GameWorld._process), one body a frame.
+## Whether it is made after this. Without the world's physics yet, or the
+## model, it is not, and the death makes it as it always did.
+func prepare_to_fall() -> bool:
+	if not wants_body_made():
+		return _ragdoll_ready != null
+	var made := Ragdoll.new()
+	made.name = "Ragdoll"
+	add_child(made)
+	if made.prepare(
+		model.character_rig, _capsules, MapImporter.SOURCE2_VIEWER_SCALE, _model_faces(), null, true
+	) == 0:
+		remove_child(made)
+		made.free()
+		return false
+	_ragdoll_ready = made
+	return true
+
+
+## The way the body's model faces, flat: where the player looks, as the
+## model is turned to (PlayerModel turns it to the yaw and half a turn).
+func _model_faces() -> Vector3:
+	var faces := model.global_basis.z if model != null and model.is_inside_tree() else Vector3.ZERO
+	faces.y = 0.0
+	if faces.length_squared() < 1e-6:
+		return Vector3(-sin(deg_to_rad(yaw_degrees)), 0.0, -cos(deg_to_rad(yaw_degrees)))
+	return faces.normalized()
 
 
 ## Which hitboxes the player wears, and when they are the stand-in boxes,
@@ -422,9 +469,12 @@ func change_team(new_team: String) -> void:
 		return
 	team = new_team
 	hit_target.team = team
-	if ragdoll != null:
-		ragdoll.let_go()
-		ragdoll = null
+	# The body it lies as or would die into is the old side's.
+	for body: Ragdoll in [ragdoll, _ragdoll_ready]:
+		if body != null:
+			body.let_go()
+	ragdoll = null
+	_ragdoll_ready = null
 	# Out of the tree now, so no round meets the old hitboxes on this tick.
 	for part: Node in [model, hitboxes]:
 		if part != null:
@@ -981,33 +1031,43 @@ func _on_hit_target_died() -> void:
 
 
 ## The body goes limp and falls where it died, pushed the way the killing
-## round was going, as a ragdoll made from the hitbox capsules. Nothing is
-## done without the capsules or the model.
+## round was going, as a ragdoll made from the hitbox capsules: the one
+## made ahead (prepare_to_fall), or one made now where there is none.
+## Nothing is done without the capsules or the model.
 func _fall() -> void:
 	if model == null or _capsules.is_empty() or model.character_rig == null:
 		return
-	ragdoll = Ragdoll.new()
-	ragdoll.name = "Ragdoll"
-	add_child(ragdoll)
-	var forward := Vector3(-sin(deg_to_rad(yaw_degrees)), 0.0, -cos(deg_to_rad(yaw_degrees)))
 	var hit_bone := -1
 	if hit_target.last_hitbox != null:
 		hit_bone = hitboxes.bone_of(hit_target.last_hitbox)
-	if ragdoll.build(
-		model.character_rig, _capsules, MapImporter.SOURCE2_VIEWER_SCALE,
-		velocity, forward, hit_target.last_hit_direction, hit_bone
-	) == 0:
-		ragdoll.queue_free()
+	var fell := 0
+	ragdoll = _ragdoll_ready
+	_ragdoll_ready = null
+	if ragdoll != null and ragdoll.prepared_for(model.character_rig):
+		fell = ragdoll.drop(velocity, hit_target.last_hit_direction, hit_bone)
+	else:
+		if ragdoll == null:
+			ragdoll = Ragdoll.new()
+			ragdoll.name = "Ragdoll"
+			add_child(ragdoll)
+		fell = ragdoll.build(
+			model.character_rig, _capsules, MapImporter.SOURCE2_VIEWER_SCALE,
+			velocity, _model_faces(), hit_target.last_hit_direction, hit_bone
+		)
+	if fell == 0:
+		ragdoll.let_go()
 		ragdoll = null
 		return
 	# The animation would pose the bones over the bodies' every frame.
 	model.set_animating(false)
 
 
-## Up off the floor: the ragdoll gone and the model animated again.
+## Up off the floor: the ragdoll parked for the next death and the model
+## animated again.
 func _get_up() -> void:
 	if ragdoll != null:
-		ragdoll.let_go()
+		ragdoll.park()
+		_ragdoll_ready = ragdoll
 		ragdoll = null
 		if model != null:
 			model.character_rig.reset_bone_poses()

@@ -21,7 +21,8 @@ extends Node
 ## is only drawn or heard of the players (the view and footsteps) runs
 ## on the engine's ticks as before, after the world's, so it reads the tick
 ## just run. Ragdoll physics advances in this world's shared native step;
-## only its skeleton drawing runs between ticks.
+## only its skeleton drawing runs between ticks. The body a player dies
+## into is made ahead of the death, on a frame (_process), one a frame.
 ##
 ## It also holds what a tick gives out, so each tick starts afresh: the nav
 ## mesh's path searches, and the game's shared state (game): its events,
@@ -82,6 +83,11 @@ var think_on_threads: bool = configured_thinking() == "threads"
 ## for as many as there are thinkers and workers.
 var think_tasks: int = THINK_THREADS
 
+## Whether some player's body to die into may be still to make: said by
+## whoever puts a body on (PlayerSim.wear_body) or joins, and looked into
+## on the next frames (_process).
+var bodies_to_make: bool = false
+
 var _path_searches_left: int = PATH_SEARCHES_PER_TICK
 ## Who is thinking on the worker threads, for the tick being run.
 var _thinkers: Array[PlayerSim] = []
@@ -128,6 +134,7 @@ func initialize_drop_physics(geometry_root: Node = null, backend: String = "") -
 		return false
 	drop_physics_backend = backend
 	_drop_physics_initialized = true
+	bodies_to_make = true
 	print("Game physics: Box3D (%d static shapes, %d triangles)" % [adapter.captured_shapes, adapter.captured_triangles])
 	return true
 
@@ -178,6 +185,7 @@ func add_player(player: PlayerSim) -> void:
 	player.userid = game.add_player(player, player.hit_target, player.inventory)
 	# What is in hand is drawn on this world's clock, from now.
 	player.draw_again()
+	bodies_to_make = true
 	if match_state != null:
 		match_state.add_player(player)
 
@@ -198,6 +206,29 @@ func _physics_process(_delta: float) -> void:
 	if not _drop_physics_initialized:
 		return
 	step()
+
+
+## What is only seen and can be made ahead, on the frames: the body each
+## player dies into (PlayerSim.prepare_to_fall), one a frame, 1.5 ms each,
+## so that no tick makes one. Nothing is looked at until someone says there
+## may be one to make.
+func _process(_delta: float) -> void:
+	if not bodies_to_make or not _drop_physics_initialized or drop_physics_backend != "box3d":
+		return
+	for player in players:
+		if is_instance_valid(player) and player.wants_body_made():
+			player.prepare_to_fall()
+			return
+	bodies_to_make = false
+
+
+## Every body still to make, now: for a check or a profiler that steps the
+## world itself and runs no frames.
+func make_bodies_now() -> void:
+	for player in players:
+		if is_instance_valid(player) and player.wants_body_made():
+			player.prepare_to_fall()
+	bodies_to_make = false
 
 
 ## One tick: everyone's command, then each run, in order, then the rules.
