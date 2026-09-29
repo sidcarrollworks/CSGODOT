@@ -15,10 +15,19 @@ const ALL_LAYERS := 0x7fffffff
 const CAST_CLEARANCE := 0.06
 ## How far past its motion a sweep looks, so a motion ending inside the
 ## contact band short of touching is reported (shape_cast_prepared).
-const CAST_REACH := 0.5
+const CAST_REACH := 0.75
 ## The most a hit backs off along its motion for its clearance; the rest
 ## of the clearance is a push along the plane (shape_cast_prepared).
-const CAST_BACK_OFF := 0.25
+const CAST_BACK_OFF := 0.5
+## A sweep is made with a shape this much smaller all round than the one
+## asked about, and kept as much further from what it meets, so it stops
+## where it did. Box3D counts a start within 0.246 of anything as an
+## overlap: a hull at rest 0.257 over a floor had a hundredth of a unit to
+## spare, a floor a fiftieth higher than the last put it in overlap, and a
+## hull with someone standing on its head, 0.257 over it, was held between
+## the two and went nowhere (tests/run_box3d_movement_checks.gd). With it a
+## hull is in overlap within 0.12 of what it is near, not 0.246.
+const CAST_INSET := 0.125
 
 var adapter: Node3D
 var native_world: Node3D
@@ -43,6 +52,9 @@ var _tick_open := false
 var _tick_synced: int = 0
 ## Whether several threads are asking at once (begin_reading).
 var reading := false
+## How much smaller all round the last native cast's shape was (CAST_INSET,
+## less for a shape too small for it, none for a convex one).
+var _inset := 0.0
 
 
 func initialize(owner: Node3D, geometry_root: Node) -> void:
@@ -603,8 +615,9 @@ func end_shape_cast(disabled: Array) -> void:
 ## A sweep, with the clearance the movement needs kept at its end: fraction
 ## is how far along the motion the shape may go and stay CAST_CLEARANCE
 ## clear of what it met, unsafe_fraction where the native cast stopped
-## (0.197 short of touching, 1 at most), and offset a push along the plane
-## the shape needs on top of that (Vector3.ZERO but for a grazing hit).
+## (its smaller shape 0.197 short of touching, 1 at most), and offset a
+## push along the plane the shape needs on top of that (Vector3.ZERO but
+## for a grazing hit).
 ##
 ## The native cast reports nothing when the shape only comes within its
 ## contact band by the end of the motion without touching, and the next
@@ -627,7 +640,9 @@ func shape_cast_prepared(query: PhysicsShapeQueryParameters3D) -> Dictionary:
 	if result.is_empty():
 		return {}
 	var normal: Vector3 = result.get("normal", Vector3.ZERO)
-	var clearance := maxf(query.margin, CAST_CLEARANCE)
+	# The smaller shape stops 0.197 short as the whole one would, so the
+	# whole one is that much nearer: its clearance makes it up.
+	var clearance := maxf(query.margin, CAST_CLEARANCE) + _inset
 	# Along the motion, to where the native cast stopped; zero for a start
 	# in overlap, which has no plane and goes nowhere.
 	var contact := float(hit["fraction"]) * (length + CAST_REACH) if length > 0.0 else 0.0
@@ -664,14 +679,21 @@ func _native_cast(query: PhysicsShapeQueryParameters3D, motion: Vector3) -> Dict
 	var from := at.origin * SCALE
 	var to := (at.origin + motion) * SCALE
 	var scale := at.basis.get_scale().abs()
+	_inset = 0.0
 	if query.shape is SphereShape3D:
-		return native_world.call(&"shape_cast_sphere", from, to, (query.shape as SphereShape3D).radius * scale.x * SCALE, mask, QUERY_LAYER)
+		var radius := (query.shape as SphereShape3D).radius * scale.x
+		_inset = minf(CAST_INSET, radius * 0.5)
+		return native_world.call(&"shape_cast_sphere", from, to, (radius - _inset) * SCALE, mask, QUERY_LAYER)
 	if query.shape is CapsuleShape3D:
 		var capsule := query.shape as CapsuleShape3D
 		var half_axis := maxf(0.0, capsule.height * 0.5 - capsule.radius)
-		return native_world.call(&"shape_cast_capsule", (at * (Vector3.UP * half_axis)) * SCALE, (at * (Vector3.DOWN * half_axis)) * SCALE, capsule.radius * scale.x * SCALE, motion * SCALE, mask, QUERY_LAYER)
+		var radius := capsule.radius * scale.x
+		_inset = minf(CAST_INSET, radius * 0.5)
+		return native_world.call(&"shape_cast_capsule", (at * (Vector3.UP * half_axis)) * SCALE, (at * (Vector3.DOWN * half_axis)) * SCALE, (radius - _inset) * SCALE, motion * SCALE, mask, QUERY_LAYER)
 	if query.shape is BoxShape3D and at.basis.orthonormalized().is_equal_approx(Basis.IDENTITY):
-		return native_world.call(&"shape_cast_box", from, to, (query.shape as BoxShape3D).size * scale * SCALE, mask, QUERY_LAYER)
+		var size := (query.shape as BoxShape3D).size * scale
+		_inset = minf(CAST_INSET, minf(size.x, minf(size.y, size.z)) * 0.25)
+		return native_world.call(&"shape_cast_box", from, to, (size - Vector3.ONE * (2.0 * _inset)) * SCALE, mask, QUERY_LAYER)
 	return native_world.call(&"shape_cast_convex", _points(query), motion * SCALE, mask, QUERY_LAYER)
 
 

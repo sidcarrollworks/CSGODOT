@@ -52,14 +52,17 @@ const AIR_HEIGHT_REACH := 64.0
 
 ## Native casts stop 0.005 m (0.197 inches) short of a surface, but treat
 ## starts within about 0.246 inches as overlap, with no collision normal.
-## This extra clearance keeps the next tangential/upward sweep usable.
+## This extra clearance keeps the next tangential/upward sweep usable, and
+## the bridge sweeps a hull an eighth of a unit smaller all round
+## (Box3DQueries.CAST_INSET), so a hull is in overlap within 0.12 of what
+## it is near and rests 0.257 from it.
 ## The half-inch recovery is only for those initial overlaps (for example,
 ## spawning exactly on the floor), never part of acceleration or sliding.
 const NATIVE_QUERY_MARGIN := 0.06
 const NATIVE_RECOVERY_REACH := 0.5
 const NATIVE_RECOVERY_PADDING := 0.01
-## The first correction tried along a direction that clears: the band's
-## depth (0.246 less 0.197) and the query margin, with a little over.
+## The first correction tried along a direction that clears: as deep as a
+## hull is in overlap from (0.12), a little over.
 const NATIVE_RECOVERY_STEP := 0.125
 
 ## The movement solver only needs how far a trace went and the plane it

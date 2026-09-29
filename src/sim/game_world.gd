@@ -235,6 +235,11 @@ func commands_for(running: Array[PlayerSim], dt: float) -> Array[UserCmd]:
 		_thinkers.clear()
 		return commands
 	queries.begin_reading()
+	# Where a node is in the world is worked out when it is first asked
+	# for after a move, and kept: asked for here, so that the threads only
+	# read what is kept.
+	for player in running:
+		player.force_update_transform()
 	_think_dt = dt
 	var task := WorkerThreadPool.add_group_task(_think_apart, _thinkers.size(), -1, true, "The bots thinking")
 	WorkerThreadPool.wait_for_group_task_completion(task)
