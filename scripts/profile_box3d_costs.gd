@@ -248,13 +248,17 @@ func _tick() -> void:
 	world.begin_tick()
 	_meter.leave()
 	var dt := SimClock.tick_seconds()
-	for player: PlayerSim in world.players.duplicate():
-		if player.is_inside_tree():
-			_meter.enter(CostMeter.Part.COMMAND)
-			var command := player.command_for(world.tick, dt)
-			_meter.leave()
+	var running := world.playing()
+	# The clocks are this thread's: the bots think in turn for them, which
+	# is the same commands (tests/run_bot_think_checks.gd).
+	world.think_on_threads = false
+	_meter.enter(CostMeter.Part.COMMAND)
+	var commands := world.commands_for(running, dt)
+	_meter.leave()
+	for i in running.size():
+		if running[i].is_inside_tree():
 			_meter.enter(CostMeter.Part.PLAYER)
-			_run_player(player, command, dt)
+			_run_player(running[i], commands[i], dt)
 			_meter.leave()
 	_meter.enter(CostMeter.Part.END)
 	world.end_tick()

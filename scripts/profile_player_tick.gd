@@ -7,7 +7,9 @@ extends SceneTree
 ## are taken out, and the clocks' own cost with them (measured first, on
 ## empty pairs). scripts/profile_box3d_costs.gd splits the same tick by the
 ## bridge's parts; this splits it by the movement's
-## (reference/research/box3d-walking-hitch-2026-09-28.md).
+## (reference/research/box3d-walking-hitch-2026-09-28.md). The clocks are
+## one thread's, so the bots think in turn here, which is the same
+## commands as on the worker threads.
 ##
 ##   godot --headless --path . --script scripts/profile_player_tick.gd -- 5 60
 ##
@@ -61,7 +63,8 @@ class TimedBot:
 			stack_children[depth - 1] += took
 			child_calls[stack_id[depth - 1]] += 1
 
-	static var COMMAND_FOR := id_of("command_for (the bot thinks)")
+	static var PREPARE := id_of("prepare_to_think (its shopping, its way found)")
+	static var COMMAND_FOR := id_of("think (the bot thinks)")
 	static var LOOK := id_of("  _look_for_target")
 	static var WAY := id_of("  _way_on")
 	static var RUN_COMMAND := id_of("run_command (and the body's animation parameters)")
@@ -82,7 +85,12 @@ class TimedBot:
 	static var TRACE := id_of("              _trace (each)")
 	static var CAST := id_of("                _cast_hull (the bridge and the native cast)")
 
-	func command_for(tick: int, dt: float) -> UserCmd:
+	func prepare_to_think(tick: int) -> void:
+		enter(PREPARE)
+		super(tick)
+		leave()
+
+	func think(tick: int, dt: float) -> UserCmd:
 		enter(COMMAND_FOR)
 		var cmd := super(tick, dt)
 		leave()
@@ -264,9 +272,13 @@ func _physics_process(_delta: float) -> bool:
 		return false
 	_world.begin_tick()
 	var dt := SimClock.tick_seconds()
-	for player: PlayerSim in _world.players.duplicate():
+	_world.think_on_threads = false
+	var running := _world.playing()
+	var commands := _world.commands_for(running, dt)
+	for i in running.size():
+		var player := running[i]
 		if player.is_inside_tree():
-			player.run_command(player.command_for(_world.tick, dt), dt)
+			player.run_command(commands[i], dt)
 			if Vector2(player.velocity.x, player.velocity.z).length() > 100.0:
 				_moving += 1
 	_world.end_tick()

@@ -147,7 +147,10 @@ func _physics_process(_delta: float) -> bool:
 		return false
 	_world.begin_tick()
 	var dt := SimClock.tick_seconds()
-	for player: PlayerSim in _world.players.duplicate():
+	var running := _world.playing()
+	var commands := _world.commands_for(running, dt)
+	for i in running.size():
+		var player := running[i]
 		if not player.is_inside_tree():
 			continue
 		var bot := player as TracedBot
@@ -156,7 +159,7 @@ func _physics_process(_delta: float) -> bool:
 		var traces_before: int = player.traces
 		var from: Vector3 = player.global_position
 		bot.trace_log.clear()
-		var cmd := player.command_for(_world.tick, dt)
+		var cmd := commands[i]
 		player.run_command(cmd, dt)
 		var traces := player.traces - traces_before
 		_most_traces = maxi(_most_traces, traces)
