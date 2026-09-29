@@ -43,12 +43,12 @@ Two faults, one after the other.
    nowhere, against a plane it could walk on. Four bumps of that, and
    Source's TryPlayerMove stops a move that made no way at all.
 2. **The step that should have saved it found no floor.** Box3D's cast
-   reports a hit only where the shape would touch within the sweep. The
-   hull went up 18.03 and on 3.83, over a floor 0.1 higher than where it
-   had stood 0.257 clear, so 18.19 over it; swept down 18.03 it would end
-   0.16 over the floor, inside the band and touching nothing, and the cast
-   reported nothing. With no landing the step is refused, as it is over a
-   drop, and the flat move's zero stands.
+   only looks at a triangle the swept hull reaches (below, "What Box3D's
+   sweep looks at"). The hull went up 18.03 and on 3.83, over a floor 0.1
+   higher than where it had stood 0.257 clear, so 18.19 over it; swept down
+   18.03 it would end 0.16 over the floor, inside the band and short of it,
+   and the cast reported nothing. With no landing the step is refused, as
+   it is over a drop, and the flat move's zero stands.
 
 The second fault is also most of what made a tick dear: a move that ends
 inside the band without a hit leaves the hull there, and the next trace
@@ -198,6 +198,88 @@ posed and the hitboxes moved to them 0.51, the bodies' own step 0.37 to
 0.40, the HUD 0.18, the view's two animation trees 0.11. The tick there,
 everyone standing, 1.62 ms: a standing bot's `run_command` is 107 us.
 
+## What Box3D's sweep looks at
+
+Measured through the binding (`shape_cast_box`), the hull a given height
+over a floor and swept down, up, along and nearly along it; the scripts
+were scratch ones.
+
+- **Over a box**, and over triangles it is swept at steeply enough: a
+  start closer than 0.246 units (between 0.245 and 0.25) is an overlap, a
+  hit at the start with no normal; from further the sweep stops 0.197 short
+  of touching.
+- **Over triangles, only those the swept hull's bounds reach are looked at
+  at all**, and the bounds are the hull's own, with nothing added for the
+  0.197 or the 0.246. A level floor is a plane with no height, so a sweep
+  that ends over it, by however little, does not see it: the hull swept
+  four units along and 0.1 down from 0.15 over a level floor ends 0.05 over
+  it and is told nothing; swept level, or up, it is told nothing from any
+  height, 0.05 included. A floor tilted three degrees has height, and the
+  same sweeps over it are answered as over a box.
+
+So a level move never meets a level floor, which costs nothing; a move onto
+a level floor a fraction higher than the last ends a hair over it, or in it,
+untold; and a sweep down that stops short of a level floor finds none. The
+bridge's half unit past a sweep's end (`CAST_REACH`) covers the last.
+
+## The contained changes
+
+The same day, on top of the above (`perf/tick-contained`), none of which
+changes what a move does:
+
+- **The floor found once a walking tick.** Source's StayOnGround sweeps up
+  two units, down twenty, and its ground check down two more: three casts
+  for the floor the hull stands on. Over native collision it is one: down
+  to a step's height under the hull from a unit over it, not swept up to
+  (`STAY_ON_GROUND_LIFT`), so that it starts clear of a floor the move
+  ended a hair over or in; from where the hull stands, getting clear first,
+  only where something is over its head. The ground check takes the floor
+  it found, and none is looked for where the step's own sweep down has just
+  put the hull on one. The hull is put on the floor whatever the distance:
+  under Source's half unit it used to be left, and the ground check closed
+  the gap. On Godot's own physics nothing changes.
+- **A trace asks the bridge for the cast and nothing else** inside the
+  body's own tick: what every sweep shares is set once, the others are
+  synchronized once, and the physics the body is in is found once and kept
+  while both stand.
+- **The hulls are looked over once a tick** (`Box3DQueries.begin_tick`,
+  from `GameWorld`), not once a player. What moves a hull in a tick
+  publishes it: a player's tick and a spawn did, and a death and a revival
+  now do, so nobody walks into the hull of someone killed earlier in the
+  tick. Outside a tick every query looks, as the checks move hulls by hand.
+- **Box3D is not stepped while nothing in it is awake**
+  (`get_awake_body_count`) and no ragdoll lies: a ragdoll writes its bodies
+  before every step for as long as it lies, so with one in the world it is
+  stepped as ever. Left: a ragdoll at rest letting go of the step.
+
+| | The hitch's fix | With these |
+|---|---:|---:|
+| Seeded ten-player tick, mean, the median of five alternated | 3.12 ms (3.05 to 3.27) | 2.31 ms (2.30 to 2.35) |
+| Its 95th | 4.06 ms | 3.10 ms |
+| Its worst | 6.17 ms (5.78 to 6.91) | 4.99 ms (4.87 to 5.55) |
+| Hull traces a tick, and the most | 51.97, 81 | 30.16, 60 |
+| A walking bot's tick | 243 us | 192 us |
+| Its hull casts | 5.00 | 2.77 |
+| The walk's sweeps that start in overlap, of the floor's | 1,678 of 16,129 | 53 of 12,702 |
+
+From main the seeded tick has gone from 3.68 ms to 2.31. Its split now
+(instrumented, 2.64 ms; the instrument listens to the native step, so that
+is stepped every tick for it): commands run outside the queries 0.85 ms,
+bots thinking 0.45, native casts 0.32, rays 0.23, animation parameters
+0.20, the end of the tick 0.21, the native step 0.16, the sweep's wrapper
+0.15, proxies synchronized 0.06. A walking bot: `simulate`'s own 28 us,
+the animation parameters 24, its way 22, the script round its two traces
+11, the bridge and the native cast 43 for 2.8 casts.
+
+Checks: a level floor of triangles 0.05, 0.2 and 0.5 higher walked onto at
+a run in two traces a tick (four on the code before, seven for the last);
+the movement course's budgets, two traces a tick running in the open and
+four up a stair where they were four and seven; a tick's hulls looked over
+once, a death's published; the native world left alone with nothing awake
+and stepped again when a gun is moved. The whole suite with the extracted
+assets: 4,316 checks in 56 files, all
+passed.
+
 ## What is left of the 6 ms
 
 The goal is every frame under 6 ms at 4K with nine bots. Sid's CS2 on the
@@ -211,23 +293,20 @@ own work on one thread: those frames' 99th was 10.3 to 10.5 ms, the others'
 5.6. Drawn frames were not measured for this page
 (`scripts/profile_combat.gd` does, on Sid's machine).
 
-What keeps Source's rules and results as they are, in the order of what it
-is worth with ten players:
+What keeps Source's rules and results as they are and is still to do, in
+the order of what it is worth with ten players ("The contained changes"
+has what is done):
 
 | What | Where the time is now | Worth |
 |---|---|---|
-| The floor found once a walking tick: stay on ground sweeps down from where the hull is (its sweep up is for a hull sunk in the floor, which the clearance rules out), and the ground check takes its answer rather than sweeping again | 74 us a walking bot, three casts | 0.4 to 0.5 ms a tick |
-| The trace's script: the query's shape, margin, mask and exclusion set once a tick; nothing asked of the bridge inside a scope but the cast | 43 us a walking bot | 0.2 ms |
-| Bots' sight every fourth tick, staggered by bot (performance.md, "Next", 7), and their way cheaper | 0.45 ms in the seeded tick, 21 us a bot for its way | 0.3 ms |
-| Box3D not stepped while nothing in it is awake | 0.15 ms a tick, four steps | 0.15 ms |
-| The other hulls compared once a tick, not once a player | 24 us a bot in `simulate`'s own | 0.1 ms |
+| The bots thinking on worker threads: everyone's command first, from the world as the last tick left it, then everyone run in turn | 0.45 ms in the seeded tick, 33 us a walking bot | 0.3 to 0.4 ms |
+| A ragdoll at rest letting go of the native step | 0.16 ms a tick once anyone has died | 0.15 ms |
 | The sweep's wrapper without a dictionary's copy and three `get_meta` | 3 us a cast | 0.1 ms |
 | Hitboxes moved to their bones when a round asks, not every frame | 0.51 ms a frame with the skeletons | 0.2 to 0.3 ms a frame |
 | The HUD set only when what it shows changes | 0.18 ms a frame | 0.1 ms a frame |
 
-About 1.2 ms of the tick and 0.4 ms of every frame. With them a tick of ten
-walking is about 2 ms, which shortens the frames that run one to perhaps
-8.5 ms at the 99th: CS2's with bots, not 6.
+With the tick at 2.3 ms the frames that run one should be about 8.5 ms at
+the 99th, which is CS2's with bots, not 6; not measured drawn yet.
 
 What reaches 6, each a decision:
 
