@@ -8,7 +8,7 @@ extends RefCounted
 ## figures are guesses until measured (G5).
 
 var started_usec: int = 0
-var seed: int = 0
+var burst_seed: int = 0
 ## The gun's time between rounds, in seconds.
 var cycle_time: float = 0.1
 
@@ -19,7 +19,7 @@ var _bursts: int = 0
 
 func _init(at_usec: int = 0, p_seed: int = 0, p_cycle_time: float = 0.1) -> void:
 	started_usec = at_usec
-	seed = p_seed
+	burst_seed = p_seed
 	cycle_time = maxf(p_cycle_time, 0.03)
 	_next_usec = at_usec
 	_start_burst()
@@ -39,7 +39,7 @@ func due(now_usec: int) -> PackedInt64Array:
 		if _left_in_burst > 0:
 			_next_usec += int(cycle_time * 1_000_000.0)
 		else:
-			var roll := float(hash([seed, _bursts, "gap"]) % 1000) / 1000.0
+			var roll := float(hash([burst_seed, _bursts, "gap"]) % 1000) / 1000.0
 			_next_usec += int(lerpf(GrenadeRules.DECOY_GAP_LEAST, GrenadeRules.DECOY_GAP_MOST, roll) * 1_000_000.0)
 			_start_burst()
 	return out
@@ -47,4 +47,4 @@ func due(now_usec: int) -> PackedInt64Array:
 
 func _start_burst() -> void:
 	_bursts += 1
-	_left_in_burst = 1 + hash([seed, _bursts]) % GrenadeRules.DECOY_BURST_MOST
+	_left_in_burst = 1 + hash([burst_seed, _bursts]) % GrenadeRules.DECOY_BURST_MOST

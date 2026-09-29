@@ -59,7 +59,7 @@ Doc: `tutorials/math/vector_math.rst`, `tutorials/math/vectors_advanced.rst`, `c
   - `cross(with)` is right-handed and returns zero for parallel vectors (a cheap parallel test).
   - `angle_to(to)` is unsigned. `signed_angle_to(to, axis)` is signed.
   - `limit_length(length = 1.0)` clamps the length (a speed cap). `move_toward(to, delta)` steps by a fixed amount without overshooting (friction or accel-style approach).
-  - `slerp(to, weight)` interpolates the direction **and** the length. It behaves like `lerp` when either length is zero.
+  - `slerp(to, weight)` interpolates the direction **and** the length. It behaves like `lerp` when either length is zero. Between two directions a fraction of a degree apart (one floor triangle's normal and the next's) it fails: its axis is their cross product, too small in single precision to make a unit of, and it prints "The axis Vector3 must be normalized" (`Basis.set_axis_angle`). Ease such directions with `lerp(to, weight).normalized()`, as `FootPlant.eased_normal` does (found 2026-09-28, an error a frame for every foot on such ground).
   - `snapped(step)` / `snappedf(step)` round to a grid. `posmod`/`posmodv` wrap positively.
   - `distance_squared_to` and `length_squared` are cheaper. Use them for comparisons.
 - Inverse-multiply operators assume orthonormal bases:

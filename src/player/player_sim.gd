@@ -96,6 +96,9 @@ var rounds_fired: int = 0
 ## Health and armour, and what a round can hit.
 var hit_target: HitTarget
 var alive: bool = true
+## The command thought of on a worker thread (think_apart), until the world
+## takes it (thought).
+var _thought: UserCmd
 ## How the player was moving when they died, which what they drop keeps
 ## (ItemDrops): velocity itself is zero from the death on.
 var death_velocity: Vector3 = Vector3.ZERO
@@ -265,10 +268,49 @@ func _exit_tree() -> void:
 ## drives the player decides it (PlayerController your keys, Bot its
 ## choices). On its own a player stands where it is, looking where it looked.
 func command_for(tick: int, _dt: float) -> UserCmd:
+	return standing(tick)
+
+
+## The command of someone who does nothing: standing where they are,
+## looking where they looked.
+func standing(tick: int) -> UserCmd:
 	var cmd := UserCmd.new()
 	cmd.tick = tick
 	cmd.yaw_degrees = yaw_degrees
 	cmd.pitch_degrees = pitch_degrees
+	return cmd
+
+
+## Whether the world may have this player think on a worker thread, beside
+## the others who can (GameWorld.commands_for): a bot can, whose thinking
+## is prepare_to_think and think. Whoever reads the keyboard cannot.
+func thinks_apart() -> bool:
+	return false
+
+
+## What of its thinking touches what the players share, done in its turn on
+## the thread that runs the tick, before anyone thinks.
+func prepare_to_think(_tick: int) -> void:
+	pass
+
+
+## Its command, thought of with nothing shared written: prepare_to_think
+## has been called for the tick.
+func think(tick: int, dt: float) -> UserCmd:
+	return command_for(tick, dt)
+
+
+## think, on a worker thread: the command is kept for thought() to hand
+## over, and what it counted with it.
+func think_apart(tick: int, dt: float) -> void:
+	_thought = think(tick, dt)
+
+
+## The command think_apart thought of, handed over on the thread that runs
+## the tick.
+func thought() -> UserCmd:
+	var cmd := _thought
+	_thought = null
 	return cmd
 
 
@@ -915,8 +957,11 @@ func _forget_hits() -> void:
 func _on_hit_target_died() -> void:
 	alive = false
 	hit_target.set_active(false)
-	# Nobody walks into a body that is not there.
+	# Nobody walks into a body that is not there, from this moment: whoever
+	# moves after it in this tick meets nothing (the hulls are looked over
+	# once a tick, so what changes one in a tick says so).
 	collision_layer = 0
+	PhysicsQueries.sync_object(self, false)
 	_died_at_usec = SimClock.now_usec()
 	_respawn_at_usec = _died_at_usec + int(respawn_seconds * 1_000_000.0)
 	var zone: StringName = hit_target.last_hitbox.zone if hit_target.last_hitbox != null else &"chest"
@@ -1022,6 +1067,7 @@ func _revive() -> void:
 	hit_target.reset()
 	hit_target.set_active(true)
 	collision_layer = PLAYER_LAYER
+	PhysicsQueries.sync_object(self, false)
 	observing = null
 	observing_chase = false
 

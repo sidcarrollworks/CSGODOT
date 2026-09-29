@@ -48,9 +48,10 @@ the buttons held, the move keys, the look angles, and each press or release
 inside the tick with the fraction of the tick it happened at. Your keys
 become one command a tick (`PlayerInput.build_command`); a bot's brain
 writes its own. One `GameWorld` (`src/sim/game_world.gd`) runs the game,
-as a server does: every tick it asks each player for their command, runs
-them in the order they joined (on dust2 you, then the bots), then the
-match; nothing else runs itself. The simulation never reads the keys or the
+as a server does: every tick it asks everyone for their command, the bots
+thinking theirs out on worker threads, all at once, then runs them in the
+order they joined (on dust2 you, then the bots), then the match; nothing
+else runs itself. The simulation never reads the keys or the
 wall clock: its time is the world's tick number (`src/sim/sim_clock.gd`),
 so the same commands give the same game however fast they are run, which
 `tests/run_sim_checks.gd` holds it to. What you see and hear, the camera,

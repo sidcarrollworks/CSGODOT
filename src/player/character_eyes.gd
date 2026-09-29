@@ -123,7 +123,7 @@ func update() -> void:
 
 ## An eye in the world: its centre, forward and up, and world units to a
 ## Source unit there.
-func _eye(world: Transform3D, bone: int, rest: Transform3D, target: Vector3) -> Array:
+func _eye(world: Transform3D, bone: int, rest: Transform3D, _toward: Vector3) -> Array:
 	var pose := _rig.get_bone_global_pose(bone)
 	var turn := (pose.basis.orthonormalized() * rest.basis.orthonormalized().inverse())
 	var placed := world.basis * pose.basis

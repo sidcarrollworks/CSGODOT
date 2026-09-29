@@ -181,9 +181,9 @@ func colour_of(player: PlayerSim) -> int:
 ## five once all are).
 func _draw_colour(player: PlayerSim) -> void:
 	var taken := {}
-	for other in players:
-		if other != player and other.team == player.team and _colours.has(other):
-			taken[_colours[other]] = true
+	for teammate in players:
+		if teammate != player and teammate.team == player.team and _colours.has(teammate):
+			taken[_colours[teammate]] = true
 	var free: Array[int] = []
 	for colour in PLAYER_COLOURS:
 		if not taken.has(colour):

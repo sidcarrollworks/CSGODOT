@@ -27,7 +27,9 @@ extends SceneTree
 ## rest; headless nobody sees them, so they step only in frames without a
 ## tick, fewer times than drawn.
 ## The world's tick it runs in the world's own order and parts (begin_tick,
-## each player's command_for and run_command, end_tick), timing each. A node
+## everyone's command, the bots' thought of on worker threads unless
+## --think main says otherwise, each player's run_command, end_tick),
+## timing each. A node
 ## after all the tree's physics callbacks marks where they end; the step from
 ## there to the next tick in the same frame is an engine-remainder estimate,
 ## not a direct physics-server timer. Inclusive callback wall times, frame
@@ -97,6 +99,18 @@ func _initialize() -> void:
 		elif argument.begins_with("--physics=") or argument.begins_with("--drop-physics="):
 			if argument.get_slice("=", 1) not in ["box3d", "legacy"]:
 				printerr("--physics requires box3d or legacy")
+				quit(2)
+				return
+		elif argument == "--think":
+			# The world reads it (GameWorld.configured_thinking).
+			index += 1
+			if index >= args.size() or args[index] not in ["threads", "main"]:
+				printerr("--think requires threads or main")
+				quit(2)
+				return
+		elif argument.begins_with("--think="):
+			if argument.get_slice("=", 1) not in ["threads", "main"]:
+				printerr("--think requires threads or main")
 				quit(2)
 				return
 		elif argument == "--immortal":
@@ -269,22 +283,25 @@ func _run_world(world: GameWorld, _delta: float) -> void:
 	_add("tick: begin_tick (clock, budgets, native query sync)", Time.get_ticks_usec() - began)
 	# GameWorld.step uses the fixed simulation dt, never the engine delta.
 	var delta := SimClock.tick_seconds()
-	for player: PlayerSim in world.players.duplicate():
+	var running := world.playing()
+	var asked := Time.get_ticks_usec()
+	var commands := world.commands_for(running, delta)
+	_add("tick: everyone's commands (the bots thinking %s)" % ("on worker threads" if world.think_on_threads else "in turn"),
+		Time.get_ticks_usec() - asked)
+	for i in running.size():
+		var player := running[i]
 		if not player.is_inside_tree():
 			continue
 		var bot := player as Bot
 		if bot != null and bot.alive:
 			_count("bots alive, over the ticks")
-		var a := Time.get_ticks_usec()
-		var cmd := player.command_for(world.tick, delta)
 		var b := Time.get_ticks_usec()
-		player.run_command(cmd, delta)
+		player.run_command(commands[i], delta)
 		var c := Time.get_ticks_usec()
 		if bot != null:
-			_add("tick: bots thinking", b - a)
 			_add("tick: bots' run_command", c - b)
 		else:
-			_add("tick: your command and run_command", c - a)
+			_add("tick: your run_command", c - b)
 	var d := Time.get_ticks_usec()
 	world.end_tick()
 	_add("tick: end_tick (match, entities, native physics, systems, events)", Time.get_ticks_usec() - d)

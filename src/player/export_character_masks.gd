@@ -76,6 +76,7 @@ static func split_iris(png_path: String) -> bool:
 	image.convert(Image.FORMAT_RGBA8)
 	var rgba := image.get_data()
 	var alpha := PackedByteArray()
+	@warning_ignore("integer_division")
 	alpha.resize(rgba.size() / 4)
 	for i in alpha.size():
 		alpha[i] = rgba[i * 4 + 3]

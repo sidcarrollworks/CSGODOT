@@ -159,18 +159,18 @@ func show_values(side: String, ring_colour: Color, hp: int, armor: int, has_helm
 
 func _advance(delta: float) -> bool:
 	var running := false
-	for name: StringName in [&"_damage", &"_jitter", &"_fired", &"_change", &"_reload"]:
-		var t: float = get(name)
+	for timer: StringName in [&"_damage", &"_jitter", &"_fired", &"_change", &"_reload"]:
+		var t: float = get(timer)
 		if t < 0.0:
 			continue
 		t += delta
 		var length: float = {&"_damage": DAMAGE_SECONDS, &"_jitter": JITTER_SECONDS, &"_fired": FIRED_SECONDS,
-			&"_change": CHANGE_SECONDS, &"_reload": RELOAD_SECONDS}[name]
+			&"_change": CHANGE_SECONDS, &"_reload": RELOAD_SECONDS}[timer]
 		if t >= length:
 			t = -1.0
 		else:
 			running = true
-		set(name, t)
+		set(timer, t)
 	return running
 
 
@@ -233,9 +233,9 @@ func _draw() -> void:
 	var ammo_left := SIDE + RING + INSET
 	var pop := Transform2D.IDENTITY
 	if _change >= 0.0:
-		var scale := lerpf(0.75, 1.0, _ease_in_out(_change / CHANGE_SECONDS))
+		var grown := lerpf(0.75, 1.0, _ease_in_out(_change / CHANGE_SECONDS))
 		var pivot := Vector2((ammo_left + RESERVE_ICON.end.x) * 0.5, centre_y)
-		pop = Transform2D(0.0, Vector2.ONE * scale, 0.0, pivot * (1.0 - scale))
+		pop = Transform2D(0.0, Vector2.ONE * grown, 0.0, pivot * (1.0 - grown))
 	_draw_number(str(clip), Vector2(ammo_left + TEXT_WIDTH * 0.5, centre_y),
 		_jolt(_fired, FIRED_SECONDS, Vector2(-3, -4), Vector2(0, -2), Vector2(3, 5)), colour, pop)
 	draw_set_transform_matrix(pop)
@@ -352,8 +352,8 @@ func _draw_armour(centre: Vector2, colour: Color) -> void:
 	var icon_centre := centre + Vector2(0, 5.0 + 3.0 - (3.0 if helmet else 0.0))
 	var width := 46.0 if helmet else 42.0
 	if texture != null:
-		var size := texture.get_size()
-		var drawn := Vector2(width, width * size.y / maxf(size.x, 1.0))
+		var texture_size := texture.get_size()
+		var drawn := Vector2(width, width * texture_size.y / maxf(texture_size.x, 1.0))
 		draw_texture_rect(texture, Rect2(icon_centre - drawn * 0.5, drawn), false, colour)
 	else:
 		var box := Rect2(icon_centre - Vector2(13, 14), Vector2(26, 28))
@@ -390,15 +390,15 @@ static func _jolt(t: float, length: float, first: Vector2, second: Vector2, thir
 		return Vector3(0, 0, 1)
 	var f := clampf(t / length, 0.0, 1.0)
 	var at: Vector2
-	var scale := 1.0
+	var grown := 1.0
 	if f < 0.25:
 		at = first.lerp(second, f / 0.25)
-		scale = lerpf(1.15, 1.0, f / 0.25)
+		grown = lerpf(1.15, 1.0, f / 0.25)
 	elif f < 0.5:
 		at = second.lerp(third, (f - 0.25) / 0.25)
 	else:
 		at = third.lerp(Vector2.ZERO, (f - 0.5) / 0.5)
-	return Vector3(at.x, at.y, scale)
+	return Vector3(at.x, at.y, grown)
 
 
 static func _ease_in(t: float) -> float:
