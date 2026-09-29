@@ -25,7 +25,7 @@ extends RefCounted
 
 ## The grid: cube (0, 0, 0) sits on the floor under where the smoke landed.
 var anchor := Vector3.ZERO
-var seed: int = 0
+var shape_seed: int = 0
 ## Every cube filled so far, by grid position, to the order it was filled
 ## in (the view grows the cloud in that order).
 var filled := {}
@@ -56,7 +56,7 @@ const NEIGHBOURS: Array[Vector3i] = [
 ## sphere's radius off the floor).
 func _init(rest_position: Vector3 = Vector3.ZERO, p_seed: int = 0) -> void:
 	anchor = rest_position + Vector3.UP * (GrenadeRules.SMOKE_VOXEL * 0.5 - GrenadeRules.RADIUS)
-	seed = p_seed
+	shape_seed = p_seed
 	_push(0.0, Vector3i.ZERO, 0.0)
 	_best[Vector3i.ZERO] = 0.0
 
@@ -224,7 +224,7 @@ func _priority(key: Vector3i, path: float) -> float:
 	var offset := Vector3(key) * GrenadeRules.SMOKE_VOXEL
 	offset.y *= GrenadeRules.SMOKE_UP_COST if offset.y > 0.0 else GrenadeRules.SMOKE_DOWN_COST
 	var straight := offset.length()
-	var nudge := float(hash([seed, key]) % 1000) / 1000.0
+	var nudge := float(hash([shape_seed, key]) % 1000) / 1000.0
 	return (straight + DETOUR_SHARE * maxf(path - straight * 1.75, 0.0)) * (0.95 + 0.1 * nudge)
 
 

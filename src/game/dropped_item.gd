@@ -411,8 +411,8 @@ func _query(hull: ItemPhysics.Hull) -> PhysicsShapeQueryParameters3D:
 static func _surface_name(rest: Dictionary) -> String:
 	var collider := instance_from_id(int(rest.get("collider_id", 0))) if not rest.is_empty() else null
 	if collider is CollisionObject3D and rest.has("shape"):
-		var owner_id: int = (collider as CollisionObject3D).shape_find_owner(int(rest["shape"]))
-		var shape_node := (collider as CollisionObject3D).shape_owner_get_owner(owner_id)
+		var shape_owner: int = (collider as CollisionObject3D).shape_find_owner(int(rest["shape"]))
+		var shape_node := (collider as CollisionObject3D).shape_owner_get_owner(shape_owner)
 		if shape_node != null:
 			return Penetration.surface_for(shape_node.name)
 	return SurfaceProperties.ROOT

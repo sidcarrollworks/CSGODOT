@@ -6,7 +6,10 @@ extends "res://tests/check_suite.gd"
 ## in CS2, and no bot's average speed over a second stays under the stuck
 ## speed for more than three seconds (reference/playtest-2026-09-25.md,
 ## issue 6; tests/run_bot_move_checks.gd checks the same on hand-built
-## corridors, without the map).
+## corridors, without the map). Nor is any of them stopped dead in a tick
+## with nothing in its way: at a run on the ground one tick, its move still
+## held, and at no speed the next (issue 26, dust2's floors rising a few
+## degrees beside the way walked).
 ##
 ##   godot --headless --path . --script tests/run_dust2_bot_checks.gd
 ##
@@ -18,6 +21,9 @@ const TEAM := "T"
 ## A minute of game, and the most a bot may stand still in it.
 const SECONDS := 60.0
 const LONGEST_STALL_SECONDS := 3.0
+## A run, and a stop: the speeds a tick apart that make a hitch.
+const HITCH_FROM := 100.0
+const HITCH_TO := 1.0
 
 var _world: GameWorld
 var _bots: Array[Bot] = []
@@ -81,14 +87,24 @@ func _run() -> void:
 		longest.append(0)
 		where.append(Vector3.ZERO)
 	var jumps := 0
+	var hitches := 0
+	var hitch_at := Vector3.ZERO
 	for t in SimClock.ticks_in(SECONDS):
 		var in_air_before: Array[bool] = []
+		var speed_before: Array[float] = []
 		for bot in _bots:
 			in_air_before.append(not bot.on_ground)
+			speed_before.append(Vector2(bot.velocity.x, bot.velocity.z).length())
 		await physics_frame
 		for i in _bots.size():
 			var bot := _bots[i]
 			speeds[i][t % window] = Vector2(bot.velocity.x, bot.velocity.z).length()
+			if (
+				speed_before[i] >= HITCH_FROM and speeds[i][t % window] < HITCH_TO
+				and not in_air_before[i] and bot.wish_speed > 0.0 and not bot.frozen and not bot.held_still
+			):
+				hitches += 1
+				hitch_at = bot.global_position
 			var total := 0.0
 			for speed in speeds[i]:
 				total += speed
@@ -108,6 +124,11 @@ func _run() -> void:
 		worst <= longest_allowed,
 		"five Ts walking dust2's site routes for a minute, solid to each other, never stand still for more than %.0f s (the longest %.1f s, %s at %s; %d jumps between them)"
 			% [LONGEST_STALL_SECONDS, worst * SimClock.tick_seconds(), _bots[worst_bot].name, where[worst_bot].round(), jumps]
+	)
+	_check(
+		hitches == 0,
+		"and none of them is stopped dead in a tick while it runs (%d times%s)"
+			% [hitches, "" if hitches == 0 else ", the last at %s" % hitch_at.round()]
 	)
 	Engine.time_scale = 1.0
 	loader.queue_free()

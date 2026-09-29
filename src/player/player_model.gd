@@ -272,15 +272,15 @@ func setup(team: String, weapon_model: String, weapon_set: String = "", holds: b
 	if holds:
 		for variation: String in HELD_VARIATIONS:
 			var added := add_clips(list_clips(WORLD_DIR.path_join(HELD_VARIATIONS[variation]), PackedStringArray(LOCOMOTION_CLIPS)), variation, variation + "_")
-			for clip_name in added:
-				if not is_air_clip(clip_name):
-					animation_player.get_animation(clip_name).loop_mode = Animation.LOOP_LINEAR
+			for added_clip in added:
+				if not is_air_clip(added_clip):
+					animation_player.get_animation(added_clip).loop_mode = Animation.LOOP_LINEAR
 	var weapon_clips := PackedStringArray() if holds else _add_set(weapon_set, WEAPON)
 	# CS2 plays the take-off once and poses the landing clips by height;
 	# neither loops. (load_clips loops every clip but the one-shots.)
-	for clip_name in animation_player.get_animation_list():
-		if is_air_clip(clip_name):
-			animation_player.get_animation(clip_name).loop_mode = Animation.LOOP_NONE
+	for listed_clip in animation_player.get_animation_list():
+		if is_air_clip(listed_clip):
+			animation_player.get_animation(listed_clip).loop_mode = Animation.LOOP_NONE
 
 	# The feet on the ground under them, before the twist bones follow the
 	# legs (FootPlant; modifiers run in child order).
@@ -342,10 +342,10 @@ func _add_set(weapon_set: String, prefix: String) -> PackedStringArray:
 	var library := animation_player.get_animation_library(&"")
 	var clips := prepared_set(weapon_set)
 	for action: String in clips:
-		var clip_name := StringName(prefix + action)
-		if not library.has_animation(clip_name):
-			library.add_animation(clip_name, clips[action])
-		names.append(clip_name)
+		var full_name := StringName(prefix + action)
+		if not library.has_animation(full_name):
+			library.add_animation(full_name, clips[action])
+		names.append(full_name)
 	return names
 
 
@@ -600,10 +600,10 @@ static func _centre_of(space_name: StringName) -> StringName:
 ## Whether a clip is one of the air's, which CS2 never loops: the take-off
 ## (jump_*) and the landing (inair_*), by its short name, a held
 ## variation's (pistol_inair_n) included.
-static func is_air_clip(clip_name: String) -> bool:
+static func is_air_clip(clip: String) -> bool:
 	for variation: String in HELD_VARIATIONS:
-		clip_name = clip_name.trim_prefix(variation + "_")
-	return clip_name.begins_with("inair_") or clip_name.begins_with("jump_")
+		clip = clip.trim_prefix(variation + "_")
+	return clip.begins_with("inair_") or clip.begins_with("jump_")
 
 
 ## Draws the body alpha of the way from where its player stood and faced a
@@ -959,7 +959,7 @@ func state() -> StringName:
 ## nothing.
 func pose_now() -> void:
 	if animation_tree != null:
-		for step in 3:
+		for i in 3:
 			animation_tree.advance(0.0)
 	elif animation_player != null:
 		animation_player.advance(0.0)
@@ -1214,9 +1214,9 @@ static func add_weapon_layers(tree: AnimationNodeBlendTree, upper_body: Array[No
 	tree.add_node(&"hold_pose", _blend2())
 	tree.connect_node(&"hold_pose", 0, &"hold_stand")
 	tree.connect_node(&"hold_pose", 1, &"hold_crouch")
-	var hold := AnimationNodeAdd2.new()
-	_mask(hold, upper_body)
-	tree.add_node(&"hold", hold)
+	var hold_add := AnimationNodeAdd2.new()
+	_mask(hold_add, upper_body)
+	tree.add_node(&"hold", hold_add)
 	tree.connect_node(&"hold", 0, moving)
 	tree.connect_node(&"hold", 1, &"hold_pose")
 	var gun_action := AnimationNodeOneShot.new()

@@ -166,8 +166,8 @@ func _size_agent() -> void:
 	if agent == null:
 		return
 	var rect := _agent_rect()
-	var scale := get_viewport().get_stretch_transform().get_scale()
-	agent.size = Vector2i(maxi(roundi(rect.size.x * scale.x), 16), maxi(roundi(rect.size.y * scale.y), 16))
+	var stretch := get_viewport().get_stretch_transform().get_scale()
+	agent.size = Vector2i(maxi(roundi(rect.size.x * stretch.x), 16), maxi(roundi(rect.size.y * stretch.y), 16))
 	agent.frame(rect, size)
 
 
@@ -216,7 +216,10 @@ func close() -> void:
 
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed(&"buy_menu"):
-		close() if visible else open()
+		if visible:
+			close()
+		else:
+			open()
 		get_viewport().set_input_as_handled()
 		return
 	if not visible:
@@ -331,12 +334,12 @@ func _layout(side: String) -> void:
 	var body := _body()
 	for column in COLUMN_ORDER.size():
 		var span := _column(column, body)
-		for place in Loadout.PLACES:
-			var item := Loadout.item_at(side, COLUMN_ORDER[column], place)
+		for row in Loadout.PLACES:
+			var item := Loadout.item_at(side, COLUMN_ORDER[column], row)
 			if item.is_empty() or not ItemRegistry.has(item):
 				continue
 			_cards[item] = Rect2(span.position.x + COLUMN_PADDING,
-				body.position.y + TITLE_HEIGHT + TITLE_GAP + place * (CARD_HEIGHT + CARD_GAP),
+				body.position.y + TITLE_HEIGHT + TITLE_GAP + row * (CARD_HEIGHT + CARD_GAP),
 				span.size.x - 2.0 * COLUMN_PADDING, CARD_HEIGHT)
 
 
@@ -474,8 +477,8 @@ func _draw_panel(box: Rect2) -> void:
 	draw_rect(box, PANEL)
 	var dots := HudStyle.icon("backgrounds/bluedots_large_png")
 	if dots != null:
-		var scale := dots.get_size().x / DOTS_SIZE
-		draw_texture_rect_region(dots, box, Rect2(Vector2.ZERO, box.size * scale), Color(1, 1, 1, DOTS_OPACITY))
+		var dot_scale := dots.get_size().x / DOTS_SIZE
+		draw_texture_rect_region(dots, box, Rect2(Vector2.ZERO, box.size * dot_scale), Color(1, 1, 1, DOTS_OPACITY))
 
 
 func _draw_card(item: String, card: Rect2, colour: Color, body: Rect2) -> void:
@@ -531,15 +534,15 @@ func _draw_card(item: String, card: Rect2, colour: Color, body: Rect2) -> void:
 ## it is wider than width: .buywheel-item__name's 70 %, which is of the whole
 ## card, padding and all (Sid's screenshot fits "Decoy Grenade", 92 px, on a
 ## line of a card 141 px wide, whose padded inside is 121).
-func _draw_name(name: String, inner: Rect2, width: float, colour: Color) -> void:
+func _draw_name(item_name: String, inner: Rect2, width: float, colour: Color) -> void:
 	var font := HudStyle.face(&"medium")
-	var lines := PackedStringArray([name])
-	if font.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x > width and name.contains(" "):
-		var cut := name.rfind(" ")
-		while cut > 0 and font.get_string_size(name.substr(0, cut), HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x > width:
-			cut = name.rfind(" ", cut - 1)
+	var lines := PackedStringArray([item_name])
+	if font.get_string_size(item_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x > width and item_name.contains(" "):
+		var cut := item_name.rfind(" ")
+		while cut > 0 and font.get_string_size(item_name.substr(0, cut), HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x > width:
+			cut = item_name.rfind(" ", cut - 1)
 		if cut > 0:
-			lines = PackedStringArray([name.substr(0, cut), name.substr(cut + 1)])
+			lines = PackedStringArray([item_name.substr(0, cut), item_name.substr(cut + 1)])
 	var y := inner.position.y + font.get_ascent(14) + 2.0
 	for line in lines:
 		HudStyle.draw_text(self, Vector2(inner.end.x, y), line, 14, colour, HORIZONTAL_ALIGNMENT_RIGHT, &"medium")
@@ -583,8 +586,8 @@ static func usage_lines(item: String) -> Array:
 		if at >= 0:
 			var colour_end := part.find("\"", at + 13)
 			colour = part.substr(at + 13, colour_end - at - 13)
-			var close := part.find("</font>", colour_end)
-			stars = part.substr(part.find(">", colour_end) + 1, close - part.find(">", colour_end) - 1)
+			var font_end := part.find("</font>", colour_end)
+			stars = part.substr(part.find(">", colour_end) + 1, font_end - part.find(">", colour_end) - 1)
 			part = part.substr(0, at)
 		out.append([part, colour, italic, stars])
 	return out
@@ -632,9 +635,9 @@ func _draw_rounded(box: Rect2, middle: Color, edge: Color) -> void:
 func _place_of(item: String) -> int:
 	var side := _side()
 	for column in COLUMN_ORDER:
-		for place in Loadout.PLACES:
-			if Loadout.item_at(side, column, place) == item:
-				return place
+		for row in Loadout.PLACES:
+			if Loadout.item_at(side, column, row) == item:
+				return row
 	return 0
 
 

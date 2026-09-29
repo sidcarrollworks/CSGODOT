@@ -281,9 +281,9 @@ class Rope:
 		rope.life = life_for(p_rules, rope.distance)
 		return rope if rope.life > 0.0 else null
 
-	static func life_for(p_rules: Dictionary, distance: float) -> float:
-		return 1.1 * minf(distance / float(p_rules["cut"]), 1.0) \
-			* lerpf(p_rules["life_min"], 1.0, minf(distance / float(p_rules["life_span"]), 1.0))
+	static func life_for(p_rules: Dictionary, p_distance: float) -> float:
+		return 1.1 * minf(p_distance / float(p_rules["cut"]), 1.0) \
+			* lerpf(p_rules["life_min"], 1.0, minf(p_distance / float(p_rules["life_span"]), 1.0))
 
 	func alive() -> bool:
 		return age < life

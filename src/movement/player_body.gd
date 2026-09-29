@@ -49,6 +49,9 @@ const AIR_HEIGHT_REACH := 64.0
 const NATIVE_QUERY_MARGIN := 0.06
 const NATIVE_RECOVERY_REACH := 0.5
 const NATIVE_RECOVERY_PADDING := 0.01
+## The first correction tried along a direction that clears: the band's
+## depth (0.246 less 0.197) and the query margin, with a little over.
+const NATIVE_RECOVERY_STEP := 0.125
 
 ## The movement solver only needs how far a trace went and the plane it
 ## met. Keep that interface independent of the engine's collision object.
@@ -137,6 +140,9 @@ var _hull_height := 0.0
 var _motion_query := PhysicsShapeQueryParameters3D.new()
 var _native_recovery_direction := Vector3.UP
 var _last_native_trace_recovery := Vector3.ZERO
+## The native physics while this body's tick runs (simulate), looked up
+## once for its traces rather than by each; null between ticks.
+var _adapter: Box3DDrops
 
 
 func _ready() -> void:
@@ -198,6 +204,11 @@ func simulate(dt: float) -> void:
 
 	var was_on_ground := on_ground
 	_jumped = false
+	# Nothing but this body moves until its tick is done, and every query it
+	# makes excludes it, so the bridge synchronizes the others once for it.
+	_adapter = PhysicsQueries.adapter_for_node(self)
+	if _adapter != null:
+		_adapter.queries.begin_scope(get_rid())
 
 	if (
 		config.subtick_jump
@@ -218,6 +229,9 @@ func simulate(dt: float) -> void:
 	_jump_held_last_tick = wants_jump
 	jump_fraction = -1.0
 	_update_air(was_on_ground)
+	if _adapter != null:
+		_adapter.queries.end_scope()
+	_adapter = null
 	# Later players and shots in this same tick see the completed movement.
 	PhysicsQueries.sync_object(self, false)
 
@@ -698,7 +712,7 @@ func _categorize_position() -> void:
 ## to the same Source movement solver. Test traces never move the player.
 func _trace(motion: Vector3, test_only: bool = false) -> TraceResult:
 	_last_native_trace_recovery = Vector3.ZERO
-	var adapter := PhysicsQueries.adapter_for_node(self)
+	var adapter := _adapter if _adapter != null else PhysicsQueries.adapter_for_node(self)
 	if adapter == null:
 		traces += 1
 		var collision := move_and_collide(motion, test_only)
@@ -737,13 +751,16 @@ func _trace(motion: Vector3, test_only: bool = false) -> TraceResult:
 			_motion_query.transform.origin += recovery
 			hit = _cast_hull(queries)
 	queries.end_shape_cast(excluded)
-	_last_native_trace_recovery = recovery
 	if not hit.is_empty() and not (hit["normal"] as Vector3).is_zero_approx():
 		var normal: Vector3 = hit["normal"]
 		# The ordinary floor probe between side sweeps must not erase the
 		# useful wall/player plane. Fresh bodies still prefer upward recovery.
 		if not MovementSolver.is_walkable(normal, config):
 			_native_recovery_direction = normal
+	# A grazing hit's push off its plane is kept as a recovery is: part of
+	# the travel, none of the move's time.
+	recovery += hit.get("offset", Vector3.ZERO) as Vector3
+	_last_native_trace_recovery = recovery
 	var travel := recovery + motion * float(hit.get("fraction", 1.0))
 	if not test_only:
 		global_position += travel
@@ -773,24 +790,24 @@ func _recovery_blocked_by_player(hit: Dictionary) -> bool:
 	var owners := other.get_shape_owners()
 	if owners.size() != 1:
 		return false
-	var owner: int = owners[0]
-	if other.is_shape_owner_disabled(owner) or other.shape_owner_get_shape_count(owner) != 1 \
-		or other.shape_owner_get_shape_index(owner, 0) != index:
+	var shape_owner: int = owners[0]
+	if other.is_shape_owner_disabled(shape_owner) or other.shape_owner_get_shape_count(shape_owner) != 1 \
+		or other.shape_owner_get_shape_index(shape_owner, 0) != index:
 		return false
-	var other_shape := other.shape_owner_get_shape(owner, 0) as BoxShape3D
+	var other_shape := other.shape_owner_get_shape(shape_owner, 0) as BoxShape3D
 	if other_shape == null:
 		return false
 	var at := _motion_query.transform
-	var other_at := other.global_transform * other.shape_owner_get_transform(owner)
-	var scale := at.basis.get_scale()
+	var other_at := other.global_transform * other.shape_owner_get_transform(shape_owner)
+	var own_scale := at.basis.get_scale()
 	var other_scale := other_at.basis.get_scale()
 	# Exact diagonal bases rule out rotation and shear. Positive scale is
 	# enough for the player hulls; uncommon transforms take the native path.
-	if at.basis != Basis.from_scale(scale) or other_at.basis != Basis.from_scale(other_scale) \
-		or minf(scale.x, minf(scale.y, scale.z)) <= 0.0 \
+	if at.basis != Basis.from_scale(own_scale) or other_at.basis != Basis.from_scale(other_scale) \
+		or minf(own_scale.x, minf(own_scale.y, own_scale.z)) <= 0.0 \
 		or minf(other_scale.x, minf(other_scale.y, other_scale.z)) <= 0.0:
 		return false
-	var half_extents := (shape.size * scale + other_shape.size * other_scale) * 0.5
+	var half_extents := (shape.size * own_scale + other_shape.size * other_scale) * 0.5
 	var overlap := half_extents - (at.origin - other_at.origin).abs()
 	# The measured direction is normally a unit normal. Include its actual
 	# component reach and the existing padding as a conservative float guard.
@@ -802,7 +819,11 @@ func _recovery_blocked_by_player(hit: Dictionary) -> bool:
 ## Search only the native tolerance around the starting hull. A candidate
 ## must give a usable sweep; a zero normal remains blocked, never invented
 ## as a plane. A recent side plane, then up, precedes wall/corner escapes.
-## Binary search keeps the correction close to the minimum clearance.
+## A hull is nearly always just inside the contact band (a twentieth of an
+## inch, and the clearance on top), so once a direction is known to clear
+## at the full reach, NATIVE_RECOVERY_STEP is tried before the binary
+## search that keeps a deeper correction close to the minimum: two casts
+## for the usual recovery, where eight were.
 func _recover_trace_start(queries: Box3DQueries) -> Vector3:
 	var original := _motion_query.transform
 	var directions := [Vector3.UP, Vector3.LEFT, Vector3.RIGHT, Vector3.FORWARD, Vector3.BACK, Vector3.DOWN]
@@ -822,14 +843,21 @@ func _recover_trace_start(queries: Box3DQueries) -> Vector3:
 			continue
 		var low := 0.0
 		var high := 1.0
-		for i in 7:
-			var middle := (low + high) * 0.5
-			_motion_query.transform = original.translated(offset * middle)
-			hit = _cast_hull(queries)
-			if hit.is_empty() or not (hit["normal"] as Vector3).is_zero_approx():
-				high = middle
-			else:
-				low = middle
+		var step := NATIVE_RECOVERY_STEP / NATIVE_RECOVERY_REACH
+		_motion_query.transform = original.translated(offset * step)
+		hit = _cast_hull(queries)
+		if hit.is_empty() or not (hit["normal"] as Vector3).is_zero_approx():
+			high = step
+		else:
+			low = step
+			for i in 5:
+				var middle := (low + high) * 0.5
+				_motion_query.transform = original.translated(offset * middle)
+				hit = _cast_hull(queries)
+				if hit.is_empty() or not (hit["normal"] as Vector3).is_zero_approx():
+					high = middle
+				else:
+					low = middle
 		_motion_query.transform = original
 		return offset * high + direction.normalized() * NATIVE_RECOVERY_PADDING
 	_motion_query.transform = original
