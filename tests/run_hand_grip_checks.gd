@@ -20,6 +20,7 @@ func _initialize() -> void:
 	await _test_back_on_gun()
 	await _test_let_go()
 	await _test_far_hand()
+	_test_foot_fit_lowers_gun()
 	_test_body_grips()
 	_finish("hand-grip")
 
@@ -156,6 +157,32 @@ func _test_far_hand() -> void:
 	var off := (seen.get("hand_L", Vector3.INF) as Vector3).distance_to(seen.get("wpnHand_L", Vector3.ZERO))
 	_check(not seen.is_empty() and absf(off - HandGrip.MOST_GAP - 2.0) < 0.05, "a hand %.0f units off the gun is left where the clip has it (%.2f)" % [HandGrip.MOST_GAP + 2.0, off])
 	(stood["model"] as Node).free()
+
+
+## The foot fit lowering the pelvis on a slope takes the gun down with it,
+## so the hands stay on it whatever the drop (Sid, 2026-09-29: on T ramp the
+## gun rose off the hands, past what HandGrip reaches).
+func _test_foot_fit_lowers_gun() -> void:
+	var model := _stand_in()
+	var skeleton := model.get_node("Skeleton3D") as Skeleton3D
+	root.add_child(model)
+	var at := func(bone_name: String) -> Vector3:
+		return skeleton.global_transform * skeleton.get_bone_global_pose(skeleton.find_bone(bone_name)).origin
+	var wpn_before: Vector3 = at.call("wpn")
+	var pelvis := skeleton.find_bone("pelvis")
+	var drop := FootPlant.MOST_DROP
+	var down := Vector3.DOWN * drop / UNIT_SCALE
+	skeleton.set_bone_pose_position(pelvis, skeleton.get_bone_pose_position(pelvis) + down)
+	FootPlant.lower_gun(skeleton, pelvis, down)
+	var off := []
+	for side in ["L", "R"]:
+		off.append((at.call("hand_" + side) as Vector3).distance_to(at.call("wpnHand_" + side)))
+	var lowered := wpn_before.y - (at.call("wpn") as Vector3).y
+	_check(
+		absf(lowered - drop) < 0.01 and off[0] < 0.01 and off[1] < 0.01,
+		"the pelvis %.0f units down takes the gun %.2f down with it, the hands still on its grips (%.3f, %.3f)" % [drop, lowered, off[0], off[1]]
+	)
+	model.free()
 
 
 ## A body grips the gun only with one shown in hand and alive.

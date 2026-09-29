@@ -1796,6 +1796,20 @@ func _test_player_model() -> void:
 			standing_gaps[0] < 1.0 and standing_gaps[1] < 1.0,
 			"standing with the AK-47, each hand is on its target on the gun, as the clips key them (left %.2f, right %.2f units off)" % standing_gaps
 		)
+		# The foot fit's pelvis drop on a slope takes the gun down with it
+		# (FootPlant.lower_gun), so the hands stay on it (Sid, 2026-09-29, T ramp).
+		var wpn_bone := rig.find_bone("wpn")
+		var gun_before := (rig.global_transform * rig.get_bone_global_pose(wpn_bone)).origin
+		FootPlant.fit(rig, FootPlant.MOST_DROP, [FootPlant.MOST_DROP, FootPlant.MOST_DROP], [Vector3.UP, Vector3.UP])
+		var gun_lowered := gun_before.y - (rig.global_transform * rig.get_bone_global_pose(wpn_bone)).origin.y
+		var dropped_gaps := []
+		for arm: Array in HandGrip.ARMS:
+			dropped_gaps.append(HandGrip.fit(rig, arm, 0.0, units))
+		_check(
+			absf(gun_lowered - FootPlant.MOST_DROP) < 0.1 and absf(dropped_gaps[0] - standing_gaps[0]) < 0.1 and absf(dropped_gaps[1] - standing_gaps[1]) < 0.1,
+			"with the pelvis %.0f units down, as on T ramp, the gun goes %.2f down with it and the hands stay on it (left %.2f, right %.2f units off)" % [FootPlant.MOST_DROP, gun_lowered, dropped_gaps[0], dropped_gaps[1]]
+		)
+		model.pose_now()
 	var weapon_root: Node3D = null
 	for child in rig.get_parent().get_children():
 		if child.name.contains("weapon_rif"):

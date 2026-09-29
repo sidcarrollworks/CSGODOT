@@ -463,7 +463,9 @@ item 6 is built.
    (`HandGrip`, Sid 2026-09-29: guns floating out of the bots' hands): each
    frame after the foot fit, each arm is bent so its hand lands on the
    clip's `wpnHand_L`/`_R`, easing off over CS2's 0.3 s for a draw or a
-   reload. Local: Sid's run of `tests/run_model_checks.gd` confirms the
+   reload. The foot fit now lowers the gun with the pelvis
+   (`FootPlant.lower_gun`), since on T ramp the drop took the hands past
+   what the IK reaches (Sid, 2026-09-29). Local: Sid's run of `tests/run_model_checks.gd` confirms the
    targets sit on the hands standing and prints how far a run takes them
    off; then a look at a running bot on dust2's slopes.
 
