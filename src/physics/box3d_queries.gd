@@ -529,10 +529,34 @@ static func _restore_excluded(disabled: Array) -> void:
 		(pair[0] as Node3D).set(&"collision_layer", pair[1])
 
 
+## A sweep for anything but a player's hull: a grenade, a dropped item, a
+## weapon held out to be thrown. Fraction is how far along the motion the
+## shape may go and stay its clearance from what the native cast met,
+## backed off along the motion however far that takes, and there is no
+## offset: those who ask (PhysicsQueries.cast_motion) are handed two
+## fractions and could take no push. It looks no further than the motion.
+## The hull's rule is shape_cast_prepared's, asked for by name.
 func shape_cast(query: PhysicsShapeQueryParameters3D) -> Dictionary:
 	var disabled := begin_shape_cast(query)
-	var result := shape_cast_prepared(query)
+	var result := _backed_off(query)
 	end_shape_cast(disabled)
+	return result
+
+
+func _backed_off(query: PhysicsShapeQueryParameters3D) -> Dictionary:
+	var hit := _native_cast(query, query.motion)
+	if not bool(hit.get("hit", false)):
+		return {}
+	var result := _mapped(hit)
+	if result.is_empty():
+		return {}
+	var unsafe := float(hit["fraction"])
+	result["unsafe_fraction"] = unsafe
+	var normal: Vector3 = result.get("normal", Vector3.ZERO)
+	var approach := absf(query.motion.dot(normal)) if normal.length_squared() > 0.5 else query.motion.length()
+	result["fraction"] = maxf(0.0, unsafe - maxf(query.margin, CAST_CLEARANCE) / maxf(approach, 0.000001))
+	# The cache keeps its own copy, as the hull's does.
+	_cast_cache = {query.get_instance_id(): {"result": result.duplicate(), "at": query.transform.origin + query.motion * unsafe}}
 	return result
 
 
@@ -551,7 +575,9 @@ func end_shape_cast(disabled: Array) -> void:
 	_restore_excluded(disabled)
 
 
-## A sweep, with the clearance the movement needs kept at its end: fraction
+## The hull's sweep (PlayerBody._trace, between begin_shape_cast and
+## end_shape_cast), with the clearance the movement needs kept at its end:
+## fraction
 ## is how far along the motion the shape may go and stay CAST_CLEARANCE
 ## clear of what it met, unsafe_fraction where the native cast stopped
 ## (0.197 short of touching, 1 at most), and offset a push along the plane
