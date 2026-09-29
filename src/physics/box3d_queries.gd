@@ -570,10 +570,34 @@ static func _restore_excluded(disabled: Array) -> void:
 		(pair[0] as Node3D).set(&"collision_layer", pair[1])
 
 
+## A sweep for anything but a player's hull: a grenade, a dropped item, a
+## weapon held out to be thrown. Fraction is how far along the motion the
+## shape may go and stay its clearance from what the native cast met,
+## backed off along the motion however far that takes, and there is no
+## offset: those who ask (PhysicsQueries.cast_motion) are handed two
+## fractions and could take no push. It looks no further than the motion.
+## The hull's rule is shape_cast_prepared's, asked for by name.
 func shape_cast(query: PhysicsShapeQueryParameters3D) -> Dictionary:
 	var disabled := begin_shape_cast(query)
-	var result := shape_cast_prepared(query)
+	var result := _backed_off(query)
 	end_shape_cast(disabled)
+	return result
+
+
+func _backed_off(query: PhysicsShapeQueryParameters3D) -> Dictionary:
+	var hit := _native_cast(query, query.motion)
+	if not bool(hit.get("hit", false)):
+		return {}
+	var result := _mapped(hit)
+	if result.is_empty():
+		return {}
+	var unsafe := float(hit["fraction"])
+	result["unsafe_fraction"] = unsafe
+	var normal: Vector3 = result.get("normal", Vector3.ZERO)
+	var approach := absf(query.motion.dot(normal)) if normal.length_squared() > 0.5 else query.motion.length()
+	result["fraction"] = maxf(0.0, unsafe - maxf(query.margin, CAST_CLEARANCE) / maxf(approach, 0.000001))
+	# The cache keeps its own copy, as the hull's does.
+	_cast_cache = {query.get_instance_id(): {"result": result.duplicate(), "at": query.transform.origin + query.motion * unsafe}}
 	return result
 
 
@@ -592,7 +616,9 @@ func end_shape_cast(disabled: Array) -> void:
 	_restore_excluded(disabled)
 
 
-## A sweep, with the clearance the movement needs kept at its end: fraction
+## The hull's sweep (PlayerBody._trace, between begin_shape_cast and
+## end_shape_cast), with the clearance the movement needs kept at its end:
+## fraction
 ## is how far along the motion the shape may go and stay CAST_CLEARANCE
 ## clear of what it met, unsafe_fraction where the native cast stopped
 ## (its smaller shape 0.197 short of touching, 1 at most), and offset a
@@ -613,7 +639,7 @@ func shape_cast_prepared(query: PhysicsShapeQueryParameters3D) -> Dictionary:
 	var motion := query.motion
 	var length := motion.length()
 	var direction := motion / length if length > 0.0 else Vector3.ZERO
-	var hit := _native_cast(query, direction * (length + CAST_REACH) if length > 0.0 else motion)
+	var hit := _native_cast(query, direction * (length + CAST_REACH) if length > 0.0 else motion, CAST_INSET)
 	if not bool(hit.get("hit", false)):
 		return {}
 	var result := _mapped(hit)
@@ -653,7 +679,10 @@ func shape_cast_prepared(query: PhysicsShapeQueryParameters3D) -> Dictionary:
 	return result
 
 
-func _native_cast(query: PhysicsShapeQueryParameters3D, motion: Vector3) -> Dictionary:
+## The shape swept as it is, or `inset` smaller all round (the hull's
+## sweep, shape_cast_prepared): what it came to for this shape is kept in
+## _inset, for the clearance to make up.
+func _native_cast(query: PhysicsShapeQueryParameters3D, motion: Vector3, inset: float = 0.0) -> Dictionary:
 	var mask := _mask(query.collision_mask, query.collide_with_bodies, query.collide_with_areas)
 	var at := query.transform
 	var from := at.origin * SCALE
@@ -662,17 +691,17 @@ func _native_cast(query: PhysicsShapeQueryParameters3D, motion: Vector3) -> Dict
 	_inset = 0.0
 	if query.shape is SphereShape3D:
 		var radius := (query.shape as SphereShape3D).radius * scale.x
-		_inset = minf(CAST_INSET, radius * 0.5)
+		_inset = minf(inset, radius * 0.5)
 		return native_world.call(&"shape_cast_sphere", from, to, (radius - _inset) * SCALE, mask, QUERY_LAYER)
 	if query.shape is CapsuleShape3D:
 		var capsule := query.shape as CapsuleShape3D
 		var half_axis := maxf(0.0, capsule.height * 0.5 - capsule.radius)
 		var radius := capsule.radius * scale.x
-		_inset = minf(CAST_INSET, radius * 0.5)
+		_inset = minf(inset, radius * 0.5)
 		return native_world.call(&"shape_cast_capsule", (at * (Vector3.UP * half_axis)) * SCALE, (at * (Vector3.DOWN * half_axis)) * SCALE, (radius - _inset) * SCALE, motion * SCALE, mask, QUERY_LAYER)
 	if query.shape is BoxShape3D and at.basis.orthonormalized().is_equal_approx(Basis.IDENTITY):
 		var size := (query.shape as BoxShape3D).size * scale
-		_inset = minf(CAST_INSET, minf(size.x, minf(size.y, size.z)) * 0.25)
+		_inset = minf(inset, minf(size.x, minf(size.y, size.z)) * 0.25)
 		return native_world.call(&"shape_cast_box", from, to, (size - Vector3.ONE * (2.0 * _inset)) * SCALE, mask, QUERY_LAYER)
 	return native_world.call(&"shape_cast_convex", _points(query), motion * SCALE, mask, QUERY_LAYER)
 

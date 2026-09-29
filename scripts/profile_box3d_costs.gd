@@ -129,9 +129,9 @@ class TimedQueries:
 		meter.leave()
 		return result
 
-	func _native_cast(query: PhysicsShapeQueryParameters3D, motion: Vector3) -> Dictionary:
+	func _native_cast(query: PhysicsShapeQueryParameters3D, motion: Vector3, inset: float = 0.0) -> Dictionary:
 		meter.enter(CostMeter.Part.NATIVE_CAST)
-		var result := super._native_cast(query, motion)
+		var result := super._native_cast(query, motion, inset)
 		meter.leave()
 		return result
 

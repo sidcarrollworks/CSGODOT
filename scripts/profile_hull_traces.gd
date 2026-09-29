@@ -45,7 +45,9 @@ class TracedBot:
 			query.margin = maxf(safe_margin, NATIVE_QUERY_MARGIN)
 			query.collision_mask = collision_mask
 			query.exclude = [get_rid()]
-			var hit := adapter.queries.shape_cast(query)
+			var disabled: Array = adapter.queries.begin_shape_cast(query)
+			var hit: Dictionary = adapter.queries.shape_cast_prepared(query)
+			adapter.queries.end_shape_cast(disabled)
 			if not hit.is_empty() and (hit["normal"] as Vector3).is_zero_approx():
 				overlap = "player" if hit.get("collider") is CharacterBody3D else "world"
 		var result := super(motion, test_only)

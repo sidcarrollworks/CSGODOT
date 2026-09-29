@@ -56,8 +56,7 @@ starts in overlap and searches for a way out, eight casts a direction.
 
 ## What was changed
 
-- **`Box3DQueries.shape_cast_prepared`**, which every sweep goes through
-  (the hull's, a grenade's): it sweeps 0.5 further than asked
+- **`Box3DQueries.shape_cast_prepared`**, the hull's sweep: it sweeps 0.5 further than asked
   (`CAST_REACH`) and reports a hit wherever the motion's end would be
   inside the clearance; it backs off along the motion by 0.25 at most
   (`CAST_BACK_OFF`), and hands back what the clearance still lacks as
@@ -66,6 +65,17 @@ starts in overlap and searches for a way out, eight casts a direction.
   move's time. A hit can now come back with `fraction` 1: the whole motion,
   and the push. (The reach is 0.75 and the back-off 0.5 since the sweep's
   shape was made smaller, "The contained changes".)
+- **Anything else sweeps as it did** (`Box3DQueries.shape_cast`, which
+  `PhysicsQueries.shape_cast` and `cast_motion` ask: a grenade, a dropped
+  item). At first every sweep took the hull's rule, and a review found what
+  that did to those handed two fractions and no push: a dropped box coming
+  at a floor at 3 degrees was told it might go to 0.209 over it, inside
+  the band where its next sweep starts in overlap. It stops 0.257 over
+  again, at any angle. Box3D's sphere cast turned out not to be its box
+  cast: it stops a sphere 0.197 past touching, not short of it, and knows
+  no overlap at the start, so a grenade rests 0.137 into a floor, as it has
+  since the game went over to Box3D. Whether that shows, or a grenade's
+  bounce wants the hull's rule and its push, is for a playtest.
 - **A recovery tries 0.125 first** (`NATIVE_RECOVERY_STEP`) along a
   direction that clears, before the binary search: two casts where eight
   were, the correction 0.07 more at most.

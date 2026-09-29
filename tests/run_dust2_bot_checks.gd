@@ -154,5 +154,14 @@ func _wall_ahead(bot: Bot) -> bool:
 	query.margin = PlayerBody.NATIVE_QUERY_MARGIN
 	query.collision_mask = bot.collision_mask
 	query.exclude = [bot.get_rid()]
-	var hit := PhysicsQueries.shape_cast(bot.get_world_3d().direct_space_state, query)
+	var space := bot.get_world_3d().direct_space_state
+	var queries := PhysicsQueries.for_space(space)
+	var hit: Dictionary
+	if queries == null:
+		hit = PhysicsQueries.shape_cast(space, query)
+	else:
+		# The hull's own sweep: whole, it starts in the floor's contact band.
+		var disabled := queries.begin_shape_cast(query)
+		hit = queries.shape_cast_prepared(query)
+		queries.end_shape_cast(disabled)
 	return not hit.is_empty() and not MovementSolver.is_walkable(hit["normal"], bot.config)
