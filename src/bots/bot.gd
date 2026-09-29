@@ -208,6 +208,12 @@ var _tap_clock: float = 0.0
 ## (m_blindFire), at this point, until it can see again.
 var _blind_firing: bool = false
 var _blind_fire_at: Vector3 = Vector3.ZERO
+## The space its sight is asked of, kept by prepare_to_think; how many rays
+## it has asked since, and whether it is thinking on a worker thread, where
+## they are counted here rather than by PhysicsQueries.
+var _space: PhysicsDirectSpaceState3D
+var _asked: int = 0
+var _asked_apart: bool = false
 
 
 func _init() -> void:
@@ -276,7 +282,59 @@ func _body_weapon_set() -> String:
 
 
 func command_for(tick: int, dt: float) -> UserCmd:
+	prepare_to_think(tick)
+	return think(tick, dt)
+
+
+## A bot thinks on a worker thread, beside the other bots
+## (GameWorld.commands_for).
+func thinks_apart() -> bool:
+	return true
+
+
+## What of its thinking touches what the players share, in its turn on the
+## thread that runs the tick: its shopping, which sends the game commands,
+## and its way over the nav mesh, whose searches are the world's to give
+## out and the mesh's to make one at a time. And the space its sight is
+## asked of, which only that thread may ask Godot for.
+func prepare_to_think(tick: int) -> void:
+	_space = get_world_3d().direct_space_state if is_inside_tree() else null
+	if not alive:
+		return
+	if not buy_template.is_empty():
+		_shop(tick)
+	if _walked_on():
+		_find_way()
+
+
+## Whether it was walking its way when the last tick left it, neither
+## fighting nor blinded: whom it sees this tick it sees as it thinks, after
+## its way is found, so its way is found by what it last knew. A bot a
+## fight lets go of waits a tick for its way, as one the world had no
+## search left for does.
+func _walked_on() -> bool:
+	if _blind_firing or is_blind():
+		return false
+	return not (is_instance_valid(target) and _seen_for >= REACTION_SECONDS)
+
+
+func think(tick: int, dt: float) -> UserCmd:
 	return _think(tick, dt)
+
+
+func think_apart(tick: int, dt: float) -> void:
+	_asked_apart = true
+	_asked = 0
+	_thought = think(tick, dt)
+	_asked_apart = false
+
+
+func thought() -> UserCmd:
+	# Its sight's rays were not counted as they were asked, several threads
+	# asking at once.
+	PhysicsQueries.native_queries += _asked
+	_asked = 0
+	return super.thought()
 
 
 ## The body as it is seen: drawn between the last two ticks, and lit, both
@@ -309,7 +367,6 @@ func _think(tick: int, delta: float) -> UserCmd:
 		return cmd
 
 	if not buy_template.is_empty():
-		_shop(tick)
 		_take_best_gun(cmd)
 
 	# Blinded, it sees nobody. Blinded while engaging someone, it keeps
@@ -488,14 +545,9 @@ func _way_on(cmd: UserCmd, _delta: float) -> Vector3:
 func _path_way(cmd: UserCmd) -> Vector3:
 	var goal := route[_next]
 	if nav_mesh != null and _path == null and _no_way_to != _next:
-		if is_instance_valid(world) and not world.may_search_path():
-			return Vector3.ZERO
-		_path = nav_mesh.walk_path(global_position, goal)
-		_corner = 1
-		if _path.is_empty():
-			_path = null
-			_no_way_to = _next
-			push_warning("%s: no way over the nav mesh from %s to %s; walking straight at it" % [name, global_position, goal])
+		# Its way is found before it thinks (_find_way), when the world has
+		# a search to give it: until then it waits where it is.
+		return Vector3.ZERO
 
 	if _path == null:
 		var to_goal := Vector3(goal.x - global_position.x, 0.0, goal.z - global_position.z)
@@ -540,6 +592,23 @@ func _path_way(cmd: UserCmd) -> Vector3:
 	if _under_low_ceiling():
 		cmd.buttons |= UserCmd.DUCK
 	return way.normalized() if way.length_squared() > 0.0 else Vector3.ZERO
+
+
+## Finds its way to route[_next] over the nav mesh, if it walks a route, has
+## none yet and the world has a search left this tick: before it thinks,
+## for the tick it would have looked in.
+func _find_way() -> void:
+	if route.is_empty() or frozen or nav_mesh == null or _path != null or _no_way_to == _next:
+		return
+	if is_instance_valid(world) and not world.may_search_path():
+		return
+	var goal := route[_next]
+	_path = nav_mesh.walk_path(global_position, goal)
+	_corner = 1
+	if _path.is_empty():
+		_path = null
+		_no_way_to = _next
+		push_warning("%s: no way over the nav mesh from %s to %s; walking straight at it" % [name, global_position, goal])
 
 
 ## On to the next point of the route, to find the way there afresh.
@@ -687,11 +756,18 @@ func _look_for_target() -> Node3D:
 	var yaw := deg_to_rad(yaw_degrees)
 	var forward := Vector3(-sin(yaw), 0.0, -cos(yaw))
 	var query := PhysicsRayQueryParameters3D.create(eyes, Vector3.ZERO, Hitscan.WORLD_LAYER, [get_rid()])
-	var space := get_world_3d().direct_space_state
 	for candidate in candidates:
-		if _can_see_from(candidate, forward, space, query):
+		if _can_see_from(candidate, forward, _sight_space(), query):
 			return candidate
 	return null
+
+
+## The space its sight is asked of: the one kept before it thought
+## (prepare_to_think), since a worker thread may not ask Godot for it.
+func _sight_space() -> PhysicsDirectSpaceState3D:
+	if _space == null and not _asked_apart:
+		_space = get_world_3d().direct_space_state
+	return _space
 
 
 ## Whether a body is within the cone the bot faces, nothing of the map
@@ -702,7 +778,7 @@ func can_see(other: Node3D) -> bool:
 	var yaw := deg_to_rad(yaw_degrees)
 	var forward := Vector3(-sin(yaw), 0.0, -cos(yaw))
 	var query := PhysicsRayQueryParameters3D.create(eyes, Vector3.ZERO, Hitscan.WORLD_LAYER, [get_rid()])
-	return _can_see_from(other, forward, get_world_3d().direct_space_state, query)
+	return _can_see_from(other, forward, _sight_space(), query)
 
 
 ## One visibility test with the observer's eye/cone and ray already set up.
@@ -721,6 +797,7 @@ func _can_see_from(other: Node3D, forward: Vector3, space: PhysicsDirectSpaceSta
 	if flat.length_squared() > 1e-6 and rad_to_deg(forward.angle_to(flat.normalized())) > SIGHT_HALF_ANGLE:
 		return false
 	query.to = theirs
+	_asked += 1
 	if not PhysicsQueries.intersect_ray(space, query).is_empty():
 		return false
 	return not _smoke_between(eyes, theirs)
@@ -786,6 +863,8 @@ func respawn() -> void:
 		place(_spawn_position, _spawn_yaw)
 	elif not route.is_empty():
 		global_position = route[0]
+		# Moved inside a tick, in which the hulls are looked over once.
+		PhysicsQueries.sync_object(self, false)
 		_next = 1 % route.size()
 	_path = null
 	_no_way_to = -1

@@ -22,18 +22,18 @@ func _process_modification_with_delta(_delta: float) -> void:
 	var skeleton := get_skeleton()
 	if skeleton == null or is_zero_approx(degrees):
 		return
-	var basis := skeleton.global_basis if skeleton.is_inside_tree() else skeleton.basis
+	var frame := skeleton.global_basis if skeleton.is_inside_tree() else skeleton.basis
 	# A turn keeps its way round through a space that is not mirrored.
-	bend(skeleton, basis.inverse() * axis_world, degrees if basis.determinant() > 0.0 else -degrees)
+	bend(skeleton, frame.inverse() * axis_world, degrees if frame.determinant() > 0.0 else -degrees)
 
 
 ## Bends skeleton's BONES forward by degrees in all, shared evenly, about
 ## axis in the skeleton's space, the view's right hand: forward is a
 ## negative turn about it, which tips up toward the view's forward.
-static func bend(skeleton: Skeleton3D, axis: Vector3, degrees: float) -> void:
+static func bend(skeleton: Skeleton3D, axis: Vector3, by_degrees: float) -> void:
 	if axis.is_zero_approx():
 		return
-	var turn := -deg_to_rad(degrees) / BONES.size()
+	var turn := -deg_to_rad(by_degrees) / BONES.size()
 	var local_axis := axis.normalized()
 	for bone_name in BONES:
 		var bone := skeleton.find_bone(bone_name)

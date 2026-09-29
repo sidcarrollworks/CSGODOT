@@ -13,6 +13,21 @@ const ALL_LAYERS := 0x7fffffff
 ## reaches about 0.246. Leave enough normal clearance for an outgoing
 ## sweep (grenade rebound or player sliding) to start outside that band.
 const CAST_CLEARANCE := 0.06
+## How far past its motion a sweep looks, so a motion ending inside the
+## contact band short of touching is reported (shape_cast_prepared).
+const CAST_REACH := 0.75
+## The most a hit backs off along its motion for its clearance; the rest
+## of the clearance is a push along the plane (shape_cast_prepared).
+const CAST_BACK_OFF := 0.5
+## A sweep is made with a shape this much smaller all round than the one
+## asked about, and kept as much further from what it meets, so it stops
+## where it did. Box3D counts a start within 0.246 of anything as an
+## overlap: a hull at rest 0.257 over a floor had a hundredth of a unit to
+## spare, a floor a fiftieth higher than the last put it in overlap, and a
+## hull with someone standing on its head, 0.257 over it, was held between
+## the two and went nowhere (tests/run_box3d_movement_checks.gd). With it a
+## hull is in overlap within 0.12 of what it is near, not 0.246.
+const CAST_INSET := 0.125
 
 var adapter: Node3D
 var native_world: Node3D
@@ -30,6 +45,16 @@ var _dynamic_layers: int = 2 | Hitbox.LAYER
 var _pending: Array[WeakRef] = []
 var _cast_cache: Dictionary = {}
 var _shape_watchers: Dictionary = {}
+var _scope_owner := RID()
+var _scope_synced: int = 0
+var _scope_left_out: Array = []
+var _tick_open := false
+var _tick_synced: int = 0
+## Whether several threads are asking at once (begin_reading).
+var reading := false
+## How much smaller all round the last native cast's shape was (CAST_INSET,
+## less for a shape too small for it, none for a convex one).
+var _inset := 0.0
 
 
 func initialize(owner: Node3D, geometry_root: Node) -> void:
@@ -108,14 +133,109 @@ func flush_pending() -> void:
 			sync_object(node)
 
 
+## A scope in which one body moves and nothing else does, and every query
+## made excludes that body: a player's tick. The other hulls and hitboxes
+## are then synchronized once for the scope rather than for every cast (a
+## moving player's tick is five to ten casts, and each compared every
+## hull's transform), and the body's own proxies are left out of the native
+## world once, rather than by each cast, so its own rays do not start in
+## it either. Its own proxy is published when the scope is over.
+func begin_scope(owner: RID) -> void:
+	if _scope_owner.is_valid():
+		end_scope()
+	_scope_owner = owner
+	_scope_synced = 0
+	_leave_out_scope_owner()
+
+
+func end_scope() -> void:
+	for pair: Array in _scope_left_out:
+		if is_instance_valid(pair[0]):
+			(pair[0] as Node3D).set(&"collision_layer", pair[1])
+	_scope_left_out = []
+	_scope_owner = RID()
+	_scope_synced = 0
+
+
+## Takes the scope's owner out of the native world, keeping the layer each
+## of its proxies is to have back: the one its record says, since a proxy
+## already out would otherwise be given nothing back.
+func _leave_out_scope_owner() -> void:
+	_scope_left_out = []
+	var record: Dictionary = _objects.get(int(_by_rid.get(_scope_owner, 0)), {})
+	if record.is_empty():
+		return
+	var disabled: Array = record.get("disabled", [])
+	var proxies: Array = record["proxies"]
+	for slot in proxies.size():
+		var native := proxies[slot] as Node3D
+		if not is_instance_valid(native):
+			continue
+		var layer := 0 if slot < disabled.size() and disabled[slot] else int(record["layer"])
+		_scope_left_out.append([native, layer])
+		native.set(&"collision_layer", 0)
+
+
+## A tick begins (GameWorld.begin_tick). Until it ends the hulls are looked
+## over once, by the first query that could meet one, rather than by every
+## query or every player's scope: in a tick a hull moves by its player's
+## own tick, a spawn or a death, each of which publishes it
+## (PhysicsQueries.sync_object), and whatever else moves one in a tick has
+## to. Outside a tick nothing is taken on trust: a hull moved by hand is
+## found by the next query, as the checks move them.
+func begin_tick() -> void:
+	_tick_open = true
+	_tick_synced = 0
+
+
+func end_tick() -> void:
+	_tick_open = false
+	_tick_synced = 0
+
+
+## Several threads ask at once from here on (the bots thinking together),
+## until end_reading: what is new is taken in and the hulls looked over
+## first, and nothing is synchronized or written while they ask. Box3D's
+## queries read the world and write their own locals, so they may run
+## beside each other while nothing moves; the bridge's sweeps keep their
+## last hit and are not for then. Hitboxes are as the last query that
+## asked for them left them.
+func begin_reading() -> void:
+	sync_dynamic(_hull_layers)
+	reading = true
+
+
+func end_reading() -> void:
+	reading = false
+
+
 func sync_dynamic(mask: int = ALL_LAYERS, exclude: Array[RID] = []) -> void:
+	if reading:
+		return
 	flush_pending()
 	if mask & _dynamic_layers == 0:
 		return
+	if _tick_open:
+		mask &= ~_tick_synced
+		if mask & _dynamic_layers == 0:
+			return
+	if _scope_owner.is_valid():
+		# Only the owner moves in the scope: a layer synchronized once in it
+		# stays synchronized.
+		mask &= ~_scope_synced
+		if mask & _dynamic_layers == 0:
+			return
+		_scope_synced |= mask
 	# Movement never needs to revisit every bone capsule. Keep separate
 	# registries so a hull sweep only synchronizes the character hulls.
 	if mask & _hull_layers != 0:
-		_sync_group(_hulls, mask, exclude)
+		if _tick_open:
+			# Every hull, whatever this query leaves out: nobody looks again
+			# this tick. A layer hitboxes share is looked over as before.
+			_sync_group(_hulls, mask, [])
+			_tick_synced |= mask & _hull_layers & ~_hitbox_layers
+		else:
+			_sync_group(_hulls, mask, exclude)
 	if mask & _hitbox_layers != 0:
 		_sync_group(_hitboxes, mask, exclude)
 
@@ -190,6 +310,14 @@ func _watch_shapes(record: Dictionary, resources: Array[Shape3D], id: int) -> vo
 
 
 func sync_object(source: CollisionObject3D, refresh_shapes: bool = true) -> void:
+	_sync_object(source, refresh_shapes)
+	# Synchronized inside its own scope (a duck resizes the hull), its
+	# proxies have their layer again: out they go again.
+	if _scope_owner.is_valid() and is_instance_valid(source) and source.get_rid() == _scope_owner:
+		_leave_out_scope_owner()
+
+
+func _sync_object(source: CollisionObject3D, refresh_shapes: bool) -> void:
 	if not is_instance_valid(source) or not source.is_inside_tree():
 		return
 	if not (source is StaticBody3D or source is CharacterBody3D or source is Hitbox):
@@ -359,6 +487,13 @@ func _mapped(hit: Dictionary) -> Dictionary:
 	result["collider_id"] = id
 	result["rid"] = source.get_rid()
 	result["shape"] = int(native.get_meta(&"source_shape", 0))
+	# The native normal is single precision and can be a few parts in ten
+	# thousand off unit length, which Vector3.slerp refuses (the foot plant's
+	# ease between floor normals printed an error a frame for every foot
+	# beside a wall). Godot's own queries hand out unit normals; so does this.
+	var normal: Vector3 = hit.get("normal", Vector3.ZERO)
+	if not normal.is_zero_approx():
+		result["normal"] = normal.normalized()
 	if hit.has("position"):
 		result["position"] = (hit["position"] as Vector3) / SCALE
 		result["point"] = result["position"]
@@ -369,28 +504,40 @@ func _mapped(hit: Dictionary) -> Dictionary:
 func intersect_ray(query: PhysicsRayQueryParameters3D) -> Dictionary:
 	sync_dynamic(query.collision_mask)
 	var mask := _mask(query.collision_mask, query.collide_with_bodies, query.collide_with_areas)
+	var from := query.from * SCALE
+	var to := query.to * SCALE
 	# Unlike Godot's ray contract, Box3D convex casts can report a hit at
 	# fraction zero when the start is inside. Penetration's exit search
 	# depends on ignoring that solid; smoke explicitly requests the hit.
-	var containing := {}
-	var overlaps: Array = native_world.call(&"overlap_sphere", query.from * SCALE, 0.000001, mask, QUERY_LAYER)
-	for native: Node3D in overlaps:
-		if _excluded(native, query.exclude) or not bool(native.get_meta(&"source_solid", false)):
-			continue
-		if query.hit_from_inside:
-			return _mapped({"hit": true, "collider": native, "position": query.from * SCALE, "normal": Vector3.ZERO, "fraction": 0.0})
-		containing[native.get_instance_id()] = true
+	var held: Variant = null
+	if query.hit_from_inside:
+		held = _holding(from, mask, query.exclude)
+		for native: Node3D in held:
+			return _mapped({"hit": true, "collider": native, "position": from, "normal": Vector3.ZERO, "fraction": 0.0})
 	# Sight/ground rays usually accept the nearest surface. Collecting every
 	# triangle hit across a map is only needed if that nearest hit is ignored.
-	var nearest: Dictionary = native_world.call(&"raycast", query.from * SCALE, query.to * SCALE, mask, QUERY_LAYER)
+	var nearest: Dictionary = native_world.call(&"raycast", from, to, mask, QUERY_LAYER)
 	if not bool(nearest.get("hit", false)):
 		return {}
 	var first := nearest.get("collider") as Node3D
-	if is_instance_valid(first) and not _excluded(first, query.exclude) and not containing.has(first.get_instance_id()):
+	var usable := is_instance_valid(first) and not _excluded(first, query.exclude)
+	# A nearest hit some way along is the answer: what holds a ray's start
+	# is met at its start. Only a hit at the start, or on something left
+	# out, needs what holds the start asked for, a query more.
+	if usable and float(nearest.get("fraction", 0.0)) > 0.000001:
 		var mapped := _mapped(nearest)
 		if not mapped.is_empty():
 			return mapped
-	var hits: Array = native_world.call(&"raycast_all", query.from * SCALE, query.to * SCALE, mask, QUERY_LAYER)
+	if held == null:
+		held = _holding(from, mask, query.exclude)
+	var containing := {}
+	for native: Node3D in held:
+		containing[native.get_instance_id()] = true
+	if usable and not containing.has(first.get_instance_id()):
+		var mapped := _mapped(nearest)
+		if not mapped.is_empty():
+			return mapped
+	var hits: Array = native_world.call(&"raycast_all", from, to, mask, QUERY_LAYER)
 	for hit: Dictionary in hits:
 		var native := hit.get("collider") as Node3D
 		if not is_instance_valid(native) or _excluded(native, query.exclude) or containing.has(native.get_instance_id()):
@@ -399,6 +546,16 @@ func intersect_ray(query: PhysicsRayQueryParameters3D) -> Dictionary:
 		if not mapped.is_empty():
 			return mapped
 	return {}
+
+
+## The solids a point is inside, those left out aside.
+func _holding(at: Vector3, mask: int, exclude: Array[RID]) -> Array[Node3D]:
+	var holding: Array[Node3D] = []
+	var overlaps: Array = native_world.call(&"overlap_sphere", at, 0.000001, mask, QUERY_LAYER)
+	for native: Node3D in overlaps:
+		if not _excluded(native, exclude) and bool(native.get_meta(&"source_solid", false)):
+			holding.append(native)
+	return holding
 
 
 static func _mask(mask: int, bodies: bool, areas: bool) -> int:
@@ -433,26 +590,21 @@ static func _restore_excluded(disabled: Array) -> void:
 		(pair[0] as Node3D).set(&"collision_layer", pair[1])
 
 
+## A sweep for anything but a player's hull: a grenade, a dropped item, a
+## weapon held out to be thrown. Fraction is how far along the motion the
+## shape may go and stay its clearance from what the native cast met,
+## backed off along the motion however far that takes, and there is no
+## offset: those who ask (PhysicsQueries.cast_motion) are handed two
+## fractions and could take no push. It looks no further than the motion.
+## The hull's rule is shape_cast_prepared's, asked for by name.
 func shape_cast(query: PhysicsShapeQueryParameters3D) -> Dictionary:
 	var disabled := begin_shape_cast(query)
-	var result := shape_cast_prepared(query)
+	var result := _backed_off(query)
 	end_shape_cast(disabled)
 	return result
 
 
-## A movement trace can probe several recovery starts without changing the
-## world. Synchronize and exclude once for that synchronous group. Callers
-## must end the group before moving anything or emitting gameplay signals.
-func begin_shape_cast(query: PhysicsShapeQueryParameters3D) -> Array:
-	sync_dynamic(query.collision_mask, query.exclude)
-	return _disable_excluded(query.exclude)
-
-
-func end_shape_cast(disabled: Array) -> void:
-	_restore_excluded(disabled)
-
-
-func shape_cast_prepared(query: PhysicsShapeQueryParameters3D) -> Dictionary:
+func _backed_off(query: PhysicsShapeQueryParameters3D) -> Dictionary:
 	var hit := _native_cast(query, query.motion)
 	if not bool(hit.get("hit", false)):
 		return {}
@@ -464,26 +616,113 @@ func shape_cast_prepared(query: PhysicsShapeQueryParameters3D) -> Dictionary:
 	var normal: Vector3 = result.get("normal", Vector3.ZERO)
 	var approach := absf(query.motion.dot(normal)) if normal.length_squared() > 0.5 else query.motion.length()
 	result["fraction"] = maxf(0.0, unsafe - maxf(query.margin, CAST_CLEARANCE) / maxf(approach, 0.000001))
-	# The cache keeps its own copy: a caller that edits the hit it is handed
-	# must not change what get_rest_info reads next.
+	# The cache keeps its own copy, as the hull's does.
 	_cast_cache = {query.get_instance_id(): {"result": result.duplicate(), "at": query.transform.origin + query.motion * unsafe}}
 	return result
 
 
-func _native_cast(query: PhysicsShapeQueryParameters3D, motion: Vector3) -> Dictionary:
+## A movement trace can probe several recovery starts without changing the
+## world. Synchronize and exclude once for that synchronous group. Callers
+## must end the group before moving anything or emitting gameplay signals.
+func begin_shape_cast(query: PhysicsShapeQueryParameters3D) -> Array:
+	sync_dynamic(query.collision_mask, query.exclude)
+	if _scope_owner.is_valid() and query.exclude.size() == 1 and query.exclude[0] == _scope_owner:
+		# Left out for the whole scope already.
+		return []
+	return _disable_excluded(query.exclude)
+
+
+func end_shape_cast(disabled: Array) -> void:
+	_restore_excluded(disabled)
+
+
+## The hull's sweep (PlayerBody._trace, between begin_shape_cast and
+## end_shape_cast), with the clearance the movement needs kept at its end:
+## fraction
+## is how far along the motion the shape may go and stay CAST_CLEARANCE
+## clear of what it met, unsafe_fraction where the native cast stopped
+## (its smaller shape 0.197 short of touching, 1 at most), and offset a
+## push along the plane the shape needs on top of that (Vector3.ZERO but
+## for a grazing hit).
+##
+## The native cast reports nothing when the shape only comes within its
+## contact band by the end of the motion without touching, and the next
+## cast from there then starts in overlap (a hull stepping down 18 onto a
+## floor 0.15 higher than where it stood found no floor, and stayed put; a
+## move ending a hair above a rising floor bought a recovery search). So the
+## sweep looks CAST_REACH further and reports a hit wherever the motion's
+## end would be inside the clearance. And a hit at a few degrees, a floor
+## ahead of a walking hull, would need to back off further along the
+## motion than it went to gain its clearance: it backs off CAST_BACK_OFF at
+## most and takes the rest as offset, so the hull goes on up the slope.
+func shape_cast_prepared(query: PhysicsShapeQueryParameters3D) -> Dictionary:
+	var motion := query.motion
+	var length := motion.length()
+	var direction := motion / length if length > 0.0 else Vector3.ZERO
+	var hit := _native_cast(query, direction * (length + CAST_REACH) if length > 0.0 else motion, CAST_INSET)
+	if not bool(hit.get("hit", false)):
+		return {}
+	var result := _mapped(hit)
+	if result.is_empty():
+		return {}
+	var normal: Vector3 = result.get("normal", Vector3.ZERO)
+	# The smaller shape stops 0.197 short as the whole one would, so the
+	# whole one is that much nearer: its clearance makes it up.
+	var clearance := maxf(query.margin, CAST_CLEARANCE) + _inset
+	# Along the motion, to where the native cast stopped; zero for a start
+	# in overlap, which has no plane and goes nowhere.
+	var contact := float(hit["fraction"]) * (length + CAST_REACH) if length > 0.0 else 0.0
+	var stop := contact
+	var offset := Vector3.ZERO
+	if normal.length_squared() > 0.5:
+		# Backing off along the motion gains approach of clearance a unit.
+		var approach := absf(direction.dot(normal))
+		var back := minf(minf(clearance / maxf(approach, 0.000001), CAST_BACK_OFF), contact)
+		stop = contact - back
+		if stop > length:
+			# The whole motion fits; what lies past its end is its back-off.
+			stop = length
+			back = contact - length
+		var missing := clearance - back * approach
+		if missing > 0.001:
+			offset = normal * missing
+	else:
+		stop = 0.0
+	if stop >= length and length > 0.0 and offset == Vector3.ZERO:
+		return {}
+	result["fraction"] = stop / length if length > 0.0 else 0.0
+	result["unsafe_fraction"] = minf(contact / length, 1.0) if length > 0.0 else 0.0
+	result["offset"] = offset
+	# The cache keeps its own copy: a caller that edits the hit it is handed
+	# must not change what get_rest_info reads next.
+	_cast_cache = {query.get_instance_id(): {"result": result.duplicate(), "at": query.transform.origin + direction * contact}}
+	return result
+
+
+## The shape swept as it is, or `inset` smaller all round (the hull's
+## sweep, shape_cast_prepared): what it came to for this shape is kept in
+## _inset, for the clearance to make up.
+func _native_cast(query: PhysicsShapeQueryParameters3D, motion: Vector3, inset: float = 0.0) -> Dictionary:
 	var mask := _mask(query.collision_mask, query.collide_with_bodies, query.collide_with_areas)
 	var at := query.transform
 	var from := at.origin * SCALE
 	var to := (at.origin + motion) * SCALE
 	var scale := at.basis.get_scale().abs()
+	_inset = 0.0
 	if query.shape is SphereShape3D:
-		return native_world.call(&"shape_cast_sphere", from, to, (query.shape as SphereShape3D).radius * scale.x * SCALE, mask, QUERY_LAYER)
+		var radius := (query.shape as SphereShape3D).radius * scale.x
+		_inset = minf(inset, radius * 0.5)
+		return native_world.call(&"shape_cast_sphere", from, to, (radius - _inset) * SCALE, mask, QUERY_LAYER)
 	if query.shape is CapsuleShape3D:
 		var capsule := query.shape as CapsuleShape3D
 		var half_axis := maxf(0.0, capsule.height * 0.5 - capsule.radius)
-		return native_world.call(&"shape_cast_capsule", (at * (Vector3.UP * half_axis)) * SCALE, (at * (Vector3.DOWN * half_axis)) * SCALE, capsule.radius * scale.x * SCALE, motion * SCALE, mask, QUERY_LAYER)
+		var radius := capsule.radius * scale.x
+		_inset = minf(inset, radius * 0.5)
+		return native_world.call(&"shape_cast_capsule", (at * (Vector3.UP * half_axis)) * SCALE, (at * (Vector3.DOWN * half_axis)) * SCALE, (radius - _inset) * SCALE, motion * SCALE, mask, QUERY_LAYER)
 	if query.shape is BoxShape3D and at.basis.orthonormalized().is_equal_approx(Basis.IDENTITY):
-		return native_world.call(&"shape_cast_box", from, to, (query.shape as BoxShape3D).size * scale * SCALE, mask, QUERY_LAYER)
+		var size := (query.shape as BoxShape3D).size * scale
+		_inset = minf(inset, minf(size.x, minf(size.y, size.z)) * 0.25)
+		return native_world.call(&"shape_cast_box", from, to, (size - Vector3.ONE * (2.0 * _inset)) * SCALE, mask, QUERY_LAYER)
 	return native_world.call(&"shape_cast_convex", _points(query), motion * SCALE, mask, QUERY_LAYER)
 
 

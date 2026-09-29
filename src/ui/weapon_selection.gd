@@ -176,10 +176,10 @@ func _draw_item(item_class: String, count: int, key: int, right: float, top: flo
 		box.position.y += LOW_SLOT_DROP
 	# Slid in from the right by 125% of its width until the slide is over.
 	var slide := (1.0 - _slide) * box_width * 1.25
-	var scale := SELECTED_SCALE if selected else SCALE
+	var icon_scale := SELECTED_SCALE if selected else SCALE
 	var pivot := Vector2(box.end.x + slide, box.get_center().y)
 	var image := Rect2(box.position + Vector2(ICON_PAD + slide, ICON_PAD), Vector2(image_width, image_height))
-	image = Rect2(pivot + (image.position - pivot) * scale, image.size * scale)
+	image = Rect2(pivot + (image.position - pivot) * icon_scale, image.size * icon_scale)
 	var colour := wash(team, item_class, selected)
 	colour.a *= opacity
 	if texture != null:

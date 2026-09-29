@@ -141,7 +141,7 @@ func _ready() -> void:
 ## seen first_person or not, from gun (the ViewModel or the PlayerModel
 ## holding it), at its second muzzle (the silencer's tip, the Berettas' left
 ## pistol) or its first; fired_usec in simulation time.
-func fire(weapon_class: String, mode: int, nth: int, first_person: bool, gun: Node3D, second: bool, fired_usec: int, rng: RandomNumberGenerator) -> void:
+func fire(weapon_class: String, mode: int, _nth: int, first_person: bool, gun: Node3D, second: bool, fired_usec: int, rng: RandomNumberGenerator) -> void:
 	var key := flash_for(weapon_class, mode, second and weapon_class == "weapon_elite", first_person)
 	if key.is_empty() or not FlashTable.FLASHES.has(key):
 		return
@@ -199,19 +199,19 @@ static func _open(item: Variant, out: Array[Dictionary]) -> void:
 		for inner: Variant in item["group"]:
 			_open(inner, out)
 		return
-	var name := ""
+	var layer_name := ""
 	var overrides := {}
 	if item is String or item is StringName:
-		name = String(item)
+		layer_name = String(item)
 	elif item is Array and not (item as Array).is_empty():
-		name = String(item[0])
+		layer_name = String(item[0])
 		if (item as Array).size() > 1:
 			overrides = item[1]
-	if name.is_empty() or not FlashTable.LAYERS.has(name):
+	if layer_name.is_empty() or not FlashTable.LAYERS.has(layer_name):
 		return
-	var layer: Dictionary = (FlashTable.LAYERS[name] as Dictionary).duplicate()
+	var layer: Dictionary = (FlashTable.LAYERS[layer_name] as Dictionary).duplicate()
 	layer.merge(overrides, true)
-	layer["name"] = name
+	layer["name"] = layer_name
 	out.append(layer)
 
 
@@ -445,7 +445,7 @@ func _draw(flash: Flash, p: Particle, eye: Transform3D, height_at_unit: float) -
 
 
 ## The light of a flash: one of the pool, lit for the layer's life.
-func _light(flash: Flash, p: Particle, at: Vector3) -> void:
+func _light(flash: Flash, p: Particle, _at: Vector3) -> void:
 	if p.light == null:
 		p.light = _lights[_next_light]
 		_next_light = (_next_light + 1) % _lights.size()

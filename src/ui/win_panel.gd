@@ -200,8 +200,8 @@ func _draw() -> void:
 	draw_style_box(_rounded(Color(background, background.a * fade)), bar)
 	var dots := HudStyle.icon("backgrounds/bluedots_large_png")
 	if dots != null:
-		var scale := dots.get_size().x / DOTS_SIZE
-		draw_texture_rect_region(dots, bar, Rect2(bar.position * scale, bar.size * scale), Color(1, 1, 1, DOTS_OPACITY * fade))
+		var dot_scale := dots.get_size().x / DOTS_SIZE
+		draw_texture_rect_region(dots, bar, Rect2(bar.position * dot_scale, bar.size * dot_scale), Color(1, 1, 1, DOTS_OPACITY * fade))
 	var colour := Color(accent(), fade)
 	draw_rect(Rect2(bar.position, Vector2(minf(END, bar.size.x), BAR_HEIGHT)), colour)
 	draw_rect(Rect2(Vector2(bar.end.x - minf(END, bar.size.x), 0.0), Vector2(minf(END, bar.size.x), BAR_HEIGHT)), colour)
@@ -369,12 +369,12 @@ static func title_font() -> FontVariation:
 ## a side's player (WinPanel_RoundWon, WinPanel_RoundLost), who won for
 ## someone on neither (SFUI_WinPanel_T_Win, _CT_Win), and a draw
 ## (SFUI_WinPanel_Round_Draw).
-static func title_for(winner: String, your_side: String) -> String:
-	if winner != "T" and winner != "CT":
+static func title_for(won: String, your_side: String) -> String:
+	if won != "T" and won != "CT":
 		return "Round Draw"
 	if your_side != "T" and your_side != "CT":
-		return "Terrorists Win" if winner == "T" else "Counter-Terrorists Win"
-	return "ROUND WON" if your_side == winner else "ROUND LOST"
+		return "Terrorists Win" if won == "T" else "Counter-Terrorists Win"
+	return "ROUND WON" if your_side == won else "ROUND LOST"
 
 
 ## What the MVP's tab says for CS2's reason (hudwinpanel.js _SetMVP, with

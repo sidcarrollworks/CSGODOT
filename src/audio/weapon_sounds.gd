@@ -457,8 +457,8 @@ static func _load_all() -> void:
 ## The file names in a cell: "glock_01, glock_02", or none for "-".
 static func _names(cell: String) -> PackedStringArray:
 	var out := PackedStringArray()
-	for name in cell.split(","):
-		var trimmed := name.strip_edges()
+	for part in cell.split(","):
+		var trimmed := part.strip_edges()
 		if not trimmed.is_empty() and trimmed != "-":
 			out.append(trimmed)
 	return out

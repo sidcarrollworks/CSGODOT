@@ -13,7 +13,9 @@ extends RefCounted
 ## Inventory and is announced with item_purchase. A purchase is CS2's own
 ## console command, "buy ak47", sent through GameSystems.command and carried
 ## out at the start of the next tick, as CS2's server carries out a
-## client's; "sellback ak47" undoes one. What is drawn (the buy menu, the
+## client's; "sellback ak47" undoes one; "buy ak47 throw" buys one and
+## throws it out in front of the buyer instead (CS2's buy and throw, for a
+## teammate: the buy menu sends it with Left Control held). What is drawn (the buy menu, the
 ## money on the HUD) only reads the economy and sends those commands.
 ##
 ## Every number is MoneyRules', and every one of those is CS2's.
@@ -33,6 +35,7 @@ const CANNOT_CARRY := &"cannot_carry"
 const TYPE_LIMIT := &"type_limit"
 const NO_MONEY := &"no_money"
 const NOTHING_TO_UNDO := &"nothing_to_undo"
+const CANNOT_THROW := &"cannot_throw"
 
 ## What the menu says for each refusal, as CS2 says it.
 const MESSAGES := {
@@ -47,6 +50,9 @@ const MESSAGES := {
 	TYPE_LIMIT: "You can't buy any more of those this round.",
 	NO_MONEY: "You have insufficient funds!",
 	NOTHING_TO_UNDO: "There is nothing to undo.",
+	# Ours: CS2's menu only greys the card (buywheel-cant-donate), and its
+	# strings have no line for it.
+	CANNOT_THROW: "That can't be thrown.",
 }
 
 var rules: MoneyRules
@@ -225,6 +231,32 @@ func refusal(userid: int, item_class: String) -> StringName:
 	return OK
 
 
+## Why this player may not buy this to throw it out (buy and throw), or OK
+## if they may: a purchase's rules, less what they carry, since it never
+## goes into their inventory; only what can lie on the ground can be
+## thrown, so not armour. Grenades are held to the round's purchases as
+## any are.
+func throw_refusal(userid: int, item_class: String) -> StringName:
+	if not ItemRegistry.has(item_class):
+		return NOT_SOLD
+	var item := ItemRegistry.item(item_class)
+	if not item.buyable:
+		return NOT_SOLD
+	var shopping := shop_refusal(userid)
+	if shopping != OK:
+		return shopping
+	if not item.team.is_empty() and item.team != _side(userid):
+		return WRONG_TEAM
+	if not item.droppable:
+		return CANNOT_THROW
+	var limit := rules.zeus_purchases if item.type == "taser" else rules.type_purchases
+	if limit >= 0 and _type_count(userid, item.type) >= limit:
+		return TYPE_LIMIT
+	if money(userid) < item.price:
+		return NO_MONEY
+	return OK
+
+
 ## Whether this player could undo a purchase of this item now.
 func can_undo(userid: int, item_class: String) -> bool:
 	return _undo_refusal(userid, item_class) == OK
@@ -234,6 +266,12 @@ func can_undo(userid: int, item_class: String) -> bool:
 ## refuses.
 func buy(userid: int, item_class: String) -> void:
 	game.command(userid, "buy " + item_class)
+
+
+## Sends a player's buy and throw command for an item: the next tick buys
+## it and throws it out in front of them, or refuses.
+func buy_and_throw(userid: int, item_class: String) -> void:
+	game.command(userid, "buy %s throw" % item_class)
 
 
 ## Sends a player's command to undo this round's purchase of an item.
@@ -264,7 +302,11 @@ static func item_named(name: String) -> String:
 func _on_buy_command(userid: int, args: PackedStringArray, t: SimTick) -> bool:
 	if args.is_empty():
 		return false
-	if not _sent_before_the_round(t):
+	if _sent_before_the_round(t):
+		return true
+	if args.size() > 1 and args[1] == "throw":
+		_buy_and_throw(userid, item_named(args[0]))
+	else:
 		_buy(userid, item_named(args[0]))
 	return true
 
@@ -313,6 +355,27 @@ func _buy(userid: int, item_class: String) -> void:
 	for entry in replaced:
 		DroppedItem.drop(game, userid, entry)
 		game.events.send(&"item_remove", {"userid": userid, "item": entry.item.item_class})
+
+
+## Buy and throw: paid for and counted as any purchase, announced with
+## item_purchase, and thrown from where the buyer would hold it as the drop
+## command throws what is in hand (ItemDrops' throw_item). It is not the
+## buyer's to undo: it is on the ground, anyone's to take.
+func _buy_and_throw(userid: int, item_class: String) -> void:
+	if throw_refusal(userid, item_class) != OK:
+		return
+	var item := ItemRegistry.item(item_class)
+	var entry := Inventory.Entry.new(item, Weapon.new(ItemRegistry.weapon_data(item_class)) if item.is_gun else null)
+	_accounts[userid] = money(userid) - item.price
+	_type_counts[userid] = _type_counts.get(userid, {})
+	_type_counts[userid][item.type] = _type_count(userid, item.type) + 1
+	var side := _side(userid)
+	game.events.send(&"item_purchase", {
+		"userid": userid, "team": side,
+		"loadout": Loadout.index_of(side, item_class), "weapon": item_class,
+	})
+	if game.query(&"throw_item", [userid, entry]) == null:
+		DroppedItem.drop(game, userid, entry)
 
 
 func _undo_refusal(userid: int, item_class: String) -> StringName:

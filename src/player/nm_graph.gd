@@ -502,9 +502,9 @@ func spring_of(index: int) -> Dictionary:
 ## share of the clip, and the fixed time.
 func pose_time_of(index: int) -> Dictionary:
 	var n := node(index)
-	var remap: Dictionary = n.get("m_inputTimeRemapRange", {})
+	var time_range: Dictionary = n.get("m_inputTimeRemapRange", {})
 	return {
-		"input": int(n.get("m_nPoseTimeValueNodeIdx", -1)), "from": float(remap.get("m_flMin", 0.0)), "to": float(remap.get("m_flMax", 1.0)),
+		"input": int(n.get("m_nPoseTimeValueNodeIdx", -1)), "from": float(time_range.get("m_flMin", 0.0)), "to": float(time_range.get("m_flMax", 1.0)),
 		"frames": bool(n.get("m_bUseFramesAsInput", false)), "fixed": float(n.get("m_flUserSpecifiedTime", 0.0)),
 	}
 

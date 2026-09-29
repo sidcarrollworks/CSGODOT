@@ -18,7 +18,7 @@ Companion pages: `gdscript.md` (language, containers, numbers), `physics.md`, `e
 - In a `--script` file, `return` right after `quit()`. `quit()` only ends the loop "at the end of the current iteration", so code after it still runs.
 - Always print the `TESTS <name> ...` line before `quit()` in a test. Script errors do not change Godot's exit code (inferred from the docs saying nothing about it and from `scripts/run_tests.sh` relying on the TESTS line), so a missing line is the only sign of a crash.
 - Run `godot --headless --path . --import` once before any `--script` run on a fresh checkout: `class_name` globals come from the import/scan step.
-- Do not touch the scene tree from a thread. Build a subtree off-tree and add it with `add_child.call_deferred(node)`. Physics queries from another thread are not safe unless `physics/3d/run_on_separate_thread` is on.
+- Do not touch the scene tree from a thread. Build a subtree off-tree and add it with `add_child.call_deferred(node)`. Godot's physics queries from another thread are not safe unless `physics/3d/run_on_separate_thread` is on; the game's are Box3D's, and its rays are asked from worker threads while the bridge is reading (`physics.md`).
 - Wait for every `WorkerThreadPool` task and `wait_to_finish()` every `Thread`; the docs require it.
 - Keep audio and visual delays on `SceneTreeTimer`s or per-frame code; never on the simulation's side. A `create_timer` fires on real (scaled) process time, not on ticks.
 
@@ -192,7 +192,7 @@ Docs: `classes/class_fileaccess.rst`, `classes/class_diraccess.rst`, `classes/cl
 Docs: `tutorials/performance/using_multiple_threads.rst`, `tutorials/performance/thread_safe_apis.rst`, `classes/class_workerthreadpool.rst`, `classes/class_thread.rst`, `classes/class_mutex.rst`, `classes/class_semaphore.rst`.
 
 - The active scene tree is not thread-safe. Build nodes in a thread only while they are off-tree, then `add_child.call_deferred(node)` on the main thread.
-- Physics servers are not thread-safe unless `physics/3d/run_on_separate_thread` is on; with it off, do space queries only from the main thread.
+- Physics servers are not thread-safe unless `physics/3d/run_on_separate_thread` is on; with it off, do space queries only from the main thread. That is Godot's servers: on Box3D, the game's physics, a ray may be asked from a worker thread while the bridge is reading (`physics.md`), and `World3D.direct_space_state` is still fetched on the main thread.
 - `NavigationServer3D` queries are thread-safe; `AStar3D`/`AStarGrid2D` are not.
 - `Array`/`Dictionary`: reading and writing existing elements from several threads is fine; anything that changes the size (append, erase, resize) needs a `Mutex`.
 - Do not change one `Resource` from several threads; load a resource on one thread at a time.
@@ -204,7 +204,7 @@ Docs: `tutorials/performance/using_multiple_threads.rst`, `tutorials/performance
   - `threading/worker_pool/max_threads` defaults to -1 (one per logical core); `threading/worker_pool/low_priority_thread_ratio` 0.3.
 - `Thread`: `start(callable, priority := Thread.PRIORITY_NORMAL) -> Error`, `wait_to_finish()` (required), `is_alive()`, `is_started()`, static `Thread.is_main_thread()`, static `Thread.set_thread_safety_checks_enabled(enabled)`. Creating a thread is slow; make them once, up front.
 - `Mutex` is reentrant: `lock()`, `try_lock() -> bool`, `unlock()` (once per lock). `Semaphore` starts at 0: `post(count := 1)`, `wait()`, `try_wait() -> bool`.
-- The project uses one: `WorldVisibility.cull` sorts the map's meshes into CS2's visibility clusters on a `WorkerThreadPool` task while the rest of the map loads, draws everything until it is done, and waits on it before its first use and before it is freed. Nothing in the simulation is threaded. A tick must give the same result every run, so any threaded work in the simulation would have to join before the tick continues (inferred).
+- The project uses one: `WorldVisibility.cull` sorts the map's meshes into CS2's visibility clusters on a `WorkerThreadPool` task while the rest of the map loads, draws everything until it is done, and waits on it before its first use and before it is freed. In the simulation one thing is threaded, since 2026-09-28: the bots' thinking (`GameWorld.commands_for`), every bot's at once on `WorkerThreadPool.add_group_task` while the tick's thread waits for the group, each reading the world and writing only itself (`engine.md` has the rules found). A tick must give the same result every run, so it joins before the tick continues, and the same fight and the same match are held to the same result thought of on the threads and in turn (`tests/run_bot_think_checks.gd`, `tests/run_dust2_think_checks.gd`).
 
 ## Command line and headless runs
 

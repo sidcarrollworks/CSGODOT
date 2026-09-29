@@ -78,6 +78,14 @@ in the same pull request.
   the game runs itself in a `_physics_process` of its own; a new system
   joins the world's tick, and what it gives out a tick (path searches, and
   later events) lives on the world.
+- Everyone's command is asked for before anyone runs, and the bots think
+  theirs out on worker threads, all at once (Sid, 2026-09-28). What a bot
+  thinks with reads the world and writes only the bot; what it shares (a
+  command to the game, a path search, anything it would write elsewhere)
+  it does in `Bot.prepare_to_think`, in its turn on the tick's thread, and
+  of the physics it asks only rays. `tests/run_bot_think_checks.gd` plays
+  a fight both ways and `tests/run_dust2_think_checks.gd` dust2's match,
+  and hold them to the same result.
 - A server's cost comes first, since Sid chose 64 Hz to leave room for
   more players: nothing reads the disk during a tick; what is only seen or
   heard runs per frame, not per tick; a change to the movement counts the

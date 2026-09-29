@@ -120,8 +120,8 @@ static func table() -> Dictionary:
 		var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(TABLE))
 		if parsed is Dictionary:
 			_table = parsed
-			for name in (_table.get("events", {}) as Dictionary):
-				_names_by_lower[String(name).to_lower()] = name
+			for event_name in (_table.get("events", {}) as Dictionary):
+				_names_by_lower[String(event_name).to_lower()] = event_name
 		else:
 			push_error("SoundEvents: cannot read %s" % TABLE)
 	return _table
@@ -189,8 +189,8 @@ static func with_children(names: PackedStringArray) -> PackedStringArray:
 static func load_events(names: PackedStringArray) -> void:
 	if not SoundBank.available():
 		return
-	for name in with_children(names):
-		for file in find(name).files:
+	for event_name in with_children(names):
+		for file in find(event_name).files:
 			_stream(file)
 
 

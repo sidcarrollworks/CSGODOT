@@ -200,9 +200,9 @@ static func drawn_frame(model: Node3D, bone_name: String) -> Transform3D:
 
 ## The animation of a player called name, or ending in it after a library's
 ## prefix; empty if none.
-static func _clip_named(player: AnimationPlayer, name: String) -> String:
+static func _clip_named(player: AnimationPlayer, short_name: String) -> String:
 	for clip in player.get_animation_list():
-		if clip == name or String(clip).ends_with("/" + name):
+		if clip == short_name or String(clip).ends_with("/" + short_name):
 			return clip
 	return ""
 

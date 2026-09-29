@@ -107,7 +107,7 @@ func throw_from(
 	grenade.previous_position = grenade.position
 	grenade.decoy_weapon = _primary_of(userid)
 	game.entities.spawn(grenade)
-	grenade.seed = hash([grenade.id, weapon_class, grenade.thrown_usec])
+	grenade.random_seed = hash([grenade.id, weapon_class, grenade.thrown_usec])
 	game.events.send(&"grenade_thrown", {"userid": userid, "weapon": weapon_class})
 	return grenade
 

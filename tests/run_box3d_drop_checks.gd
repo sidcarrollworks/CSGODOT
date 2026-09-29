@@ -27,6 +27,7 @@ func _initialize() -> void:
 	_check_landings(false)
 	_check_landings(true)
 	_check_cleanup()
+	_check_idle()
 	_finish("box3d-drops")
 
 
@@ -275,6 +276,39 @@ func _make_case(ramp: bool = false) -> _Case:
 	test.host.add_child(test.adapter)
 	_check(test.adapter.initialize(test.game, geometry), "Box3D captures the test collision world")
 	return test
+
+
+## The native world is stepped while something in it is awake, and left
+## as it is while nothing is: four steps of nothing were 0.15 ms a tick.
+func _check_idle() -> void:
+	var test := _make_case()
+	for tick in 4:
+		_step(test)
+	_check(test.adapter.native_steps == 0 and test.adapter.idle_ticks == 4 and test.adapter.steps == 0,
+		"with nothing in it the native world is not stepped (%d steps, %d idle ticks)" % [test.adapter.native_steps, test.adapter.idle_ticks])
+	var item := _drop(test, "weapon_ak47", Transform3D(Basis.IDENTITY, Vector3(0.0, 24.0, 0.0)))
+	var from := item.position.y
+	_step(test)
+	_check(test.adapter.native_steps == Box3DDrops.COLLISION_STEPS and test.adapter.idle_ticks == 4,
+		"a gun dropped into it is stepped from its first tick")
+	for tick in SimClock.ticks_in(6.0):
+		_step(test)
+	var fell := item.position.y < from - 1.0
+	var stepped := test.adapter.native_steps
+	var idle := test.adapter.idle_ticks
+	for tick in 8:
+		_step(test)
+	_check(fell and item.resting and test.adapter.native_steps == stepped and test.adapter.idle_ticks == idle + 8,
+		"once the gun has come to rest the world is left alone again (fell %s, resting %s, %d more steps, %d more idle ticks)" % [
+			fell, item.resting, test.adapter.native_steps - stepped, test.adapter.idle_ticks - idle])
+	# Thrown again, as a pickup and a drop would: written to, so awake.
+	item.position += Vector3.UP * 30.0
+	item.resting = false
+	item.physics_revision += 1
+	_step(test)
+	_check(test.adapter.native_steps == stepped + Box3DDrops.COLLISION_STEPS,
+		"and stepped again when the gun is moved")
+	_close_case(test)
 
 
 func _drop(test: _Case, gun: String, from: Transform3D, velocity := Vector3.ZERO, spin := Vector3.ZERO) -> DroppedItem:

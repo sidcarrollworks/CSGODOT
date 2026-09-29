@@ -273,7 +273,7 @@ func show_from(point: Vector3) -> void:
 		if _casts[i] == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
 			_meshes[i].visible = seen[i] != 0
 		else:
-			_meshes[i].cast_shadow = _casts[i] if seen[i] != 0 else GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+			_meshes[i].cast_shadow = (_casts[i] as GeometryInstance3D.ShadowCastingSetting) if seen[i] != 0 else GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 
 
 ## How many of the culled meshes are not drawn now.

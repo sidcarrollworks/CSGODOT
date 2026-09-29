@@ -15,7 +15,7 @@ extends RefCounted
 ## What threw it: GrenadeRules.MOLOTOV or INCENDIARY.
 var weapon_class: String = ""
 var origin := Vector3.ZERO
-var seed: int = 0
+var spread_seed: int = 0
 ## Simulation time it caught.
 var started_usec: int = 0
 ## Each flame's place on the ground, in the order they caught.
@@ -36,7 +36,7 @@ func _init(p_weapon_class: String = GrenadeRules.MOLOTOV, ground: Vector3 = Vect
 	weapon_class = p_weapon_class
 	origin = ground
 	started_usec = at_usec
-	seed = p_seed
+	spread_seed = p_seed
 	flames.append(ground)
 	_next_spread_usec = at_usec + _spread_usec()
 
@@ -102,7 +102,7 @@ func _spread_usec() -> int:
 ## the seed, then the ground there. Empty if it will not do.
 func _try_place(space: PhysicsDirectSpaceState3D) -> Dictionary:
 	_attempts += 1
-	var pick := hash([seed, _attempts])
+	var pick := hash([spread_seed, _attempts])
 	var parent := flames[pick % flames.size()]
 	var angle := float((pick >> 8) % 3600) / 3600.0 * TAU
 	var toward := parent + Vector3(cos(angle), 0.0, sin(angle)) * GrenadeRules.FIRE_SPACING
