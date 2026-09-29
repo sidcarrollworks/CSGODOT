@@ -86,6 +86,8 @@ const DEAD_BAR_TOP := 580.0
 
 
 func _ready() -> void:
+	# Nothing the HUD shows is read from the disk once the match is on.
+	HudStyle.read_ahead(KillFeed.ICONS.values())
 	# The scope under the rest, so health and ammo stay readable through it.
 	scope = ScopeOverlay.new()
 	scope.player = player

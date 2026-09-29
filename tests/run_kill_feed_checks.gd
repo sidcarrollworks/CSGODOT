@@ -138,6 +138,22 @@ func _test_the_feed() -> void:
 	_game.events.send(&"player_death", {"userid": _id("C1"), "attacker": _id("T2"), "weapon": "weapon_ak47"})
 	_check(feed.notices().is_empty(), "nothing shows until the tick's events are handed out")
 	_game.events.flush()
+	# The tick only takes the death down: the row is laid out on a frame.
+	_check(feed._notices.is_empty() and feed._waiting.size() == 1 and feed.is_animating(),
+		"handed out on the tick, the death waits for the frame: no row is laid out in the tick")
+	await process_frame
+	_check(feed._notices.size() == 1 and feed._waiting.is_empty(), "the next frame makes it a row")
+	# Its side and name are the roster's as the death was told, not as the
+	# frame finds them.
+	_game.events.send(&"player_death", {"userid": _id("C2"), "attacker": _id("T1"), "weapon": "weapon_ak47"})
+	_game.events.flush()
+	var told: KillFeed.Notice = feed._waiting[0]
+	_check(told.victim == "C2" and told.victim_side == "CT" and told.attacker_side == "T",
+		"what it says is read as it is told (%s of %s, by %s)" % [told.victim, told.victim_side, told.attacker_side])
+	feed._process(100.0)
+	_check(feed.notices().is_empty(), "(and both rows have gone)")
+	_game.events.send(&"player_death", {"userid": _id("C1"), "attacker": _id("T2"), "weapon": "weapon_ak47"})
+	_game.events.flush()
 	_check_equal(feed.notices().size(), 1, "then the death is a row")
 	_check(feed.is_animating(), "and the feed keeps time")
 
