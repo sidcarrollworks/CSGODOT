@@ -25,6 +25,9 @@ func _initialize() -> void:
 	await _test_box3d(0.0)
 	await _test_box3d(SLOPE)
 	await _test_put_at_once()
+	_test_gap()
+	await _test_walk_up_ramp()
+	await _test_stairs()
 	_test_body_plants()
 	_finish("foot-plant")
 
@@ -357,6 +360,88 @@ func _test_put_at_once() -> void:
 	_check(absf(plant.drop() - on_ramp) < 0.3,
 		"and back on the ramp it is down by the ramp's gap at once (%.2f, where it eased to %.2f)" % [plant.drop(), on_ramp])
 	flat.free()
+	_free(stood)
+
+
+## A foot's gap from the origin's height to its floor's: less the rest
+## clearance below it, nothing within it, and the whole rise above it.
+func _test_gap() -> void:
+	_check(
+		is_equal_approx(FootPlant.gap(0.0, -5.0), 5.0 - FootPlant.REST_CLEARANCE)
+			and FootPlant.gap(0.0, -0.2) == 0.0 and FootPlant.gap(0.0, 0.0) == 0.0
+			and is_equal_approx(FootPlant.gap(0.0, 8.0), -8.0),
+		"a foot comes down to a floor below less the rest clearance, stays within it, and goes up onto one above (%.2f, %.2f, %.2f)" % [FootPlant.gap(0.0, -5.0), FootPlant.gap(0.0, -0.2), FootPlant.gap(0.0, 8.0)]
+	)
+
+
+## Walking up the ramp, a planted foot stays where it is in the world while
+## the body rises past it, 58 units a second at 250 up 13 degrees: the
+## foot stays on the floor every frame, not a tenth of a second behind the
+## body (Sid, 2026-09-30: feet floated and sank walking up slopes and
+## stairs). The stand-in's feet go along with its model, so here the body
+## only rises, which is what changes under a planted foot.
+func _test_walk_up_ramp() -> void:
+	var stood := _stand(SLOPE, true)
+	var model := stood["model"] as Node3D
+	var skeleton := stood["skeleton"] as Skeleton3D
+	var seen := stood["seen"] as Dictionary
+	var ankle_lift := _rest_point(skeleton, "ankle_L").y
+	await _frames(40)
+	var worst := 0.0
+	var rise := 250.0 * tan(deg_to_rad(SLOPE)) / 60.0
+	for frame in 5:
+		model.position.y += rise
+		await _frames(1)
+		for side in ["L", "R"]:
+			var now: Vector3 = seen.get("ankle_" + side, Vector3.ZERO)
+			var over := now.y - _ground_y(SLOPE, now.x)
+			worst = maxf(worst, absf(over - ankle_lift - FootPlant.REST_CLEARANCE))
+	_check(worst < 0.3,
+		"the body rising %.2f units a frame as it walks up the ramp, each planted ankle stays as high over the floor under it as the clip has it, every frame (%.2f off at worst)" % [rise, worst])
+	_free(stood)
+
+
+## Stairs: a step 8 units up whose edge runs between the feet. The foot over
+## it goes up onto it; and once the hull has stepped up, the foot left on
+## the step below stays down on it from the next frame, not easing there.
+func _test_stairs() -> void:
+	const RISE := 8.0
+	var step := StaticBody3D.new()
+	step.collision_layer = Hitscan.WORLD_LAYER
+	step.collision_mask = 0
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(200.0, RISE, 200.0)
+	shape.shape = box
+	step.add_child(shape)
+	# From x 0 on (the left foot's side), its top at RISE.
+	step.position = Vector3(100.0, RISE * 0.5, 0.0)
+	root.add_child(step)
+	# In the space before the first ray.
+	await physics_frame
+	var stood := _stand(0.0, true)
+	var model := stood["model"] as Node3D
+	var skeleton := stood["skeleton"] as Skeleton3D
+	var seen := stood["seen"] as Dictionary
+	var plant := stood["plant"] as FootPlant
+	var ankle_lift := _rest_point(skeleton, "ankle_L").y
+	await _frames(40)
+	var left: Vector3 = seen.get("ankle_L", Vector3.ZERO)
+	var right: Vector3 = seen.get("ankle_R", Vector3.ZERO)
+	_check(
+		absf(left.y - RISE - ankle_lift) < 0.3 and absf(right.y - ankle_lift) < 0.3 and plant.drop() < 0.01,
+		"at the foot of a step the foot over it goes up onto it (%.2f over it) and the other stays on the floor (%.2f), the pelvis where it was" % [left.y - RISE, right.y]
+	)
+	# The hull steps up: the whole body is RISE higher in one tick.
+	model.position.y = RISE
+	await _frames(1)
+	right = seen.get("ankle_R", Vector3.ZERO)
+	left = seen.get("ankle_L", Vector3.ZERO)
+	_check(
+		absf(right.y - ankle_lift - FootPlant.REST_CLEARANCE) < 0.3 and absf(left.y - RISE - ankle_lift) < 0.3,
+		"stepped up, the foot left below stays on its step from the next frame (%.2f over it) and the other on the one above (%.2f)" % [right.y, left.y - RISE]
+	)
+	step.free()
 	_free(stood)
 
 

@@ -273,12 +273,22 @@ bones' modifiers:
   as CS2's server hitboxes most likely do (section 4). It eases in and out
   over 0.1 s and follows a changing floor over the same (CS2's smoothing
   lives in the game code, section 1; its time is a guess).
-- **Rays:** one per ankle, straight down from the body's origin height
-  under the ankle, world layer only (`GroundProbe.ground_below`, the helper
-  issue 17 built), up to 12 units; cast again only once that ankle has
-  moved a unit. Standing still costs no rays after the first. A foot over a
-  deeper gap is left where the clip has it, as CS2 leaves a foot whose
-  target is unset.
+- **Rays:** one per ankle, straight down under the ankle from a step's
+  height (18 units, `MOST_RISE`) above the body's origin to 12 below it,
+  world layer only (`GroundProbe.ground_below`, the helper issue 17
+  built); cast again only once that ankle has moved a unit. Standing still
+  costs no rays after the first. A foot over a deeper gap, or over a
+  surface steeper than a walkable floor, is left where the clip has it, as
+  CS2 leaves a foot whose target is unset. A foot over a floor above the
+  origin (the next stair up) is raised onto it, as section 6 has it
+  (clamped to about the step height).
+- **Following the floor:** each foot keeps the plane its ray found and
+  follows it exactly as it and the body move; only a jump to another floor
+  (a stair's edge, a ledge) eases, over 0.1 s. Easing the gap itself, as
+  the first version did, left a planted foot a tenth of a second behind a
+  body rising past it: 3.4 units into a 13 degree ramp walking up it at
+  250 units a second, and a whole stair's height on stepping up (Sid,
+  2026-09-30).
 - **Legs:** two-bone IK on `leg_upper`/`leg_lower`/`ankle`, bending about
   the knee's current plane as Esoterica's solver does, each foot brought
   down by its own gap from where the clip has it (so a stride keeps its
