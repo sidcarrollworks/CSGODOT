@@ -60,6 +60,9 @@ class Actor:
 	var eyes: Vector3 = Vector3.ZERO
 	var aim: Vector3 = Vector3.FORWARD
 	var on_ground: bool = true
+	## Crouching, or asking to: a plant goes on only crouched, and whoever
+	## runs the player crouches the planter (crouches()).
+	var crouching: bool = false
 	## Holding the attack button with the bomb in hand: the plant.
 	var plant_held: bool = false
 	## Holding the use key: the defuse.
@@ -86,6 +89,7 @@ class Actor:
 		actor.eyes = player.global_position + Vector3.UP * player.eye_height()
 		actor.aim = PlayerInput.aim_direction(player.yaw_degrees, player.pitch_degrees)
 		actor.on_ground = player.on_ground
+		actor.crouching = player.wants_duck or player.is_ducked
 		return actor
 
 
@@ -163,6 +167,14 @@ func holds_still(player_id: int) -> bool:
 	if player_id == NOBODY:
 		return false
 	return (planting() and carrier == player_id) or (defusing() and defuser == player_id)
+
+
+## Whether a player is made to crouch: the planter, for the whole plant, as
+## CS2 does (Sid, playtest of 2026-09-30). Whoever runs the player ducks
+## them whatever their duck key says; a defuser stands or crouches as they
+## like.
+func crouches(player_id: int) -> bool:
+	return player_id != NOBODY and planting() and carrier == player_id
 
 
 func planting() -> bool:
@@ -309,7 +321,9 @@ func _tick_carried(now_usec: int, actor: Actor, sites: Array[BombSite], actors: 
 	var on_site := _site_at(actor.feet, sites)
 	var can_plant := actor.plant_held and actor.on_ground and actor.team == "T" and on_site != ""
 	if planting():
-		if not can_plant or on_site != site:
+		# Begun standing, the plant crouches its planter from the next tick
+		# (crouches()); one who is not crouching after that has stood up.
+		if not can_plant or on_site != site or not actor.crouching:
 			_event("bomb_abortplant", {"userid": carrier, "site": site})
 			plant_started_usec = NEVER
 			site = ""
