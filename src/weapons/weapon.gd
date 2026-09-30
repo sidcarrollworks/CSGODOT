@@ -149,11 +149,15 @@ var trigger_held: bool = true:
 		trigger_held = value
 		if not value:
 			_trigger_reset = true
+			_dry_armed = true
 ## Whether the trigger has come up, or gone down afresh, since the last
 ## round. A semi-automatic weapon ("Hold to Shoot: No", the game's
 ## m_bIsFullAuto false) fires only when it has: one round a click, however
 ## long the button is held. An automatic one ignores it.
 var _trigger_reset: bool = true
+## Whether the trigger has come up, or gone down afresh, since the last
+## click on an empty magazine (dry_fire()): one click a pull.
+var _dry_armed: bool = true
 var _model_hold := WeaponData.Punch.new()
 
 ## Where the recoil has pushed the VIEW, in degrees, as (right, up).
@@ -356,6 +360,22 @@ func drawn_usec() -> int:
 ## starts again.
 func press_trigger() -> void:
 	_trigger_reset = true
+	_dry_armed = true
+
+
+## The trigger pulled on an empty magazine at now_usec: whether it clicks,
+## CS2's weapon_fire_on_empty. One click a pull, once the gun would have
+## been ready to fire: a press, or a trigger still held after the round
+## that emptied it, a cycle on. Not while it reloads or is drawn. Source's
+## own weapon code (Source SDK 2013, HandleFireOnEmpty) plays the empty
+## sound the same way, once per pull; that CS2 keeps it is inferred.
+func dry_fire(now_usec: int) -> bool:
+	if ammo > 0 or not _dry_armed or is_reloading(now_usec) or is_drawing(now_usec):
+		return false
+	if float(now_usec - _last_shot_usec) / 1_000_000.0 < data.cycle_time:
+		return false
+	_dry_armed = false
+	return true
 
 
 func can_fire(now_usec: int) -> bool:
