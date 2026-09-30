@@ -25,6 +25,7 @@ var range_node: Node3D
 var game: GameSystems
 var system: GrenadeSystem
 var view: GrenadeView
+var sounds: GrenadeSounds
 var overlay: FlashOverlay
 
 var _log := PackedStringArray()
@@ -34,7 +35,7 @@ var _dummy_id: int = GameEvents.NOBODY
 
 
 ## Sets up on a range: the grenade system in its game (its world's, which
-## steps it), what draws the grenades, the readout and the white-out, which
+## steps it), what draws the grenades and what you hear of them, the readout and the white-out, which
 ## covers the HUD as CS2's does; and your grenades.
 func build(p_range: Node3D) -> void:
 	range_node = p_range
@@ -47,6 +48,10 @@ func build(p_range: Node3D) -> void:
 	view.name = "GrenadeView"
 	add_child(view)
 	view.watch(game)
+	sounds = GrenadeSounds.new()
+	sounds.name = "GrenadeSounds"
+	add_child(sounds)
+	sounds.watch(game, _player_id)
 	game.events.listen_all(_on_event)
 	stock()
 

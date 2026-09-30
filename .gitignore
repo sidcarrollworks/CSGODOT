@@ -30,3 +30,8 @@ inspect-output.txt
 # Box3D experiment: reproducibly installed by scripts/install_box3d.ps1.
 addons/box3d/bin/
 addons/box3d/icons/*.import
+
+# The game's native code, built by scripts/build_native.sh and .ps1.
+addons/csgodot_native/
+native/build/
+native/.sconsign.dblite

@@ -28,6 +28,13 @@ var _bot_events: Array[String] = []
 var _victim: PlayerController
 var _victim_events: Array[String] = []
 var _victim_at_respawn: Dictionary = {}
+## Where the bot's pelvis was, from its feet, at the last skeleton update of
+## the frame it came back in: what that frame drew.
+var _bot_back_pelvis := Vector3.INF
+## The body the bot dies into, as it was made ahead of its death.
+var _bot_body_ahead: Ragdoll
+## And how far its hands were from their grips on the gun.
+var _bot_back_hands := Vector2.INF
 var _combat_started_usec: int = 0
 
 
@@ -871,7 +878,17 @@ func _start_bot() -> void:
 	_bot.died.connect(func(zone: StringName) -> void:
 		_bot_events.append("died:" + zone)
 		_bot_died_usec = Time.get_ticks_usec())
-	_bot.respawned.connect(func() -> void: _bot_events.append("respawned"))
+	_bot.respawned.connect(func() -> void:
+		_bot_events.append("respawned")
+		var frame := Engine.get_process_frames()
+		var rig := _bot.model.character_rig
+		rig.skeleton_updated.connect(func() -> void:
+			if Engine.get_process_frames() == frame:
+				_bot_back_pelvis = (rig.global_transform * rig.get_bone_global_pose(rig.find_bone("pelvis"))).origin - _bot.global_position
+				var units := rig.global_basis.get_scale().x
+				_bot_back_hands = Vector2(
+					rig.get_bone_global_pose(rig.find_bone("hand_L")).origin.distance_to(rig.get_bone_global_pose(rig.find_bone("wpnHand_L")).origin),
+					rig.get_bone_global_pose(rig.find_bone("hand_R")).origin.distance_to(rig.get_bone_global_pose(rig.find_bone("wpnHand_R")).origin)) * units))
 	_bot_started_frame = _frames
 	var impacts := BulletImpacts.new()
 	impacts.max_holes = 2
@@ -1025,6 +1042,7 @@ func _bot_step() -> bool:
 		4:
 			if _victim_events.has("respawned") or Time.get_ticks_usec() >= _combat_started_usec + 12_000_000:
 				_test_victim_dies_and_returns()
+				_test_a_side_swap_lets_the_body_go()
 				_bot_world.free()
 				_report()
 				return true
@@ -1111,6 +1129,43 @@ func _test_victim_dies_and_returns() -> void:
 			and int(back.get("ammo", 0)) == _victim.weapon.data.magazine_size,
 		"and is back where the map put it, whole and reloaded, to be shot again (%s)" % back
 	)
+
+
+## To the other side, the bot's body is another model's: the body made
+## ahead over the old skeleton goes, with its parts and its upper layer, and
+## one is made over the new.
+func _test_a_side_swap_lets_the_body_go() -> void:
+	if not _bot.alive or _bot.model == null:
+		_check(false, "the bot is alive to change sides")
+		return
+	if _bot._ragdoll_ready == null:
+		_bot_game.make_bodies_now()
+	var old := _bot._ragdoll_ready
+	if old == null:
+		_check(false, "the bot has a body made ahead to let go of")
+		return
+	var slot := old.slot
+	var held := Ragdoll._slot_users[slot]
+	var native: Node = old.adapter.native_world
+	var in_the_world := native.get_child_count()
+	var old_rig := _bot.model.character_rig
+	var side := _bot.team
+	_bot.change_team("T" if side == "CT" else "CT")
+	_check(
+		_bot._ragdoll_ready == null and _bot.ragdoll == null and old.bodies.is_empty() and old.slot == -1
+			and Ragdoll._slot_users[slot] == held - 1 and native.get_child_count() < in_the_world
+			and _bot.model.character_rig != old_rig and _bot.wants_body_made() and _bot_game.bodies_to_make,
+		"a side swap lets the old side's body go, its parts (%d things fewer in the native world) and its upper layer, and the world is told there is one to make"
+			% (in_the_world - native.get_child_count())
+	)
+	_bot_game.make_bodies_now()
+	var made := _bot._ragdoll_ready
+	_check(
+		made != null and made != old and made.prepared_for(_bot.model.character_rig) and not made.fallen
+			and not _bot.wants_body_made() and not _bot_game.bodies_to_make,
+		"and one is made over the new side's skeleton"
+	)
+	_bot.change_team(side)
 
 
 func _test_bot_sounds() -> void:
@@ -1295,11 +1350,31 @@ func _test_bot_dies_where_shot() -> void:
 	var space := _bot_world.get_world_3d().direct_space_state
 	var head := _bot.hitboxes.hitboxes[0]
 	var angles := PlayerInput.angles_from_direction(head.global_position - origin)
+	# The body it dies into was made on one of the frames since it joined
+	# (GameWorld._process), and waits.
+	_bot_body_ahead = _bot._ragdoll_ready
+	var waits := _bot_body_ahead != null and _bot_body_ahead.prepared_for(_bot.model.character_rig) \
+		and not _bot_body_ahead.fallen and not _bot_body_ahead.is_processing() \
+		and _bot_body_ahead.bodies.values().all(func(body: Ragdoll.Part) -> bool: return not bool(body.native.get(&"enabled")))
+	_check(
+		waits and not _bot.wants_body_made() and not _bot_game.bodies_to_make,
+		"the body it dies into was made on a frame before, its %d parts switched off, and the world asks for no more"
+			% (_bot_body_ahead.bodies.size() if _bot_body_ahead != null else 0)
+	)
+	var native: Node = _bot_body_ahead.adapter.native_world if waits else null
+	var in_the_world := native.get_child_count() if native != null else 0
 	var shot := weapon.fire(0, 0.0, origin, angles.x, angles.y, Weapon.ShooterState.new(0.0, true, false))
 	var result := Hitscan.fire_at(space, shot, data)
 	_check(
 		result.zone == &"head" and result.damage > 100.0 and not _bot.alive and _bot_events.has("died:head"),
 		"one round to the head kills through the helmet (%.0f), and it says where it landed" % result.damage
+	)
+	_check(
+		waits and _bot.ragdoll == _bot_body_ahead and _bot._ragdoll_ready == null and _bot_body_ahead.fallen
+			and _bot_body_ahead.bodies.values().all(func(body: Ragdoll.Part) -> bool: return bool(body.native.get(&"enabled")))
+			and native.get_child_count() - in_the_world == _bot_body_ahead._death_filters.size(),
+		"it falls as the body made ahead, switched on: the death makes nothing but the exceptions of its pose (%d; a body made then is some 45 things in the native world)"
+			% ((native.get_child_count() - in_the_world) if native != null else -1)
 	)
 	_check(
 		_bot.ragdoll != null and _bot.ragdoll.bodies.size() >= 10 and not _bot.model.is_animating()
@@ -1320,6 +1395,26 @@ func _test_bot_comes_back() -> void:
 			and _bot.model.state() == &"idle",
 		"after its respawn time it is back at the start of its route, whole, standing, the ragdoll gone (%s)"
 			% [_bot.model.state()]
+	)
+	_check(
+		_bot_body_ahead != null and _bot._ragdoll_ready == _bot_body_ahead and not _bot_body_ahead.fallen
+			and not _bot_body_ahead.is_processing() and _bot_body_ahead._death_filters.is_empty()
+			and _bot_body_ahead.bodies.values().all(func(body: Ragdoll.Part) -> bool: return not bool(body.native.get(&"enabled")))
+			and not _bot.wants_body_made(),
+		"the body it lay as is parked for its next death, its parts switched off: none is made again"
+	)
+	# The ragdoll is freed at the frame's end, and until it was let go of at
+	# once it posed the body again that frame, lying where it died, under a
+	# gun drawn where it stood.
+	_check(
+		_bot_back_pelvis.is_finite() and _bot_back_pelvis.y > 25.0 and Vector2(_bot_back_pelvis.x, _bot_back_pelvis.z).length() < 20.0,
+		"the frame it comes back in shows it stood at its spawn, not lying where it died (its pelvis %.1f over its feet, %.1f aside)"
+			% [_bot_back_pelvis.y, Vector2(_bot_back_pelvis.x, _bot_back_pelvis.z).length()]
+	)
+	_check(
+		_bot_back_hands.is_finite() and _bot_back_hands.x < 2.0 and _bot_back_hands.y < 2.0,
+		"and posed, its hands on the gun it draws (%.2f and %.2f units from their grips), not at rest with its arms out"
+			% [_bot_back_hands.x, _bot_back_hands.y]
 	)
 
 
@@ -1775,6 +1870,55 @@ func _test_player_model() -> void:
 		chains_ok and twist_after,
 		"the rig's legs run hip, knee, ankle from the pelvis, and the foot fit runs before the other modifiers on the rig"
 	)
+	# The hands back on the gun (HandGrip) after the foot fit and before the
+	# twist bones follow the forearms; its targets are where the clip has the
+	# hands, so in the clip's own hold, before anything moves the hips, it has
+	# nothing to do. That is what HandGrip assumes of wpnHand_L and _R.
+	var grip_ok := model.hand_grip != null and model.hand_grip.get_index() > model.foot_plant.get_index()
+	for child in rig.get_children():
+		if child is TwistModifier and model.hand_grip != null and child.get_index() < model.hand_grip.get_index():
+			grip_ok = false
+	for arm: Array in HandGrip.ARMS:
+		for bone_name: String in arm:
+			grip_ok = grip_ok and rig.find_bone(bone_name) >= 0
+	_check(grip_ok, "the rig has both arms and the hands' targets on the gun, and the hands go back on it after the foot fit and before the twist bones")
+	if grip_ok:
+		var units := rig.global_basis.get_scale().x
+		var standing_gaps := []
+		for arm: Array in HandGrip.ARMS:
+			standing_gaps.append(HandGrip.fit(rig, arm, 0.0, units))
+		_check(
+			standing_gaps[0] < 1.0 and standing_gaps[1] < 1.0,
+			"standing with the AK-47, each hand is on its target on the gun, as the clips key them (left %.2f, right %.2f units off)" % standing_gaps
+		)
+		# The foot fit's pelvis drop on a slope takes the gun down with it
+		# (FootPlant.lower_gun), so the hands stay on it (Sid, 2026-09-29, T ramp).
+		var wpn_bone := rig.find_bone("wpn")
+		# How the gun's bones hang, which the checks without the models take
+		# from here (tests/run_hand_grip_checks.gd's stand-in).
+		var hangs := PackedStringArray()
+		var up := rig.get_bone_parent(wpn_bone)
+		while up >= 0:
+			hangs.append(rig.get_bone_name(up))
+			up = rig.get_bone_parent(up)
+		var targets_under_wpn := true
+		for arm: Array in HandGrip.ARMS:
+			targets_under_wpn = targets_under_wpn and rig.get_bone_parent(rig.find_bone(arm[3])) == wpn_bone
+		_check(
+			hangs == PackedStringArray(["wpnPivot", "root_motion"]) and targets_under_wpn,
+			"the gun's bone hangs under wpnPivot under root_motion, not under the pelvis, and the hands' targets under it (wpn < %s)" % " < ".join(hangs)
+		)
+		var gun_before := (rig.global_transform * rig.get_bone_global_pose(wpn_bone)).origin
+		FootPlant.fit(rig, FootPlant.MOST_DROP, [FootPlant.MOST_DROP, FootPlant.MOST_DROP], [Vector3.UP, Vector3.UP])
+		var gun_lowered := gun_before.y - (rig.global_transform * rig.get_bone_global_pose(wpn_bone)).origin.y
+		var dropped_gaps := []
+		for arm: Array in HandGrip.ARMS:
+			dropped_gaps.append(HandGrip.fit(rig, arm, 0.0, units))
+		_check(
+			absf(gun_lowered - FootPlant.MOST_DROP) < 0.1 and absf(dropped_gaps[0] - standing_gaps[0]) < 0.1 and absf(dropped_gaps[1] - standing_gaps[1]) < 0.1,
+			"with the pelvis %.0f units down, as on T ramp, the gun goes %.2f down with it and the hands stay on it (left %.2f, right %.2f units off)" % [FootPlant.MOST_DROP, gun_lowered, dropped_gaps[0], dropped_gaps[1]]
+		)
+		model.pose_now()
 	var weapon_root: Node3D = null
 	for child in rig.get_parent().get_children():
 		if child.name.contains("weapon_rif"):
@@ -1807,6 +1951,13 @@ func _test_player_model() -> void:
 		"running forward at 240, the tree is at (240, 0) in CS2's standing space, a stride each run cycle, and the feet move (%s, %.2f, %.1f units)"
 			% [tree.get("parameters/stand/blend_position"), float(tree.get("parameters/cycle/scale")), stride]
 	)
+	if model.hand_grip != null:
+		# How far the run under the gun's hold takes the hands off the gun,
+		# which HandGrip puts back: printed for Sid's runs, to compare with
+		# his screenshot of 2026-09-28.
+		var units := rig.global_basis.get_scale().x
+		print("  running with the AK-47, the hands are %.2f (left) and %.2f (right) units off the gun before HandGrip" % [
+			HandGrip.fit(rig, HandGrip.ARMS[0], 0.0, units), HandGrip.fit(rig, HandGrip.ARMS[1], 0.0, units)])
 	model.update_motion(Vector3(0, 0, 180), 180.0, 0.0, true)
 	tree.advance(1.3)
 	var run_at := float(tree.get("parameters/stand/run_n/current_position"))

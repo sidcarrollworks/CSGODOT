@@ -252,7 +252,7 @@ issue done here and on the page in the same pull request.
 | 16 | A quick switch cuts the draw short | **Done 2026-09-26:** the draw restarted on every switch, as CS2's graph does, and R during it reloads once it ends (Sid's CS2 check) | Play quick switches beside CS2 | 12 |
 | 17 | Running into a jump snaps to the air pose | *(Remote done, PR #114)* The take-off from CS2's graph | Extract the jump clips; regenerate the tables | 6 |
 | 18 | Nobody seems to get the bomb | *(done 2026-09-26; "[E] Take Bomb" from a bot done 2026-09-28)* A check end to end, CS2's handing it to the human T (`bot_defer_to_human_items`), a cue for who carries it | Rounds as T and CT; CS2's warmup | 16, 15 |
-| 19 | Grenade sounds and effects | The shared sound-event table and player (**done** 2026-09-26: `reference/sounds/`, `SoundEvents`, `default_bus_layout.tres`), then the grenades' sounds; the effects after research | Extract the missing sounds and the particles | 17 to 20 |
+| 19 | Grenade sounds and effects | The shared sound-event table and player (**done** 2026-09-26: `reference/sounds/`, `SoundEvents`, `default_bus_layout.tres`), then the grenades' sounds (**done** 2026-09-28: `GrenadeSounds`, `FlashMuffle`, the burn); the effects after research | Extract the missing sounds and the particles | 17 to 20 |
 | 20 | A click as the magazine nears empty (CS2's `Default.NearlyEmpty`) | On the shared sound player, the threshold provisional (**done** 2026-09-28) | Measure the threshold in CS2 | After 19's groundwork |
 | 21 | Round sounds (start, end, planted, ten seconds, announcer) | The cues from `reference/research/audio-round.md` (**done** 2026-09-28: `RoundSounds`, the freeze beeps and ten-second warning, the bomb's own events) | Extract the UI, music and announcer; listen | 16, after 19's groundwork |
 | 22 | Looking down shows the vest where CS2 shows legs | **Done:** the seen body folds from spine_2 up, the shadow and bots whole | Beside CS2 | 6a |
@@ -303,12 +303,49 @@ ms of a mean of 4.4 and 0.45 of a 95th of 6.9. The worst ticks, 7 ms and
 more, are not the thinking's: they are shots (`scripts/profile_worst_ticks.gd`),
 a round paying 0.85 ms to bring 190 hitboxes to their bones before it is
 traced and 0.2 ms for every ray after, a shooter's run 1.5 to 5 ms where
-a bot's is 0.17. **Next: hitboxes published by their player and brought up
-to date only where a ray passes (Remote).**
-Left: the movement in native code, which needs SCons and
-godot-cpp's source on Sid's machine and a build in CI; hitboxes posed
-when a round asks rather than every frame; a ragdoll at rest letting go
-of the native step; Godot's renderer on a thread of its own measured
+a bot's is 0.17. **Hitboxes for shots (2026-09-29,
+perf/hitboxes-for-shots):** a body's hitboxes are a set, brought up to date
+only for a ray that could meet it; a round fired is 0.6 to 0.7 ms less
+with ten players and 1.3 to 1.6 with twenty, the ticks over 6 ms with
+twenty a quarter of what they were, and dust2's match the same match, byte
+for byte ([hitboxes-for-shots-2026-09-28.md](research/hitboxes-for-shots-2026-09-28.md)).
+**What a death costs on the tick (2026-09-29, perf/death-on-the-tick):**
+the tick a player dies in was 6.4 to 7.3 ms where a quiet one is 2, and
+8.5 to 14 the first times in a process (the very first 11 to 23). The body a
+player dies into is made ahead, on a frame, and dropped at the death; one
+dead body passes through another by an upper layer of its own; a body at
+rest is stepped and posed no more; the kill feed makes its rows on the
+frame; the HUD reads its faces and images before play. A tick with a
+death is 4.0 to 4.8 ms, 4.1 to 6.8 the first times (the very first 4.2 to
+9.2), a quiet tick with bodies lying 0.15 ms less, and the worst tick of
+the warmup Sid played 4.5 to 5.7 ms where it was 7.4 to 9.7
+([death-on-the-tick-2026-09-29.md](research/death-on-the-tick-2026-09-29.md)).
+Sid, 2026-09-29, playing dust2 alone and against nine bots: alone 224
+frames a second at 1080p and a worst frame of 5.5 to 7 ms; with the bots,
+in warmup and shooting nothing, 130 to 190 and a worst frame over 10, the
+same at 4K. It is the processor and the bots.
+**The movement's step in native code (2026-09-29,
+perf/native-movement):** `PlayerBody`'s step and the hull's sweep under it
+are also C++ (`native/src/hull_mover.cpp`, a GDExtension of the game's
+own, built by `scripts/build_native.sh` and `.ps1`, not committed). The
+script is the reference and runs wherever the library is not built; every
+check file runs each native step by the script as well and holds the two
+to the same body to the last bit, 171,682 steps of them in the suite's
+run. A walking bot's movement 102 to 107 us a tick down to 67 to 70, and
+the seeded ten-player tick 1.8 to 1.95 ms down to 1.55 to 1.7
+([native-movement-2026-09-29.md](research/native-movement-2026-09-29.md)).
+Local: build it in the main checkout and play a match with it.
+**Next, proposed: the bodies nobody sees, animated on every frame that
+holds no tick (Remote).** Ten bodies' animation and skeletons are 1.1 to
+1.4 ms of every frame headless, where nothing is seen, and at 160 frames
+a second that is more in a second than the ticks cost. A body out of
+sight is posed for its hitboxes alone, which a round asks for a few times
+a second. No research covers it yet.
+Left: the bridge's work around the movement's step (27 us a bot a tick,
+script over dictionaries) into the native library; what a death
+drops, 0.3 ms, and the first death's step, 6 ms once; a player's ragdoll
+made from CS2's own shapes, which `RagdollShapes` reads and only a check
+asks for; Godot's renderer on a thread of its own measured
 drawn, not shipped on (Godot marks it experimental).
 Measurements and the list:
 [box3d-walking-hitch-2026-09-28.md](research/box3d-walking-hitch-2026-09-28.md).
@@ -453,6 +490,34 @@ item 6 is built.
    server, so the hitboxes move with it. Here bodies and their hitboxes
    stand as if looking level (`reference/research/hitboxes-aim.md`: a
    Local measurement, then the aim stage after systemization step 8).
+   The hands' IK onto the gun, the other half of AimCS, is done
+   (`HandGrip`, Sid 2026-09-29: guns floating out of the bots' hands): each
+   frame after the foot fit, each arm is bent so its hand lands on the
+   clip's `wpnHand_L`/`_R`, easing off over CS2's 0.3 s for a draw or a
+   reload. The foot fit now lowers the gun with the pelvis
+   (`FootPlant.lower_gun`), since on T ramp the drop took the hands past
+   what the IK reaches (Sid, 2026-09-29). As merged it lowered the gun
+   twice as far as the body, 12 units for 6 on a 13 degree ramp: on the
+   rig `wpn` hangs under `wpnPivot`, and both were moved. The check that
+   said so needs the models, so it first ran on Sid's machine, after the
+   merge. **Put right 2026-09-29 (fix/gun-with-the-pelvis):** only the
+   topmost of the gun's bones moves; a bot stood on ramps of 8 to 25
+   degrees has its gun down by what its pelvis is and its hands on their
+   grips, and walked up and down ones of 13 and 18 its hands are within
+   0.01 of them, where they were up to 4.7 off. And at a
+   respawn, which is where a slope's spawn showed it: the ragdoll, freed
+   at the frame's end, posed the body once more where it lay, so for a
+   frame the body was drawn where it died and its gun where it spawned,
+   and for a frame or two after the body stood at rest, arms out, until
+   its animation stepped. The ragdoll is let go of at once
+   (`Ragdoll.let_go`), the body posed as it gets up
+   (`PlayerModel.pose_again`), and the foot fit takes the floor as it finds
+   it (`FootPlant.snap`) where it eased from the drop it had where the
+   body died. Left: while a draw or a reload plays the hands are let go
+   of, and part-way through a draw they are 4.7 units from their grips,
+   on the flat as on a slope, since Godot blends the draw bone by bone
+   where CS2 blends it in the model's space. Local: a look at bots on
+   dust2's slopes and at a round's start on T spawn.
 
 6a. **Your shadow has no arms.** *(done; Sid checks it in play)* Sid noticed
    2026-09-22 22:06. The shadow twin now keeps its arms and holds what is in

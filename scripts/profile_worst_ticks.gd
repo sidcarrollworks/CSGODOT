@@ -9,9 +9,12 @@ extends SceneTree
 ## The second is the one measured: how many ticks took more than 6 ms, and
 ## the worst of them, each with its split (the tick's beginning, everyone's
 ## command, everyone's run, its end), whose run was the longest, and the
-## events the tick sent. The third asks a ray that can meet a hitbox after
-## every tick, and the same ray again, and one that meets the world alone:
-## what a round's trace pays before it has met anything.
+## events the tick sent. The third asks a ray that can meet a hitbox in
+## every tick, after everyone has run and before the tick ends, and the
+## same ray again, and one that meets the world alone: what a round's trace
+## pays before it has met anything. (Until 2026-09-29 it asked them after
+## the tick, where the bridge takes nothing on trust and looks every hitbox
+## over: that is not what a round pays.)
 ##
 ##   godot --headless --path . --script scripts/profile_worst_ticks.gd
 ##   godot --headless --path . --script scripts/profile_worst_ticks.gd -- --think main
@@ -101,6 +104,27 @@ func _play(what: int) -> void:
 					longest = took
 					who = "%s (%d traces)" % [running[i].name, running[i].traces - traces]
 		var t3 := Time.get_ticks_usec()
+		if what == RAYS and tick >= RAYS_FROM_TICK:
+			var asker := world.players[0]
+			var from := asker.global_position + Vector3.UP * 64.0
+			var to := from + Vector3(4000.0, 0.0, 0.0)
+			# Its own left out, as a round's shooter leaves them.
+			var own: Array[RID] = [asker.get_rid()]
+			own.append_array(asker.hit_target.rids())
+			var query := PhysicsRayQueryParameters3D.create(from, to, Hitscan.WORLD_LAYER | Hitbox.LAYER, own)
+			query.collide_with_areas = true
+			var plain := PhysicsRayQueryParameters3D.create(from, to, Hitscan.WORLD_LAYER, own)
+			var r0 := Time.get_ticks_usec()
+			PhysicsQueries.intersect_ray(space, query)
+			var r1 := Time.get_ticks_usec()
+			PhysicsQueries.intersect_ray(space, query)
+			var r2 := Time.get_ticks_usec()
+			PhysicsQueries.intersect_ray(space, plain)
+			var r3 := Time.get_ticks_usec()
+			first.append(float(r1 - r0))
+			again.append(float(r2 - r1))
+			world_only.append(float(r3 - r2))
+			t3 = Time.get_ticks_usec()
 		world.end_tick()
 		var t4 := Time.get_ticks_usec()
 		rows.append({
@@ -112,30 +136,13 @@ func _play(what: int) -> void:
 				player.model.step(SimClock.tick_seconds())
 				if player.model.character_rig != null:
 					player.model.character_rig.notification(Skeleton3D.NOTIFICATION_UPDATE_SKELETON)
-		if what == RAYS and tick >= RAYS_FROM_TICK:
-			var asker := world.players[0]
-			var from := asker.global_position + Vector3.UP * 64.0
-			var to := from + Vector3(4000.0, 0.0, 0.0)
-			var query := PhysicsRayQueryParameters3D.create(from, to, Hitscan.WORLD_LAYER | Hitbox.LAYER, [asker.get_rid()])
-			query.collide_with_areas = true
-			var plain := PhysicsRayQueryParameters3D.create(from, to, Hitscan.WORLD_LAYER, [asker.get_rid()])
-			var r0 := Time.get_ticks_usec()
-			PhysicsQueries.intersect_ray(space, query)
-			var r1 := Time.get_ticks_usec()
-			PhysicsQueries.intersect_ray(space, query)
-			var r2 := Time.get_ticks_usec()
-			PhysicsQueries.intersect_ray(space, plain)
-			var r3 := Time.get_ticks_usec()
-			first.append(float(r1 - r0))
-			again.append(float(r2 - r1))
-			world_only.append(float(r3 - r2))
 	if what == PARTS:
 		_show(rows, world)
 	elif what == RAYS:
 		var boxes := 0
 		for player in world.players:
 			boxes += player.hit_target.hitboxes().size()
-		print("RAYS over %d ticks, %d players, %d hitboxes: the first ray that can meet a hitbox %.0f us (95th %.0f, worst %.0f); the same again, nothing having moved, %.0f us (95th %.0f); one that meets the world alone %.0f us" % [
+		print("RAYS in the tick, over %d ticks, %d players, %d hitboxes: the first ray that can meet a hitbox %.0f us (95th %.0f, worst %.0f); the same again, nothing having moved, %.0f us (95th %.0f); one that meets the world alone %.0f us" % [
 			first.size(), world.players.size(), boxes, _mean(first), _at(first, 0.95), _at(first, 1.0),
 			_mean(again), _at(again, 0.95), _mean(world_only)])
 	scene.queue_free()

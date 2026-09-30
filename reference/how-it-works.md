@@ -82,6 +82,20 @@ light on a bot's body, follows the frames drawn rather than the ticks.
 twenty, what going online will add, and what to do about it next;
 `scripts/profile_dust2.gd` measures it again.
 
+The movement's step is written twice. The script's (`PlayerBody`,
+`MovementSolver`, and the hull's sweep in `Box3DQueries`) is the
+reference, and runs on every machine. The native code's
+(`native/src/hull_mover.cpp`, C++ built into a GDExtension by
+`scripts/build_native.sh` or `.ps1`, and not committed) is the same step
+in the same order with the same arithmetic, a third faster, and runs
+where it has been built and its assumptions hold (`PlayerBody._native_mover`).
+It gives the same body as the script's to the last bit of every part, so
+a match played by one is the match played by the other, and a server and
+a client may differ in which they run. A library built from other sources
+than the checkout's is not run: it carries a stamp of what it copies, and
+the game compares it as it starts. `--movement script` has the script
+run every step. `native/README.md` has the rules for changing either.
+
 ## Shooting
 
 Hitscan, traced from the sub-tick position of the eye, with three things done
@@ -185,11 +199,14 @@ shot: it wears the game's own hitboxes, the nineteen capsules CS2 defines
 for the model, riding its bones (`src/combat/skinned_hitboxes.gd`), so a
 bullet lands on the head, chest, stomach, an arm or a leg and is priced
 accordingly, ahead of the movement hull, which bullets pass. A kill turns
-the body into a ragdoll (`src/combat/ragdoll.gd`): CS2's own fifteen ragdoll
-shapes from the model description (the hitbox capsules where it has none),
-jointed with limits that differ each way, measured from standing, knocked the
+the body into a ragdoll (`src/combat/ragdoll.gd`): fifteen bodies from the
+hitbox capsules (CS2's own fifteen ragdoll shapes are read from the model
+description, `RagdollShapes`, but a player's body is not made from them
+yet), jointed with limits measured from standing, knocked the
 way the last round was going, lifted clear of the floor, falling and lying
-where it lands; off the range the bot is back at the start of its route a few
+where it lands. It is made before it is wanted, on a frame soon after the
+body is put on, and waits switched off; the death puts its parts on the
+bones and a respawn parks it for the next. Off the range the bot is back at the start of its route a few
 seconds later, and in a match at the next round. (CS2's joints are not read
 yet: `reference/research/ragdoll-joints.md`. Without the model, the game's
 death clip for where the round landed plays instead.) And it shoots back:
@@ -278,7 +295,12 @@ sounds are on it (`src/audio/round_sounds.gd`): the announcer, the music
 kit's cues giving way to each other by their priorities
 (`src/audio/music_rules.gd`) at CS2's default music volumes
 (`src/audio/audio_settings.gd`), the freeze countdown's beeps, and the
-bomb's beeps, plant and defuse (`C4View`).
+bomb's beeps, plant and defuse (`C4View`). So are the grenades'
+(`src/audio/grenade_sounds.gd`): throws, bounces, the burning bottle in
+flight, every detonation with its distant layer, fires, the decoy's fake
+gunfire as the gun it imitates, and a flash in your own ears, its ring and
+the muffle over everything else (`src/audio/flash_muffle.gd`). The older
+views play on an `Unmixed` bus so the muffle reaches them too.
 
 ## Lighting
 
@@ -329,6 +351,15 @@ The weapon checks pin fire rate, ammo and reloading, spread determinism, recoil
 matching the pattern shot for shot, the ordering of the inaccuracy states,
 damage falloff and hitbox multipliers, and that a wall between the muzzle and
 the target stops the bullet registering.
+
+Where the native code is built, every check file runs each step of the
+movement twice, by the script and by the native code from the same start,
+and fails if the two bodies differ in any part (`PlayerBody.check_steps`,
+which `tests/check_suite.gd` turns on; the file's last lines say how many
+steps it compared). So a change to the movement made in the script alone,
+or in the C++ alone, fails wherever a body walks into the difference.
+`tests/run_native_movement_checks.gd` walks the branches a match seldom
+reaches.
 
 Several checks are written as A/B pairs against a config flag: the stairs are
 run with `stay_on_ground` on and off, the hop is taken with `subtick_jump` on

@@ -1,0 +1,19 @@
+; The game's own native code (native/src): the movement's step.
+; scripts/build_native.sh and scripts/build_native.ps1 build the library into
+; addons/csgodot_native/bin and put a copy of this file beside it, where
+; Godot finds it; neither is committed. Without them the script runs the
+; step, as it always did. (native/ is not part of the project to Godot:
+; .gdignore.)
+
+[configuration]
+
+entry_symbol = "csgodot_native_init"
+compatibility_minimum = "4.7"
+reloadable = false
+
+[libraries]
+
+windows.debug.x86_64 = "res://addons/csgodot_native/bin/libcsgodot_native.windows.template_debug.x86_64.dll"
+windows.release.x86_64 = "res://addons/csgodot_native/bin/libcsgodot_native.windows.template_release.x86_64.dll"
+linux.debug.x86_64 = "res://addons/csgodot_native/bin/libcsgodot_native.linux.template_debug.x86_64.so"
+linux.release.x86_64 = "res://addons/csgodot_native/bin/libcsgodot_native.linux.template_release.x86_64.so"

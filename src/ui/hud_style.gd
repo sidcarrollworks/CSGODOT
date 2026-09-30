@@ -110,6 +110,22 @@ static func face(name: StringName = &"bold_tf") -> Font:
 	return _faces[name]
 
 
+## Reads from the disk, before a match is played, what its HUD may show
+## during it: every face, every item's icon, and the images at `images`
+## (GameHud.IMAGES, what the HUD's parts ask icon() for). A face is 3 to 5
+## ms to read and an icon 1 to 6, and whatever showed one first read it
+## then: the first death of a match read its gun's icon and the feed's face
+## on the tick it was told in, 5 ms. All of them are 0.15 s, once, as the
+## HUD is made.
+static func read_ahead(images: Array = []) -> void:
+	for name: StringName in FACES:
+		face(name)
+	for definition in ItemRegistry.all():
+		item_icon(definition.item_class)
+	for path: String in images:
+		icon(path)
+
+
 ## Whether CS2's own font is in use.
 static func has_cs2_font() -> bool:
 	return ResourceLoader.exists(FONTS.path_join(FACES[&"bold_tf"][0]))

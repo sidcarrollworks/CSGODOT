@@ -60,6 +60,8 @@ func _ready() -> void:
 	_player.unit_size = 10.0 * METRE
 	_player.max_distance = 80.0 * METRE
 	_player.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
+	# Where a flash's muffle reaches it (FlashMuffle).
+	_player.bus = FlashMuffle.unmixed_bus()
 	add_child(_player)
 	# Every set a step or a landing can play, loaded with the first body:
 	# loaded as each first played, the first step onto sand or wood took up

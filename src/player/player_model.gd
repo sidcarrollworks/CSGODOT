@@ -145,6 +145,8 @@ var stepped_by_hand := false
 ## Plants the feet on the ground under them while it stands there and is
 ## drawn (setup; playtest 2026-09-25 issue 5).
 var foot_plant: FootPlant
+## Puts the hands back on the gun after the foot fit (setup).
+var hand_grip: HandGrip
 var _on_screen: VisibleOnScreenNotifier3D
 var _unstepped := 0.0
 var _last_physics_frame := -1
@@ -287,6 +289,11 @@ func setup(team: String, weapon_model: String, weapon_set: String = "", holds: b
 	foot_plant = FootPlant.new()
 	foot_plant.name = "FootPlant"
 	character_rig.add_child(foot_plant)
+	# The hands back on the gun, after the pelvis has dropped and before the
+	# forearms' twist bones follow the hands (HandGrip).
+	hand_grip = HandGrip.new()
+	hand_grip.name = "HandGrip"
+	character_rig.add_child(hand_grip)
 
 	var agent := instantiate(AGENTS.get(team, AGENTS["T"]))
 	if agent != null:
@@ -965,6 +972,17 @@ func pose_now() -> void:
 		animation_player.advance(0.0)
 
 
+## Poses the skeleton now, on a tree already going: once, where pose_now
+## steps a fresh tree three times. The step is the one the next frame
+## would have made, and costs what that would have (2 to 3 ms for a body
+## that has just taken something in hand), a frame sooner.
+func pose_again() -> void:
+	if animation_tree != null:
+		animation_tree.advance(0.0)
+	elif animation_player != null:
+		animation_player.advance(0.0)
+
+
 ## Steps its own animation from now on rather than leaving it to every frame
 ## (_process): on every frame while a camera draws it, so it moves smoothly
 ## where it is looked at; otherwise only in frames that ran no tick, by the
@@ -1005,6 +1023,9 @@ func _process(delta: float) -> void:
 		# A death or a ragdoll has the legs at once.
 		foot_plant.active = is_animating() and _dead == &""
 		foot_plant.planting = plants_feet(_on_ground, _dead != &"")
+	if hand_grip != null:
+		hand_grip.active = is_animating() and _dead == &""
+		hand_grip.holding = grips_gun()
 	# Stopped, a ragdoll has the bones (set_animating).
 	if not stepped_by_hand or not is_animating():
 		return
@@ -1023,6 +1044,14 @@ static func plants_feet(on_ground: bool, dead: bool) -> bool:
 	return on_ground and not dead
 
 
+## Whether the hands hold the gun (HandGrip): one is shown in hand, the
+## body is alive, and no draw or reload has the hands.
+func grips_gun() -> bool:
+	if held_weapon == null or not held_weapon.visible or _dead != &"":
+		return false
+	return animation_tree == null or not has_weapon_layers or not bool(animation_tree.get("parameters/gun_action/active"))
+
+
 ## Moves the animation on by delta seconds.
 func step(delta: float) -> void:
 	if animation_tree != null:
@@ -1031,10 +1060,19 @@ func step(delta: float) -> void:
 		animation_player.advance(delta)
 
 
+## The body has been put somewhere else at once (a spawn, a respawn, up
+## from where it died): its feet take the floor there as they find it.
+func put_at_once() -> void:
+	if foot_plant != null:
+		foot_plant.snap()
+
+
 ## Stops the animation, for a ragdoll to have the bones, or starts it again.
 func set_animating(on: bool) -> void:
 	if foot_plant != null:
 		foot_plant.active = on and _dead == &""
+	if hand_grip != null:
+		hand_grip.active = on and _dead == &""
 	if animation_tree != null:
 		animation_tree.active = on
 	elif animation_player != null:

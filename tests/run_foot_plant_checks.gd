@@ -24,6 +24,7 @@ func _initialize() -> void:
 	await _test_air()
 	await _test_box3d(0.0)
 	await _test_box3d(SLOPE)
+	await _test_put_at_once()
 	_test_body_plants()
 	_finish("foot-plant")
 
@@ -322,6 +323,40 @@ func _test_air() -> void:
 	for bone_name: String in seen:
 		ok = ok and (seen[bone_name] as Vector3).distance_to(_rest_point(skeleton, bone_name)) < 0.001
 	_check(ok and (stood["plant"] as FootPlant).rays == 0, "not planting (in the air, or dead), it casts nothing and moves nothing")
+	_free(stood)
+
+
+## A body put somewhere else at once, as a spawn puts it: from the ramp to
+## flat ground and back. Left to itself the fit eases from the drop it had
+## where it stood; told (snap), it takes the floor there at the next update.
+func _test_put_at_once() -> void:
+	var stood := _stand(SLOPE, true)
+	var flat := _ground(0.0)
+	flat.position.x = 1000.0
+	root.add_child(flat)
+	var model := stood["model"] as Node3D
+	var plant := stood["plant"] as FootPlant
+	await _frames(40)
+	var on_ramp := plant.drop()
+	_check(on_ramp > 3.0, "stood on the ramp the pelvis is down by the downhill foot's gap (%.2f)" % on_ramp)
+	model.position.x = 1000.0
+	await _frames(2)
+	var eased := plant.drop()
+	_check(eased > on_ramp * 0.5,
+		"moved to flat ground and not told, it is still down two frames on, easing (%.2f)" % eased)
+	model.position.x = 0.0
+	await _frames(40)
+	model.position.x = 1000.0
+	plant.snap()
+	await _frames(2)
+	_check(plant.drop() < 0.01,
+		"moved there and told, it stands on the flat at once (%.3f down)" % plant.drop())
+	model.position.x = 0.0
+	plant.snap()
+	await _frames(2)
+	_check(absf(plant.drop() - on_ramp) < 0.3,
+		"and back on the ramp it is down by the ramp's gap at once (%.2f, where it eased to %.2f)" % [plant.drop(), on_ramp])
+	flat.free()
 	_free(stood)
 
 

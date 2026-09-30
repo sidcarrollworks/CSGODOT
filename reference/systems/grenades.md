@@ -158,10 +158,13 @@ files named:
    (`hull_skip_hints` in `map_importer.gd`). They go on a body of their own
    on `GrenadeRules.GRENADE_CLIP_LAYER` (32), which grenades bounce off and
    nothing else does. Needs a run on Sid's machine with dust2.
-7. **Sounds (Local):** the equipment's sounds are extracted (G6) but not
-   tabled by name as the guns' are (`reference/weapons/sounds.md`). With a
-   table, the view plays the bounce, each detonation, the fire's loop, the
-   smoke's hiss and the flashed ringing, and a decoy's gunfire through
-   `WeaponSounds` (it has only the AK-47's and M4A1-S's sets now).
+7. **Sounds (done 2026-09-28, playtest issue 19):** `GrenadeSounds`
+   (`src/audio/grenade_sounds.gd`) plays every grenade event through CS2's
+   own sound events (`reference/sounds/`): the throw, the bounce, the
+   bottle in flight, each detonation with its distant layer, the fire's
+   loop, ignites, fade and hiss, the smoke's clearing, and a decoy's gunfire
+   as the gun it imitates; `FlashMuffle` the flashed ringing and muffle;
+   `HitSounds` the burn. Left Local: the listen beside CS2
+   (`reference/playtest-2026-09-25.md` issue 19, step 5).
 8. **The HUD:** the grenade slot row and the lineup crosshair (held 2 s)
    are not built.

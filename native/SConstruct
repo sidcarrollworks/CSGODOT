@@ -1,0 +1,71 @@
+#!/usr/bin/env python
+# Builds the game's native code (native/src) against godot-cpp into
+# addons/csgodot_native/bin. scripts/build_native.sh and .ps1 run it; by hand:
+#
+#   scons -C native godot_cpp=/path/to/godot-cpp platform=windows target=template_debug
+#
+# godot_cpp is a checkout of godot-cpp at the commit the scripts pin. The
+# Godot editor binary, which runs the game and the checks, loads the
+# template_debug library; an exported game the template_release one.
+import hashlib
+import os
+
+# What the library is a copy of, besides its own sources: a change to any of
+# them and the library is built again before it runs a step
+# (PlayerBody.native_sources has the same list, in the same order).
+COPIED_SCRIPTS = [
+    "src/movement/player_body.gd",
+    "src/movement/movement_solver.gd",
+    "src/movement/movement_config.gd",
+    "src/physics/box3d_queries.gd",
+]
+
+
+def sources_stamp():
+    # By name, in order, with the line endings left out: a checkout on
+    # Windows may have changed them.
+    native = Dir("#").abspath
+    project = os.path.dirname(native)
+    names = ["native/SConstruct"]
+    names += sorted("native/src/" + name for name in os.listdir(os.path.join(native, "src")) if name.endswith((".cpp", ".h")))
+    names += COPIED_SCRIPTS
+    stamp = hashlib.sha256()
+    for name in names:
+        with open(os.path.join(project, *name.split("/")), "rb") as source:
+            stamp.update(name.encode("utf-8") + b"\n" + source.read().replace(b"\r", b"") + b"\n")
+    return stamp.hexdigest()
+
+
+godot_cpp = ARGUMENTS.pop("godot_cpp", os.environ.get("GODOT_CPP", "godot-cpp"))
+if not os.path.isfile(os.path.join(godot_cpp, "SConstruct")):
+    raise SystemExit("No godot-cpp at %s: pass godot_cpp=<its checkout>, or run scripts/build_native" % godot_cpp)
+
+godot_cpp_env = SConscript(os.path.join(godot_cpp, "SConstruct"), {"api_version": "4.7"})
+# The arithmetic as it is written: the native step has to give the script's
+# results to the last bit, and a multiply and an add fused into one
+# instruction round once where the script rounds twice. godot-cpp's own
+# sources are built with it too (its vectors are this library's): SCons
+# works a command out when it builds, from the environment as it then is,
+# so what is added here reaches what godot-cpp's SConstruct set to build.
+if godot_cpp_env.get("is_msvc", False):
+    godot_cpp_env.Append(CCFLAGS=["/fp:precise"])
+else:
+    godot_cpp_env.Append(CCFLAGS=["-ffp-contract=off"])
+# What is this library's alone goes on a copy, or every change to the stamp
+# would build godot-cpp again.
+env = godot_cpp_env.Clone()
+env.Append(CPPPATH=["src/"])
+# The library carries what it was built from (HullMover.get_sources).
+env.Append(CPPDEFINES=[("CSGODOT_NATIVE_SOURCES", "s" + sources_stamp())])
+# Objects under native/build, not beside the sources.
+env.VariantDir("build/" + env["suffix"].lstrip("."), "src", duplicate=False)
+sources = [
+    "build/" + env["suffix"].lstrip(".") + "/" + os.path.basename(str(source))
+    for source in Glob("src/*.cpp")
+]
+
+library = env.SharedLibrary(
+    "../addons/csgodot_native/bin/libcsgodot_native{}{}".format(env["suffix"], env["SHLIBSUFFIX"]),
+    source=sources,
+)
+Default(library)

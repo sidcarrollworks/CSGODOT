@@ -27,6 +27,24 @@ var _failures: int = 0
 var _known_open: int = 0
 
 
+## Every ray in a tick that can meet a hitbox is held to the hitboxes
+## themselves, in every check file (Box3DQueries.check_sets): what it met
+## is compared with the nearest capsule on its line, worked out from the
+## hitboxes' own nodes. A file in which one did not agree has failed.
+##
+## And every step of a body's movement that the native code runs is run by
+## the script first, from the same start, and the two held to the same
+## body to the last bit (PlayerBody.check_steps). Where the native code has
+## not been built the script runs alone and nothing is compared.
+func _init() -> void:
+	Box3DQueries.check_sets = true
+	Box3DQueries.set_faults = PackedStringArray()
+	Box3DQueries.set_rays_held = 0
+	PlayerBody.check_steps = true
+	PlayerBody.step_faults = PackedStringArray()
+	PlayerBody.steps_checked = 0
+
+
 ## Whether a passing check is printed as well as a failing one. Some files
 ## read better as a list of what was checked.
 func _print_passes() -> bool:
@@ -74,6 +92,20 @@ func _check_near(actual: float, expected: float, description: String) -> void:
 ## Says how the file went and ends the run: exit 0 if every check passed.
 ## name is what the checks are of ("weapon", "match"), as the summary says.
 func _finish(name: String) -> void:
+	if not Box3DQueries.set_faults.is_empty():
+		_checks += 1
+		_failures += 1
+		printerr("FAIL: %d of %d rays in a tick met what the hitboxes do not bear out; the first: %s" % [
+			Box3DQueries.set_faults.size(), Box3DQueries.set_rays_held, Box3DQueries.set_faults[0]])
+	elif Box3DQueries.set_rays_held > 0:
+		print("%d rays in a tick held to the hitboxes themselves, all borne out." % Box3DQueries.set_rays_held)
+	if not PlayerBody.step_faults.is_empty():
+		_checks += 1
+		_failures += 1
+		printerr("FAIL: %d of %d steps of the movement came out differently in native code than by the script; the first: %s" % [
+			PlayerBody.step_faults.size(), PlayerBody.steps_checked, PlayerBody.step_faults[0]])
+	elif PlayerBody.steps_checked > 0:
+		print("%d steps of the movement run by the script and by the native code, the same to the last bit." % PlayerBody.steps_checked)
 	if _failures == 0:
 		print("%d %s checks passed%s." % [_checks, name, "" if _known_open == 0 else ", %d of them known open" % _known_open])
 	else:

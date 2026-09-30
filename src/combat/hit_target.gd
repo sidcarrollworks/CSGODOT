@@ -182,7 +182,7 @@ func rids() -> Array[RID]:
 ## Turns the hitboxes on or off together: off, the target cannot be shot.
 func set_active(active: bool) -> void:
 	for hitbox in _hitboxes:
-		hitbox.collision_layer = Hitbox.LAYER if active else 0
+		hitbox.set_on_layer(active)
 
 
 ## Applies damage already reduced for range and hitbox. Armour absorbs a share

@@ -16,8 +16,15 @@ extends Node3D
 ## sounds from, and its distance curve. It reads the game's events,
 ## player_hurt and player_death, as they are handed out, and plays what they
 ## say on the next frame drawn: nothing is heard from inside the tick. A
-## hit by fire plays none of these (CS2 has Player.BurnDamage for it, not
-## built), and a knife's is a body hit wherever it lands.
+## knife's is a body hit wherever it lands.
+##
+## A hit by fire plays none of these but CS2's Player.BurnDamage, through
+## SoundEvents from its own table entry (silent from 1100 units, one per 0.6
+## s within 300 units), from the one burning, for everyone near them and
+## themselves; Player.BurnDamageKevlar while they wear armour (inferred from
+## the name, as armour takes nothing from fire). A burn is known by the
+## weapon the hurt names; a teammate's fire past its first seconds names
+## none (InfernoEntity), and is not heard.
 
 const MUD := ["physics/surfaces/mud_impact_bullet1", "physics/surfaces/mud_impact_bullet2", "physics/surfaces/mud_impact_bullet3", "physics/surfaces/mud_impact_bullet4"]
 const BODY := ["player/player_damagebody_04", "player/player_damagebody_05", "player/player_damagebody_06", "player/player_damagebody_07", "player/player_damagebody_08"]
@@ -78,8 +85,11 @@ const DEATH := [[GROAN, 0.5, 1.0, 0.0, [[0.0, 1.0], [113.91, 0.5931], [1400.0, 0
 ## (WeaponSounds.FEEDBACK_DB): CS2's PlayerVictim and PlayerDamage
 ## mixgroups' own levels are not read yet.
 const MIX_DB := -3.0
-## The weapons whose damage plays none of these: fire.
+## The weapons whose damage plays none of these: fire, which burn_event
+## gives its own.
 const SILENT_WEAPONS := ["weapon_molotov", "weapon_incgrenade", "inferno"]
+const BURN_EVENT := "Player.BurnDamage"
+const BURN_KEVLAR_EVENT := "Player.BurnDamageKevlar"
 ## How many hits and deaths can sound at once, those near.
 const VOICES := 12
 
@@ -88,6 +98,10 @@ var listener_id: int = GameEvents.NOBODY
 var game: GameSystems
 ## What to play on the next frame: [layers, where (Vector3, or null for flat)].
 var _pending: Array = []
+## Burns to play on the next frame: [event name, where, whose].
+var _burns: Array = []
+## The player the burns play through.
+var events: SoundEvents
 var _flat: Array[AudioStreamPlayer] = []
 var _placed: Array[AudioStreamPlayer3D] = []
 var _next_flat := 0
@@ -105,10 +119,13 @@ func watch(p_game: GameSystems, listener: int) -> void:
 func _ready() -> void:
 	for i in 4:
 		var flat := AudioStreamPlayer.new()
+		# Where a flash's muffle reaches it (FlashMuffle).
+		flat.bus = FlashMuffle.unmixed_bus()
 		add_child(flat)
 		_flat.append(flat)
 	for i in VOICES:
 		var placed := AudioStreamPlayer3D.new()
+		placed.bus = FlashMuffle.unmixed_bus()
 		# The event's own curve sets the level (_play); the player only pans.
 		placed.attenuation_model = AudioStreamPlayer3D.ATTENUATION_DISABLED
 		add_child(placed)
@@ -116,6 +133,10 @@ func _ready() -> void:
 	SoundBank.load_sets(all_stems())
 	for stems in _layer_stems():
 		SoundBank.randomizer_of(stems)
+	events = SoundEvents.new()
+	events.name = "Events"
+	add_child(events)
+	SoundEvents.load_events(PackedStringArray([BURN_EVENT, BURN_KEVLAR_EVENT]))
 
 
 func _exit_tree() -> void:
@@ -142,7 +163,20 @@ static func for_hit(hurt: Dictionary, listener: int) -> Dictionary:
 	return {"layers": EVENTS[event][who], "flat": who == "victim"}
 
 
+## What a hurt by fire sounds like: CS2's burn event, by whether the one
+## burning wears armour; "" for any other hurt.
+static func burn_event(hurt: Dictionary) -> String:
+	if String(hurt.get("weapon", "")) not in SILENT_WEAPONS:
+		return ""
+	return BURN_KEVLAR_EVENT if int(hurt.get("armor", 0)) > 0 else BURN_EVENT
+
+
 func _on_hurt(event: GameEvent) -> void:
+	var burn := burn_event(event.fields)
+	if not burn.is_empty():
+		var at: Variant = _where(event.fields["userid"])
+		if at != null:
+			_burns.append([burn, at, int(event.fields["userid"])])
 	var sound := for_hit(event.fields, listener_id)
 	if sound.is_empty():
 		return
@@ -170,6 +204,9 @@ func _where(userid: int) -> Variant:
 
 
 func _process(_delta: float) -> void:
+	for burn: Array in _burns:
+		events.start(burn[0], burn[1], burn[2])
+	_burns.clear()
 	if _pending.is_empty():
 		return
 	var ears := _ears()

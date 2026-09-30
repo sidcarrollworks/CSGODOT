@@ -54,7 +54,7 @@ From SteamDatabase's GameTracking-CS2 commit `3fc98e7`: **CS2 build 2000918, pat
 
 ## What SoundEvents plays of it
 
-Read the way `csgo_mega` reads them (`reference/research/audio-engine.md` 1.3): who hears it (`localplayeronly`), blocks, instance limits, child events, delays, random volume and pitch, the distance, time and fade curves, the unfiltered-stereo curve as the panning, stealth (`suppression_*`), `self_destruct_time`, volume convars, and a sound that follows a node. Left for later: occlusion, reverb, the mix layers (in the table under `mixlayers`), doppler, the impact-speed and velocity curves, and the music stack's priorities, stop flags and sync points (issue 21).
+Read the way `csgo_mega` reads them (`reference/research/audio-engine.md` 1.3): who hears it (`localplayeronly`), blocks, instance limits, child events, delays, random volume and pitch, the distance, time and fade curves, the unfiltered-stereo curve as the panning, stealth (`suppression_*`), `self_destruct_time`, volume convars, a sound that follows a node, and `dsp_bypass` (the flash's ring, played on its bus's twin, which the flash's muffle does not reach). The music stack's priorities and stop flags (`MusicRules`) and the mix layers under `mixlayers` (applied to the buses by `RoundSounds`) came with issue 21. Left for later: occlusion, reverb, doppler, the impact-speed and velocity curves, and the music's sync points.
 
 Inferred, for Local checks: a curve holds its end values past its last point (audio-engine.md A2); a mixgroup's vol is its own level, not multiplied by its parent's, so every bus sends straight to Master.
 

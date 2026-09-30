@@ -39,12 +39,17 @@ extends Node3D
 ## stiff pieces instead.
 
 ## The physics layer the bodies are on (the fifth), and what they touch:
-## the world, and the bodies of the same dead body (another's are made
-## exceptions, _pass_through_others).
+## the world. The parts of one dead body touch each other by a layer of
+## their body's own, in the upper half of the layers (SLOTS).
 const LAYER := 16
-const MASK := Hitscan.WORLD_LAYER | LAYER
-## How near, in units, another dead body has to lie for this one to be
-## told to pass through it. Farther, they cannot reach each other.
+const MASK := Hitscan.WORLD_LAYER
+## How many dead bodies have an upper layer each: the addon's
+## collision_layer_high and collision_mask_high, thirty-two bits. Past
+## that many, made ahead and lying, two share one (_pass_through_others).
+const SLOTS := 32
+## How near, in units, another dead body on the same upper layer has to lie
+## for this one to be told to pass through it. Farther, they cannot reach
+## each other.
 const OTHERS_NEAR := 200.0
 ## The group every ragdoll is in, to find the others.
 const GROUP := &"ragdolls"
@@ -113,11 +118,41 @@ const LIFT_MARGIN := 0.25
 const HIT_SPEED := 180.0
 const BODY_SPEED := 40.0
 
+## How many ticks running every part has to be asleep for the body to be
+## left lying as it is (_rest).
+const REST_TICKS := 8
+
+## How many dead bodies hold each upper layer, the living's made ahead
+## among them.
+static var _slot_users := PackedInt32Array()
+
 ## The bodies by the index of the bone each stands on. A bone folded into
 ## another's body is not a key; body_for finds its body.
 var bodies: Dictionary = {}
 var adapter: Box3DDrops
+## The upper layer its parts are on and touch, of SLOTS; -1 with none made.
+var slot := -1
+## Whether it lies in the world: dropped, and not yet parked or cleared.
+var fallen := false
+## Whether it lies still, every part asleep, and is stepped no more, and
+## posed again only when what it hangs under moves (_rest).
+var resting := false
+## Where the skeleton was in the world when the body at rest was last
+## posed.
+var _rested_under := Transform3D.IDENTITY
+## The exclusions that are the body's own, however it dies: two parts a
+## joint apart.
 var _filters: Array[Node3D] = []
+## And those of the death it lies from, which go when it is parked: two
+## parts that started inside each other, and another body's on the same
+## upper layer.
+var _death_filters: Array[Node3D] = []
+var _death_pairs: Array = []
+## Each body's capsules in its own space, [one end, the other, radius], and
+## how far from its origin the furthest of them reaches.
+var _capsules_of: Dictionary = {}
+var _reach_of: Dictionary = {}
+var _asleep_for := 0
 const METRES := 0.0254
 
 var _skeleton: Skeleton3D
@@ -146,48 +181,71 @@ func _init() -> void:
 		ray.hit_back_faces = false
 
 
-## Builds the bodies over a skeleton's current pose, from its ragdoll shapes
-## (RagdollShapes) or, where it has none, its hitbox capsules (HitboxSet),
-## with the skeleton's bones in metres at unit_scale units each.
-## velocity is how the body was moving; forward is the way it faced, flat;
-## hit_direction and hit_bone, the killing round's way and the bone it went
-## into, or zero and -1. Returns how many bodies it made: none and the
-## skeleton is left to its animation.
+## Makes the body and drops it where the skeleton stands, in one: prepare()
+## and drop(). For a body not made ahead; a player's is (PlayerSim), since
+## the making is two thirds of what a death cost on the tick it happened in.
+## Returns how many bodies fell: none and the skeleton is left to its
+## animation.
 func build(
 	skeleton: Skeleton3D, capsules: Array[Dictionary], unit_scale: float,
 	velocity: Vector3, forward: Vector3, hit_direction: Vector3 = Vector3.ZERO, hit_bone: int = -1,
 	native_adapter: Box3DDrops = null
 ) -> int:
+	if prepare(skeleton, capsules, unit_scale, forward, native_adapter) == 0:
+		return 0
+	return drop(velocity, hit_direction, hit_bone)
+
+
+## Makes the bodies and their joints over a skeleton, from its ragdoll
+## shapes (RagdollShapes) or, where it has none, its hitbox capsules
+## (HitboxSet), with the skeleton's bones in metres at unit_scale units
+## each, and leaves them switched off until the body falls (drop).
+## forward is the way the skeleton faces as it stands now, flat.
+##
+## All of it is the body's own, whatever pose it dies in, so it is made once
+## and not at each death: the parts are laid out as the skeleton stands at
+## rest, which is where the joints' limits are measured from, each rigid on
+## its bone. quietly says nothing where the world's physics is not there
+## yet, for whoever will ask again. Returns how many bodies it made.
+func prepare(
+	skeleton: Skeleton3D, capsules: Array[Dictionary], unit_scale: float, forward: Vector3,
+	native_adapter: Box3DDrops = null, quietly: bool = false
+) -> int:
 	clear()
 	adapter = native_adapter if native_adapter != null else PhysicsQueries.adapter_for_node(self)
-	if adapter == null and is_instance_valid(GameWorld.current) and GameWorld.configured_drop_physics() == "box3d":
+	if adapter == null and not quietly and is_instance_valid(GameWorld.current) and GameWorld.configured_drop_physics() == "box3d":
 		# A death can be requested by scene setup before the world's deferred
 		# READY initializer. Its containing scene already owns the geometry.
 		GameWorld.current.initialize_drop_physics()
 		adapter = PhysicsQueries.adapter_for_node(self)
 	if not is_instance_valid(adapter) or not adapter.initialized:
-		push_error("A ragdoll requires the initialized shared Box3D world.")
+		if not quietly:
+			push_error("A ragdoll requires the initialized shared Box3D world.")
+		adapter = null
 		return 0
-	adapter.pre_step.connect(_before_native_step)
-	adapter.post_step.connect(_after_native_step)
+	if capsules.is_empty():
+		adapter = null
+		return 0
 	_skeleton = skeleton
 	var by_lower := {}
 	for index in skeleton.get_bone_count():
 		by_lower[skeleton.get_bone_name(index).to_lower()] = index
 
-	# The capsules in the world, by bone.
+	# The capsules in the world, by bone, the skeleton standing at rest.
 	var parts := {}
 	for capsule in capsules:
 		var bone: int = by_lower.get(String(capsule["bone"]).to_lower(), -1)
 		if bone < 0:
 			continue
-		var bone_to_world := _bone_world(bone)
+		var bone_to_world := _rest_world(bone)
 		var a: Vector3 = bone_to_world * (capsule["point0"] / unit_scale)
 		var b: Vector3 = bone_to_world * (capsule["point1"] / unit_scale)
 		if not parts.has(bone):
 			parts[bone] = []
 		parts[bone].append({"a": a, "b": b, "radius": float(capsule["radius"])})
 	if parts.is_empty():
+		_skeleton = null
+		adapter = null
 		return 0
 
 	# Bones in index order, so every bone's parents come before it: with
@@ -203,7 +261,7 @@ func build(
 		var lower := skeleton.get_bone_name(bone).to_lower()
 		if above >= 0 and not own_shapes and (
 			lower.contains(ALWAYS_FOLDS)
-			or lower.contains(FOLDS) and _bone_world(bone).origin.distance_to(_bone_world(host).origin) < FOLD_DISTANCE
+			or lower.contains(FOLDS) and _rest_world(bone).origin.distance_to(_rest_world(host).origin) < FOLD_DISTANCE
 		):
 			_host[bone] = host
 			held[host].append_array(parts[bone])
@@ -221,61 +279,153 @@ func build(
 		volumes[bone] = volume
 		total_volume += volume
 
-	var hit_host: int = _host.get(hit_bone, -1)
+	slot = _take_slot()
 	for bone in _order:
-		if _host[bone] != bone:
-			continue
-		var body := _make_body(bone, held[bone], TOTAL_MASS * volumes[bone] / total_volume)
-		body.linear_velocity = velocity + hit_direction * BODY_SPEED
-		if bone == hit_host:
-			body.linear_velocity += hit_direction * HIT_SPEED
-		bodies[bone] = body
+		if _host[bone] == bone:
+			bodies[bone] = _make_body(bone, held[bone], TOTAL_MASS * volumes[bone] / total_volume)
 	for bone in _order:
-		_offsets[bone] = bodies[_host[bone]].global_transform.affine_inverse() * _bone_world(bone)
+		_offsets[bone] = bodies[_host[bone]].global_transform.affine_inverse() * _rest_world(bone)
 
-	# The joints are made with the bodies laid out as the skeleton stands at
-	# rest, which is where their limits are measured from, then the bodies
-	# go back to how it died.
-	var died := {}
-	for bone: int in bodies:
-		var body: Part = bodies[bone]
-		died[bone] = body.global_transform
-		body.global_transform = _rest_world(bone) * _offsets[bone].affine_inverse()
-		body.write_native()
+	# The joints, made with the bodies laid out as the skeleton stands at
+	# rest, as they are.
 	forward = Vector3(forward.x, 0.0, forward.z)
 	forward = forward.normalized() if forward.length_squared() > 1e-6 else Vector3.FORWARD
 	for bone: int in bodies:
 		var parent := _body_parent(bone)
 		if parent >= 0:
 			_join(parent, bone, forward)
+	_apart_a_joint_apart()
+	for body: Part in bodies.values():
+		body.set_in_world(false)
+	set_process(false)
+	return bodies.size()
+
+
+## Whether the bodies are made, over this skeleton, and wait to fall.
+func prepared_for(skeleton: Skeleton3D) -> bool:
+	return not bodies.is_empty() and _skeleton == skeleton and is_instance_valid(_skeleton) \
+		and is_instance_valid(adapter) and adapter.initialized
+
+
+## The body falls from how the skeleton is posed now: every part put on its
+## bone and switched on, moving at velocity, the way the body was, and
+## pushed by the killing round, which went hit_direction into hit_bone (zero
+## and -1 for none). Returns how many bodies fell: none where none are made.
+func drop(velocity: Vector3, hit_direction: Vector3 = Vector3.ZERO, hit_bone: int = -1) -> int:
+	if not prepared_for(_skeleton):
+		return 0
+	if fallen:
+		park()
+	var hit_host: int = _host.get(hit_bone, -1)
 	for bone: int in bodies:
-		(bodies[bone] as Part).global_transform = died[bone]
-		(bodies[bone] as Part).write_native()
+		var body: Part = bodies[bone]
+		body.global_transform = (_bone_world(bone) * (_offsets[bone] as Transform3D).affine_inverse()).orthonormalized()
+		body.set_in_world(true)
+		body.write_native()
+		body.linear_velocity = velocity + hit_direction * (BODY_SPEED + (HIT_SPEED if bone == hit_host else 0.0))
+		body.angular_velocity = Vector3.ZERO
+	# A bone folded into another's body rides it as the skeleton has the
+	# two now: a spine bent as it died stays bent.
+	for bone in _order:
+		if _host[bone] != bone:
+			_offsets[bone] = (bodies[_host[bone]] as Part).global_transform.affine_inverse() * _bone_world(bone)
 	_apart_where_inside()
 	_pass_through_others()
 	_lift_clear()
 	for body: Part in bodies.values():
 		body.write_native()
+	adapter.pre_step.connect(_before_native_step)
+	adapter.post_step.connect(_after_native_step)
+	fallen = true
+	resting = false
+	_asleep_for = 0
+	set_process(true)
 	return bodies.size()
 
 
-## Takes the bodies away and leaves the skeleton where it lies.
-func clear() -> void:
+## The body is wanted back, at a respawn: its parts are switched off where
+## they lie, to fall again at the next death, and the skeleton is written
+## no more, from now and not from the next frame (let_go says why).
+func park() -> void:
+	_leave_the_step()
+	set_process(false)
+	for filter in _death_filters:
+		if is_instance_valid(filter):
+			filter.free()
+	_death_filters.clear()
+	for pair: Array in _death_pairs:
+		if is_instance_valid(pair[0]) and is_instance_valid(pair[1]):
+			(pair[0] as Part).exceptions.erase(pair[1])
+			(pair[1] as Part).exceptions.erase(pair[0])
+	_death_pairs.clear()
+	for body: Part in bodies.values():
+		body.linear_velocity = Vector3.ZERO
+		body.angular_velocity = Vector3.ZERO
+		body.set_in_world(false)
+	_before_step.clear()
+	lifted = 0.0
+	fallen = false
+	resting = false
+	_asleep_for = 0
+
+
+## Whether a part of this body and a part of another's can touch: only two
+## on the same upper layer, which more than SLOTS dead bodies come to, and
+## then not those told to pass through each other.
+func meets(other: Ragdoll) -> bool:
+	if other == null or other == self or other.slot != slot or bodies.is_empty() or other.bodies.is_empty():
+		return false
+	for mine: Part in bodies.values():
+		for theirs: Part in other.bodies.values():
+			if not mine.exceptions.has(theirs):
+				return true
+	return false
+
+
+func _leave_the_step() -> void:
 	if is_instance_valid(adapter):
 		if adapter.pre_step.is_connected(_before_native_step):
 			adapter.pre_step.disconnect(_before_native_step)
 		if adapter.post_step.is_connected(_after_native_step):
 			adapter.post_step.disconnect(_after_native_step)
-	for filter in _filters:
+
+
+## The upper layer held by the fewest, for a body to be made on.
+static func _take_slot() -> int:
+	if _slot_users.size() != SLOTS:
+		_slot_users.resize(SLOTS)
+		_slot_users.fill(0)
+	var least := 0
+	for index in SLOTS:
+		if _slot_users[index] < _slot_users[least]:
+			least = index
+	_slot_users[least] += 1
+	return least
+
+
+## Takes the bodies away and leaves the skeleton where it lies.
+func clear() -> void:
+	_leave_the_step()
+	for filter in _filters + _death_filters:
 		if is_instance_valid(filter):
 			filter.free()
 	_filters.clear()
+	_death_filters.clear()
+	_death_pairs.clear()
 	for joint in get_children():
 		if joint is Link:
 			joint.free()
 	for body: Part in bodies.values():
 		body.free()
 	bodies.clear()
+	if slot >= 0 and slot < _slot_users.size():
+		_slot_users[slot] = maxi(_slot_users[slot] - 1, 0)
+	slot = -1
+	fallen = false
+	resting = false
+	_asleep_for = 0
+	_capsules_of.clear()
+	_reach_of.clear()
 	lifted = 0.0
 	_offsets.clear()
 	_order.clear()
@@ -285,11 +435,32 @@ func clear() -> void:
 	adapter = null
 
 
+## The body is wanted back, at a respawn or a side swap: the bodies go and
+## the skeleton is written no more, from now and not from the frame's end,
+## when the node is freed. Freed and no more, it posed the skeleton once
+## again in that frame, where it lay, after the player had been put at its
+## spawn: for a frame the body was drawn where it died and the gun it
+## holds, which hangs on a bone the ragdoll does not write, where it
+## spawned, in the air with nobody under it (Sid, 2026-09-29).
+func let_go() -> void:
+	clear()
+	queue_free()
+
+
 func _exit_tree() -> void:
 	clear()
 
 
 func _process(_delta: float) -> void:
+	if resting:
+		# The bones are written relative to the skeleton, and the parts lie
+		# in the world: if what the skeleton hangs under moves, the body
+		# drawn moves with it unless it is posed again. A model moved every
+		# frame would shake its dead body.
+		if is_instance_valid(_skeleton) and not _skeleton.global_transform.is_equal_approx(_rested_under):
+			pose_skeleton(1.0)
+			_rested_under = _skeleton.global_transform
+		return
 	pose_skeleton()
 
 
@@ -304,8 +475,27 @@ func _before_native_step(_tick: SimTick) -> void:
 
 
 func _after_native_step(_tick: SimTick) -> void:
+	var awake := false
 	for body: Part in bodies.values():
 		body.read_native()
+		awake = awake or not body.sleeping
+	_asleep_for = 0 if awake else _asleep_for + 1
+	if _asleep_for >= REST_TICKS:
+		_rest()
+
+
+## Every part has come to rest, and nothing a dead body touches moves: it is
+## left lying as it is, stepped no more, and posed again only if its
+## skeleton is moved (_process). While a body listens to the step the world
+## is stepped for it, a quarter of a millisecond of every tick for the rest
+## of the round, and every frame posed it again where it already lay.
+func _rest() -> void:
+	_leave_the_step()
+	_before_step.clear()
+	pose_skeleton(1.0)
+	if is_instance_valid(_skeleton):
+		_rested_under = _skeleton.global_transform
+	resting = true
 
 
 ## Puts every bone that has a body where its body is. Parents first, so a
@@ -338,16 +528,36 @@ func _rest_world(bone: int) -> Transform3D:
 
 ## Two parts that start inside each other (a hand held against the chest)
 ## never collide: pushed apart from inside in one step, they would fling the
-## body. Nor do two a joint apart with one between (_one_apart). Two parts
-## joined at a joint are already kept from colliding by the joint
-## (exclude_nodes_from_collision).
+## body. It is of the pose it died in, so it is looked for as the body
+## falls and forgotten when it is parked. Two too far apart to touch, by
+## how far each reaches from its middle, are not looked at closer: most of
+## the hundred pairs.
 func _apart_where_inside() -> void:
+	var parts: Array = bodies.values()
+	var shapes: Array = []
+	for body: Part in parts:
+		shapes.append(_segments(body))
+	for i in parts.size():
+		var one: Part = parts[i]
+		for j in range(i + 1, parts.size()):
+			var two: Part = parts[j]
+			if one.exceptions.has(two):
+				continue
+			if one.global_position.distance_to(two.global_position) > float(_reach_of[one]) + float(_reach_of[two]):
+				continue
+			if _touch(shapes[i], shapes[j]):
+				_exclude(one, two, true)
+
+
+## Two parts a joint apart with one between (_one_apart) never collide
+## either, however the body dies: made with the body. Two parts joined at a
+## joint are already kept from colliding by the joint (collide_connected).
+func _apart_a_joint_apart() -> void:
 	var bones: Array = bodies.keys()
-	var shapes := bones.map(func(bone: int) -> Array: return _segments(bodies[bone]))
 	for i in bones.size():
 		for j in range(i + 1, bones.size()):
-			if _one_apart(bones[i], bones[j]) or _touch(shapes[i], shapes[j]):
-				(bodies[bones[i]] as Part).add_collision_exception_with(bodies[bones[j]])
+			if _one_apart(bones[i], bones[j]):
+				_exclude(bodies[bones[i]], bodies[bones[j]], false)
 
 
 ## Whether two bodies are a joint apart with one between (a forearm and the
@@ -360,32 +570,37 @@ func _one_apart(a: int, b: int) -> bool:
 		or (above_b >= 0 and _body_parent(above_b) == a)
 
 
-## One dead body passes through another, as in CS2: every part of this one is
-## made an exception for every part of each other body lying near it.
+## One dead body passes through another, as in CS2. Each has an upper layer
+## of its own for its parts to touch each other by (SLOTS), so two bodies'
+## parts have no layer in common and nothing need be said. Only past SLOTS
+## bodies do two share one, and then every part of this one is made an
+## exception for every part of each other lying near on the same layer: 225
+## exceptions a pair of bodies, which is what every death paid for every
+## body near it, 1.4 to 2.2 ms with two, while all were told so.
 func _pass_through_others() -> void:
-	if not is_inside_tree() or bodies.is_empty():
+	if not is_inside_tree() or bodies.is_empty() or slot < 0 or _slot_users[slot] <= 1:
 		return
 	var here: Vector3 = (bodies.values()[0] as Part).global_position
 	for other: Node in get_tree().get_nodes_in_group(GROUP):
-		if other == self or not other is Ragdoll or (other as Ragdoll).bodies.is_empty():
+		if other == self or not other is Ragdoll:
 			continue
-		var theirs: Array = (other as Ragdoll).bodies.values()
-		if (other as Ragdoll).adapter != adapter or (theirs[0] as Part).global_position.distance_to(here) > OTHERS_NEAR:
+		var lying := other as Ragdoll
+		if lying.slot != slot or not lying.fallen or lying.bodies.is_empty() or lying.adapter != adapter:
+			continue
+		var theirs: Array = lying.bodies.values()
+		if (theirs[0] as Part).global_position.distance_to(here) > OTHERS_NEAR:
 			continue
 		for mine: Part in bodies.values():
 			for their: Part in theirs:
-				mine.add_collision_exception_with(their)
+				_exclude(mine, their, true)
 
 
 ## A body's capsules in the world, each [one end, the other, radius].
-static func _segments(body: Part) -> Array:
+func _segments(body: Part) -> Array:
 	var found := []
-	for collision in body.get_children():
-		if collision is CollisionShape3D:
-			var capsule := (collision as CollisionShape3D).shape as CapsuleShape3D
-			var half := (collision as CollisionShape3D).global_basis.y.normalized() * (capsule.height / 2.0 - capsule.radius)
-			var centre := (collision as CollisionShape3D).global_position
-			found.append([centre - half, centre + half, capsule.radius])
+	var at := body.global_transform
+	for capsule: Array in _capsules_of[body]:
+		found.append([at * (capsule[0] as Vector3), at * (capsule[1] as Vector3), capsule[2]])
 	return found
 
 
@@ -477,9 +692,14 @@ func _make_body(bone: int, parts: Array, mass: float) -> Part:
 	body.name = "Ragdoll_%s" % _skeleton.get_bone_name(bone)
 	body.collision_layer = LAYER
 	body.collision_mask = MASK
+	body.layer_high = 1 << slot
+	body.mask_high = 1 << slot
 	body.mass = maxf(mass, 0.5)
 	add_child(body)
 	body.global_transform = SkinnedHitboxes.capsule_transform(largest["a"], largest["b"])
+	var into_body := body.global_transform.affine_inverse()
+	var own := []
+	var reach := 0.0
 	for part: Dictionary in parts:
 		var collision := CollisionShape3D.new()
 		var shape := CapsuleShape3D.new()
@@ -488,6 +708,12 @@ func _make_body(bone: int, parts: Array, mass: float) -> Part:
 		collision.shape = shape
 		body.add_child(collision)
 		collision.global_transform = SkinnedHitboxes.capsule_transform(part["a"], part["b"])
+		var a: Vector3 = into_body * (part["a"] as Vector3)
+		var b: Vector3 = into_body * (part["b"] as Vector3)
+		own.append([a, b, float(part["radius"])])
+		reach = maxf(reach, maxf(a.length(), b.length()) + float(part["radius"]))
+	_capsules_of[body] = own
+	_reach_of[body] = reach
 	body.create_native()
 	return body
 
@@ -642,7 +868,10 @@ func _install_joint(link: Link, parent: Part, child: Part) -> void:
 	child.exceptions.append(parent)
 
 
-func _exclude(a: Part, b: Part) -> void:
+## Two parts never to collide. of_this_death is for what holds only until
+## the body is parked (two that started inside each other, another body
+## lying near), and goes then.
+func _exclude(a: Part, b: Part, of_this_death: bool) -> void:
 	if a.exceptions.has(b) or not is_instance_valid(a.native) or not is_instance_valid(b.native):
 		return
 	var native := ClassDB.instantiate(&"Box3DFilterJoint") as Node3D
@@ -650,7 +879,11 @@ func _exclude(a: Part, b: Part) -> void:
 	native.set(&"body_b", b.native.get_path())
 	adapter.native_world.add_child(native)
 	assert(native.call(&"is_joint_valid"), "Ragdoll collision exclusion must exist before stepping.")
-	_filters.append(native)
+	if of_this_death:
+		_death_filters.append(native)
+		_death_pairs.append([a, b])
+	else:
+		_filters.append(native)
 	a.exceptions.append(b)
 	b.exceptions.append(a)
 
@@ -687,6 +920,9 @@ class Part:
 	var mass := 1.0
 	var collision_layer := LAYER
 	var collision_mask := MASK
+	## The upper half of its layers and of what it touches: its body's own.
+	var layer_high := 0
+	var mask_high := 0
 	var exceptions: Array[Part] = []
 	var _last_pose := Transform3D.IDENTITY
 	var linear_velocity: Vector3:
@@ -714,6 +950,8 @@ class Part:
 		native.set(&"body_type", ClassDB.class_get_integer_constant(&"Box3DBody", &"DYNAMIC"))
 		native.set(&"collision_layer", collision_layer)
 		native.set(&"collision_mask", collision_mask)
+		native.set(&"collision_layer_high", layer_high)
+		native.set(&"collision_mask_high", mask_high)
 		native.set(&"linear_damping", 0.1)
 		native.set(&"angular_damping", 1.0)
 		native.set(&"continuous", true)
@@ -730,6 +968,8 @@ class Part:
 			capsule.set(&"restitution", 0.0)
 			capsule.set(&"collision_layer", collision_layer)
 			capsule.set(&"collision_mask", collision_mask)
+			capsule.set(&"collision_layer_high", layer_high)
+			capsule.set(&"collision_mask_high", mask_high)
 			capsule.transform = Ragdoll._to_native((collision as Node3D).transform)
 			native.add_child(capsule)
 		ragdoll.adapter.native_world.add_child(native)
@@ -755,8 +995,14 @@ class Part:
 		global_transform = Transform3D(solved.basis, solved.origin / METRES)
 		_last_pose = global_transform
 
+	## In the world's step and its broadphase, or out of both: a body made
+	## ahead waits switched off, and costs the step nothing.
+	func set_in_world(on: bool) -> void:
+		if is_instance_valid(native) and bool(native.get(&"enabled")) != on:
+			native.set(&"enabled", on)
+
 	func add_collision_exception_with(other: Part) -> void:
-		ragdoll._exclude(self, other)
+		ragdoll._exclude(self, other, true)
 
 	func get_collision_exceptions() -> Array[Part]:
 		return exceptions.duplicate()
