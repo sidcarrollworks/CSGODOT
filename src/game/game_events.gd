@@ -46,6 +46,9 @@ const SCHEMA := {
 		"userid": NOBODY, "attacker": NOBODY, "health": 0, "armor": 0, "weapon": "",
 		"dmg_health": 0, "dmg_armor": 0, "hitgroup": 0,
 	},
+	# KillCredit fills assister, assistedflash, thrusmoke, attackerblind and
+	# attackerinair as a death is sent; dominated and revenge stay 0, as
+	# CS2's sv_nonemesis (on by default) leaves them.
 	&"player_death": {
 		"userid": NOBODY, "attacker": NOBODY, "assister": NOBODY, "assistedflash": false,
 		"weapon": "", "headshot": false, "penetrated": 0, "noscope": false,
@@ -181,6 +184,7 @@ const MOST_PASSES := 64
 var muted: bool = false
 
 var _queue: Array[GameEvent] = []
+var _completers := {}
 var _listeners := {}
 var _everything: Array[Callable] = []
 var _flushing: bool = false
@@ -202,11 +206,34 @@ func send(name: StringName, fields: Dictionary = {}, at_usec: int = -1) -> bool:
 		full[key] = fields[key]
 	if muted:
 		return true
+	for completer: Callable in _completers.get(name, []):
+		if not completer.is_valid():
+			continue
+		var more: Dictionary = completer.call(full)
+		for key in more:
+			# Only keys the sender left as they were: a completer adds what
+			# the sender could not know, never changes what it said.
+			if keys.has(key) and not fields.has(key):
+				full[key] = more[key]
 	var tick := SimClock.current_tick()
 	_queue.append(GameEvent.new(
 		name, full, tick, at_usec if at_usec >= 0 else SimClock.tick_end_usec(tick)
 	))
 	return true
+
+
+## Calls completer with each event of that name as it is sent, before it
+## is queued: completer(fields: Dictionary) -> Dictionary returns keys to
+## add, which fill only keys the sender left out (the kill credit's
+## assister and marks on player_death, worked out as the kill happens). It
+## sees every such event the moment it is sent, not at the tick's end, and
+## must not send events itself.
+func complete(name: StringName, completer: Callable) -> void:
+	assert(SCHEMA.has(name), "No game event called %s" % name)
+	if not _completers.has(name):
+		var list: Array[Callable] = []
+		_completers[name] = list
+	(_completers[name] as Array[Callable]).append(completer)
 
 
 ## Calls listener with each event of that name, as a GameEvent.

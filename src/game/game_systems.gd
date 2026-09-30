@@ -41,6 +41,8 @@ func _init() -> void:
 	ItemPhysics.load_all()
 	# The items contract's own system: items on the ground.
 	add_system(ItemDrops.new())
+	# The damage contract's: who assisted a kill, and its marks.
+	add_system(KillCredit.new())
 
 
 ## Adds a system, to run after those already added.

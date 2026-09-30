@@ -815,7 +815,7 @@ func _test_a_tick_runs_entities_systems_then_events() -> void:
 	_check(t.now_usec == SimClock.tick_end_usec(20) and t.start_usec == SimClock.tick_start_usec(20),
 		"the tick covers its own stretch of simulation time")
 	_check(game.events.pending().is_empty(), "and leaves nothing queued")
-	_check_equal(game.systems().size(), 2, "the items' own system and this one")
+	_check_equal(game.systems().size(), 3, "the items' and the kill credit's own systems, and this one")
 
 
 func _test_roster() -> void:

@@ -871,10 +871,12 @@ list, split into Local and Remote items, with the measurements.
     its huddeathnotice layout and styles (`KillFeed`, from the game's
     player_death events), every mark the event can carry, your kills
     ringed red and your deaths on dark red, 5 s a row (7.5 s for yours),
-    fading over 1 s. Its icons come with `extract_assets.sh hud`. Left: the
-    assister, a blind or airborne killer, a kill through smoke, revenge and
-    domination draw when player_death carries them, and nothing fills them
-    yet. Local: a round's kills beside CS2's at 1080p with its icons.)*
+    fading over 1 s. Its icons come with `extract_assets.sh hud`. The
+    assister, a flash assist, a blind or airborne killer and a kill through
+    smoke come from `KillCredit`, which fills player_death as the kill
+    happens by CS2's rules; revenge and domination stay off, as CS2's
+    `sv_nonemesis` leaves them. Local: a round's kills beside CS2's at
+    1080p with its icons.)*
 
 ### Phase 5: the bomb
 
