@@ -51,6 +51,13 @@ if godot_cpp_env.get("is_msvc", False):
     godot_cpp_env.Append(CCFLAGS=["/fp:precise"])
 else:
     godot_cpp_env.Append(CCFLAGS=["-ffp-contract=off"])
+# godot-cpp's static library is archived from about 1,100 objects, and SCons
+# hands the whole ar command to sh -c as one argument, which Linux caps at
+# 128 KiB: under a longer checkout path (CI's /home/runner/work/...) it no
+# longer fits. Past MAXLINELENGTH the object list goes in a response file
+# (@file, which GNU ar reads); a shorter command runs as it was.
+if godot_cpp_env["platform"] == "linux":
+    godot_cpp_env["ARCOM"] = "${TEMPFILE('$AR $ARFLAGS $TARGET $SOURCES', '$ARCOMSTR')}"
 # What is this library's alone goes on a copy, or every change to the stamp
 # would build godot-cpp again.
 env = godot_cpp_env.Clone()
