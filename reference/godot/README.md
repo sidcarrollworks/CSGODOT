@@ -53,7 +53,7 @@ version (`tutorials/migrating/`), and correct the pages and this source line.
 | HUD, menus, buy menu, scoreboard, UI scaling at 4K | [ui.md](ui.md) |
 | Bot paths, AStar3D, NavigationServer3D | [navigation.md](navigation.md) |
 | Netcode (UserCmds up, snapshots down), ENet, dedicated server, exporting | [networking.md](networking.md) |
-| Moving hot code to C++ (GDExtension), custom and server builds, profiling and debugging flags, engine threads | [engine.md](engine.md) |
+| Moving hot code to C++ (GDExtension) and the game's own native code (`native/`), custom and server builds, profiling and debugging flags, engine threads | [engine.md](engine.md) |
 
 ## Class index
 

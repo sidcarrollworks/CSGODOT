@@ -144,6 +144,7 @@ func _run() -> void:
 	_world.set_physics_process(false)
 	_end_tick = SimClock.ticks_in(_seconds)
 	print("hull traces: %d bots for %d ticks, physics %s" % [_bots.size(), _end_tick, _world.drop_physics_backend])
+	print("the script runs the movement's step, its traces being the ones written down; the native code's are the same, to the last bit (tests/check_suite.gd)")
 	_started = true
 
 

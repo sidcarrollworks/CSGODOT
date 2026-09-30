@@ -368,6 +368,7 @@ workers). No buy or pickup in a match reads a model any more.
 | A body's hitboxes brought up to date for the ray that could meet them, not all 190 for every ray (`Box3DQueries._sync_sets`) | perf/hitboxes-for-shots | a player's run that fires a round 1.5 ms to 0.8 with ten players, 2.3 to 0.9 with twenty; a tick with a round in it 3.4 ms to 2.6, and 6.5 to 5.1; what every round meets the same (`reference/research/hitboxes-for-shots-2026-09-28.md`) |
 | The body a player dies into made ahead, on a frame, and dropped at the death; an upper layer for each dead body in place of 225 exceptions a pair; a body at rest stepped and posed no more; the kill feed's rows made on the frame; the HUD's faces and images read before play (`Ragdoll.prepare`, `GameWorld._process`, `HudStyle.read_ahead`) | perf/death-on-the-tick | a tick with a death 6.4 to 7.3 ms to 4.0 to 4.8, and the first of a process 11 to 23 ms to 4.2 to 9.2; a quiet tick with bodies lying 0.15 ms less; warmup's worst ticks 7.4 to 9.7 ms to 4.5 to 5.7 (`reference/research/death-on-the-tick-2026-09-29.md`) |
 | Everyone's command asked for before anyone runs, and the bots thinking theirs out on worker threads, all at once (`GameWorld.commands_for`) | perf/bots-think-together | the seeded ten-player tick 2.03 ms to 2.02, its 95th 2.92 to 2.68; with nineteen bots in dust2's match a mean of 4.41 ms to 4.11 and a 95th of 6.93 to 6.48; the same commands as thinking in turn (`tests/run_bot_think_checks.gd`, `tests/run_dust2_think_checks.gd`) |
+| The movement's step in native code, the script kept as the reference and every check file holding the two to the same body to the last bit (`native/src/hull_mover.cpp`, `PlayerBody._step`) | perf/native-movement | a walking bot's movement 102 to 107 us a tick to 67 to 70, its whole run 139 to 146 to 103 to 107; the seeded ten-player tick 1.8 to 1.95 ms to 1.55 to 1.7, its 95th 2.5 to 2.8 to 2.1 to 2.4; the worst ticks, which are deaths and rounds, as they were (`reference/research/native-movement-2026-09-29.md`) |
 | The foot plant's floor normals eased with `lerp`, not `slerp` | playtest issue 26 | an error printed a frame for every foot on ground a hair off level, 1,000 a minute with five bots; none |
 | Every gun's spray pattern solved as the registry builds it (`WeaponData.recoil_impulses`) | playtest issue 14 | 15 more guns read a pattern, and the first of each built in a tick (a buy, a pickup) would have solved it there: the M249's 100 rounds 33 to 39 ms, the Negev's 150 36 to 41, the Bizon 17 to 20; now 0.05 ms, and `ItemRegistry.load_all` 88 ms to about 320 (headless, a cloud container, three runs each) |
 
@@ -507,7 +508,13 @@ And a walking bot's tick, function by function:
 
     godot --headless --path . --script scripts/profile_player_tick.gd -- 5 60
 
-Five bots walk dust2's site routes for a minute of game. A figure on a page
+Five bots walk dust2's site routes for a minute of game. The script runs
+the movement's step there, the clocks being in its functions;
+`--movement native` after the numbers has the native code run it as the
+game does (`native/README.md`), the step then one call inside `simulate`'s
+own time. `scripts/profile_box3d_match.gd` and `scripts/profile_dust2.gd`
+time the tick with whichever the game would run, and take
+`--movement script`. A figure on a page
 is not a baseline for any of these: a tick's mean moved from 4.45 ms to
 3.68 on the same code within an afternoon (2026-09-28). Run the other build
 beside this one, from a worktree of it, the two alternated.

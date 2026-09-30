@@ -1122,6 +1122,13 @@ func shape_cast_prepared(query: PhysicsShapeQueryParameters3D) -> Dictionary:
 	return result
 
 
+## A hull's sweep made by the native code (PlayerBody._native_step) has met
+## something: what the last sweep here found is the last no more, as when
+## shape_cast_prepared makes the sweep itself and keeps its own.
+func forget_cast() -> void:
+	_cast_cache = {}
+
+
 ## The shape swept as it is, or `inset` smaller all round (the hull's
 ## sweep, shape_cast_prepared): what it came to for this shape is kept in
 ## _inset, for the clearance to make up.

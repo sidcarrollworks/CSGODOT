@@ -324,14 +324,25 @@ Sid, 2026-09-29, playing dust2 alone and against nine bots: alone 224
 frames a second at 1080p and a worst frame of 5.5 to 7 ms; with the bots,
 in warmup and shooting nothing, 130 to 190 and a worst frame over 10, the
 same at 4K. It is the processor and the bots.
+**The movement's step in native code (2026-09-29,
+perf/native-movement):** `PlayerBody`'s step and the hull's sweep under it
+are also C++ (`native/src/hull_mover.cpp`, a GDExtension of the game's
+own, built by `scripts/build_native.sh` and `.ps1`, not committed). The
+script is the reference and runs wherever the library is not built; every
+check file runs each native step by the script as well and holds the two
+to the same body to the last bit, 171,682 steps of them in the suite's
+run. A walking bot's movement 102 to 107 us a tick down to 67 to 70, and
+the seeded ten-player tick 1.8 to 1.95 ms down to 1.55 to 1.7
+([native-movement-2026-09-29.md](research/native-movement-2026-09-29.md)).
+Local: build it in the main checkout and play a match with it.
 **Next, proposed: the bodies nobody sees, animated on every frame that
 holds no tick (Remote).** Ten bodies' animation and skeletons are 1.1 to
 1.4 ms of every frame headless, where nothing is seen, and at 160 frames
 a second that is more in a second than the ticks cost. A body out of
 sight is posed for its hitboxes alone, which a round asks for a few times
 a second. No research covers it yet.
-Left: the movement in native code, which needs SCons and
-godot-cpp's source on Sid's machine and a build in CI; what a death
+Left: the bridge's work around the movement's step (27 us a bot a tick,
+script over dictionaries) into the native library; what a death
 drops, 0.3 ms, and the first death's step, 6 ms once; a player's ragdoll
 made from CS2's own shapes, which `RagdollShapes` reads and only a check
 asks for; Godot's renderer on a thread of its own measured

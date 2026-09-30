@@ -82,6 +82,20 @@ light on a bot's body, follows the frames drawn rather than the ticks.
 twenty, what going online will add, and what to do about it next;
 `scripts/profile_dust2.gd` measures it again.
 
+The movement's step is written twice. The script's (`PlayerBody`,
+`MovementSolver`, and the hull's sweep in `Box3DQueries`) is the
+reference, and runs on every machine. The native code's
+(`native/src/hull_mover.cpp`, C++ built into a GDExtension by
+`scripts/build_native.sh` or `.ps1`, and not committed) is the same step
+in the same order with the same arithmetic, a third faster, and runs
+where it has been built and its assumptions hold (`PlayerBody._native_mover`).
+It gives the same body as the script's to the last bit of every part, so
+a match played by one is the match played by the other, and a server and
+a client may differ in which they run. A library built from other sources
+than the checkout's is not run: it carries a stamp of what it copies, and
+the game compares it as it starts. `--movement script` has the script
+run every step. `native/README.md` has the rules for changing either.
+
 ## Shooting
 
 Hitscan, traced from the sub-tick position of the eye, with three things done
@@ -332,6 +346,15 @@ The weapon checks pin fire rate, ammo and reloading, spread determinism, recoil
 matching the pattern shot for shot, the ordering of the inaccuracy states,
 damage falloff and hitbox multipliers, and that a wall between the muzzle and
 the target stops the bullet registering.
+
+Where the native code is built, every check file runs each step of the
+movement twice, by the script and by the native code from the same start,
+and fails if the two bodies differ in any part (`PlayerBody.check_steps`,
+which `tests/check_suite.gd` turns on; the file's last lines say how many
+steps it compared). So a change to the movement made in the script alone,
+or in the C++ alone, fails wherever a body walks into the difference.
+`tests/run_native_movement_checks.gd` walks the branches a match seldom
+reaches.
 
 Several checks are written as A/B pairs against a config flag: the stairs are
 run with `stay_on_ground` on and off, the hop is taken with `subtick_jump` on
