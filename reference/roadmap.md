@@ -950,6 +950,10 @@ list, split into Local and Remote items, with the measurements.
 ### Phase 7: knife and Zeus
 
 21. **Knife and Zeus.** *(Local measures, then Remote; both are extracted)*
+    The knife is done, Remote (2026-09-30): both attacks, backstabs, reach,
+    damage, clips and sounds, on the community's numbers
+    (`reference/cs2-systems.md` 8). Still to do: K1 (Local) measures the
+    knife's numbers and plays it beside CS2; the Zeus (Remote).
 
 ### Phase 8: bots that play CS
 

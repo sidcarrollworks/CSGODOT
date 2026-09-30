@@ -464,14 +464,30 @@ recharges after 30 s (`mp_taser_recharge_time`), $200, $100 a kill; up to 5 a
 round in competitive.
 
 **Built:** the default knives and the Zeus are extracted (K2) and build in
-first person; nothing hands them to a player yet.
+first person. The knife is usable (`src/weapons/knife.gd`, run by
+`PlayerSim._update_knife`, checked by `tests/run_knife_checks.gd`): left
+slashes and right stabs, held to repeat, traced on the tick from the eye
+against the guns' hitboxes (a line, then a ring out to a 16-unit box round
+its end), enemies before teammates, backstabs from behind, damage through
+`DamageInfo.deal` with vdata's armour ratio and flinch, `weapon_fire` for
+each swing, the first- and third-person attack clips and CS2's knife sound
+events. Its damage, reach, swing rates, run window and backstab angle are
+the community's figures or guesses, named in `Knife`, until K1 measures
+them. Nobody is handed the Zeus yet.
 
-**Remote:** melee traces (swing range and arc), backstab from behind, the
-Zeus as a short-range hitscan with its recharge.
+**Remote:** the Zeus as a short-range hitscan with its recharge; the knife's
+numbers once K1 has measured them.
 
 **Local**
 - **K1.** Measure knife damage (front and back, left and right, with and
-  without armour) and swing range.
+  without armour, and whether a head takes more), swing range, the swing
+  rates on a hit and a miss, how long before a slash does its 40 again,
+  and the backstab's angle (`reference/research/combat.md` 2 says how).
+  Each goes into `Knife`'s constant of the same name, and
+  `tests/run_knife_checks.gd` follows it. Then play the knife beside CS2:
+  that each swing plays the right third-person attack (found by name in
+  `knife/_default_knife`, whose names have not been read) and sounds
+  right.
 - **K2.** *(done 2026-09-23: `scripts/extract_assets.sh equipment` and
   `sounds`, listed in `reference/weapons/equipment.md`)* Extract the default
   knives (T and CT) and the Zeus, with their animations and sounds.

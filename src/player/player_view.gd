@@ -163,6 +163,7 @@ func _ready() -> void:
 	player.grenade_released.connect(_on_grenade_released)
 	player.reload_started.connect(_on_reload_started)
 	player.shot_traced.connect(_on_shot_traced)
+	player.knife_swung.connect(_on_knife_swung)
 	player.killed.connect(_on_killed)
 	player.respawned.connect(_on_respawned)
 	player.team_changed.connect(_on_team_changed)
@@ -229,6 +230,16 @@ func _on_reload_started() -> void:
 	if body_shadow != null:
 		body_shadow.play(&"reload", 0.1)
 	weapon_sounds.reload()
+
+
+## A knife swing: the arms play its clip (light_hit1, heavy_backstab...)
+## from the top, and the body you look down at its attack. Its sounds are
+## WeaponSounds'.
+func _on_knife_swung(swing: Knife.Swing) -> void:
+	if view_model != null:
+		view_model.play(swing.clip(), ViewModel.SHOOT_BLEND, 1.0, true)
+	if body_shadow != null:
+		body_shadow.knife_attack(swing.heavy, swing.met())
 
 
 func _on_shot_traced(shot: Weapon.Shot, result: Hitscan.Result) -> void:
