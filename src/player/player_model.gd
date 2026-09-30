@@ -929,12 +929,12 @@ static func knife_clip_for(clips: PackedStringArray, heavy: bool, met: String) -
 	sorted.sort()
 	var of_kind := ""
 	for clip in sorted:
-		var name := clip.to_lower()
-		if not name.contains(kind) or name.contains("crouch"):
+		var lower := clip.to_lower()
+		if not lower.contains(kind) or lower.contains("crouch"):
 			continue
-		if name.contains(met):
+		if lower.contains(met):
 			return clip
-		if of_kind.is_empty() and (name.contains("hit") or name.contains("miss") or name.contains("attack")):
+		if of_kind.is_empty() and (lower.contains("hit") or lower.contains("miss") or lower.contains("attack")):
 			of_kind = clip
 	return of_kind
 
