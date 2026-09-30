@@ -342,9 +342,14 @@ func thought() -> UserCmd:
 func _process(_delta: float) -> void:
 	if model == null:
 		return
-	# Drawn as far between its last two ticks as the frame falls.
-	var alpha := DrawClock.fraction()
-	model.show_between(previous_position, global_position, previous_yaw_degrees, yaw_degrees, alpha)
+	# Drawn as far between its last two ticks as the frame falls. Dead, it
+	# is left where it was last drawn: it runs no tick, so its last two are
+	# the ones it died between for as long as it lies, and drawn between
+	# them every frame the model went to and fro under its ragdoll, which
+	# posed the body again every frame to stay where it lay.
+	if alive:
+		var alpha := DrawClock.fraction()
+		model.show_between(previous_position, global_position, previous_yaw_degrees, yaw_degrees, alpha)
 	model.show_held()
 	if alive:
 		model.light_from(global_position + Vector3.UP * 40.0)

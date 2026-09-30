@@ -277,9 +277,10 @@ func _test_ragdoll() -> void:
 	)
 	var body_head: Ragdoll.Part = ragdoll.bodies.get(head)
 	_check(
-		body_head != null and body_head.collision_layer == Ragdoll.LAYER and body_head.collision_mask == Hitscan.WORLD_LAYER | Ragdoll.LAYER
+		body_head != null and body_head.collision_layer == Ragdoll.LAYER and body_head.collision_mask == Hitscan.WORLD_LAYER
+			and body_head.layer_high != 0 and body_head.mask_high == body_head.layer_high
 			and Ragdoll.LAYER & (Hitscan.WORLD_LAYER | Hitbox.LAYER) == 0,
-		"the bodies touch the world and dead bodies alone, and are nothing a round is traced against"
+		"the bodies touch the world and their own body's parts alone, by an upper layer of its own, and are nothing a round is traced against"
 	)
 	var joints := []
 	for joint in ragdoll.get_children():

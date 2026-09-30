@@ -15,7 +15,8 @@ players (you and bots) on 2026-09-23: Godot 4.7.2 headless, Jolt, 64 ticks a
 second, an AMD Ryzen 7 7800X3D. A slower CPU pays more for all of it; the
 proportions hold. `scripts/profile_worst_ticks.gd` says what the worst ticks of a match are
 made of, which a mean does not (2026-09-28: shots, the hitboxes brought
-up to date for every ray; 2026-09-29, that taken down, the kills). `scripts/profile_dust2.gd` measures it all again (the last
+up to date for every ray; 2026-09-29, that taken down, the kills, and
+those taken down in turn: `research/death-on-the-tick-2026-09-29.md`). `scripts/profile_dust2.gd` measures it all again (the last
 section says how).
 
 ## The budget
@@ -130,7 +131,9 @@ tick, and nothing without a camera runs it.
 |---|---|
 | A round's holes, sounds and the shooter's body | 0.04 ms |
 | A round traced | 10 us, 60 us through two walls |
-| A death's ragdoll built | 0.56 ms |
+| A death's ragdoll: made ahead of it, on a frame, once a body | 1.3 ms |
+| and dropped at the death (made then, as it was, 3.0 ms) | 0.45 ms |
+| What a death drops | 0.3 to 0.4 ms |
 | A path over the nav mesh | 0.45 to 0.57 ms, two a tick at most |
 | A side swap, one player's new body | 2.6 ms |
 | A spawn | 2 us |
@@ -314,6 +317,7 @@ with the same run (before this work, its worst frames in combat were 28 to
 |---|---|---|---|
 | A gun's first-person clips, the first time it came into your inventory (a buy, a pickup, a round's pistol) | the tick: the view model built as the inventory changed | 136 ms on average, the R8's 347 | read on worker threads while the game plays (`RigModel.read_ahead`, every clip of what your side can hold: 263 files, 188 ms on the workers, 34 MB), and the view model built on the next frame: 2.3 ms for the AK-47, whose model the bots had read |
 | A dropped gun's model, the first of its class (every death drops a gun) | the tick: built as the item spawned | 41 ms headless; ticks of 25 ms in the fights | built on the next frame, once a worker thread has read it |
+| The kill feed's row, laid out as the death was told: its faces and the gun's icon read from the disk the first time | the tick's end | 5 to 6 ms the first death, 2 the next gun's first | the row is made on the next frame, and every face and image the HUD draws is read as the HUD is made (0.15 s) |
 | The first tracer and flash: each effect shader compiled when its first material asked for it | the frame (`EffectQuads`) | 6.6 ms for add, 10.3 for lit | compiled as the map loads |
 | Each new batch of effect cards: its MultiMesh read back from the GPU when its first card was set | the frame | 2 to 4 ms a batch; the first shots' frames 7 to 18 ms | none: a batch's cards go in one buffer at the frame's end |
 
@@ -362,6 +366,7 @@ workers). No buy or pickup in a match reads a model any more.
 | A sweep keeps its clearance along the hit's normal and looks past its end; a recovery tries an eighth of a unit first; a player's tick synchronizes the other hulls once and leaves its own out once; a ray from the open is one native call (`Box3DQueries`, `PlayerBody`) | playtest issue 26 | walking dust2 stopped a player dead for a tick, 13 times a minute among five bots, now never; a minute's walk 117,000 hull casts to 96,000, its ticks of more than 12 traces 3,093 to 71; the seeded ten-player tick 3.68 ms to 3.09, its 95th 4.79 to 4.05 (`research/box3d-walking-hitch-2026-09-28.md`) |
 | The floor found once a walking tick (one sweep down from a unit up, which the ground check takes, where Source's StayOnGround and ground check are three); a trace asking the bridge for its cast alone; the hulls looked over once a tick; Box3D not stepped with nothing awake | perf/tick-contained | the seeded ten-player tick 3.12 ms to 2.31, its 95th 4.06 to 3.10, its worst 6.2 to 5.0; a walking bot 243 us to 192 and 5.0 hull casts to 2.8; and with the sweep's shape an eighth smaller all round, 172 us and 2.4 casts, and a player with another on its head no longer stopped dead (`research/box3d-walking-hitch-2026-09-28.md`, "The contained changes") |
 | A body's hitboxes brought up to date for the ray that could meet them, not all 190 for every ray (`Box3DQueries._sync_sets`) | perf/hitboxes-for-shots | a player's run that fires a round 1.5 ms to 0.8 with ten players, 2.3 to 0.9 with twenty; a tick with a round in it 3.4 ms to 2.6, and 6.5 to 5.1; what every round meets the same (`reference/research/hitboxes-for-shots-2026-09-28.md`) |
+| The body a player dies into made ahead, on a frame, and dropped at the death; an upper layer for each dead body in place of 225 exceptions a pair; a body at rest stepped and posed no more; the kill feed's rows made on the frame; the HUD's faces and images read before play (`Ragdoll.prepare`, `GameWorld._process`, `HudStyle.read_ahead`) | perf/death-on-the-tick | a tick with a death 6.4 to 7.3 ms to 4.0 to 4.8, and the first of a process 11 to 23 ms to 4.2 to 9.2; a quiet tick with bodies lying 0.15 ms less; warmup's worst ticks 7.4 to 9.7 ms to 4.5 to 5.7 (`reference/research/death-on-the-tick-2026-09-29.md`) |
 | Everyone's command asked for before anyone runs, and the bots thinking theirs out on worker threads, all at once (`GameWorld.commands_for`) | perf/bots-think-together | the seeded ten-player tick 2.03 ms to 2.02, its 95th 2.92 to 2.68; with nineteen bots in dust2's match a mean of 4.41 ms to 4.11 and a 95th of 6.93 to 6.48; the same commands as thinking in turn (`tests/run_bot_think_checks.gd`, `tests/run_dust2_think_checks.gd`) |
 | The foot plant's floor normals eased with `lerp`, not `slerp` | playtest issue 26 | an error printed a frame for every foot on ground a hair off level, 1,000 a minute with five bots; none |
 | Every gun's spray pattern solved as the registry builds it (`WeaponData.recoil_impulses`) | playtest issue 14 | 15 more guns read a pattern, and the first of each built in a tick (a buy, a pickup) would have solved it there: the M249's 100 rounds 33 to 39 ms, the Negev's 150 36 to 41, the Bizon 17 to 20; now 0.05 ms, and `ItemRegistry.load_all` 88 ms to about 320 (headless, a cloud container, three runs each) |

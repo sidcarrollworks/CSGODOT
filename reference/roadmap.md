@@ -309,12 +309,32 @@ only for a ray that could meet it; a round fired is 0.6 to 0.7 ms less
 with ten players and 1.3 to 1.6 with twenty, the ticks over 6 ms with
 twenty a quarter of what they were, and dust2's match the same match, byte
 for byte ([hitboxes-for-shots-2026-09-28.md](research/hitboxes-for-shots-2026-09-28.md)).
-**Next: what a death costs on the tick, 2 to 3 ms in the shooter's run and
-1.1 ms at the tick's end (Remote).**
+**What a death costs on the tick (2026-09-29, perf/death-on-the-tick):**
+the tick a player dies in was 6.4 to 7.3 ms where a quiet one is 2, and
+8.5 to 14 the first times in a process (the very first 11 to 23). The body a
+player dies into is made ahead, on a frame, and dropped at the death; one
+dead body passes through another by an upper layer of its own; a body at
+rest is stepped and posed no more; the kill feed makes its rows on the
+frame; the HUD reads its faces and images before play. A tick with a
+death is 4.0 to 4.8 ms, 4.1 to 6.8 the first times (the very first 4.2 to
+9.2), a quiet tick with bodies lying 0.15 ms less, and the worst tick of
+the warmup Sid played 4.5 to 5.7 ms where it was 7.4 to 9.7
+([death-on-the-tick-2026-09-29.md](research/death-on-the-tick-2026-09-29.md)).
+Sid, 2026-09-29, playing dust2 alone and against nine bots: alone 224
+frames a second at 1080p and a worst frame of 5.5 to 7 ms; with the bots,
+in warmup and shooting nothing, 130 to 190 and a worst frame over 10, the
+same at 4K. It is the processor and the bots.
+**Next, proposed: the bodies nobody sees, animated on every frame that
+holds no tick (Remote).** Ten bodies' animation and skeletons are 1.1 to
+1.4 ms of every frame headless, where nothing is seen, and at 160 frames
+a second that is more in a second than the ticks cost. A body out of
+sight is posed for its hitboxes alone, which a round asks for a few times
+a second. No research covers it yet.
 Left: the movement in native code, which needs SCons and
-godot-cpp's source on Sid's machine and a build in CI; hitboxes posed
-when a round asks rather than every frame; a ragdoll at rest letting go
-of the native step; Godot's renderer on a thread of its own measured
+godot-cpp's source on Sid's machine and a build in CI; what a death
+drops, 0.3 ms, and the first death's step, 6 ms once; a player's ragdoll
+made from CS2's own shapes, which `RagdollShapes` reads and only a check
+asks for; Godot's renderer on a thread of its own measured
 drawn, not shipped on (Godot marks it experimental).
 Measurements and the list:
 [box3d-walking-hitch-2026-09-28.md](research/box3d-walking-hitch-2026-09-28.md).
