@@ -995,12 +995,20 @@ func pose_again() -> void:
 ## tick keeps as fresh. Seen means drawn on the camera layers its meshes are
 ## on, walls and all (VisibleOnScreenNotifier3D, with the map's occluders);
 ## headless nothing is, and every body steps between the ticks.
+##
+## Its skeleton is fitted (the feet, the hands, the twist bones: its
+## modifiers) only in a frame whose pose changed, not in every frame, which
+## is the skeleton's own default: a body that did not step, or lies at rest,
+## is not fitted again to the same pose, nor its skin sent, nor its
+## hitboxes and gun moved to where they already are (step).
 func step_off_tick_frames() -> void:
 	stepped_by_hand = true
 	if animation_tree != null:
 		animation_tree.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 	elif animation_player != null:
 		animation_player.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+	if character_rig != null:
+		character_rig.modifier_callback_mode_process = Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_MANUAL
 	var layers := 0
 	for mesh in find_children("*", "MeshInstance3D", true, false):
 		layers |= (mesh as MeshInstance3D).layers
@@ -1052,12 +1060,22 @@ func grips_gun() -> bool:
 	return animation_tree == null or not has_weapon_layers or not bool(animation_tree.get("parameters/gun_action/active"))
 
 
-## Moves the animation on by delta seconds.
+## Moves the animation on by delta seconds, and the skeleton's fit with it
+## where the body steps by hand (step_off_tick_frames). A skeleton that
+## runs its modifiers by hand still runs them in any frame its pose is set,
+## but by nothing: the feet and the hands, which ease in and out by the
+## time they are given, take a fit given no time as one to make at once
+## (FootPlant, HandGrip). So the step hands the skeleton its time: the
+## modifiers run once in the frame's update, by the time since the body
+## last stepped, as they did frame by frame. A pose set otherwise (a spawn
+## or a respawn posed at once, a ragdoll) is fitted at once.
 func step(delta: float) -> void:
 	if animation_tree != null:
 		animation_tree.advance(delta)
 	elif animation_player != null:
 		animation_player.advance(delta)
+	if character_rig != null and character_rig.modifier_callback_mode_process == Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_MANUAL:
+		character_rig.advance(delta)
 
 
 ## The body has been put somewhere else at once (a spawn, a respawn, up
