@@ -895,7 +895,7 @@ extract_equipment() {
 ## beside its input whatever -o says, so it is given a copy here, never the
 ## game's own. src/ui/hud_style.gd reads it all from assets/hud/ and draws its
 ## own stand-ins where something is not there.
-HUD_UI_ICONS="ct_logo_1c t_logo_1c buyzone elimination kill defuser_white alert"
+HUD_UI_ICONS="ct_logo_1c t_logo_1c buyzone elimination kill defuser_white alert bot bomb_c4 bomb timer trophy competitive_teams"
 HUD_MASKS="score-time-mask.vsvg_c playercount-mask.vsvg_c top-bottom-fade-4_png.vtex_c"
 extract_hud() {
 	require_file "$PAK_VPK"
