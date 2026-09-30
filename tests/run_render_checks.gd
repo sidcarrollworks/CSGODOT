@@ -21,6 +21,7 @@ func _initialize() -> void:
 	_check_stats()
 	_check_variants()
 	_check_occluders()
+	_check_render_debug()
 	_finish("render")
 
 
@@ -172,6 +173,32 @@ func _box(parent: Node, size: float, part: String, where: Vector3 = Vector3.ZERO
 	mesh_instance.position = where
 	parent.add_child(mesh_instance)
 	return mesh_instance
+
+
+## F11's steps (RenderDebug) each change their one thing and put it back.
+func _check_render_debug() -> void:
+	var skybox := Node3D.new()
+	skybox.name = "Skybox"
+	root.add_child(skybox)
+	var occlusion := root.use_occlusion_culling
+	var steps := {
+		"no_occlusion": func() -> bool: return root.use_occlusion_culling == false,
+		"no_visibility": func() -> bool: return true,
+		"hide_skybox": func() -> bool: return not skybox.visible,
+		"draw_occluders": func() -> bool: return root.debug_draw == Viewport.DEBUG_DRAW_OCCLUDERS,
+	}
+	_check_equal(RenderDebug.STEPS.size(), steps.size() + 1, "F11 steps through each of these and back to as is")
+	for each: Array in RenderDebug.STEPS:
+		if String(each[0]).is_empty():
+			continue
+		var undo: Callable = RenderDebug.apply(each[0], root, root)
+		_check(steps.has(each[0]) and (steps[each[0]] as Callable).call(), "F11's %s does what it says" % each[0])
+		undo.call()
+		_check(
+			root.use_occlusion_culling == occlusion and skybox.visible and root.debug_draw == Viewport.DEBUG_DRAW_DISABLED,
+			"and is put back"
+		)
+	skybox.free()
 
 
 func _check_occluders() -> void:

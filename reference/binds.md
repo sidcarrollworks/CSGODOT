@@ -90,6 +90,7 @@ change.
 | Y | your armour | range | `messagemode` | moves to `'` |
 | F3 | the position and frame-rate readout | HUD | `autobuy` | moves to F8 |
 | F5 | ends warmup (`mp_warmup_end`) | dust2 | `jpeg` | moves to F9 |
+| F11 | steps through the culling and the 3D skybox, one off at a time (`RenderDebug`: occlusion culling, the map's visibility, the skybox, the occluders drawn), to find what draws a wrong picture | dust2 and any competitive map | unbound | stays |
 | K | the dummy's armour | range | unbound | stays |
 | N | the dummy's distance | range | unbound | stays |
 | J | you never die | range | unbound | stays |
