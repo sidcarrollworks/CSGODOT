@@ -426,6 +426,8 @@ static func fun_fact_text(token: String, player: String, data1: int) -> String:
 			return "No players were killed prior to the bomb being planted."
 		"funfact_short_round":
 			return "That round took only %d %s!" % [data1, "second" if one else "seconds"]
+		"funfact_shots_fired":
+			return "%d %s fired that round." % [data1, "shot was" if one else "shots were"]
 	return ""
 
 

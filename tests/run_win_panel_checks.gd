@@ -34,6 +34,7 @@ func _initialize() -> void:
 	_test_panel_text()
 	await _test_the_panel()
 	await _test_the_hud_shows_it()
+	await _test_the_damage_report()
 	_finish("win-panel")
 
 
@@ -80,6 +81,18 @@ func _end(winner: String, reason: String, at: int) -> void:
 	_game.events.flush()
 
 
+## Whether a fun fact holds for the round just ended.
+func _holds(winner: String, reason: String, end_usec: int, fact: Array) -> bool:
+	return _report.fun_facts_holding(winner, reason, end_usec).has(fact)
+
+
+func _name_of(userid: int) -> String:
+	for node: Node in _ids:
+		if _ids[node] == userid:
+			return str(node.name)
+	return ""
+
+
 func _sent_named(event_name: StringName) -> GameEvent:
 	for e in _sent:
 		if e.name == event_name:
@@ -104,13 +117,18 @@ func _test_most_kills_is_mvp() -> void:
 		"four kills is CS2's reason 16, most kills (4k), worth 4")
 	_check_equal(_report.last.get("mvp"), _id("T1"), "and the report keeps it for the win panel")
 	var panel := _sent_named(&"cs_win_panel_round")
-	_check(panel != null and panel.fields["funfact_token"] == "#funfact_kills_headshots"
-		and panel.fields["funfact_player"] == _id("T1") and panel.fields["funfact_data1"] == 4,
-		"the fun fact is CS2's: T1 killed 4 enemies with headshots that round")
+	_check(_holds("T", "TerroristsWin", t + 2 * SECOND, ["funfact_kills_headshots", _id("T1"), 4]),
+		"a fun fact that holds is CS2's: T1 killed 4 enemies with headshots that round")
+	_check(panel != null and _holds("T", "TerroristsWin", t + 2 * SECOND,
+		[String(panel.fields["funfact_token"]).trim_prefix("#"), panel.fields["funfact_player"], panel.fields["funfact_data1"]]),
+		"and the one told (%s) is one that holds" % (panel.fields["funfact_token"] if panel != null else "none"))
 	var index_end := _sent.find(_sent.filter(func(e: GameEvent) -> bool: return e.name == &"round_end")[0])
 	_check(_sent.find(mvp) > index_end, "round_mvp follows round_end in the same hand-out, as CS2 sends it")
 	_check_equal(_report.damage_between(_id("T1"), _id("C1")),
-		{"given": 100, "hits": 1, "taken": 0, "taken_hits": 0}, "the damage each gave the other is kept")
+		{"given": 100, "hits": 1, "taken": 0, "taken_hits": 0, "kill": "headshot", "taken_kill": ""},
+		"the damage each gave the other is kept, and how T1 killed C1")
+	_check_equal(_report.damage_between(_id("C2"), _id("T2"))["kill"], "default", "a body shot's kill is the default one")
+	_check_equal(_report.damage_between(_id("T2"), _id("C2"))["taken_kill"], "default", "and T2 sees it as what killed them")
 
 	# Tie: the first to join takes it; five of five is an ace.
 	_new_game()
@@ -138,8 +156,8 @@ func _test_bomb_mvps() -> void:
 	_end("T", "TargetBombed", 80 * SECOND)
 	_check_equal(_report.last.get("mvp"), _id("T4"), "the bomb going off makes its planter MVP")
 	_check_equal(_report.last.get("mvp_reason"), RoundReport.MVP_BOMB_PLANT, "for planting the bomb (2)")
-	_check_equal(_report.last.get("funfact_token"), "funfact_bomb_planted_before_kill",
-		"no one died before the plant: CS2's fun fact for it")
+	_check(_holds("T", "TargetBombed", 80 * SECOND, ["funfact_bomb_planted_before_kill", GameEvents.NOBODY, 0]),
+		"no one died before the plant: CS2's fun fact for it holds")
 
 	_new_game()
 	_start()
@@ -175,7 +193,7 @@ func _test_fun_facts() -> void:
 	_kill("T1", "C1", 20 * SECOND)
 	_kill("T2", "C2", 21 * SECOND)
 	_end("T", "TerroristsWin", 22 * SECOND)
-	_check_equal(_report.last.get("funfact_token"), "funfact_t_win_no_casualties",
+	_check(_holds("T", "TerroristsWin", 22 * SECOND, ["funfact_t_win_no_casualties", GameEvents.NOBODY, 0]),
 		"the winners lost no one: Terrorists won without taking any casualties")
 
 	_new_game()
@@ -185,16 +203,42 @@ func _test_fun_facts() -> void:
 	_kill("C1", "T1", 25 * SECOND, false, 100)
 	_kill("T3", "C2", 26 * SECOND)
 	_end("CT", "CTsWin", 90 * SECOND)
-	var fact := [_report.last.get("funfact_token"), _report.last.get("funfact_player"), _report.last.get("funfact_data1")]
-	_check_equal(fact, ["funfact_damage_no_kills", _id("T5"), 140], "no kills but 140 damage is told")
+	_check(_holds("CT", "CTsWin", 90 * SECOND, ["funfact_damage_no_kills", _id("T5"), 140]),
+		"no kills but 140 damage is one to tell")
 
 	_new_game()
 	_start()
 	_kill("C1", "T1", 25 * SECOND)
 	_kill("T2", "C1", 26 * SECOND)
 	_end("CT", "TargetSaved", 130 * SECOND)
-	fact = [_report.last.get("funfact_token"), _report.last.get("funfact_player"), _report.last.get("funfact_data1")]
-	_check_equal(fact, ["funfact_first_blood", _id("C1"), 10], "first blood, counted from the end of freeze time")
+	_check(_holds("CT", "TargetSaved", 130 * SECOND, ["funfact_first_blood", _id("C1"), 10]),
+		"first blood, counted from the end of freeze time")
+
+	# Sid's 2026-09-30 screenshot: 138 shots were fired that round.
+	_new_game()
+	_start()
+	for i in 138:
+		_game.events.send(&"weapon_fire", {"userid": _id("T%d" % (i % 5 + 1)), "weapon": "weapon_glock"}, 20 * SECOND)
+	_game.events.flush()
+	_kill("C1", "T1", 30 * SECOND)
+	_end("CT", "TargetSaved", 130 * SECOND)
+	_check(_holds("CT", "TargetSaved", 130 * SECOND, ["funfact_shots_fired", GameEvents.NOBODY, 138]),
+		"every shot of the round is counted, both sides'")
+	_check_equal(WinPanel.fun_fact_text("#funfact_shots_fired", "", 138), "138 shots were fired that round.",
+		"and told as CS2 tells it")
+	var holding := _report.fun_facts_holding("CT", "TargetSaved", 130 * SECOND)
+	var picks := {}
+	for n in 40:
+		var at := (130 + n) * SECOND
+		picks[_report.pick_fun_fact("CT", "TargetSaved", at)[0]] = true
+	_check(picks.size() > 1, "which fact is told is drawn among those that hold, not always the first")
+	_check_equal(_report.pick_fun_fact("CT", "TargetSaved", 130 * SECOND),
+		_report.pick_fun_fact("CT", "TargetSaved", 130 * SECOND), "the same round always draws the same")
+	_check(holding.size() >= 2, "(this round has %d to draw from)" % holding.size())
+	_check_equal(RoundReport.kill_type("weapon_hegrenade", false), "blast", "an HE's kill is a blast")
+	_check_equal(RoundReport.kill_type("inferno", false), "burn", "fire's is a burn")
+	_check_equal(RoundReport.kill_type("weapon_knife_t", true), "slash", "a knife's a slash, headshot or not")
+	_check_equal(RoundReport.kill_type("weapon_taser", false), "shock", "the Zeus's a shock")
 
 
 func _test_what_does_not_count() -> void:
@@ -274,7 +318,8 @@ func _test_the_hud_shows_it() -> void:
 	hud._show_win_panel("T")
 	var panel := hud.win_panel
 	_check_equal(panel.title, "ROUND WON", "the HUD's panel says ROUND WON to the winners")
-	_check_equal(panel.fact, "T1 killed 2 enemies with headshots that round.", "with the round's fun fact")
+	_check_equal(panel.fact, WinPanel.fun_fact_text(_report.last["funfact_token"], _name_of(_report.last["funfact_player"]),
+		_report.last["funfact_data1"]), "with the round's fun fact")
 	_check(panel.mvp_name == "T1" and panel.mvp_reason == "MVP", "and its MVP")
 	hud._show_win_panel("CT")
 	_check_equal(panel.title, "ROUND LOST", "and ROUND LOST to the losers")
@@ -283,4 +328,76 @@ func _test_the_hud_shows_it() -> void:
 	_check(not panel.is_showing(), "gone once the next round is on")
 	hud.free()
 	state.free()
+	await process_frame
+
+
+## CS2's post-round damage report under the enemies' cards (Sid's CS2
+## screenshot of 2026-09-30: "100 in 3" in green, "27 in 1" in red).
+func _test_the_damage_report() -> void:
+	var game := GameSystems.new()
+	var report := RoundReport.new()
+	game.add_system(report)
+	var state := MatchState.new()
+	root.add_child(state)
+	var sims := {}
+	for who in ["you", "mate", "efe", "uri", "walt"]:
+		var sim := PlayerSim.new()
+		sim.name = who
+		sim.team = "T" if who in ["you", "mate"] else "CT"
+		root.add_child(sim)
+		sim.userid = game.add_player(sim)
+		state.add_player(sim)
+		sims[who] = sim.userid
+	var hit := func(attacker: String, victim: String, damage: int, at: int) -> void:
+		game.events.send(&"player_hurt", {"userid": sims[victim], "attacker": sims[attacker], "dmg_health": damage}, at)
+	game.events.send(&"round_start", {}, 0)
+	for n in 3:
+		hit.call("you", "uri", 40, (20 + n) * SECOND)
+	game.events.send(&"player_death", {"userid": sims["uri"], "attacker": sims["you"], "weapon": "weapon_glock"}, 22 * SECOND)
+	hit.call("uri", "you", 27, 21 * SECOND)
+	hit.call("efe", "you", 17, 30 * SECOND)
+	hit.call("mate", "you", 10, 31 * SECOND)
+	game.events.send(&"round_end", {"winner": "CT", "reason": "TargetSaved"}, 130 * SECOND)
+	game.events.flush()
+	var you: PlayerSim = null
+	for sim in state.players:
+		if sim.userid == sims["you"]:
+			you = sim
+	var counter := TeamCounter.new()
+	root.add_child(counter)
+	await process_frame
+	var reported := func() -> Dictionary:
+		var out := {}
+		for side: String in MatchState.SIDES:
+			for card: TeamCounter.Card in counter.cards[side]:
+				if not card.report.is_empty():
+					out[card.name] = card.report
+		return out
+	state.phase = MatchState.Phase.LIVE
+	counter.show_match(state, you, null, 0, null, report)
+	_check(reported.call().is_empty(), "no report while the round is played")
+	state.phase = MatchState.Phase.ROUND_END
+	counter.show_match(state, you, null, 0, null, report)
+	var shown: Dictionary = reported.call()
+	_check_equal(shown.keys().size(), 2, "at the round's end, a report under each enemy you traded damage with")
+	_check(shown.has("uri") and shown["uri"]["given"] == 100 and shown["uri"]["hits"] == 3
+		and shown["uri"]["taken"] == 27 and shown["uri"]["taken_hits"] == 1 and shown["uri"]["kill"] == "default",
+		"Uri: 100 in 3 given (capped at 100, as CS2 shows it) with the kill, 27 in 1 taken")
+	_check(shown.has("efe") and shown["efe"]["given"] == 0 and shown["efe"]["taken"] == 17,
+		"Efe, still alive: only 17 in 1 taken")
+	_check(not shown.has("mate") and not shown.has("walt"), "none for a teammate, nor an enemy you never traded with")
+	_check(counter.is_animating() and counter.report_shown(0) < 1.0, "the reports slide in")
+	for n in 20:
+		counter._process(0.1)
+	_check(not counter.is_animating() and counter.report_shown(1) == 1.0, "one after another, then stop redrawing")
+	state.phase = MatchState.Phase.FREEZE
+	counter.show_match(state, you, null, 0, null, report)
+	_check(reported.call().is_empty(), "and go as the next round starts")
+	_check_equal(TeamCounter.PRDR_GIVEN, Color8(9, 255, 0), "given in CS2's green")
+	_check_equal(TeamCounter.PRDR_TAKEN, Color8(255, 84, 84), "taken in its red")
+	counter.free()
+	state.free()
+	for sim in root.get_children():
+		if sim is PlayerSim:
+			sim.free()
 	await process_frame
