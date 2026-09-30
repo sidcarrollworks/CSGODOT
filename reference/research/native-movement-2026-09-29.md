@@ -78,22 +78,23 @@ every part of the body's state, exactly: its place, its velocity, the
 ground, the duck, the floor's normal, the recovery, the traces counted and
 the queries made. One difference fails the file, with the step's start.
 
-The whole suite on Sid's machine, with the extracted assets (4,441 checks
-in 61 files, all passed):
+The whole suite on Sid's machine, with the extracted assets (4,496 checks
+in 61 files, all passed, on this branch with perf/death-on-the-tick merged
+into it):
 
 | Where | Steps compared | Differing |
 |---|---|---|
 | `run_dust2_think_checks` (dust2's match, twice) | 56,254 | 0 |
-| `run_native_movement_checks` (the course) | 48,997 | 0 |
+| `run_native_movement_checks` (the course) | 49,029 | 0 |
 | `run_dust2_bot_checks` | 19,205 | 0 |
 | `run_box3d_match_checks` | 8,202 | 0 |
 | `run_bot_think_checks` | 7,232 | 0 |
 | `run_bot_move_checks` | 6,023 | 0 |
 | `run_dust2_checks` | 5,120 | 0 |
 | `run_range_checks` | 4,950 | 0 |
-| `run_sim_checks` | 3,446 | 0 |
-| fourteen more files | 12,207 | 0 |
-| all | 171,636 | 0 |
+| `run_sim_checks` | 3,454 | 0 |
+| fourteen more files | 12,213 | 0 |
+| all | 171,682 | 0 |
 
 The course (`tests/run_native_movement_checks.gd`) is there for what a
 match seldom does. Two bodies walk by seeded chance for 24,000 ticks over

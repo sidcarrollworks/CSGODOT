@@ -330,7 +330,7 @@ are also C++ (`native/src/hull_mover.cpp`, a GDExtension of the game's
 own, built by `scripts/build_native.sh` and `.ps1`, not committed). The
 script is the reference and runs wherever the library is not built; every
 check file runs each native step by the script as well and holds the two
-to the same body to the last bit, 171,636 steps of them in the suite's
+to the same body to the last bit, 171,682 steps of them in the suite's
 run. A walking bot's movement 102 to 107 us a tick down to 67 to 70, and
 the seeded ten-player tick 1.8 to 1.95 ms down to 1.55 to 1.7
 ([native-movement-2026-09-29.md](research/native-movement-2026-09-29.md)).
