@@ -171,6 +171,17 @@ The schemas that decide the rules:
 
   The repo's guess of eyes within 90 units and a 40° aim cone is close. 80 is the game's
   number for the radius; the cone angle is not in any file. **Still needs measuring (C1).**
+
+  The search's shape (added 2026-09-30, from Sid's playtest: the nearer a gun, the further
+  off the crosshair E still takes it): Source's own `CBasePlayer::FindUseEntity` (Source SDK
+  2013, `game/shared/baseplayer_shared.cpp`, read as the spec) searches with a radius named
+  `PLAYER_USE_RADIUS` 80, the same number as CS2's convar, so CS2 is taken to keep it
+  (**Inferred**). A ray along the aim first, its reach measured across from the eyes and up or
+  down only past the player's own height; then seven 32-unit boxes swept 72 units, turned 45,
+  30, 20, 15 and 10 degrees down and 10 and 15 up; then everything within 80 of the eyes and
+  within a dot of 0.8 (36.9°) of the aim, nearest the aim's line winning. So there is no fixed
+  cone: far off, only what the aim is on. `UseSearch` (`src/game/use_search.gd`) builds it for
+  E on items, the dropped bomb and a bot carrying it; defusing still uses the 90 and 40° guess.
 - **From above, and through walls.** In November 2024 players found they could defuse from
   "virtually any height" if they could see the bomb below them (Nuke silos, Mirage B box,
   Dust2 B window). Valve fixed this in a later update, which the news called removing the
