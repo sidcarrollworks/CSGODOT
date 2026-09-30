@@ -53,6 +53,8 @@ var game: GameSystems
 var _crosshair: Crosshair
 ## A sniper's scope, over the view while scoped in.
 var scope: ScopeOverlay
+## The AUG's and SG 553's dot while up at the eye.
+var iron_sight: IronSightOverlay
 var health_ammo: HealthAmmoCenter
 var money: MoneyPanel
 var team_counter: TeamCounter
@@ -129,6 +131,10 @@ func _ready() -> void:
 	add_child(scope)
 	_crosshair = Crosshair.new()
 	add_child(_crosshair)
+	iron_sight = IronSightOverlay.new()
+	iron_sight.player = player
+	iron_sight.crosshair = _crosshair
+	add_child(iron_sight)
 	damage_indicator = DamageIndicator.new()
 	damage_indicator.player = player
 	add_child(damage_indicator)
@@ -283,11 +289,13 @@ static func bomb_hint(was: C4.State, carrier_was: int, c4: C4, you: int) -> Stri
 
 
 ## Whether the crosshair is drawn: not for a sniper (the game's
-## m_bShowCrosshair), whose aim is its scope, nor through the scope.
+## m_bShowCrosshair), whose aim is its scope, nor through the scope, nor
+## while an AUG or SG 553 is up at the eye, whose aim is its dot.
 static func shows_crosshair(who: PlayerSim) -> bool:
 	if who.weapon == null:
 		return true
-	return who.weapon.data.shows_crosshair and not ScopeOverlay.shown_for(who)
+	return who.weapon.data.shows_crosshair and not ScopeOverlay.shown_for(who) \
+		and IronSightOverlay.amount_for(who) <= 0.0
 
 
 ## Your money, with the cart while you may buy; and a refusal, for a

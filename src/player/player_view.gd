@@ -90,6 +90,9 @@ var _planting := false
 ## The field of view last drawn, in CS2's degrees, and the view model it
 ## was drawn for: a scope narrows it (_follow_scope).
 var _fov := ViewModelProjection.WORLD_FOV
+var _arms_fov := ViewModelProjection.VIEW_MODEL_FOV
+## How far an AUG or SG 553 is up at the eye this frame (_follow_scope).
+var _arms_raised := 0.0
 var _fov_model: ViewModel
 
 ## What you hear of your own weapon and your hits, and of your own feet.
@@ -608,26 +611,40 @@ static func lean(yaw: float, pitch_degrees: float) -> Basis:
 ## of view narrowed to its zoom (eased over the zoom time), the arms and gun
 ## put away while a sniper is scoped, and the mouse slowed by the zoomed
 ## field of view over the unzoomed one (CS2's zoom_sensitivity_ratio 1).
-## The arms keep their own field of view whatever the world's.
+## The arms keep their own field of view whatever the world's, but for the
+## AUG and SG 553, which come up to the eye as they scope: their arms go
+## from 68 to the gun's iron-sight field of view as far as the gun is up
+## (Weapon.iron_sight_amount; reference/research/scopes.md).
 func _follow_scope() -> void:
 	var weapon := player.weapon if player.alive and _dead_for < 0.0 else null
 	var fov := ViewModelProjection.WORLD_FOV
+	var arms_fov := ViewModelProjection.VIEW_MODEL_FOV
+	var raised := 0.0
 	var hidden := false
 	var sensitivity := 1.0
 	if weapon != null and weapon.data.zoom_levels() > 0:
 		fov = weapon.zoom_fov_at(DrawClock.usec())
 		hidden = weapon.through_scope()
 		sensitivity = weapon.data.zoom_fov(weapon.zoom_level) / ViewModelProjection.WORLD_FOV * ZOOM_SENSITIVITY_RATIO
+		raised = weapon.iron_sight_amount(DrawClock.usec())
+		arms_fov = lerpf(arms_fov, weapon.data.iron_sight_fov, raised)
+	_arms_raised = raised
 	player.input.zoom_sensitivity = sensitivity
 	if view_model != null:
 		view_model.visible = player.alive and not hidden
-	if is_equal_approx(fov, _fov) and _fov_model == view_model:
+		view_model.raise_to_eye(raised, weapon.data if weapon != null else null)
+	if is_equal_approx(fov, _fov) and is_equal_approx(arms_fov, _arms_fov) and _fov_model == view_model:
 		return
 	_fov = fov
+	_arms_fov = arms_fov
 	_fov_model = view_model
 	camera.fov = ViewModelProjection.vertical_fov(fov)
+	if is_equal_approx(arms_fov, ViewModelProjection.VIEW_MODEL_FOV):
+		camera.remove_meta(ViewModelProjection.ARMS_FOV_META)
+	else:
+		camera.set_meta(ViewModelProjection.ARMS_FOV_META, arms_fov)
 	if view_model != null:
-		ViewModelProjection.claim(view_model, fov)
+		ViewModelProjection.claim(view_model, fov, arms_fov)
 
 
 ## CS2's zoom_sensitivity_ratio: scoped, the mouse turns the view this much
@@ -657,8 +674,11 @@ func _update_viewmodel(delta: float) -> void:
 	var alpha := DrawClock.fraction()
 	var punch := player.weapon.viewmodel_punch() if player.weapon != null else Vector2.ZERO
 	var kick := player.previous_viewmodel_punch.lerp(punch, alpha)
+	# Up at the eye, the gun keeps its scope in front of it: no bob or sway
+	# (CS2 holds it nearly still there, m_flIronSightLooseness 0.03).
+	var loose := 1.0 - _arms_raised
 	viewmodel.transform = Transform3D(
-		motion.basis * _viewmodel_rest.basis
+		Basis.IDENTITY.slerp(motion.basis, loose) * _viewmodel_rest.basis
 			* Basis.from_euler(Vector3(deg_to_rad(kick.y), deg_to_rad(-kick.x), 0.0)),
-		_viewmodel_rest.origin + motion.origin
+		_viewmodel_rest.origin + motion.origin * loose
 	)

@@ -39,6 +39,22 @@ var shoot_clips := PackedStringArray()
 
 var _next_shoot: int = 0
 
+## The AUG's and SG 553's clips at the eye, when the set has them: the pose
+## held there and the round fired from it (reference/research/scopes.md).
+const IRON_SIGHT_POSE := &"ironsight_fidget"
+const IRON_SIGHT_SHOOT := &"ironsight_shoot"
+## The idle away from the eye, which the pose stands in for while up.
+var _hip_idle: StringName = &""
+## How far the gun was up at the eye last frame (raise_to_eye).
+var _raised: float = 0.0
+## Whether it is going up (or up), rather than coming down (or down).
+var _raising := false
+## The scope's glass, which the game draws clear: its surfaces are given
+## LENS_SHADER when the model is built, and counted here.
+var lens_surfaces: int = 0
+
+const LENS_SHADER := preload("res://src/player/scope_lens.gdshader")
+
 
 ## Where a first-person set's clips are. A set is named by its folder under
 ## viewmodel/ ("pistol/pistol_glock18"; reference/weapons/models.md lists
@@ -57,7 +73,7 @@ func setup(team: String, weapon_model: String, clip_set: String) -> bool:
 	# for the idle, until the throw and what is drawn next take over.
 	one_shots = PackedStringArray([
 		"draw", "shoot", "reload", "lookat", "silencer",
-		"pullpin", "throw_", "plant", "light_", "heavy_",
+		"pullpin", "throw_", "plant", "light_", "heavy_", String(IRON_SIGHT_SHOOT),
 	])
 	held = PackedStringArray(["pullpin", "throw_"])
 	var clips := list_clips(clips_dir(clip_set))
@@ -67,6 +83,9 @@ func setup(team: String, weapon_model: String, clip_set: String) -> bool:
 	# "idle1".
 	var idles := clips_named("idle")
 	idle = &"idle" if idles.has("idle") or idles.is_empty() else StringName(idles[0])
+	_hip_idle = idle
+	_raised = 0.0
+	_raising = false
 	# Not a pistol's last round, which leaves its slide back (shoot_empty).
 	shoot_clips = PackedStringArray(Array(clips_named("shoot")).filter(
 		func(clip: String) -> bool: return not clip.contains("empty")))
@@ -94,6 +113,7 @@ func setup(team: String, weapon_model: String, clip_set: String) -> bool:
 		weapon.free()
 	if weapon_rig != null and weapon_rig.get_bone_count() > 0:
 		pin(weapon_rig.get_parent(), "wpn", weapon_rig.get_bone_rest(0).affine_inverse())
+	lens_surfaces = clear_lenses(self)
 
 	scale = Vector3.ONE * MapImporter.SOURCE2_VIEWER_SCALE
 	rotation_degrees = Vector3(0.0, 180.0, 0.0)
@@ -112,6 +132,7 @@ func setup(team: String, weapon_model: String, clip_set: String) -> bool:
 func deploy(shown: bool) -> void:
 	process_mode = Node.PROCESS_MODE_INHERIT
 	visible = shown
+	_lower()
 	play(&"draw", 0.0, 1.0, true)
 
 
@@ -131,7 +152,87 @@ func put_away() -> void:
 ## rounds, so leaving a running one alone meant the gun animated about once a
 ## second on the AK while it was firing ten times a second.
 func shoot() -> void:
+	if _raising and has_clip(IRON_SIGHT_SHOOT):
+		play(IRON_SIGHT_SHOOT, SHOOT_BLEND, 1.0, true)
+		return
 	if shoot_clips.is_empty():
 		return
 	play(shoot_clips[_next_shoot], SHOOT_BLEND, 1.0, true)
 	_next_shoot = (_next_shoot + 1) % shoot_clips.size()
+
+
+## Raises the gun to the eye as far as amount (0 at the hip, 1 up;
+## Weapon.iron_sight_amount), for the AUG and SG 553 as they scope. CS2's
+## first-person graph blends its idle into the pose at the eye by that
+## amount (weapon_ironsight_amount; reference/animgraph/viewmodel.md,
+## Idle). Here the set's pose clip is faded in over the time the rest of
+## the way takes at the gun's pull-up speed, and out again at its put-down
+## speed; a clip already running, a shot or a reload, is left to finish
+## and goes to the pose or the idle after it. Nothing for a gun without
+## the pose.
+func raise_to_eye(amount: float, data: WeaponData) -> void:
+	if data == null or not data.has_iron_sight() or not has_clip(IRON_SIGHT_POSE):
+		if _raising:
+			_lower()
+		return
+	var raising := amount > _raised or amount >= 1.0
+	if amount <= 0.0:
+		raising = false
+	_raised = amount
+	if raising == _raising:
+		return
+	_raising = raising
+	if raising:
+		idle = IRON_SIGHT_POSE
+		_to_idle((1.0 - amount) / data.iron_sight_pull_up_speed)
+	else:
+		idle = _hip_idle
+		_to_idle(amount / maxf(data.iron_sight_put_down_speed, 0.001))
+
+
+## Back at the hip at once, as a draw starts.
+func _lower() -> void:
+	_raised = 0.0
+	_raising = false
+	if _hip_idle != &"":
+		idle = _hip_idle
+
+
+## Fades to the idle over blend seconds, unless a one-shot clip is running.
+func _to_idle(blend: float) -> void:
+	if animation_player == null or playing_one_shot():
+		return
+	play(idle, maxf(blend, 0.0))
+
+
+func has_clip(clip: StringName) -> bool:
+	return animation_player != null and animation_player.has_animation(clip)
+
+
+## Gives the surfaces of a scope's glass under node the clear lens: CS2's
+## AUG and SG 553 name the material rif_aug_scope_glass and
+## rif_sg556_scope_glass, and the lens's dirt scope_lens_dirt
+## (reference/research/scopes.md). How many it found.
+static func clear_lenses(node: Node) -> int:
+	var found := 0
+	var lens: ShaderMaterial = null
+	for mesh: MeshInstance3D in node.find_children("*", "MeshInstance3D", true, false):
+		if mesh.mesh == null:
+			continue
+		for surface in mesh.mesh.get_surface_count():
+			var material := mesh.get_active_material(surface)
+			if material == null or not is_lens(material.resource_name):
+				continue
+			if lens == null:
+				lens = ShaderMaterial.new()
+				lens.shader = LENS_SHADER
+				lens.resource_name = "scope_lens"
+			mesh.set_surface_override_material(surface, lens)
+			found += 1
+	return found
+
+
+## Whether a material, by name, is a scope's glass.
+static func is_lens(material_name: String) -> bool:
+	var lower := material_name.to_lower()
+	return lower.contains("scope_glass") or lower.contains("scope_lens")
