@@ -289,6 +289,7 @@ bones' modifiers:
   so this stands in for CS2's ground-topology offset on the drawn body and
   its hitboxes, while the eye stays at the hull's until Local 2 gives
   CS2's number.
+- **Rest clearance:** under Box3D a standing hull rests 0.257 inch off the floor, so 0.3 comes off each foot's gap (`FootPlant.REST_CLEARANCE`): no fit on flat ground.
 - **Where it runs:** in the skeleton's deferred update, each frame, like
   the pose the hitboxes already follow; its rays are frame-time queries
   (`reference/godot/physics.md`). A flat floor costs no fit.
