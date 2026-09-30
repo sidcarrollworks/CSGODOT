@@ -83,7 +83,10 @@ every frame while a camera draws it, otherwise only in the frames that run
 no tick, since a frame that runs one is the one the processor holds up.
 Its skeleton is fitted (the feet on the floor, the hands on the gun, the
 twist bones, and the hitboxes, gun and eyes moved to the bones) in the
-frames it steps and no others.
+frames it steps, at once when its bones are set another way (a respawn, a
+ragdoll) or it dies or gets up, and, where the frame before a tick went
+without, as that tick begins, so that every tick meets its hitboxes where
+a fit in every frame had them (`PlayerModel.fit_for_tick`).
 `reference/performance.md` has what every system costs, with ten players and
 twenty, what going online will add, and what to do about it next;
 `scripts/profile_dust2.gd` measures it again.

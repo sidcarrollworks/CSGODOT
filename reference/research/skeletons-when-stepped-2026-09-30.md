@@ -30,7 +30,10 @@ tick, with no body stepped in it.
 
 The class reference says of MANUAL only "Do not process modification. Use
 advance()". What it does was measured headless with a modifier that writes
-a bone and records each run, then held in `tests/run_body_fit_checks.gd`:
+a bone and records each run. `tests/run_body_fit_checks.gd` holds every
+MANUAL row on a stand-in body carrying the game's `FootPlant` and
+`HandGrip`, which `PlayerModel` tells what the body does in every frame, as
+it tells every body's:
 
 | A frame in which | IDLE | MANUAL |
 |---|---|---|
@@ -39,7 +42,7 @@ a bone and records each run, then held in `tests/run_body_fit_checks.gd`:
 | `advance(d)` is called | | fitted once, by the sum of the frame's `advance()` calls |
 | `advance(d)`, then the update forced on the tick | | fitted once at the notification, by d, and not again that frame |
 | a modifier's `active` set to what it is | | nothing |
-| `active` set false, then true | | the skin sent once, unfitted; then fitted once by no time |
+| a modifier's `active` set false, or true | | fitted once, by no time, the modifiers active then running |
 
 So a manual skeleton is fitted exactly when its pose changes, which is what
 was wanted. The one thing to supply is the time: `FootPlant` and `HandGrip`
@@ -50,17 +53,30 @@ one to make at once.
 
 - `PlayerModel.step_off_tick_frames` puts the body's skeleton in MANUAL,
   with its animation.
-- `PlayerModel.step` hands the skeleton the step's time
-  (`Skeleton3D.advance`) after the animation's. The modifiers run once in
-  that frame's update, by the time since the body last stepped, as they did
-  frame by frame. Easing by `move_toward` and by `1 - exp(-t / EASE)` toward
-  a target that holds comes to the same whether the time comes as one fit
-  or as several; a target that changes (the floor under a moving body) is
-  sampled once a step rather than once a frame.
+- Every fit is given the time since the last (`PlayerModel._fit`, by
+  `Skeleton3D.advance`): a step's in `_process`, the step's own for
+  `PlayerModel.step` as the checks and the profilers call it. The modifiers
+  run once in that frame's update. Easing by `move_toward` and by
+  `1 - exp(-t / EASE)` toward a target that holds comes to the same whether
+  the time comes as one fit or as several; a target that changes (the floor
+  under a moving body) is sampled once a fit rather than once a frame.
+- **A body that went a frame without its fit is fitted as the next tick
+  begins** (`PlayerModel.fit_for_tick`, called for every player by
+  `GameWorld.begin_tick` before anyone runs), if its model has moved or
+  turned since its last fit. Every tick met the hitboxes where the last
+  frame's fit put them; where that frame ran a tick of its own and so did
+  not fit a body nobody sees, the fit it would have made is made now, from
+  the model where that frame left it. Later ticks of the same frame meet
+  the same fit, as they did. It is forced there and then
+  (`NOTIFICATION_UPDATE_SKELETON`), since the frame's own update comes
+  after the tick.
 - A pose set otherwise is fitted at once in its frame: a body posed where it
-  spawns (`pose_now`) or comes back (`pose_again`), and the bones a ragdoll
-  writes, whose twist bones follow as before. A ragdoll at rest, which
-  writes nothing, is fitted in no frame.
+  spawns (`pose_now`) or comes back (`pose_again`), the bones a ragdoll
+  writes, whose twist bones follow as before, and the feet and the hands
+  switched off at a death and on at a respawn. `pose_now` and `pose_again`
+  first tell the feet and the hands what the body does now
+  (`PlayerModel.set_fit_flags`), which only `_process` did. A ragdoll at
+  rest, which writes nothing, is fitted in no frame and for no tick.
 - Your own drawn body and its shadow, the view model and the buy menu's
   agent keep the default. They are seen in every frame, and your body bends
   with your view in every frame.
@@ -110,23 +126,43 @@ machine will say more.
 
 - **A body you can see is fitted as before.** A body a camera draws steps
   in every frame, so it is fitted in every frame, ticks or not.
-- **A body nobody sees keeps its last fit through a frame with a tick.** Its
-  skin is not drawn. Its hitboxes stay where the last fit put them and move
-  with the player, as they did between fits before. A round in the next tick
-  meets them where the frame before it placed them, which is where it met
-  them before: a body nobody sees steps in every frame without a tick, and
-  the frame before a tick is nearly always one. Only when two frames in a
-  row each hold a tick (below 64 frames a second, or a hitch) does a round
-  meet such a body where a frame a tick earlier placed it, a fraction of a
-  tick's walk behind, where before it met it where the later of those
-  frames placed it. `MOST_UNSTEPPED_TICKS` bounds that at two ticks.
+- **Every tick meets the hitboxes where it met them.** Where a frame
+  without a tick comes before the tick, that frame stepped and fitted every
+  body nobody sees, as before. Where the frame before also ran a tick, which
+  happens whenever two frames together outlast a tick (below about 128
+  frames a second: at 100, 28% of the frames and 44% of the ticks; and
+  after any long frame), the tick fits the body as it begins, from where
+  that frame left the model. The modifiers are given the same time either
+  way; the floor under the feet is looked at where the fit is made.
+- **A body nobody sees keeps its last fit through a frame with a tick until
+  the next frame or tick.** Its skin is not drawn, and its hitboxes, gun and
+  eyes stay where the last fit put them, moving with the player.
 - **A body that comes into view in a frame holding a tick** is drawn once
   from its last fit, a frame old: its feet fitted to where it stood a frame
   before, and its eyes, which are aimed in the world, a frame behind. The
   next frame it is seen and fitted. Its pose was a frame old before too.
-- **A respawn fits the body at once.** Its hands take the gun, or let go of
-  it for the draw, at once, rather than easing from where they were when it
-  died. The feet did so already (`put_at_once`).
+- **A respawn is fitted at once, as it was,** now told first what the body
+  does: a body back with its gun in hand and no draw holds it at once,
+  where it took the flags it lay dead with (holding nothing) and eased its
+  hands back onto the gun over 0.3 s. One that draws lets go for the draw
+  as it did. The feet snap to the floor as they did (`put_at_once`).
+
+## What the review found
+
+Two reviewers read the change (what it does to the game; whether the checks
+and this page hold), and each finding was argued against by another. Four
+were confirmed, all fixed:
+
+| Found | Fixed by |
+|---|---|
+| This page said a round met an older fit of an unseen body only below 64 frames a second. Two frames in a row run a tick below about 128, where the game's own cap is on a 120 Hz screen (116) or a 100 Hz one (97): at 100, 28% of the frames and 44% of the ticks. Your own body, never drawn between ticks, then had its hitboxes turned to your yaw of a tick before | `fit_for_tick`: the fit the frame before would have made is made as the tick begins |
+| The checks held half the table: the stand-in had no feet or hands for `PlayerModel` to tell what the body does, so the flags written every frame (which must fit nothing) were never written, nor the death's and the respawn's switching, nor a step with the update forced | The stand-in carries `FootPlant` and `HandGrip`; a check for each row |
+| The check of a skeleton's default, said to be your own body's, tested only Godot | Said to be what the rest is measured against |
+| The check that no time is given twice allowed two frames of error | Each fit's time is held to the float |
+
+And one more, not verified but true on reading: a respawn's fit on the tick
+comes before any frame has told the feet and the hands what the body does,
+on main as on this branch; `pose_again` now tells them first.
 
 ## Code fixes and Local checks
 

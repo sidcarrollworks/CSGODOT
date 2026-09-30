@@ -150,6 +150,14 @@ var hand_grip: HandGrip
 var _on_screen: VisibleOnScreenNotifier3D
 var _unstepped := 0.0
 var _last_physics_frame := -1
+## Seconds of frames since the skeleton's modifiers were last given time
+## (_fit), which is what they ease by.
+var _unfitted := 0.0
+## Whether the last frame ended without the fit a skeleton's own default
+## gave it in every frame (fit_for_tick).
+var _went_unfitted := false
+## Where the model stood and faced when it was last fitted (fit_for_tick).
+var _fitted_at := Transform3D()
 
 ## Where in the library the held item's own clips are: WEAPON for the set the
 ## body was built with, "held_<set>_" for one taken in hand since; "" for none.
@@ -963,24 +971,34 @@ func state() -> StringName:
 ## tree's first step only builds its caches and poses nothing, and one with
 ## the variations' locomotion (holds_items) takes another to settle into its
 ## first, so it steps three times; on a tree already going the rest change
-## nothing.
+## nothing. The pose is fitted at once, by the flags as they stand.
 func pose_now() -> void:
 	if animation_tree != null:
 		for i in 3:
 			animation_tree.advance(0.0)
 	elif animation_player != null:
 		animation_player.advance(0.0)
+	set_fit_flags()
 
 
 ## Poses the skeleton now, on a tree already going: once, where pose_now
 ## steps a fresh tree three times. The step is the one the next frame
 ## would have made, and costs what that would have (2 to 3 ms for a body
 ## that has just taken something in hand), a frame sooner.
+##
+## A pose set without a step is fitted at once, given no time: on the tick
+## (a respawn), before any frame has told the feet and the hands what the
+## body now does. So they are told here, after the step, which has started
+## whatever draw the respawn asked for: a body back with its gun in hand
+## and no draw holds it at once, where it took the flags it lay dead with
+## (holding nothing) and eased its hands back onto the gun over HandGrip's
+## EASE.
 func pose_again() -> void:
 	if animation_tree != null:
 		animation_tree.advance(0.0)
 	elif animation_player != null:
 		animation_player.advance(0.0)
+	set_fit_flags()
 
 
 ## Steps its own animation from now on rather than leaving it to every frame
@@ -997,10 +1015,13 @@ func pose_again() -> void:
 ## headless nothing is, and every body steps between the ticks.
 ##
 ## Its skeleton is fitted (the feet, the hands, the twist bones: its
-## modifiers) only in a frame whose pose changed, not in every frame, which
-## is the skeleton's own default: a body that did not step, or lies at rest,
-## is not fitted again to the same pose, nor its skin sent, nor its
-## hitboxes and gun moved to where they already are (step).
+## modifiers, then its skin sent and its hitboxes, gun and eyes moved to
+## the bones) in a frame it steps or its bones are set, not in every frame,
+## which is the skeleton's own default. A body nobody sees is not fitted in
+## a frame that runs a tick, nor while it lies at rest. Where no frame
+## without a tick comes before the next tick, it is fitted as that tick
+## begins (fit_for_tick), so that every tick meets its hitboxes where a fit
+## in every frame had them.
 func step_off_tick_frames() -> void:
 	stepped_by_hand = true
 	if animation_tree != null:
@@ -1027,6 +1048,27 @@ func is_seen() -> bool:
 
 
 func _process(delta: float) -> void:
+	set_fit_flags()
+	# Stopped, a ragdoll has the bones (set_animating).
+	if not stepped_by_hand or not is_animating():
+		return
+	var ticked := Engine.get_physics_frames() != _last_physics_frame
+	_last_physics_frame = Engine.get_physics_frames()
+	_unstepped += delta
+	_unfitted += delta
+	if is_seen() or not ticked or _unstepped >= MOST_UNSTEPPED_TICKS * SimClock.tick_seconds():
+		_step_mixer(_unstepped)
+		_unstepped = 0.0
+		_fit(_unfitted)
+	else:
+		_went_unfitted = true
+
+
+## Tells the feet and the hands what the body does now: whether to plant
+## and to grip, and whether they may at all (alive and animating). Every
+## frame, and as a pose is set at once. A flag written as it already is
+## fits nothing.
+func set_fit_flags() -> void:
 	if foot_plant != null:
 		# A death or a ragdoll has the legs at once.
 		foot_plant.active = is_animating() and _dead == &""
@@ -1034,15 +1076,29 @@ func _process(delta: float) -> void:
 	if hand_grip != null:
 		hand_grip.active = is_animating() and _dead == &""
 		hand_grip.holding = grips_gun()
-	# Stopped, a ragdoll has the bones (set_animating).
-	if not stepped_by_hand or not is_animating():
+
+
+## A tick begins (GameWorld.begin_tick). A skeleton's own default fitted a
+## body at the end of every frame, and every tick met its hitboxes where the
+## last frame's fit put them; a body nobody sees is now fitted only in the
+## frames it steps, those without a tick. Where the frame before this tick
+## went without its fit (it too ran a tick: two frames in a row outlast a
+## tick below about 128 frames a second), and the model has moved or turned
+## since its last fit, it is fitted now, where that frame's fit would have
+## put it: your own body turned on the last tick, a bot's drawn where that
+## frame drew it. Later ticks of the same frame meet the same fit, as they
+## did. Forced here rather than left to the frame's end, which the tick
+## comes before.
+func fit_for_tick() -> void:
+	var owed := _went_unfitted
+	_went_unfitted = false
+	if not owed or not stepped_by_hand or not is_animating() or not _fits_by_hand() or not is_inside_tree():
 		return
-	var ticked := Engine.get_physics_frames() != _last_physics_frame
-	_last_physics_frame = Engine.get_physics_frames()
-	_unstepped += delta
-	if is_seen() or not ticked or _unstepped >= MOST_UNSTEPPED_TICKS * SimClock.tick_seconds():
-		step(_unstepped)
-		_unstepped = 0.0
+	if global_transform == _fitted_at:
+		return
+	var seconds := _unfitted
+	_fit(seconds)
+	character_rig.notification(Skeleton3D.NOTIFICATION_UPDATE_SKELETON)
 
 
 ## Whether a body plants its feet (FootPlant): alive and on the ground,
@@ -1066,16 +1122,35 @@ func grips_gun() -> bool:
 ## but by nothing: the feet and the hands, which ease in and out by the
 ## time they are given, take a fit given no time as one to make at once
 ## (FootPlant, HandGrip). So the step hands the skeleton its time: the
-## modifiers run once in the frame's update, by the time since the body
-## last stepped, as they did frame by frame. A pose set otherwise (a spawn
-## or a respawn posed at once, a ragdoll) is fitted at once.
+## modifiers run once in the frame's update, as they did frame by frame. A
+## pose set otherwise (a spawn or a respawn posed at once, a ragdoll) is
+## fitted at once.
 func step(delta: float) -> void:
+	_step_mixer(delta)
+	_fit(delta)
+
+
+func _step_mixer(delta: float) -> void:
 	if animation_tree != null:
 		animation_tree.advance(delta)
 	elif animation_player != null:
 		animation_player.advance(delta)
-	if character_rig != null and character_rig.modifier_callback_mode_process == Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_MANUAL:
-		character_rig.advance(delta)
+
+
+## Whether the skeleton runs its modifiers by hand (step_off_tick_frames).
+func _fits_by_hand() -> bool:
+	return character_rig != null and character_rig.modifier_callback_mode_process == Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_MANUAL
+
+
+## Has the skeleton fitted at this frame's update, or at a forced one, by
+## seconds of its modifiers' time, where it runs them by hand.
+func _fit(seconds: float) -> void:
+	if _fits_by_hand():
+		character_rig.advance(seconds)
+	_unfitted = 0.0
+	_went_unfitted = false
+	if is_inside_tree():
+		_fitted_at = global_transform
 
 
 ## The body has been put somewhere else at once (a spawn, a respawn, up
