@@ -347,7 +347,9 @@ at rest is fitted in no frame. A frame holding a tick does 0.7 to 0.9 ms
 less work headless, its fitting 0.78 to 0.87 ms down to 0.01; at 90 frames
 a second, where the tick's own fit is made, every frame's work 3.55 to 3.87
 ms down to 3.45 to 3.50 ([skeletons-when-stepped-2026-09-30.md](research/skeletons-when-stepped-2026-09-30.md)).
-Local: the watched comp game at 1080p again.
+Sid played it at 1080p (2026-09-30): a frame holding a tick 6.36 ms to 5.35,
+the slowest frame of each second 9.7 ms to 7.9 at the median, and half of
+all seconds with it under 8 ms where a quarter had been.
 **Next, proposed: the bodies nobody sees, animated on every frame that
 holds no tick (Remote).** Their animation is still stepped in every frame
 without a tick, 8.5 bodies of nine, where a round asks for a body's pose a

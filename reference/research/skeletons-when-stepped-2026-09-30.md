@@ -197,12 +197,43 @@ And one more, not verified but true on reading: a respawn's fit on the tick
 comes before any frame has told the feet and the hands what the body does,
 on main as on this branch; `pose_again` now tells them first.
 
+## Played
+
+Sid played the branch on 2026-09-30: competitive on dust2 against nine
+bots, a 1920x1080 window, 4.3 minutes, 25 deaths, watched as the run of
+2026-09-29 was (main after the native movement, 1.9 minutes, 13 deaths).
+He made the window fullscreen for six seconds in the middle; those seconds
+drew at 4K and are left out, with the two frames that switched (185 and
+110 ms). "Feels pretty good."
+
+| 1080p, Sid playing | 2026-09-29, main | 2026-09-30, branch |
+|---|---|---|
+| Frames a second | 190 | 208 |
+| A frame: mean, 95th, 99th | 5.26, 7.35, 9.06 ms | 4.82, 6.24, 7.57 ms |
+| Frames of 6 ms or more | 23.3% | 7.1% |
+| Frames of 8 ms or more | 2.4% | 0.7% |
+| A frame that holds a tick: mean, 95th | 6.36, 8.18 ms | 5.35, 6.93 ms |
+| Skeletons fitted in it, and the fitting | 9.8, 0.71 ms | 1.4, 0.10 ms |
+| A frame without a tick | 4.71 ms | 4.58 ms |
+| Its tick, mean | 1.92 ms | 1.62 ms |
+| The slowest frame of each second: median, 95th | 9.7, 17.6 ms | 7.9, 15.0 ms |
+| Seconds with it under 6 ms, under 8 | 0%, 23% | 7%, 52% |
+
+Of the frame with a tick's 1.0 ms, 0.6 is the fitting; the tick was 0.3 ms
+lighter in this play, which had more quiet time (166 of 256 seconds with
+nobody shooting, dying, spawning or buying, against 65 of 111), and the
+change does nothing to it. The frames without a tick sit near the frame cap
+(224 a second, 4.46 ms). No script error, and no crash at loading.
+
+What made the slowest frames, the switches to and from fullscreen aside:
+the buy menu first opened (41.9 ms, as the day before), entering the buy
+zone (21.0), a purchase (18.9), a molotov's detonation (its tick 14.2 ms),
+and at the very end, as the game was closed, a frame of 77.9 ms, 73 of it
+scripts. None is the skeletons'.
+
 ## Code fixes and Local checks
 
-- **Local: play it.** The watched comp game at 1080p, as on 2026-09-29, to
-  compare a frame that holds a tick (6.31 ms then, 1.9 of it the tick) and
-  the slowest frame of each second, and to see whether the crash at loading
-  comes again.
+- **Local: played** (above).
 - **Next:** the bodies nobody sees are still animated in every frame without
   a tick, 8.5 of nine, where a round asks for their pose a few times a
   second. That is the larger part of what a frame spends on bodies
