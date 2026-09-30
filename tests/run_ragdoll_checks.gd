@@ -1009,18 +1009,31 @@ func _test_let_go() -> void:
 		holder.position += Vector3(500.0, 0.0, 0.0)
 		skeleton.reset_bone_poses()
 		var rest := (skeleton.global_transform * skeleton.get_bone_global_pose(pelvis)).origin
+		# Still settling, the body is drawn between its last two ticks, as
+		# far as the wall clock puts the frame between them (DrawClock), and
+		# this file steps the ticks itself, so that fraction is 0 on one run
+		# and 1 on the next. Held to lay, taken a tick earlier, the freed
+		# one's write came out 0.3 or 1.0 from it, and failed on the 1.0
+		# (main's run on 0597c0b). Where it lies at each end of its last
+		# tick, to hold that write to whatever the fraction.
+		var ends: Array[Vector3] = []
+		for alpha: float in [0.0, 1.0]:
+			ragdoll.pose_skeleton(alpha)
+			ends.append((skeleton.global_transform * skeleton.get_bone_global_pose(pelvis)).origin)
+		skeleton.reset_bone_poses()
 		if told:
 			ragdoll.let_go()
 		else:
 			ragdoll.queue_free()
 		await process_frame
 		var shown := (skeleton.global_transform * skeleton.get_bone_global_pose(pelvis)).origin
+		var between := Geometry3D.get_closest_point_to_segment(shown, ends[0], ends[1])
 		if told:
 			_check(shown.distance_to(rest) < 0.01 and rest.distance_to(lay) > 400.0,
 				"a ragdoll let go of writes the skeleton no more: the frame after shows the pelvis where the body was put, %.0f units from where it lay" % rest.distance_to(lay))
 		else:
-			_check(shown.distance_to(lay) < 1.0,
-				"one freed and no more writes it once again that frame, where it lay (%.1f from there, %.0f from where the body was put)" % [shown.distance_to(lay), shown.distance_to(rest)])
+			_check(shown.distance_to(between) < 0.01 and shown.distance_to(rest) > 400.0,
+				"one freed and no more writes it once again that frame, where it lay: between where its last tick took it from and to (%.3f from there, %.1f apart, %.0f from where the body was put)" % [shown.distance_to(between), ends[0].distance_to(ends[1]), shown.distance_to(rest)])
 		holder.queue_free()
 		await process_frame
 	ground.queue_free()
