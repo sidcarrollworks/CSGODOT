@@ -320,6 +320,12 @@ func _think_apart(index: int) -> void:
 func begin_tick() -> void:
 	tick += 1
 	_path_searches_left = PATH_SEARCHES_PER_TICK
+	# A body that went a frame without its fit is fitted before anyone
+	# runs, for the tick's rounds to meet its hitboxes where a fit in that
+	# frame had them (PlayerModel.fit_for_tick).
+	for player in players:
+		if is_instance_valid(player.model):
+			player.model.fit_for_tick()
 	var queries := _native_queries()
 	if queries != null:
 		queries.begin_tick()

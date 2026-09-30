@@ -77,7 +77,16 @@ through dust2's collision costs 20 to 50 us, and a player makes one a tick
 standing still and four running in the open, more against a wall or a slope
 (PlayerBody counts them, and run_tests.gd holds them to that). So nothing
 that reads the disk runs in a tick, and what is only seen, like the probe
-light on a bot's body, follows the frames drawn rather than the ticks.
+light on a bot's body, follows the frames drawn rather than the ticks. A
+body steps its own animation (`PlayerModel.step_off_tick_frames`): in
+every frame while a camera draws it, otherwise only in the frames that run
+no tick, since a frame that runs one is the one the processor holds up.
+Its skeleton is fitted (the feet on the floor, the hands on the gun, the
+twist bones, and the hitboxes, gun and eyes moved to the bones) in the
+frames it steps, at once when its bones are set another way (a respawn, a
+ragdoll) or it dies or gets up, and, where the frame before a tick went
+without, as that tick begins, so that every tick meets its hitboxes where
+a fit in every frame had them (`PlayerModel.fit_for_tick`).
 `reference/performance.md` has what every system costs, with ten players and
 twenty, what going online will add, and what to do about it next;
 `scripts/profile_dust2.gd` measures it again.
