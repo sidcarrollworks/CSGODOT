@@ -85,7 +85,44 @@ const NOTICE_SECONDS := 2.0
 const DEAD_BAR_TOP := 580.0
 
 
+## Every image the HUD's parts ask HudStyle.icon() for by name, to be read
+## before the match (images_to_read): the first death drew the dead card's
+## skull, the first round won the panel's arrows, a side swap the other
+## emblem, each read from the disk on the frame that first drew it. A part
+## that draws a new one names it here; tests/run_hud_checks.gd reads the
+## parts' scripts and holds this list to them.
+const IMAGES: Array[String] = [
+	"backgrounds/bluedots_large_png",
+	"hud/armor",
+	"hud/armor_helmet",
+	"hud/double_arrows",
+	"hud/teamcounter/armor",
+	"hud/teamcounter/armor_helmet",
+	"hud/teamcounter/teamcounter_botavatar",
+	"icons/person",
+	"icons/ui/alert",
+	"icons/ui/buyzone",
+	"icons/ui/ct_logo_1c",
+	"icons/ui/elimination",
+	"icons/ui/t_logo_1c",
+]
+
+
+## IMAGES, the kill feed's marks and every gun's reserve icon: what is read
+## before the match beside the faces and the items' icons.
+static func images_to_read() -> Array:
+	var images: Array = IMAGES.duplicate()
+	images.append_array(KillFeed.ICONS.values())
+	images.append(HealthAmmoCenter.reserve_icon(""))
+	for gun: String in HealthAmmoCenter.RESERVE_ICONS:
+		images.append(HealthAmmoCenter.reserve_icon(gun))
+	return images
+
+
 func _ready() -> void:
+	# What the HUD's parts draw is read from the disk now, not on the frame
+	# or the tick that first shows it.
+	HudStyle.read_ahead(images_to_read())
 	# The scope under the rest, so health and ammo stay readable through it.
 	scope = ScopeOverlay.new()
 	scope.player = player

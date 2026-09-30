@@ -168,6 +168,7 @@ func _process(delta: float) -> bool:
 	_reclaim_callbacks(false)
 
 	# Whatever arrived since the last frame is ready by now.
+	_drop_the_gone(_arrived)
 	if not _arrived.is_empty():
 		var arrived := _arrived.duplicate()
 		_arrived.clear()
@@ -175,8 +176,9 @@ func _process(delta: float) -> bool:
 			_take_over(node)
 
 	_frames += 1
+	_drop_the_gone(_process_nodes)
 	for node in _process_nodes.duplicate():
-		if not is_instance_valid(node) or not node.is_inside_tree():
+		if not node.is_inside_tree():
 			_process_nodes.erase(node)
 			continue
 		if not node.can_process():
@@ -200,6 +202,7 @@ func _process(delta: float) -> bool:
 			var pose_start := Time.get_ticks_usec()
 			body.character_rig.notification(Skeleton3D.NOTIFICATION_UPDATE_SKELETON)
 			_add("frame: skeletons posed, and the hitboxes and pins on them", Time.get_ticks_usec() - pose_start)
+	_drop_the_gone(_trees)
 	for tree in _trees.duplicate():
 		if not is_instance_valid(tree) or not tree.is_inside_tree():
 			_trees.erase(tree)
@@ -248,8 +251,9 @@ func _physics_process(delta: float) -> bool:
 	_tick_costs = {}
 	_recording_tick = true
 	var start := Time.get_ticks_usec()
+	_drop_the_gone(_physics_nodes)
 	for node in _physics_nodes.duplicate():
-		if not is_instance_valid(node) or not node.is_inside_tree():
+		if not node.is_inside_tree():
 			_physics_nodes.erase(node)
 			continue
 		if not node.can_process():
@@ -418,11 +422,24 @@ func _take_over(node: Node) -> void:
 
 func _reclaim_callbacks(physics: bool) -> void:
 	var parked := _parked_physics_nodes if physics else _parked_process_nodes
+	_drop_the_gone(parked)
 	for node in parked.duplicate():
-		if not is_instance_valid(node) or not node.is_inside_tree():
+		if not node.is_inside_tree():
 			parked.erase(node)
 		elif (node.is_physics_processing() if physics else node.is_processing()):
 			_take_over(node)
+
+
+## Takes the nodes that have been freed out of a list, by where they are in
+## it. erase() will not take a freed object out of a typed list and says so
+## each time it is asked, so a ragdoll freed at a respawn was asked for on
+## every frame after, two errors a frame each: 900 in forty seconds of
+## warmup, and the frames that printed them were timed with the printing in
+## (2026-09-29; frames of 10 to 29 ms that the game did not have).
+static func _drop_the_gone(nodes: Array) -> void:
+	for i in range(nodes.size() - 1, -1, -1):
+		if not is_instance_valid(nodes[i]):
+			nodes.remove_at(i)
 
 
 ## Sorts the nodes by their priority, then by when they were taken over,

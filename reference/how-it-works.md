@@ -199,11 +199,14 @@ shot: it wears the game's own hitboxes, the nineteen capsules CS2 defines
 for the model, riding its bones (`src/combat/skinned_hitboxes.gd`), so a
 bullet lands on the head, chest, stomach, an arm or a leg and is priced
 accordingly, ahead of the movement hull, which bullets pass. A kill turns
-the body into a ragdoll (`src/combat/ragdoll.gd`): CS2's own fifteen ragdoll
-shapes from the model description (the hitbox capsules where it has none),
-jointed with limits that differ each way, measured from standing, knocked the
+the body into a ragdoll (`src/combat/ragdoll.gd`): fifteen bodies from the
+hitbox capsules (CS2's own fifteen ragdoll shapes are read from the model
+description, `RagdollShapes`, but a player's body is not made from them
+yet), jointed with limits measured from standing, knocked the
 way the last round was going, lifted clear of the floor, falling and lying
-where it lands; off the range the bot is back at the start of its route a few
+where it lands. It is made before it is wanted, on a frame soon after the
+body is put on, and waits switched off; the death puts its parts on the
+bones and a respawn parks it for the next. Off the range the bot is back at the start of its route a few
 seconds later, and in a match at the next round. (CS2's joints are not read
 yet: `reference/research/ragdoll-joints.md`. Without the model, the game's
 death clip for where the round landed plays instead.) And it shoots back:

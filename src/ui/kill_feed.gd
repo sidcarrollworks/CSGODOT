@@ -153,6 +153,9 @@ var game: GameSystems
 ## Whose eyes the feed is for: their rows are marked and stay longer.
 var you: int = GameEvents.NOBODY
 var _notices: Array[Notice] = []
+## Deaths handed out on a tick that are not rows yet: they are on the next
+## frame (_take_in).
+var _waiting: Array[Notice] = []
 
 
 func _ready() -> void:
@@ -171,8 +174,25 @@ func _exit_tree() -> void:
 		game.events.unlisten(&"player_death", _on_death)
 
 
+## A death, told on the tick it happened in. What it says is read now, from
+## the roster as it is; the row is made on the next frame, since a row laid
+## out measures its names and reads its icons, which is the frame's work and
+## was the tick's: 0.1 ms of every tick with a death, and 5 ms of the first,
+## which read the gun's icon and a face from the disk.
 func _on_death(event: GameEvent) -> void:
-	add(notice_for(event.fields, game.roster if game != null else null, you))
+	_waiting.append(notice_for(event.fields, game.roster if game != null else null, you))
+	set_process(true)
+
+
+## The deaths told since the last frame become rows, in the order they
+## were told.
+func _take_in() -> void:
+	if _waiting.is_empty():
+		return
+	var told := _waiting
+	_waiting = []
+	for notice in told:
+		add(notice)
 
 
 ## The row for a death (player_death's fields), its names and sides read
@@ -253,8 +273,10 @@ func add(notice: Notice) -> void:
 	redraw()
 
 
-## The rows up now, oldest first. A copy.
+## The rows up now, oldest first, those told and not yet drawn among them.
+## A copy.
 func notices() -> Array[Notice]:
+	_take_in()
 	return _notices.duplicate()
 
 
@@ -290,6 +312,7 @@ static func _ease_out(x: float) -> float:
 ## Ages the rows; only redraws while one is fading or sliding, so a still
 ## feed costs a few additions a frame. Stops once the feed is empty.
 func _process(delta: float) -> void:
+	_take_in()
 	var changed := false
 	for i in _notices.size():
 		var n := _notices[i]

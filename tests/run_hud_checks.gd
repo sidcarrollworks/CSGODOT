@@ -26,7 +26,58 @@ func _initialize() -> void:
 	await _test_the_alert_lines()
 	await _test_the_buy_menu_agent()
 	await _test_the_weapon_selection()
+	_test_what_is_read_ahead()
 	_finish("HUD")
+
+
+## Every image a part of the HUD asks HudStyle.icon() for by name is one
+## the HUD reads before the match (GameHud.images_to_read), so none is read
+## from the disk on the frame that first shows it. The parts' scripts are
+## read for the names: a part that draws a new image and does not name it in
+## GameHud.IMAGES fails here.
+func _test_what_is_read_ahead() -> void:
+	var read_ahead := GameHud.images_to_read()
+	var asked := {}
+	var call := RegEx.create_from_string("HudStyle\\.icon\\(([^\\n]*)")
+	var literal := RegEx.create_from_string("\"([^\"]+)\"")
+	var scripts := PackedStringArray()
+	for folder: String in ["res://src/ui", "res://src/economy", "res://src/player", "res://src/match"]:
+		for file in DirAccess.get_files_at(folder):
+			if file.ends_with(".gd") and file not in ["hud_style.gd", "game_hud.gd"]:
+				scripts.append(folder.path_join(file))
+	for path in scripts:
+		var text := FileAccess.get_file_as_string(path)
+		for found in call.search_all(text):
+			for name in literal.search_all(found.get_string(1)):
+				# A name has a folder in it; "CT" and the like are not names.
+				if name.get_string(1).contains("/"):
+					asked[name.get_string(1)] = path.get_file()
+	var missing := PackedStringArray()
+	for name: String in asked:
+		if not read_ahead.has(name):
+			missing.append("%s (%s)" % [name, asked[name]])
+	_check(asked.size() >= 10 and missing.is_empty(),
+		"every image the HUD's parts ask for by name is read before the match (%d names in %d scripts; not read: %s)"
+			% [asked.size(), scripts.size(), ", ".join(missing) if not missing.is_empty() else "none"])
+	_check(
+		KillFeed.ICONS.values().all(func(path: String) -> bool: return read_ahead.has(path))
+			and HealthAmmoCenter.RESERVE_ICONS.keys().all(func(gun: String) -> bool: return read_ahead.has(HealthAmmoCenter.reserve_icon(gun)))
+			and read_ahead.has(HealthAmmoCenter.reserve_icon("weapon_m4a1")),
+		"and so are those asked for from a table: the kill feed's marks and every gun's reserve icon"
+	)
+	# Read, they are in hand: asking again reads nothing.
+	HudStyle.read_ahead(read_ahead)
+	var in_hand := 0
+	for name: String in read_ahead:
+		if HudStyle._icons.has(name):
+			in_hand += 1
+	var items := 0
+	for definition in ItemRegistry.all():
+		if HudStyle._icons.has("icons/equipment/" + definition.item_class.trim_prefix("weapon_").trim_prefix("item_")):
+			items += 1
+	_check(in_hand == read_ahead.size() and items == ItemRegistry.all().size() and HudStyle._faces.size() == HudStyle.FACES.size(),
+		"read ahead, every one of them is in hand, found or not: %d images, %d items' icons, %d faces"
+			% [in_hand, items, HudStyle._faces.size()])
 
 
 func _test_the_font_and_style() -> void:

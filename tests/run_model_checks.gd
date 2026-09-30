@@ -31,6 +31,8 @@ var _victim_at_respawn: Dictionary = {}
 ## Where the bot's pelvis was, from its feet, at the last skeleton update of
 ## the frame it came back in: what that frame drew.
 var _bot_back_pelvis := Vector3.INF
+## The body the bot dies into, as it was made ahead of its death.
+var _bot_body_ahead: Ragdoll
 ## And how far its hands were from their grips on the gun.
 var _bot_back_hands := Vector2.INF
 var _combat_started_usec: int = 0
@@ -1040,6 +1042,7 @@ func _bot_step() -> bool:
 		4:
 			if _victim_events.has("respawned") or Time.get_ticks_usec() >= _combat_started_usec + 12_000_000:
 				_test_victim_dies_and_returns()
+				_test_a_side_swap_lets_the_body_go()
 				_bot_world.free()
 				_report()
 				return true
@@ -1126,6 +1129,43 @@ func _test_victim_dies_and_returns() -> void:
 			and int(back.get("ammo", 0)) == _victim.weapon.data.magazine_size,
 		"and is back where the map put it, whole and reloaded, to be shot again (%s)" % back
 	)
+
+
+## To the other side, the bot's body is another model's: the body made
+## ahead over the old skeleton goes, with its parts and its upper layer, and
+## one is made over the new.
+func _test_a_side_swap_lets_the_body_go() -> void:
+	if not _bot.alive or _bot.model == null:
+		_check(false, "the bot is alive to change sides")
+		return
+	if _bot._ragdoll_ready == null:
+		_bot_game.make_bodies_now()
+	var old := _bot._ragdoll_ready
+	if old == null:
+		_check(false, "the bot has a body made ahead to let go of")
+		return
+	var slot := old.slot
+	var held := Ragdoll._slot_users[slot]
+	var native: Node = old.adapter.native_world
+	var in_the_world := native.get_child_count()
+	var old_rig := _bot.model.character_rig
+	var side := _bot.team
+	_bot.change_team("T" if side == "CT" else "CT")
+	_check(
+		_bot._ragdoll_ready == null and _bot.ragdoll == null and old.bodies.is_empty() and old.slot == -1
+			and Ragdoll._slot_users[slot] == held - 1 and native.get_child_count() < in_the_world
+			and _bot.model.character_rig != old_rig and _bot.wants_body_made() and _bot_game.bodies_to_make,
+		"a side swap lets the old side's body go, its parts (%d things fewer in the native world) and its upper layer, and the world is told there is one to make"
+			% (in_the_world - native.get_child_count())
+	)
+	_bot_game.make_bodies_now()
+	var made := _bot._ragdoll_ready
+	_check(
+		made != null and made != old and made.prepared_for(_bot.model.character_rig) and not made.fallen
+			and not _bot.wants_body_made() and not _bot_game.bodies_to_make,
+		"and one is made over the new side's skeleton"
+	)
+	_bot.change_team(side)
 
 
 func _test_bot_sounds() -> void:
@@ -1310,11 +1350,31 @@ func _test_bot_dies_where_shot() -> void:
 	var space := _bot_world.get_world_3d().direct_space_state
 	var head := _bot.hitboxes.hitboxes[0]
 	var angles := PlayerInput.angles_from_direction(head.global_position - origin)
+	# The body it dies into was made on one of the frames since it joined
+	# (GameWorld._process), and waits.
+	_bot_body_ahead = _bot._ragdoll_ready
+	var waits := _bot_body_ahead != null and _bot_body_ahead.prepared_for(_bot.model.character_rig) \
+		and not _bot_body_ahead.fallen and not _bot_body_ahead.is_processing() \
+		and _bot_body_ahead.bodies.values().all(func(body: Ragdoll.Part) -> bool: return not bool(body.native.get(&"enabled")))
+	_check(
+		waits and not _bot.wants_body_made() and not _bot_game.bodies_to_make,
+		"the body it dies into was made on a frame before, its %d parts switched off, and the world asks for no more"
+			% (_bot_body_ahead.bodies.size() if _bot_body_ahead != null else 0)
+	)
+	var native: Node = _bot_body_ahead.adapter.native_world if waits else null
+	var in_the_world := native.get_child_count() if native != null else 0
 	var shot := weapon.fire(0, 0.0, origin, angles.x, angles.y, Weapon.ShooterState.new(0.0, true, false))
 	var result := Hitscan.fire_at(space, shot, data)
 	_check(
 		result.zone == &"head" and result.damage > 100.0 and not _bot.alive and _bot_events.has("died:head"),
 		"one round to the head kills through the helmet (%.0f), and it says where it landed" % result.damage
+	)
+	_check(
+		waits and _bot.ragdoll == _bot_body_ahead and _bot._ragdoll_ready == null and _bot_body_ahead.fallen
+			and _bot_body_ahead.bodies.values().all(func(body: Ragdoll.Part) -> bool: return bool(body.native.get(&"enabled")))
+			and native.get_child_count() - in_the_world == _bot_body_ahead._death_filters.size(),
+		"it falls as the body made ahead, switched on: the death makes nothing but the exceptions of its pose (%d; a body made then is some 45 things in the native world)"
+			% ((native.get_child_count() - in_the_world) if native != null else -1)
 	)
 	_check(
 		_bot.ragdoll != null and _bot.ragdoll.bodies.size() >= 10 and not _bot.model.is_animating()
@@ -1335,6 +1395,13 @@ func _test_bot_comes_back() -> void:
 			and _bot.model.state() == &"idle",
 		"after its respawn time it is back at the start of its route, whole, standing, the ragdoll gone (%s)"
 			% [_bot.model.state()]
+	)
+	_check(
+		_bot_body_ahead != null and _bot._ragdoll_ready == _bot_body_ahead and not _bot_body_ahead.fallen
+			and not _bot_body_ahead.is_processing() and _bot_body_ahead._death_filters.is_empty()
+			and _bot_body_ahead.bodies.values().all(func(body: Ragdoll.Part) -> bool: return not bool(body.native.get(&"enabled")))
+			and not _bot.wants_body_made(),
+		"the body it lay as is parked for its next death, its parts switched off: none is made again"
 	)
 	# The ragdoll is freed at the frame's end, and until it was let go of at
 	# once it posed the body again that frame, lying where it died, under a
