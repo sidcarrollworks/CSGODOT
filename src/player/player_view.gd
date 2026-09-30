@@ -162,6 +162,7 @@ func _ready() -> void:
 	player.pin_pulled.connect(_on_pin_pulled)
 	player.grenade_released.connect(_on_grenade_released)
 	player.reload_started.connect(_on_reload_started)
+	player.reload_stopped.connect(_on_reload_stopped)
 	player.shot_traced.connect(_on_shot_traced)
 	player.killed.connect(_on_killed)
 	player.respawned.connect(_on_respawned)
@@ -228,7 +229,13 @@ func _on_reload_started() -> void:
 		view_model.play(&"reload")
 	if body_shadow != null:
 		body_shadow.play(&"reload", 0.1)
-	weapon_sounds.reload()
+	weapon_sounds.reload_weapon(player.weapon)
+
+
+## A shot stopped a shotgun's reload: the rest of its sounds are not heard
+## (the shot's own clip takes over the arms).
+func _on_reload_stopped() -> void:
+	weapon_sounds.stop_reload()
 
 
 func _on_shot_traced(shot: Weapon.Shot, result: Hitscan.Result) -> void:
@@ -568,12 +575,24 @@ func _process(delta: float) -> void:
 
 	_follow_plant()
 	_follow_hand()
+	_follow_reload()
 	_update_viewmodel(delta)
 	# The arms from where the eyes are, the body from its middle.
 	if view_model != null:
 		view_model.light_from(camera.global_position)
 	if body_model != null:
 		body_model.light_from(interpolated + Vector3.UP * 40.0)
+
+
+## A shotgun loading a shell at a time: its arms round the reload clip's
+## loop once for every shell, where the reload is at this frame.
+func _follow_reload() -> void:
+	var weapon := player.weapon
+	if view_model == null or weapon == null or not weapon.data.reloads_single_shells:
+		return
+	var seconds := weapon.shell_clip_seconds(DrawClock.usec())
+	if seconds >= 0.0:
+		view_model.hold_at(&"reload", seconds)
 
 
 ## How far the view looks down, 0 level or up to 1 straight down, eased

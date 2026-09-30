@@ -47,6 +47,9 @@ var one_shots: PackedStringArray = PackedStringArray()
 ## Prefixes of the one-shot clips that hold their last frame when they end
 ## rather than going back to idle: a death.
 var held: PackedStringArray = PackedStringArray()
+## How far a clip held from outside may drift before it is sent back
+## (hold_at): a frame at 30 frames a second, the clips' rate.
+const HOLD_SLACK := 1.0 / 30.0
 
 var _pins: Array[Dictionary] = []
 ## The character's eyes, where a mesh adopted draws them (CharacterEyes),
@@ -243,6 +246,17 @@ func play(
 		animation_player.stop()
 	animation_player.speed_scale = speed
 	animation_player.play(short, blend)
+
+
+## Keeps a clip that is playing at a moment set from outside: a shotgun's
+## reload, sent back round its loop for every shell (Weapon.shell_clip_seconds).
+## Left to run between, and sent only when it has strayed from there.
+func hold_at(short: StringName, seconds: float) -> void:
+	if animation_player == null or not animation_player.is_playing() \
+			or animation_player.current_animation != short:
+		return
+	if absf(animation_player.current_animation_position - seconds) > HOLD_SLACK:
+		animation_player.seek(seconds, true)
 
 
 ## Every clip loaded whose name starts with the given prefix, in order.
