@@ -516,7 +516,8 @@ apart, other than its bursts' rhythm.
 
 - **The ring.** `Flashbang.Ring.Short`, `.Medium`, `.Long`: each 0.1,
   mixgroup `Explosions`, file `weapons/flashbang/explosion_ring.vsnd`, flat
-  1.0 to 2800, occlusion 1.0 (*Read*, WPN 32784). Named in server.dll
+  1.0 to 2800, occlusion 1.0, `dsp_bypass 1.0` (*Read*, WPN 32784; the only events
+  with it, so a DSP muffle never covers the ring). Named in server.dll
   (*Read*, SS 16279-16281). *Inferred*: the server picks one by how blinded
   the player is (three strengths; round-bomb-grenades.md 2.5) and plays it to
   the flashed player only; nothing in the files says who hears it. The ring's

@@ -249,10 +249,13 @@ func _make_player(polyphony: int) -> Node:
 		placed.unit_size = 20.0 * METRE
 		placed.max_distance = 300.0 * METRE
 		placed.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
+		# Where a flash's muffle reaches it (FlashMuffle).
+		placed.bus = FlashMuffle.unmixed_bus()
 		add_child(placed)
 		return placed
 	var player := AudioStreamPlayer.new()
 	player.max_polyphony = polyphony
+	player.bus = FlashMuffle.unmixed_bus()
 	add_child(player)
 	return player
 

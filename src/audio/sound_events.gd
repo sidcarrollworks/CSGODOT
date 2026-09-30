@@ -31,6 +31,9 @@ extends Node
 ## - A sound started at a node follows it (a molotov's loop in flight); a
 ##   loop plays until stop() or its self_destruct_time; a stop fades by the
 ##   event's fade curve, or over voice_fade_out_time.
+## - An event marked dsp_bypass (the flash's ring) plays on its mixgroup
+##   bus's twin (bypass_bus), which a DSP on the mixgroup (FlashMuffle's
+##   muffle) does not reach.
 ##
 ## - A music kit's cue (csgo_music) gives way by its priority and stop flags
 ##   (MusicRules), loops while loop_track holds, stops itself at
@@ -53,6 +56,8 @@ const TABLE := "res://reference/sounds/sound_events.json"
 const SOUNDS_ROOT := "res://assets/sounds/"
 const EXTENSIONS := ["wav", "mp3", "ogg"]
 const SILENT_DB := -80.0
+## Ends the name of a mixgroup bus's twin for DSP-bypassing events.
+const DSP_BYPASS_SUFFIX := "_DspBypass"
 
 static var _table := {}
 static var _names_by_lower := {}
@@ -101,6 +106,9 @@ class Voice:
 	var ends_at := INF
 	var stops_at := INF
 	var ended := false
+	## Played again each time its file ends, until it is stopped: a kit's
+	## looping cue, or a start asked to (options.loop).
+	var loop := false
 	var player: Node
 	var gain := 0.0
 
@@ -147,6 +155,22 @@ static func bus_for(mixgroup: String) -> StringName:
 	return StringName(mixgroup) if AudioServer.get_bus_index(mixgroup) > 0 else &"Master"
 
 
+## A mixgroup bus's twin for the events that bypass DSP (dsp_bypass): the
+## same level, into the same bus, with none of the effects a DSP puts on the
+## mixgroup's own (FlashMuffle). Made the first time it is needed.
+static func bypass_bus(bus: StringName) -> StringName:
+	var twin := StringName(String(bus) + DSP_BYPASS_SUFFIX)
+	var index := AudioServer.get_bus_index(bus)
+	if index < 0 or AudioServer.get_bus_index(twin) >= 0:
+		return twin if index >= 0 else bus
+	AudioServer.add_bus()
+	var added := AudioServer.bus_count - 1
+	AudioServer.set_bus_name(added, twin)
+	AudioServer.set_bus_volume_db(added, AudioServer.get_bus_volume_db(index))
+	AudioServer.set_bus_send(added, AudioServer.get_bus_send(index))
+	return twin
+
+
 ## Names with every child they start, each once.
 static func with_children(names: PackedStringArray) -> PackedStringArray:
 	var result := PackedStringArray()
@@ -189,7 +213,10 @@ static func _stream(file: String) -> AudioStream:
 ## play it flat); source is who makes it (a userid or an entity's id), for
 ## the limits and blocks. options: local (the source is the listener's own
 ## player), suppressed (a stealthy source: the silent reload), delay
-## (seconds more to wait than the event's own). Returns the voice's id, or 0
+## (seconds more to wait than the event's own), loop (play it again each
+## time its file ends, until stopped: a fire's loop, whose file loops in
+## CS2's own format). The children take local, suppressed and delay, not
+## loop. Returns the voice's id, or 0
 ## if the event is not heard (unknown, someone else's localplayeronly sound,
 ## blocked, or music that gives way to what plays).
 func start(event_name: String, at: Variant = null, source: int = -1, options := {}) -> int:
@@ -230,14 +257,17 @@ func start(event_name: String, at: Variant = null, source: int = -1, options := 
 	voice.pitch = event.pitch + (rng.randf_range(event.pitch_random_min, event.pitch_random_max) if event.pitch_random_max > event.pitch_random_min else event.pitch_random_min)
 	voice.suppressed = options.get("suppressed", false)
 	voice.starts_at = _now + event.delay + float(options.get("delay", 0.0))
+	voice.loop = event.loops or bool(options.get("loop", false))
 	_voices.append(voice)
 	if voice.starts_at <= _now:
 		_begin(voice)
+	var child_options := options.duplicate()
+	child_options.erase("loop")
 	for child in event.children:
 		# At the same place either way: with set_child_position off, CS2's
 		# child finds its own (the entity's, or a soundscape's), which here is
 		# the same place.
-		start(child, at, source, options)
+		start(child, at, source, child_options)
 	return voice.id
 
 
@@ -276,7 +306,7 @@ func voices() -> Array[Dictionary]:
 		result.append({
 			"id": voice.id, "event": voice.event.name, "source": voice.source, "position": voice.position,
 			"started": voice.started, "stopped": voice.stopped_at >= 0.0,
-			"gain": voice.gain, "bus": bus_for(voice.event.mixgroup),
+			"gain": voice.gain, "bus": _bus_of(voice),
 			"has_player": voice.player != null, "player": voice.player, "pitch": voice.pitch,
 			"remaining": voice.ends_at - _now,
 		})
@@ -364,7 +394,7 @@ func _begin(voice: Voice) -> void:
 	if stream == null:
 		# Without a file, a check's silent voice (silent_length) of a looping
 		# cue lasts until it is stopped.
-		var length := INF if event.loops and silent_length > 0.0 else silent_length
+		var length := INF if voice.loop and silent_length > 0.0 else silent_length
 		voice.ends_at = _now + (0.0 if out_of_reach else length)
 		voice.gain = event.gain(distance, 0.0, voice.volume_offset, voice.suppressed, _convar(event))
 		return
@@ -379,17 +409,26 @@ func _begin(voice: Voice) -> void:
 	else:
 		player = AudioStreamPlayer.new()
 	player.set("stream", stream)
-	player.set("bus", bus_for(event.mixgroup))
+	player.set("bus", _bus_of(voice))
 	player.set("pitch_scale", maxf(voice.pitch, 0.01))
 	player.connect("finished", _on_finished.bind(voice))
 	# Ended by its length too, not only by finished, which a paused or
 	# silent (headless) mix never sends.
-	if not event.loops and not _loops(stream) and stream.get_length() > 0.0:
+	if not voice.loop and not _loops(stream) and stream.get_length() > 0.0:
 		voice.ends_at = _now + stream.get_length() / maxf(voice.pitch, 0.01) + 0.05
 	add_child(player)
 	voice.player = player
 	_update(voice, ears)
 	player.call("play")
+
+
+## The bus a voice plays on: its mixgroup's, or for an event with
+## dsp_bypass (the flash's ring) that bus's twin, which no DSP reaches.
+func _bus_of(voice: Voice) -> StringName:
+	var bus := bus_for(voice.event.mixgroup)
+	if voice.event.dsp_bypass > 0.0 and bus != &"Master":
+		return bypass_bus(bus)
+	return bus
 
 
 static func _loops(stream: AudioStream) -> bool:
@@ -401,8 +440,8 @@ static func _loops(stream: AudioStream) -> bool:
 
 
 func _on_finished(voice: Voice) -> void:
-	# A kit's looping cue starts its file again until it is stopped.
-	if voice.event.loops and voice.stopped_at < 0.0 and voice.player != null:
+	# A looping voice starts its file again until it is stopped.
+	if voice.loop and voice.stopped_at < 0.0 and voice.player != null:
 		voice.player.call("play")
 		return
 	voice.ended = true

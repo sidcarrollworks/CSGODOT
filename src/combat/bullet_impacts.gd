@@ -85,6 +85,8 @@ func _ready() -> void:
 		player.unit_size = 4.0 * METRE
 		player.max_distance = 80.0 * METRE
 		player.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
+		# Where a flash's muffle reaches it (FlashMuffle).
+		player.bus = FlashMuffle.unmixed_bus()
 		add_child(player)
 		_players.append(player)
 	# The textures are made here, once, rather than on the first round into
