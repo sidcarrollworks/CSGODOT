@@ -15,6 +15,10 @@ extends RefCounted
 ## against CS2, whose numbers are not published; the game's bob is slight.
 ## The sway is not Source's: CS2 lags the weapon behind a turn and springs
 ## it back, and this is a plain lag that does the same.
+## Leaving the ground fades the bob and the settle out over the same time
+## the third-person body cross-fades into the air (PlayerModel.TO_AIR, CS2's
+## 0.1 s), and landing fades them back in over its return (TO_GROUND), so
+## a jump from a run does not snap the weapon forward in one frame.
 
 ## Seconds per bob cycle at full speed, and the fraction of it spent rising.
 const BOB_CYCLE := 0.98
@@ -40,6 +44,9 @@ var lateral_bob: float = 0.0
 var sway: Vector2 = Vector2.ZERO
 
 var _bob_time: float = 0.0
+## How much of the bob and settle is on: 1 on the ground, 0 in the air,
+## faded between.
+var _ground: float = 1.0
 var _previous_look: Vector2 = Vector2.ZERO
 var _has_look := false
 
@@ -49,7 +56,9 @@ var _has_look := false
 ## rotation. velocity is the body's, in units per second; look is the yaw
 ## and pitch in degrees.
 func update(delta: float, velocity: Vector3, on_ground: bool, look: Vector2) -> Transform3D:
-	var speed := clampf(Vector2(velocity.x, velocity.z).length(), 0.0, BOB_FULL_SPEED) if on_ground else 0.0
+	_ground = move_toward(_ground, 1.0 if on_ground else 0.0,
+			delta / (PlayerModel.TO_GROUND if on_ground else PlayerModel.TO_AIR))
+	var speed := clampf(Vector2(velocity.x, velocity.z).length(), 0.0, BOB_FULL_SPEED) * _ground
 	var fraction := speed / BOB_FULL_SPEED
 	_bob_time += delta * fraction
 	var bob := bob_at(_bob_time, speed)

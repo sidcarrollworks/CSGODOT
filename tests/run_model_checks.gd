@@ -1799,11 +1799,25 @@ func _test_view_model_motion() -> void:
 		running.origin.z > 1.0 and running.origin.y < 0.0 and absf(running.origin.x) <= 1.6 * 0.8 + 0.001,
 		"running settles the weapon back and down, and bobs it sideways within its amount (%s)" % running.origin
 	)
-	var airborne := motion.update(1.0 / 60.0, Vector3(0.0, 0.0, -250.0), false, Vector2(90.0, 0.0))
+	var took_off := motion.update(1.0 / 60.0, Vector3(0.0, 0.0, -250.0), false, Vector2(90.0, 0.0))
+	_check(
+		took_off.origin.z > 0.5,
+		"leaving the ground, the settle starts to fade rather than snapping away (%.3f of %.3f)" % [took_off.origin.z, running.origin.z]
+	)
+	var airborne := took_off
+	for frame in 6:
+		airborne = motion.update(1.0 / 60.0, Vector3(0.0, 0.0, -250.0), false, Vector2(90.0, 0.0))
 	_check(
 		is_zero_approx(motion.vertical_bob) and airborne.origin.z < 0.001,
-		"in the air there is no bob and nothing to settle"
+		"%.1f s into the air there is no bob and nothing to settle" % PlayerModel.TO_AIR
 	)
+	var landed := motion.update(1.0 / 60.0, Vector3(0.0, 0.0, -250.0), true, Vector2(90.0, 0.0))
+	_check(
+		landed.origin.z > 0.0 and landed.origin.z < running.origin.z * 0.2,
+		"landing, the settle comes back over %.1f s, not at once (%.3f)" % [PlayerModel.TO_GROUND, landed.origin.z]
+	)
+	for frame in 12:
+		motion.update(1.0 / 60.0, Vector3.ZERO, true, Vector2(90.0, 0.0))
 	var turned := motion.update(1.0 / 60.0, Vector3.ZERO, true, Vector2(95.0, 0.0))
 	_check(
 		motion.sway.x < 0.0 and motion.sway.x >= -ViewModelMotion.SWAY_MAX
