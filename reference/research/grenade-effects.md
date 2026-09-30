@@ -644,6 +644,20 @@ None is a character or map material, so they cannot overwrite his working
 agent materials. The step should still write everything under
 `assets/effects/grenades/` and nowhere else.
 
+**What it can get today, and what waits.** CS2's 2026-09-23 update ships
+VCS 72 shaders, which Source2Viewer-CLI 20.0 cannot read, so materials
+extracted since then come out incomplete (Sid). Texture decompiles are
+unaffected (Sid), and the `.vpcf`, `.vsnap` and `.vdata` files are KV3 data
+with no shader in them (*Inferred*). So steps 1, 2, 4's textures, 5 and 6
+can run today. The four materials in 3 and 4 (the flash overlay,
+`flashbang_white`, `dev/inferno` and the scorch decals) may come out
+incomplete. What this page needs from them is their feature flags, colours
+and blend mode, which a `.vmat` stores as its own parameters (*Inferred*), so
+try them and check whether those are in the output. If they are missing,
+those four wait on a Source 2 Viewer that reads VCS 72, and the flash's blend
+and the char's tint come from the looks in CS2 (9.2) in the meantime. The
+compiled shader in 3 waits on it regardless.
+
 1. **Particles** (`-d`, as text, into `assets/effects/grenades/vpcf/`, with a
    `.gdignore`):
    - `particles/explosions_fx/`, the whole folder (about 330 files, most under
