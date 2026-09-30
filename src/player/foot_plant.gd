@@ -7,11 +7,11 @@ extends SkeletonModifier3D
 ##
 ## The hull stands on the first thing its bottom meets, which on a ramp is
 ## its uphill edge, so a body drawn at the hull's origin hangs over the
-## floor by up to 7 units at T spawn. Each frame this casts one ray under
-## each ankle (GroundProbe, the world only), lowers the pelvis by the larger
-## of the two gaps, and bends each leg with two-bone IK so that each foot
-## comes down by its own gap, keeping whatever lift the clip gives it; the
-## foot is then tipped toward the slope. It eases in over EASE on the
+## floor by up to 7 units at T spawn. Each fit of the skeleton casts one
+## ray under each ankle (GroundProbe, the world only), lowers the pelvis by
+## the larger of the two gaps, and bends each leg with two-bone IK so that
+## each foot comes down by its own gap, keeping whatever lift the clip gives
+## it; the foot is then tipped toward the slope. It eases in over EASE on the
 ## ground and out in the air, and follows a changing floor over the same.
 ##
 ## It runs in the skeleton's own update after the clips, so it moves only

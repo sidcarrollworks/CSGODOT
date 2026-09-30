@@ -290,8 +290,14 @@ bones' modifiers:
   its hitboxes, while the eye stays at the hull's until Local 2 gives
   CS2's number.
 - **Rest clearance:** under Box3D a standing hull rests 0.257 inch off the floor, so 0.3 comes off each foot's gap (`FootPlant.REST_CLEARANCE`): no fit on flat ground.
-- **Where it runs:** in the skeleton's deferred update, each frame, like
-  the pose the hitboxes already follow; its rays are frame-time queries
+- **Where it runs:** in the skeleton's fit, like the pose the hitboxes
+  already follow. Your own drawn body is fitted in the skeleton's deferred
+  update each frame. Every other body steps by hand
+  (`PlayerModel.step_off_tick_frames`) and is fitted in the frames it
+  steps, at once when its bones are set another way, and as a tick begins
+  where the frame before went without and the body has moved
+  (`PlayerModel.fit_for_tick`, from `GameWorld.begin_tick`). So its rays
+  run mostly in frames and sometimes at a tick's start
   (`reference/godot/physics.md`). A flat floor costs no fit.
 - **Checks:** `tests/run_foot_plant_checks.gd`, a stand-in leg skeleton on
   a 13 degree ramp; the agents' own legs in `tests/run_model_checks.gd`

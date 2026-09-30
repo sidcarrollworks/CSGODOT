@@ -175,10 +175,12 @@ and the sweep that stays on the ground), more against a wall or up a slope. A ra
 air adds one ray a tick for their height above the ground
 (`PlayerBody.height_above_ground`, counted in `ground_rays`; playtest issue
 17), and none on the ground; not yet profiled on dust2. Every body on the
-ground adds, in the frame rather than the tick, one ray per foot each time
-that foot has moved a unit (`FootPlant.rays`; playtest issue 5): two in
-all for a body standing still, up to two a frame while it walks, and on
-flat ground no leg IK; not yet profiled on dust2.
+ground adds, in its skeleton's fit, one ray per foot each time that foot
+has moved a unit (`FootPlant.rays`; playtest issue 5): two in all for a
+body standing still, up to two a fit while it walks, and on flat ground no
+leg IK; not yet profiled on dust2. A fit is mostly in a frame, and at a
+tick's start where the frame before went without one
+(`PlayerModel.fit_for_tick`), when these rays are the tick's.
 
 Memory: 1.94 GB static in a headless run, 146 MB of it the light probe
 atlas, of which the probe volumes use 48.6%. 28,000 objects and 4,600

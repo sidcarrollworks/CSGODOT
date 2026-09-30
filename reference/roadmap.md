@@ -272,9 +272,12 @@ are known open (`_check_known_open`: reported every run, not failing it).
 Every query goes through `PhysicsQueries` (`reference/godot/physics.md`); E's
 sight test (#126), written straight on Godot's space, was ported with #125's
 merge and is checked on a Box3D world (`tests/run_box3d_pickup_checks.gd`).
+FootPlant leaves Box3D's rest clearance out of each foot's gap
+(`FootPlant.REST_CLEARANCE`, 0.3; #141, playtest issue 5), so a body on
+flat ground keeps its clip's legs, checked on a Box3D floor and ramp in
+`tests/run_foot_plant_checks.gd`.
 Left: the AWP's settling; ragdoll visual acceptance; movement at real map
-edges; FootPlant on flat floors under Box3D's rest clearance (playtest issue
-5); the 6 ms frame target; tick-owned hitbox poses for multiplayer; and
+edges; the 6 ms frame target; tick-owned hitbox poses for multiplayer; and
 `scripts/profile_dust2.gd` at 5 and 10 a side on both backends, for
 `reference/performance.md`.
 

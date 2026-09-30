@@ -149,11 +149,15 @@ files named:
    (0.7 is where CS2 counts a blind kill; the bots' own threshold is a
    choice). Keeping out of fire asks
    `game.query(&"burning_at", [point], false)`.
-5. **The kill feed's marks:** whatever fills `player_death.thrusmoke` asks
-   `smoke_length_between` from the attacker's eyes to the victim (more than
-   zero is through smoke), and `attackerblind` asks `blind_share` for the
-   attacker; `assistedflash` is the last `player_blind` on the victim from
-   someone on the killer's side.
+5. **The kill feed's marks.** *(Done 2026-09-28, #140: `KillCredit`,
+   `src/game/kill_credit.gd`, fills each `player_death` as it is sent; the
+   rules are in `reference/systems/contracts.md`, player_death.)*
+   `thrusmoke`, for a gun's kill, asks `smoke_length_between` from the
+   killer's eyes to the victim's chest (more than zero is through smoke),
+   and `attackerblind` is the killer's `blind_share` at 0.7 or more. A flash
+   assist goes only where no enemy did the 25 damage of an assist: to the
+   victim's last flasher, if an enemy of theirs and not the killer, while
+   the victim is still under it.
 6. **The map importer:** grenade clips are left out of the hull today
    (`hull_skip_hints` in `map_importer.gd`). They go on a body of their own
    on `GrenadeRules.GRENADE_CLIP_LAYER` (32), which grenades bounce off and

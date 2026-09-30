@@ -322,6 +322,19 @@ func _test_the_flash() -> void:
 	_remove(wall)
 	await _settle()
 	_check(not facing.outlasts(facing) and facing.outlasts(behind), "a longer blind wins over a shorter")
+	var grenades := GrenadeSystem.new()
+	var held := FlashBlind.new()
+	held.started_usec = SimClock.now_usec()
+	held.duration = GrenadeRules.FLASH_MAX_SECONDS
+	held.peak = GrenadeRules.FLASHED_FOR_BLIND_KILL
+	grenades._blinds[7] = held
+	var short_of := FlashBlind.new()
+	short_of.started_usec = held.started_usec
+	short_of.duration = held.duration
+	short_of.peak = 0.69
+	grenades._blinds[8] = short_of
+	_check(grenades.blind_for_kill(7) and not grenades.blind_for_kill(8),
+		"a kill by someone flashed to 0.7 is a blind kill, and at 0.69 not (as KillCredit counts it)")
 
 
 # --- The decoy ------------------------------------------------------------
