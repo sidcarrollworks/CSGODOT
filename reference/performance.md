@@ -78,6 +78,11 @@ each steps only in the frames that run no tick, fewer times than drawn:
 there, ten players' bodies and skeletons are 0.54 and 0.20 ms a frame in a
 live round.
 
+Since perf/skeletons-when-stepped (2026-09-30) a body that steps by hand is
+fitted by hand too: its skeleton runs its modifiers, sends its skin and
+moves its hitboxes, gun and eyes in a frame it stepped, and in no other. A
+fit is about 80 us of a body, the modifiers most of it.
+
 Drawn, and so not in these tables: the two lamps down dust2's lower
 tunnels (`MapLighting.add_lamps`, 2026-09-24) are Godot spot lights with
 shadows, the map's only lights besides the sun. Godot renders a positional
@@ -369,6 +374,7 @@ workers). No buy or pickup in a match reads a model any more.
 | The body a player dies into made ahead, on a frame, and dropped at the death; an upper layer for each dead body in place of 225 exceptions a pair; a body at rest stepped and posed no more; the kill feed's rows made on the frame; the HUD's faces and images read before play (`Ragdoll.prepare`, `GameWorld._process`, `HudStyle.read_ahead`) | perf/death-on-the-tick | a tick with a death 6.4 to 7.3 ms to 4.0 to 4.8, and the first of a process 11 to 23 ms to 4.2 to 9.2; a quiet tick with bodies lying 0.15 ms less; warmup's worst ticks 7.4 to 9.7 ms to 4.5 to 5.7 (`reference/research/death-on-the-tick-2026-09-29.md`) |
 | Everyone's command asked for before anyone runs, and the bots thinking theirs out on worker threads, all at once (`GameWorld.commands_for`) | perf/bots-think-together | the seeded ten-player tick 2.03 ms to 2.02, its 95th 2.92 to 2.68; with nineteen bots in dust2's match a mean of 4.41 ms to 4.11 and a 95th of 6.93 to 6.48; the same commands as thinking in turn (`tests/run_bot_think_checks.gd`, `tests/run_dust2_think_checks.gd`) |
 | The movement's step in native code, the script kept as the reference and every check file holding the two to the same body to the last bit (`native/src/hull_mover.cpp`, `PlayerBody._step`) | perf/native-movement | a walking bot's movement 102 to 107 us a tick to 67 to 70, its whole run 139 to 146 to 103 to 107; the seeded ten-player tick 1.8 to 1.95 ms to 1.55 to 1.7, its 95th 2.5 to 2.8 to 2.1 to 2.4; the worst ticks, which are deaths and rounds, as they were (`reference/research/native-movement-2026-09-29.md`) |
+| A body that steps by hand fits its skeleton by hand, when it steps (`Skeleton3D` MANUAL, `PlayerModel.step`): not in a frame it did not step, nor while it lies at rest | perf/skeletons-when-stepped | a frame holding a tick fitted all ten skeletons again to the pose they had; now the bodies seen. Headless with nine bots, its fitting 0.78 to 0.80 ms to 0.01, its work after the scripts 1.05 to 0.22, fits a second 1,450 to 803 (`reference/research/skeletons-when-stepped-2026-09-30.md`) |
 | The foot plant's floor normals eased with `lerp`, not `slerp` | playtest issue 26 | an error printed a frame for every foot on ground a hair off level, 1,000 a minute with five bots; none |
 | Every gun's spray pattern solved as the registry builds it (`WeaponData.recoil_impulses`) | playtest issue 14 | 15 more guns read a pattern, and the first of each built in a tick (a buy, a pickup) would have solved it there: the M249's 100 rounds 33 to 39 ms, the Negev's 150 36 to 41, the Bizon 17 to 20; now 0.05 ms, and `ItemRegistry.load_all` 88 ms to about 320 (headless, a cloud container, three runs each) |
 

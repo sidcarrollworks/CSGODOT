@@ -335,12 +335,21 @@ run. A walking bot's movement 102 to 107 us a tick down to 67 to 70, and
 the seeded ten-player tick 1.8 to 1.95 ms down to 1.55 to 1.7
 ([native-movement-2026-09-29.md](research/native-movement-2026-09-29.md)).
 Local: build it in the main checkout and play a match with it.
+**Skeletons fitted when the body steps (2026-09-30,
+perf/skeletons-when-stepped):** a skeleton runs its modifiers (the feet,
+the hands, the twist bones) and moves the hitboxes, the gun and the eyes to
+its bones in every frame by default. A body nobody sees steps only in the
+frames without a tick, so every frame holding one fitted ten bodies again
+to the pose they had. A body that steps by hand now fits its skeleton by
+hand, when it steps; a ragdoll at rest is fitted in no frame. A frame
+holding a tick does 0.82 to 0.85 ms less work headless, its fitting 0.78 to
+0.80 ms down to 0.01 ([skeletons-when-stepped-2026-09-30.md](research/skeletons-when-stepped-2026-09-30.md)).
+Local: the watched comp game at 1080p again.
 **Next, proposed: the bodies nobody sees, animated on every frame that
-holds no tick (Remote).** Ten bodies' animation and skeletons are 1.1 to
-1.4 ms of every frame headless, where nothing is seen, and at 160 frames
-a second that is more in a second than the ticks cost. A body out of
-sight is posed for its hitboxes alone, which a round asks for a few times
-a second. No research covers it yet.
+holds no tick (Remote).** Their animation is still stepped in every frame
+without a tick, 8.5 bodies of nine, where a round asks for a body's pose a
+few times a second; with the skeletons, ten bodies were 1.1 to 1.4 ms of
+every frame headless. No research covers it yet.
 Left: the bridge's work around the movement's step (27 us a bot a tick,
 script over dictionaries) into the native library; what a death
 drops, 0.3 ms, and the first death's step, 6 ms once; a player's ragdoll

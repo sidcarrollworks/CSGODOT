@@ -10,9 +10,9 @@ extends "res://tests/check_suite.gd"
 ## A skeleton's own default fits it in every frame, whether its pose changed
 ## or not. A body that steps its own animation (PlayerModel.step_off_tick_frames)
 ## is fitted in a frame whose pose changed and in no other, by the time its
-## animation moved on (PlayerModel.step). Nine bodies nobody sees skip every
-## frame that runs a tick; each fit skipped was 0.07 ms of that frame
-## (reference/research/skeletons-when-stepped-2026-09-30.md).
+## animation moved on (PlayerModel.step). A body nobody sees does not step
+## in a frame that runs a tick, and each fit it skips there is about 80 us
+## of that frame (reference/research/skeletons-when-stepped-2026-09-30.md).
 ##
 ##   godot --headless --path . --script tests/run_body_fit_checks.gd
 
