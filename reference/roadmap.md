@@ -343,8 +343,10 @@ frames without a tick, so every frame holding one fitted ten bodies again
 to the pose they had. A body that steps by hand now fits its skeleton by
 hand, when it steps, and where the frame before a tick went without, as
 the tick begins, so every tick meets the hitboxes where it did; a ragdoll
-at rest is fitted in no frame. A frame holding a tick does 0.82 to 0.85 ms
-less work headless, its fitting 0.78 to 0.80 ms down to 0.01 ([skeletons-when-stepped-2026-09-30.md](research/skeletons-when-stepped-2026-09-30.md)).
+at rest is fitted in no frame. A frame holding a tick does 0.7 to 0.9 ms
+less work headless, its fitting 0.78 to 0.87 ms down to 0.01; at 90 frames
+a second, where the tick's own fit is made, every frame's work 3.55 to 3.87
+ms down to 3.45 to 3.50 ([skeletons-when-stepped-2026-09-30.md](research/skeletons-when-stepped-2026-09-30.md)).
 Local: the watched comp game at 1080p again.
 **Next, proposed: the bodies nobody sees, animated on every frame that
 holds no tick (Remote).** Their animation is still stepped in every frame

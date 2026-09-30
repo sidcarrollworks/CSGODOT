@@ -93,8 +93,8 @@ hitboxes, the gun and the eyes moved). The work after the scripts is from
 the end of the last node's `_process` to the frame's last deferred call:
 the skeletons' updates with their skin, and the other deferred work.
 
-Two runs of each, alternated, 45 s of play each (and two more of 70 s
-before, which agree):
+The first version (fitting only when the body stepped), two runs of each,
+alternated, 45 s of play each (two more of 70 s before agree):
 
 | A frame | main | branch | main | branch |
 |---|---|---|---|---|
@@ -109,18 +109,51 @@ A frame that holds a tick does 0.82 to 0.85 ms less, where it was the
 frame's slowest kind; a frame without one is unchanged. A fit is about
 80 us of a body (0.076 ms: the modifiers, the hitboxes moved, the gun and
 the eyes). Over a second of play the bodies are fitted 803 times where they
-were 1,450, and spend 62 ms on it where they spent 110.
+were 1,450, and spend 62 ms on it where they spent 110. A frame without a
+tick fits 9.6 to 9.75 bodies where it fitted ten: the 8.25 to 8.5 bots that
+stepped, your own body, and the ragdolls still falling; a dead body at rest
+is no longer fitted.
 
-Nothing else moved: the frames' scripts and the tick are the same within
-the runs' spread. A frame without a tick fits 9.6 to 9.75 bodies where it
-fitted ten: the 8.25 to 8.5 bots that stepped, your own body, and the
-ragdolls still falling; a dead body at rest is no longer fitted.
+The final code, with the fit at a tick's start (below), measured again the
+same way, a frame's work being its tick, its scripts and its work after
+them:
 
-Of 10 starts of the branch and 10 of main headless, one of the branch's
-crashed in its first second of loading, before any skeleton was fitted by
-the watcher's stamps, with no backtrace; the nine others and all of main's
-ran. Whether it is this change is not known; the watched game on Sid's
-machine will say more.
+| A frame | main | branch | main |
+|---|---|---|---|
+| With a tick: skeletons fitted | 10.00 | 0.34 | 10.00 |
+| With a tick: fitting | 0.85 ms | 0.01 ms | 0.87 ms |
+| With a tick: its work | 3.95 ms | 3.24 ms | 4.00 ms |
+| Without a tick: its work | 2.87 ms | 2.99 ms | 2.88 ms |
+
+(The branch's second run of this set ran at 136 frames a second
+throughout, its slowest frame of each second 20 ms where every other run's
+was 10, while its own measured work was as the first's: something outside
+the game held the machine, and it is left out. Its frames with a tick that
+followed none did 3.20 ms of work.)
+
+At 145 frames a second two frames in a row never both run a tick, so the
+fit at a tick's start is not seen above. Headless at 90 frames a second
+(`--max-fps 90`), where two in a row do for half the ticks:
+
+| A frame, 90 a second | main | branch | main | branch |
+|---|---|---|---|---|
+| With a tick, after one without: its work | 4.21 ms | 2.95 ms | 3.70 ms | 2.91 ms |
+| With a tick, after one with a tick: skeletons fitted | 10.01 | 11.59 | 10.01 | 11.49 |
+| With a tick, after one with a tick: its work | 4.35 ms | 4.38 ms | 4.03 ms | 4.34 ms |
+| Without a tick: its work | 2.94 ms | 2.78 ms | 2.69 ms | 2.67 ms |
+| Every frame: its work | 3.87 ms | 3.50 ms | 3.55 ms | 3.45 ms |
+
+A tick that follows a tick fits the nine bodies the frame before owed as it
+begins, and costs what main's frame spent on them; the 1.5 bodies more are
+those that then step at the frame's end, having waited two ticks
+(`MOST_UNSTEPPED_TICKS`). The frames with a tick after one without keep the
+whole saving.
+
+Of 14 starts of the branch and 14 of main headless, one of the branch's (the
+first version's) crashed in its first second of loading, before the
+watcher's stamps were on any skeleton, with no backtrace; the other 13 and
+all of main's ran. Whether it is this change is not known; the watched game
+on Sid's machine will say more.
 
 ## What changes, and what does not
 
