@@ -135,6 +135,7 @@ func _run() -> void:
 	await _test_the_hand()
 	_test_shots_are_heard_from_the_events()
 	await _test_a_running_tap_misses()
+	await _test_a_crouch_walks_at_a_third()
 	await _test_a_bot_plays_through_commands()
 	await _test_a_bot_finds_its_way()
 	await _test_a_player_wears_hitboxes()
@@ -1183,6 +1184,81 @@ func _test_a_running_tap_misses() -> void:
 	)
 	player.queue_free()
 	await physics_frame
+
+
+## Crouched, a player walks at 0.34 of the speed what they hold runs at
+## (the AK-47's 215 gives 73, the knife's 250 gives 85), however long the crouch
+## has been held, walk key or not; the duck eases the top down and back up
+## with itself rather than keeping full speed until the duck finishes and
+## dropping it the tick the key comes up. A rifle's crouch holds its speed
+## rather than grinding down under friction. In the air the duck leaves the
+## top alone, as Source does, so a crouch jump strafes as a jump does.
+func _test_a_crouch_walks_at_a_third() -> void:
+	var player := _new_player(Vector3(-1024.0, 0.0, 2048.0), "T")
+	_crouch_tick = 110_000
+	var second := SimClock.ticks_in(1.0)
+	for data in [null, WeaponLibrary.ak47()]:
+		if data != null:
+			player.equip(data)
+		var top := player.config.max_speed
+		var crouched := top * player.config.duck_modifier
+		var running: Array[float] = _run_holding(player, second, 0)
+		var ducking: Array[float] = _run_holding(player, second * 2, UserCmd.DUCK)
+		var walking: Array[float] = _run_holding(player, second, UserCmd.DUCK | UserCmd.WALK)
+		_check(
+			absf(running[-1] - top) < 0.5 and absf(ducking[-1] - crouched) < 0.5 and absf(walking[-1] - crouched) < 0.5,
+			"crouched at %.0f, the player walks at %.1f u/s (0.34 of it is %.1f), %.1f with the walk key too"
+				% [top, ducking[-1], crouched, walking[-1]]
+		)
+		# Half-way through the 0.4 s duck the top is half-way down.
+		var halfway := SimClock.ticks_in(player.config.duck_time * 0.5)
+		_check(
+			ducking[halfway] < top - 10.0 and ducking[halfway] > crouched + 10.0,
+			"and it comes down with the duck: %.0f u/s %d ticks in, between %.0f and %.0f"
+				% [ducking[halfway], halfway, top, crouched]
+		)
+		var steady := ducking.slice(SimClock.ticks_in(player.config.duck_time) + 2)
+		_check(
+			steady.max() - steady.min() < 0.5,
+			"holding the crouch, the speed holds too (%.2f to %.2f u/s)" % [steady.min(), steady.max()]
+		)
+		var standing: Array[float] = _run_holding(player, second, 0)
+		_check(
+			standing[0] < crouched + 8.0 and standing[-1] > top - 0.5,
+			"up again, it is %.0f u/s the first tick, not a run, and %.0f a second on" % [standing[0], standing[-1]]
+		)
+	# In the air, the duck changes nothing about the top.
+	var cmd := UserCmd.new()
+	cmd.tick = _crouch_tick
+	cmd.buttons = UserCmd.DUCK
+	cmd.move = Vector2(0.0, 1.0)
+	player.on_ground = false
+	player.duck_progress = 1.0
+	_check(
+		is_equal_approx(player._max_speed(cmd), player.config.max_speed),
+		"in the air the duck leaves the top at %.0f" % player._max_speed(cmd)
+	)
+	player.queue_free()
+	await physics_frame
+
+
+## Where the crouching check's commands are up to.
+var _crouch_tick := 0
+
+
+## Runs player forward for ticks holding buttons, and gives the speed along
+## the ground each tick.
+func _run_holding(player: PlayerSim, ticks: int, buttons: int) -> Array[float]:
+	var speeds: Array[float] = []
+	for i in ticks:
+		var cmd := UserCmd.new()
+		cmd.tick = _crouch_tick
+		_crouch_tick += 1
+		cmd.move = Vector2(0.0, 1.0)
+		cmd.buttons = buttons
+		player.run_command(cmd, DT)
+		speeds.append(Vector2(player.velocity.x, player.velocity.z).length())
+	return speeds
 
 
 # --- Bots -------------------------------------------------------------------

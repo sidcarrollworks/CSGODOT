@@ -682,6 +682,7 @@ func _run(cmd: UserCmd, dt: float) -> void:
 	jump_fraction = -1.0
 	wish_dir = Vector3.ZERO
 	wish_speed = 0.0
+	acceleration_speed = 0.0
 
 	if cmd.toggle_noclip:
 		noclip = not noclip
@@ -773,6 +774,7 @@ func _run(cmd: UserCmd, dt: float) -> void:
 	wish_dir = cmd.wish_direction()
 	if wish_dir.length_squared() > 0.0:
 		wish_speed = _max_speed(cmd)
+		acceleration_speed = _uncrouched_speed(cmd)
 
 	simulate(dt)
 	_update_weapon(cmd, dt, false)
@@ -963,15 +965,39 @@ func _noclip_direction(cmd: UserCmd) -> Vector3:
 ## How fast the player may go this tick. Tagging takes its share off the
 ## top, and friction brings a running player down to it: the slowdown is in
 ## what the player can reach, not a kick to the velocity.
+##
+## Crouched on the ground, the top is duck_modifier (0.34) of the held
+## item's, eased in and out with the duck itself, so a crouch always walks at
+## the same speed and a half crouch at a speed between: the AK-47's 215 gives
+## 73, the knife's 250 gives 85. It was once full speed until the duck
+## finished 0.4 s after the press, then a third of it, and full speed again
+## the tick the key came up. The duck is read as the last tick left it, as
+## Source's CheckParameters reads it before Duck, and only on the ground, as
+## there: in the air the duck leaves the air's acceleration alone. Walking
+## crouched is no slower than crouching.
 func _max_speed(cmd: UserCmd) -> float:
-	# Scoped, the gun's scoped speed (the AWP's 100 against 200).
-	var top := weapon.max_speed() if weapon != null and weapon.zoom_level > 0 else config.max_speed
-	var speed := top * velocity_modifier
-	if is_ducked:
-		speed *= config.duck_modifier
-	elif cmd.held(UserCmd.WALK):
+	var speed := _uncrouched_speed(cmd)
+	if not on_ground:
+		return speed
+	var top := _top_speed() * lerpf(1.0, config.duck_modifier, duck_progress)
+	return minf(speed, top)
+
+
+## The top without the duck: what the held item and a tag allow, walking
+## if the walk key is held. The ground's acceleration works from it
+## (PlayerBody.acceleration_speed), crouched or not.
+func _uncrouched_speed(cmd: UserCmd) -> float:
+	var speed := _top_speed()
+	if cmd.held(UserCmd.WALK):
 		speed *= config.walk_modifier
 	return speed
+
+
+## What the held item lets the player run at, less a tag's share.
+func _top_speed() -> float:
+	# Scoped, the gun's scoped speed (the AWP's 100 against 200).
+	var top := weapon.max_speed() if weapon != null and weapon.zoom_level > 0 else config.max_speed
+	return top * velocity_modifier
 
 
 ## A round, or anything else, did damage: the tag is set to land shortly and

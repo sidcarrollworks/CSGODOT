@@ -21,7 +21,7 @@ As each one gets measured, record the measurement and the method below.
 | `sv_gravity` | 800 | Source/CS:GO default | No |
 | `sv_jump_impulse` | 301.993 | Source/CS:GO default | No |
 | walk modifier | 0.52 | CS:GO | No |
-| duck modifier | 0.34 | CS:GO | No |
+| duck modifier | 0.34 | CS:GO; the Counter-Strike wiki's Movement page (Speed Stats), Sid's source on 2026-09-30, gives crouched speed as 34% of the held item's speed in CS2 (the page itself is blocked from the cloud). Eased in and out with the duck, on the ground only (`PlayerSim._max_speed`), and the ground's acceleration works from the item's speed rather than the crouched third (`PlayerBody.acceleration_speed`): with sv_friction 5.2 and sv_stopspeed 80, acceleration from 73 cannot hold a crouched rifle at 73. Both are inferred, the second from `sv_accelerate_use_weapon_speed` (reference/research/movement.md, section 1); the run from rest crouched in that page's Local table checks them | No |
 | hull 32 x 32 x 72 | | Source player hull | No |
 | duck height 54 | | CS:GO | No |
 | step height 18 | | Source | No |

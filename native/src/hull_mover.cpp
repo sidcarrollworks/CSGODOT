@@ -147,6 +147,7 @@ const StringName &is_ducked() { static const StringName n("is_ducked"); return n
 const StringName &duck_progress() { static const StringName n("duck_progress"); return n; }
 const StringName &wish_dir() { static const StringName n("wish_dir"); return n; }
 const StringName &wish_speed() { static const StringName n("wish_speed"); return n; }
+const StringName &acceleration_speed() { static const StringName n("acceleration_speed"); return n; }
 const StringName &wants_jump() { static const StringName n("wants_jump"); return n; }
 const StringName &wants_duck() { static const StringName n("wants_duck"); return n; }
 const StringName &jump_held() { static const StringName n("_jump_held_last_tick"); return n; }
@@ -179,6 +180,7 @@ void HullMover::read_body() {
 	duck_progress = body->get(names::duck_progress());
 	wish_dir = body->get(names::wish_dir());
 	wish_speed = body->get(names::wish_speed());
+	acceleration_speed = body->get(names::acceleration_speed());
 	wants_jump = body->get(names::wants_jump());
 	wants_duck = body->get(names::wants_duck());
 	jump_held_last_tick = body->get(names::jump_held());
@@ -296,13 +298,14 @@ Vector3 HullMover::apply_friction(const Vector3 &p_velocity, bool p_on_ground, d
 	return times(p_velocity, new_speed / speed);
 }
 
-Vector3 HullMover::accelerate(const Vector3 &p_velocity, const Vector3 &p_wish_dir, double p_wish_speed, double accel, double surface_friction, double dt) {
+// MovementSolver.accelerate: accel_from is PlayerBody.acceleration_speed.
+Vector3 HullMover::accelerate(const Vector3 &p_velocity, const Vector3 &p_wish_dir, double p_wish_speed, double accel, double surface_friction, double dt, double accel_from) {
 	const double current_speed = p_velocity.dot(p_wish_dir);
 	const double add_speed = p_wish_speed - current_speed;
 	if (add_speed <= 0.0) {
 		return p_velocity;
 	}
-	double accel_speed = accel * dt * p_wish_speed * surface_friction;
+	double accel_speed = accel * dt * maxf(p_wish_speed, accel_from) * surface_friction;
 	if (accel_speed > add_speed) {
 		accel_speed = add_speed;
 	}
@@ -484,7 +487,7 @@ void HullMover::walk_move(double surface_friction, double dt) {
 		}
 	}
 
-	velocity = accelerate(velocity, dir, wish_speed, cfg.accelerate, surface_friction, dt);
+	velocity = accelerate(velocity, dir, wish_speed, cfg.accelerate, surface_friction, dt, acceleration_speed);
 	velocity.y = 0.0;
 	if ((double)velocity.length() < 1.0) {
 		velocity = ZERO;
