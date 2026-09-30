@@ -7,11 +7,11 @@ extends SkeletonModifier3D
 ##
 ## The hull stands on the first thing its bottom meets, which on a ramp is
 ## its uphill edge, so a body drawn at the hull's origin hangs over the
-## floor by up to 7 units at T spawn. Each frame this casts one ray under
-## each ankle (GroundProbe, the world only), lowers the pelvis by the larger
-## of the two gaps, and bends each leg with two-bone IK so that each foot
-## comes down by its own gap, keeping whatever lift the clip gives it; the
-## foot is then tipped toward the slope. It eases in over EASE on the
+## floor by up to 7 units at T spawn. Each fit of the skeleton casts one
+## ray under each ankle (GroundProbe, the world only), lowers the pelvis by
+## the larger of the two gaps, and bends each leg with two-bone IK so that
+## each foot comes down by its own gap, keeping whatever lift the clip gives
+## it; the foot is then tipped toward the slope. It eases in over EASE on the
 ## ground and out in the air, and follows a changing floor over the same.
 ##
 ## It runs in the skeleton's own update after the clips, so it moves only
@@ -34,6 +34,14 @@ const GUN_BONES: Array[String] = ["wpn", "wpnHand_L", "wpnHand_R", "wpnTip", "wp
 ## The furthest the pelvis is lowered, in units: a foot over a deeper gap
 ## than this is left where the clip has it, as over a ledge.
 const MOST_DROP := 12.0
+## How far off the floor a standing hull rests, which the fit leaves be:
+## under Box3D a hull stops 0.257 inches off it (its casts stop 0.197 short
+## of a surface, with 0.06 more clearance; measured on a flat Box3D floor,
+## 2026-09-28, reference/box3d-trial.md), and a fit for that alone would
+## lower the pelvis a quarter of an inch and bend the legs every frame on
+## flat ground. Each foot's gap is taken less this, so the feet stop this
+## far over a ramp too, too little to see.
+const REST_CLEARANCE := 0.3
 ## How far a foot moves before its ray is cast again, in units.
 const RECAST := 1.0
 ## Seconds to ease the fit in and out, and to follow a changing floor.
@@ -122,7 +130,7 @@ func _cast(space: PhysicsDirectSpaceState3D, leg: int, point: Vector3) -> void:
 		_cast_gap[leg] = 0.0
 		_cast_normal[leg] = Vector3.UP
 	else:
-		_cast_gap[leg] = ground["height"]
+		_cast_gap[leg] = maxf(0.0, float(ground["height"]) - REST_CLEARANCE)
 		_cast_normal[leg] = ground["normal"]
 
 

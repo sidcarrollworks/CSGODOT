@@ -249,9 +249,11 @@ func blind_share(userid: int, at_usec: int = -1) -> float:
 	return blind_amount(userid, at_usec)
 
 
-## Whether a kill on this player now is a blind kill (flashed past 70%).
+## Whether this player's kill now is a blind kill: the killer flashed to
+## 70% or more, since sv_flashed_amount_for_blind_kill is the "minimum
+## flashed alpha value", as KillCredit counts it.
 func blind_for_kill(userid: int) -> bool:
-	return blind_amount(userid) > GrenadeRules.FLASHED_FOR_BLIND_KILL
+	return blind_amount(userid) >= GrenadeRules.FLASHED_FOR_BLIND_KILL
 
 
 # --- Damage ---------------------------------------------------------------

@@ -31,6 +31,7 @@ Updated 2026-09-23 night: dust2 buys (items 13 and 14 wired in), spawns give the
 Updated 2026-09-24: binds added (item 12a, planned in `reference/binds.md`): one table of keys, CS2's defaults, for the game and the test range alike.
 Updated 2026-09-24 later: game modes apart from maps (item 24a, `reference/systemization.md` step 4's first part): any extracted defusal map plays in competitive.
 Updated 2026-09-25: Sid's dust2 playtest, 22 issues with plans ("Playtest of 2026-09-25", `reference/playtest-2026-09-25.md`).
+Updated 2026-09-30: grenade flight and lineups recorded for later (item 20a, Sid).
 
 ## Part 1: what exists
 
@@ -271,9 +272,12 @@ are known open (`_check_known_open`: reported every run, not failing it).
 Every query goes through `PhysicsQueries` (`reference/godot/physics.md`); E's
 sight test (#126), written straight on Godot's space, was ported with #125's
 merge and is checked on a Box3D world (`tests/run_box3d_pickup_checks.gd`).
+FootPlant leaves Box3D's rest clearance out of each foot's gap
+(`FootPlant.REST_CLEARANCE`, 0.3; #141, playtest issue 5), so a body on
+flat ground keeps its clip's legs, checked on a Box3D floor and ramp in
+`tests/run_foot_plant_checks.gd`.
 Left: the AWP's settling; ragdoll visual acceptance; movement at real map
-edges; FootPlant on flat floors under Box3D's rest clearance (playtest issue
-5); the 6 ms frame target; tick-owned hitbox poses for multiplayer; and
+edges; the 6 ms frame target; tick-owned hitbox poses for multiplayer; and
 `scripts/profile_dust2.gd` at 5 and 10 a side on both backends, for
 `reference/performance.md`.
 
@@ -870,10 +874,12 @@ list, split into Local and Remote items, with the measurements.
     its huddeathnotice layout and styles (`KillFeed`, from the game's
     player_death events), every mark the event can carry, your kills
     ringed red and your deaths on dark red, 5 s a row (7.5 s for yours),
-    fading over 1 s. Its icons come with `extract_assets.sh hud`. Left: the
-    assister, a blind or airborne killer, a kill through smoke, revenge and
-    domination draw when player_death carries them, and nothing fills them
-    yet. Local: a round's kills beside CS2's at 1080p with its icons.)*
+    fading over 1 s. Its icons come with `extract_assets.sh hud`. The
+    assister, a flash assist, a blind or airborne killer and a kill through
+    smoke come from `KillCredit`, which fills player_death as the kill
+    happens by CS2's rules; revenge and domination stay off, as CS2's
+    `sv_nonemesis` leaves them. Local: a round's kills beside CS2's at
+    1080p with its icons.)*
 
 ### Phase 5: the bomb
 
@@ -911,6 +917,35 @@ list, split into Local and Remote items, with the measurements.
     the map, HE and bullets opening holes, blocking sight for players and
     bots. Bots' sight asks it once `bot.gd` does
     (`reference/systems/grenades.md`, item 4).
+20a. **Grenade flight and lineups.** *(Sid, 2026-09-30; not started, no new
+    research yet. Remote for the code and headless checks, Local for
+    anything measured in CS2)* In play, grenades are floaty and
+    inconsistent in the air, and the map may be part of it. Running and
+    jumping should change how far a grenade goes. The goal is to recreate
+    CS2's lineups: the same spot, aim and throw lands where it does in CS2.
+    Start from what the repo has:
+    - The grenade systems from the grenades PR (#53): the flight in
+      `src/grenades/grenade_flight.gd`, the throw's numbers in
+      `src/grenades/grenade_rules.gd` (CS:GO's 750 × 0.9 throw, strength
+      0.3 to 1, 1.25 of your velocity, gravity 0.4 of 800, elasticity
+      0.45, a radius-2 sphere), and `reference/systems/grenades.md`.
+    - The research: `reference/research/round-bomb-grenades.md` section 2,
+      above all 2.3 "The throw" (CS2 stashes the throw's angles, position
+      and velocity at a jump for jump-throws, which the code does not do
+      yet; no CS2 source found for the throw speeds or the velocity share;
+      `sv_grenade_collision_sphere` off by default, so CS2 does not fly a
+      radius-2 sphere; the default spin), and its summary in
+      `reference/research/round.md` (items 11 and 12, and the throw-speeds row).
+      `reference/research/smokes.md` covers where a smoke settles, not the
+      flight.
+    - The map: the grenade clips are left out of the hull on import
+      (`hull_skip_hints` in `src/map/map_importer.gd`;
+      `reference/systems/grenades.md`, item 6), so grenades on dust2 do not
+      meet what CS2's meet.
+    - **Local:** G1 in `reference/cs2-systems.md` (the throw's speeds and
+      gravity, standing, running and jumping), and a set of dust2 lineups
+      recorded in CS2 to compare against (spot, angles, button, movement,
+      and where it lands), which N2's lineups for the bots can share.
 
 ### Phase 7: knife and Zeus
 

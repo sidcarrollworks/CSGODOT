@@ -22,6 +22,8 @@ func _initialize() -> void:
 	await _test_ramp()
 	await _test_flat()
 	await _test_air()
+	await _test_box3d(0.0)
+	await _test_box3d(SLOPE)
 	await _test_put_at_once()
 	_test_body_plants()
 	_finish("foot-plant")
@@ -199,12 +201,12 @@ func _test_ramp() -> void:
 		var over := now.y - _ground_y(SLOPE, rest.x)
 		gaps.append(-_ground_y(SLOPE, rest.x))
 		report.append("%s %.2f over the floor" % [side, over])
-		ok = ok and absf(over - ankle_lift) < 0.5 and Vector2(now.x - rest.x, now.z - rest.z).length() < 1.5
-	_check(ok, "on a 13 degree ramp both ankles end as high over the floor under them as the clip has them over the origin, %.2f (%s)" % [ankle_lift, ", ".join(report)])
+		ok = ok and absf(over - ankle_lift - FootPlant.REST_CLEARANCE) < 0.3 and Vector2(now.x - rest.x, now.z - rest.z).length() < 1.5
+	_check(ok, "on a 13 degree ramp both ankles end as high over the floor under them as the clip has them over the origin, %.2f, and the rest clearance (%s)" % [ankle_lift, ", ".join(report)])
 	var dropped := pelvis_rest.y - (seen.get("pelvis", pelvis_rest) as Vector3).y
 	_check(
-		absf(dropped - maxf(gaps[0], gaps[1])) < 0.3,
-		"the pelvis drops by the downhill foot's gap, %.2f (dropped %.2f)" % [maxf(gaps[0], gaps[1]), dropped]
+		absf(dropped - maxf(gaps[0], gaps[1]) + FootPlant.REST_CLEARANCE) < 0.3,
+		"the pelvis drops by the downhill foot's gap less the rest clearance, %.2f (dropped %.2f)" % [maxf(gaps[0], gaps[1]) - FootPlant.REST_CLEARANCE, dropped]
 	)
 	var plant := stood["plant"] as FootPlant
 	var ball := seen.get("ball_L", Vector3.ZERO) as Vector3
@@ -241,6 +243,74 @@ func _test_flat() -> void:
 		ok = ok and (seen[bone_name] as Vector3).distance_to(_rest_point(skeleton, bone_name)) < 0.05
 	_check(ok, "on flat ground the pelvis and legs stay where the clip has them")
 	_free(stood)
+
+
+## On Box3D, the game's physics: a hull stands where Box3D rests it, a
+## quarter of an inch off the floor, and the stand-in is drawn there. On
+## flat ground that clearance is left be: no pelvis drop, no leg IK, the
+## legs as the clip has them. On the ramp the feet still come down to it.
+func _test_box3d(degrees: float) -> void:
+	var on := "on a flat Box3D floor" if degrees == 0.0 else "on a %d degree Box3D ramp" % degrees
+	if not Box3DDrops.available():
+		print("  skipped: %s (Box3D is not installed; scripts/install_box3d.sh)" % on)
+		return
+	var host := Node3D.new()
+	root.add_child(host)
+	host.add_child(_ground(degrees))
+	var hull := PlayerBody.new()
+	hull.position = Vector3(0.0, 5.0, 0.0)
+	hull.collision_layer = 2
+	hull.collision_mask = 1 | 2 | MapImporter.PLAYER_CLIP_LAYER
+	var collision := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(32.0, 72.0, 32.0)
+	collision.shape = box
+	collision.position.y = 36.0
+	hull.add_child(collision)
+	host.add_child(hull)
+	var world := GameWorld.new()
+	host.add_child(world)
+	world.set_physics_process(false)
+	world.initialize_drop_physics(host, "box3d")
+	await physics_frame
+	for tick in 48:
+		hull.simulate(SimClock.tick_seconds())
+	var model := _stand_in()
+	model.position = hull.global_position
+	var skeleton := model.get_node("Skeleton3D") as Skeleton3D
+	var plant := FootPlant.new()
+	plant.planting = true
+	skeleton.add_child(plant)
+	var seen := {}
+	skeleton.skeleton_updated.connect(func() -> void:
+		for bone_name in ["pelvis", "ankle_L", "ankle_R", "leg_lower_L", "leg_lower_R"]:
+			seen[bone_name] = skeleton.global_transform * skeleton.get_bone_global_pose(skeleton.find_bone(bone_name)).origin
+	)
+	host.add_child(model)
+	await _frames(30)
+	var rest_over := hull.global_position.y - _ground_y(degrees, HULL_HALF)
+	if degrees == 0.0:
+		var moved := 0.0
+		for bone_name: String in seen:
+			moved = maxf(moved, (seen[bone_name] as Vector3).distance_to(model.position + _rest_point(skeleton, bone_name)))
+		_check(
+			hull.on_ground and rest_over > 0.0 and rest_over < FootPlant.REST_CLEARANCE
+				and not seen.is_empty() and moved < 0.001 and plant.drop() == 0.0 and plant.rays == 2,
+			"%s the hull rests %.3f off it, under the rest clearance, and the fit leaves the legs be: no drop, no leg IK, one ray a foot (moved %.4f, dropped %.3f, %d rays)"
+				% [on, rest_over, moved, plant.drop(), plant.rays]
+		)
+	else:
+		var report := []
+		var ok := hull.on_ground and not seen.is_empty()
+		for side in ["L", "R"]:
+			var rest := model.position + _rest_point(skeleton, "ankle_" + side)
+			var now: Vector3 = seen.get("ankle_" + side, rest)
+			var over := now.y - _ground_y(degrees, now.x)
+			report.append("%s %.2f" % [side, over])
+			ok = ok and absf(over - _rest_point(skeleton, "ankle_" + side).y) < FootPlant.REST_CLEARANCE + 0.3
+		_check(ok, "%s both ankles come down to the floor under them, as high over it as the clip has them and no more than the rest clearance besides (%s over it; the hull rests %.2f over its uphill edge)" % [on, ", ".join(report), rest_over])
+	host.free()
+	await process_frame
 
 
 ## In the air or dead (not planting) it casts nothing and moves nothing.
