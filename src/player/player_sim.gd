@@ -758,7 +758,7 @@ func _run(cmd: UserCmd, dt: float) -> void:
 	wants_jump = not still and (cmd.held(UserCmd.JUMP) or jump != null)
 	if jump != null and wants_jump:
 		jump_fraction = jump.when
-	wants_duck = cmd.held(UserCmd.DUCK)
+	wants_duck = cmd.held(UserCmd.DUCK) or _crouched_by_the_game()
 
 	if still:
 		# Still, but falling if there is anywhere to fall, and the weapon
@@ -786,6 +786,14 @@ func _held_by_the_game() -> bool:
 	if not is_instance_valid(world):
 		return false
 	return bool(world.game.query(&"holds_still", [userid], false))
+
+
+## Whether the game makes the player crouch whatever their duck key says:
+## planting the bomb, which the bomb says (the crouches query).
+func _crouched_by_the_game() -> bool:
+	if not is_instance_valid(world):
+		return false
+	return bool(world.game.query(&"crouches", [userid], false))
 
 
 ## Fires every round the command asks for, at the instant and the aim it
