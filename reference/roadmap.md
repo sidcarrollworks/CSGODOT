@@ -973,6 +973,15 @@ list, split into Local and Remote items, with the measurements.
 ### Phase 7: knife and Zeus
 
 21. **Knife and Zeus.** *(Local measures, then Remote; both are extracted)*
+    The knife is done, Remote (2026-09-30): both attacks, backstabs, reach,
+    damage, clips and sounds, on the community's numbers
+    (`reference/cs2-systems.md` 8). Sid's October 1 PR #165 feedback is
+    addressed: airborne swings keep the fallback hull's full width near
+    the eye, and its forward extent is bounded to 48 units for slash and
+    32 for stab. A wall on the line stops the attack; hull-only wall hits
+    also play the wall outcome. Third-person attacks use the extracted
+    knife graph's clip mapping, with both swing variants. Still to do: K1 (Local) measures the
+    knife's numbers and plays it beside CS2; the Zeus (Remote).
 
 ### Phase 8: bots that play CS
 

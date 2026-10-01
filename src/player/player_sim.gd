@@ -92,6 +92,9 @@ var weapon: Weapon
 ## Owned current state, reused each update; callers needing history copy its fields.
 var shooter_state := Weapon.ShooterState.new()
 var rounds_fired: int = 0
+## The knife's attacks and when the next may come: in hand whenever the
+## inventory's knife is (_update_knife).
+var knife := Knife.new()
 
 ## Health and armour, and what a round can hit.
 var hit_target: HitTarget
@@ -159,6 +162,9 @@ signal equipped(entry: Inventory.Entry)
 ## only the right button was held.
 signal pin_pulled
 signal grenade_released(underhand: bool)
+## A knife swing, traced and its damage dealt: what it met, for whatever
+## draws and sounds it (its clip, Knife.Swing.sound_events).
+signal knife_swung(swing: Knife.Swing)
 ## Health ran out; zone is where the last round landed.
 signal killed(zone: StringName)
 signal respawned
@@ -584,6 +590,8 @@ func _draw(entry: Inventory.Entry) -> void:
 	if held_weapon != null:
 		held_weapon.trigger_held = false
 		held_weapon.draw(now, deploy)
+	elif _held_class == Knife.ITEM_CLASS:
+		knife.draw(now, deploy)
 	# A dead player's hand empties as what they drop goes; the body lets go
 	# at the death, and takes up what is in hand again when it gets up.
 	if alive:
@@ -806,7 +814,10 @@ func _crouched_by_the_game() -> bool:
 ## a grenade in hand, the buttons throw it instead (_update_grenade).
 func _update_weapon(cmd: UserCmd, dt: float, still: bool) -> void:
 	if weapon == null:
-		_update_grenade(cmd, still)
+		if _held_class == Knife.ITEM_CLASS:
+			_update_knife(cmd, still)
+		else:
+			_update_grenade(cmd, still)
 		return
 
 	var now := SimClock.tick_end_usec(cmd.tick)
@@ -959,6 +970,60 @@ func _update_grenade(cmd: UserCmd, still: bool) -> void:
 	if is_instance_valid(world):
 		var strength := GrenadeRules.strength_for(_throw_left, _throw_right)
 		world.game.command(userid, "throw %s %s" % [entry.item.item_class, strength])
+
+
+## The knife in hand: each press of either button swings at its own
+## instant and aim, the left a slash and the right a stab, and while a
+## button stays down the next swing starts the moment the knife is ready,
+## as the guns fire (Knife). The left wins when both are down together.
+func _update_knife(cmd: UserCmd, still: bool) -> void:
+	if still:
+		return
+	var presses: Array[UserCmd.SubtickStep] = []
+	presses.append_array(cmd.presses(UserCmd.ATTACK))
+	presses.append_array(cmd.presses(UserCmd.ATTACK2))
+	presses.sort_custom(func(a: UserCmd.SubtickStep, b: UserCmd.SubtickStep) -> bool: return a.when < b.when)
+	for press in presses:
+		var at := SimClock.usec_at(cmd.tick, press.when)
+		if knife.is_ready(at):
+			_swing(press.button == UserCmd.ATTACK2, at, press.when, press.yaw_degrees, press.pitch_degrees)
+	var light := cmd.held(UserCmd.ATTACK)
+	if light or cmd.held(UserCmd.ATTACK2):
+		var began := SimClock.tick_start_usec(cmd.tick)
+		var now := SimClock.tick_end_usec(cmd.tick)
+		var at := maxi(knife.ready_usec, began)
+		if at <= now:
+			var fraction := float(at - began) / float(SimClock.tick_usec())
+			_swing(not light, at, fraction, cmd.yaw_degrees, cmd.pitch_degrees)
+
+
+## A swing of the knife at at_usec, from where the player was at that
+## instant (as a round leaves: _try_shoot) and the aim of that instant, a
+## hit's flinch in it: traced, its damage dealt, weapon_fire sent as CS2
+## sends it for a swing, and knife_swung for whoever draws it.
+func _swing(heavy: bool, at_usec: int, tick_fraction: float, yaw: float, pitch: float) -> void:
+	var begun := knife.begin(heavy, at_usec)
+	var at := previous_position.lerp(global_position, clampf(tick_fraction, 0.0, 1.0))
+	var origin := at + Vector3.UP * eye_height()
+	var thrown := hit_punch.value
+	var aim_yaw := deg_to_rad(yaw - thrown.x)
+	var aim_pitch := deg_to_rad(pitch + thrown.y)
+	var direction := Vector3(
+		-sin(aim_yaw) * cos(aim_pitch), sin(aim_pitch), -cos(aim_yaw) * cos(aim_pitch)
+	)
+	_send(&"weapon_fire", {"userid": userid, "weapon": Knife.ITEM_CLASS, "silenced": false}, at_usec)
+	var exclude: Array[RID] = [get_rid()]
+	exclude.append_array(hit_target.rids())
+	var teammates: Array[RID] = []
+	if is_instance_valid(world):
+		for other in world.players:
+			if other != self and other.team == team and other.alive:
+				teammates.append_array(other.hit_target.rids())
+	var swing := Knife.swing(
+		get_world_3d().direct_space_state, begun, origin, direction, userid, team,
+		team_damage_scale, exclude, teammates, world.game.events if is_instance_valid(world) else null
+	)
+	knife_swung.emit(swing)
 
 
 ## Sends a game event, when the player is in a game.
