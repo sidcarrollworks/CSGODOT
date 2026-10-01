@@ -80,6 +80,8 @@ static func apply(data: WeaponData, weapon_class: String, alternate: bool = fals
 	# shell at a time it ends near the end of the clip's intro, before the
 	# first shell goes in (reference/weapons/timings.md).
 	data.reload_time = get_value.call("m_flDisallowAttackAfterReloadStartDuration")
+	data.reloads_single_shells = get_value.call("m_bReloadsSingleShells") == 1.0
+	WeaponClips.apply(data)
 
 	var spread: float = get_value.call("m_flSpread")
 	var stand: float = get_value.call("m_flInaccuracyStand")

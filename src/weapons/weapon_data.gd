@@ -175,8 +175,26 @@ const NEARLY_EMPTY_SHARE_SHOTGUN := 0.3
 ## at a time, whose reserve reads in shells.
 @export var reserve_as_clips: bool = true
 
-## How long a reload takes.
+## How long a reload takes. For a gun that loads a shell at a time, how
+## long after the reload starts it may fire again, stopping the reload
+## (m_flDisallowAttackAfterReloadStartDuration).
 @export var reload_time: float = 2.5
+
+## Loads a shell at a time (m_bReloadsSingleShells): the Nova, XM1014 and
+## Sawed-Off. Its reload clip is in three parts (WPN_RELOAD_INTRO, _LOOP,
+## _OUTRO): the intro, the loop once for every shell, one shell going in at
+## WPN_RELOAD_ADD_AMMO in each, then the outro, the gun ready at its end
+## (reference/weapons/timings.md; CS2's view model graph repeats the loop
+## until the reload stage is the outro, reference/animgraph/viewmodel.md).
+## Firing, with a shell in, stops it where it is.
+@export var reloads_single_shells: bool = false
+## Such a reload's parts, from its clip, in seconds: the intro, each shell's
+## loop, how far into its loop a shell goes in, and the outro. The Nova's
+## until WeaponClips gives the gun's own.
+@export var shell_intro: float = 0.3667
+@export var shell_loop: float = 0.4333
+@export var shell_in: float = 0.3
+@export var shell_outro: float = 0.8333
 
 # --- Movement -------------------------------------------------------------
 
@@ -875,3 +893,25 @@ func hitbox_multiplier(hitbox: StringName) -> float:
 		&"leg": return leg_multiplier
 		# Arms take a chest's, as in CS.
 		_: return chest_multiplier
+
+
+## How long a reload of that many shells takes, start to ready.
+func shell_reload_seconds(shells: int) -> float:
+	return shell_intro + shell_loop * shells + shell_outro
+
+
+## When the shell-th shell (from 0) goes in, after the reload starts.
+func shell_in_seconds(shell: int) -> float:
+	return shell_intro + shell_loop * shell + shell_in
+
+
+## Where in the reload clip a reload of that many shells is, that long
+## after it started: through the intro, round the loop once for each shell,
+## then through the outro.
+func shell_clip_seconds(elapsed: float, shells: int) -> float:
+	if elapsed < shell_intro:
+		return maxf(elapsed, 0.0)
+	var looping := elapsed - shell_intro
+	if looping < shell_loop * shells:
+		return shell_intro + fmod(looping, shell_loop)
+	return shell_intro + shell_loop + minf(looping - shell_loop * shells, shell_outro)

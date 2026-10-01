@@ -150,6 +150,8 @@ signal hurt(amount: float, zone: StringName, from: Vector3)
 signal shot_traced(shot: Weapon.Shot, result: Hitscan.Result)
 ## The weapon started reloading.
 signal reload_started
+## A shotgun's shell-by-shell reload stopped by a shot, part way.
+signal reload_stopped
 ## Something else is in hand (the inventory's entry), or nothing (null):
 ## the gun, the knife, a grenade, the bomb. It is being drawn.
 signal equipped(entry: Inventory.Entry)
@@ -798,7 +800,12 @@ func _update_weapon(cmd: UserCmd, dt: float, still: bool) -> void:
 		return
 
 	var now := SimClock.tick_end_usec(cmd.tick)
-	weapon.finish_reload_if_due(now)
+	# A magazine is in by the tick's end, ready for a press inside it. A
+	# shotgun's shells go in after the tick's presses, which stop its reload
+	# with only the shells in by their own instant (Weapon.fire).
+	var by_shell := weapon.data.reloads_single_shells
+	if not by_shell:
+		weapon.finish_reload_if_due(now)
 	# The weapon is told about the trigger rather than left to infer it from
 	# the gap since the last round, so the crosshair starts coming home on the
 	# tick the button comes up instead of a round and a quarter later. A press
@@ -835,6 +842,8 @@ func _update_weapon(cmd: UserCmd, dt: float, still: bool) -> void:
 		zoomed = _zoom_by(cmd, zooms, zoomed, fraction)
 		_try_shoot(at, fraction, cmd.yaw_degrees, cmd.pitch_degrees)
 	_zoom_by(cmd, zooms, zoomed, 1.0)
+	if by_shell:
+		weapon.finish_reload_if_due(now)
 
 
 ## The right clicks of zooms from the from-th on that came by until (a
@@ -859,6 +868,7 @@ func _try_shoot(at_usec: int, tick_fraction: float, yaw: float, pitch: float) ->
 	var origin := at + Vector3.UP * eye_height()
 	# A hit's flinch throws the round as far as it throws the view.
 	var thrown := hit_punch.value
+	var reloading := weapon.is_reloading(at_usec)
 	var shot := weapon.fire(
 		at_usec, tick_fraction, origin, yaw - thrown.x, pitch + thrown.y, shooter_state
 	)
@@ -867,6 +877,8 @@ func _try_shoot(at_usec: int, tick_fraction: float, yaw: float, pitch: float) ->
 		if weapon.dry_fire(at_usec):
 			_send(&"weapon_fire_on_empty", {"userid": userid, "weapon": weapon.data.item_class}, at_usec)
 		return
+	if reloading:
+		reload_stopped.emit()
 	rounds_fired += 1
 	var item := ItemRegistry.item(weapon.data.item_class)
 	var silenced := item != null and item.silenced_by_default
