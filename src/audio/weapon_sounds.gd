@@ -56,6 +56,39 @@ const WEAPONS_DIR := "weapons"
 const FIRE_DB := -6.0
 const HANDLING_DB := -4.0
 
+## The reload of that weapon as it is under way: a shotgun loading a shell
+## at a time hears its loop's parts once for every shell (shell_parts).
+func reload_weapon(weapon: Weapon) -> void:
+	var parts: Array = weapon_set.get("reload", [])
+	if weapon != null and weapon.data.reloads_single_shells:
+		parts = shell_parts(parts, weapon.shells_planned(), weapon.data.shell_intro, weapon.data.shell_loop)
+	_reload_parts(parts)
+
+
+## Whatever was still to come of the reload is not heard: a shot stopped it.
+func stop_reload() -> void:
+	_reload_serial += 1
+
+
+## A reload clip's timed parts ([[seconds, stems], ...]) for a reload of
+## that many shells: the intro's as they are, the loop's (from intro, loop
+## long) once for each shell, a loop later each time, and the outro's that
+## many loops less one later.
+static func shell_parts(parts: Array, shells: int, intro: float, loop: float) -> Array:
+	var out: Array = []
+	for part: Array in parts:
+		var at: float = part[0]
+		if at < intro:
+			out.append(part)
+		elif at < intro + loop:
+			for shell in shells:
+				out.append([at + loop * shell, part[1]])
+		else:
+			out.append([at + loop * maxi(shells - 1, 0), part[1]])
+	out.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
+	return out
+
+
 ## What the shooter hears of a round landing on someone (hit()): CS2's
 ## attacker feedback events, as its game_sounds_player.vsndevts has them
 ## (GameTracking-CS2; reference/research/audio-gameplay.md 3), by event:
@@ -337,9 +370,13 @@ func shot(item_class: String) -> void:
 ## The reload's parts, timed from now. A new reload, or a new weapon, drops
 ## whatever was still to come of the last.
 func reload() -> void:
+	_reload_parts(weapon_set.get("reload", []))
+
+
+func _reload_parts(parts: Array) -> void:
 	_reload_serial += 1
 	var serial := _reload_serial
-	for part: Array in weapon_set.get("reload", []):
+	for part: Array in parts:
 		var at: float = part[0]
 		var stems: PackedStringArray = part[1]
 		get_tree().create_timer(at).timeout.connect(func() -> void:

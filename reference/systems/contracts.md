@@ -648,6 +648,9 @@ system, in `attach`), `game.query(&"name", [args], fallback)`,
 - `holds_still(userid: int) -> bool`: true while that player is planting
   or defusing (the bomb). `player_sim` reads it to stop moving and firing
   without touching `frozen`, which the match owns. Fallback false.
+- `crouches(userid: int) -> bool`: true while that player is made to
+  crouch whatever their duck key says: the planter, for the whole plant
+  (the bomb). `player_sim` reads it beside the duck key. Fallback false.
 - `money(userid: int) -> int`: that player's account (the economy). Bots
   read it before they shop. Fallback 0.
 - `can_buy(userid: int) -> bool`: whether that player may shop now: on a

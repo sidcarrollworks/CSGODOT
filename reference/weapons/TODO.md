@@ -185,6 +185,13 @@ Roughly in order; L1 to L3 can start at once.
   throws whole (`Weapon.pellet_directions`, `tests/run_shotgun_checks.gd`).
   One report a pull. The pattern's shape is inferred; the Local check in
   `reference/research/combat.md` (R5) gives the real one.)*
+  *(2026-09-30, Sid's playtest: the Nova, XM1014 and Sawed-Off load a
+  shell at a time (`m_bReloadsSingleShells`) rather than the whole tube
+  after one: the reload clip's intro, its loop once a shell with the shell
+  going in at `WPN_RELOAD_ADD_AMMO`, then its outro (`timings.csv`,
+  `WeaponClips`); the arms and the loop's sounds repeat for every shell; a
+  shot after `m_flDisallowAttackAfterReloadStartDuration` with a shell in
+  stops the reload. The body others see still plays its reload clip once.)*
 - [ ] **R6. Random recoil.** Weapons marked "Random" kick by Recoil Amount
   with the two variances rather than by a pattern file. Needs how CS turns
   those into degrees; research first. *(Researched 2026-09-24,
