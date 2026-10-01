@@ -33,12 +33,21 @@ extends Node3D
 ## s after the shot, heard by everyone near (silent from 1100 units), plain
 ## stereo in the shooter's own ears. The gun is the shooter's in hand when
 ## the tick hands the event out, if it is the gun the event names.
+## The trigger pulled on an empty magazine (weapon_fire_on_empty, once a
+## pull: Weapon.dry_fire) clicks with CS2's dry fire, Default.ClipEmpty_Pistol
+## for a pistol and Default.ClipEmpty_Rifle for every other gun, the two
+## events server.dll names; which gun takes which is inferred from their
+## names (dry_fire_event()). Heard by everyone near, silent from 1100 units,
+## the same way as the low-ammo click.
 ## A gun's other volumes are set by ear; its sound events (.vsndevts) are not
 ## read yet. The hit feedback's are CS2's (FEEDBACK).
 
 ## CS2's low-ammo click, which every gun's vdata names as its
 ## WEAPON_SOUND_NEARLYEMPTY (as Default.nearlyempty).
 const NEARLY_EMPTY_EVENT := "Default.NearlyEmpty"
+## CS2's dry fire: a pistol's, and every other gun's.
+const CLIP_EMPTY_PISTOL := "Default.ClipEmpty_Pistol"
+const CLIP_EMPTY_RIFLE := "Default.ClipEmpty_Rifle"
 
 const SOUNDS_PAGE := "res://reference/weapons/sounds.md"
 const TIMINGS := "res://reference/weapons/timings.csv"
@@ -46,6 +55,39 @@ const TIMINGS := "res://reference/weapons/timings.csv"
 const WEAPONS_DIR := "weapons"
 const FIRE_DB := -6.0
 const HANDLING_DB := -4.0
+
+## The reload of that weapon as it is under way: a shotgun loading a shell
+## at a time hears its loop's parts once for every shell (shell_parts).
+func reload_weapon(weapon: Weapon) -> void:
+	var parts: Array = weapon_set.get("reload", [])
+	if weapon != null and weapon.data.reloads_single_shells:
+		parts = shell_parts(parts, weapon.shells_planned(), weapon.data.shell_intro, weapon.data.shell_loop)
+	_reload_parts(parts)
+
+
+## Whatever was still to come of the reload is not heard: a shot stopped it.
+func stop_reload() -> void:
+	_reload_serial += 1
+
+
+## A reload clip's timed parts ([[seconds, stems], ...]) for a reload of
+## that many shells: the intro's as they are, the loop's (from intro, loop
+## long) once for each shell, a loop later each time, and the outro's that
+## many loops less one later.
+static func shell_parts(parts: Array, shells: int, intro: float, loop: float) -> Array:
+	var out: Array = []
+	for part: Array in parts:
+		var at: float = part[0]
+		if at < intro:
+			out.append(part)
+		elif at < intro + loop:
+			for shell in shells:
+				out.append([at + loop * shell, part[1]])
+		else:
+			out.append([at + loop * maxi(shells - 1, 0), part[1]])
+	out.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
+	return out
+
 
 ## What the shooter hears of a round landing on someone (hit()): CS2's
 ## attacker feedback events, as its game_sounds_player.vsndevts has them
@@ -105,7 +147,10 @@ var _game: GameSystems
 var _fired := PackedStringArray()
 ## Low-ammo clicks to start on the next frame, one for each such round.
 var _low_ammo: int = 0
-## Plays CS2's sound events (the low-ammo click).
+## The guns clicked empty since the last frame drawn, by
+## weapon_fire_on_empty.
+var _dry := PackedStringArray()
+## Plays CS2's sound events (the low-ammo click, dry fire).
 var events: SoundEvents
 ## The zoom sounds to play on the next frame, by weapon_zoom, as stems.
 var _zooms: Array[PackedStringArray] = []
@@ -146,6 +191,7 @@ func _exit_tree() -> void:
 	if _game != null:
 		_game.events.unlisten(&"weapon_fire", _on_weapon_fire)
 		_game.events.unlisten(&"weapon_zoom", _on_weapon_zoom)
+		_game.events.unlisten(&"weapon_fire_on_empty", _on_weapon_fire_on_empty)
 		_game = null
 
 
@@ -157,6 +203,9 @@ func _process(_delta: float) -> void:
 	for i in _low_ammo:
 		nearly_empty_click()
 	_low_ammo = 0
+	for item_class in _dry:
+		dry_fire_click(item_class)
+	_dry.clear()
 	for stems in _zooms:
 		_play(_handling, stems, HANDLING_DB)
 	_zooms.clear()
@@ -172,10 +221,12 @@ func _follow_game() -> void:
 	if _game != null:
 		_game.events.unlisten(&"weapon_fire", _on_weapon_fire)
 		_game.events.unlisten(&"weapon_zoom", _on_weapon_zoom)
+		_game.events.unlisten(&"weapon_fire_on_empty", _on_weapon_fire_on_empty)
 	_game = game
 	if _game != null:
 		_game.events.listen(&"weapon_fire", _on_weapon_fire)
 		_game.events.listen(&"weapon_zoom", _on_weapon_zoom)
+		_game.events.listen(&"weapon_fire_on_empty", _on_weapon_fire_on_empty)
 
 
 ## Handed out at the tick's end: noted, and heard on the next frame.
@@ -189,6 +240,14 @@ func _on_weapon_fire(event: GameEvent) -> void:
 		var weapon := shooter.weapon
 		if weapon != null and weapon.data != null and weapon.data.item_class == item_class and weapon.data.nearly_empty(weapon.ammo):
 			_low_ammo += 1
+
+
+## Handed out at the tick's end: the shooter's trigger clicked on an empty
+## magazine, heard on the next frame as the gun the event names.
+func _on_weapon_fire_on_empty(event: GameEvent) -> void:
+	var userid: int = event.fields["userid"]
+	if is_instance_valid(shooter) and userid == shooter.userid and userid != GameEvents.NOBODY:
+		_dry.append(String(event.fields["weapon"]))
 
 
 ## Handed out at the tick's end, when the scope has moved: what it sounds
@@ -237,6 +296,39 @@ func nearly_empty_click() -> int:
 	return events.start(NEARLY_EMPTY_EVENT, null, owner_id, {"local": true})
 
 
+## The dry-fire clicks noted and not heard yet, by gun, as a copy.
+func pending_dry_fire() -> PackedStringArray:
+	return _dry.duplicate()
+
+
+## Which dry fire a gun clicks with: the pistol's for a pistol (the item's
+## weapon type, from weapons.vdata), the rifle's for every other gun; none
+## for what is not a gun (the knife, the Zeus, grenades, the bomb). CS2
+## names only these two events, so the split by type is inferred.
+static func dry_fire_event(item_class: String) -> String:
+	var item := ItemRegistry.item(item_class)
+	if item == null:
+		return ""
+	match item.type:
+		"pistol":
+			return CLIP_EMPTY_PISTOL
+		"rifle", "smg", "shotgun", "sniper", "machinegun":
+			return CLIP_EMPTY_RIFLE
+	return ""
+
+
+## CS2's dry fire for item_class, now: at the shooter for a bot (spatial),
+## flat in the shooter's own ears otherwise. 0 when the gun has none.
+func dry_fire_click(item_class: String) -> int:
+	var event_name := dry_fire_event(item_class)
+	if event_name == "":
+		return 0
+	var owner_id := shooter.userid if is_instance_valid(shooter) else -1
+	if spatial:
+		return events.start(event_name, global_position if is_inside_tree() else Vector3.ZERO, owner_id)
+	return events.start(event_name, null, owner_id, {"local": true})
+
+
 ## The shots noted and not heard yet, as a copy.
 func pending_shots() -> PackedStringArray:
 	return _fired.duplicate()
@@ -278,9 +370,13 @@ func shot(item_class: String) -> void:
 ## The reload's parts, timed from now. A new reload, or a new weapon, drops
 ## whatever was still to come of the last.
 func reload() -> void:
+	_reload_parts(weapon_set.get("reload", []))
+
+
+func _reload_parts(parts: Array) -> void:
 	_reload_serial += 1
 	var serial := _reload_serial
-	for part: Array in weapon_set.get("reload", []):
+	for part: Array in parts:
 		var at: float = part[0]
 		var stems: PackedStringArray = part[1]
 		get_tree().create_timer(at).timeout.connect(func() -> void:
@@ -440,7 +536,7 @@ static func all_stems() -> PackedStringArray:
 static func _load_all() -> void:
 	if not SoundBank.available():
 		return
-	SoundEvents.load_events(PackedStringArray([NEARLY_EMPTY_EVENT]))
+	SoundEvents.load_events(PackedStringArray([NEARLY_EMPTY_EVENT, CLIP_EMPTY_PISTOL, CLIP_EMPTY_RIFLE]))
 	SoundBank.load_sets(all_stems())
 	for gun: Dictionary in sets().values():
 		SoundBank.randomizer_of(gun["fire"])
