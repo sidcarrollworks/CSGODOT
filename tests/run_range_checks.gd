@@ -246,7 +246,7 @@ func _test_pickup_prompts_in_the_range() -> void:
 	_range_aim_at(rifle.position)
 	await _range_prompt_frames()
 	_check_equal(_range.get("_pickup_item"), "weapon_ak47", "the range's physics frame selects the ground rifle")
-	_check_equal(prompt.text, "Press [E] to pick up AK-47", "the range draws the selected rifle's pickup prompt without calling HUD helpers")
+	_check_equal(prompt.text, "[E] Swap for AK-47", "the range draws the selected rifle's swap prompt without calling HUD helpers")
 	_check(not rifle.removed, "displaying the range prompt leaves the rifle on the ground")
 
 	_range.shop.menu.open()
@@ -254,7 +254,7 @@ func _test_pickup_prompts_in_the_range() -> void:
 	_check(_range.shop.menu.is_open() and prompt.text.is_empty(), "the range hides the pickup prompt while its buy menu is open")
 	_range.shop.menu.close()
 	await _range_prompt_frames()
-	_check_equal(prompt.text, "Press [E] to pick up AK-47", "closing the range buy menu restores the same pickup prompt")
+	_check_equal(prompt.text, "[E] Swap for AK-47", "closing the range buy menu restores the same swap prompt")
 
 	# Keep the bomb and loadout in place while checking dead-player drawing.
 	_range.bomb.state = C4.State.NONE
@@ -267,7 +267,7 @@ func _test_pickup_prompts_in_the_range() -> void:
 	player.observing = null
 	_range.bomb.load_state(bomb_before)
 	await _range_prompt_frames()
-	_check_equal(prompt.text, "Press [E] to pick up AK-47", "the living range player sees the ground rifle's prompt again")
+	_check_equal(prompt.text, "[E] Swap for AK-47", "the living range player sees the ground rifle's swap prompt again")
 
 	# Feed an E tap into the scene's real controller, so GameWorld runs it.
 	var down := InputEventAction.new()
@@ -289,7 +289,7 @@ func _test_pickup_prompts_in_the_range() -> void:
 	var smoke := _range_prompt_item("weapon_smokegrenade")
 	_range_aim_at(smoke.position)
 	await _range_prompt_frames()
-	_check_equal(prompt.text, "Press [E] to pick up Smoke Grenade", "the running range shows a ground grenade's pickup prompt when there is room")
+	_check_equal(prompt.text, "[E] Pick up Smoke Grenade", "the running range shows a ground grenade's pickup prompt when there is room")
 	smoke.remove()
 	await _range_prompt_frames()
 	_check_equal(prompt.text, "", "the range clears its grenade prompt when that item is removed")

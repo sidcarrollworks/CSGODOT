@@ -61,7 +61,7 @@ func _test_free_slot() -> void:
 	var inventory := _game.inventory(_id(p))
 	inventory.add("weapon_knife")
 	var item := await _lay("weapon_ak47", p, 0.0)
-	_check_equal(_prompt(p), "Press [E] to pick up AK-47", "a free rifle slot shows the item E will take")
+	_check_equal(_prompt(p), "[E] Pick up AK-47", "a free rifle slot shows the item E will take")
 	_check(not item.removed and not inventory.has("weapon_ak47"), "asking for the pickup prompt does not take the item")
 	_heard.clear()
 	_press(p)
@@ -81,7 +81,7 @@ func _test_swap_rifles() -> void:
 	inventory.item_in(ItemDef.Slot.PRIMARY).weapon.ammo = 7
 	var item := await _lay("weapon_ak47", p, 0.0)
 	item.entry.weapon.ammo = 13
-	_check_equal(_prompt(p), "Press [E] to pick up AK-47", "another copy of the rifle in hand still offers a swap")
+	_check_equal(_prompt(p), "[E] Swap for AK-47", "another copy of the rifle in hand still offers a swap")
 	_heard.clear()
 	_press(p)
 	var held := inventory.in_hand()
@@ -93,7 +93,7 @@ func _test_swap_rifles() -> void:
 	_check_equal(_names_heard(), PackedStringArray(["item_remove", "item_pickup"]), "one item_remove and one item_pickup")
 	_clear_ground()
 	var m4 := await _lay("weapon_m4a1", p, 0.0)
-	_check_equal(_prompt(p), "Press [E] to pick up M4A4", "a rifle swap names the rifle on the ground")
+	_check_equal(_prompt(p), "[E] Swap for M4A4", "a rifle swap names the rifle on the ground")
 	_press(p)
 	_check(inventory.in_hand_class() == "weapon_m4a1" and not inventory.has("weapon_ak47") and m4.removed,
 		"and E on an M4A4 swaps the AK-47 for it")
@@ -109,7 +109,7 @@ func _test_swap_pistols() -> void:
 	inventory.add("weapon_hkp2000")
 	inventory.select("weapon_ak47")
 	await _lay("weapon_deagle", p, 0.0)
-	_check_equal(_prompt(p), "Press [E] to pick up Desert Eagle", "a pistol swap shows its display name with a rifle in hand")
+	_check_equal(_prompt(p), "[E] Swap for Desert Eagle", "a pistol swap shows its display name with a rifle in hand")
 	_press(p)
 	_check(inventory.has("weapon_deagle") and not inventory.has("weapon_hkp2000") and inventory.in_hand_class() == "weapon_ak47",
 		"E on a Desert Eagle swaps the pistol, the rifle staying in hand")
@@ -153,7 +153,7 @@ func _test_widens_up_close() -> void:
 	_look_at(p, far.position)
 	var aside := await _lay("weapon_ak47", p, 30.0, 36.0)
 	_look_at(p, far.position)
-	_check_equal(_prompt(p), "Press [E] to pick up Glock-18", "the prompt chooses the aimed-at Glock before the nearer AK-47")
+	_check_equal(_prompt(p), "[E] Pick up Glock-18", "the prompt chooses the aimed-at Glock before the nearer AK-47")
 	_press(p)
 	_check(far.removed and not aside.removed, "and with the aim on it, it is taken before a nearer gun off the aim")
 	_clear_ground()
@@ -177,12 +177,12 @@ func _test_through_a_wall() -> void:
 func _test_grenade_prompt() -> void:
 	var p := _player("T", Vector3(5500.0, 0.0, 0.0))
 	var item := await _lay("weapon_smokegrenade", p, 0.0)
-	_check_equal(_prompt(p), "Press [E] to pick up Smoke Grenade", "a grenade with room to carry it shows its display name")
+	_check_equal(_prompt(p), "[E] Pick up Smoke Grenade", "a grenade with room to carry it shows its display name")
 	_press(p)
 	_check(item.removed and _game.inventory(_id(p)).has("weapon_smokegrenade"), "E takes the grenade the prompt names")
 	_check_equal(_prompt(p), "", "the grenade prompt disappears after the pickup")
 	var flash := await _lay("weapon_flashbang", p, 0.0)
-	_check_equal(_prompt(p), "Press [E] to pick up Flashbang", "a flashbang on the ground has a pickup prompt too")
+	_check_equal(_prompt(p), "[E] Pick up Flashbang", "a flashbang on the ground has a pickup prompt too")
 	flash.remove()
 	_check_equal(_prompt(p), "", "an item removed between ticks immediately stops offering a pickup")
 	_clear_ground()
@@ -219,7 +219,7 @@ func _test_the_kit() -> void:
 	_leave(t)
 	var ct := _player("CT", Vector3(7000.0, 0.0, 0.0))
 	_look_at(ct, kit.position)
-	_check_equal(_prompt(ct), "Press [E] to pick up Defuse Kit", "a CT sees a pickup prompt for the same kit")
+	_check_equal(_prompt(ct), "[E] Pick up Defuse Kit", "a CT sees a pickup prompt for the same kit")
 	_heard.clear()
 	_press(ct)
 	_check(kit.removed and _game.inventory(_id(ct)).has_defuser and _heard_one(&"defuser_pickup") != null, "a CT can")
@@ -303,7 +303,7 @@ func _test_pickup_prompt_waits() -> void:
 	_step_ticks(SimClock.ticks_in(1.3) + 1)
 	_check_equal(_prompt(p), "", "the previous owner still waits after another player's 1.3-second delay")
 	_step_ticks(SimClock.ticks_in(0.2) + 1)
-	_check_equal(_prompt(p), "Press [E] to pick up AK-47", "the prompt appears when the previous owner's 1.5-second delay ends")
+	_check_equal(_prompt(p), "[E] Pick up AK-47", "the prompt appears when the previous owner's 1.5-second delay ends")
 	p.alive = false
 	_check_equal(_prompt(p), "", "a dead player is not offered the otherwise eligible rifle")
 	p.alive = true
@@ -322,7 +322,7 @@ func _player(team: String, at: Vector3) -> PlayerSim:
 	_world.add_child(player)
 	player.place(at, 0.0)
 	player.on_ground = true
-	player.set_meta(&"userid", _game.add_player(player, player.hit_target))
+	player.set_meta(&"userid", _game.add_player(player, player.hit_target, player.inventory))
 	player.userid = _id(player)
 	return player
 
