@@ -27,6 +27,7 @@ func _run() -> void:
 	for i in 8:
 		await physics_frame
 	await _test_native_cover_changes()
+	await _test_pickup_prompts_in_the_range()
 
 	var dummy: Bot = _range.dummy
 	_check(dummy != null and dummy.holds_fire and dummy.target == null and dummy.route.is_empty(),
@@ -217,6 +218,154 @@ func _native_cover_ray(adapter: Box3DDrops, centre: Vector3) -> Dictionary:
 		(centre + Vector3(0.0, 0.0, 32.0)) * Box3DDrops.METRES_PER_UNIT,
 		(centre - Vector3(0.0, 0.0, 32.0)) * Box3DDrops.METRES_PER_UNIT,
 		Hitscan.WORLD_LAYER, Box3DDrops.ITEM_LAYER)
+
+
+## Exercise the actual range HUD on engine frames: its own canvas must show
+## the item selected by the world's tick, just as the match HUD does.
+func _test_pickup_prompts_in_the_range() -> void:
+	var player: PlayerController = _range.player
+	var prompt := _range.get("use_prompt") as UsePrompt
+	_check(prompt != null and prompt.is_inside_tree(), "the loaded range scene creates its pickup prompt on the HUD")
+	if prompt == null:
+		return
+	var inventory_before := player.inventory.save_state()
+	var bomb_before: Dictionary = _range.bomb.save_state()
+	var log_before: PackedStringArray = _range.get("_log")
+	log_before = log_before.duplicate()
+	var position_before := player.global_position
+	var velocity_before := player.velocity
+	var angles_before := Vector2(player.input.yaw_degrees, player.input.pitch_degrees)
+	var respawns_before := player.respawns
+	var mouse_before := Input.get_mouse_mode()
+	player.place(Vector3(0.0, 0.1, 0.0), 0.0)
+	player.velocity = Vector3.ZERO
+	await _range_prompt_frames()
+
+	var rifle := _range_prompt_item("weapon_ak47")
+	rifle.entry.weapon.ammo = 13
+	_range_aim_at(rifle.position)
+	await _range_prompt_frames()
+	_check_equal(_range.get("_pickup_item"), "weapon_ak47", "the range's physics frame selects the ground rifle")
+	_check_equal(prompt.text, "Press [E] to pick up AK-47", "the range draws the selected rifle's pickup prompt without calling HUD helpers")
+	_check(not rifle.removed, "displaying the range prompt leaves the rifle on the ground")
+
+	_range.shop.menu.open()
+	await _range_prompt_frames()
+	_check(_range.shop.menu.is_open() and prompt.text.is_empty(), "the range hides the pickup prompt while its buy menu is open")
+	_range.shop.menu.close()
+	await _range_prompt_frames()
+	_check_equal(prompt.text, "Press [E] to pick up AK-47", "closing the range buy menu restores the same pickup prompt")
+
+	# Keep the bomb and loadout in place while checking dead-player drawing.
+	_range.bomb.state = C4.State.NONE
+	player.respawns = false
+	player.alive = false
+	await _range_prompt_frames()
+	_check_equal(prompt.text, "", "the range hides the ground rifle's prompt when its player is dead")
+	player.alive = true
+	player.respawns = respawns_before
+	player.observing = null
+	_range.bomb.load_state(bomb_before)
+	await _range_prompt_frames()
+	_check_equal(prompt.text, "Press [E] to pick up AK-47", "the living range player sees the ground rifle's prompt again")
+
+	# Feed an E tap into the scene's real controller, so GameWorld runs it.
+	var down := InputEventAction.new()
+	down.action = &"use"
+	down.pressed = true
+	player.input.handle_event(down)
+	var up := InputEventAction.new()
+	up.action = &"use"
+	up.pressed = false
+	player.input.handle_event(up)
+	await _range_prompt_frames()
+	_check(rifle.removed and player.weapon != null and player.weapon.ammo == 13,
+		"E in the running range takes the exact rifle named by the prompt, including its 13 rounds")
+	_check_equal(prompt.text, "", "the range removes the pickup prompt after E takes the rifle")
+
+	# Removing one stocked smoke makes room without firing the lane's
+	# grenade_thrown/player_spawn restock hooks.
+	player.inventory.remove("weapon_smokegrenade")
+	var smoke := _range_prompt_item("weapon_smokegrenade")
+	_range_aim_at(smoke.position)
+	await _range_prompt_frames()
+	_check_equal(prompt.text, "Press [E] to pick up Smoke Grenade", "the running range shows a ground grenade's pickup prompt when there is room")
+	smoke.remove()
+	await _range_prompt_frames()
+	_check_equal(prompt.text, "", "the range clears its grenade prompt when that item is removed")
+
+	var under_bomb := _range_prompt_item("weapon_ak47")
+	_range.bomb.state = C4.State.DROPPED
+	_range.bomb.carrier = C4.NOBODY
+	_range.bomb.position = player.global_position + Vector3(0.0, 1.0, -42.0)
+	_range.bomb.dropped_by = C4.NOBODY
+	_range.bomb.redrop_usec = C4.NEVER
+	_range_aim_at(_range.bomb.position)
+	await _range_prompt_frames()
+	_check_equal(prompt.text, "Press [E] to pick up bomb", "the range shows the dropped bomb's prompt before the rifle underneath it")
+	_check_equal(_range.get("_pickup_item"), "", "the dropped bomb claims E before the range caches a ground gun")
+
+	_range.bomb.state = C4.State.PLANTED
+	_range.bomb.planted_usec = _range.game.now_usec()
+	_range.bomb.explodes_usec = _range.game.now_usec() + 40_000_000
+	await _range_prompt_frames()
+	_check(bool(_range.game.query(&"use_claimed", [player.userid], false)),
+		"the range's single-player CT override gives E to the planted bomb")
+	_check(prompt.text.is_empty() and not under_bomb.removed,
+		"defuse priority hides the range's ground-gun prompt and leaves that gun in place")
+	var defuses: Array[GameEvent] = []
+	var hear_defuse := func(event: GameEvent) -> void: defuses.append(event)
+	_range.game.events.listen(&"bomb_begindefuse", hear_defuse)
+	Input.action_press(&"use")
+	player.input.handle_event(down)
+	await _range_prompt_frames()
+	_check(defuses.size() == 1 and defuses[0].fields.userid == player.userid and not under_bomb.removed,
+		"E in the real range begins defusing as its single-player CT and leaves the gun underneath untouched")
+	Input.action_release(&"use")
+	player.input.handle_event(up)
+	_range.game.events.unlisten(&"bomb_begindefuse", hear_defuse)
+
+	# The rifle swap also threw the old AK-47: remove every fixture drop
+	# before the later shooting and shop checks start.
+	for entity in _range.game.entities.all():
+		if entity is DroppedItem:
+			entity.remove()
+	_range.bomb.load_state(bomb_before)
+	player.inventory.load_state(inventory_before)
+	player.place(position_before, angles_before.x)
+	player.input.pitch_degrees = angles_before.y
+	player.velocity = velocity_before
+	Input.set_mouse_mode(mouse_before)
+	await _range_prompt_frames()
+	_range.set("_log", log_before)
+
+
+## A stable, already-pickable item past touch reach, registered with the
+## range's own entity presenters and native physics before frames run.
+func _range_prompt_item(item_class: String) -> DroppedItem:
+	var def := ItemRegistry.item(item_class)
+	var weapon := Weapon.new(ItemRegistry.weapon_data(item_class)) if def.is_gun else null
+	var point: Vector3 = _range.player.global_position + Vector3(0.0, 0.0, -42.0)
+	point.y = -ItemPhysics.of(item_class).bounds.position.y + DroppedItem.SKIN
+	var item := DroppedItem.new(Inventory.Entry.new(def, weapon, 1), GameEvents.NOBODY, point)
+	item.resting = true
+	item.dropped_usec = _range.game.now_usec() - 2_000_000
+	_range.game.entities.spawn(item)
+	return item
+
+
+func _range_aim_at(point: Vector3) -> void:
+	var player: PlayerController = _range.player
+	var angles := PlayerInput.angles_from_direction(point - player.global_position - Vector3.UP * player.eye_height())
+	player.input.yaw_degrees = angles.x
+	player.input.pitch_degrees = angles.y
+
+
+func _range_prompt_frames() -> void:
+	for i in 3:
+		await physics_frame
+	await process_frame
+	await process_frame
 
 
 ## A ragdoll on a small skeleton of its own, in metres under a node scaled

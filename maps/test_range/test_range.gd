@@ -113,6 +113,9 @@ var _numbers: Node3D
 var _label: Label
 var _dummy_label: Label
 var _crosshair: Crosshair
+## The same pickup hint as a match, over the range's own readouts.
+var use_prompt: UsePrompt
+var _pickup_item: String = ""
 var _frames := FrameMeter.new()
 
 ## What the dummy's hitboxes are, for the readout: the game's capsules, or
@@ -233,10 +236,20 @@ func _unhandled_input(event: InputEvent) -> void:
 		toggle_kit()
 
 
+func _physics_process(_delta: float) -> void:
+	_pickup_item = ""
+	if game != null and player != null and player.alive and (shop == null or not shop.menu.is_open()):
+		_pickup_item = str(game.query(&"use_pickup_item", [player.userid], ""))
+
+
 func _process(_delta: float) -> void:
 	_frames.frame(Time.get_ticks_usec())
 	if player == null:
 		return
+	var buying := shop != null and shop.menu.is_open()
+	var carrier := game.roster.player(bomb.carrier) as PlayerSim if bomb != null and bomb.carrier != C4.NOBODY else null
+	var use_line := "" if buying else UsePrompt.line_for(player, bomb, carrier, _pickup_item, game.now_usec())
+	use_prompt.say(use_line, UsePrompt.TAKE_BOMB_COLOUR if use_line == UsePrompt.TAKE_BOMB else Color.WHITE)
 	var camera := get_viewport().get_camera_3d()
 	if camera != null:
 		_crosshair.fov_degrees = camera.fov
@@ -1066,6 +1079,10 @@ func _build_hud() -> void:
 	_crosshair = Crosshair.new()
 	_crosshair.centre_dot = true
 	layer.add_child(_crosshair)
+	# Read its face at startup, before a ground pickup first shows it.
+	HudStyle.face(&"bold")
+	use_prompt = UsePrompt.new()
+	layer.add_child(use_prompt)
 
 	_dummy_label = Label.new()
 	_dummy_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
