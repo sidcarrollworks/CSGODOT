@@ -419,10 +419,11 @@ yaw/pitch/crouch approximation still does not read animated bones.
   CTs take the kit);
 - takes the item a living player looks at when they press E
   (`UserCmd.USE`'s first press, read from `PlayerSim.last_command` through
-  `ItemDrops.use_pressed`): within 80 units of the eyes (CS2's
-  `player_use_radius`), within `USE_CONE_DEGREES` of the aim (a guess),
-  nearest the aim first, one ray on the world layer to see it, and only
-  once anyone may take it. A primary or pistol whose slot is taken swaps:
+  `ItemDrops.use_pressed`): the one Source's use search finds
+  (`UseSearch`: the aim's ray on the item's hull, then boxes swept from
+  the aim, then the nearest to the aim within 36.9 degrees), within CS2's
+  `player_use_radius` 80 measured across from the eyes, with a ray on the
+  world layer to see it, and only once anyone may take it. A primary or pistol whose slot is taken swaps:
   the one there is thrown as `drop` throws it (`item_remove`), the one
   taken has its place, in hand if the old one was (`item_pickup`). An
   item there is no room for (a grenade past the limits, a kit already

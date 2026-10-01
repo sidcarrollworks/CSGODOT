@@ -13,7 +13,7 @@ extends "res://tests/check_suite.gd"
 ## Needs nothing extracted.
 
 ## Where an item lies ahead of a player's feet: past the touch reach
-## (ItemDrops.REACH_ACROSS 32) and within E's (80 from the eyes, 64 up).
+## (ItemDrops.REACH_ACROSS 32) and within E's (80 across, UseSearch).
 const AHEAD := 42.0
 
 var _world: Node3D
@@ -42,7 +42,7 @@ func _initialize() -> void:
 	await _test_swap_rifles()
 	await _test_swap_pistols()
 	await _test_out_of_reach()
-	await _test_outside_the_cone()
+	await _test_widens_up_close()
 	await _test_through_a_wall()
 	await _test_no_room_for_a_grenade()
 	await _test_the_kit()
@@ -112,20 +112,37 @@ func _test_swap_pistols() -> void:
 
 func _test_out_of_reach() -> void:
 	var p := _player("T", Vector3(3000.0, 0.0, 0.0))
-	var item := await _lay("weapon_ak47", p, 0.0, 60.0)
+	var near := await _lay("weapon_glock", p, 0.0, 76.0)
 	_press(p)
-	_check(not item.removed, "nothing %d units ahead on the floor, past E's 80 from the eyes" % 60)
+	_check(near.removed, "E takes a Glock on the floor 76 units across, 99 from the eyes: the reach is across (UseSearch)")
+	_clear_ground()
+	var far := await _lay("weapon_glock", p, 0.0, 88.0)
+	_press(p)
+	_check(not far.removed, "but not one 88 across, past player_use_radius's 80")
 	_clear_ground()
 	_leave(p)
 
 
-func _test_outside_the_cone() -> void:
+## Sid's playtest of 2026-09-30: the nearer the gun, the further off the
+## crosshair it may be.
+func _test_widens_up_close() -> void:
 	var p := _player("T", Vector3(4000.0, 0.0, 0.0))
-	var item := await _lay("weapon_ak47", p, 0.0)
-	# Looking level, straight over it: 56 degrees off the aim.
+	var near := await _lay("weapon_ak47", p, 0.0)
+	# Looking level, straight over it: 56 degrees off the aim, but the box
+	# swept 45 degrees down finds it.
 	p.pitch_degrees = 0.0
 	_press(p)
-	_check(not item.removed, "nothing looked over, outside the cone (ItemDrops.USE_CONE_DEGREES)")
+	_check(near.removed, "E takes a gun %d units ahead with the aim level over it" % AHEAD)
+	_clear_ground()
+	var far := await _lay("weapon_glock", p, 0.0, 70.0)
+	p.pitch_degrees += 3.0
+	_press(p)
+	_check(not far.removed, "but a Glock 70 across only under the crosshair: not with the aim 3 degrees over it")
+	_look_at(p, far.position)
+	var aside := await _lay("weapon_ak47", p, 30.0, 36.0)
+	_look_at(p, far.position)
+	_press(p)
+	_check(far.removed and not aside.removed, "and with the aim on it, it is taken before a nearer gun off the aim")
 	_clear_ground()
 	_leave(p)
 

@@ -12,8 +12,9 @@ extends RefCounted
 ## measured from the item's centre of mass (DroppedItem.position).
 ## Pressing E (UserCmd.USE) takes the item looked at, within reach and in
 ## clear sight, and a gun whose slot is taken takes the place of the one
-## there, which is thrown as a drop throws it (CS2's cone search, player_use_radius
-## 80; issue 3 of reference/playtest-2026-09-25.md). An item there is no
+## there, which is thrown as a drop throws it (Source's use search,
+## UseSearch, with CS2's player_use_radius 80; issue 3 of
+## reference/playtest-2026-09-25.md). An item there is no
 ## room for is refused with item_pickup_failed, as CS2 refuses a fifth
 ## grenade. Near the bomb E is the bomb's: the query use_claimed, which
 ## the bomb answers, is asked first (sv_weapon_swap_difficulty_near_hi_pri).
@@ -53,12 +54,6 @@ const THROW_LIFT := 0.25
 const THROW_TUMBLE := 2.5
 const THROW_TWIST := 1.5
 const DEATH_TUMBLE := 2.0
-## How far from the eyes E reaches: CS2's player_use_radius, 80.
-const USE_REACH := 80.0
-## How far off the aim an item may lie for E to take it, in degrees: CS2
-## searches a cone, of an angle in no file (measure). The nearest to the
-## aim is taken.
-const USE_CONE_DEGREES := 30.0
 ## Whether a gun E takes into a free slot comes into hand: CS2 leaves it to
 ## the client's "Switch to picked up weapon", whose default is in no file
 ## (measure). A gun that takes the place of the one in hand always does.
@@ -196,38 +191,28 @@ func _use(t: SimTick, userid: int, node: Node3D) -> void:
 		take(t, item, userid)
 
 
-## The item E would take: the one nearest the aim, inside USE_CONE_DEGREES
-## of it and USE_REACH of the eyes, with nothing of the world between, that
-## the player may take yet (DroppedItem.can_be_taken_by). Null if none. One
-## ray for each item in the cone, and only on a press.
+## The item E would take (UseSearch): among those the player may take yet
+## (DroppedItem.can_be_taken_by), the one the aim is on, or failing that
+## the nearest to the aim near them, with nothing of the world between.
+## Null if none. Only on a press, and a sight ray only for what a step
+## finds.
 func use_target(t: SimTick, node: Node3D, userid: int) -> DroppedItem:
-	var eyes := _eyes(node)
-	var aim := _aim(node)
-	var least_cos := cos(deg_to_rad(USE_CONE_DEGREES))
-	var candidates: Array[Array] = []
+	var items: Array[DroppedItem] = []
+	var targets: Array[UseSearch.Target] = []
 	for entity in t.entities.all():
 		var item := entity as DroppedItem
 		if item == null or item.entry == null or not item.can_be_taken_by(userid, t.now_usec):
 			continue
-		var to_item := item.position - eyes
-		var distance := to_item.length()
-		if distance > USE_REACH:
-			continue
-		var along := 1.0 if distance < 1e-3 else aim.dot(to_item / distance)
-		if along < least_cos:
-			continue
-		candidates.append([along, distance, item])
-	# Nearest the aim first, then nearest the eyes.
-	candidates.sort_custom(func(a: Array, b: Array) -> bool:
-		return a[0] > b[0] or (a[0] == b[0] and a[1] < b[1]))
-	for candidate in candidates:
-		var item: DroppedItem = candidate[2]
-		# Through PhysicsQueries, as every query is: once Box3D owns the map,
-		# Godot's own space has no walls in it, and a ray cast straight into
-		# it saw every gun through them.
-		if PhysicsQueries.intersect_ray(t.space, PhysicsRayQueryParameters3D.create(eyes, item.position, Hitscan.WORLD_LAYER)).is_empty():
-			return item
-	return null
+		items.append(item)
+		targets.append(UseSearch.Target.new(Transform3D(item.basis, item.position), item.physics().bounds))
+	var space := t.space
+	# Through PhysicsQueries, as every query is: once Box3D owns the map,
+	# Godot's own space has no walls in it, and a ray cast straight into
+	# it saw every gun through them.
+	var clear := func(from: Vector3, to: Vector3) -> bool:
+		return PhysicsQueries.intersect_ray(space, PhysicsRayQueryParameters3D.create(from, to, Hitscan.WORLD_LAYER)).is_empty()
+	var found := UseSearch.find(_eyes(node), _aim(node), node.global_position, _height(node), targets, clear)
+	return items[found] if found >= 0 else null
 
 
 ## Takes the item for the player by E: into a free slot, or in place of
@@ -281,6 +266,14 @@ static func _use_from_command(_userid: int, player: Node3D) -> bool:
 
 static func _eyes(node: Node3D) -> Vector3:
 	return node.global_position + Vector3.UP * (float(node.call(&"eye_height")) if node.has_method(&"eye_height") else 64.0)
+
+
+## The player's hull height, standing or ducked.
+static func _height(node: Node3D) -> float:
+	var config = node.get(&"config")
+	if config is MovementConfig:
+		return config.duck_height if bool(node.get(&"is_ducked")) else config.stand_height
+	return 72.0
 
 
 static func _aim(node: Node3D) -> Vector3:
