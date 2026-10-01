@@ -39,9 +39,14 @@ enum State {
 const NOBODY := -1
 ## No deadline.
 const NEVER := -1
-## Where a standing player's middle is, above their feet: what E looks at
-## on a bot to take the bomb (take_from_bot).
+## Where a standing player's middle is, above their feet.
 const BODY_MIDDLE := 36.0
+## The dropped bomb's box for E (UseSearch), about where it lies: its hull
+## in reference/weapons/physics.csv is 9.3 x 2.8 x 6.9, and which way it
+## lies is not kept, so the long side goes both ways.
+const DROPPED_BOX := AABB(Vector3(-4.65, 0.0, -4.65), Vector3(9.3, 2.8, 9.3))
+## A player's hull across, for E on a bot carrying the bomb.
+const HULL_HALF := 16.0
 const SECOND_USEC := 1_000_000
 
 
@@ -58,6 +63,8 @@ class Actor:
 	## Where they stand, their eyes, and the way they look.
 	var feet: Vector3 = Vector3.ZERO
 	var eyes: Vector3 = Vector3.ZERO
+	## Their hull's height, standing or ducked.
+	var height: float = 72.0
 	var aim: Vector3 = Vector3.FORWARD
 	var on_ground: bool = true
 	## Crouching, or asking to: a plant goes on only crouched, and whoever
@@ -87,6 +94,7 @@ class Actor:
 		actor.is_bot = player.is_bot
 		actor.feet = player.global_position
 		actor.eyes = player.global_position + Vector3.UP * player.eye_height()
+		actor.height = player.config.duck_height if player.is_ducked else player.config.stand_height
 		actor.aim = PlayerInput.aim_direction(player.yaw_degrees, player.pitch_degrees)
 		actor.on_ground = player.on_ground
 		actor.crouching = player.wants_duck or player.is_ducked
@@ -374,7 +382,7 @@ func _tick_dropped(now_usec: int, actors: Array[Actor]) -> void:
 			continue
 		var across := Vector2(actor.feet.x - position.x, actor.feet.z - position.z).length()
 		var up := position.y - actor.feet.y
-		if (across > rules.pickup_reach or absf(up) > rules.pickup_height) and not (actor.use_pressed and _looked_at(actor, rules.use_reach, rules.use_cone_degrees)):
+		if (across > rules.pickup_reach or absf(up) > rules.pickup_height) and not (actor.use_pressed and _use_on_bomb(actor)):
 			continue
 		if across < nearest_distance:
 			nearest = actor
@@ -444,7 +452,7 @@ func claims_use(actor: Actor, carrier_actor: Actor = null) -> bool:
 		State.PLANTED:
 			return actor.team == "CT" and (actor.id == defuser or _looked_at(actor, rules.defuse_reach, rules.defuse_cone_degrees))
 		State.DROPPED:
-			return actor.team == "T" and _looked_at(actor, rules.use_reach, rules.use_cone_degrees)
+			return actor.team == "T" and _use_on_bomb(actor)
 		State.CARRIED:
 			return take_from_bot(actor, carrier_actor)
 	return false
@@ -453,12 +461,11 @@ func claims_use(actor: Actor, carrier_actor: Actor = null) -> bool:
 ## CS2's "[E] Take Bomb" (Panorama_HUD_botid_request_bomb in
 ## csgo_english.txt): whether this actor, pressing E, takes the bomb from
 ## its carrier. A living human terrorist, from a living bot terrorist who
-## carries it and is not planting, looking at the bot's middle within E's
-## reach and cone (C4Rules.use_reach, use_cone_degrees). CS2 has the prompt
-## and its string; the reach, the cone and that the bot's body is what is
-## looked at are inferred, as is the event (bomb_pickup for the one who
-## takes it). There is no sight test yet: no new physics query goes in
-## before the Box3D change (playtest-2026-09-25.md issue 18).
+## carries it and is not planting, with E on the bot's hull (UseSearch, the
+## search E on a gun makes, within C4Rules.use_reach). CS2 has the prompt
+## and its string; that the search is the same and that the bot's hull is
+## what it finds are inferred, as is the event (bomb_pickup for the one who
+## takes it). There is no sight test yet (playtest-2026-09-25.md issue 18).
 func take_from_bot(actor: Actor, carrier_actor: Actor) -> bool:
 	if actor == null or carrier_actor == null or state != State.CARRIED or planting():
 		return false
@@ -466,7 +473,8 @@ func take_from_bot(actor: Actor, carrier_actor: Actor) -> bool:
 		return false
 	if carrier_actor.id != carrier or not carrier_actor.alive or not carrier_actor.is_bot:
 		return false
-	return _looks_at(actor, carrier_actor.feet + Vector3.UP * BODY_MIDDLE, rules.use_reach, rules.use_cone_degrees)
+	var hull := AABB(Vector3(-HULL_HALF, 0.0, -HULL_HALF), Vector3(HULL_HALF * 2.0, carrier_actor.height, HULL_HALF * 2.0))
+	return _use_on(actor, Transform3D(Basis.IDENTITY, carrier_actor.feet), hull)
 
 
 ## Whoever takes the bomb from its bot carrier this tick: the first actor
@@ -476,6 +484,19 @@ func _taker_from(carrier_actor: Actor, actors: Array[Actor]) -> Actor:
 		if actor.use_pressed and take_from_bot(actor, carrier_actor):
 			return actor
 	return null
+
+
+## Whether the actor's E is on the dropped bomb (UseSearch, within
+## C4Rules.use_reach), with no sight test.
+func _use_on_bomb(actor: Actor) -> bool:
+	return _use_on(actor, Transform3D(Basis.IDENTITY, position), DROPPED_BOX)
+
+
+## Whether the actor's E is on a box: UseSearch with the box alone, so
+## nothing else on the ground is weighed against it (near the bomb E is
+## the bomb's, claims_use).
+func _use_on(actor: Actor, body: Transform3D, box: AABB) -> bool:
+	return UseSearch.find(actor.eyes, actor.aim, actor.feet, actor.height, [UseSearch.Target.new(body, box)], Callable(), rules.use_reach) == 0
 
 
 ## Whether the bomb is within reach of the actor's eyes and within

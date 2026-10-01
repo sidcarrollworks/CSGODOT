@@ -77,6 +77,26 @@ The new cluster also holds things the old HUD did not:
 - The fire mode icon (single, burst, full auto) and a reserve-ammo icon per
   magazine type.
 
+## A0.1. Ground-item pickup prompt (2026-10-01)
+
+CS2's [hudreticle.css](https://github.com/SteamDatabase/GameTracking-CS2/blob/master/game/csgo/pak01_dir/panorama/styles/hud/hudreticle.css)
+sets `.targetid` to Stratum2, bold, 22 px, centered in a 1040 by 74 px box
+whose top is at y=580 in Panorama's 1080p layout. It uses additive blending;
+the rule has no text shadow. Both the action and the weapon name inherit
+the bold face. Sid's CS2 screenshot on 2026-10-01 shows the line's baseline
+about 60 px below the crosshair (**measured from the screenshot**).
+
+The game's [English localization](https://github.com/SteamDatabase/GameTracking-CS2/blob/master/game/csgo/pak01_dir/resource/csgo_english.txt)
+has `Panorama_HUD_weaponid_swap` and `Panorama_HUD_weaponid_pickup`:
+the action is `[E] Swap for` or `[E] Pick up`, with the bound use key
+substituted for E. Its HTML colors the action prefix `#6a6156` and the item
+name separately with `weapon_color`; the reference screenshot's name is
+white. Thus the action's softer appearance comes from its color, rather
+than a lighter font weight. `UsePrompt` follows this styling and selects
+the swap wording when a primary or pistol slot is occupied. The dropped
+bomb keeps Sid's requested `Press [E] to pick up bomb` wording; taking the
+bomb from a bot keeps its existing yellow `[E] Take Bomb`.
+
 ## A1. Kill feed (death notices)
 
 **Layout**, from GT `panorama/layout/hud/huddeathnotice.xml`. One notice is a
