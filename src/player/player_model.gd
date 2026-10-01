@@ -142,6 +142,8 @@ var holds_items := false
 var holding: String = ""
 ## Stepped by itself rather than by the engine (step_off_tick_frames).
 var stepped_by_hand := false
+## Stepped by the view, only while shown (step_when_shown).
+var stepped_by_view := false
 ## Plants the feet on the ground under them while it stands there and is
 ## drawn (setup; playtest 2026-09-25 issue 5).
 var foot_plant: FootPlant
@@ -1024,12 +1026,7 @@ func pose_again() -> void:
 ## in every frame had them.
 func step_off_tick_frames() -> void:
 	stepped_by_hand = true
-	if animation_tree != null:
-		animation_tree.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
-	elif animation_player != null:
-		animation_player.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
-	if character_rig != null:
-		character_rig.modifier_callback_mode_process = Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_MANUAL
+	_step_only_when_stepped()
 	var layers := 0
 	for mesh in find_children("*", "MeshInstance3D", true, false):
 		layers |= (mesh as MeshInstance3D).layers
@@ -1042,12 +1039,57 @@ func step_off_tick_frames() -> void:
 	_last_physics_frame = Engine.get_physics_frames()
 
 
+## Steps its animation, and fits its skeleton, only when the view says it
+## is shown (show_frame), by the time since it last stepped: your own body,
+## which only your camera draws, and only as you look down (PlayerView).
+## Out of view it costs nothing a frame, where it walked its clips and
+## fitted its feet, hands, twist bones and arch in every frame, seen or
+## not. It is posed now, so the first frame it is seen shows it standing,
+## not at the bind pose.
+func step_when_shown() -> void:
+	stepped_by_view = true
+	_step_only_when_stepped()
+	pose_now()
+
+
+## A frame of a body stepped by the view (step_when_shown): stepped and
+## fitted by the time since it last was, where shown.
+func show_frame(delta: float, shown: bool) -> void:
+	_unstepped += delta
+	if not shown or not is_animating():
+		return
+	set_fit_flags()
+	step(_unstepped)
+	_unstepped = 0.0
+
+
+## Its animation and its skeleton's fit run only when it is stepped (step),
+## not by themselves in every frame.
+func _step_only_when_stepped() -> void:
+	if animation_tree != null:
+		animation_tree.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+	elif animation_player != null:
+		animation_player.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+	if character_rig != null:
+		character_rig.modifier_callback_mode_process = Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_MANUAL
+
+
+## How crouched its pose stands, 0 to 1, for what of it can be seen
+## (PlayerView.body_in_view): the crouch its moving clips mix by, or 0.5,
+## between, while the one its air clips ease by has yet to catch it up.
+func pose_crouch() -> float:
+	return _crouch if absf(_crouch_eased - _crouch) < 0.05 else 0.5
+
+
 ## Whether a camera drew the body last frame (step_off_tick_frames).
 func is_seen() -> bool:
 	return _on_screen != null and _on_screen.is_on_screen()
 
 
 func _process(delta: float) -> void:
+	# The view steps it, its flags with it (show_frame).
+	if stepped_by_view:
+		return
 	set_fit_flags()
 	# Stopped, a ragdoll has the bones (set_animating).
 	if not stepped_by_hand or not is_animating():
