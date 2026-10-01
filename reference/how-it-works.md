@@ -86,7 +86,10 @@ twist bones, and the hitboxes, gun and eyes moved to the bones) in the
 frames it steps, at once when its bones are set another way (a respawn, a
 ragdoll) or it dies or gets up, and, where the frame before a tick went
 without, as that tick begins, so that every tick meets its hitboxes where
-a fit in every frame had them (`PlayerModel.fit_for_tick`).
+a fit in every frame had them (`PlayerModel.fit_for_tick`). The body you
+look down at, which only your camera draws, is stepped and fitted by the
+view only while the camera can see some of it (`PlayerModel.step_when_shown`,
+`PlayerView.body_in_view`).
 `reference/performance.md` has what every system costs, with ten players and
 twenty, what going online will add, and what to do about it next;
 `scripts/profile_dust2.gd` measures it again.

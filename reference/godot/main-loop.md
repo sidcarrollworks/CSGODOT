@@ -27,12 +27,14 @@ Companion pages: `gdscript.md` (language, containers, numbers), `physics.md`, `e
 Docs: `tutorials/scripting/idle_and_physics_processing.rst`, `classes/class_node.rst`, `classes/class_scenetree.rst`, `classes/class_engine.rst`, `classes/class_mainloop.rst`.
 
 - Each iteration of the main loop runs 0..`max_physics_steps_per_frame` physics steps, then one process (idle) step, then draws (not in headless).
-- One physics step, as the docs describe it:
-  1. `SceneTree.physics_frame` is emitted, "immediately before `_physics_process` is called on every node".
-  2. `_physics_process(delta)` is called on every node that has it enabled. The order is `process_physics_priority` ascending, then tree order (pre-order, parent before children) within one priority.
-  3. The physics server steps (inferred from the docs saying `_physics_process` is "called before every physics step").
-  4. Deferred calls are flushed, then nodes queued with `queue_free` are deleted.
-- One process step: `SceneTree.process_frame` is emitted, then `_process(delta)` runs (ordered by `process_priority`), then `SceneTreeTimer`s are updated "after all nodes", then deferred calls and deletions are flushed.
+- One physics step, as Godot 4.7.2's source runs it (`main/main.cpp` `Main::iteration`, `scene/main/scene_tree.cpp`; read 2026-09-30):
+  1. The physics server syncs and runs its query callbacks (Jolt's `flush_queries`).
+  2. A `SceneTree` script's own `_physics_process` override runs, then `SceneTree.physics_frame` is emitted, "immediately before `_physics_process` is called on every node".
+  3. `_physics_process(delta)` is called on every node that has it enabled. The order is `process_physics_priority` ascending, then tree order (pre-order, parent before children) within one priority.
+  4. After the last node: the process group's call queue (the deferred Skeleton3D updates of skeletons posed in the tick), deferred calls, physics timers and tweens, transform notifications, then the nodes queued with `queue_free` are deleted.
+  5. Then, back in `Main`: the navigation server's step, and the physics server's (Jolt's), with deferred calls flushed round it. A tick's deletions come before the physics server steps, not after.
+- One process step: a `SceneTree` script's own `_process` override, then `SceneTree.process_frame`, then a deferred-call flush, then `_process(delta)` on the nodes (by `process_priority`). After the last node: the process group's call queue, which is where every Skeleton3D an animation changed in the frame is updated (its modifiers, its skin, `skeleton_updated`); then deferred calls (CanvasItem redraws among them), transform notifications, `SceneTreeTimer`s and tweens "after all nodes", and deletions. Then the navigation server's per-frame sync, and `RenderingServer` sync, which runs the RenderingServer calls other threads queued (a threaded load's meshes and textures) on the main thread.
+- Drawing (not headless): `RenderingServer.frame_pre_draw` is emitted, the frame is drawn, presented, and the CPU waits for the frame before it on the GPU (2 frames in flight), then `frame_post_draw` is emitted. After it come the engine's own tail (the GDExtension and script-language frames, `AudioServer`'s update, the debugger's when one is attached: a game run from the editor), then the `Engine.max_fps` limiter's sleep to its deadline, then the window's events and `_input` before the next iteration. With the default thread model (Safe) all of it runs on the main thread. A frame split stamp to stamp in this order: `scripts/watch_game.gd`.
 - `_process` runs "after physics ticks have been processed", so a frame's `_process` sees the result of every tick in that frame.
 - `_process`'s `delta` is capped at `time_scale * max_physics_steps_per_frame / physics_ticks_per_second`. With this project's 16 steps at 64 Hz, that is 0.25 s. `--fixed-fps <n>` makes it constant and turns off real-time sync.
 - `await get_tree().physics_frame` resumes before that tick's `_physics_process` calls, so after one await `GameWorld.step()` has not run yet for that tick. Await two to see one tick's result (inferred; the tests often await twice).
@@ -275,7 +277,7 @@ Docs: `tutorials/editor/command_line_tutorial.rst`, `tutorials/export/exporting_
 
 **Performance** (`classes/class_performance.rst`)
 - `get_monitor(monitor) -> float`. Useful ids: `TIME_FPS` 0, `TIME_PROCESS` 1, `TIME_PHYSICS_PROCESS` 2, `TIME_NAVIGATION_PROCESS` 3, `MEMORY_STATIC` 4, `OBJECT_COUNT` 7, `OBJECT_RESOURCE_COUNT` 8, `OBJECT_NODE_COUNT` 9, `OBJECT_ORPHAN_NODE_COUNT` 10 (debug only), the `RENDER_*` monitors 11-16 (0 in headless), `PHYSICS_3D_*` 20-22, `PIPELINE_COMPILATIONS_*` 34-38.
-- `TIME_*` monitors are in seconds. Some monitors are debug-only or update only once per second.
+- `TIME_*` monitors are in seconds, and each is the longest of the last second, published once a second (4.7.2-stable `main/main.cpp`): they describe no one frame, and read per frame they say nothing new. Some monitors are debug-only.
 - `add_custom_monitor(id, callable, arguments := [], type := MONITOR_TYPE_QUANTITY)`. Types: `MONITOR_TYPE_QUANTITY`, `MONITOR_TYPE_MEMORY`, `MONITOR_TYPE_TIME` (return seconds), `MONITOR_TYPE_PERCENTAGE`. The `type` argument is new in 4.6/4.7. Negative values are clamped to 0.
 
 **DisplayServer** (`classes/class_displayserver.rst`)

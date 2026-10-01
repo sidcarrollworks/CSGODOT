@@ -47,6 +47,9 @@ var one_shots: PackedStringArray = PackedStringArray()
 ## Prefixes of the one-shot clips that hold their last frame when they end
 ## rather than going back to idle: a death.
 var held: PackedStringArray = PackedStringArray()
+## Whether its eyes are aimed as the rig updates: not on a body drawn only
+## into the shadow maps, where no eye is seen (PlayerView's shadow).
+var aims_eyes := true
 
 var _pins: Array[Dictionary] = []
 ## The character's eyes, where a mesh adopted draws them (CharacterEyes),
@@ -324,7 +327,7 @@ func _take_eyes(mesh: MeshInstance3D, rig: Skeleton3D) -> void:
 
 ## A hidden model's eyes wait: they are aimed at the first update after it is shown.
 func _update_eyes() -> void:
-	if _eyes != null and _eyes.has_any() and is_visible_in_tree():
+	if aims_eyes and _eyes != null and _eyes.has_any() and is_visible_in_tree():
 		_eyes.update()
 
 
