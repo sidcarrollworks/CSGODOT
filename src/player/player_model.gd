@@ -144,6 +144,11 @@ var holding: String = ""
 var stepped_by_hand := false
 ## Stepped by the view, only while shown (step_when_shown).
 var stepped_by_view := false
+## Of a body stepped by the view: whether it was shown last frame, and
+## whether a tick has asked its tree for something it has yet to take
+## (show_frame).
+var _shown_before := false
+var _requests_due := false
 ## Plants the feet on the ground under them while it stands there and is
 ## drawn (setup; playtest 2026-09-25 issue 5).
 var foot_plant: FootPlant
@@ -715,6 +720,7 @@ func _apply_body_additives() -> void:
 	add.fadein_time = 0.0 if from_start else ADDITIVE_FADE
 	add.fadeout_time = ADDITIVE_FADE
 	animation_tree.set("parameters/jump_add/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
+	_requests_due = true
 
 
 ## One of CS2's jump additives by name: the start or the land, standing or
@@ -772,6 +778,7 @@ func _apply_locomotion(at: String) -> void:
 		# A new jump: the take-off from its start.
 		_jump_started[at] = _air_action_usec
 		animation_tree.set(parameters.jump_start, 0.0)
+		_requests_due = true
 	var air_wanted := air_state(_air_action, _air_action_usec, SimClock.now_usec(), float(_jump_seconds.get(at, JUMP_SECONDS)))
 	if String(animation_tree.get(parameters.air_state)) != air_wanted:
 		# CS2 goes from the take-off to the landing in 0 s, and a jump
@@ -782,6 +789,7 @@ func _apply_locomotion(at: String) -> void:
 		var ground := _locomotion_node(at, &"ground") as AnimationNodeTransition
 		ground.xfade_time = TO_GROUND if _on_ground else into_air_fade(_air_action)
 		animation_tree.set(parameters.ground_request, wanted)
+		_requests_due = true
 
 
 func _locomotion_node(at: String, node_name: StringName) -> AnimationNode:
@@ -1054,13 +1062,42 @@ func step_when_shown() -> void:
 
 ## A frame of a body stepped by the view (step_when_shown): stepped and
 ## fitted by the time since it last was, where shown.
+##
+## Out of view, what a tick asked of its tree (a take-off, a landing, a
+## fall, the jump's additive) is still taken in its frame, by stepping the
+## tree alone: Godot takes a request only in the step after it, and one
+## left until the next look down, seconds on, replayed the jump then. Out
+## of view, and in the frame it comes back into view, nothing cross-fades:
+## a step longer than what is left of a fade has 4.7.2's Transition blend
+## past both its ends in the step after (it does not clamp the fade), a
+## pose far out of any clip's for a frame.
 func show_frame(delta: float, shown: bool) -> void:
 	_unstepped += delta
-	if not shown or not is_animating():
+	if not is_animating():
 		return
+	if not (shown and _shown_before):
+		_cut_fades()
+	_shown_before = shown
+	if not shown:
+		if _requests_due:
+			_step_mixer(_unstepped)
+			_unstepped = 0.0
+			_requests_due = false
+		return
+	_requests_due = false
 	set_fit_flags()
 	step(_unstepped)
 	_unstepped = 0.0
+
+
+## Every locomotion's cross-fade between the ground and the air cut to
+## nothing (show_frame); the next request sets its own again
+## (_apply_locomotion).
+func _cut_fades() -> void:
+	for at: String in _rings:
+		var ground := _locomotion_node(at, &"ground") as AnimationNodeTransition
+		if ground != null and ground.xfade_time != 0.0:
+			ground.xfade_time = 0.0
 
 
 ## Its animation and its skeleton's fit run only when it is stepped (step),
