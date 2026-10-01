@@ -49,6 +49,9 @@ func attach(game: GameSystems) -> void:
 	# Whether a player is planting or defusing, for whatever runs the
 	# player to hold them still (the contract's holds_still query).
 	game.provide(&"holds_still", holds_still)
+	# Whether a player is made to crouch: the planter (the contract's
+	# crouches query).
+	game.provide(&"crouches", crouches)
 	# Whether E is the bomb's for a player now, which ItemDrops asks before
 	# it takes anything off the ground (the contract's use_claimed query).
 	game.provide(&"use_claimed", use_claimed)
@@ -112,6 +115,11 @@ func use_claimed(userid: int) -> bool:
 ## Whether a player is planting or defusing, which holds them still.
 func holds_still(userid: int) -> bool:
 	return bomb.holds_still(userid)
+
+
+## Whether a player is made to crouch: the planter.
+func crouches(userid: int) -> bool:
+	return bomb.crouches(userid)
 
 
 func save_state() -> Dictionary:

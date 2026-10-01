@@ -416,6 +416,16 @@ own file wherever it has the number; the two agree here), which put the AK
 back to baseline at 736 ms and the M4A1-S at 678, against 867 and 542 by
 eye. The gun still looks ready before it is, and a test holds that.
 
+Since 2026-09-30 a spray recovers on the game's final times as well (R13):
+the recovery time blends from the first to the final one over rounds 2 to 5
+of the recoil index on the rifles, so an AK is gone in 736 ms after one
+round, about 850 after three and about 960 after ten, where the first time
+alone gave about 860 for any spray (the M4A1-S: 679, about 830 after five,
+about 920 after twenty). No one threshold on the box read by eye fits both
+measurements, the AK's later and the M4A1-S's earlier than the model; the
+demo in `reference/research/combat.md` ("R13: recovery after a spray")
+reads the penalty itself each tick and settles it.
+
 The test range prints both states side by side, so the desync is visible
 without a capture: `cone ... ready|recovering` next to `view ... still|moving`.
 

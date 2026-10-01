@@ -43,6 +43,7 @@ func _initialize() -> void:
 	_test_a_site()
 	_test_planting_needs_a_site_the_ground_and_a_terrorist()
 	_test_a_plant()
+	_test_planting_crouches()
 	_test_letting_go_of_a_plant()
 	_test_dropped_on_death()
 	_test_dropped_by_choice()
@@ -73,6 +74,8 @@ func _actor(id: int, team: String, feet: Vector3) -> C4.Actor:
 	actor.feet = feet
 	actor.eyes = feet + Vector3.UP * 64.0
 	actor.aim = Vector3.FORWARD
+	# Crouched, as whoever runs the player crouches a planter (C4.crouches).
+	actor.crouching = true
 	return actor
 
 
@@ -200,6 +203,42 @@ func _test_planting_needs_a_site_the_ground_and_a_terrorist() -> void:
 	_run(bomb, 4.0, [idle])
 	_check(bomb.state == C4.State.CARRIED, "nor standing on one without holding it")
 	_check(bomb.position.is_equal_approx(ON_SITE), "a carried bomb goes where its carrier goes")
+
+
+## The planter is made to crouch for the whole plant, which begins standing
+## and goes on only crouched; a defuser is made to do nothing (Sid,
+## playtest of 2026-09-30).
+func _test_planting_crouches() -> void:
+	var bomb := C4.new()
+	bomb.give_to(T_ID, ON_SITE)
+	_check(not bomb.crouches(T_ID), "carrying the bomb crouches nobody")
+	var planter := _actor(T_ID, "T", ON_SITE)
+	planter.crouching = false
+	planter.plant_held = true
+	_one_tick(bomb, [planter])
+	_check(bomb.planting(), "a plant begins standing")
+	_check(bomb.crouches(T_ID) and not bomb.crouches(CT_ID), "and crouches the planter, nobody else")
+	planter.crouching = true
+	_one_tick(bomb, [planter])
+	_check(bomb.planting(), "crouched, it goes on")
+	bomb.take_events()
+	planter.crouching = false
+	_one_tick(bomb, [planter])
+	_check(not bomb.planting() and not bomb.crouches(T_ID) and bomb.state == C4.State.CARRIED,
+		"standing up again aborts it, and the carrier is free to stand")
+	_check_equal(_names(bomb.take_events()), PackedStringArray(["bomb_abortplant"]), "with bomb_abortplant")
+
+	planter.crouching = true
+	var plant_usec := roundi(bomb.rules.plant_seconds * SECOND)
+	var began := _now + _tick_usec()
+	while _now < began + plant_usec:
+		_one_tick(bomb, [planter])
+	_check(bomb.planted() and not bomb.crouches(T_ID), "planted, nobody is crouched by it")
+	var defuser := _defuser(bomb)
+	defuser.crouching = false
+	defuser.use_held = true
+	_one_tick(bomb, [defuser])
+	_check(bomb.defusing() and not bomb.crouches(CT_ID), "a defuser stands to defuse and is not made to crouch")
 
 
 func _test_a_plant() -> void:
@@ -661,12 +700,17 @@ func _test_on_the_range() -> void:
 		if waited == 16:
 			_check(bomb.planting() and player.held_still and not player.frozen,
 				"holding fire with the bomb in hand plants, holding you still (the holds_still query, not the match's frozen)")
+			_check(player.wants_duck and player.duck_progress > 0.0,
+				"and crouching you, the duck key up (the crouches query)")
 	_check(bomb.planted(), "and in %.1f s it is down" % bomb.rules.plant_seconds)
 	buttons.held = 0
 	await physics_frame
 	await process_frame
 	_check(not player.held_still and player.in_hand_class() != "weapon_c4" and not inventory.has("weapon_c4"),
 		"and you are free to move, the bomb gone from your inventory and your hand (%s in it)" % player.in_hand_class())
+	for i in SimClock.ticks_in(0.5):
+		await physics_frame
+	_check(not player.wants_duck and not player.is_ducked, "and you stand up again once it is down")
 	_check(range_map.bomb_view.visible, "it is drawn where it was planted")
 	_check("planted on A" in range_map.bomb_readout(), "and the readout counts it down (%s)" % range_map.bomb_readout())
 	_check(range_map.log_lines().size() >= 2 and "bomb_planted" in range_map.log_lines()[0],

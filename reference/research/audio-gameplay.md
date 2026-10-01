@@ -743,7 +743,7 @@ on the research branch (95b7d4f, e218e23), so the line numbers hold on both.
 | 3 | `weapon_sounds.gd:25-27` | The M4A1-S plays `m4a1_silencer_01` through the same player, so it carries as far as an AK | Silenced shots silent at 1400, no distant layer; unsilenced M4A1-S uses `m4a1_0N`/`m4a1_us_distant` | Range |
 | 4 | `weapon_sounds.gd:51`, `_fire` polyphony 4 | Shots from one shooter overlap, up to 4 | `instance_limit 1` per shooter on the near layer: each shot stops the last (2 on the distant layer) | Behaviour |
 | 5 | `weapon_sounds.gd:72-75`, `bot.gd:150` | A bot's draw plays spatially, so the player hears an enemy's weapon switch | Draws are `localplayeronly`: nobody else hears them | Missing rule |
-| 6 | `bot.gd:383-384` | A bot's shot only; its reloads, dry fire and pickups are silent | Reloads (1100), dry fire (1100), pickups (1100) are heard by everyone | Missing |
+| 6 | `bot.gd:383-384` | A bot's shot only; its reloads and pickups are silent | Reloads (1100), dry fire (1100), pickups (1100) are heard by everyone | Missing; dry fire done 2026-09-30 (`weapon_fire_on_empty`, `WeaponSounds.dry_fire_click`) |
 | 7 | `weapon_sounds.gd:33, 109-110` | Kill plays `player/bodyshot_kill_01` | No CS2 event uses that file; a body kill is `Player.DeathBody.AttackerFeedback` (the mud thud, 1.0) or the kevlar version | Wrong file |
 | 8 | `weapon_sounds.gd:33, 112` | Helmet headshot plays `player/headshot_armor_01` | That file is in `DeathHeadShotArmor.AttackerFeedback` at volume 0; the heard dink is `headshot_armor_e1` (0.5 damage, 0.6 kill) plus `headshot_armor_flesh` (0.3) | Wrong file |
 | 9 | `weapon_sounds.gd:113-114` | An unarmoured body hit that does not kill plays nothing | `Player.DamageBody.AttackerFeedback` (1.0, pitch 1.3) | Missing |
@@ -892,8 +892,9 @@ exactly as CS2 does for steps at 1250.
    stops the last), two for the distant layer.
 9. `weapon_sounds.gd:72-75`: play the draw only when not `spatial` (only
    the holder hears a draw), so `bot.gd:150` stops announcing bots' switches.
-10. `src/bots/bot.gd:383-384`: bots' reloads, dry fire and pickups should be
+10. `src/bots/bot.gd:383-384`: bots' reloads and pickups should be
     heard (1100 units), as CS2's are; that wants the sim to emit the events.
+    Dry fire is done (2026-09-30): the sim sends `weapon_fire_on_empty`.
 11. `src/combat/bullet_impacts.gd:36, 42-45, 70, 85-86`: the metal stem is
     `physics/metal/bullet_metal_solid_`; add glass
     `physics/glass/glass_impact_bullet`; volume from the event (1.0, wood

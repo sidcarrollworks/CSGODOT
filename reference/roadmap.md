@@ -254,7 +254,7 @@ issue done here and on the page in the same pull request.
 | 17 | Running into a jump snaps to the air pose | *(Remote done, PR #114)* The take-off from CS2's graph | Extract the jump clips; regenerate the tables | 6 |
 | 18 | Nobody seems to get the bomb | *(done 2026-09-26; "[E] Take Bomb" from a bot done 2026-09-28)* A check end to end, CS2's handing it to the human T (`bot_defer_to_human_items`), a cue for who carries it | Rounds as T and CT; CS2's warmup | 16, 15 |
 | 19 | Grenade sounds and effects | The shared sound-event table and player (**done** 2026-09-26: `reference/sounds/`, `SoundEvents`, `default_bus_layout.tres`), then the grenades' sounds (**done** 2026-09-28: `GrenadeSounds`, `FlashMuffle`, the burn), the effects' research (**done** 2026-09-30: `reference/research/grenade-effects.md`); then the effects | Extract the missing sounds; the particles by grenade-effects.md section 9 | 17 to 20 |
-| 20 | A click as the magazine nears empty (CS2's `Default.NearlyEmpty`) | On the shared sound player, the threshold provisional (**done** 2026-09-28) | Measure the threshold in CS2 | After 19's groundwork |
+| 20 | A click as the magazine nears empty (CS2's `Default.NearlyEmpty`) | On the shared sound player, the threshold provisional (**done** 2026-09-28); dry fire on an empty magazine (**done** 2026-09-30) | Measure the threshold in CS2; check dry fire's repeat and auto-reload in CS2 | After 19's groundwork |
 | 21 | Round sounds (start, end, planted, ten seconds, announcer) | The cues from `reference/research/audio-round.md` (**done** 2026-09-28: `RoundSounds`, the freeze beeps and ten-second warning, the bomb's own events) | Extract the UI, music and announcer; listen | 16, after 19's groundwork |
 | 22 | Looking down shows the vest where CS2 shows legs | **Done:** the seen body folds from spine_2 up, the shadow and bots whole | Beside CS2 | 6a |
 | 23 | The distant hill missing (the 3D skybox past the camera's far plane, dropped before its depth squeeze can help) | *(done: `FarMaterials.CULL_BOX`, `far_position`)* Far meshes kept in the frustum, and a squeeze that keeps them inside the far plane | The view beside CS2; the cost | R2 |
@@ -354,6 +354,20 @@ ms down to 3.45 to 3.50 ([skeletons-when-stepped-2026-09-30.md](research/skeleto
 Sid played it at 1080p (2026-09-30): a frame holding a tick 6.36 ms to 5.35,
 the slowest frame of each second 9.7 ms to 7.9 at the median, and half of
 all seconds with it under 8 ms where a quarter had been.
+**The frame split, and the skeletons fitted for nothing (2026-09-30,
+perf/skeletons-nobody-needs, Sid's "measure the rest" and "tackle #1").**
+Every frame split into its parts as played (`scripts/watch_game.gd`;
+`reference/performance.md`, "Where the rest of a frame goes"): the rest
+was work, not the cap's sleep or the GPU: the skeletons fitted after the
+scripts, deferred calls, and the draw's setup and finish. Three of those
+skeletons were fitted in every frame for nothing: the body you look down
+at, now walked only while the camera can see it; its eyes and its
+shadow's twin's, now aimed by neither; and the shut buy menu's agent, now
+not processed. Headless, a frame with a tick fits 0.08 ms less and runs
+0.03 to 0.06 ms less script. No research covered it; the body's reach was
+measured from both agents' skinned vertices (the boxes in
+`PlayerView.SEEN_STANDING` and `SEEN_CROUCHED`, held by
+`tests/run_model_checks.gd`).
 **Next, proposed: the bodies nobody sees, animated on every frame that
 holds no tick (Remote).** Their animation is still stepped in every frame
 without a tick, 8.5 bodies of nine, where a round asks for a body's pose a
@@ -1196,7 +1210,6 @@ grenades.
 
 What a thread can start now: what is left of the inventory (item 12: E to
 swap, guns on the ground as rigid bodies); the bind table (12a), taking over
-the keys the inventory put in `PlayerInput`; from the weapons todo, the
-game's recovery fields (R13); the
+the keys the inventory put in `PlayerInput`; the
 third-person firing layer (item 6), then the shadow's arms (6a); and the
 housekeeping.

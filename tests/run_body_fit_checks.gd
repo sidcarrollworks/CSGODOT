@@ -149,9 +149,9 @@ func _frame(model: PlayerModel, ticked: bool) -> void:
 
 
 ## What the rest is measured against: a skeleton's own default fits it in
-## every frame, pose changed or not. Your own drawn body keeps it
-## (PlayerView._build_body steps nothing by hand), seen in every frame and
-## bent as you look down.
+## every frame, pose changed or not. Your shadow's twin and the view model
+## keep it; your own drawn body is stepped by the view, only while the
+## camera can see it (PlayerModel.step_when_shown).
 func _test_the_default_fits_every_frame() -> void:
 	var model := _stand_in()
 	root.add_child(model)

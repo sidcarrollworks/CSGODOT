@@ -226,7 +226,10 @@ loadout.
 and side's pistol (the Glock-18, the CTs' P2000), 1 to 5 and Q through the command
 (`UserCmd.weapon_select`), each gun its own `Weapon` keeping its rounds, the
 item's draw time before it fires or a pin is pulled, its speed, a switch
-stopping a reload. G sends `drop`, which throws the gun or grenade in hand
+stopping a reload. The Nova, XM1014 and Sawed-Off reload a shell at a time
+(`m_bReloadsSingleShells`, the clip's loop once a shell), and may fire
+through the reload, stopping it, once a shell is in and
+`m_flDisallowAttackAfterReloadStartDuration` has passed. G sends `drop`, which throws the gun or grenade in hand
 from the hand as it was held (`HeldPose`: CS2's hold measured level from
 its third-person clips, turned with the aim's pitch, as CS2's AimCS bends
 the body with it) at CS2's 300 u/s where you look, turning end over end,
