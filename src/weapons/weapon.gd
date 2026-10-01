@@ -406,7 +406,7 @@ func update(dt: float, now_usec: int, state: ShooterState = null) -> void:
 				excess = lerpf(excess, data.scoped.inaccuracy_landing - data.scoped.inaccuracy_standing, share)
 			_inaccuracy = maxf(_inaccuracy, excess)
 		_was_on_ground = state.on_ground
-	_decay_inaccuracy(dt, ducked)
+	_decay_inaccuracy(dt, ducked, recoil_index_at(now_usec))
 
 
 ## Runs the three punch springs forward.
@@ -473,12 +473,15 @@ func _let_go_of_the_trigger() -> void:
 ## Exponential, not linear, for two reasons: it is what the measured accuracy
 ## box does (the steps shrink as it recovers, which is a straight line only on
 ## a log scale), and it is what CS's accuracy penalty does. The time constant
-## comes from the weapon sheet's recovery time, standing or crouched: the
-## penalty is down to a tenth after it.
-func _decay_inaccuracy(dt: float, ducked: bool = false) -> void:
+## comes from the game's recovery time, standing or crouched: the
+## penalty is down to a tenth after it. On the guns with a final time, that
+## time is taken at the recoil index as it stands (WeaponData.recovery_time),
+## so after a long spray an AK recovers more slowly until the index has
+## decayed back.
+func _decay_inaccuracy(dt: float, ducked: bool = false, recoil_index: float = 0.0) -> void:
 	if _inaccuracy <= 0.0:
 		return
-	_inaccuracy *= exp(-dt / data.accuracy_time_constant(ducked))
+	_inaccuracy *= exp(-dt / data.accuracy_time_constant(ducked, recoil_index))
 	if _inaccuracy < data.accuracy_reset_threshold():
 		_inaccuracy = 0.0
 
