@@ -150,6 +150,8 @@ signal hurt(amount: float, zone: StringName, from: Vector3)
 signal shot_traced(shot: Weapon.Shot, result: Hitscan.Result)
 ## The weapon started reloading.
 signal reload_started
+## A shotgun's shell-by-shell reload stopped by a shot, part way.
+signal reload_stopped
 ## Something else is in hand (the inventory's entry), or nothing (null):
 ## the gun, the knife, a grenade, the bomb. It is being drawn.
 signal equipped(entry: Inventory.Entry)
@@ -756,7 +758,7 @@ func _run(cmd: UserCmd, dt: float) -> void:
 	wants_jump = not still and (cmd.held(UserCmd.JUMP) or jump != null)
 	if jump != null and wants_jump:
 		jump_fraction = jump.when
-	wants_duck = cmd.held(UserCmd.DUCK)
+	wants_duck = cmd.held(UserCmd.DUCK) or _crouched_by_the_game()
 
 	if still:
 		# Still, but falling if there is anywhere to fall, and the weapon
@@ -786,6 +788,14 @@ func _held_by_the_game() -> bool:
 	return bool(world.game.query(&"holds_still", [userid], false))
 
 
+## Whether the game makes the player crouch whatever their duck key says:
+## planting the bomb, which the bomb says (the crouches query).
+func _crouched_by_the_game() -> bool:
+	if not is_instance_valid(world):
+		return false
+	return bool(world.game.query(&"crouches", [userid], false))
+
+
 ## Fires every round the command asks for, at the instant and the aim it
 ## asked for it: each press at its own fraction of the tick and its own look
 ## angles, then, while the trigger is held, the next round the moment the
@@ -798,7 +808,12 @@ func _update_weapon(cmd: UserCmd, dt: float, still: bool) -> void:
 		return
 
 	var now := SimClock.tick_end_usec(cmd.tick)
-	weapon.finish_reload_if_due(now)
+	# A magazine is in by the tick's end, ready for a press inside it. A
+	# shotgun's shells go in after the tick's presses, which stop its reload
+	# with only the shells in by their own instant (Weapon.fire).
+	var by_shell := weapon.data.reloads_single_shells
+	if not by_shell:
+		weapon.finish_reload_if_due(now)
 	# The weapon is told about the trigger rather than left to infer it from
 	# the gap since the last round, so the crosshair starts coming home on the
 	# tick the button comes up instead of a round and a quarter later. A press
@@ -835,6 +850,8 @@ func _update_weapon(cmd: UserCmd, dt: float, still: bool) -> void:
 		zoomed = _zoom_by(cmd, zooms, zoomed, fraction)
 		_try_shoot(at, fraction, cmd.yaw_degrees, cmd.pitch_degrees)
 	_zoom_by(cmd, zooms, zoomed, 1.0)
+	if by_shell:
+		weapon.finish_reload_if_due(now)
 
 
 ## The right clicks of zooms from the from-th on that came by until (a
@@ -859,11 +876,17 @@ func _try_shoot(at_usec: int, tick_fraction: float, yaw: float, pitch: float) ->
 	var origin := at + Vector3.UP * eye_height()
 	# A hit's flinch throws the round as far as it throws the view.
 	var thrown := hit_punch.value
+	var reloading := weapon.is_reloading(at_usec)
 	var shot := weapon.fire(
 		at_usec, tick_fraction, origin, yaw - thrown.x, pitch + thrown.y, shooter_state
 	)
 	if shot == null:
+		# Nothing in the magazine: the trigger clicks, once a pull.
+		if weapon.dry_fire(at_usec):
+			_send(&"weapon_fire_on_empty", {"userid": userid, "weapon": weapon.data.item_class}, at_usec)
 		return
+	if reloading:
+		reload_stopped.emit()
 	rounds_fired += 1
 	var item := ItemRegistry.item(weapon.data.item_class)
 	var silenced := item != null and item.silenced_by_default
