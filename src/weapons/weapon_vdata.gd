@@ -80,6 +80,8 @@ static func apply(data: WeaponData, weapon_class: String, alternate: bool = fals
 	# shell at a time it ends near the end of the clip's intro, before the
 	# first shell goes in (reference/weapons/timings.md).
 	data.reload_time = get_value.call("m_flDisallowAttackAfterReloadStartDuration")
+	data.reloads_single_shells = get_value.call("m_bReloadsSingleShells") == 1.0
+	WeaponClips.apply(data)
 
 	var spread: float = get_value.call("m_flSpread")
 	var stand: float = get_value.call("m_flInaccuracyStand")
@@ -92,6 +94,10 @@ static func apply(data: WeaponData, weapon_class: String, alternate: bool = fals
 	data.spread_seed = int(get_value.call("m_nSpreadSeed"))
 	data.recovery_time_crouch = get_value.call("m_flRecoveryTimeCrouch")
 	data.recovery_time_stand = get_value.call("m_flRecoveryTimeStand")
+	data.recovery_time_crouch_final = _or(get_value.call("m_flRecoveryTimeCrouchFinal"), -1.0)
+	data.recovery_time_stand_final = _or(get_value.call("m_flRecoveryTimeStandFinal"), -1.0)
+	data.recovery_transition_start_bullet = _or(get_value.call("m_nRecoveryTransitionStartBullet"), 0.0)
+	data.recovery_transition_end_bullet = _or(get_value.call("m_nRecoveryTransitionEndBullet"), 0.0)
 
 	# The recoil: only the provisional kick of a gun with no pattern reads it
 	# (WeaponData.recoil_magnitude).
@@ -124,6 +130,11 @@ static func apply(data: WeaponData, weapon_class: String, alternate: bool = fals
 
 ## The game's inaccuracy (the tangent of the widest angle a round leaves the
 ## aim by) as the cone's degrees.
+## value, or fallback where the field is missing.
+static func _or(value: float, fallback: float) -> float:
+	return fallback if is_nan(value) else value
+
+
 static func _cone(tangent: float) -> float:
 	return WeaponSheet.cone_degrees(tangent * 1000.0)
 

@@ -187,6 +187,8 @@ func build(side: String) -> bool:
 	_camera.current = true
 	frame(Rect2(Vector2.ZERO, Vector2(1920.0, 1080.0)), Vector2(1920.0, 1080.0))
 	_light()
+	# Built shut, as the menu is.
+	draw_while(false)
 	return true
 
 
@@ -335,10 +337,15 @@ static func frustum(rect: Rect2, screen_size: Vector2) -> Array:
 
 
 ## Starts or stops drawing and animating it: only while the menu is open.
+## Shut, its body is not processed either: its skeleton would otherwise fit
+## itself in every frame (its twist bones, its skin and its eyes), for a
+## picture nobody draws.
 func draw_while(open: bool) -> void:
 	render_target_update_mode = SubViewport.UPDATE_ALWAYS if open else SubViewport.UPDATE_DISABLED
 	if _tree != null:
 		_tree.active = open
+	if body != null:
+		body.process_mode = Node.PROCESS_MODE_INHERIT if open else Node.PROCESS_MODE_DISABLED
 
 
 ## Takes an item in hand, by class, in its pose; an item the graph has no

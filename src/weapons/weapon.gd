@@ -149,11 +149,15 @@ var trigger_held: bool = true:
 		trigger_held = value
 		if not value:
 			_trigger_reset = true
+			_dry_armed = true
 ## Whether the trigger has come up, or gone down afresh, since the last
 ## round. A semi-automatic weapon ("Hold to Shoot: No", the game's
 ## m_bIsFullAuto false) fires only when it has: one round a click, however
 ## long the button is held. An automatic one ignores it.
 var _trigger_reset: bool = true
+## Whether the trigger has come up, or gone down afresh, since the last
+## click on an empty magazine (dry_fire()): one click a pull.
+var _dry_armed: bool = true
 var _model_hold := WeaponData.Punch.new()
 
 ## Where the recoil has pushed the VIEW, in degrees, as (right, up).
@@ -187,6 +191,11 @@ var _impulses := PackedVector2Array()
 var _inaccuracy: float = 0.0
 var _was_on_ground: bool = true
 var _reloading_until_usec: int = -1
+## A shell-by-shell reload (WeaponData.reloads_single_shells): when it
+## started, how many shells it set out to load, and how many are in.
+var _reload_started_usec: int = -1
+var _shells_planned: int = 0
+var _shells_loaded: int = 0
 ## Until when it is being drawn, in simulation time: it fires from then on
 ## (draw()).
 var _drawn_usec: int = 0
@@ -250,7 +259,7 @@ func draw(now_usec: int, seconds: float) -> void:
 ## Put away: a reload under way stops, without its rounds, as a switch
 ## stops one in CS2, and the scope comes down.
 func holster() -> void:
-	_reloading_until_usec = -1
+	_stop_reload()
 	_unscope()
 
 
@@ -371,10 +380,28 @@ func drawn_usec() -> int:
 ## starts again.
 func press_trigger() -> void:
 	_trigger_reset = true
+	_dry_armed = true
+
+
+## The trigger pulled on an empty magazine at now_usec: whether it clicks,
+## CS2's weapon_fire_on_empty. One click a pull, once the gun would have
+## been ready to fire: a press, or a trigger still held after the round
+## that emptied it, a cycle on. Not while it reloads or is drawn. Source's
+## own weapon code (Source SDK 2013, HandleFireOnEmpty) plays the empty
+## sound the same way, once per pull; that CS2 keeps it is inferred.
+func dry_fire(now_usec: int) -> bool:
+	if ammo > 0 or not _dry_armed or is_reloading(now_usec) or is_drawing(now_usec):
+		return false
+	if float(now_usec - _last_shot_usec) / 1_000_000.0 < data.cycle_time:
+		return false
+	_dry_armed = false
+	return true
 
 
 func can_fire(now_usec: int) -> bool:
-	if ammo <= 0 or is_reloading(now_usec) or is_drawing(now_usec):
+	if ammo <= 0 or is_drawing(now_usec):
+		return false
+	if is_reloading(now_usec) and not may_fire_through_reload(now_usec):
 		return false
 	if not data.automatic and not _trigger_reset:
 		return false
@@ -421,7 +448,7 @@ func update(dt: float, now_usec: int, state: ShooterState = null) -> void:
 				excess = lerpf(excess, data.scoped.inaccuracy_landing - data.scoped.inaccuracy_standing, share)
 			_inaccuracy = maxf(_inaccuracy, excess)
 		_was_on_ground = state.on_ground
-	_decay_inaccuracy(dt, ducked)
+	_decay_inaccuracy(dt, ducked, recoil_index_at(now_usec))
 
 
 ## Runs the three punch springs forward.
@@ -488,12 +515,15 @@ func _let_go_of_the_trigger() -> void:
 ## Exponential, not linear, for two reasons: it is what the measured accuracy
 ## box does (the steps shrink as it recovers, which is a straight line only on
 ## a log scale), and it is what CS's accuracy penalty does. The time constant
-## comes from the weapon sheet's recovery time, standing or crouched: the
-## penalty is down to a tenth after it.
-func _decay_inaccuracy(dt: float, ducked: bool = false) -> void:
+## comes from the game's recovery time, standing or crouched: the
+## penalty is down to a tenth after it. On the guns with a final time, that
+## time is taken at the recoil index as it stands (WeaponData.recovery_time),
+## so after a long spray an AK recovers more slowly until the index has
+## decayed back.
+func _decay_inaccuracy(dt: float, ducked: bool = false, recoil_index: float = 0.0) -> void:
 	if _inaccuracy <= 0.0:
 		return
-	_inaccuracy *= exp(-dt / data.accuracy_time_constant(ducked))
+	_inaccuracy *= exp(-dt / data.accuracy_time_constant(ducked, recoil_index))
 	if _inaccuracy < data.accuracy_reset_threshold():
 		_inaccuracy = 0.0
 
@@ -623,8 +653,14 @@ func fire(
 	pitch_degrees: float,
 	state: ShooterState
 ) -> Shot:
+	# A shell-by-shell reload has the shells due by now in (an empty tube's
+	# first one lets it fire), and stops at the shot.
+	if _reload_started_usec >= 0 and is_reloading(now_usec):
+		_load_shells_due(now_usec)
 	if not can_fire(now_usec):
 		return null
+	if is_reloading(now_usec):
+		_stop_reload()
 
 	# The recoil since the last round: the punch decays, and once the trigger
 	# has been off for a little over a cycle, so does the index. Both run on
@@ -709,7 +745,13 @@ func fire(
 func start_reload(now_usec: int) -> bool:
 	if reserve <= 0 or ammo >= data.magazine_size or is_reloading(now_usec) or is_drawing(now_usec):
 		return false
-	_reloading_until_usec = now_usec + int(data.reload_time * 1_000_000.0)
+	if data.reloads_single_shells:
+		_reload_started_usec = now_usec
+		_shells_planned = mini(data.magazine_size - ammo, reserve)
+		_shells_loaded = 0
+		_reloading_until_usec = now_usec + _usec(data.shell_reload_seconds(_shells_planned))
+	else:
+		_reloading_until_usec = now_usec + _usec(data.reload_time)
 	# Reloading takes the scope down, and it stays down.
 	_rezoom_level = 0
 	_zoom_to(0, now_usec)
@@ -718,7 +760,15 @@ func start_reload(now_usec: int) -> bool:
 
 ## Completes a reload whose time has elapsed. Returns true if it did anything.
 func finish_reload_if_due(now_usec: int) -> bool:
-	if _reloading_until_usec < 0 or now_usec < _reloading_until_usec:
+	if _reloading_until_usec < 0:
+		return false
+	if data.reloads_single_shells:
+		var loaded := _load_shells_due(now_usec)
+		if now_usec < _reloading_until_usec:
+			return loaded
+		_stop_reload()
+		return true
+	if now_usec < _reloading_until_usec:
 		return false
 	var wanted: int = data.magazine_size - ammo
 	var taken: int = mini(wanted, reserve)
@@ -728,6 +778,57 @@ func finish_reload_if_due(now_usec: int) -> bool:
 	# CS starts the pattern again on a fresh magazine.
 	_recoil_index = 0.0
 	return true
+
+
+## A gun loading a shell at a time may fire once the reload has run its
+## m_flDisallowAttackAfterReloadStartDuration (WeaponData.reload_time), and
+## the shot stops the reload. A magazine never may.
+func may_fire_through_reload(now_usec: int) -> bool:
+	return data.reloads_single_shells and _reload_started_usec >= 0 \
+		and now_usec >= _reload_started_usec + _usec(data.reload_time)
+
+
+## How many shells the reload under way set out to load, and has loaded;
+## 0 with none under way, or a magazine's.
+func shells_planned() -> int:
+	return _shells_planned if _reload_started_usec >= 0 else 0
+
+
+func shells_loaded() -> int:
+	return _shells_loaded if _reload_started_usec >= 0 else 0
+
+
+## Where the reload clip is at now_usec for the shell-by-shell reload under
+## way (WeaponData.shell_clip_seconds); -1 with none under way.
+func shell_clip_seconds(now_usec: int) -> float:
+	if _reload_started_usec < 0 or not is_reloading(now_usec):
+		return -1.0
+	return data.shell_clip_seconds(float(now_usec - _reload_started_usec) / 1_000_000.0, _shells_planned)
+
+
+## Puts in every shell due by now_usec, one at a time at its moment in the
+## loop, while there is reserve and room. Whether any went in.
+func _load_shells_due(now_usec: int) -> bool:
+	var any := false
+	while _shells_loaded < _shells_planned and ammo < data.magazine_size and reserve > 0 \
+			and now_usec >= _reload_started_usec + _usec(data.shell_in_seconds(_shells_loaded)):
+		ammo += 1
+		reserve -= 1
+		_shells_loaded += 1
+		_recoil_index = 0.0
+		any = true
+	return any
+
+
+func _stop_reload() -> void:
+	_reloading_until_usec = -1
+	_reload_started_usec = -1
+	_shells_planned = 0
+	_shells_loaded = 0
+
+
+static func _usec(seconds: float) -> int:
+	return int(seconds * 1_000_000.0)
 
 
 ## Applies the spread cone to an aim direction. The radius is a uniform

@@ -13,6 +13,7 @@ extends "res://tests/check_suite.gd"
 func _initialize() -> void:
 	_test_chest_folds()
 	_test_look_down()
+	await _test_body_in_view()
 	await _test_arch_bends_forward()
 	await _test_arch_over_the_clips()
 	_finish("body-view")
@@ -151,6 +152,70 @@ func _test_look_down() -> void:
 		ok = ok and top.dot(ahead) < -0.3 and top.y > 0.9 and PlayerView.lean(yaw, 10.0).is_equal_approx(Basis.IDENTITY)
 		ok = ok and is_equal_approx(PlayerView.view_right(yaw).dot(ahead), 0.0) and PlayerView.view_right(yaw).cross(ahead).y > 0.9
 	_check(ok, "looking straight down tips the body's top back, away from where the view faces, whichever way it faces")
+
+
+## Whether the camera can see any of your own body, for whether it is
+## walked (PlayerView.body_in_view): none of it looking ahead, standing or
+## crouched, which is where it saves its frame; all of it looking down; and
+## halfway down a crouch, seen. The boxes it goes by never hold the eyes,
+## or it would always be seen.
+func _test_body_in_view() -> void:
+	var camera := Camera3D.new()
+	camera.fov = ViewModelProjection.vertical_fov(ViewModelProjection.WORLD_FOV)
+	root.add_child(camera)
+	# Scaled as a model is, which the turn must not take up.
+	var body := Node3D.new()
+	root.add_child(body)
+	# In the tree, where a camera has a frustum.
+	await process_frame
+	var seen := func(yaw_degrees: float, pitch_degrees: float, crouch: float) -> bool:
+		var yaw := deg_to_rad(yaw_degrees)
+		var feet := Vector3(300.0, 12.0, -150.0)
+		body.global_position = feet
+		body.rotation = Vector3(0.0, PI + yaw, 0.0)
+		body.scale = Vector3.ONE * MapImporter.SOURCE2_VIEWER_SCALE
+		body.global_basis = PlayerView.lean(yaw, pitch_degrees) * body.global_basis
+		var eye := lerpf(64.0, 46.0, crouch)
+		camera.global_position = feet - Vector3(sin(yaw), 0.0, cos(yaw)) * PlayerView.BODY_SETBACK + Vector3.UP * eye
+		camera.global_rotation = Vector3(deg_to_rad(pitch_degrees), yaw, 0.0)
+		return PlayerView.body_in_view(camera.get_frustum(), body, crouch)
+	var ahead_hides := true
+	var down_shows := true
+	for yaw_degrees: float in [0.0, 90.0, 217.0]:
+		for crouch: float in [0.0, 1.0]:
+			ahead_hides = ahead_hides and not seen.call(yaw_degrees, 0.0, crouch) and not seen.call(yaw_degrees, 20.0, crouch)
+			down_shows = down_shows and seen.call(yaw_degrees, -60.0, crouch) and seen.call(yaw_degrees, -89.0, crouch)
+	_check(ahead_hides, "looking ahead or up, standing or crouched, none of your body is in view, whichever way you face")
+	_check(down_shows, "looking down, standing or crouched, it is")
+	# How far down it stays out of view, by the boxes, at the game's FOV.
+	var hidden_to := [0.0, 0.0]
+	for i in 2:
+		var pitch := 0.0
+		while pitch > -89.0 and not seen.call(30.0, pitch - 1.0, float(i)):
+			pitch -= 1.0
+		hidden_to[i] = pitch
+	_check(hidden_to[0] <= -10.0 and hidden_to[1] <= -5.0,
+		"it stays out of view down to %.0f degrees standing and %.0f crouched" % [hidden_to[0], hidden_to[1]])
+	_check(seen.call(0.0, 0.0, 0.5) and seen.call(0.0, 0.0, 0.2),
+		"halfway down a crouch, where the eyes pass the boxes' tops, it is taken as seen")
+	var clear := true
+	for box: AABB in PlayerView.SEEN_STANDING:
+		clear = clear and not box.has_point(Vector3(0.0, 64.0, -PlayerView.BODY_SETBACK))
+	for box: AABB in PlayerView.SEEN_CROUCHED:
+		clear = clear and not box.has_point(Vector3(0.0, 46.0, -PlayerView.BODY_SETBACK))
+	_check(clear, "the eyes, standing and crouched, are in none of the boxes it goes by")
+	# The box test alone: a box in the middle of the view, one behind the
+	# camera, one well off to its side.
+	camera.global_position = Vector3.ZERO
+	camera.global_rotation = Vector3.ZERO
+	var frustum := camera.get_frustum()
+	var unit: Array[AABB] = [AABB(Vector3(-5.0, -5.0, -5.0), Vector3(10.0, 10.0, 10.0))]
+	_check(PlayerView.any_box_in_view(frustum, unit, Vector3(0.0, 0.0, -100.0), Basis.IDENTITY)
+		and not PlayerView.any_box_in_view(frustum, unit, Vector3(0.0, 0.0, 100.0), Basis.IDENTITY)
+		and not PlayerView.any_box_in_view(frustum, unit, Vector3(400.0, 0.0, -100.0), Basis.IDENTITY),
+		"a box ahead is in view; one behind the camera, or far to its side, is not")
+	camera.free()
+	body.free()
 
 
 ## The stand-in faces -Z with +X its right, as a view at yaw 0 does. In the

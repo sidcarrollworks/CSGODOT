@@ -57,6 +57,7 @@ func _process(_delta: float) -> bool:
 		_test_animation_lasts_as_long_as_measured()
 		_test_the_model_springs_add_up_to_the_measurement()
 		_test_accuracy_resets_as_slowly_as_measured()
+		_test_a_spray_recovers_on_the_final_time()
 		_test_the_gun_looks_ready_before_it_is()
 		_test_spray_peak_survives_a_faster_camera()
 		_test_punch_is_the_same_at_any_frame_length()
@@ -1088,6 +1089,99 @@ func _test_accuracy_resets_as_slowly_as_measured() -> void:
 			"%s crouched is down to a tenth after the sheet's %.3f s (%.3f)"
 				% [data.display_name, data.recovery_time_crouch, left / data.inaccuracy_per_shot]
 		)
+
+
+## Fires rounds with the trigger held, ticking between them the way
+## PlayerController does, and returns the weapon and the time it stopped at.
+func _spray(data: WeaponData, rounds: int, state: Weapon.ShooterState) -> Array:
+	var weapon := Weapon.new(data)
+	weapon.trigger_held = true
+	var now := int(SECOND)
+	var fired := 0
+	while fired < rounds:
+		if weapon.can_fire(now):
+			weapon.fire(now, 1.0, Vector3.ZERO, 0.0, 0.0, state)
+			fired += 1
+			if fired == rounds:
+				break
+		now += int(DT * SECOND)
+		weapon.update(DT, now, state)
+	weapon.trigger_held = false
+	return [weapon, now]
+
+
+## The share of the penalty one tick of recovery leaves, right after rounds.
+func _one_tick_recovers(data: WeaponData, rounds: int, state: Weapon.ShooterState) -> float:
+	var sprayed := _spray(data, rounds, state)
+	var weapon: Weapon = sprayed[0]
+	var now: int = sprayed[1]
+	var before := weapon._inaccuracy
+	now += int(DT * SECOND)
+	weapon.update(DT, now, state)
+	return weapon._inaccuracy / before
+
+
+## R13: CS2 keeps a second, final recovery time per gun and the rounds of the
+## recoil index it blends in over (reference/research/combat.md). A tap
+## recovers on the first time and a spray on the final one.
+func _test_a_spray_recovers_on_the_final_time() -> void:
+	var ak := WeaponLibrary.ak47()
+	_check_near(ak.recovery_time_stand_final, 0.506, "AK's final standing recovery is the game's 0.506 s")
+	_check_near(ak.recovery_time_crouch_final, 0.419728, "and crouched 0.4197 s")
+	_check_near(ak.recovery_transition_start_bullet, 2.0, "blending in from round 2")
+	_check_near(ak.recovery_transition_end_bullet, 5.0, "to round 5")
+	_check_near(ak.recovery_time(false, 1.0), 0.368, "a tap recovers on the first time")
+	_check_near(ak.recovery_time(false, 3.5), (0.368 + 0.506) * 0.5, "halfway through the blend, halfway between")
+	_check_near(ak.recovery_time(false, 30.0), 0.506, "a magazine on the final time")
+	_check_near(ak.recovery_time(true, 30.0), 0.419728, "crouched too")
+
+	var deagle := WeaponLibrary.build("weapon_deagle")
+	_check_near(deagle.recovery_time(false, 10.0), deagle.recovery_time_stand, "a gun whose final time is its first is unchanged")
+	var knife := WeaponData.new()
+	knife.recovery_time_stand = 1.0
+	knife.recovery_time_stand_final = -1.0
+	knife.recovery_transition_end_bullet = 0.0
+	_check_near(knife.recovery_time(false, 10.0), 1.0, "a final time of -1 means the first")
+
+	var standing := _standing()
+	var tick_at := func(time: float) -> float: return exp(-DT * log(10.0) / time)
+	var tap := _one_tick_recovers(ak, 1, standing)
+	_check(
+		absf(tap - tick_at.call(0.368)) < 0.0001,
+		"one AK round recovers on 0.368 s (%.5f against %.5f a tick)" % [tap, tick_at.call(0.368)]
+	)
+	var spray := _one_tick_recovers(ak, 10, standing)
+	_check(
+		absf(spray - tick_at.call(0.506)) < 0.0001,
+		"ten AK rounds recover on 0.506 s (%.5f against %.5f a tick)" % [spray, tick_at.call(0.506)]
+	)
+	var crouched := Weapon.ShooterState.new(0.0, true, true)
+	var low := _one_tick_recovers(ak, 10, crouched)
+	_check(
+		absf(low - tick_at.call(0.419728)) < 0.0001,
+		"crouched, on 0.4197 s (%.5f against %.5f a tick)" % [low, tick_at.call(0.419728)]
+	)
+
+	# On the Negev the final time is shorter: a long burst recovers faster.
+	var negev := WeaponLibrary.build("weapon_negev")
+	var burst := _one_tick_recovers(negev, 15, standing)
+	_check(
+		absf(burst - tick_at.call(negev.recovery_time_stand_final)) < 0.0001,
+		"fifteen Negev rounds recover on its final %.2f s (%.5f a tick)" % [negev.recovery_time_stand_final, burst]
+	)
+
+	# Once the trigger is up the recoil index decays, and the recovery time
+	# with it, back to the first time.
+	var sprayed := _spray(ak, 10, standing)
+	var weapon: Weapon = sprayed[0]
+	var now: int = sprayed[1]
+	for tick in int(round(1.5 / DT)):
+		now += int(DT * SECOND)
+		weapon.update(DT, now, standing)
+	_check(
+		absf(ak.recovery_time(false, weapon.recoil_index_at(now)) - 0.368) < 0.001,
+		"1.5 s after the spray, the AK is back to recovering on its first time"
+	)
 
 
 ## Landing from a jump costs accuracy for a moment, as the sheet's "after

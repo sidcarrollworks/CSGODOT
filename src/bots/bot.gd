@@ -227,6 +227,9 @@ func _ready() -> void:
 	killed.connect(_on_killed)
 	shot_traced.connect(_on_shot_traced)
 	reload_started.connect(_on_reload_started)
+	reload_stopped.connect(func() -> void:
+		if weapon_sounds != null:
+			weapon_sounds.stop_reload())
 
 	# The body, drawn, and its hitboxes are PlayerSim's (wear_body).
 	if model != null:
@@ -842,7 +845,7 @@ func _on_reload_started() -> void:
 	# Heard by those near, as CS2's reloads are (to 1100 units,
 	# reference/research/audio.md).
 	if weapon_sounds != null:
-		weapon_sounds.reload()
+		weapon_sounds.reload_weapon(weapon)
 
 
 ## Dies where the last round landed: the body has gone limp and fallen
