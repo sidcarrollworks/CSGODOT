@@ -11,6 +11,12 @@ extends "res://tests/check_suite.gd"
 var _redraws := {}
 
 
+## A HUD fixture needs a player, but no camera, models or input capture.
+class PromptPlayer extends PlayerController:
+	func _ready() -> void:
+		config = MovementConfig.new()
+
+
 func _initialize() -> void:
 	root.size = Vector2i(1920, 1080)
 	await process_frame
@@ -23,6 +29,7 @@ func _initialize() -> void:
 	await _test_the_blur()
 	await _test_the_team_counter()
 	await _test_the_bomb_carrier()
+	await _test_the_pickup_prompt()
 	await _test_the_alert_lines()
 	await _test_the_buy_menu_agent()
 	await _test_the_weapon_selection()
@@ -398,6 +405,53 @@ func _test_the_bomb_carrier() -> void:
 		"but not when someone else picks it up")
 	for node: Node in [counter, you, mate, enemy, state]:
 		node.free()
+
+
+func _test_the_pickup_prompt() -> void:
+	var you := PromptPlayer.new()
+	root.add_child(you)
+	var game := GameSystems.new()
+	you.userid = game.add_player(you, null, you.inventory)
+	var selected := {"item": "weapon_ak47", "reads": 0}
+	game.provide(&"use_pickup_item", func(_userid: int) -> String:
+		selected.reads += 1
+		return selected.item)
+	var hud := GameHud.new()
+	hud.player = you
+	hud.userid = you.userid
+	hud.game = game
+	hud.set_process(false)
+	hud.set_physics_process(false)
+	root.add_child(hud)
+	hud._physics_process(0.0)
+	hud._process(0.0)
+	_check_equal(hud.use_prompt.text, "Press [E] to pick up AK-47", "a HUD without C4 shows the ground gun prompt")
+	_check_equal(hud.use_prompt.colour, Color.WHITE, "ground pickup text is white")
+	selected.item = "weapon_hegrenade"
+	hud._process(0.0)
+	_check(selected.reads == 1 and hud.use_prompt.text.ends_with("AK-47"), "drawing reads the cached selection without another sight query")
+	hud._physics_process(0.0)
+	hud._process(0.0)
+	_check_equal(hud.use_prompt.text, "Press [E] to pick up High Explosive Grenade", "the next physics frame selects and names the grenade")
+	var menu := BuyMenu.new()
+	hud.buy_menu = menu
+	hud._process(0.0)
+	_check_equal(hud.use_prompt.text, "", "opening the buy menu hides the prompt immediately")
+	hud._physics_process(0.0)
+	_check(selected.reads == 2 and hud._pickup_item.is_empty(), "no sight query while buying")
+	hud.buy_menu = null
+	menu.free()
+	you.alive = false
+	hud._process(0.0)
+	_check_equal(hud.use_prompt.text, "", "a dead player has no pickup prompt")
+	you.alive = true
+	selected.item = ""
+	hud._physics_process(0.0)
+	hud._process(0.0)
+	_check_equal(hud.use_prompt.text, "", "no selected ground item clears the prompt")
+	hud.free()
+	you.free()
+	await process_frame
 
 
 func _test_the_alert_lines() -> void:

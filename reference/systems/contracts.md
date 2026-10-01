@@ -646,6 +646,14 @@ system, in `attach`), `game.query(&"name", [args], fallback)`,
   `sv_weapon_swap_difficulty_near_hi_pri`); a living human T taking it
   from a bot teammate who carries it ("[E] Take Bomb", `C4.take_from_bot`). `ItemDrops` asks it before E
   takes anything off the ground. Fallback false.
+- `use_pickup_item(userid: int) -> String`: the ground item's class that
+  E would successfully take, or "" (`ItemDrops`). The HUD asks on a
+  physics frame, since selection checks world sight through
+  `PhysicsQueries`, then draws the cached item's English name per frame.
+  Uses the pickup's own search, owner delays and inventory eligibility,
+  including primary/pistol swaps; `use_claimed` gives the bomb priority.
+  Selection precedes the room check, so a refused grenade cannot
+  advertise a different item behind it. Fallback "".
 - `holds_still(userid: int) -> bool`: true while that player is planting
   or defusing (the bomb). `player_sim` reads it to stop moving and firing
   without touching `frozen`, which the match owns. Fallback false.

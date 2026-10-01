@@ -76,6 +76,7 @@ func attach(p_game: GameSystems) -> void:
 	game.on_command(&"drop", _on_drop)
 	# A purchase thrown out rather than taken (the economy's buy and throw).
 	game.provide(&"throw_item", throw_item)
+	game.provide(&"use_pickup_item", pickup_item_for_use)
 
 
 func tick(t: SimTick) -> void:
@@ -194,8 +195,8 @@ func _use(t: SimTick, userid: int, node: Node3D) -> void:
 ## The item E would take (UseSearch): among those the player may take yet
 ## (DroppedItem.can_be_taken_by), the one the aim is on, or failing that
 ## the nearest to the aim near them, with nothing of the world between.
-## Null if none. Only on a press, and a sight ray only for what a step
-## finds.
+## Null if none. Also read by the HUD on a physics frame; a sight ray only
+## for what a step finds.
 func use_target(t: SimTick, node: Node3D, userid: int) -> DroppedItem:
 	var items: Array[DroppedItem] = []
 	var targets: Array[UseSearch.Target] = []
@@ -215,6 +216,32 @@ func use_target(t: SimTick, node: Node3D, userid: int) -> DroppedItem:
 	return items[found] if found >= 0 else null
 
 
+## The class of the item E would successfully take, or "". The HUD reads
+## this on a physics frame, where use_target's sight rays are safe, then
+## draws the cached name per frame. Select before checking room: a refused
+## grenade must not advertise a gun behind it that E would never take.
+func pickup_item_for_use(userid: int) -> String:
+	if game.last_tick == null or not _alive(userid) or bool(game.query(&"use_claimed", [userid], false)):
+		return ""
+	var item := use_target(game.last_tick, game.roster.player(userid), userid)
+	return item.entry.item.item_class if can_take(item, userid) else ""
+
+
+## Whether the selected item fits, including a gun replacing its slot.
+## Shared by the pickup and its prompt; selection and owner delays belong
+## to use_target, and refusal still sends its event from take.
+func can_take(item: DroppedItem, userid: int) -> bool:
+	var inventory := game.inventory(userid)
+	if inventory == null or item == null or item.entry == null or item.removed:
+		return false
+	var def := item.entry.item
+	if def.item_class == "item_defuser" and game.roster.team_of(userid) != "CT":
+		return false
+	var swap := def.is_gun and (def.slot == ItemDef.Slot.PRIMARY or def.slot == ItemDef.Slot.PISTOL) \
+		and inventory.item_in(def.slot, def.slot_position) != null
+	return swap or inventory.can_add(def.item_class) == Inventory.Can.OK
+
+
 ## Takes the item for the player by E: into a free slot, or in place of
 ## the gun in its slot, which is thrown from the hand as a drop throws it.
 ## An item there is no room for (a grenade past the limits, a kit already
@@ -229,9 +256,8 @@ func take(t: SimTick, item: DroppedItem, userid: int) -> bool:
 		return false
 	var def := item.entry.item
 	var there := inventory.item_in(def.slot, def.slot_position) if def.is_gun else null
-	var can := inventory.can_add(item_class)
 	var swap := there != null and (def.slot == ItemDef.Slot.PRIMARY or def.slot == ItemDef.Slot.PISTOL)
-	if not swap and can != Inventory.Can.OK:
+	if not can_take(item, userid):
 		t.events.send(&"item_pickup_failed", {"userid": userid, "item": item_class, "reason": FAILED_NO_ROOM,
 			"limit": def.max_carried if def.is_grenade() else 1})
 		return false
