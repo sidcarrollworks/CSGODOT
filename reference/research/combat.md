@@ -91,7 +91,9 @@ here. Nothing on this page comes from Valve's leaked CS:GO source.
   initial time up to StartBullet, the final time from EndBullet, a straight
   blend between. Whether the count is the integer `m_iRecoilIndex` or the
   float `m_flRecoilIndex`, which decays between taps, is unknown (both are
-  weapon state, SCH `CCSWeaponBase`).
+  weapon state, SCH `CCSWeaponBase`). The build (2026-09-30) blends on the
+  float index as it decays (`WeaponData.recovery_time`), so after a spray
+  the recovery slides back to the first time as the index falls.
 - **Only ten guns use it.** Every other gun's final time equals its
   initial, so its round numbers do nothing (WV):
 

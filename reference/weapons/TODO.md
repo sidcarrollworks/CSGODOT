@@ -234,11 +234,16 @@ Roughly in order; L1 to L3 can start at once.
   item 7): every weapon goes through walls by its own `m_flPenetration`.
 - [ ] **R12. HUD per weapon.** Ammo and reserve, the mode, the weapon's icon
   once extracted.
-- [ ] **R13. Cross-check the sheet against CS2's own weapons.vdata** *(the check is done, locally, 2026-09-22: `vdata.md` has it, 914 values agree, and the one real difference, the Desert Eagle's jump inaccuracy, is flagged to Sid; what is left is bringing the fields in)*, which
+- [x] **R13. Cross-check the sheet against CS2's own weapons.vdata** *(the check is done, locally, 2026-09-22: `vdata.md` has it, 914 values agree, and the one real difference, the Desert Eagle's jump inaccuracy, is flagged to Sid; what is left is bringing the fields in)*, which
   SteamDatabase's GameTracking-CS2 repository publishes decompiled. Bring in
   what the sheet lacks: the slower recovery after the first rounds of a
   spray (`_final` recovery times and the rounds they blend over) and spread
   apart from inaccuracy. Flag any figure where the two disagree to Sid.
+  *Done 2026-09-30: the spread is kept apart (`WeaponData.spread`), and the
+  final recovery times blend in over their rounds on the recoil index
+  (`WeaponData.recovery_time`). Whether CS2 counts the decaying float index or
+  whole rounds, and the curve's exact shape, wait on the demo in
+  `reference/research/combat.md` ("R13: recovery after a spray").*
 
 ## Not in the sheet
 

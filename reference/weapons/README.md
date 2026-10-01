@@ -155,8 +155,10 @@ standing, 0.420 crouched, from round 2 to 5), spread apart from inaccuracy,
 the scopes' zoom levels and times, the deploy time, how soon a reload lets
 the gun fire again, the muzzle's position, the tracers, the burst timing,
 and Random recoil's angle and size (R6). Of these the firing model uses the
-spread (inside every inaccuracy total) and when a reload lets the gun fire
-again (`reload_time`), and the tracers (`src/effects/`) use the tracer
+spread (inside every inaccuracy total), the final recovery times and the
+rounds they blend over (`WeaponData.recovery_time`: a tap recovers on the
+first time, a spray on the final one, blended on the recoil index as it
+decays), and when a reload lets the gun fire again (`reload_time`), and the tracers (`src/effects/`) use the tracer
 effect, its frequency and the range; the muzzle's position is where the
 model's own muzzle attachment is from the eye, which the effects checks hold
 `Muzzles` to. The rest are not used yet. For everything the two

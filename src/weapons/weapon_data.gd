@@ -507,10 +507,26 @@ const UNZOOMED_FOV := ViewModelProjection.WORLD_FOV
 ## before it is. A player who taps on the animation is early.
 ##
 ## Sid measured the AK back to baseline at 867 ms and the M4A1-S at 542 ms
-## off weapon_debug_spread_show on 2026-09-22. Taken at a hundredth, the
-## sheet gives 736 and 678.
+## off weapon_debug_spread_show on 2026-09-22. Taken at a hundredth, one
+## round's penalty is gone in 736 and 678. No one threshold fits both (the
+## AK's is late and the M4A1-S's early), so the box read by eye does not
+## pin the curve; a demo's accuracy_penalty does (research/combat.md, R13).
+## After a spray the final times below take over.
 @export var recovery_time_stand: float = 0.368
 @export var recovery_time_crouch: float = 0.305257
+
+## The recovery times once a spray has gone on, standing and crouched
+## (CS2's m_flRecoveryTimeStandFinal and ...CrouchFinal), and the rounds of
+## the recoil index they blend over (m_nRecoveryTransitionStartBullet and
+## ...EndBullet). Valve split recovery this way in CS:GO's "Second Shot"
+## update (3 August 2016) so a short burst recovers faster than a long spray;
+## reference/research/combat.md has the fields and the ten guns whose final
+## time differs. Negative means the same as the first time (the knife, the
+## grenades and the bomb carry -1).
+@export var recovery_time_stand_final: float = -1.0
+@export var recovery_time_crouch_final: float = -1.0
+@export var recovery_transition_start_bullet: float = 0.0
+@export var recovery_transition_end_bullet: float = 0.0
 
 
 
@@ -725,21 +741,40 @@ func _damping_ratio(ratio: float = -1.0) -> float:
 	)
 
 
-## Time constant of the accuracy decay, in seconds, standing or crouched.
+## The recovery time at a recoil index, standing or crouched: the first
+## time up to the transition's start round, the final time from its end
+## round, a straight blend between. Inferred from the fields' names and
+## Valve's note, as is counting on the recoil index as it decays between taps
+## rather than on whole rounds; a CS2 demo settles both
+## (reference/research/combat.md, R13).
+func recovery_time(ducked: bool = false, recoil_index: float = 0.0) -> float:
+	var first := recovery_time_crouch if ducked else recovery_time_stand
+	var final := recovery_time_crouch_final if ducked else recovery_time_stand_final
+	if final < 0.0 or final == first:
+		return first
+	var start := recovery_transition_start_bullet
+	var end := recovery_transition_end_bullet
+	if end <= start:
+		return first if recoil_index < start else final
+	return lerpf(first, final, clampf((recoil_index - start) / (end - start), 0.0, 1.0))
+
+
+## Time constant of the accuracy decay, in seconds, standing or crouched, at
+## a recoil index (recovery_time).
 ##
 ## Exponential rather than linear, which is both what the measured curve looks
 ## like on a log scale and what CS's accuracy penalty does: the recovery time
 ## is when it is down to a tenth. A longer spray therefore takes
-## proportionally longer.
-func accuracy_time_constant(ducked: bool = false) -> float:
-	var recovery := recovery_time_crouch if ducked else recovery_time_stand
-	return maxf(recovery, 0.0001) / log(10.0)
+## proportionally longer, and on the guns whose final time is longer, longer
+## again.
+func accuracy_time_constant(ducked: bool = false, recoil_index: float = 0.0) -> float:
+	return maxf(recovery_time(ducked, recoil_index), 0.0001) / log(10.0)
 
 
 ## How long one round's accuracy penalty takes to be gone, below the reset
-## threshold, in seconds.
-func accuracy_reset_time(ducked: bool = false) -> float:
-	return accuracy_time_constant(ducked) * -log(SETTLE_FRACTION)
+## threshold, in seconds, at the recoil index that round leaves.
+func accuracy_reset_time(ducked: bool = false, recoil_index: float = 1.0) -> float:
+	return accuracy_time_constant(ducked, recoil_index) * -log(SETTLE_FRACTION)
 
 
 ## Below this fraction of one shot's penalty the weapon counts as fully

@@ -86,6 +86,44 @@ went without (two frames in a row with a tick, below about 128 frames a
 second), not in every frame. A fit is about 80 us of a body, the modifiers
 most of it.
 
+Since perf/skeletons-nobody-needs (2026-09-30) the body you look down at
+is walked and fitted only while the camera can see some of it, which at
+the game's field of view is from 21 degrees below level standing and 16
+crouched; neither it nor its shadow's twin aims eyes; and the buy menu's
+agent is not processed while the menu is shut. Headless with nine bots,
+the skeletons fitted after a frame's scripts are 0.19 to 0.20 ms to 0.11
+in a frame with a tick, and its scripts 0.03 to 0.06 ms less.
+
+**Where the rest of a frame goes (2026-09-30).** Each frame split stamp to
+stamp in Godot 4.7.2's own order (`reference/godot/main-loop.md`, "One
+frame, in order"), the draw lined up by the render device's timestamps,
+while Sid played competitive at 1080p (a 1920x1080 window, nine bots, the
+224 cap; `scripts/watch_game.gd`), the seconds his PC was busy with other
+work left out and the watching script's own time taken off; in ms:
+
+| Part | No tick, under 5 ms | A tick, 6 to 8 ms | No tick, 10 ms or more | A tick, 10 ms or more |
+|---|---|---|---|---|
+| The wait before it: the cap's sleep, the window's events, input | 0.72 | 0.47 | 0.82 | 0.66 |
+| The tick | 0 | 2.18 | 0 | 3.67 |
+| The frame's scripts | 1.25 | 1.44 | 3.54 | 2.75 |
+| Skeletons fitted, after the scripts | 0.72 | 0.42 | 1.12 | 0.55 |
+| Deferred calls | 0.06 | 0.32 | 0.78 | 1.46 |
+| The draw's setup: the scene's update, SubViewports | 0.09 | 0.13 | 1.51 | 0.40 |
+| The root viewport's render | 0.85 | 1.04 | 3.75 | 1.76 |
+| The draw's finish: Vulkan's commands recorded, submit, present, the frame before's fence | 0.46 | 0.60 | 0.65 | 0.76 |
+
+What earlier measurements here call the rest (a frame less its ticks, its
+scripts and the viewport's render time) is mostly the skeletons fitted
+after the scripts, deferred calls, and the draw's setup and finish: work,
+not waiting. The cap's sleep is a few tenths of a millisecond; nothing
+waits on the GPU (1.5 to 1.6 ms a frame throughout) or on presenting; a
+pipeline was compiled in almost no frame. The viewport's render time as
+the RenderingServer gives it is one or two frames old by a frame's end
+(`reference/godot/rendering.md`, Measuring), so a frame's render spike was
+counted in its rest; lined up, the slowest frames without a tick are their
+render (3.75 ms against 0.85) and their scripts. The frames of 6 to 8 ms
+that hold a tick, most of those over 6 ms, are every part a little bigger.
+
 Drawn, and so not in these tables: the two lamps down dust2's lower
 tunnels (`MapLighting.add_lamps`, 2026-09-24) are Godot spot lights with
 shadows, the map's only lights besides the sun. Godot renders a positional
@@ -380,6 +418,7 @@ workers). No buy or pickup in a match reads a model any more.
 | Everyone's command asked for before anyone runs, and the bots thinking theirs out on worker threads, all at once (`GameWorld.commands_for`) | perf/bots-think-together | the seeded ten-player tick 2.03 ms to 2.02, its 95th 2.92 to 2.68; with nineteen bots in dust2's match a mean of 4.41 ms to 4.11 and a 95th of 6.93 to 6.48; the same commands as thinking in turn (`tests/run_bot_think_checks.gd`, `tests/run_dust2_think_checks.gd`) |
 | The movement's step in native code, the script kept as the reference and every check file holding the two to the same body to the last bit (`native/src/hull_mover.cpp`, `PlayerBody._step`) | perf/native-movement | a walking bot's movement 102 to 107 us a tick to 67 to 70, its whole run 139 to 146 to 103 to 107; the seeded ten-player tick 1.8 to 1.95 ms to 1.55 to 1.7, its 95th 2.5 to 2.8 to 2.1 to 2.4; the worst ticks, which are deaths and rounds, as they were (`reference/research/native-movement-2026-09-29.md`) |
 | A body that steps by hand fits its skeleton by hand, when it steps (`Skeleton3D` MANUAL, `PlayerModel._fit`): not in a frame it did not step, nor while it lies at rest; at a tick's start where the frame before went without (`fit_for_tick`) | perf/skeletons-when-stepped | a frame holding a tick fitted all ten skeletons again to the pose they had; now the bodies seen. Headless with nine bots, its fitting 0.78 to 0.87 ms to 0.01, its work after the scripts 1.05 to 1.15 ms to 0.21 to 0.26, fits a second 1,450 to 803; at 90 frames a second every frame's work 3.55 to 3.87 ms to 3.45 to 3.50 (`reference/research/skeletons-when-stepped-2026-09-30.md`) |
+| The body you look down at walked and fitted only while the camera can see some of it (`PlayerModel.step_when_shown`, `PlayerView.body_in_view`), neither it nor its shadow's twin aiming eyes (`RigModel.aims_eyes`), and the buy menu's agent not processed while the menu is shut (`BuyMenuAgent.draw_while`) | perf/skeletons-nobody-needs | three skeletons fitted in every frame for nothing. Headless with nine bots, a frame's skeletons fitted after its scripts 0.19 to 0.20 ms to 0.11 where it holds a tick, its scripts 0.03 to 0.06 ms less; the body is out of view down to 21 degrees below level standing, 16 crouched |
 | The foot plant's floor normals eased with `lerp`, not `slerp` | playtest issue 26 | an error printed a frame for every foot on ground a hair off level, 1,000 a minute with five bots; none |
 | Every gun's spray pattern solved as the registry builds it (`WeaponData.recoil_impulses`) | playtest issue 14 | 15 more guns read a pattern, and the first of each built in a tick (a buy, a pickup) would have solved it there: the M249's 100 rounds 33 to 39 ms, the Negev's 150 36 to 41, the Bizon 17 to 20; now 0.05 ms, and `ItemRegistry.load_all` 88 ms to about 320 (headless, a cloud container, three runs each) |
 
@@ -486,6 +525,22 @@ air strafing most), and run_tests.gd holds it at any tick rate.
    on a server, only their clips (their models are only seen).
 
 ## Measuring it again
+
+A game as it is played, every frame split into its parts (above, "Where
+the rest of a frame goes"), on Sid's machine:
+
+    godot --path . --script scripts/watch_game.gd -- --mode competitive --window=1920x1080 --frames=frames.csv
+
+It prints a line a second and, at the end, the run, its slow frames each
+split, and the frames by length with each part's mean; `--frames` writes
+every frame's row. Two things it found about measuring here: a `print()`
+costs about a millisecond on Sid's machine, so a script that prints a
+line a second puts that into one frame a second, the very frame a
+slowest-of-each-second figure picks (its own time is taken off at the
+end); and anything else the PC does shows in every part of a frame, the
+watcher's own 0.07 ms included, which is how to find such stretches and
+leave them out. Ask whether Sid was at the controls throughout, and
+whether noclip was used, before reading a run as play.
 
 Frames in play, against CS2's, on Sid's machine (it draws):
 
