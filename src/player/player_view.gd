@@ -270,7 +270,7 @@ func _on_knife_swung(swing: Knife.Swing) -> void:
 	if view_model != null:
 		view_model.play(swing.clip(), ViewModel.SHOOT_BLEND, 1.0, true)
 	if body_shadow != null:
-		body_shadow.knife_attack(swing.heavy, swing.met())
+		body_shadow.knife_attack(swing.heavy, swing.met(), swing.variation)
 
 
 func _on_shot_traced(shot: Weapon.Shot, result: Hitscan.Result) -> void:

@@ -470,13 +470,16 @@ round in competitive.
 first person. The knife is usable (`src/weapons/knife.gd`, run by
 `PlayerSim._update_knife`, checked by `tests/run_knife_checks.gd`): left
 slashes and right stabs, held to repeat, traced on the tick from the eye
-against the guns' hitboxes (a line, then a ring out to a 16-unit box round
-its end), enemies before teammates, backstabs from behind, damage through
+against the guns' hitboxes (a line, then a constant-width box sweep with
+16-unit half-size), enemies before teammates, backstabs from behind, damage through
 `DamageInfo.deal` with vdata's armour ratio and flinch, `weapon_fire` for
 each swing, the first- and third-person attack clips and CS2's knife sound
-events. Its damage, reach, swing rates, run window and backstab angle are
-the community's figures or guesses, named in `Knife`, until K1 measures
-them. Nobody is handed the Zeus yet.
+events. Sid's October 1 feedback sets the forward reach to 48 for a slash
+and 32 for a stab. The hull's motion is shortened by its extent along the
+aim so widening does not add forward reach. Airborne attacks use the same
+trace, including the hull's full width near the eye. Damage, hull width,
+swing rates, run window and backstab angle remain community figures or
+guesses until K1 measures them. Nobody is handed the Zeus yet.
 
 **Remote:** the Zeus as a short-range hitscan with its recharge; the knife's
 numbers once K1 has measured them.
@@ -488,9 +491,9 @@ numbers once K1 has measured them.
   and the backstab's angle (`reference/research/combat.md` 2 says how).
   Each goes into `Knife`'s constant of the same name, and
   `tests/run_knife_checks.gd` follows it. Then play the knife beside CS2:
-  that each swing plays the right third-person attack (found by name in
-  `knife/_default_knife`, whose names have not been read) and sounds
-  right.
+  that each swing plays and sounds right. Third-person clip selection now
+  follows the extracted `worldmodel_knife` graph's attack mapping
+  (`reference/research/combat.md` 2), tested over ground and air locomotion.
 - **K2.** *(done 2026-09-23: `scripts/extract_assets.sh equipment` and
   `sounds`, listed in `reference/weapons/equipment.md`)* Extract the default
   knives (T and CT) and the Zeus, with their animations and sounds.

@@ -8,8 +8,8 @@ extends RefCounted
 ## The left button slashes (a light attack) and the right stabs (a heavy
 ## one), each again for as long as it is held. A swing is traced the moment
 ## it is made, from the eye along the aim: a line first, and where the line
-## meets nobody, a ring of lines out to the edges of a box round its end, as
-## CS's knife falls back to a hull trace (reference/research/combat.md 2).
+## meets nothing, a constant-width box swept along the aim. Its front
+## stays within the attack's reach, including when aimed up or down.
 ## Both meet the hitboxes the guns' rounds meet. Enemies are looked for
 ## first, through teammates; a teammate is hit only when no enemy is in
 ## reach (Valve's notes of 2 November 2023). From behind a swing is a
@@ -37,10 +37,8 @@ const HEAVY_DAMAGE := 65.0
 const LIGHT_BACKSTAB_DAMAGE := 90.0
 const HEAVY_BACKSTAB_DAMAGE := 180.0
 
-## How far each attack reaches from the eye, in units, and the half-width of
-## the box a swing that meets nothing on its line is widened to. 48 and 32
-## are the figures usually given, a line then a box; they are from memory
-## and probably trace back to Valve's code (combat.md 2): K1.
+## Forward reach from the eye, confirmed by Sid's PR #165 feedback, and
+## the half-size of the fallback hull. Its width is still inferred (K1).
 const LIGHT_REACH := 48.0
 const HEAVY_REACH := 32.0
 const WIDEN := 16.0
@@ -149,6 +147,7 @@ static func all_sound_events() -> PackedStringArray:
 ## The knife's numbers from the game's file, as a gun's are read: what a
 ## hit's armour and tagging go by (HitTarget.last_hit_weapon). Read once.
 static var _data: WeaponData
+static var _hull: BoxShape3D
 
 
 static func data() -> WeaponData:
@@ -221,26 +220,9 @@ static func damage_for(heavy: bool, first: bool, backstab: bool) -> float:
 	return LIGHT_FIRST_DAMAGE if first else LIGHT_DAMAGE
 
 
-## The lines a swing is traced along, from the eye: its own first, then the
-## ring out to the box round its end (WIDEN each way, across and up).
-static func lines(origin: Vector3, direction: Vector3, reach: float) -> PackedVector3Array:
-	var end := origin + direction * reach
-	var across := direction.cross(Vector3.UP)
-	if across.length_squared() < 1e-6:
-		across = Vector3.RIGHT
-	across = across.normalized()
-	var up := across.cross(direction).normalized()
-	var ends := PackedVector3Array([end])
-	for x in [-1.0, 0.0, 1.0]:
-		for y in [-1.0, 0.0, 1.0]:
-			if x != 0.0 or y != 0.0:
-				ends.append(end + across * (x * WIDEN) + up * (y * WIDEN))
-	return ends
-
-
 ## Traces the swing (begun with begin()) from origin along direction, and
-## deals its damage to whoever it meets: the nearest enemy hitbox on its
-## line or, meeting none, on its ring; a teammate's the same way only when
+## deals its damage to whoever it meets: the first enemy on its line or,
+## meeting nothing, in its hull; a teammate's the same way only when
 ## no enemy is in reach, at team_damage_scale. exclude is the attacker's own
 ## hull and hitboxes, teammates the hitboxes of their side's. The damage
 ## goes through DamageInfo.deal on events (null for none), so a kill is
@@ -253,20 +235,19 @@ static func swing(
 	begun.origin = origin
 	begun.direction = direction.normalized()
 	var reach := HEAVY_REACH if begun.heavy else LIGHT_REACH
-	var ends := lines(origin, begun.direction, reach)
 	var past_teammates := exclude.duplicate()
 	past_teammates.append_array(teammates)
-	var met := _nearest_body(space, origin, ends, past_teammates)
-	if met.is_empty() and not teammates.is_empty():
-		met = _nearest_body(space, origin, ends, exclude)
+	var met := _trace(space, origin, begun.direction, reach, past_teammates)
+	if not met.get("collider") is Hitbox and not teammates.is_empty():
+		var with_teammates := _trace(space, origin, begun.direction, reach, exclude)
+		if with_teammates.get("collider") is Hitbox:
+			met = with_teammates
 	if met.is_empty():
-		# Nobody: the wall on its own line, if one is in reach.
-		var line := PhysicsRayQueryParameters3D.create(origin, ends[0], Hitscan.WORLD_LAYER, exclude)
-		var wall := PhysicsQueries.intersect_ray(space, line)
-		if not wall.is_empty():
-			begun.outcome = Outcome.WALL
-			begun.position = wall["position"]
-			begun.normal = wall["normal"]
+		return begun
+	if not met["collider"] is Hitbox:
+		begun.outcome = Outcome.WALL
+		begun.position = met["position"]
+		begun.normal = met["normal"]
 		return begun
 	var hitbox := met["collider"] as Hitbox
 	begun.outcome = Outcome.PLAYER
@@ -302,28 +283,66 @@ static func swing(
 	return begun
 
 
-## The nearest hitbox on any of the lines, walls in the way: the swing's own
-## line alone if it meets one, as the hull trace is only the fallback.
-## Empty for none.
-static func _nearest_body(
-	space: PhysicsDirectSpaceState3D, origin: Vector3, ends: PackedVector3Array, exclude: Array[RID]
+## The line wins, including a wall. The fallback keeps its full width
+## beside the eye instead of narrowing to the eye as a fan of rays does.
+static func _trace(
+	space: PhysicsDirectSpaceState3D, origin: Vector3, direction: Vector3, reach: float, exclude: Array[RID]
 ) -> Dictionary:
+	var line := PhysicsRayQueryParameters3D.create(origin, origin + direction * reach, Hitscan.WORLD_LAYER | Hitbox.LAYER, exclude)
+	line.collide_with_areas = true
+	var met := PhysicsQueries.intersect_ray(space, line)
+	if not met.is_empty():
+		return met
+	if _hull == null:
+		_hull = BoxShape3D.new()
+		_hull.size = Vector3.ONE * (WIDEN * 2.0)
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = _hull
+	query.transform = Transform3D(Basis.IDENTITY, origin)
+	query.collision_mask = Hitscan.WORLD_LAYER | Hitbox.LAYER
+	query.collide_with_areas = true
+	query.exclude = exclude
+	# Sweeps ignore initial overlap on Godot's physics. Treat it explicitly
+	# on both backends, with walls taking priority over an overlapping body.
 	var nearest := {}
 	var nearest_at := INF
-	for i in ends.size():
-		var query := PhysicsRayQueryParameters3D.create(origin, ends[i], Hitscan.WORLD_LAYER | Hitbox.LAYER, exclude)
-		query.collide_with_areas = true
-		query.collide_with_bodies = true
-		var met := PhysicsQueries.intersect_ray(space, query)
-		if met.is_empty() or not met["collider"] is Hitbox:
+	for overlap in PhysicsQueries.intersect_shape(space, query, 128):
+		var collider := overlap.get("collider") as CollisionObject3D
+		if not is_instance_valid(collider):
 			continue
-		var at := origin.distance_to(met["position"])
-		if at < nearest_at:
-			nearest = met
-			nearest_at = at
-		if i == 0:
-			break
-	return nearest
+		if not collider is Hitbox:
+			overlap["position"] = origin
+			overlap["normal"] = -direction
+			return overlap
+		var distance := origin.distance_squared_to(collider.global_position)
+		if distance < nearest_at or (distance == nearest_at and collider.get_instance_id() < (nearest["collider"] as Hitbox).get_instance_id()):
+			nearest = overlap
+			nearest_at = distance
+	if not nearest.is_empty():
+		var hitbox := nearest["collider"] as Hitbox
+		# Overlaps have no contact point: this presentation point is the
+		# chosen hitbox's centre; flat knife damage does not depend on it.
+		nearest["position"] = hitbox.global_position
+		nearest["normal"] = (origin - hitbox.global_position).normalized()
+		return nearest
+	# An axis-aligned cube extends this far along the aim. Back its center
+	# off so widening adds no forward reach beyond the requested 48/32.
+	var support := WIDEN * (absf(direction.x) + absf(direction.y) + absf(direction.z))
+	query.motion = direction * maxf(0.0, reach - support)
+	met = PhysicsQueries.shape_cast(space, query)
+	if met.is_empty():
+		return {}
+	# Godot's get_rest_info returns an instance id and point; Box3D also
+	# returns the collider and position. Keep the knife's result the same.
+	var collider: Object = met.get("collider")
+	if collider == null and met.has("collider_id"):
+		collider = instance_from_id(int(met["collider_id"]))
+	if not is_instance_valid(collider):
+		return {}
+	met["collider"] = collider
+	met["position"] = met.get("position", met.get("point", origin + query.motion * float(met.get("unsafe_fraction", 0.0))))
+	met["normal"] = met.get("normal", Vector3.ZERO)
+	return met
 
 
 ## The way whoever wears target looks: a player's aim, or the target's own

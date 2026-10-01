@@ -912,11 +912,10 @@ func _node(node_name: StringName) -> AnimationNode:
 ## A knife swing, light or heavy, and what it met (hit, miss or
 ## backstab): the attack's own third-person clip over the upper body, as a
 ## reload plays, and a gun's shot where the knife's attacks are not there.
-## Which clip is which is found by its name (knife_clip_for), since the
-## third-person set's names have not been read yet: Sid's run shows whether
-## each swing plays the right one.
-func knife_attack(heavy: bool, met: String) -> void:
-	var clip := knife_clip_for(_knife_clips, heavy, met)
+## The extracted worldmodel_knife graph maps its hit/miss/backstab states
+## to these clips (knife_clip_for), on the ground or over the air pose.
+func knife_attack(heavy: bool, met: String, variation: int = 0) -> void:
+	var clip := knife_clip_for(_knife_clips, heavy, met, variation)
 	if clip.is_empty() or not has_weapon_layers:
 		fire()
 		return
@@ -930,10 +929,22 @@ func knife_attack(heavy: bool, met: String) -> void:
 ## Of a knife set's clips (short names), the one for an attack: light or
 ## heavy, and met "hit", "miss" or "backstab", as CS2's graph names its
 ## attacks (attack_knife_lighthit ... heavybackstab,
-## reference/animgraph/parameters.md). The first whose name has both the
-## kind and what it met, then any of the kind that is an attack; "" for
-## none. A crouched clip is passed over.
-static func knife_clip_for(clips: PackedStringArray, heavy: bool, met: String) -> String:
+## reference/animgraph/parameters.md). CS2's worldmodel_knife graph's
+## KnifeSlashOptions0/1 Stand states map A/B misses to frontswing(_b),
+## light hits to frontstab/frontswing_b, heavy hits to frontstab, light
+## backstabs to backstab and heavy backstabs to backstab_overhead. Those
+## names contain neither "light" nor "heavy". Named alternative sets still
+## use the matching below. Standing attacks go over the locomotion pose.
+static func knife_clip_for(clips: PackedStringArray, heavy: bool, met: String, variation: int = 0) -> String:
+	var actual := ""
+	if met == "backstab":
+		actual = "backstab_overhead" if heavy else "backstab"
+	elif met == "hit":
+		actual = "frontstab" if heavy or variation % 2 == 0 else "frontswing_b"
+	else:
+		actual = "frontswing" if variation % 2 == 0 else "frontswing_b"
+	if clips.has(actual):
+		return actual
 	var kind := "heavy" if heavy else "light"
 	var sorted := clips.duplicate()
 	sorted.sort()

@@ -47,6 +47,7 @@ func _initialize() -> void:
 		print("Box3D is not installed: the swings are checked on Godot's physics only")
 	for backend in backends:
 		await _check_swings(backend)
+		await _check_air_and_hull(backend)
 	_finish("knife")
 
 
@@ -252,6 +253,150 @@ func _check_swings(backend: String) -> void:
 	_check(ids.size() == 2 and ids[0] != 0 and ids[1] != 0, label + "and starts the swish and what it met (%s)" % ids)
 	_host.free()
 	await process_frame
+
+
+## A real command can attack while airborne. Narrow capsules also expose
+## the gaps between the former nine rays without needing extracted assets.
+func _check_air_and_hull(backend: String) -> void:
+	var label := "(%s) " % backend
+	_setup(backend)
+	var victim := _add_player("CT", Vector3(0.0, 0.0, -36.0), 180.0)
+	victim.hit_target.drop_hitboxes()
+	var head := Hitbox.new()
+	head.zone = &"head"
+	head.position = Vector3(8.0, 68.0, 0.0)
+	var collision := CollisionShape3D.new()
+	var capsule := CapsuleShape3D.new()
+	capsule.radius = 2.0
+	capsule.height = 8.0
+	collision.shape = capsule
+	head.add_child(collision)
+	victim.hit_target.add_child(head)
+	victim.hit_target.adopt(head)
+	victim.hit_target.immortal = true
+	_attacker.inventory.select("weapon_knife")
+	await _settle()
+	_step(SimClock.ticks_in(1.0) + 1)
+	for heavy in [false, true]:
+		if heavy:
+			_step(SimClock.ticks_in(Knife.LIGHT_CYCLE) + 1)
+		var separation := 32.0 if heavy else 36.0
+		var height := 16.0 if heavy else 22.0
+		_place(victim, Vector3(0.0, 0.0, -separation), 180.0)
+		_place(_attacker, Vector3(0.0, height, 0.0), 0.0)
+		_attacker.pitch_degrees = 0.0
+		await _settle()
+		var health := victim.hit_target.health
+		var count := _swings.size()
+		_attacker.presses = UserCmd.ATTACK2 if heavy else UserCmd.ATTACK
+		_step(1)
+		var kind := "stab" if heavy else "slash"
+		_check(not _attacker.on_ground and _swings.size() == count + 1,
+			label + "an airborne %s command starts a swing" % kind)
+		_check(_swings.size() > count and _swings[count].outcome == Knife.Outcome.PLAYER
+			and _swings[count].hitbox == head and victim.hit_target.health < health,
+			label + "an airborne %s meets a capsule between the old fan's rays and deals damage" % kind)
+		if _swings.size() > count:
+			_check_near(_swings[count].origin.y, height + 64.0,
+				label + "the airborne %s starts at the press's eye position" % kind)
+	# Keep the fixture away from the direct geometry checks below.
+	_place(victim, Vector3(400.0, 0.0, 0.0), 180.0)
+	if victim.model != null:
+		var actual := _add_player("CT", Vector3(0.0, 0.0, -36.0), 180.0)
+		if actual.hit_target.hitboxes().size() > 4:
+			await _settle()
+			_step(SimClock.ticks_in(Knife.HEAVY_CYCLE) + 1)
+			_place(actual, Vector3(0.0, 0.0, -36.0), 180.0)
+			_place(_attacker, Vector3(0.0, 18.0, 0.0), 0.0)
+			_attacker.pitch_degrees = 0.0
+			await _settle()
+			var health := actual.hit_target.health
+			var count := _swings.size()
+			_attacker.presses = UserCmd.ATTACK
+			_step(1)
+			_check(not _attacker.on_ground and _swings.size() > count
+				and _swings[count].outcome == Knife.Outcome.PLAYER
+				and _swings[count].hitbox.target == actual.hit_target and actual.hit_target.health < health,
+				label + "an airborne slash meets the extracted CT's head capsules with level aim")
+		_place(actual, Vector3(500.0, 0.0, 0.0), 180.0)
+	_place(_attacker, Vector3.ZERO, 0.0)
+	await _settle()
+	var eye := Vector3(0.0, 64.0, 0.0)
+	_check_equal(Knife.LIGHT_REACH, 48.0, label + "a slash's forward reach is 48 units")
+	_check_equal(Knife.HEAVY_REACH, 32.0, label + "a stab's forward reach is 32 units")
+	for heavy in [false, true]:
+		var reach := 32.0 if heavy else 48.0
+		for within in [true, false]:
+			var target := _small_target(eye + Vector3(12.0, 6.0, -(reach + (-0.5 if within else 0.5))))
+			await _settle()
+			var swing := _trace_swing(heavy, eye, Vector3.FORWARD)
+			_check((swing.outcome == Knife.Outcome.PLAYER) == within,
+				label + "%s's hull %s its %.0f-unit forward boundary" % ["stab" if heavy else "slash", "hits just inside" if within else "misses just outside", reach])
+			target.free()
+	for offset in [Vector3(15.0, 0.0, -6.0), Vector3(17.0, 0.0, -6.0), Vector3(0.0, 15.0, -6.0), Vector3(0.0, 17.0, -6.0)]:
+		var target := _small_target(eye + offset)
+		await _settle()
+		var swing := _trace_swing(false, eye, Vector3.FORWARD)
+		var within := maxf(absf(offset.x), absf(offset.y)) < 16.0
+		_check((swing.outcome == Knife.Outcome.PLAYER) == within,
+			label + "the hull keeps its 16-unit width and height near the eye (%s)" % offset)
+		target.free()
+	# The centre line hits the edge of the wall. A fan ray used to get round
+	# that edge and damage this target, although the first trace was blocked.
+	var behind := _small_target(WALL_AT + Vector3(78.0, 64.0, -24.0))
+	await _settle()
+	var blocked := _trace_swing(false, WALL_AT + Vector3(63.0, 64.0, 20.0), Vector3.FORWARD)
+	_check(blocked.outcome == Knife.Outcome.WALL and behind.health == 100.0,
+		label + "a wall on the centre line stops the fallback from reaching round its edge")
+	behind.free()
+	# This centre line clears the wall above and beside it; the box does not.
+	behind = _small_target(WALL_AT + Vector3(70.0, 70.0, -24.0))
+	await _settle()
+	blocked = _trace_swing(false, WALL_AT + Vector3(78.0, 80.0, 20.0), Vector3.FORWARD)
+	_check(blocked.outcome == Knife.Outcome.WALL and behind.health == 100.0,
+		label + "a wall met only by the hull is a wall hit and blocks the body behind it")
+	behind.free()
+	# Both fit in the box at its start. The enemy still takes priority.
+	var mate := _small_target(eye + Vector3(0.0, 0.0, -4.0), "T")
+	var enemy := _small_target(eye + Vector3(10.0, 0.0, -6.0))
+	await _settle()
+	var priority := _trace_swing(false, eye, Vector3.FORWARD, mate.rids())
+	_check(priority.hitbox != null and priority.hitbox.target == enemy and mate.health == 100.0 and enemy.health < 100.0,
+		label + "an enemy in the hull at its start wins over a teammate on the line")
+	enemy.set_active(false)
+	await _settle()
+	priority = _trace_swing(false, eye, Vector3.FORWARD, mate.rids())
+	_check(priority.hitbox != null and priority.hitbox.target == mate and mate.health < 100.0,
+		label + "with no reachable enemy the same swing can hit the teammate")
+	_host.free()
+	await process_frame
+
+
+func _small_target(at: Vector3, team: String = "CT") -> HitTarget:
+	var target := HitTarget.new()
+	target.build_own_hitboxes = false
+	target.build_visual = false
+	target.armor = 0.0
+	target.immortal = true
+	target.team = team
+	target.position = at
+	_host.add_child(target)
+	var hitbox := Hitbox.new()
+	var collision := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = Vector3.ONE * 0.5
+	collision.shape = shape
+	hitbox.add_child(collision)
+	target.add_child(hitbox)
+	target.adopt(hitbox)
+	return target
+
+
+func _trace_swing(heavy: bool, origin: Vector3, direction: Vector3, teammates: Array[RID] = []) -> Knife.Swing:
+	var exclude: Array[RID] = [_attacker.get_rid()]
+	exclude.append_array(_attacker.hit_target.rids())
+	return Knife.swing(_host.get_world_3d().direct_space_state, Knife.new().begin(heavy, 0),
+		origin, direction, _attacker.userid, "T", 0.33, exclude, teammates, null)
 
 
 ## Looks at their chest, or at `height` up their body.

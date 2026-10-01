@@ -843,7 +843,7 @@ func _on_shot_traced(shot: Weapon.Shot, result: Hitscan.Result) -> void:
 ## A knife swing: the body plays the attack over its upper half.
 func _on_knife_swung(swing: Knife.Swing) -> void:
 	if model != null:
-		model.knife_attack(swing.heavy, swing.met())
+		model.knife_attack(swing.heavy, swing.met(), swing.variation)
 
 
 func _on_reload_started() -> void:
