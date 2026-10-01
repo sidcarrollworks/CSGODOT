@@ -237,7 +237,7 @@ issue done here and on the page in the same pull request.
 |---|---|---|---|---|
 | 1 | A mode chosen at start: Competitive, or Practice with no bots | **Done** (2026-09-26, 24c): a picker, `--mode`, Practice as Competitive with no bots and a warmup that does not end | Try it in fullscreen | 24a, 24c, 26 |
 | 2 | Dropped guns sink into slopes, the magazine goes through the floor, they turn about the wrong point | **Done (#117):** a body on CS2's own hull (one convex hull a gun, mass 3 to 6, from the game's physics), swept against the floor; checks on a one-sided trimesh | `extract_assets.sh weapon-physics` and commit `physics.csv`; look on T spawn's ramp | 12 |
-| 3 | E picks up what you look at, swapping out what is in that slot | **Done:** E takes the item looked at within CS2's 80 units, in a cone (a guess) and in sight; a gun swaps with the one in its slot, thrown down as a drop; no room sends `item_pickup_failed`; near the bomb E is the bomb's (`use_claimed`), and a T's E takes the dropped bomb | See in CS2 what E takes and from how far | 12, after 2 |
+| 3 | E picks up what you look at, swapping out what is in that slot | **Done:** E takes the item looked at in Source's use search (80 units across, CS2's `player_use_radius`; the aim on it far off, well off it up close) and in sight; a gun swaps with the one in its slot, thrown down as a drop; no room sends `item_pickup_failed`; near the bomb E is the bomb's (`use_claimed`), and a T's E takes the dropped bomb. The HUD names the ground gun, grenade or bomb E can take, using the same selection and eligibility; hides it when blocked, full, buying or dead | See in CS2 what E takes and from how far; playtest the pickup prompts | 12, after 2 |
 | 4 | Ragdoll legs through the floor, joints bending too far | **Done** (#121, `reference/research/ragdoll-joints.md`): start clear of the floor and kept over it, CS2's own shapes (in the agents' `.vmdl`), joint limits from standing; checks on a one-sided trimesh | Dump CS2's joints; deaths on the ramp | Housekeeping |
 | 5 | Bots hover over T spawn's ramp in freeze time (the hull rests on the uphill edge; there is no foot IK) | *(Remote done, PR #131)* Research, then foot IK and a ground fit | CS2's feet on the ramp | After 17 |
 | 6 | Bots meet head-on and hop at each other forever | **Done** (PR #113): making way for teammates (`BotSteering`), stuck handling that never jumps at one, goals spread over a site | dust2's chokepoints and 24b's inferno spot; `scripts/run_tests.sh dust2` runs the new no-stall check | 24b, 23 |
@@ -261,6 +261,15 @@ issue done here and on the page in the same pull request.
 | 24 | The sky dark slate grey (the skybox's clouds, CS2's additive `csgo_unlitgeneric`, imported as an opaque, lit sheet) | **Done 2026-09-28:** `UnlitMaterials`, unlit and added; its textures listed by `export_alpha.gd` | **Done:** `extract_assets.sh layers`; long doors' sky 0.39 of CS2's to 0.86. The rest of the gap, the sky's own brightness and haze, needs research | 10, 23 |
 | 25 | Red window frames, doors and awnings too vivid (the export's tint over the whole texture, not only the tint mask's paint) | *(done 2026-09-26: `prop_tint`, `LightmapMaterials.carry_features`)* The tint moved off the colour and put back through `g_tTintMask`; the `layers` step fetches the masks | **Done 2026-09-28:** `layers` fetched 55 masks; long doors' shutters and door from 0.36 to 0.50 saturation to 0.22 to 0.34 (CS2's 0.17 to 0.31), the awning unchanged | 7, R7 |
 | 26 | Walking, the character stops dead for a tick and sets off again (a move grazing a floor that rises a few degrees took no travel, and the step found no floor) | **Done 2026-09-28:** the sweep keeps its clearance along the hit's normal, and looks past its end (`Box3DQueries.shape_cast_prepared`); checks on made-up slopes | **Done 2026-09-28:** five bots a minute on dust2, 13 hitches to none (`tests/run_dust2_bot_checks.gd`); Sid played (2026-09-28): none seen, "the movement feels really nice" | |
+
+**Crouch speed (Sid's 2026-09-30 playtest, PR #164): Remote done 2026-10-01.**
+Crouch walking holds 0.34 of the held item's speed, easing with the duck.
+Turning cannot add speed beyond that top; residual running speed still
+decays through friction. The AK-47 and AWP retain their crouched accuracy
+while turning, with or without Walk; script and native movement share the
+same correction. See `reference/movement_constants.md`, "Crouch turning",
+for the reproduction and the small accuracy-threshold rounding tolerance.
+**Local:** crouch and turn with those guns in the range and on dust2.
 
 **Box3D is the game's physics (2026-09-28, Sid).** Sid chose to take the
 trial below forward. CI and the cloud threads take its Linux libraries rebuilt

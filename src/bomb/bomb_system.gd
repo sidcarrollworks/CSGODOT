@@ -107,8 +107,14 @@ func use_claimed(userid: int) -> bool:
 	var player := _game.roster.player(userid) as PlayerSim if _game != null else null
 	if player == null:
 		return false
+	var actor := C4.Actor.of_player(player, userid)
+	# The range lets its T defuse as a CT. Use the same side as the bomb's
+	# tick, so its E priority and the pickup hint agree with that action.
+	var asked: Dictionary = input_of.call(userid, player, _game.inventory(userid))
+	if asked.has("team"):
+		actor.team = asked["team"]
 	var carrier := _game.roster.player(bomb.carrier) as PlayerSim if bomb.carrier != C4.NOBODY else null
-	return bomb.claims_use(C4.Actor.of_player(player, userid),
+	return bomb.claims_use(actor,
 		C4.Actor.of_player(carrier, bomb.carrier) if carrier != null else null)
 
 

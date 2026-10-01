@@ -151,6 +151,13 @@ var noclip: bool = false
 ## horizontal; with noclip on it carries the full 3D fly direction.
 var wish_dir: Vector3 = Vector3.ZERO
 var wish_speed: float = 0.0
+## The speed ground acceleration works from when it is above wish_speed:
+## the held item's, where a crouch keeps wish_speed to a third of it
+## (MovementSolver.accelerate). At a crouched rifle's 73, below
+## sv_stopspeed's 80, friction takes 6.5 u/s a tick and acceleration from
+## 73 adds only 6.3, so the player ground to a stop. Nothing below
+## wish_speed changes anything.
+var acceleration_speed: float = 0.0
 var wants_jump: bool = false
 var wants_duck: bool = false
 
@@ -769,14 +776,24 @@ func _walk_move(surface_friction: float, dt: float) -> void:
 		if dir.length_squared() > 0.0:
 			dir = dir.normalized()
 
+	# Faster crouch acceleration must not turn sideways momentum into
+	# extra speed. Keep any speed left after friction when crouching from
+	# a run, so the crouch still slows gradually rather than snapping down.
+	var speed_limit := INF
+	if acceleration_speed > wish_speed:
+		speed_limit = maxf(wish_speed, velocity.length())
 	velocity = MovementSolver.accelerate(
-		velocity, dir, wish_speed, config.accelerate, surface_friction, dt
+		velocity, dir, wish_speed, config.accelerate, surface_friction, dt, acceleration_speed
 	)
 	velocity.y = 0.0
+	var speed := velocity.length()
+	if speed > speed_limit:
+		velocity *= speed_limit / speed
+		speed = velocity.length()
 	# Source's WalkMove stops anyone slower than a unit a second dead where
 	# they stand (gamemovement.cpp, WalkMove: spd < 1.0f), and traces nothing
 	# for them: a player standing still costs no trace here.
-	if velocity.length() < 1.0:
+	if speed < 1.0:
 		velocity = Vector3.ZERO
 		return
 	_step_move(dt)
