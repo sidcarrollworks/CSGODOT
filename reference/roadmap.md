@@ -354,6 +354,20 @@ ms down to 3.45 to 3.50 ([skeletons-when-stepped-2026-09-30.md](research/skeleto
 Sid played it at 1080p (2026-09-30): a frame holding a tick 6.36 ms to 5.35,
 the slowest frame of each second 9.7 ms to 7.9 at the median, and half of
 all seconds with it under 8 ms where a quarter had been.
+**The frame split, and the skeletons fitted for nothing (2026-09-30,
+perf/skeletons-nobody-needs, Sid's "measure the rest" and "tackle #1").**
+Every frame split into its parts as played (`scripts/watch_game.gd`;
+`reference/performance.md`, "Where the rest of a frame goes"): the rest
+was work, not the cap's sleep or the GPU: the skeletons fitted after the
+scripts, deferred calls, and the draw's setup and finish. Three of those
+skeletons were fitted in every frame for nothing: the body you look down
+at, now walked only while the camera can see it; its eyes and its
+shadow's twin's, now aimed by neither; and the shut buy menu's agent, now
+not processed. Headless, a frame with a tick fits 0.08 ms less and runs
+0.03 to 0.06 ms less script. No research covered it; the body's reach was
+measured from both agents' skinned vertices (the boxes in
+`PlayerView.SEEN_STANDING` and `SEEN_CROUCHED`, held by
+`tests/run_model_checks.gd`).
 **Next, proposed: the bodies nobody sees, animated on every frame that
 holds no tick (Remote).** Their animation is still stepped in every frame
 without a tick, 8.5 bodies of nine, where a round asks for a body's pose a
