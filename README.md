@@ -22,6 +22,7 @@ CS2 defusal maps.
 |---|---|
 | **Movement** | Source's movement ported line by line: acceleration, air strafing, collide-and-slide, step-up, crouch jumps, bunny hops. A fixed 64 Hz tick with sub-tick input, so a click is traced from where you were aiming at that instant. |
 | **Shooting** | Every CS2 firearm is available, with the game's own weapon data. Spray patterns, tapping and burst-dependent accuracy recovery, wall penetration by surface and thickness, nineteen hitbox capsules per extracted player model, tagging and aim punch, scopes and shotgun pellets. The Nova, XM1014 and Sawed-Off reload one shell at a time, and firing interrupts the reload. |
+| **Knife** | Left-click slashes and right-click stabs, with 48/32-unit forward reach, backstabs, armour and kill credit. Attacks work in the air, with first- and third-person clips and sounds. Damage and timing still await CS2 measurements. |
 | **The match** | CS2's competitive rules: warmup, freeze time, rounds, side swap, overtime. Money and CS2's buy menu, the bomb (plant and defuse), and all six grenades, smoke included. Five a side, with bots filling every place but yours. |
 | **Inventory** | Weapon slots, last-weapon switching and mouse-wheel cycling. Physical dropped items, walking pickups, and E to swap the gun in a slot or take the bomb from a teammate bot. The buy menu marks owned and unavailable items, refunds purchases, and supports Ctrl-click to buy and throw. |
 | **Bots** | The same simulation as you, driven by commands instead of keys. They buy, follow the loaded map's nav mesh to the bomb sites, jump and crouch along the route, make way for teammates, shoot with each gun's spread and recoil, and respect smokes and flashes. |
@@ -29,7 +30,7 @@ CS2 defusal maps.
 | **HUD** | Health, armour and ammo, money, team cards and the round clock, weapon selection and use prompts, damage directions, a kill feed with assists and kill marks, and round win panels with the MVP and a fun fact. Dead players can spectate teammates. |
 | **Sound** | Weapon shots, reloads, near-empty and dry-fire clicks, footsteps by surface, grenade and bomb sounds, flash ringing and muffling, the announcer, round countdowns and music cues. |
 
-**Not yet:** knife and Zeus attacks, burst-mode and silencer switching,
+**Not yet:** Zeus attacks, burst-mode and silencer switching,
 blood impacts, full grenade effects and CS2-matched grenade lineups, radar
 and scoreboard, bots that play the objectives as a team, multiplayer, and
 full main and settings menus.
