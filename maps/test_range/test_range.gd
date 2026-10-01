@@ -190,6 +190,11 @@ func _ready() -> void:
 	shot_effects.name = "ShotEffects"
 	add_child(shot_effects)
 	shot_effects.watch(game, player.userid, player)
+	# The blood of a hit and a helmet's sparks.
+	var hit_effects := HitEffects.new()
+	hit_effects.name = "HitEffects"
+	add_child(hit_effects)
+	hit_effects.watch(game, player.userid)
 
 
 ## What you may take in hand here, read now rather than on the tick you buy

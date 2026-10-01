@@ -67,6 +67,18 @@ const SCHEMA := {
 	&"weapon_reload": {"userid": NOBODY},
 	&"weapon_zoom": {"userid": NOBODY},
 	&"bullet_impact": {"userid": NOBODY, "x": 0.0, "y": 0.0, "z": 0.0},
+	# CS2's bullet_damage (mod.gameevents): one for each round that meets a
+	# living body, sent after its player_hurt. The fields are CS2's that the
+	# game has (its tick, render and inaccuracy fields are left out); x, y
+	# and z are ours, where on the body it landed, which CS2's clients take
+	# from their own trace of the round. What is seen of a hit (HitEffects)
+	# is drawn from it.
+	&"bullet_damage": {
+		"victim": NOBODY, "attacker": NOBODY, "distance": 0.0,
+		"damage_dir_x": 0.0, "damage_dir_y": 0.0, "damage_dir_z": 0.0,
+		"num_penetrations": 0, "no_scope": false, "in_air": false,
+		"x": 0.0, "y": 0.0, "z": 0.0,
+	},
 	# CS2's CMsgTEFireBullets (its game event 452), the one message other
 	# clients draw a shot from, its tracer and impacts
 	# (reference/research/audio-engine.md 10). One a round, sent between its

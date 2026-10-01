@@ -495,8 +495,15 @@ item 6 is built.
    (the `...Small` modifier and A1 in `reference/cs2-systems.md`), and a
    screenshot pair of the view just before and just after an unarmoured
    hit, to size the flinch (2 degrees here).
-5. **Blood on hit.** *(Local extracts the effects, then Remote)* A round into a body leaves no mark, so a hit is only
+5. **Blood on hit.** *(Remote stand-in done 2026-09-30; Local extracts the effects, then Remote)* A round into a body leaves no mark, so a hit is only
    heard, not seen. CS2's blood impact and decal behind the target.
+   Since 2026-09-30 the tick sends CS2's `bullet_damage` beside
+   `player_hurt`, and `HitEffects` (`src/effects/hit_effects.gd`) picks
+   CS2's effect for each hit (the damage bands, headshot, helmet sparks,
+   friendly, your own) and draws a stand-in spray and blood splats on the
+   world behind and below (`reference/research/blood-and-impacts.md`,
+   section 6). Left: Sid's `impacts` extraction (section 7 of that page),
+   then CS2's own effects and decals in place of the stand-in.
 6. **Firing on the third-person model.** *(Done 2026-09-23 but for the flinches; Sid checks it)* A bot's body holds, fires and
    reloads its own gun: the gun's third-person clips (`WeaponData.world_clip_set`)
    in `PlayerModel.animation_tree`, over the locomotion as CS2's graph
@@ -1150,7 +1157,7 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 | Hands | Spray a wall in CS2 from 496 units | Item 8 |
 | Hands | Measure jump height, crouch-jump reach, dead-strafe feel | Movement check |
 | Hands | Check on the range that the shooting bot stays upright while firing, and that the dummy's ragdoll and your own settle without spinning (PR #30) | Confirms PR #30 |
-| Hands | Extract CS2's blood impact effects and decals | Item 5 |
+| Hands | Extract CS2's blood impact effects and decals (the `impacts` step, `reference/research/blood-and-impacts.md` section 7) | Item 5 |
 | Hands | Check that first shots at a run now miss (PR #24) | Item 9 |
 | Hands | Play being shot on the test range (B, U, Y, J, T) and dust2: your capsules' fit, the tag, the flinch, the hit arcs (PR #27) | Items 1 to 4 |
 | Hands | Measure a tag's length and the flinch's size in CS2 | Item 4a |

@@ -398,6 +398,11 @@ func _add_views() -> void:
 	shot_effects.name = "ShotEffects"
 	add_child(shot_effects)
 	shot_effects.watch(world.game, (player as PlayerSim).userid, player as PlayerController)
+	# The blood of a hit and a helmet's sparks.
+	var hit_effects := HitEffects.new()
+	hit_effects.name = "HitEffects"
+	add_child(hit_effects)
+	hit_effects.watch(world.game, (player as PlayerSim).userid)
 
 
 ## F5 ends warmup, as mp_warmup_end does, on the world's next tick.
