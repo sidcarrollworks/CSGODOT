@@ -86,7 +86,10 @@ twist bones, and the hitboxes, gun and eyes moved to the bones) in the
 frames it steps, at once when its bones are set another way (a respawn, a
 ragdoll) or it dies or gets up, and, where the frame before a tick went
 without, as that tick begins, so that every tick meets its hitboxes where
-a fit in every frame had them (`PlayerModel.fit_for_tick`).
+a fit in every frame had them (`PlayerModel.fit_for_tick`). The body you
+look down at, which only your camera draws, is stepped and fitted by the
+view only while the camera can see some of it (`PlayerModel.step_when_shown`,
+`PlayerView.body_in_view`).
 `reference/performance.md` has what every system costs, with ten players and
 twenty, what going online will add, and what to do about it next;
 `scripts/profile_dust2.gd` measures it again.
@@ -151,6 +154,12 @@ decodes it, `scripts/extract_assets.sh weapon-data` writes every gun's fields
 to `reference/weapons/vdata.csv`, and `WeaponVData` reads them: damage,
 armour, falloff, fire rate, magazine and reserve, speed, inaccuracy and
 recovery, and when a reload lets the gun fire again all come from the game.
+The Nova, XM1014 and Sawed-Off load a shell at a time
+(`m_bReloadsSingleShells`): `WeaponClips` reads their reload clip's intro,
+loop and outro from `reference/weapons/timings.csv`, a shell goes in at the
+loop's `WPN_RELOAD_ADD_AMMO` each time round, the arms go round the loop
+once for every shell (`RigModel.hold_at`), and a shot stops the reload with
+the shells in so far.
 The CS2 Weapon Spreadsheet is read first and now supplies only the landing
 and ladder figures, which the game stores another way; the spray patterns
 and recovery timings come from measuring CS2 by hand.
