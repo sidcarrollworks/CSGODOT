@@ -136,6 +136,7 @@ func _run() -> void:
 	_test_shots_are_heard_from_the_events()
 	await _test_a_running_tap_misses()
 	await _test_a_crouch_walks_at_a_third()
+	await _test_turning_while_crouched_keeps_the_cone()
 	await _test_a_bot_plays_through_commands()
 	await _test_a_bot_finds_its_way()
 	await _test_a_player_wears_hitboxes()
@@ -1239,6 +1240,120 @@ func _test_a_crouch_walks_at_a_third() -> void:
 		"in the air the duck leaves the top at %.0f" % player._max_speed(cmd)
 	)
 	player.queue_free()
+	await physics_frame
+
+
+## Sid's crouch playtest: turning the mouse while moving must keep the
+## crouched speed and cone, with the walk key held too. Commands go through
+## the real movement and ShooterState rather than supplying the weapon a
+## made-up speed. Box3D also runs each step in script and native code where
+## the library is built (check_suite.gd).
+func _test_turning_while_crouched_keeps_the_cone() -> void:
+	var world := GameWorld.new()
+	_world.add_child(world)
+	world.set_physics_process(false)
+	world.initialize_drop_physics(_world, "box3d" if Box3DDrops.available() else "legacy")
+	_crouch_tick = 115_000
+	var second := SimClock.ticks_in(1.0)
+	var turns := [0.6, 2.0, 7.0, 18.0, -0.6, -2.0, -7.0, -18.0]
+	for item_class in ["weapon_ak47", "weapon_awp"]:
+		var player := _new_player(Vector3(-2048.0, 0.0, -2048.0), "T")
+		var data := WeaponLibrary.build(item_class)
+		player.equip(data)
+		world.add_player(player)
+		await physics_frame
+		var expected_speed := data.max_player_speed * player.config.duck_modifier
+		for buttons in [UserCmd.DUCK, UserCmd.DUCK | UserCmd.WALK]:
+			_run_holding(player, 2 * second, buttons)
+			var slowest := INF
+			var fastest := 0.0
+			var widest := 0.0
+			var crouched := true
+			for i in 4 * second:
+				var cmd := UserCmd.new()
+				cmd.tick = _crouch_tick
+				_crouch_tick += 1
+				cmd.buttons = buttons
+				cmd.move = Vector2(0.0, 1.0)
+				cmd.yaw_degrees = player.yaw_degrees + turns[i % turns.size()]
+				cmd.pitch_degrees = 25.0 * sin(float(i) * 0.3)
+				player.run_command(cmd, DT)
+				var state := player.shooter_state
+				slowest = minf(slowest, state.speed)
+				fastest = maxf(fastest, state.speed)
+				widest = maxf(widest, player.weapon.current_inaccuracy(state))
+				crouched = crouched and state.ducked and state.on_ground
+			var label := "%s crouched%s" % [data.display_name, " with Walk" if buttons & UserCmd.WALK else ""]
+			_check(crouched and absf(slowest - expected_speed) < 0.01 and absf(fastest - expected_speed) < 0.01,
+				"%s keeps its %.2f u/s speed while turning left/right (%.5f to %.5f)"
+					% [label, expected_speed, slowest, fastest])
+			_check(absf(widest - data.inaccuracy_crouching) < 0.00001,
+				"%s keeps its crouched cone through those turns (%.6f, base %.6f degrees)"
+					% [label, widest, data.inaccuracy_crouching])
+			# Stop moving, still ducked, and turn on the spot as well.
+			widest = 0.0
+			for i in 2 * second:
+				var cmd := UserCmd.new()
+				cmd.tick = _crouch_tick
+				_crouch_tick += 1
+				cmd.buttons = buttons
+				cmd.yaw_degrees = player.yaw_degrees + turns[i % turns.size()]
+				cmd.pitch_degrees = 25.0 * sin(float(i) * 0.3)
+				player.run_command(cmd, DT)
+				if i >= second:
+					widest = maxf(widest, player.weapon.current_inaccuracy(player.shooter_state))
+			_check(player.shooter_state.speed < 0.01 and absf(widest - data.inaccuracy_crouching) < 0.00001,
+				"%s turning on the spot keeps the same cone (%.6f degrees)" % [label, widest])
+		# The accurate crouch must not conceal the real run/jump penalties.
+		_run_holding(player, second, 0)
+		_check(player.shooter_state.speed > data.max_player_speed * 0.95
+			and player.weapon.current_inaccuracy(player.shooter_state) > data.inaccuracy_crouching + 0.1,
+			"%s still loses accuracy at a run" % data.display_name)
+		_run_holding(player, 2 * second, UserCmd.DUCK)
+		var jump := UserCmd.new()
+		jump.tick = _crouch_tick
+		_crouch_tick += 1
+		jump.buttons = UserCmd.DUCK | UserCmd.JUMP
+		jump.move = Vector2(0.0, 1.0)
+		player.run_command(jump, DT)
+		_check(not player.shooter_state.on_ground
+			and player.weapon.current_inaccuracy(player.shooter_state) > data.inaccuracy_crouching + 0.1,
+			"%s still loses accuracy on a crouch jump" % data.display_name)
+		player.queue_free()
+		await physics_frame
+	# A faster item's crouch can leave momentum above a slower gun's cap.
+	# Turning after taking the AWP must let friction slow that momentum,
+	# rather than snapping it straight to the accurate 68 u/s crouch.
+	var player := _new_player(Vector3(-2048.0, 0.0, -2048.0), "T")
+	player.inventory.add("weapon_knife")
+	player.inventory.select("weapon_knife")
+	world.add_player(player)
+	await physics_frame
+	var knife_speed := _run_holding(player, 2 * second, UserCmd.DUCK)[-1]
+	var awp := WeaponLibrary.build("weapon_awp")
+	player.equip(awp)
+	var turn := UserCmd.new()
+	turn.tick = _crouch_tick
+	_crouch_tick += 1
+	turn.buttons = UserCmd.DUCK
+	turn.move = Vector2(0.0, 1.0)
+	turn.yaw_degrees = 90.0
+	player.run_command(turn, DT)
+	var awp_speed := awp.max_player_speed * player.config.duck_modifier
+	var inherited := player.shooter_state.speed
+	_check(absf(knife_speed - 85.0) < 0.01 and player.shooter_state.ducked
+		and player.shooter_state.on_ground and inherited > awp_speed and inherited < knife_speed
+		and player.weapon.current_inaccuracy(player.shooter_state) > awp.inaccuracy_crouching + 0.1,
+		"taking the AWP from a moving crouch with the knife then turning 90 degrees slows gradually and still costs accuracy (%.5f to %.5f u/s, cap %.2f)"
+			% [knife_speed, inherited, awp_speed])
+	_run_holding(player, 2 * second, UserCmd.DUCK)
+	_check(absf(player.shooter_state.speed - awp_speed) < 0.01
+		and absf(player.weapon.current_inaccuracy(player.shooter_state) - awp.inaccuracy_crouching) < 0.00001,
+		"that inherited speed settles to the AWP's accurate crouch (%.5f u/s, %.6f degrees)"
+			% [player.shooter_state.speed, player.weapon.current_inaccuracy(player.shooter_state)])
+	player.queue_free()
+	await physics_frame
+	world.queue_free()
 	await physics_frame
 
 

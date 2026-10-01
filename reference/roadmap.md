@@ -262,6 +262,15 @@ issue done here and on the page in the same pull request.
 | 25 | Red window frames, doors and awnings too vivid (the export's tint over the whole texture, not only the tint mask's paint) | *(done 2026-09-26: `prop_tint`, `LightmapMaterials.carry_features`)* The tint moved off the colour and put back through `g_tTintMask`; the `layers` step fetches the masks | **Done 2026-09-28:** `layers` fetched 55 masks; long doors' shutters and door from 0.36 to 0.50 saturation to 0.22 to 0.34 (CS2's 0.17 to 0.31), the awning unchanged | 7, R7 |
 | 26 | Walking, the character stops dead for a tick and sets off again (a move grazing a floor that rises a few degrees took no travel, and the step found no floor) | **Done 2026-09-28:** the sweep keeps its clearance along the hit's normal, and looks past its end (`Box3DQueries.shape_cast_prepared`); checks on made-up slopes | **Done 2026-09-28:** five bots a minute on dust2, 13 hitches to none (`tests/run_dust2_bot_checks.gd`); Sid played (2026-09-28): none seen, "the movement feels really nice" | |
 
+**Crouch speed (Sid's 2026-09-30 playtest, PR #164): Remote done 2026-10-01.**
+Crouch walking holds 0.34 of the held item's speed, easing with the duck.
+Turning cannot add speed beyond that top; residual running speed still
+decays through friction. The AK-47 and AWP retain their crouched accuracy
+while turning, with or without Walk; script and native movement share the
+same correction. See `reference/movement_constants.md`, "Crouch turning",
+for the reproduction and the small accuracy-threshold rounding tolerance.
+**Local:** crouch and turn with those guns in the range and on dust2.
+
 **Box3D is the game's physics (2026-09-28, Sid).** Sid chose to take the
 trial below forward. CI and the cloud threads take its Linux libraries rebuilt
 against glibc 2.35 from this repo's release once it is attached, and until

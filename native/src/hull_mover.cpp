@@ -487,9 +487,20 @@ void HullMover::walk_move(double surface_friction, double dt) {
 		}
 	}
 
+	// PlayerBody's faster crouch acceleration cannot add speed beyond
+	// the top, or beyond residual speed left after this tick's friction.
+	double speed_limit = std::numeric_limits<double>::infinity();
+	if (acceleration_speed > wish_speed) {
+		speed_limit = maxf(wish_speed, (double)velocity.length());
+	}
 	velocity = accelerate(velocity, dir, wish_speed, cfg.accelerate, surface_friction, dt, acceleration_speed);
 	velocity.y = 0.0;
-	if ((double)velocity.length() < 1.0) {
+	double speed = velocity.length();
+	if (speed > speed_limit) {
+		velocity = times(velocity, speed_limit / speed);
+		speed = velocity.length();
+	}
+	if (speed < 1.0) {
 		velocity = ZERO;
 		return;
 	}
