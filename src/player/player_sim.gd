@@ -863,6 +863,9 @@ func _try_shoot(at_usec: int, tick_fraction: float, yaw: float, pitch: float) ->
 		at_usec, tick_fraction, origin, yaw - thrown.x, pitch + thrown.y, shooter_state
 	)
 	if shot == null:
+		# Nothing in the magazine: the trigger clicks, once a pull.
+		if weapon.dry_fire(at_usec):
+			_send(&"weapon_fire_on_empty", {"userid": userid, "weapon": weapon.data.item_class}, at_usec)
 		return
 	rounds_fired += 1
 	var item := ItemRegistry.item(weapon.data.item_class)
