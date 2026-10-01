@@ -175,8 +175,26 @@ const NEARLY_EMPTY_SHARE_SHOTGUN := 0.3
 ## at a time, whose reserve reads in shells.
 @export var reserve_as_clips: bool = true
 
-## How long a reload takes.
+## How long a reload takes. For a gun that loads a shell at a time, how
+## long after the reload starts it may fire again, stopping the reload
+## (m_flDisallowAttackAfterReloadStartDuration).
 @export var reload_time: float = 2.5
+
+## Loads a shell at a time (m_bReloadsSingleShells): the Nova, XM1014 and
+## Sawed-Off. Its reload clip is in three parts (WPN_RELOAD_INTRO, _LOOP,
+## _OUTRO): the intro, the loop once for every shell, one shell going in at
+## WPN_RELOAD_ADD_AMMO in each, then the outro, the gun ready at its end
+## (reference/weapons/timings.md; CS2's view model graph repeats the loop
+## until the reload stage is the outro, reference/animgraph/viewmodel.md).
+## Firing, with a shell in, stops it where it is.
+@export var reloads_single_shells: bool = false
+## Such a reload's parts, from its clip, in seconds: the intro, each shell's
+## loop, how far into its loop a shell goes in, and the outro. The Nova's
+## until WeaponClips gives the gun's own.
+@export var shell_intro: float = 0.3667
+@export var shell_loop: float = 0.4333
+@export var shell_in: float = 0.3
+@export var shell_outro: float = 0.8333
 
 # --- Movement -------------------------------------------------------------
 
@@ -489,10 +507,26 @@ const UNZOOMED_FOV := ViewModelProjection.WORLD_FOV
 ## before it is. A player who taps on the animation is early.
 ##
 ## Sid measured the AK back to baseline at 867 ms and the M4A1-S at 542 ms
-## off weapon_debug_spread_show on 2026-09-22. Taken at a hundredth, the
-## sheet gives 736 and 678.
+## off weapon_debug_spread_show on 2026-09-22. Taken at a hundredth, one
+## round's penalty is gone in 736 and 678. No one threshold fits both (the
+## AK's is late and the M4A1-S's early), so the box read by eye does not
+## pin the curve; a demo's accuracy_penalty does (research/combat.md, R13).
+## After a spray the final times below take over.
 @export var recovery_time_stand: float = 0.368
 @export var recovery_time_crouch: float = 0.305257
+
+## The recovery times once a spray has gone on, standing and crouched
+## (CS2's m_flRecoveryTimeStandFinal and ...CrouchFinal), and the rounds of
+## the recoil index they blend over (m_nRecoveryTransitionStartBullet and
+## ...EndBullet). Valve split recovery this way in CS:GO's "Second Shot"
+## update (3 August 2016) so a short burst recovers faster than a long spray;
+## reference/research/combat.md has the fields and the ten guns whose final
+## time differs. Negative means the same as the first time (the knife, the
+## grenades and the bomb carry -1).
+@export var recovery_time_stand_final: float = -1.0
+@export var recovery_time_crouch_final: float = -1.0
+@export var recovery_transition_start_bullet: float = 0.0
+@export var recovery_transition_end_bullet: float = 0.0
 
 
 
@@ -707,21 +741,40 @@ func _damping_ratio(ratio: float = -1.0) -> float:
 	)
 
 
-## Time constant of the accuracy decay, in seconds, standing or crouched.
+## The recovery time at a recoil index, standing or crouched: the first
+## time up to the transition's start round, the final time from its end
+## round, a straight blend between. Inferred from the fields' names and
+## Valve's note, as is counting on the recoil index as it decays between taps
+## rather than on whole rounds; a CS2 demo settles both
+## (reference/research/combat.md, R13).
+func recovery_time(ducked: bool = false, recoil_index: float = 0.0) -> float:
+	var first := recovery_time_crouch if ducked else recovery_time_stand
+	var final := recovery_time_crouch_final if ducked else recovery_time_stand_final
+	if final < 0.0 or final == first:
+		return first
+	var start := recovery_transition_start_bullet
+	var end := recovery_transition_end_bullet
+	if end <= start:
+		return first if recoil_index < start else final
+	return lerpf(first, final, clampf((recoil_index - start) / (end - start), 0.0, 1.0))
+
+
+## Time constant of the accuracy decay, in seconds, standing or crouched, at
+## a recoil index (recovery_time).
 ##
 ## Exponential rather than linear, which is both what the measured curve looks
 ## like on a log scale and what CS's accuracy penalty does: the recovery time
 ## is when it is down to a tenth. A longer spray therefore takes
-## proportionally longer.
-func accuracy_time_constant(ducked: bool = false) -> float:
-	var recovery := recovery_time_crouch if ducked else recovery_time_stand
-	return maxf(recovery, 0.0001) / log(10.0)
+## proportionally longer, and on the guns whose final time is longer, longer
+## again.
+func accuracy_time_constant(ducked: bool = false, recoil_index: float = 0.0) -> float:
+	return maxf(recovery_time(ducked, recoil_index), 0.0001) / log(10.0)
 
 
 ## How long one round's accuracy penalty takes to be gone, below the reset
-## threshold, in seconds.
-func accuracy_reset_time(ducked: bool = false) -> float:
-	return accuracy_time_constant(ducked) * -log(SETTLE_FRACTION)
+## threshold, in seconds, at the recoil index that round leaves.
+func accuracy_reset_time(ducked: bool = false, recoil_index: float = 1.0) -> float:
+	return accuracy_time_constant(ducked, recoil_index) * -log(SETTLE_FRACTION)
 
 
 ## Below this fraction of one shot's penalty the weapon counts as fully
@@ -840,3 +893,25 @@ func hitbox_multiplier(hitbox: StringName) -> float:
 		&"leg": return leg_multiplier
 		# Arms take a chest's, as in CS.
 		_: return chest_multiplier
+
+
+## How long a reload of that many shells takes, start to ready.
+func shell_reload_seconds(shells: int) -> float:
+	return shell_intro + shell_loop * shells + shell_outro
+
+
+## When the shell-th shell (from 0) goes in, after the reload starts.
+func shell_in_seconds(shell: int) -> float:
+	return shell_intro + shell_loop * shell + shell_in
+
+
+## Where in the reload clip a reload of that many shells is, that long
+## after it started: through the intro, round the loop once for each shell,
+## then through the outro.
+func shell_clip_seconds(elapsed: float, shells: int) -> float:
+	if elapsed < shell_intro:
+		return maxf(elapsed, 0.0)
+	var looping := elapsed - shell_intro
+	if looping < shell_loop * shells:
+		return shell_intro + fmod(looping, shell_loop)
+	return shell_intro + shell_loop + minf(looping - shell_loop * shells, shell_outro)

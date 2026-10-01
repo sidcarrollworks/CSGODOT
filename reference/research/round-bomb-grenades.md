@@ -98,7 +98,10 @@ The schemas that decide the rules:
 
   So the rules are: on the ground, inside the site, and holding the button.
   `bomb_beginplant` and `bomb_abortplant` exist (GT `game/csgo/pak01_dir/resource/mod.gameevents`).
-  Crouching while planting is allowed (**From memory**).
+  Planting crouches the planter for the whole plant, and a defuse may be
+  standing or crouched (Sid, playtest of 2026-09-30, correcting "crouching
+  while planting is allowed", which was from memory). Whether the plant's
+  3 s count from the press or from the crouch is not measured (C1).
 - **Planting with E.** `m_bIsPlantingViaUse` shows CS2 can plant with the use key. Players
   describe holding E in a bomb zone switching to the bomb and planting it
   ([Steam discussion](https://steamcommunity.com/app/730/discussions/0/1734336452549558758/), search summary).

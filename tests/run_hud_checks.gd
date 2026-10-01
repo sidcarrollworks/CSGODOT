@@ -459,6 +459,22 @@ func _test_the_buy_menu_agent() -> void:
 	var agent := BuyMenuAgent.new()
 	root.add_child(agent)
 	_check(agent.build("T"), "a terrorist's agent builds from CS2's poses")
+	# Shut, as the menu starts: past the fit of the pose it was built in,
+	# its skeleton fits nothing a frame (its twist bones, skin and eyes),
+	# where it fitted in every one.
+	await process_frame
+	var fits := [0]
+	agent.body.character_rig.skeleton_updated.connect(func() -> void: fits[0] += 1)
+	await process_frame
+	await process_frame
+	var shut_fits: int = fits[0]
+	agent.draw_while(true)
+	await process_frame
+	await process_frame
+	_check(shut_fits == 0 and fits[0] > 0 and agent.body.process_mode == Node.PROCESS_MODE_INHERIT,
+		"shut, the agent fits nothing (%d in two frames); open, it moves (%d)" % [shut_fits, fits[0] - shut_fits])
+	agent.draw_while(false)
+	_check(agent.body.process_mode == Node.PROCESS_MODE_DISABLED, "and shut again, it stops")
 	var unread := PackedStringArray()
 	for item_class: String in BuyMenuAgent.POSES:
 		for side: String in ["T", "CT"]:
