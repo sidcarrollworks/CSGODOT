@@ -4,7 +4,8 @@ extends "res://tests/check_suite.gd"
 ## GameWorld builds (issue 3 of reference/playtest-2026-09-25.md, over
 ## #125). ItemDrops' sight test goes through PhysicsQueries, so a wall hides
 ## the gun behind it, and a gun at rest on the Box3D floor in plain view is
-## taken. The gun E swaps out is thrown from its own hold, barrel along the
+## taken. The HUD's pickup candidate follows those same sight queries.
+## The gun E swaps out is thrown from its own hold, barrel along the
 ## aim, tumbling about its lateral axis, whatever is in hand.
 ## tests/run_pickup_checks.gd checks the rest of E, on Godot's own physics,
 ## which a bare fixture falls back to.
@@ -68,6 +69,7 @@ func _test_through_a_wall() -> void:
 	var inventory := _game.inventory(_id(p))
 	inventory.add("weapon_knife")
 	var item := _lay("weapon_ak47", p)
+	_check_equal(_game.query(&"use_pickup_item", [_id(p)], ""), "", "the HUD offers no pickup through a Box3D wall")
 	_press(p)
 	_check(not item.removed and not inventory.has("weapon_ak47"), "nothing through a wall")
 	_leave(p)
@@ -78,9 +80,11 @@ func _test_in_plain_view() -> void:
 	var inventory := _game.inventory(_id(p))
 	inventory.add("weapon_knife")
 	var item := _lay("weapon_ak47", p)
+	_check_equal(_game.query(&"use_pickup_item", [_id(p)], ""), "weapon_ak47", "the HUD offers the AK-47 resting in plain view on the Box3D floor")
 	_press(p)
 	_check(item.removed and inventory.has("weapon_ak47"),
 		"a gun at rest on the floor in plain view is taken: its own body does not block the sight ray (at %s)" % item.position)
+	_check_equal(_game.query(&"use_pickup_item", [_id(p)], ""), "", "the HUD's Box3D pickup candidate disappears when E takes the gun")
 	_leave(p)
 
 
