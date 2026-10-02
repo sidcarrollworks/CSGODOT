@@ -140,7 +140,7 @@ func _test_player_view() -> void:
 	player.view._process(1.0 / 224.0)
 	var shifted := player.camera.global_position
 	_check(shifted.y < usual_eyes.y - 0.5 and shifted.y > usual_eyes.y - 1.5, "PlayerView applies the takeoff dip to the camera, not just the weapon")
-	_check(arms.position.y < arms_rest.origin.y - 1.0 and arms.position.y > arms_rest.origin.y - 3.0,
+	_check(arms.position.y < arms_rest.origin.y - 0.5 and arms.position.y > arms_rest.origin.y - 1.5,
 		"the arms also dip visibly relative to the camera on takeoff")
 	_check(is_equal_approx(arms.position.x, arms_rest.origin.x) and is_equal_approx(arms.position.z, arms_rest.origin.z)
 		and arms.basis.is_equal_approx(arms_rest.basis), "jump motion keeps the model's scale, rotation and sideways/forward placement")
@@ -159,7 +159,7 @@ func _test_player_view() -> void:
 	player.view._process(1.0 / 224.0)
 	world.tick = 116
 	player.view._process(1.0 / 224.0)
-	_check(arms.position.y < arms_rest.origin.y - 3.0 and arms.position.y > arms_rest.origin.y - 5.0,
+	_check(arms.position.y < arms_rest.origin.y - 1.5 and arms.position.y > arms_rest.origin.y - 2.5,
 		"landing dips the arms further relative to the camera, including while crouched")
 	world.tick = 157
 	player.view._process(1.0 / 224.0)

@@ -1563,7 +1563,7 @@ func _test_player_composes_kick_and_bob() -> void:
 	)
 	player.view.camera_motion.height = -1.0
 	player.view._update_viewmodel(1.0 / 60.0)
-	_check(is_equal_approx(player.view_model.position.y, rest.origin.y - 2.0)
+	_check(is_equal_approx(player.view_model.position.y, rest.origin.y - 1.0)
 		and player.view_model.transform.basis.is_equal_approx(expected),
 		"the extracted arms and gun dip relative to the camera without replacing the shot's recoil")
 	player.view.camera_motion.height = 0.0
@@ -1619,7 +1619,7 @@ func _test_player_composes_kick_and_bob() -> void:
 		player.view.catch_up()
 		player.view._update_viewmodel(1.0 / 60.0)
 		every_item_dips = every_item_dips and player.view_model != null and is_equal_approx(
-			player.view_model.position.y, player.view._viewmodel_rest.origin.y - 2.0)
+			player.view_model.position.y, player.view._viewmodel_rest.origin.y - 1.0)
 	_check(every_item_dips, "switching during a jump keeps the relative dip on the pistol, rifle, knife and grenade")
 	player.view.camera_motion.height = 0.0
 	# Last, as it swings the view: the body you look down at is walked only
