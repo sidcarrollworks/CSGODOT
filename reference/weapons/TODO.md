@@ -176,7 +176,7 @@ Roughly in order; L1 to L3 can start at once.
   noscope kills; bots scope before they fire. Guessed until the Local check
   in `reference/research/combat.md`: the scoped accuracy comes in linearly
   over the zoom time, and the zoom times are read as the time to reach each
-  level. The zoom sounds play from `weapon_zoom` (`WeaponSounds`), a sniper coming out silent. Not done: the scope showing inaccuracy.)*
+  level. The zoom sounds play from `weapon_zoom` (`WeaponSounds`), a sniper coming out silent. Not done: the scope showing inaccuracy. The AUG and SG 553 raise the gun to the eye as they scope, with the lens clear, its dot in the crosshair's colour and no crosshair (2026-09-30, `tests/run_iron_sight_checks.gd`, `reference/research/scopes.md`, whose Local checks are the look beside CS2). Their scoped framing now matches the reference's roughly 46%-of-height opening, the outside scene is softly blurred, and the lens is black when lowered (Local rendering checked 2026-10-01, PR #169).)*
 - [x] **R5. Shotguns.** Pellets per shot (Bullets), each traced and damaged
   on its own, shorter range. *(Done 2026-09-24 for the Nova, XM1014,
   Sawed-Off and MAG-7, the player's and the bots': a pull fires

@@ -96,9 +96,12 @@ static func apply(variant: String, root: Node, viewport: Viewport) -> Callable:
 				return func() -> void: pass
 			# From a point no cluster holds, everything is drawn; stopped, it
 			# stays so until put back, when it culls from the camera again.
+			var processing := visibility.is_processing()
 			visibility.set_process(false)
 			visibility.show_from(Vector3.INF)
-			return func() -> void: visibility.set_process(true)
+			return func() -> void:
+				if is_instance_valid(visibility):
+					visibility.set_process(processing)
 		"no_msaa":
 			return _change(viewport, "msaa_3d", Viewport.MSAA_DISABLED)
 		"sdr_2d":

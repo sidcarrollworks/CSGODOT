@@ -106,6 +106,11 @@ func start(game_world: GameWorld, map_contents: MapContents) -> void:
 	hud.userid = (player as PlayerSim).userid
 	hud.game = world.game
 	add_child(hud)
+	# F11 steps through the culling and the skybox, to find what draws a
+	# wrong picture (RenderDebug).
+	var render_debug := RenderDebug.new()
+	render_debug.name = "RenderDebug"
+	add_child(render_debug)
 	_add_views()
 	var impacts := BulletImpacts.new()
 	impacts.name = "BulletImpacts"

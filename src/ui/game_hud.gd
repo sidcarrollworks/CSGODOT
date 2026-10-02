@@ -53,6 +53,8 @@ var game: GameSystems
 var _crosshair: Crosshair
 ## A sniper's scope, over the view while scoped in.
 var scope: ScopeOverlay
+## The AUG's and SG 553's dot while up at the eye.
+var iron_sight: IronSightOverlay
 var health_ammo: HealthAmmoCenter
 var money: MoneyPanel
 var team_counter: TeamCounter
@@ -66,8 +68,10 @@ var kill_feed: KillFeed
 var alert: HudAlert
 ## Why B would not open the menu, for a moment, under the alert.
 var hint: HudAlert
-## What E would do, under the crosshair ("[E] Take Bomb" from a bot).
+## What E would pick up, under the crosshair, including a bot's bomb.
 var use_prompt: UsePrompt
+## Ground item selected with sight rays on the last physics frame.
+var _pickup_item: String = ""
 ## Across the middle while dead.
 var dead_bar: HudAlert
 var damage_indicator: DamageIndicator
@@ -95,9 +99,9 @@ const IMAGES: Array[String] = [
 	"backgrounds/bluedots_large_png",
 	"hud/armor",
 	"hud/armor_helmet",
-	"hud/double_arrows",
 	"hud/teamcounter/armor",
 	"hud/teamcounter/armor_helmet",
+	"hud/teamcounter/damage-report-frame",
 	"hud/teamcounter/teamcounter_botavatar",
 	"icons/person",
 	"icons/ui/alert",
@@ -113,6 +117,7 @@ const IMAGES: Array[String] = [
 static func images_to_read() -> Array:
 	var images: Array = IMAGES.duplicate()
 	images.append_array(KillFeed.ICONS.values())
+	images.append_array(TeamCounter.KILLTYPE_ICONS.values())
 	images.append(HealthAmmoCenter.reserve_icon(""))
 	for gun: String in HealthAmmoCenter.RESERVE_ICONS:
 		images.append(HealthAmmoCenter.reserve_icon(gun))
@@ -129,6 +134,10 @@ func _ready() -> void:
 	add_child(scope)
 	_crosshair = Crosshair.new()
 	add_child(_crosshair)
+	iron_sight = IronSightOverlay.new()
+	iron_sight.player = player
+	iron_sight.crosshair = _crosshair
+	add_child(iron_sight)
 	damage_indicator = DamageIndicator.new()
 	damage_indicator.player = player
 	add_child(damage_indicator)
@@ -190,12 +199,19 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		_where.visible = not _where.visible
 
 
+func _physics_process(_delta: float) -> void:
+	_pickup_item = ""
+	if game != null and player != null and player.alive and (buy_menu == null or not buy_menu.is_open()):
+		_pickup_item = str(game.query(&"use_pickup_item", [userid], ""))
+
+
 func _process(delta: float) -> void:
 	_frames.frame(Time.get_ticks_usec())
 	var team := player.team if player != null else "T"
 	if economy != null:
 		_show_money(team, delta)
 	if player == null:
+		use_prompt.say("")
 		return
 	var buying := buy_menu != null and buy_menu.is_open()
 	if buy_menu != null and not buying and player.team != _agent_team:
@@ -221,12 +237,13 @@ func _process(delta: float) -> void:
 	_crosshair.visible = shows_crosshair(player) and not buying
 	dead_bar.say("" if player.alive else dead_line(player), "", HudStyle.team_colour(team))
 	if match_state != null:
-		team_counter.show_match(match_state, player, economy, SimClock.now_usec(), bomb)
+		team_counter.show_match(match_state, player, economy, SimClock.now_usec(), bomb, round_report)
 		_show_win_panel(team)
 		win_panel.visible = not buying
 		var line := alert_line(match_state)
 		# The note under the alert gives way to a refusal's bar, which sits there.
 		alert.say(line[0], "" if hint.is_showing() else line[1], HudStyle.team_colour(team))
+	var carrier: PlayerSim = null
 	if bomb != null:
 		var picked := bomb_hint(_bomb_was, _carrier_was, bomb, userid)
 		if not picked.is_empty():
@@ -234,12 +251,13 @@ func _process(delta: float) -> void:
 			_notice_left = NOTICE_SECONDS
 		_bomb_was = bomb.state
 		_carrier_was = bomb.carrier
-		var carrier: PlayerSim = null
 		if match_state != null and bomb.state == C4.State.CARRIED:
 			for sim in match_state.players:
 				if sim.userid == bomb.carrier:
 					carrier = sim
-		use_prompt.say("" if buying else UsePrompt.line_for(player, bomb, carrier), UsePrompt.TAKE_BOMB_COLOUR)
+	var use_line := "" if buying else UsePrompt.line_for(player, bomb, carrier, _pickup_item,
+		game.now_usec() if game != null else SimClock.now_usec())
+	use_prompt.say(use_line, UsePrompt.TAKE_BOMB_COLOUR if use_line == UsePrompt.TAKE_BOMB else Color.WHITE)
 	if _where.visible:
 		_where.text = where_line(player.global_position, player.input.yaw_degrees, player.input.pitch_degrees) \
 			+ "\n" + _frames.line()
@@ -260,8 +278,10 @@ func _show_win_panel(team: String) -> void:
 		fact = WinPanel.reason_text(GameEvents.round_end_reason(match_state.last_reason))
 	var mvp := int(report.get("mvp", GameEvents.NOBODY))
 	var mvp_node: Node = roster.player(mvp) if roster != null and mvp != GameEvents.NOBODY else null
-	win_panel.show_round(WinPanel.title_for(winner, team), winner, team != winner, fact,
-		name_of(roster, mvp) if mvp_node != null else "", WinPanel.mvp_reason_text(int(report.get("mvp_reason", 0))),
+	# A bot's name carries CS2's clan tag, "[BOT] Efe" on its screenshot.
+	var mvp_name := ((KillFeed.BOT_TAG if mvp_node is Bot else "") + name_of(roster, mvp)) if mvp_node != null else ""
+	win_panel.show_round(WinPanel.title_for(winner, team), winner, team != winner, fact, mvp_name,
+		WinPanel.mvp_reason_text(int(report.get("mvp_reason", 0))),
 		roster.team_of(mvp) if mvp_node != null else winner, mvp_node is Bot)
 
 
@@ -271,6 +291,8 @@ static func name_of(roster: Roster, who: int) -> String:
 		return ""
 	var node := roster.player(who)
 	return str(node.name) if node != null else ""
+
+
 ## CS2's hint as you pick up the bomb from the ground, "You picked up the
 ## bomb" (research round-bomb-grenades.md 1.6), from how the bomb was last
 ## frame and is now; "" otherwise. Being handed it at a round's start says
@@ -283,11 +305,13 @@ static func bomb_hint(was: C4.State, carrier_was: int, c4: C4, you: int) -> Stri
 
 
 ## Whether the crosshair is drawn: not for a sniper (the game's
-## m_bShowCrosshair), whose aim is its scope, nor through the scope.
+## m_bShowCrosshair), whose aim is its scope, nor through the scope, nor
+## while an AUG or SG 553 is up at the eye, whose aim is its dot.
 static func shows_crosshair(who: PlayerSim) -> bool:
 	if who.weapon == null:
 		return true
-	return who.weapon.data.shows_crosshair and not ScopeOverlay.shown_for(who)
+	return who.weapon.data.shows_crosshair and not ScopeOverlay.shown_for(who) \
+		and IronSightOverlay.amount_for(who) <= 0.0
 
 
 ## Your money, with the cart while you may buy; and a refusal, for a

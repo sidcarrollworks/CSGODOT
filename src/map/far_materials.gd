@@ -1,7 +1,7 @@
 class_name FarMaterials
 extends RefCounted
 
-## Draws meshes behind everything else, whatever their distance.
+## Draws distant scenery behind everything else.
 ##
 ## Source 2 draws the 3D skybox in a pass of its own before the world, with
 ## the depth buffer cleared in between, so the world always wins where the
@@ -16,6 +16,8 @@ extends RefCounted
 ## standard material moves onto far.gdshader with what the import made of
 ## it; a shader material (a blend material, say) gets a variant of its own
 ## shader with the squeeze added.
+## Scenery within 32 units of the eye is clipped: squeezed depth would
+## otherwise approach the near plane as its distance approaches zero.
 ##
 ## The skybox is imported at sixteen times its size, so its terrain runs out
 ## to half a million units, far past the camera's far plane (16,384). The
@@ -35,6 +37,10 @@ extends RefCounted
 const SHADER := preload("res://src/map/far.gdshader")
 const INCLUDE := "#include \"res://src/map/far.gdshaderinc\""
 const VERTEX_SQUEEZE := "void vertex() {\n\tPOSITION = far_position(PROJECTION_MATRIX * MODELVIEW_MATRIX * vec4(VERTEX, 1.0), CLIP_SPACE_FAR, PROJECTION_MATRIX);\n}\n\n"
+## Near skybox scenery is clipped, using its real view-space position.
+## Writing DEPTH to clamp it would lose early depth rejection for hidden
+## terrain. The existing squeeze safely sorts scenery beyond 32 units.
+const FRAGMENT_CLIP := "\n\tif (-VERTEX.z < FAR_NEAR_DISTANCE) { discard; }"
 ## Where a blended material's edge is cut, drawn behind everything.
 const BLENDED_CUT := 0.5
 ## The box a mesh behind everything is culled by, in its own space: larger
@@ -141,6 +147,7 @@ static func variant_of(base: Shader) -> Shader:
 		code = code.replace("void fragment() {", VERTEX_SQUEEZE + "void fragment() {")
 	elif not vertex.contains("#ifdef FAR_SQUEEZE"):
 		code = code.replace("void fragment() {", "void fragment() {\n\tDEPTH = far_depth(FRAGCOORD.z);")
+	code = code.replace("void fragment() {", "void fragment() {" + FRAGMENT_CLIP)
 	shader.code = code
 	_variants[base] = shader
 	return shader

@@ -14,8 +14,13 @@
 // a shader whose vertex() sets POSITION already.
 //
 // The fragment keeps a thousandth of its distance from the far plane, so
-// the parts of a far scene still sort among themselves while anything of
-// the near scene, at any depth, lands in front. Every renderer reverses
+// the parts of a far scene still sort among themselves. A fragment within
+// FAR_NEAR_DISTANCE is clipped by the far material: the 1/w depth curve
+// would otherwise become nearer than the map when terrain nearly touches
+// the eye (dust2's crates, standing eye y=-64, terrain y=-64.003).
+// Clipping uses the real view-space VERTEX and leaves the vertex squeeze
+// and early depth rejection intact. Clamping DEPTH instead cost 0.75 ms
+// at 1080p (reference/rendering.md). Every renderer reverses
 // the depth buffer since Godot 4.3, Compatibility included, so far is 0
 // (FarMaterials.far_plane_depth); the material is told. Per fragment, a
 // part past the far plane is clipped before its fragment runs, so only the
@@ -25,6 +30,8 @@
 
 uniform float far_plane_depth = 0.0;
 const float FAR_DEPTH_KEEP = 0.001;
+// The map up to 8,192 units wins against skybox fragments from 32 out.
+const float FAR_NEAR_DISTANCE = 32.0;
 
 float far_depth(float depth) {
 	return far_plane_depth + (depth - far_plane_depth) * FAR_DEPTH_KEEP;

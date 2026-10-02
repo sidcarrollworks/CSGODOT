@@ -51,11 +51,10 @@ extends Resource
 ## height is a crouched hull's.
 @export var pickup_reach: float = 24.0
 @export var pickup_height: float = 54.0
-## How far from a terrorist's eyes, and how far off their aim, the dropped
-## bomb can be for E to take it: CS2's player_use_radius, 80, and the
-## cone ItemDrops searches for a gun (ItemDrops.USE_CONE_DEGREES, a guess).
+## E's reach for the dropped bomb and for taking it from a bot: CS2's
+## player_use_radius, 80, in the search E makes on a gun (UseSearch, which
+## measures it across from the eyes).
 @export var use_reach: float = 80.0
-@export var use_cone_degrees: float = 30.0
 ## A player who drops the bomb cannot pick it straight back up for this
 ## long: in CS2 the bomb is thrown clear, here it lands at their feet. A
 ## guess, so that dropping it does something.

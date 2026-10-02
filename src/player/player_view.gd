@@ -90,6 +90,10 @@ var viewmodel: Node3D
 ## The bob of walking and the lag of turning, on the weapon model.
 var viewmodel_motion := ViewModelMotion.new()
 
+## The eyes' small dip and recovery on a jump; the same response also
+## drives the arms' dip relative to the camera, separate from running bob.
+var camera_motion := JumpCameraMotion.new()
+
 ## The arms and what is in hand, drawn under the camera with a projection of
 ## their own (ViewModelProjection), when the models are there.
 var view_model: ViewModel
@@ -114,6 +118,9 @@ var _planting := false
 ## The field of view last drawn, in CS2's degrees, and the view model it
 ## was drawn for: a scope narrows it (_follow_scope).
 var _fov := ViewModelProjection.WORLD_FOV
+var _arms_fov := ViewModelProjection.VIEW_MODEL_FOV
+## How far an AUG or SG 553 is up at the eye this frame (_follow_scope).
+var _arms_raised := 0.0
 var _fov_model: ViewModel
 
 ## What you hear of your own weapon and your hits, and of your own feet.
@@ -188,6 +195,7 @@ func _ready() -> void:
 	player.reload_started.connect(_on_reload_started)
 	player.reload_stopped.connect(_on_reload_stopped)
 	player.shot_traced.connect(_on_shot_traced)
+	player.knife_swung.connect(_on_knife_swung)
 	player.killed.connect(_on_killed)
 	player.respawned.connect(_on_respawned)
 	player.team_changed.connect(_on_team_changed)
@@ -262,6 +270,16 @@ func _on_reload_stopped() -> void:
 	weapon_sounds.stop_reload()
 
 
+## A knife swing: the arms play its clip (light_hit1, heavy_backstab...)
+## from the top, and the body you look down at its attack. Its sounds are
+## WeaponSounds'.
+func _on_knife_swung(swing: Knife.Swing) -> void:
+	if view_model != null:
+		view_model.play(swing.clip(), ViewModel.SHOOT_BLEND, 1.0, true)
+	if body_shadow != null:
+		body_shadow.knife_attack(swing.heavy, swing.met(), swing.variation)
+
+
 func _on_shot_traced(shot: Weapon.Shot, result: Hitscan.Result) -> void:
 	if shot.pellet == 0:
 		if view_model != null:
@@ -277,6 +295,7 @@ func _on_shot_traced(shot: Weapon.Shot, result: Hitscan.Result) -> void:
 ## and the camera out of your head to watch the body the simulation wears
 ## fall (PlayerSim.ragdoll), drawn for you now.
 func _on_killed(_zone: StringName) -> void:
+	camera_motion.reset()
 	_show_player(false)
 	_show_corpse(true)
 	_dead_for = 0.0
@@ -285,6 +304,7 @@ func _on_killed(_zone: StringName) -> void:
 
 
 func _on_respawned() -> void:
+	camera_motion.reset()
 	_watch(null)
 	_show_player(true)
 	_show_corpse(false)
@@ -584,7 +604,13 @@ func _process(delta: float) -> void:
 	var alpha := DrawClock.fraction()
 	var interpolated := player.previous_position.lerp(player.global_position, alpha)
 
-	camera.global_position = interpolated + Vector3.UP * player.eye_height()
+	var dip := 0.0
+	if player.noclip:
+		camera_motion.reset()
+	else:
+		var drawn_usec := SimClock.now_usec() - SimClock.tick_usec() + int(alpha * SimClock.tick_usec())
+		dip = camera_motion.update_at(drawn_usec, player.air_action, player.air_action_usec)
+	camera.global_position = interpolated + Vector3.UP * (player.eye_height() + dip)
 	var yaw := deg_to_rad(player.input.yaw_degrees)
 	for body in [body_model, body_shadow]:
 		if body != null:
@@ -701,26 +727,41 @@ static func any_box_in_view(frustum: Array[Plane], boxes: Array[AABB], feet: Vec
 ## of view narrowed to its zoom (eased over the zoom time), the arms and gun
 ## put away while a sniper is scoped, and the mouse slowed by the zoomed
 ## field of view over the unzoomed one (CS2's zoom_sensitivity_ratio 1).
-## The arms keep their own field of view whatever the world's.
+## The arms keep their own field of view whatever the world's, but for the
+## AUG and SG 553, which come up to the eye as they scope: their arms go
+## from 68 to the model's calibrated scope framing as far as the gun is up
+## (Weapon.iron_sight_amount; reference/research/scopes.md).
 func _follow_scope() -> void:
 	var weapon := player.weapon if player.alive and _dead_for < 0.0 else null
 	var fov := ViewModelProjection.WORLD_FOV
+	var arms_fov := ViewModelProjection.VIEW_MODEL_FOV
+	var raised := 0.0
 	var hidden := false
 	var sensitivity := 1.0
 	if weapon != null and weapon.data.zoom_levels() > 0:
 		fov = weapon.zoom_fov_at(DrawClock.usec())
 		hidden = weapon.through_scope()
 		sensitivity = weapon.data.zoom_fov(weapon.zoom_level) / ViewModelProjection.WORLD_FOV * ZOOM_SENSITIVITY_RATIO
+		raised = weapon.iron_sight_amount(DrawClock.usec())
+		var sight_fov := view_model.iron_sight_arms_fov if view_model != null else weapon.data.iron_sight_fov
+		arms_fov = lerpf(arms_fov, sight_fov, raised)
+	_arms_raised = raised
 	player.input.zoom_sensitivity = sensitivity
 	if view_model != null:
 		view_model.visible = player.alive and not hidden
-	if is_equal_approx(fov, _fov) and _fov_model == view_model:
+		view_model.raise_to_eye(raised, weapon.data if weapon != null else null)
+	if is_equal_approx(fov, _fov) and is_equal_approx(arms_fov, _arms_fov) and _fov_model == view_model:
 		return
 	_fov = fov
+	_arms_fov = arms_fov
 	_fov_model = view_model
 	camera.fov = ViewModelProjection.vertical_fov(fov)
+	if is_equal_approx(arms_fov, ViewModelProjection.VIEW_MODEL_FOV):
+		camera.remove_meta(ViewModelProjection.ARMS_FOV_META)
+	else:
+		camera.set_meta(ViewModelProjection.ARMS_FOV_META, arms_fov)
 	if view_model != null:
-		ViewModelProjection.claim(view_model, fov)
+		ViewModelProjection.claim(view_model, fov, arms_fov)
 
 
 ## CS2's zoom_sensitivity_ratio: scoped, the mouse turns the view this much
@@ -732,8 +773,8 @@ const ZOOM_SENSITIVITY_RATIO := 1.0
 ##
 ## The model is a child of the camera, so it already follows the view kick.
 ## This is the extra movement on top: the gun climbing in the hands relative
-## to the screen, which is most of what reads as recoil. The knife, a
-## grenade and the bomb only bob and sway.
+## to the screen, which is most of what reads as recoil. Every item also
+## bobs, sways and dips on takeoff/landing relative to the camera.
 func _update_viewmodel(delta: float) -> void:
 	if viewmodel == null:
 		return
@@ -745,13 +786,16 @@ func _update_viewmodel(delta: float) -> void:
 	# model's own.
 	var motion := viewmodel_motion.update(
 		delta, player.velocity, player.on_ground,
-		Vector2(player.input.yaw_degrees, player.input.pitch_degrees)
+		Vector2(player.input.yaw_degrees, player.input.pitch_degrees), camera_motion.height
 	)
 	var alpha := DrawClock.fraction()
 	var punch := player.weapon.viewmodel_punch() if player.weapon != null else Vector2.ZERO
 	var kick := player.previous_viewmodel_punch.lerp(punch, alpha)
+	# Up at the eye, the gun keeps its scope in front of it: no bob or sway
+	# (CS2 holds it nearly still there, m_flIronSightLooseness 0.03).
+	var loose := 1.0 - _arms_raised
 	viewmodel.transform = Transform3D(
-		motion.basis * _viewmodel_rest.basis
+		Basis.IDENTITY.slerp(motion.basis, loose) * _viewmodel_rest.basis
 			* Basis.from_euler(Vector3(deg_to_rad(kick.y), deg_to_rad(-kick.x), 0.0)),
-		_viewmodel_rest.origin + motion.origin
+		_viewmodel_rest.origin + motion.origin * loose
 	)

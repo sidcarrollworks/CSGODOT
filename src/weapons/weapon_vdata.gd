@@ -119,6 +119,13 @@ static func apply(data: WeaponData, weapon_class: String, alternate: bool = fals
 	data.unzooms_after_shot = get_value.call("m_bUnzoomsAfterShot") == 1.0
 	data.hides_view_model_when_zoomed = get_value.call("m_bHideViewModelWhenZoomed") == 1.0
 	data.shows_crosshair = get_value.call("m_bShowCrosshair") != 0.0
+	for field: Array in [
+		["iron_sight_fov", "m_flIronSightFOV"],
+		["iron_sight_pull_up_speed", "m_flIronSightPullUpSpeed"],
+		["iron_sight_put_down_speed", "m_flIronSightPutDownSpeed"],
+	]:
+		var value: float = get_value.call(field[1])
+		data.set(field[0], value if not is_nan(value) else 0.0)
 
 
 ## The game's inaccuracy (the tangent of the widest angle a round leaves the

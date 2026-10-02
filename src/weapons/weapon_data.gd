@@ -221,6 +221,15 @@ const NEARLY_EMPTY_SHARE_SHOTGUN := 0.3
 ## The snipers put the arms and gun away while scoped and draw the scope
 ## instead (m_bHideViewModelWhenZoomed); the AUG and SG 553 keep them.
 @export var hides_view_model_when_zoomed: bool = false
+## The AUG and SG 553 raise the gun to the eye and aim through its own
+## scope (reference/research/scopes.md): the arms' field of view there, in
+## CS2's degrees (m_flIronSightFOV, 45 on both), and how fast the gun comes
+## up and goes down again, in the share of the way a second
+## (m_flIronSightPullUpSpeed 10 and m_flIronSightPutDownSpeed 8). 0 for a
+## gun without.
+@export var iron_sight_fov: float = 0.0
+@export var iron_sight_pull_up_speed: float = 0.0
+@export var iron_sight_put_down_speed: float = 0.0
 ## Whether the crosshair is drawn with it in hand (m_bShowCrosshair): not
 ## for the four snipers, whose only aim is the scope.
 @export var shows_crosshair: bool = true
@@ -239,6 +248,11 @@ func nearly_empty(rounds_left: int) -> bool:
 		return false
 	var share := NEARLY_EMPTY_SHARE_SHOTGUN if pellets > 1 else NEARLY_EMPTY_SHARE
 	return rounds_left <= floori(magazine_size * share + 0.0001)
+
+
+## Whether scoping raises the gun to the eye rather than putting it away.
+func has_iron_sight() -> bool:
+	return iron_sight_fov > 0.0 and iron_sight_pull_up_speed > 0.0 and zoom_levels() > 0
 
 
 ## How many zoom levels the gun has: 0 for none.

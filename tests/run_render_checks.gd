@@ -21,6 +21,10 @@ func _initialize() -> void:
 	_check_stats()
 	_check_variants()
 	_check_occluders()
+	_check_render_debug()
+	await _check_render_debug_lifecycle()
+	if DisplayServer.get_name() != "headless":
+		await _check_skybox_crossing_eye()
 	_finish("render")
 
 
@@ -172,6 +176,167 @@ func _box(parent: Node, size: float, part: String, where: Vector3 = Vector3.ZERO
 	mesh_instance.position = where
 	parent.add_child(mesh_instance)
 	return mesh_instance
+
+
+## F11's steps (RenderDebug) each change their one thing and put it back.
+func _check_render_debug() -> void:
+	var skybox := Node3D.new()
+	skybox.name = "Skybox"
+	root.add_child(skybox)
+	var visibility := WorldVisibility.new()
+	root.add_child(visibility)
+	visibility.set_process(true)
+	var occlusion := root.use_occlusion_culling
+	var steps := {
+		"no_occlusion": func() -> bool: return root.use_occlusion_culling == false,
+		"no_visibility": func() -> bool: return not visibility.is_processing(),
+		"hide_skybox": func() -> bool: return not skybox.visible,
+		"draw_occluders": func() -> bool: return root.debug_draw == Viewport.DEBUG_DRAW_OCCLUDERS,
+	}
+	_check_equal(RenderDebug.STEPS.size(), steps.size() + 1, "F11 steps through each of these and back to as is")
+	for each: Array in RenderDebug.STEPS:
+		if String(each[0]).is_empty():
+			continue
+		var undo: Callable = RenderDebug.apply(each[0], root, root)
+		_check(steps.has(each[0]) and (steps[each[0]] as Callable).call(), "F11's %s does what it says" % each[0])
+		undo.call()
+		_check(
+			root.use_occlusion_culling == occlusion and skybox.visible and visibility.is_processing()
+				and root.debug_draw == Viewport.DEBUG_DRAW_DISABLED,
+			"and is put back"
+		)
+	skybox.free()
+	visibility.set_process(false)
+	var undo := RenderDebug.apply("no_visibility", root, root)
+	undo.call()
+	_check(not visibility.is_processing(), "a visibility pass already paused stays paused after a debug step")
+	visibility.free()
+
+
+## Leaving the map while F11 is active must restore the surviving viewport.
+func _check_render_debug_lifecycle() -> void:
+	var skybox := Node3D.new()
+	skybox.name = "Skybox"
+	root.add_child(skybox)
+	var visibility := WorldVisibility.new()
+	root.add_child(visibility)
+	visibility.set_process(true)
+	var occlusion := root.use_occlusion_culling
+	var drawing := root.debug_draw
+	for step in range(1, RenderDebug.STEPS.size()):
+		var debug := RenderDebug.new()
+		root.add_child(debug)
+		await process_frame
+		var press := InputEventKey.new()
+		press.keycode = RenderDebug.KEY
+		press.pressed = true
+		debug._unhandled_key_input(press)
+		_check(debug.step == 1 and debug._label.visible and root.is_input_handled(),
+			"an F11 press advances once, shows the step and consumes its event")
+		press.echo = true
+		debug._unhandled_key_input(press)
+		press.echo = false
+		press.pressed = false
+		debug._unhandled_key_input(press)
+		_check_equal(debug.step, 1, "F11 repeats and releases leave the view unchanged")
+		debug.go_to(step)
+		debug.free()
+		_check(root.use_occlusion_culling == occlusion and root.debug_draw == drawing
+			and skybox.visible and visibility.is_processing(),
+			"leaving the map restores the %s step" % RenderDebug.STEPS[step][0])
+	visibility.free()
+	skybox.free()
+
+
+## Dust2's skybox terrain can almost coincide with the eye. Large triangles
+## then cross behind it: exercise real clipping, not just positive-distance
+## arithmetic. Both the vertex squeeze and custom-vertex fallback must let
+## the map floor win while keeping uncovered scenery beyond the near cutoff.
+func _check_skybox_crossing_eye() -> void:
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(320, 180)
+	viewport.own_world_3d = true
+	viewport.msaa_3d = Viewport.MSAA_4X
+	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	root.add_child(viewport)
+	var camera := Camera3D.new()
+	camera.fov = ViewModelProjection.vertical_fov(ViewModelProjection.WORLD_FOV)
+	camera.near = ViewModelProjection.NEAR
+	camera.far = 16384.0
+	camera.rotation.x = deg_to_rad(-13.9)
+	viewport.add_child(camera)
+	camera.make_current()
+	var floor_mesh := MeshInstance3D.new()
+	var floor_plane := PlaneMesh.new()
+	floor_plane.size = Vector2(13000, 9728)
+	floor_mesh.mesh = floor_plane
+	floor_mesh.position.y = -64.0
+	var blue := Shader.new()
+	blue.code = "shader_type spatial;\nrender_mode unshaded, cull_disabled;\nvoid fragment() { ALBEDO = vec3(0.0, 0.0, 1.0); }\n"
+	var floor_material := ShaderMaterial.new()
+	floor_material.shader = blue
+	floor_mesh.material_override = floor_material
+	viewport.add_child(floor_mesh)
+	var sky := MeshInstance3D.new()
+	sky.mesh = floor_plane
+	sky.custom_aabb = FarMaterials.CULL_BOX
+	viewport.add_child(sky)
+	for own_vertex in [false, true]:
+		var red := Shader.new()
+		red.code = "shader_type spatial;\nrender_mode unshaded, cull_disabled;\n" \
+			+ ("void vertex() { POSITION = PROJECTION_MATRIX * MODELVIEW_MATRIX * vec4(VERTEX, 1.0); }\n" if own_vertex else "") \
+			+ "void fragment() { ALBEDO = vec3(1.0, 0.0, 0.0); }\n"
+		var sky_material := ShaderMaterial.new()
+		sky_material.shader = red
+		sky.set_surface_override_material(0, sky_material)
+		var meshes: Array[MeshInstance3D] = [sky]
+		FarMaterials.apply(meshes)
+		for height: float in [-0.003, 0.003, -32.0]:
+			# The skybox is static; move the eye and keep the map 64 below it.
+			camera.position.y = -height
+			floor_mesh.position.y = -height - 64.0
+			await process_frame
+			await RenderingServer.frame_post_draw
+			var pixels := viewport.get_texture().get_image()
+			var floor_pixels := 0
+			var sky_pixels := 0
+			for y in range(100, 178):
+				for x in range(2, 318):
+					var colour := pixels.get_pixel(x, y)
+					if colour.b > 0.9 and colour.r < 0.1:
+						floor_pixels += 1
+					if colour.r > 0.9 and colour.b < 0.1:
+						sky_pixels += 1
+			_check(floor_pixels > 20000 and sky_pixels == 0,
+				"the map floor wins over skybox terrain at eye offset %.3f (%s squeeze; %d floor, %d sky pixels)" \
+				% [height, "fragment" if own_vertex else "vertex", floor_pixels, sky_pixels])
+		# The squeezed red plane is still drawn when the map does not cover it.
+		floor_mesh.visible = false
+		await process_frame
+		await RenderingServer.frame_post_draw
+		var uncovered := viewport.get_texture().get_image().get_pixel(160, 140)
+		_check(uncovered.r > 0.9 and uncovered.b < 0.1,
+			"uncovered skybox terrain is kept visible (%s squeeze, %s)" % ["fragment" if own_vertex else "vertex", uncovered])
+		floor_mesh.visible = true
+		# Move from distant terrain back to nearly touching it. The cutoff
+		# reads this draw's view-space position, without stale camera state.
+		camera.position.y = 128.003
+		floor_mesh.position.y = 64.003
+		await process_frame
+		await RenderingServer.frame_post_draw
+		var distant := viewport.get_texture().get_image().get_pixel(160, 140)
+		_check(distant.b > 0.9 and distant.r < 0.1,
+			"distant skybox terrain remains behind the map (%s squeeze)" % ["fragment" if own_vertex else "vertex"])
+		camera.position.y = 0.003
+		floor_mesh.position.y = -63.997
+		await process_frame
+		await RenderingServer.frame_post_draw
+		var teleported := viewport.get_texture().get_image().get_pixel(160, 140)
+		_check(teleported.b > 0.9 and teleported.r < 0.1,
+			"the near cutoff remains correct after teleporting the eye (%s squeeze)" % ["fragment" if own_vertex else "vertex"])
+		camera.position.y = 0.0
+		floor_mesh.position.y = -64.0
+	viewport.free()
 
 
 func _check_occluders() -> void:
