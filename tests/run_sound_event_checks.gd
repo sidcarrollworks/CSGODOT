@@ -21,7 +21,9 @@ class Commanded extends PlayerSim:
 ## driver), so the checks are on what a start decides and what level it
 ## sets, not on what sounds. And issue 20, the low-ammo click on top of it:
 ## the provisional rule, and a WeaponSounds noting a click for each round
-## past it, from the game's weapon_fire. With the extraction, one check more: a start
+## past it, from the game's weapon_fire. And dry fire: one click a trigger
+## pull on an empty magazine (Weapon.dry_fire), sent as weapon_fire_on_empty
+## and heard as CS2's Default.ClipEmpty_Pistol or _Rifle. With the extraction, one check more: a start
 ## plays a file on its mixgroup's bus.
 
 
@@ -37,6 +39,8 @@ func _run() -> void:
 	await _test_the_player()
 	_test_the_nearly_empty_rule()
 	await _test_the_low_ammo_click()
+	_test_the_dry_fire_rule()
+	await _test_the_dry_fire_click()
 	_finish("sounds")
 
 
@@ -373,6 +377,125 @@ func _test_the_low_ammo_click() -> void:
 	_check(not clicks.is_empty() and clicks.all(func(v: Dictionary) -> bool: return not v.started and v.bus == &"Foley"),
 		"as CS2's Default.NearlyEmpty, waiting its 0.05 s, on Foley (%d)" % clicks.size())
 	_check(not SoundEvents.find(WeaponSounds.NEARLY_EMPTY_EVENT).local_player_only, "and a bot's is heard by those near it")
+	world.remove_player(player)
+	holder.queue_free()
+	await process_frame
+
+
+## Weapon.dry_fire: one click a pull on an empty magazine, once the gun
+## would have been ready; a press or a let-go arms it again; nothing while
+## it reloads or is drawn, or with rounds left. And which event each gun
+## clicks with.
+func _test_the_dry_fire_rule() -> void:
+	var weapon := Weapon.new(ItemRegistry.weapon_data("weapon_glock"))
+	var now := 10_000_000
+	weapon.ammo = 1
+	_check(not weapon.dry_fire(now), "a gun with a round in it does not click")
+	weapon.ammo = 0
+	_check(weapon.dry_fire(now), "an empty gun clicks as the trigger is pulled")
+	_check(not weapon.dry_fire(now + 500_000), "and once only while the pull lasts")
+	weapon.press_trigger()
+	_check(weapon.dry_fire(now + 600_000), "a new press clicks again")
+	weapon.trigger_held = false
+	weapon.trigger_held = true
+	_check(weapon.dry_fire(now + 700_000), "and so does letting go and pulling again")
+	weapon.reserve = 20
+	_check(weapon.start_reload(now + 800_000), "the reload starts")
+	weapon.press_trigger()
+	_check(not weapon.dry_fire(now + 900_000), "an empty gun reloading does not click")
+	var fresh := Weapon.new(ItemRegistry.weapon_data("weapon_ak47"))
+	fresh.draw(now, 1.0)
+	fresh.ammo = 0
+	_check(not fresh.dry_fire(now + 500_000), "nor one being drawn")
+	_check(fresh.dry_fire(now + 1_000_000), "which clicks once it is out")
+
+	var expected := {
+		"weapon_glock": WeaponSounds.CLIP_EMPTY_PISTOL,
+		"weapon_deagle": WeaponSounds.CLIP_EMPTY_PISTOL,
+		"weapon_usp_silencer": WeaponSounds.CLIP_EMPTY_PISTOL,
+		"weapon_ak47": WeaponSounds.CLIP_EMPTY_RIFLE,
+		"weapon_mp9": WeaponSounds.CLIP_EMPTY_RIFLE,
+		"weapon_nova": WeaponSounds.CLIP_EMPTY_RIFLE,
+		"weapon_awp": WeaponSounds.CLIP_EMPTY_RIFLE,
+		"weapon_negev": WeaponSounds.CLIP_EMPTY_RIFLE,
+		"weapon_knife": "",
+		"weapon_taser": "",
+		"weapon_hegrenade": "",
+	}
+	for item_class: String in expected:
+		_check_equal(WeaponSounds.dry_fire_event(item_class), expected[item_class], "%s clicks with %s" % [item_class, expected[item_class]])
+	for event_name: String in [WeaponSounds.CLIP_EMPTY_PISTOL, WeaponSounds.CLIP_EMPTY_RIFLE]:
+		var event := SoundEvents.find(event_name)
+		_check(event != null and not event.local_player_only and event.mixgroup == "Foley",
+			"%s is in CS2's table, on Foley, heard by everyone near" % event_name)
+	var gun_count := 0
+	for item: ItemDef in ItemRegistry.guns():
+		if item.type != "taser":
+			gun_count += 1
+			if WeaponSounds.dry_fire_event(item.item_class) == "":
+				_check(false, "%s has a dry fire" % item.item_class)
+	_check(gun_count > 20, "every gun has a dry fire (%d guns)" % gun_count)
+
+
+## A player emptying a gun hears the trigger click once it is empty: an
+## automatic held past its last round clicks once, a pistol once a press;
+## the game sends weapon_fire_on_empty at the tick, and a WeaponSounds
+## watching the player starts CS2's dry fire on the next frame.
+func _test_the_dry_fire_click() -> void:
+	var holder := Node3D.new()
+	root.add_child(holder)
+	var world := GameWorld.new()
+	holder.add_child(world)
+	world.set_physics_process(false)
+	var player := Commanded.new()
+	player.starting_gun = WeaponLibrary.ak47()
+	player.team = "T"
+	player.collision_layer = 2
+	holder.add_child(player)
+	player.place(Vector3(0, 0, 0), 0.0)
+	player.respawn()
+	world.add_player(player)
+	var sounds := WeaponSounds.new()
+	player.add_child(sounds)
+	sounds.set_process(false)
+	sounds.watch(player)
+	await process_frame
+	if player.weapon == null:
+		_check(false, "the player holds the AK-47")
+		holder.queue_free()
+		return
+	player.weapon.ammo = 2
+	player.weapon.reserve = 0
+	var fired: Array[String] = []
+	var dry: Array[String] = []
+	world.game.events.listen(&"weapon_fire", func(event: GameEvent) -> void: fired.append(String(event.fields["weapon"])))
+	world.game.events.listen(&"weapon_fire_on_empty", func(event: GameEvent) -> void: dry.append(String(event.fields["weapon"])))
+	player.held = UserCmd.ATTACK
+	for i in SimClock.ticks_in(ItemRegistry.item("weapon_ak47").deploy_seconds + 1.0):
+		world.step()
+	player.held = 0
+	world.step()
+	_check_equal(fired.size(), 2, "the AK-47 fires its last two rounds")
+	_check_equal(dry, ["weapon_ak47"] as Array[String], "then, held, the trigger clicks once")
+	_check_equal(sounds.pending_dry_fire(), PackedStringArray(["weapon_ak47"]), "which the view notes")
+	sounds._process(0.0)
+	_check(sounds.pending_dry_fire().is_empty(), "and starts on the next frame")
+	var clicks := sounds.events.voices().filter(func(v: Dictionary) -> bool: return v.event == WeaponSounds.CLIP_EMPTY_RIFLE)
+	_check(clicks.size() == 1 and clicks.all(func(v: Dictionary) -> bool: return v.bus == &"Foley"),
+		"as CS2's Default.ClipEmpty_Rifle, on Foley (%d)" % clicks.size())
+	player.held = UserCmd.ATTACK
+	for i in 3:
+		world.step()
+	player.held = 0
+	world.step()
+	player.held = UserCmd.ATTACK
+	world.step()
+	player.held = 0
+	world.step()
+	_check_equal(dry.size(), 3, "each new pull clicks once more (%s)" % [dry])
+	world.game.events.send(&"weapon_fire_on_empty", {"userid": player.userid + 100, "weapon": "weapon_ak47"})
+	world.game.events.flush()
+	_check_equal(sounds.pending_dry_fire().size(), 2, "another player's click is not this view's")
 	world.remove_player(player)
 	holder.queue_free()
 	await process_frame

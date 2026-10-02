@@ -21,13 +21,39 @@ As each one gets measured, record the measurement and the method below.
 | `sv_gravity` | 800 | Source/CS:GO default | No |
 | `sv_jump_impulse` | 301.993 | Source/CS:GO default | No |
 | walk modifier | 0.52 | CS:GO | No |
-| duck modifier | 0.34 | CS:GO | No |
+| duck modifier | 0.34 | CS:GO; the Counter-Strike wiki's Movement page (Speed Stats), Sid's source on 2026-09-30, gives crouched speed as 34% of the held item's speed in CS2 (the page itself is blocked from the cloud). Eased in and out with the duck, on the ground only (`PlayerSim._max_speed`), and the ground's acceleration works from the item's speed rather than the crouched third (`PlayerBody.acceleration_speed`): with sv_friction 5.2 and sv_stopspeed 80, acceleration from 73 cannot hold a crouched rifle at 73. Both are inferred, the second from `sv_accelerate_use_weapon_speed` (reference/research/movement.md, section 1); the run from rest crouched in that page's Local table checks them | No |
 | hull 32 x 32 x 72 | | Source player hull | No |
 | duck height 54 | | CS:GO | No |
 | step height 18 | | Source | No |
 | max ground angle 45.57° | | Source uses a 0.7 normal threshold; acos(0.7) = 45.573° | Derived, exact |
 | `NON_JUMP_VELOCITY` | 140 | `gamemovement.cpp:3830` | Read from the SDK, exact |
 | `sv_maxvelocity` | 3500 | `movevars_shared.cpp:93` | Read from the SDK, exact |
+
+## Crouch turning (Sid's PR #164 feedback, 2026-10-01)
+
+The faster ground acceleration above held a straight crouch at 0.34 of the
+weapon's speed, but turning kept adding sideways velocity beyond that top.
+The actual-body check reproduced an AK-47 rising from 73.1 to 79.0 u/s;
+its movement cone widened from the crouched 0.310 to 4.878 degrees. A pure
+solver run turning 5 degrees every tick reached 100.6 u/s.
+
+When ground acceleration works from a speed above the crouched top,
+`PlayerBody._walk_move` now limits the resulting horizontal speed to the
+greater of the top and the speed left after friction. This lets residual
+running speed decay gradually while preventing a turn from adding more.
+The native step has the same arithmetic. Ordinary ground acceleration and
+air acceleration keep their existing behavior; no traces are added.
+This correction follows Sid's playtest feedback, rather than a verified
+CS2 implementation: [Source SDK 2013's WalkMove](https://github.com/ValveSoftware/source-sdk-2013/blob/master/src/game/shared/gamemovement.cpp#L1758)
+caps the wish-direction projection and has no total-speed clamp.
+
+`Weapon.MOVING_SPEED_EPSILON` is 0.0001 u/s at the 34% movement-accuracy
+threshold. Float32 velocity can round a few millionths above that threshold,
+which the fourth-root penalty makes visible. The tolerance ignores only
+that rounding; actual running, jumping and residual excess speed still
+affect accuracy. `tests/run_sim_checks.gd` covers AK-47 and AWP turns with
+and without Walk, turning on the spot, and real run/jump penalties alongside
+the existing crouch transition checks.
 
 ## How to measure each kind
 

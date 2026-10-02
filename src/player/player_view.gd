@@ -43,6 +43,30 @@ const BODY_SETBACK := 8.0
 const LOOK_DOWN_LEAN := 20.0
 const LOOK_DOWN_ARCH := 45.0
 
+## What of the world round its feet the body you look down at can fill, in
+## units, facing -Z (its yaw and lean turn them with it): standing, and
+## crouched. Each band of height is as far as any drawn vertex of either
+## side's agent reached there, skinned through the idle, the runs, the
+## walk, the crouches and the air (2026-09-30, both agents, the chest
+## folded), with 3 more all round. The top stays under the eyes, which
+## stand BODY_SETBACK ahead of the feet: a box the camera stood in would
+## always be in view.
+const SEEN_STANDING: Array[AABB] = [
+	AABB(Vector3(-32.0, -5.0, -31.0), Vector3(64.0, 25.0, 65.0)),
+	AABB(Vector3(-24.0, 20.0, -21.0), Vector3(48.0, 12.0, 45.0)),
+	AABB(Vector3(-20.0, 32.0, -22.0), Vector3(40.0, 12.0, 39.0)),
+	AABB(Vector3(-18.0, 44.0, -13.0), Vector3(36.0, 11.0, 29.0)),
+]
+const SEEN_CROUCHED: Array[AABB] = [
+	AABB(Vector3(-28.0, -15.0, -25.0), Vector3(56.0, 35.0, 60.0)),
+	AABB(Vector3(-22.0, 20.0, -19.0), Vector3(44.0, 12.0, 44.0)),
+	AABB(Vector3(-21.0, 32.0, -6.0), Vector3(42.0, 13.0, 29.0)),
+]
+## The camera's frustum planes as Camera3D.get_frustum() gives them (near,
+## far, left, top, right, bottom), in the order to try them: the bottom
+## first, which shuts out the body whenever you look ahead.
+const FRUSTUM_ORDER: Array[int] = [5, 0, 2, 4, 3, 1]
+
 ## Dead, the camera leaves your eyes for a view of your body from outside:
 ## this far from its middle, looking down on it at least this steeply, turned
 ## round it by the mouse, and taking this long to get there. By eye; CS2's
@@ -65,6 +89,10 @@ var viewmodel: Node3D
 
 ## The bob of walking and the lag of turning, on the weapon model.
 var viewmodel_motion := ViewModelMotion.new()
+
+## The eyes' small dip and recovery on a jump; the same response also
+## drives the arms' dip relative to the camera, separate from running bob.
+var camera_motion := JumpCameraMotion.new()
 
 ## The arms and what is in hand, drawn under the camera with a projection of
 ## their own (ViewModelProjection), when the models are there.
@@ -162,7 +190,9 @@ func _ready() -> void:
 	player.pin_pulled.connect(_on_pin_pulled)
 	player.grenade_released.connect(_on_grenade_released)
 	player.reload_started.connect(_on_reload_started)
+	player.reload_stopped.connect(_on_reload_stopped)
 	player.shot_traced.connect(_on_shot_traced)
+	player.knife_swung.connect(_on_knife_swung)
 	player.killed.connect(_on_killed)
 	player.respawned.connect(_on_respawned)
 	player.team_changed.connect(_on_team_changed)
@@ -228,7 +258,23 @@ func _on_reload_started() -> void:
 		view_model.play(&"reload")
 	if body_shadow != null:
 		body_shadow.play(&"reload", 0.1)
-	weapon_sounds.reload()
+	weapon_sounds.reload_weapon(player.weapon)
+
+
+## A shot stopped a shotgun's reload: the rest of its sounds are not heard
+## (the shot's own clip takes over the arms).
+func _on_reload_stopped() -> void:
+	weapon_sounds.stop_reload()
+
+
+## A knife swing: the arms play its clip (light_hit1, heavy_backstab...)
+## from the top, and the body you look down at its attack. Its sounds are
+## WeaponSounds'.
+func _on_knife_swung(swing: Knife.Swing) -> void:
+	if view_model != null:
+		view_model.play(swing.clip(), ViewModel.SHOOT_BLEND, 1.0, true)
+	if body_shadow != null:
+		body_shadow.knife_attack(swing.heavy, swing.met(), swing.variation)
 
 
 func _on_shot_traced(shot: Weapon.Shot, result: Hitscan.Result) -> void:
@@ -246,6 +292,7 @@ func _on_shot_traced(shot: Weapon.Shot, result: Hitscan.Result) -> void:
 ## and the camera out of your head to watch the body the simulation wears
 ## fall (PlayerSim.ragdoll), drawn for you now.
 func _on_killed(_zone: StringName) -> void:
+	camera_motion.reset()
 	_show_player(false)
 	_show_corpse(true)
 	_dead_for = 0.0
@@ -254,6 +301,7 @@ func _on_killed(_zone: StringName) -> void:
 
 
 func _on_respawned() -> void:
+	camera_motion.reset()
 	_watch(null)
 	_show_player(true)
 	_show_corpse(false)
@@ -458,10 +506,20 @@ func _follow_plant() -> void:
 ## The body and its shadow, when the models are there. They are top_level
 ## like the camera and follow the interpolated position, so they do not step
 ## at the tick rate against a camera that does not.
+##
+## The body is walked and fitted only while the camera can see some of it
+## (body_in_view): it casts no shadow, and nothing else reads its bones. The
+## shadow walks every frame, as its shadow is in view whenever the ground
+## round you is. Neither aims its eyes: the one's head is folded away, the
+## other's is drawn only into the shadow maps.
 func _show_body() -> void:
 	body_model = _build_body("Body", FOLDED_BONES, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
 	if body_model != null:
+		body_model.aims_eyes = false
+		body_model.step_when_shown()
 		body_shadow = _build_body("BodyShadow", [], GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY)
+		if body_shadow != null:
+			body_shadow.aims_eyes = false
 
 
 ## A body. The shadow's holds what is in hand (PlayerModel.hold), as a
@@ -543,7 +601,13 @@ func _process(delta: float) -> void:
 	var alpha := DrawClock.fraction()
 	var interpolated := player.previous_position.lerp(player.global_position, alpha)
 
-	camera.global_position = interpolated + Vector3.UP * player.eye_height()
+	var dip := 0.0
+	if player.noclip:
+		camera_motion.reset()
+	else:
+		var drawn_usec := SimClock.now_usec() - SimClock.tick_usec() + int(alpha * SimClock.tick_usec())
+		dip = camera_motion.update_at(drawn_usec, player.air_action, player.air_action_usec)
+	camera.global_position = interpolated + Vector3.UP * (player.eye_height() + dip)
 	var yaw := deg_to_rad(player.input.yaw_degrees)
 	for body in [body_model, body_shadow]:
 		if body != null:
@@ -565,15 +629,31 @@ func _process(delta: float) -> void:
 		deg_to_rad(player.input.yaw_degrees - punch.x),
 		0.0
 	)
+	# Walked and fitted only where the camera, as it now looks, can see it.
+	if body_model != null:
+		body_model.show_frame(delta, body_model.visible
+			and body_in_view(camera.get_frustum(), body_model, body_model.pose_crouch()))
 
 	_follow_plant()
 	_follow_hand()
+	_follow_reload()
 	_update_viewmodel(delta)
 	# The arms from where the eyes are, the body from its middle.
 	if view_model != null:
 		view_model.light_from(camera.global_position)
 	if body_model != null:
 		body_model.light_from(interpolated + Vector3.UP * 40.0)
+
+
+## A shotgun loading a shell at a time: its arms round the reload clip's
+## loop once for every shell, where the reload is at this frame.
+func _follow_reload() -> void:
+	var weapon := player.weapon
+	if view_model == null or weapon == null or not weapon.data.reloads_single_shells:
+		return
+	var seconds := weapon.shell_clip_seconds(DrawClock.usec())
+	if seconds >= 0.0:
+		view_model.hold_at(&"reload", seconds)
 
 
 ## How far the view looks down, 0 level or up to 1 straight down, eased
@@ -602,6 +682,42 @@ static func view_right(yaw: float) -> Vector3:
 ## tips up toward the view's back.
 static func lean(yaw: float, pitch_degrees: float) -> Basis:
 	return Basis(view_right(yaw), deg_to_rad(LOOK_DOWN_LEAN * look_down(pitch_degrees)))
+
+
+## Whether the camera, by its frustum (Camera3D.get_frustum()), can see any
+## of a body you look down at: SEEN_STANDING or SEEN_CROUCHED round its
+## feet, turned and leaned as it is, by how crouched its pose stands
+## (PlayerModel.pose_crouch). Between, where the eyes pass the boxes' tops,
+## it is taken as seen.
+static func body_in_view(frustum: Array[Plane], body: Node3D, crouch: float) -> bool:
+	if crouch > 0.05 and crouch < 0.95:
+		return true
+	# The model faces +Z and is turned round (PlayerModel); the boxes face -Z.
+	var turn := body.global_basis.orthonormalized() * Basis(Vector3.UP, -PI)
+	return any_box_in_view(frustum, SEEN_CROUCHED if crouch >= 0.95 else SEEN_STANDING, body.global_position, turn)
+
+
+## Whether any of boxes, turned by turn and stood at feet, is in the
+## frustum: one is not where it lies wholly over one of the planes (their
+## normals point out). Generous: a box past a corner of the frustum and
+## over no one plane counts as in it.
+static func any_box_in_view(frustum: Array[Plane], boxes: Array[AABB], feet: Vector3, turn: Basis) -> bool:
+	if frustum.size() < 6:
+		return true
+	for box in boxes:
+		var centre := feet + turn * box.get_center()
+		var half := box.size * 0.5
+		var inside := true
+		for index in FRUSTUM_ORDER:
+			var plane := frustum[index]
+			var reach := absf(plane.normal.dot(turn.x)) * half.x \
+				+ absf(plane.normal.dot(turn.y)) * half.y + absf(plane.normal.dot(turn.z)) * half.z
+			if plane.distance_to(centre) > reach:
+				inside = false
+				break
+		if inside:
+			return true
+	return false
 
 
 ## The scope, as the gun in hand has it at this frame: the camera's field
@@ -639,8 +755,8 @@ const ZOOM_SENSITIVITY_RATIO := 1.0
 ##
 ## The model is a child of the camera, so it already follows the view kick.
 ## This is the extra movement on top: the gun climbing in the hands relative
-## to the screen, which is most of what reads as recoil. The knife, a
-## grenade and the bomb only bob and sway.
+## to the screen, which is most of what reads as recoil. Every item also
+## bobs, sways and dips on takeoff/landing relative to the camera.
 func _update_viewmodel(delta: float) -> void:
 	if viewmodel == null:
 		return
@@ -652,7 +768,7 @@ func _update_viewmodel(delta: float) -> void:
 	# model's own.
 	var motion := viewmodel_motion.update(
 		delta, player.velocity, player.on_ground,
-		Vector2(player.input.yaw_degrees, player.input.pitch_degrees)
+		Vector2(player.input.yaw_degrees, player.input.pitch_degrees), camera_motion.height
 	)
 	var alpha := DrawClock.fraction()
 	var punch := player.weapon.viewmodel_punch() if player.weapon != null else Vector2.ZERO

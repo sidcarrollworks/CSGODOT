@@ -2,30 +2,6 @@
 
 **Counter-Strike 2, rebuilt from scratch in Godot 4.7.**
 
-The game's physics is **Box3D**, a GDExtension that is not committed. Install
-its pinned addon before opening the project or running the tests. On Windows:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/install_box3d.ps1
-```
-
-On Linux and macOS (and in CI and the cloud threads):
-
-```bash
-scripts/install_box3d.sh
-```
-
-The release's Linux library needs glibc 2.43, so on an older Linux the script
-lays over it the same tag rebuilt against glibc 2.35, from this repo's
-release, or builds it from the release's pinned source (a few minutes, once)
-where that cannot be fetched or glibc is older than 2.34. A shared native world handles collision
-queries, player hulls and hitboxes, dropped items and ragdolls. The Source
-movement and grenade-flight rules remain game code using Box3D collision;
-`-- --physics legacy` runs Godot's own physics for comparison, without
-ragdolls. See
-[`reference/box3d-trial.md`](reference/box3d-trial.md) for setup and the
-repeatable performance/settling comparison.
-
 [![Tests](https://github.com/sidcarrollworks/CSGODOT/actions/workflows/tests.yml/badge.svg)](https://github.com/sidcarrollworks/CSGODOT/actions/workflows/tests.yml)
 ![Godot 4.7](https://img.shields.io/badge/Godot-4.7-478cbf?logo=godotengine&logoColor=white)
 ![64 tick](https://img.shields.io/badge/tick-64%20Hz-555)
@@ -34,8 +10,9 @@ The goal is simple to state: movement, shooting and hit registration that
 feel the same as CS2's. Everything else is arranged so that "the same" is
 something the tests can measure, not a matter of opinion.
 
-It plays today as a single player competitive match against bots on dust2,
-or on any other CS2 defusal map you extract.
+It plays today as a single player competitive match against bots, or as
+Practice with no bots and an unlimited warmup, on dust2 and other extracted
+CS2 defusal maps.
 
 ---
 
@@ -44,22 +21,57 @@ or on any other CS2 defusal map you extract.
 | | |
 |---|---|
 | **Movement** | Source's movement ported line by line: acceleration, air strafing, collide-and-slide, step-up, crouch jumps, bunny hops. A fixed 64 Hz tick with sub-tick input, so a click is traced from where you were aiming at that instant. |
-| **Shooting** | Every CS2 gun, with the game's own numbers read from its weapon data. Spray patterns, tapping and recoil recovery, wall penetration by surface and thickness, CS2's nineteen hitbox capsules on every body, tagging and aim punch when hit, scopes and shotgun pellets. |
+| **Shooting** | Every CS2 firearm is available, with the game's own weapon data. Spray patterns, tapping and burst-dependent accuracy recovery, wall penetration by surface and thickness, nineteen hitbox capsules per extracted player model, tagging and aim punch, scopes and shotgun pellets. The Nova, XM1014 and Sawed-Off reload one shell at a time, and firing interrupts the reload. |
+| **Knife** | Left-click slashes and right-click stabs, with 48/32-unit forward reach, backstabs, armour and kill credit. Attacks work in the air, with first- and third-person clips and sounds. Damage and timing still await CS2 measurements. |
 | **The match** | CS2's competitive rules: warmup, freeze time, rounds, side swap, overtime. Money and CS2's buy menu, the bomb (plant and defuse), and all six grenades, smoke included. Five a side, with bots filling every place but yours. |
-| **Bots** | The same simulation as you, driven by commands instead of keys. They buy, walk dust2's own nav mesh to the bomb sites, shoot back with each gun's real spread and recoil, and respect smokes and flashes. |
-| **Look and sound** | The map's own baked lighting, light probes and sun. Your arms and gun in first person on CS2's animation clips, and your own body and shadow. A HUD in today's CS2 layout. The game's own sounds, with footsteps by surface. |
+| **Inventory** | Weapon slots, last-weapon switching and mouse-wheel cycling. Physical dropped items, walking pickups, and E to swap the gun in a slot or take the bomb from a teammate bot. The buy menu marks owned and unavailable items, refunds purchases, and supports Ctrl-click to buy and throw. |
+| **Bots** | The same simulation as you, driven by commands instead of keys. They buy, follow the loaded map's nav mesh to the bomb sites, jump and crouch along the route, make way for teammates, shoot with each gun's spread and recoil, and respect smokes and flashes. |
+| **Map and players** | The map's baked lighting, sun shadows, light probes, reflections and colour grade. First-person arms and guns on CS2's clips, your body when looking down and its full shadow, feet fitted to the ground and hands to the gun, and ragdolls on death. Shots leave muzzle flashes, tracers and bullet holes. |
+| **HUD** | Health, armour and ammo, money, team cards and the round clock, weapon selection and use prompts, damage directions, a kill feed with assists and kill marks, and round win panels with the MVP and a fun fact. Dead players can spectate teammates. |
+| **Sound** | Weapon shots, reloads, near-empty and dry-fire clicks, footsteps by surface, grenade and bomb sounds, flash ringing and muffling, the announcer, round countdowns and music cues. |
 
-**Not yet:** the knife and Zeus as weapons, the kill feed, radar and
-scoreboard, bots that play the round as a team, multiplayer, and menus.
+**Not yet:** Zeus attacks, burst-mode and silencer switching,
+blood impacts, full grenade effects and CS2-matched grenade lineups, radar
+and scoreboard, bots that play the objectives as a team, multiplayer, and
+full main and settings menus.
 [`reference/roadmap.md`](reference/roadmap.md) has everything left, in order.
 
 ## Getting started
 
-You need [Godot 4.7](https://godotengine.org/). Open the project and press
-play.
+Use [Godot 4.7](https://godotengine.org/); development and CI use **4.7.2**.
+The pinned native libraries support **Windows and Linux x86-64**. Run the
+commands below from the repository root. The `.sh` scripts need Bash; on
+Windows, use Git Bash for extraction and tests.
 
-- **The test maps work straight away.** Open
-  `maps/test_movement/test_movement.tscn` or `maps/test_range/test_range.tscn`.
+### Install the physics addon
+
+The game's physics is **Box3D v0.4.3**, a separate GDExtension world. Its
+binaries are not committed. Install the pinned addon before opening the
+project or running the tests. On Windows:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/install_box3d.ps1
+```
+
+On Linux:
+
+```bash
+scripts/install_box3d.sh
+```
+
+The installer checks the download's pinned checksum. On Linux with an older
+glibc, it installs compatible rebuilt libraries or builds from pinned
+source. See [`reference/box3d-trial.md`](reference/box3d-trial.md) for the
+details. Restart Godot after installing the addon if the project is open.
+
+### Play
+
+Open the project in Godot, then choose a scene:
+
+- **The test maps need no CS2 extraction.** Open
+  `maps/test_movement/test_movement.tscn` or `maps/test_range/test_range.tscn`
+  and press F6 to run the current scene. Extracted assets add CS2's models,
+  animations and sounds.
 - **dust2 needs CS2's files.** The map, models, animations and sounds are
   Valve's, so they are never in this repository. With CS2 installed and
   [Source2Viewer-CLI](https://github.com/ValveResourceFormat/ValveResourceFormat/releases)
@@ -75,7 +87,8 @@ play.
   or `--mode practice` on the command line skips the question.
   [`reference/extracting.md`](reference/extracting.md) covers each step,
   where the script looks for things, and what to do when an import
-  misbehaves.
+  misbehaves. Set `S2V`, `CS2_PATH` or `GODOT` in Bash if the viewer, game
+  installation or Godot binary is not found automatically.
 
 - **Any other defusal map:** extract it by name and play it.
 
@@ -83,6 +96,31 @@ play.
   scripts/extract_assets.sh map de_mirage
   godot --path . maps/play/play.tscn -- --map de_mirage
   ```
+
+### Optional native movement
+
+The movement step also has a C++ implementation. Building it speeds up
+movement; without it, the game uses the GDScript reference. It needs git,
+Python 3 and a C++ compiler (Visual Studio's C++ tools on Windows).
+
+On Windows:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/build_native.ps1
+```
+
+On Linux, or in Git Bash on Windows:
+
+```bash
+scripts/build_native.sh
+```
+
+Restart Godot after building. Rebuild after changes under `native/` or to
+the movement scripts it copies. A library built from different sources is
+refused, with a warning, and the script runs instead. To use the script
+explicitly, pass `--movement script` after `--` when launching Godot.
+[`native/README.md`](native/README.md) lists the source files and build
+options.
 
 ## Controls
 
@@ -93,14 +131,16 @@ CS2's default keys, everywhere, including the test maps.
 | `W` `A` `S` `D` | Move | `1` to `5` | Primary, pistol, knife, grenades, bomb |
 | `Space`, scroll up | Jump | `Q` | Last thing held |
 | `Ctrl` | Crouch | `G` | Drop |
-| `Shift` | Walk | `E` | Use (defuse) |
-| `Mouse 1` | Fire, or throw a grenade overhand | `B` | Buy menu, in your buy zone |
+| `Shift` | Walk | `E` | Defuse, pick up/swap a gun, take the bomb from a teammate bot |
+| `Mouse 1` | Fire, throw overhand, or plant with C4 held | `B` | Buy menu, in your buy zone |
 | `Mouse 2` | Scope in, or throw a grenade underhand (both buttons: between) | `R` | Reload |
+| Scroll down | Cycle inventory | `Ctrl` + click in the buy menu | Buy and throw |
 | `V` | Noclip | `F5` | End warmup |
-| `Esc` | Release the mouse | `F3` | Hide the position and frame-rate readout |
+| `Esc` | Toggle mouse capture | `F3` | Hide the position and frame-rate readout |
 
 When you are dead, `Mouse 1` watches the next teammate and `Space` moves the
-camera between their eyes and behind them. The test range adds its own keys
+camera between their eyes and behind them. Planting automatically crouches
+you for the duration of the plant. The test range adds its own keys
 on keys CS2 leaves free; they are listed in
 [`reference/test-maps.md`](reference/test-maps.md), and every bind with its
 plan in [`reference/binds.md`](reference/binds.md).
@@ -130,12 +170,32 @@ Four decisions shape the whole codebase:
 2. **A fixed 64 Hz tick, as CS2's.** What is drawn is interpolated between
    ticks, and input carries its time within the tick.
 3. **Built as a server runs it.** Every player, you and the bots alike, is a
-   simulation stepped one tick at a time by a CS2-shaped user command. One
-   `GameWorld` runs the tick; what you see and hear only reads it. That is
-   what keeps multiplayer from being a rewrite.
+   simulation stepped one tick at a time by a CS2-shaped user command.
+   `GameWorld` gathers everyone's command first, with bots thinking on up
+   to four worker threads, then runs the players in order, the match and the
+   shared systems. Events, damage records and inventories connect the
+   systems; what you see and hear only reads them.
 4. **CS2's own numbers win.** Weapon values come from the game's
    `weapons.vdata`, dumped to [`reference/weapons/vdata.csv`](reference/weapons/vdata.csv);
    anything measured by hand goes in `reference/` with how it was measured.
+
+Box3D owns the shared collision world: the map, player hulls and hitboxes,
+dropped items and ragdolls. The bridge converts inches to metres at its
+boundary; Source movement and grenade flight remain game rules. Godot's
+Jolt physics is used for standalone fixtures and the comparison mode,
+selected with `--physics legacy` after `--`; that mode has no ragdolls.
+
+The GDScript movement step is the reference for the native implementation.
+Tests compare their results bit for bit. Hitbox proxies update when needed,
+ragdolls are prepared before death, and animation and skeleton fitting
+avoid repeating work for bodies nobody sees. These are measured in
+[`reference/performance.md`](reference/performance.md); the 6 ms maximum
+frame-time target remains open.
+
+This is the foundation for multiplayer, which still needs networking,
+prediction, authoritative hitbox poses stepped by the tick, and a pose
+history for lag compensation. The local game's hitboxes currently follow
+the animated bodies drawn between ticks.
 
 [`reference/how-it-works.md`](reference/how-it-works.md) explains each
 system in depth, with the files that hold it.
@@ -147,17 +207,31 @@ scripts/run_tests.sh              # every test file
 scripts/run_tests.sh sim match    # only files whose names contain these
 ```
 
-Each system has a headless check file in `tests/` (`run_*.gd`). The same run
-happens on GitHub for every pull request and every push to `main`; checks
-that need the extracted assets skip themselves there and run on a machine
-that has them.
+Run these in Bash (Git Bash on Windows), with Box3D installed. The runner
+imports the project first. It finds Godot on `PATH` or in common Windows
+download locations; set `GODOT=/path/to/godot` if it is elsewhere.
+
+Each system has a headless check file in `tests/` (`run_*.gd`). Every file
+runs even if another fails, and script errors, crashes and timeouts fail the
+run. The default per-file limit is 180 seconds when coreutils' `timeout` is
+available; `CSGODOT_TEST_TIMEOUT` changes it. Explicitly known-open checks
+are reported separately and do not fail the run.
+
+The same suite runs on GitHub for every pull request and push to `main`.
+CI installs Box3D and builds the native movement library. Wherever that
+library is built, the suite holds its movement steps to the script's
+results bit for bit. In-tick rays that can meet hitboxes are also checked
+against the capsules themselves. Checks that need extracted assets skip
+when they are missing; drawing checks skip headless. Run the suite with the
+assets locally for map, model and sound changes.
 
 ## Project layout
 
 | Folder | What is in it |
 |---|---|
 | `src/sim/` | The tick: user commands, simulation time, the `GameWorld` |
-| `src/movement/` | The acceleration model and collide-and-slide |
+| `src/movement/` | Player hulls and the reference acceleration and collide-and-slide movement |
+| `src/physics/` | The shared Box3D world, query bridge and unit conversion |
 | `src/player/` | The player's simulation, input, first-person view and character models |
 | `src/weapons/`, `src/combat/` | Guns, recoil, hitscan, hitboxes, penetration, ragdolls |
 | `src/match/`, `src/modes/` | Match rules and round flow; competitive mode on any map |
@@ -166,6 +240,8 @@ that has them.
 | `src/bots/` | Bots and how they buy |
 | `src/map/` | Map import, lighting, nav mesh, buy zones and bomb sites |
 | `src/audio/`, `src/effects/`, `src/ui/` | Sound, muzzle flashes and tracers, the HUD |
+| `native/` | The C++ movement step and its build configuration |
+| `addons/` | GDExtension addons; installed and built binaries are gitignored |
 | `maps/` | dust2, the any-map play scene, and the two test maps |
 | `tests/` | The headless test suite |
 | `scripts/` | Extraction, test runner, profilers |
@@ -184,6 +260,8 @@ that has them.
 | [`reference/research/`](reference/research/) | Research into how CS2 does things, before building them |
 | [`reference/rendering.md`](reference/rendering.md), [`reference/performance.md`](reference/performance.md) | What a frame and a tick cost, and how to measure them |
 | [`reference/godot/`](reference/godot/) | The Godot 4.7 APIs this project uses, and their pitfalls |
+| [`reference/box3d-trial.md`](reference/box3d-trial.md), [`native/README.md`](native/README.md) | Physics setup and comparison, and building the native movement code |
+| [`reference/test-maps.md`](reference/test-maps.md), [`reference/binds.md`](reference/binds.md) | The test maps and their controls |
 | [`reference/extracting.md`](reference/extracting.md), [`reference/asset-pipeline.md`](reference/asset-pipeline.md) | Getting CS2's content in |
 
 ## Contributing

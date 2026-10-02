@@ -66,8 +66,10 @@ var kill_feed: KillFeed
 var alert: HudAlert
 ## Why B would not open the menu, for a moment, under the alert.
 var hint: HudAlert
-## What E would do, under the crosshair ("[E] Take Bomb" from a bot).
+## What E would pick up, under the crosshair, including a bot's bomb.
 var use_prompt: UsePrompt
+## Ground item selected with sight rays on the last physics frame.
+var _pickup_item: String = ""
 ## Across the middle while dead.
 var dead_bar: HudAlert
 var damage_indicator: DamageIndicator
@@ -192,12 +194,19 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		_where.visible = not _where.visible
 
 
+func _physics_process(_delta: float) -> void:
+	_pickup_item = ""
+	if game != null and player != null and player.alive and (buy_menu == null or not buy_menu.is_open()):
+		_pickup_item = str(game.query(&"use_pickup_item", [userid], ""))
+
+
 func _process(delta: float) -> void:
 	_frames.frame(Time.get_ticks_usec())
 	var team := player.team if player != null else "T"
 	if economy != null:
 		_show_money(team, delta)
 	if player == null:
+		use_prompt.say("")
 		return
 	var buying := buy_menu != null and buy_menu.is_open()
 	if buy_menu != null and not buying and player.team != _agent_team:
@@ -229,6 +238,7 @@ func _process(delta: float) -> void:
 		var line := alert_line(match_state)
 		# The note under the alert gives way to a refusal's bar, which sits there.
 		alert.say(line[0], "" if hint.is_showing() else line[1], HudStyle.team_colour(team))
+	var carrier: PlayerSim = null
 	if bomb != null:
 		var picked := bomb_hint(_bomb_was, _carrier_was, bomb, userid)
 		if not picked.is_empty():
@@ -236,12 +246,13 @@ func _process(delta: float) -> void:
 			_notice_left = NOTICE_SECONDS
 		_bomb_was = bomb.state
 		_carrier_was = bomb.carrier
-		var carrier: PlayerSim = null
 		if match_state != null and bomb.state == C4.State.CARRIED:
 			for sim in match_state.players:
 				if sim.userid == bomb.carrier:
 					carrier = sim
-		use_prompt.say("" if buying else UsePrompt.line_for(player, bomb, carrier), UsePrompt.TAKE_BOMB_COLOUR)
+	var use_line := "" if buying else UsePrompt.line_for(player, bomb, carrier, _pickup_item,
+		game.now_usec() if game != null else SimClock.now_usec())
+	use_prompt.say(use_line, UsePrompt.TAKE_BOMB_COLOUR if use_line == UsePrompt.TAKE_BOMB else Color.WHITE)
 	if _where.visible:
 		_where.text = where_line(player.global_position, player.input.yaw_degrees, player.input.pitch_degrees) \
 			+ "\n" + _frames.line()

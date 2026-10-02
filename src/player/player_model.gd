@@ -106,6 +106,9 @@ const ADDITIVE_FADE := 0.2
 
 ## Where a gun's own third-person set is (world_clip_set under it).
 const WORLD_DIR := "res://assets/characters/animation/anims/world"
+## Where both default knives' third-person attacks are: their own sets hold
+## only the draw and the idle (reference/weapons/equipment.md).
+const KNIFE_ATTACKS_SET := "knife/_default_knife"
 ## What the gun's own clips are loaded as: weapon_idle, weapon_reload.
 const WEAPON := "weapon_"
 ## CS2's UpperBody bone mask (worldmodel.vnmskel), which its weapon, shooting
@@ -142,6 +145,13 @@ var holds_items := false
 var holding: String = ""
 ## Stepped by itself rather than by the engine (step_off_tick_frames).
 var stepped_by_hand := false
+## Stepped by the view, only while shown (step_when_shown).
+var stepped_by_view := false
+## Of a body stepped by the view: whether it was shown last frame, and
+## whether a tick has asked its tree for something it has yet to take
+## (show_frame).
+var _shown_before := false
+var _requests_due := false
 ## Plants the feet on the ground under them while it stands there and is
 ## drawn (setup; playtest 2026-09-25 issue 5).
 var foot_plant: FootPlant
@@ -162,6 +172,9 @@ var _fitted_at := Transform3D()
 ## Where in the library the held item's own clips are: WEAPON for the set the
 ## body was built with, "held_<set>_" for one taken in hand since; "" for none.
 var _hold_prefix := ""
+## The attacks of the knife in hand, by short name; none holding anything
+## else.
+var _knife_clips := PackedStringArray()
 ## Whether the held item has a hold of its own, and a shot.
 var _has_hold := false
 var _has_shoot := false
@@ -404,6 +417,8 @@ func prepare_holding(item_classes: PackedStringArray, team: String, models: bool
 	for item_class in item_classes:
 		var look := WeaponLibrary.look(item_class, team)
 		prepared_set(String(look.get("world_clip_set", "")))
+		if item_class.begins_with("weapon_knife"):
+			prepared_set(KNIFE_ATTACKS_SET)
 		if models:
 			preload_scene(String(look.get("model_path", "")))
 
@@ -425,9 +440,14 @@ func hold(item_class: String, look: Dictionary = {}) -> void:
 	_held_model_path = String(look.get("model_path", ""))
 	var weapon_set := String(look.get("world_clip_set", ""))
 	_hold_prefix = ""
+	_knife_clips = PackedStringArray()
 	if not item_class.is_empty() and not weapon_set.is_empty():
 		_hold_prefix = "held_%s_" % weapon_set.get_file()
 		_add_set(weapon_set, _hold_prefix)
+		if item_class.begins_with("weapon_knife"):
+			# The attacks, under the knife's own draw and idle, which win.
+			for clip in _add_set(KNIFE_ATTACKS_SET, _hold_prefix):
+				_knife_clips.append(String(clip).trim_prefix(_hold_prefix))
 	var stand := _held_clip(&"idle")
 	var shot := _held_clip(&"shoot")
 	_has_hold = stand != &""
@@ -713,6 +733,7 @@ func _apply_body_additives() -> void:
 	add.fadein_time = 0.0 if from_start else ADDITIVE_FADE
 	add.fadeout_time = ADDITIVE_FADE
 	animation_tree.set("parameters/jump_add/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
+	_requests_due = true
 
 
 ## One of CS2's jump additives by name: the start or the land, standing or
@@ -770,6 +791,7 @@ func _apply_locomotion(at: String) -> void:
 		# A new jump: the take-off from its start.
 		_jump_started[at] = _air_action_usec
 		animation_tree.set(parameters.jump_start, 0.0)
+		_requests_due = true
 	var air_wanted := air_state(_air_action, _air_action_usec, SimClock.now_usec(), float(_jump_seconds.get(at, JUMP_SECONDS)))
 	if String(animation_tree.get(parameters.air_state)) != air_wanted:
 		# CS2 goes from the take-off to the landing in 0 s, and a jump
@@ -780,6 +802,7 @@ func _apply_locomotion(at: String) -> void:
 		var ground := _locomotion_node(at, &"ground") as AnimationNodeTransition
 		ground.xfade_time = TO_GROUND if _on_ground else into_air_fade(_air_action)
 		animation_tree.set(parameters.ground_request, wanted)
+		_requests_due = true
 
 
 func _locomotion_node(at: String, node_name: StringName) -> AnimationNode:
@@ -884,6 +907,57 @@ static func variation_for(item_class: String) -> String:
 
 func _node(node_name: StringName) -> AnimationNode:
 	return (animation_tree.tree_root as AnimationNodeBlendTree).get_node(node_name)
+
+
+## A knife swing, light or heavy, and what it met (hit, miss or
+## backstab): the attack's own third-person clip over the upper body, as a
+## reload plays, and a gun's shot where the knife's attacks are not there.
+## The extracted worldmodel_knife graph maps its hit/miss/backstab states
+## to these clips (knife_clip_for), on the ground or over the air pose.
+func knife_attack(heavy: bool, met: String, variation: int = 0) -> void:
+	var clip := knife_clip_for(_knife_clips, heavy, met, variation)
+	if clip.is_empty() or not has_weapon_layers:
+		fire()
+		return
+	(_node(&"gun_action_clip") as AnimationNodeAnimation).animation = StringName(_hold_prefix + clip)
+	var gun_action := _node(&"gun_action") as AnimationNodeOneShot
+	gun_action.fadein_time = 0.05
+	gun_action.fadeout_time = ACTION_FADE
+	animation_tree.set("parameters/gun_action/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
+
+
+## Of a knife set's clips (short names), the one for an attack: light or
+## heavy, and met "hit", "miss" or "backstab", as CS2's graph names its
+## attacks (attack_knife_lighthit ... heavybackstab,
+## reference/animgraph/parameters.md). CS2's worldmodel_knife graph's
+## KnifeSlashOptions0/1 Stand states map A/B misses to frontswing(_b),
+## light hits to frontstab/frontswing_b, heavy hits to frontstab, light
+## backstabs to backstab and heavy backstabs to backstab_overhead. Those
+## names contain neither "light" nor "heavy". Named alternative sets still
+## use the matching below. Standing attacks go over the locomotion pose.
+static func knife_clip_for(clips: PackedStringArray, heavy: bool, met: String, variation: int = 0) -> String:
+	var actual := ""
+	if met == "backstab":
+		actual = "backstab_overhead" if heavy else "backstab"
+	elif met == "hit":
+		actual = "frontstab" if heavy or variation % 2 == 0 else "frontswing_b"
+	else:
+		actual = "frontswing" if variation % 2 == 0 else "frontswing_b"
+	if clips.has(actual):
+		return actual
+	var kind := "heavy" if heavy else "light"
+	var sorted := clips.duplicate()
+	sorted.sort()
+	var of_kind := ""
+	for clip in sorted:
+		var lower := clip.to_lower()
+		if not lower.contains(kind) or lower.contains("crouch"):
+			continue
+		if lower.contains(met):
+			return clip
+		if of_kind.is_empty() and (lower.contains("hit") or lower.contains("miss") or lower.contains("attack")):
+			of_kind = clip
+	return of_kind
 
 
 ## A round fired: the gun's shot added over the upper body, from its start,
@@ -1024,12 +1098,7 @@ func pose_again() -> void:
 ## in every frame had them.
 func step_off_tick_frames() -> void:
 	stepped_by_hand = true
-	if animation_tree != null:
-		animation_tree.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
-	elif animation_player != null:
-		animation_player.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
-	if character_rig != null:
-		character_rig.modifier_callback_mode_process = Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_MANUAL
+	_step_only_when_stepped()
 	var layers := 0
 	for mesh in find_children("*", "MeshInstance3D", true, false):
 		layers |= (mesh as MeshInstance3D).layers
@@ -1042,12 +1111,86 @@ func step_off_tick_frames() -> void:
 	_last_physics_frame = Engine.get_physics_frames()
 
 
+## Steps its animation, and fits its skeleton, only when the view says it
+## is shown (show_frame), by the time since it last stepped: your own body,
+## which only your camera draws, and only as you look down (PlayerView).
+## Out of view it costs nothing a frame, where it walked its clips and
+## fitted its feet, hands, twist bones and arch in every frame, seen or
+## not. It is posed now, so the first frame it is seen shows it standing,
+## not at the bind pose.
+func step_when_shown() -> void:
+	stepped_by_view = true
+	_step_only_when_stepped()
+	pose_now()
+
+
+## A frame of a body stepped by the view (step_when_shown): stepped and
+## fitted by the time since it last was, where shown.
+##
+## Out of view, what a tick asked of its tree (a take-off, a landing, a
+## fall, the jump's additive) is still taken in its frame, by stepping the
+## tree alone: Godot takes a request only in the step after it, and one
+## left until the next look down, seconds on, replayed the jump then. Out
+## of view, and in the frame it comes back into view, nothing cross-fades:
+## a step longer than what is left of a fade has 4.7.2's Transition blend
+## past both its ends in the step after (it does not clamp the fade), a
+## pose far out of any clip's for a frame.
+func show_frame(delta: float, shown: bool) -> void:
+	_unstepped += delta
+	if not is_animating():
+		return
+	if not (shown and _shown_before):
+		_cut_fades()
+	_shown_before = shown
+	if not shown:
+		if _requests_due:
+			_step_mixer(_unstepped)
+			_unstepped = 0.0
+			_requests_due = false
+		return
+	_requests_due = false
+	set_fit_flags()
+	step(_unstepped)
+	_unstepped = 0.0
+
+
+## Every locomotion's cross-fade between the ground and the air cut to
+## nothing (show_frame); the next request sets its own again
+## (_apply_locomotion).
+func _cut_fades() -> void:
+	for at: String in _rings:
+		var ground := _locomotion_node(at, &"ground") as AnimationNodeTransition
+		if ground != null and ground.xfade_time != 0.0:
+			ground.xfade_time = 0.0
+
+
+## Its animation and its skeleton's fit run only when it is stepped (step),
+## not by themselves in every frame.
+func _step_only_when_stepped() -> void:
+	if animation_tree != null:
+		animation_tree.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+	elif animation_player != null:
+		animation_player.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+	if character_rig != null:
+		character_rig.modifier_callback_mode_process = Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_MANUAL
+
+
+## How crouched its pose stands, 0 to 1, for what of it can be seen
+## (PlayerView.body_in_view): the crouch its moving clips mix by, or 0.5,
+## between, while the one its air clips ease by has yet to catch it up.
+func pose_crouch() -> float:
+	return _crouch if absf(_crouch_eased - _crouch) < 0.05 else 0.5
+
+
 ## Whether a camera drew the body last frame (step_off_tick_frames).
 func is_seen() -> bool:
 	return _on_screen != null and _on_screen.is_on_screen()
 
 
 func _process(delta: float) -> void:
+	# The view steps it, its flags with it (show_frame).
+	if stepped_by_view:
+		return
 	set_fit_flags()
 	# Stopped, a ragdoll has the bones (set_animating).
 	if not stepped_by_hand or not is_animating():

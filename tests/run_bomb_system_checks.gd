@@ -69,8 +69,15 @@ func _player(at: Vector3, team: String) -> PlayerSim:
 	return player
 
 
+## Steps the game. Nothing runs the players here, so each is crouched as
+## their own tick would crouch them: when the game says so (the crouches
+## query, the planter).
 func _step(seconds: float) -> void:
 	for i in SimClock.ticks_in(seconds):
+		for userid in _game.roster.ids():
+			var player := _game.roster.player(userid) as PlayerSim
+			if player != null:
+				player.wants_duck = bool(_game.query(&"crouches", [userid], false))
 		_tick += 1
 		_game.step(_tick)
 
@@ -221,6 +228,8 @@ func _test_a_plant_through_the_game(t_id: int) -> void:
 	_step(0.5)
 	_check(_game.query(&"holds_still", [t_id], false) == true, "the game's holds_still says the planter is held still")
 	_check(_game.query(&"holds_still", [t_id + 1], false) == false, "and nobody else")
+	_check(_game.query(&"crouches", [t_id], false) == true and _game.query(&"crouches", [t_id + 1], false) == false,
+		"the game's crouches says the planter crouches, and nobody else")
 	_step(_system.bomb.rules.plant_seconds - 0.4)
 	_check(_system.bomb.planted(), "then holding it on the site plants it")
 	_check(_names_heard().has("bomb_beginplant") and _names_heard().has("bomb_planted"),

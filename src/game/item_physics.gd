@@ -44,6 +44,9 @@ class Hull:
 	## The query shape: the hull about its centre of mass, so a body's
 	## transform places it directly.
 	var shape: ConvexPolygonShape3D
+	## The hull's bounds about its centre of mass, in the model's axes: what
+	## E aims at (UseSearch).
+	var bounds := AABB()
 	var centre_of_mass := Vector3.ZERO
 	## The inertia for a mass of 1, about the centre of mass, in the model's
 	## axes, and its inverse.
@@ -195,6 +198,9 @@ static func _finish(hull: Hull) -> void:
 		about_centre.append(point - hull.centre_of_mass)
 	hull.shape = ConvexPolygonShape3D.new()
 	hull.shape.points = about_centre
+	hull.bounds = AABB(about_centre[0], Vector3.ZERO) if not about_centre.is_empty() else AABB()
+	for point in about_centre:
+		hull.bounds = hull.bounds.expand(point)
 	hull.inverse_inertia = hull.inertia.inverse() if absf(hull.inertia.determinant()) > 1e-9 else Basis.IDENTITY
 
 

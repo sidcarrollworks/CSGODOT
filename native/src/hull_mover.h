@@ -139,6 +139,7 @@ private:
 	double duck_progress = 0.0;
 	Vector3 wish_dir;
 	double wish_speed = 0.0;
+	double acceleration_speed = 0.0;
 	bool wants_jump = false;
 	bool wants_duck = false;
 	bool jump_held_last_tick = false;
@@ -189,7 +190,7 @@ private:
 	static Vector3 clip_velocity(const Vector3 &velocity, const Vector3 &normal, double overbounce = 1.0);
 	Vector3 check_velocity(const Vector3 &velocity) const;
 	Vector3 apply_friction(const Vector3 &velocity, bool on_ground, double surface_friction, double dt) const;
-	static Vector3 accelerate(const Vector3 &velocity, const Vector3 &wish_dir, double wish_speed, double accel, double surface_friction, double dt);
+	static Vector3 accelerate(const Vector3 &velocity, const Vector3 &wish_dir, double wish_speed, double accel, double surface_friction, double dt, double accel_from = 0.0);
 	Vector3 air_accelerate(const Vector3 &velocity, const Vector3 &wish_dir, double wish_speed, double accel, double surface_friction, double dt) const;
 	double surface_friction_for(double vertical_velocity, bool on_ground) const;
 	Vector3 clamp_bunnyhop(const Vector3 &velocity) const;
