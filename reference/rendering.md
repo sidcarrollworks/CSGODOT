@@ -215,6 +215,29 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
   the skybox's terrain out to half a million units is drawn: the whole
   skybox in every view, at full LOD and never occlusion culled, which
   `no_skybox` should measure again.
+  **Nearby terrain fixed in PR #167 (2026-10-02).** At feet
+  `(2131.2, -128, -382)`, yaw 189, pitch -13.9, the standing eye is at
+  y=-64, almost coincident with the skybox's flat sand mesh at y=-64.003.
+  Its depth's `1/w` becomes nearer than the map even after the squeeze.
+  Disabling either culling system, or both, left the beige plane; hiding
+  the skybox removed it. Every skybox surface already had the squeeze.
+  Skybox materials now clip fragments within 32 units of the eye, reading
+  the real view-space `VERTEX.z`. The existing squeeze already guarantees
+  that map surfaces up to 8,192 units win beyond this cutoff. Distant
+  scenery keeps its sorting and the vertex squeeze, including hills past
+  the far plane; the GPU can still reject hidden skybox fragments before
+  shading them. `run_render_checks.gd` draws terrain almost coincident
+  with the eye, uncovered terrain beyond the cutoff, and a teleported eye.
+  A per-fragment `DEPTH` clamp was tested and rejected: it lost early depth
+  rejection and added 0.75 ms at 1080p. The cutoff avoids that cost and
+  needs no per-frame camera checks or material switching.
+  Final RTX 4070 Ti A/B at 1080p: ten players frozen, eight spawn views,
+  camera panning ±8 degrees, two alternating measurements of 120 frames
+  per view. GPU medians were 1.45–1.47 ms before and 1.43–1.46 ms after;
+  renderer CPU 0.74–0.75 ms for both; frame medians 3.40 ms before and
+  3.39–3.40 ms after. No measurable regression in this run.
+  At 4K with the same setup, paired GPU medians were 4.87 → 4.79 ms and
+  4.42 → 4.41 ms; frame medians 5.96 → 5.87 ms and 5.46 → 5.46 ms.
 - **R3. Culling.** *(Occluders built, 2026-09-24; Sid showed the whole map
   drawn from B tunnels.)* `MapOccluders` builds one `ArrayOccluder3D` at
   load from the collision hull, leaving out player and grenade clips and
@@ -251,6 +274,11 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
   Sid's machine", 11). Shrinking the occluders or turning Godot's
   occlusion culling off beside `WorldVisibility` is Sid's call on the
   `no_occlusion` numbers.
+  F11 now steps through occlusion off, visibility off, the whole skybox
+  hidden, and occluders drawn, then restores the normal view (`RenderDebug`,
+  PR #167). Leaving the map also restores its viewport settings. This
+  supplies issue 11's optional debug key; the lower-mid culling choice
+  above remains open.
 - **R4. Shadows split as CS2 splits them.** *(The first tier built,
   2026-09-25: the map's shadow from CS2's baked pages. Waits on the
   extraction and a playtest, L7.)*

@@ -1962,10 +1962,17 @@ func _test_far_materials() -> void:
 	own_vertex.code = "shader_type spatial;\nvoid vertex() {\n\tPOSITION = vec4(VERTEX, 1.0);\n}\nvoid fragment() {\n}\n"
 	var own_vertex_far := FarMaterials.variant_of(own_vertex)
 	_check(
-		own_vertex_far != null and own_vertex_far.code.contains("void fragment() {\n\tDEPTH = far_depth(FRAGCOORD.z);")
+		own_vertex_far != null and own_vertex_far.code.contains("\tDEPTH = far_depth(FRAGCOORD.z);")
 			and own_vertex_far.code.count("void vertex()") == 1,
 		"a shader that sets its own POSITION has the depth written per fragment instead"
 	)
+	_check(far.shader.code.contains(FarMaterials.FRAGMENT_CLIP.strip_edges())
+		and far_blend.shader.code.contains(FarMaterials.FRAGMENT_CLIP)
+		and plain_far.code.contains(FarMaterials.FRAGMENT_CLIP)
+		and own_vertex_far.code.contains(FarMaterials.FRAGMENT_CLIP)
+		and not plain_far.code.contains("\tDEPTH =")
+		and not far_blend.shader.code.contains("\tDEPTH ="),
+		"standard, layered, plain and custom-vertex skybox materials clip unsafe near fragments without adding DEPTH to vertex-squeezed shaders")
 	var no_fragment := Shader.new()
 	no_fragment.code = "shader_type spatial;"
 	_check(FarMaterials.variant_of(no_fragment) == null, "a shader with no fragment function is left alone")
@@ -2127,6 +2134,9 @@ func _test_far_squeeze() -> void:
 			and code.contains("const float FAR_DEPTH_KEEP = 0.001;"),
 		"the shader squeezes as these checks do"
 	)
+	_check(code.contains("const float FAR_NEAR_DISTANCE = 32.0;")
+		and FarMaterials.FRAGMENT_CLIP.contains("-VERTEX.z < FAR_NEAR_DISTANCE"),
+		"the near cutoff uses real view depth and matches the 32-unit range proved below")
 	for shader_path in ["res://src/map/far.gdshader", "res://src/map/lightmap.gdshaderinc"]:
 		var text: String = (load(shader_path) as Resource).get(&"code")
 		_check(
