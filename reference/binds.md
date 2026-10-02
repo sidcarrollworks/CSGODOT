@@ -75,6 +75,7 @@ change.
 | ESCAPE | frees or captures the mouse; closes the buy menu | player, buy menu | `cancelselect` | stays until item 26's pause menu |
 | B | buy menu | range, dust2 | `buymenu` | stays |
 | 1 to 5 in the buy menu | column, then item | buy menu | the same in CS2's menu | stays; an open menu takes keys first, as in CS2 |
+| 1 to 3 at start | the mode (1 Competitive, 2 Practice), then the side (1 T, 2 CT, 3 Auto Select) | mode picker, team select | the screens' own; CS2's are clicked | stays; an open menu takes keys first, as in CS2 |
 | E | defuse | range (bomb) | `+use` | stays; becomes the `USE` bit (contract section 5). *Done: the inventory PR* |
 | 4 | next grenade | range (grenade lane) | `slot4`, cycles grenades | stays; becomes `slot4` with the inventory in the player. *Done: the inventory PR* |
 | 5 | plant | range (bomb) | `slot5`, the C4 | moves off when the inventory is in the player: 5 takes the C4 out and `+attack` or `+use` plants, as in CS2. *Done for `+attack` (the inventory PR); `+use` does not plant yet* |
