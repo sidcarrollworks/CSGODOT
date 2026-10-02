@@ -890,9 +890,28 @@ list, split into Local and Remote items, with the measurements.
     now says on round_end, round_mvp and cs_win_panel_round (`RoundReport`
     in `src/match/`, which picks the MVP and the fun fact by the
     community's rules until CS2's are measured). Left: the glitch video, the
-    MVP's 3D agent on the band, the damage under dead enemies' cards (the
-    report keeps it, `RoundReport.damage_between`) and the team income line
-    in the chat. Local: a round won and lost beside CS2's at 1080p.)*
+    MVP's 3D agent on the band and the team income line in the chat. Local:
+    a round won and lost beside CS2's at 1080p.)*
+    *(Matched to Sid's CS2 screenshot of 2026-09-30: the post-round damage
+    report under each enemy you traded damage with, "100 in 3" given and
+    "27 in 1" taken with how the kill was made (`TeamCounter`, from CS2's
+    hudteamcounter-postrounddamagereport styles); a bot MVP's "[BOT]" tag;
+    the "shots fired" fun fact; and the fun fact drawn among those that
+    hold rather than the first in a fixed order. Left: the players' names
+    over their cards in the down time.)*
+    *(Local checked 2026-10-01 at 1080p on dust2, with the extracted report
+    frame and all kill-type icons: won/lost, the bot MVP tag, shots-fired
+    line, staggered reports and next-round reset. Corrected the flipped
+    damage-taken frame's origin so it stays behind its text; the renderer
+    checks both frames' pixels inside their rows. The latest cropped
+    reference also sets the result strip and spaced foreground title:
+    a faint copy grows behind it, clipped to the thin horizontal borders,
+    while the foreground stays fixed. Local renderer checks cover that
+    growth and clipping. Local tuning slows the growth to 10 s and makes
+    the strip translucent with the existing world blur. The full-screen
+    reference narrows the strip to 640 px and extends the side fades across
+    the tint, blur, dot pattern and borders; GPU checks cover transparency,
+    the broad fade and the world becoming sharp again at both ends.)*
     *(Kill feed done 2026-09-28: CS2's death notices in the top right from
     its huddeathnotice layout and styles (`KillFeed`, from the game's
     player_death events), every mark the event can carry, your kills

@@ -99,9 +99,9 @@ const IMAGES: Array[String] = [
 	"backgrounds/bluedots_large_png",
 	"hud/armor",
 	"hud/armor_helmet",
-	"hud/double_arrows",
 	"hud/teamcounter/armor",
 	"hud/teamcounter/armor_helmet",
+	"hud/teamcounter/damage-report-frame",
 	"hud/teamcounter/teamcounter_botavatar",
 	"icons/person",
 	"icons/ui/alert",
@@ -117,6 +117,7 @@ const IMAGES: Array[String] = [
 static func images_to_read() -> Array:
 	var images: Array = IMAGES.duplicate()
 	images.append_array(KillFeed.ICONS.values())
+	images.append_array(TeamCounter.KILLTYPE_ICONS.values())
 	images.append(HealthAmmoCenter.reserve_icon(""))
 	for gun: String in HealthAmmoCenter.RESERVE_ICONS:
 		images.append(HealthAmmoCenter.reserve_icon(gun))
@@ -236,7 +237,7 @@ func _process(delta: float) -> void:
 	_crosshair.visible = shows_crosshair(player) and not buying
 	dead_bar.say("" if player.alive else dead_line(player), "", HudStyle.team_colour(team))
 	if match_state != null:
-		team_counter.show_match(match_state, player, economy, SimClock.now_usec(), bomb)
+		team_counter.show_match(match_state, player, economy, SimClock.now_usec(), bomb, round_report)
 		_show_win_panel(team)
 		win_panel.visible = not buying
 		var line := alert_line(match_state)
@@ -277,8 +278,10 @@ func _show_win_panel(team: String) -> void:
 		fact = WinPanel.reason_text(GameEvents.round_end_reason(match_state.last_reason))
 	var mvp := int(report.get("mvp", GameEvents.NOBODY))
 	var mvp_node: Node = roster.player(mvp) if roster != null and mvp != GameEvents.NOBODY else null
-	win_panel.show_round(WinPanel.title_for(winner, team), winner, team != winner, fact,
-		name_of(roster, mvp) if mvp_node != null else "", WinPanel.mvp_reason_text(int(report.get("mvp_reason", 0))),
+	# A bot's name carries CS2's clan tag, "[BOT] Efe" on its screenshot.
+	var mvp_name := ((KillFeed.BOT_TAG if mvp_node is Bot else "") + name_of(roster, mvp)) if mvp_node != null else ""
+	win_panel.show_round(WinPanel.title_for(winner, team), winner, team != winner, fact, mvp_name,
+		WinPanel.mvp_reason_text(int(report.get("mvp_reason", 0))),
 		roster.team_of(mvp) if mvp_node != null else winner, mvp_node is Bot)
 
 
@@ -288,6 +291,8 @@ static func name_of(roster: Roster, who: int) -> String:
 		return ""
 	var node := roster.player(who)
 	return str(node.name) if node != null else ""
+
+
 ## CS2's hint as you pick up the bomb from the ground, "You picked up the
 ## bomb" (research round-bomb-grenades.md 1.6), from how the bomb was last
 ## frame and is now; "" otherwise. Being handed it at a round's start says

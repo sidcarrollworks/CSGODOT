@@ -32,6 +32,16 @@ extends HudElement
 ## all times, and a white one in their column in the down time
 ## (round-hud-bots.md A3); the other side's cards never show it.
 ##
+## At a round's end each enemy you traded damage with shows CS2's post-round
+## damage report under their card (hudteamcounter-postrounddamagereport.css,
+## hudteamcounter.js ShowDamageReport; read from GameTracking-CS2 on
+## 2026-09-30): "100 in 3" in green for what you did to them over a
+## frame washed in their side's colour, "27 in 1" in red for what they did
+## to you in the same frame upside down under it, each with a grey disc
+## holding how the kill was made where one of you killed the other, on a
+## dark fade. The reports slide down and fade in over .3 s, one card after
+## another .1 s apart. The numbers are the server's (RoundReport).
+##
 ## GameHud gives it the match each frame; it redraws only when something it
 ## shows changed (HudElement).
 
@@ -109,6 +119,42 @@ const FADE_4 := [1.0, 0.953, 0.886, 0.804, 0.702, 0.58, 0.443, 0.141, 0.0]
 const C4_WASH := Color8(255, 255, 95)
 const C4_BOX := Rect2(37.0, 33.5, 11.5, 15.5)
 const C4_ROW := Rect2(21.0, 149.0, 11.5, 14.5)
+## The post-round damage report (hudteamcounter-postrounddamagereport.css),
+## from the portrait's top: the damage 80 px down (.prdr__damage), a row of
+## 40 for what you gave and one for what you took 2 px under it; each row's
+## frame 48 by 32 (damage-report-frame), the given one at the row's bottom,
+## the taken one flipped at its top; the text Stratum2 Medium Italic 13 px
+## in a 16 px line 1 px in from that edge; the kill's disc 18 px, #aaaaaa
+## ringed 1 px in white, 10 px up in the given row and 6 px down in the
+## taken; under it all a 40 by 80 fade to #000000aa at the bottom, 40 px
+## down. It slides 100 px down and its numbers 20 px up into place over
+## .3 s as it fades in, each card .1 s after the one before.
+const PRDR_TOP := 80.0
+const PRDR_ROW := 40.0
+const PRDR_GAP := 2.0
+const PRDR_FRAME := Vector2(48.0, 32.0)
+const PRDR_TEXT := 13
+const PRDR_LINE := 16.0
+const PRDR_DISC := 18.0
+const PRDR_BG := Rect2(7.0, 40.0, 40.0, 80.0)
+const PRDR_BG_TAKEN_ONLY := 84.0
+const PRDR_GIVEN := Color8(9, 255, 0)
+const PRDR_TAKEN := Color8(255, 84, 84)
+const PRDR_WASH := {"T": Color8(112, 86, 26), "CT": Color8(28, 78, 119)}
+const PRDR_DISC_GREY := Color8(0xaa, 0xaa, 0xaa)
+const PRDR_SECONDS := 0.3
+const PRDR_STAGGER := 0.1
+const PRDR_DROP := 100.0
+const PRDR_RISE := 20.0
+## How each kill is drawn in the report's disc (the killtype classes).
+const KILLTYPE_ICONS := {
+	"default": "hud/teamcounter/killtype_default",
+	"headshot": "hud/teamcounter/killtype_headshot",
+	"blast": "hud/teamcounter/killtype_blast",
+	"burn": "hud/teamcounter/killtype_burn",
+	"slash": "hud/teamcounter/killtype_slash",
+	"shock": "hud/teamcounter/killtype_shock",
+}
 
 ## One player's card, as the frame's state gives it.
 class Card:
@@ -126,6 +172,11 @@ class Card:
 	var helmet: bool
 	## Carrying the bomb; only ever true on your own team's cards.
 	var bomb: bool
+	## The post-round damage report under an enemy's card, as
+	## RoundReport.damage_between gives it; empty for none.
+	var report: Dictionary = {}
+	## Its place among the cards with one, for when it shows.
+	var report_order: int = 0
 
 
 var clock: String = ""
@@ -136,6 +187,8 @@ var alive := {"T": 0, "CT": 0}
 var cards := {"T": [] as Array[Card], "CT": [] as Array[Card]}
 ## Whether your team's cards show money and guns now.
 var show_equipment: bool = false
+## Seconds since the damage reports began to show; -1 while none show.
+var _reports_t: float = -1.0
 
 
 func _init() -> void:
@@ -149,8 +202,10 @@ func _ready() -> void:
 
 
 ## Reads the match for `you`, and redraws if anything shown changed. `bomb`
-## says who carries it, where there is one.
-func show_match(state: MatchState, you: PlayerSim, economy: Economy, now_usec: int, bomb: C4 = null) -> void:
+## says who carries it, where there is one; `damage`, the server's word on
+## the round, gives the damage reports at its end.
+func show_match(state: MatchState, you: PlayerSim, economy: Economy, now_usec: int, bomb: C4 = null,
+		damage: RoundReport = null) -> void:
 	var mine := you.team if you != null else "T"
 	var seconds := state.seconds_left(now_usec)
 	var live := state.phase == MatchState.Phase.LIVE
@@ -159,6 +214,8 @@ func show_match(state: MatchState, you: PlayerSim, economy: Economy, now_usec: i
 	show_equipment = not live or (you != null and not you.alive)
 	var signature: Array = [clock, clock_red, show_equipment, mine]
 	var carrier := bomb.carrier if bomb != null and bomb.state == C4.State.CARRIED else C4.NOBODY
+	var reporting := damage != null and you != null and state.phase == MatchState.Phase.ROUND_END
+	var reports := 0
 	for side: String in MatchState.SIDES:
 		scores[side] = state.score(side)
 		alive[side] = state.alive_on(side)
@@ -181,11 +238,37 @@ func show_match(state: MatchState, you: PlayerSim, economy: Economy, now_usec: i
 			card.armour = roundi(player.hit_target.armor) if player.hit_target != null and player.alive else 0
 			card.helmet = player.hit_target != null and player.hit_target.helmet
 			card.bomb = card.friendly and player.alive and carrier != C4.NOBODY and player.userid == carrier
+			if reporting and not card.friendly:
+				var traded := damage.damage_between(you.userid, player.userid)
+				if int(traded["given"]) > 0 or int(traded["taken"]) > 0:
+					card.report = traded
+					card.report_order = reports
+					reports += 1
 			list.append(card)
 			signature.append_array([card.name, card.alive, card.health, card.money, card.weapon, card.friendly,
-				card.colour, card.grenades, card.armour, card.helmet, card.bomb])
+				card.colour, card.grenades, card.armour, card.helmet, card.bomb, card.report])
 		cards[side] = list
+	var was_reporting := _reports_t >= 0.0
+	if reports == 0:
+		_reports_t = -1.0
+	elif not was_reporting:
+		_reports_t = 0.0
+		animate()
 	show_state(signature)
+
+
+func _advance(delta: float) -> bool:
+	if _reports_t < 0.0:
+		return false
+	_reports_t += delta
+	return _reports_t < PRDR_SECONDS + PRDR_STAGGER * (MOST_CARDS - 1)
+
+
+## How far in a card's damage report is, 0 to 1 (ease-in-out).
+func report_shown(order: int) -> float:
+	if _reports_t < 0.0:
+		return 0.0
+	return smoothstep(0.0, 1.0, (_reports_t - order * PRDR_STAGGER) / PRDR_SECONDS)
 
 
 ## The block's left edge, in this element's coordinates.
@@ -287,6 +370,8 @@ func _draw_card(on: CanvasItem, x: float, card: Card) -> void:
 		# CS2's top-bottom-fade-4 mask.
 		var height := COLUMN_HEIGHT if card.alive else 101.0
 		_draw_masked_fade(on, Rect2(x, TOP, CARD, height))
+	if not card.report.is_empty():
+		_draw_report(on, x, card)
 	var inside := portrait.grow(-BORDER)
 	var faded := 1.0 if card.alive else 0.2
 	if card.bot:
@@ -366,6 +451,88 @@ func _draw_card(on: CanvasItem, x: float, card: Card) -> void:
 		if armour != null:
 			var top := NADE_ROW_TOP + (ROW + 4.0 if nades.size() > 0 else 0.0)
 			_draw_shadowed(on, armour, Rect2(x + (CARD - 20.0) * 0.5, top, 20.0, ROW))
+
+
+## The post-round damage report under a card: what you did to them over
+## what they did to you (PRDR_ constants).
+func _draw_report(on: CanvasItem, x: float, card: Card) -> void:
+	var shown := report_shown(card.report_order)
+	if shown <= 0.0:
+		return
+	var root_y := TOP - PRDR_DROP * (1.0 - shown)
+	var given := int(card.report["given"]) > 0
+	var taken := int(card.report["taken"]) > 0
+	var bg := Rect2(x + PRDR_BG.position.x, root_y + PRDR_BG.position.y, PRDR_BG.size.x,
+		PRDR_BG_TAKEN_ONLY if taken and not given else PRDR_BG.size.y)
+	# The fade: #000000aa at the bottom to nothing 80 % of the way up.
+	var knee := bg.end.y - bg.size.y * 0.8
+	_draw_fade(on, Rect2(bg.position.x, knee, bg.size.x, bg.end.y - knee), Color(0, 0, 0, 0.0),
+		Color(0, 0, 0, 0.667 * shown))
+	var top := root_y + PRDR_TOP + PRDR_RISE * (1.0 - shown)
+	var wash: Color = PRDR_WASH.get(card.side, PRDR_WASH["T"])
+	var frame_x := x + (CARD - PRDR_FRAME.x) * 0.5
+	if given:
+		var frame := Rect2(frame_x, top + PRDR_ROW - PRDR_FRAME.y, PRDR_FRAME.x, PRDR_FRAME.y)
+		_draw_report_frame(on, frame, false, Color(wash, shown))
+		var line_top := top + PRDR_ROW - 1.0 - PRDR_LINE
+		_draw_report_text(on, x, line_top, "%d in %d" % [card.report["given"], card.report["hits"]],
+			Color(PRDR_GIVEN, shown))
+		_draw_kill_disc(on, Vector2(x + CARD * 0.5, top + PRDR_ROW * 0.5 - 10.0), card.report["kill"], shown)
+	if taken:
+		var row := top + PRDR_ROW + PRDR_GAP
+		var frame := Rect2(frame_x, row, PRDR_FRAME.x, PRDR_FRAME.y)
+		_draw_report_frame(on, frame, true, Color(wash, shown))
+		_draw_report_text(on, x, row + 1.0, "%d in %d" % [card.report["taken"], card.report["taken_hits"]],
+			Color(PRDR_TAKEN, shown))
+		_draw_kill_disc(on, Vector2(x + CARD * 0.5, row + PRDR_ROW * 0.5 + 6.0), card.report["taken_kill"], shown)
+
+
+## CS2's damage-report-frame washed in the side's colour, upside down for
+## what you took; where it was not extracted, the same shape drawn: a plate
+## rising to a point at its outer end.
+func _draw_report_frame(on: CanvasItem, box: Rect2, flipped: bool, colour: Color) -> void:
+	var frame := HudStyle.icon("hud/teamcounter/damage-report-frame")
+	if frame != null:
+		if flipped:
+			# A negative draw_texture_rect size flips its UVs; its origin
+			# stays the top-left. Moving to box.end.y would draw it a whole
+			# frame height below the damage-taken text.
+			on.draw_texture_rect(frame, Rect2(box.position, Vector2(box.size.x, -box.size.y)),
+				false, colour)
+		else:
+			on.draw_texture_rect(frame, box, false, colour)
+		return
+	var peak := 8.0
+	var outer := box.end.y if flipped else box.position.y
+	var shoulder := outer - peak if flipped else outer + peak
+	var inner := box.position.y if flipped else box.end.y
+	on.draw_colored_polygon(PackedVector2Array([
+		Vector2(box.position.x, inner), Vector2(box.position.x, shoulder), Vector2(box.get_center().x, outer),
+		Vector2(box.end.x, shoulder), Vector2(box.end.x, inner),
+	]), colour)
+
+
+## A report's "{damage} in {hits}", centred on the card in its 16 px line.
+func _draw_report_text(on: CanvasItem, x: float, line_top: float, text: String, colour: Color) -> void:
+	var baseline := HudStyle.baseline_centred(line_top + PRDR_LINE * 0.5, PRDR_TEXT, &"italic")
+	HudStyle.draw_text(on, Vector2(x + CARD * 0.5, baseline), text, PRDR_TEXT, colour, HORIZONTAL_ALIGNMENT_CENTER,
+		&"italic", Color(0, 0, 0, colour.a), 2)
+
+
+## The grey disc with how the kill was made (killtype_default, _headshot,
+## _blast, _burn, _slash, _shock), where there was one.
+func _draw_kill_disc(on: CanvasItem, centre: Vector2, kill: String, shown: float) -> void:
+	if kill.is_empty():
+		return
+	var radius := PRDR_DISC * 0.5
+	on.draw_circle(centre, radius, Color(PRDR_DISC_GREY, shown))
+	on.draw_arc(centre, radius - 0.5, 0.0, TAU, 24, Color(1, 1, 1, shown), 1.0, true)
+	var icon := HudStyle.icon(KILLTYPE_ICONS.get(kill, KILLTYPE_ICONS["default"]))
+	var box := Rect2(centre - Vector2.ONE * PRDR_DISC * 0.4, Vector2.ONE * PRDR_DISC * 0.8)
+	if icon != null:
+		HudStyle.draw_fitted(on, icon, box, Color(1, 1, 1, shown))
+	else:
+		on.draw_circle(centre + Vector2(0, -1), radius * 0.45, Color(1, 1, 1, shown))
 
 
 ## The carrier's mark on the portrait: CS2's C4 icon washed yellow, or where
