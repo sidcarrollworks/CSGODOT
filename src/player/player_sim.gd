@@ -810,8 +810,13 @@ func _run(cmd: UserCmd, dt: float) -> void:
 		return
 
 	if noclip:
+		# Flying, the gun still fires and a grenade still throws, as CS2's
+		# noclip lets you (Sid, playtest 2026-09-30). Off the ground, so a
+		# round takes the air's inaccuracy and the speed's, as CS2's
+		# weapons judge anyone not on the ground (inferred, not measured).
 		wish_dir = _noclip_direction(cmd)
 		simulate(dt)
+		_update_weapon(cmd, dt, false)
 		return
 
 	wish_dir = cmd.wish_direction()
