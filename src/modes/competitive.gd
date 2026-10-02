@@ -68,6 +68,7 @@ var economy: Economy
 var bomb_system: BombSystem
 var grenade_system: GrenadeSystem
 var round_report: RoundReport
+var match_stats: MatchStats
 var bots: Array[Bot] = []
 var hud: GameHud
 ## What is missing from the game, one line each; the scene shows them.
@@ -102,6 +103,8 @@ func start(game_world: GameWorld, map_contents: MapContents) -> void:
 	hud.match_state = match_state
 	hud.economy = economy
 	hud.round_report = round_report
+	hud.match_stats = match_stats
+	hud.map_name = map.name
 	hud.bomb = bomb_system.bomb if bomb_system != null else null
 	hud.userid = (player as PlayerSim).userid
 	hud.game = world.game
@@ -338,6 +341,9 @@ func _add_systems() -> void:
 	# The round's MVP and fun fact, for the win panel.
 	round_report = RoundReport.new()
 	world.game.add_system(round_report)
+	# Each player's numbers, for the scoreboard.
+	match_stats = MatchStats.new()
+	world.game.add_system(match_stats)
 
 
 ## The map's buy zones. Without them, a stand-in box round each side's spawn

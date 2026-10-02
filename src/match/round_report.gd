@@ -46,7 +46,10 @@ const KILLS_AT_LEAST := 3
 const DAMAGE_AT_LEAST := 100
 ## A round this short, in seconds from the end of freeze time, is one.
 const SHORT_ROUND_SECONDS := 30
-## Shots fired in the round (every weapon_fire, both sides) worth telling.
+## Shots fired in the round worth telling: every weapon_fire from a gun or
+## the Zeus, both sides. A knife's swing (weapon_fire too, as in CS2) and a
+## grenade's throw are not shots: CS2's line says "shots were fired", and
+## what its server counts for it is not in its files, so this is inferred.
 ## A guess.
 const SHOTS_AT_LEAST := 10
 
@@ -174,9 +177,16 @@ func _on_round_start(event: GameEvent) -> void:
 	_freeze_end_usec = event.at_usec
 
 
-func _on_fire(_event: GameEvent) -> void:
-	if _counting:
+func _on_fire(event: GameEvent) -> void:
+	if _counting and is_shot(String(event.fields["weapon"])):
 		_shots += 1
+
+
+## Whether firing `weapon` is a shot the fun fact counts: a gun's or the
+## Zeus's, not a knife's swing or a grenade's throw.
+static func is_shot(weapon: String) -> bool:
+	var item := ItemRegistry.item(weapon)
+	return item != null and (item.is_gun or item.type == "taser")
 
 
 func _on_freeze_end(event: GameEvent) -> void:

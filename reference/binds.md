@@ -123,10 +123,9 @@ The table takes those over as it takes the rest.
 
 Still to adopt from CS2's list as the systems arrive (3, Q `lastinv` and
 G `drop` came with the inventory, MWHEELDOWN `invnext` with playtest issue
-15): 6 to 0 and X
-(each grenade and the Zeus), F `+lookatweapon`, TAB (item 15's
-scoreboard), `,` `.` DEL F4 (buying's extras), `` ` `` (the console,
-`systemization.md` step 4).
+15, TAB `+showscores` with item 15's scoreboard): 6 to 0 and X
+(each grenade and the Zeus), F `+lookatweapon`, `,` `.` DEL F4 (buying's
+extras), `` ` `` (the console, `systemization.md` step 4).
 Radio, chat, pings and graffiti are under "Later" in the roadmap.
 
 ## The system

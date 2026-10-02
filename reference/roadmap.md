@@ -828,7 +828,7 @@ list, split into Local and Remote items, with the measurements.
     panels as Panorama does. Local: checked on Sid's machine against
     `In_game_ui.webp` at 1080p and 4K, where it matches to the pixel but
     for the player's portrait and colour. Still to do: the
-    radar, scoreboard, the bomb's icon on the clock, the
+    radar, the bomb's icon on the clock, the
     kill marks over the health and the low health and ammo glow. The buy
     menu rebuilt 2026-09-25 to Sid's screenshots of CS2's: its columns in
     CS2's order, CS2's word on each item, the countdown in warmup and freeze
@@ -874,6 +874,25 @@ list, split into Local and Remote items, with the measurements.
     happens by CS2's rules; revenge and domination stay off, as CS2's
     `sv_nonemesis` leaves them. Local: a round's kills beside CS2's at
     1080p with its icons.)*
+    *(Scoreboard done 2026-09-30, to Sid's CS2 screenshot of that day:
+    CS2's classic competitive scoreboard while Tab is held (`+showscores`),
+    from its scoreboard layout, styles and script (`Scoreboard`): the mode,
+    map and time; each team's score, name and players alive; a row a
+    player in competitive's order (the most damage first) with the status
+    skull, C4 or kit, the bot's mark, the portrait in the player's colour,
+    Money (your team's only), Kills, Deaths, Assists, HS% and DMG, your row
+    lit; the timeline of the period's rounds with how each was won, each
+    half's score, the trophy on the clinching round and the loss bonus's
+    dashes. The numbers are the server's (`MatchStats` in `src/match/`,
+    from the game's events; a team kill or suicide takes a kill away, a
+    guess from CS:GO), the rounds `MatchState.history`. Its new icons
+    (bot, bomb_c4, bomb, timer, trophy, competitive_teams) come with
+    `extract_assets.sh hud`. Left: the second set of numbers (MVPs, utility
+    damage, enemies flashed, K/D, ADR) and the mouse that cycles to it, the
+    flair and rank, the music kit line, the survivors under each round,
+    overtime's score column, the spectators, and the ping (bots show their
+    mark; a player shows 0 until there is a network). Local: the board
+    beside CS2's at 1080p, after `hud`.)*
 
 ### Phase 5: the bomb
 
