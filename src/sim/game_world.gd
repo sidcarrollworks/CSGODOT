@@ -266,6 +266,10 @@ func commands_for(running: Array[PlayerSim], dt: float) -> Array[UserCmd]:
 	var places := PackedInt32Array()
 	for i in running.size():
 		var player := running[i]
+		if is_instance_valid(player.controlled_by):
+			# A bot taken over thinks nothing: it runs whoever took it's
+			# command, handed over below.
+			continue
 		if player.thinks_apart():
 			player.prepare_to_think(tick)
 			_thinkers.append(player)
@@ -281,6 +285,7 @@ func commands_for(running: Array[PlayerSim], dt: float) -> Array[UserCmd]:
 	for thinker in _thinkers:
 		if thinker.alive and not thinker.frozen:
 			busy += 1
+	_hand_over(running, commands)
 	if not think_on_threads or queries == null or busy < THINK_TOGETHER_FROM:
 		for i in _thinkers.size():
 			commands[places[i]] = _thinkers[i].think(tick, dt)
@@ -305,6 +310,23 @@ func commands_for(running: Array[PlayerSim], dt: float) -> Array[UserCmd]:
 		commands[places[i]] = cmd
 	_thinkers.clear()
 	return commands
+
+
+## A bot taken over runs the command of whoever took it, made for this
+## tick, and they, dead, a standing one: CS2's controller driving another
+## pawn. Someone who took a bot not in this tick's running (out of the
+## tree) leaves it standing.
+func _hand_over(running: Array[PlayerSim], commands: Array[UserCmd]) -> void:
+	for i in running.size():
+		var bot := running[i]
+		if not is_instance_valid(bot.controlled_by):
+			continue
+		var at := running.find(bot.controlled_by)
+		if at < 0 or commands[at] == null:
+			commands[i] = bot.standing(tick)
+			continue
+		commands[i] = commands[at]
+		commands[at] = bot.controlled_by.standing(tick)
 
 
 ## One of the thinkers, on a worker thread.

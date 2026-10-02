@@ -87,8 +87,9 @@ with bots filling the places. The list below says what is left of it.
 - ~~The spectator keys: fire next, the right button back, jump round first
   person, chase and Free Look.~~ Done 2026-10-02 (free look on offline,
   `MatchRules.free_look`).
-- Taking control of a teammate bot while dead (E, `bot_controllable 1`;
-  what you earn goes to the bot, `SFUI_Hint_ControlBotDontKeep`).
+- ~~Taking control of a teammate bot while dead (E, `bot_controllable 1`;
+  what you earn goes to the bot, `SFUI_Hint_ControlBotDontKeep`).~~ Done
+  2026-10-02, one a round.
 - ~~Bots fill empty slots on either side.~~ Done.
 - ~~The bomb's round ends (section 4) and money at half time and in
   overtime (section 2) plug into the match when they are built.~~ Done

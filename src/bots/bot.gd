@@ -866,6 +866,30 @@ func _on_killed(zone: StringName) -> void:
 	died.emit(zone)
 
 
+## Taken over by a dead player (PlayerSim.take_control): it lets go of
+## whom it was fighting and of the aim error it sent, and its own sounds
+## of its gun go quiet, the one driving it hearing them as their own.
+func _on_taken_over() -> void:
+	target = null
+	_seen_for = 0.0
+	_sent_error = Vector2.ZERO
+	_blind_firing = false
+	if weapon_sounds != null:
+		weapon_sounds.watch(null)
+
+
+## Given back: it finds its way again from where it was left, and hears
+## its own gun.
+func _on_given_back() -> void:
+	_sent_error = Vector2.ZERO
+	_path = null
+	_no_way_to = -1
+	_forget_speeds()
+	_steer_memory.reset()
+	if weapon_sounds != null:
+		weapon_sounds.watch(self)
+
+
 ## Back at the spawn point a match gave it, or else at the start of the
 ## route, whole; with neither, where it fell.
 func respawn() -> void:

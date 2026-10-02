@@ -212,9 +212,16 @@ camera behind them, then Free Look, flying through walls at CS2's
 `sv_specspeed` 1200 with `sv_specaccelerate` 5 and `sv_friction` 5.2, and
 back to their eyes. Fire is the next teammate, the right button the one
 before. Free look is a departure from competitive's `mp_forcecamera 1`
-(`MatchRules.free_look`, on). Still to build: taking control of a bot
-(E, CS2's `bot_controllable`), and shooting and throwing while noclipping.
-**Local:** fly round dust2 dead, and say if the speed or the feel is off.
+(`MatchRules.free_look`, on). Taking control of a bot: Remote done
+2026-10-02. Watching a bot on your side from its eyes or behind it, E takes
+it over (`bot_controllable 1`): the world hands it your commands, and the
+view and HUD draw it from the inside, its health, gun and money; it stays
+the bot, as CS2's hint says, so what you earn is its. One a round; it dies
+under you and the death camera goes to its body. Shooting and throwing
+while noclipping: Remote done 2026-10-02, with the air's inaccuracy.
+**Local:** fly round dust2 dead and say if the speed or the feel is off;
+take over a bot and play it (arms, sounds, buying, its death); in CS2,
+whether a noclip shot standing still in the air is as wide as a jump's.
 
 **Box3D is the game's physics (2026-09-28, Sid).** Sid chose to take the
 trial below forward. CI and the cloud threads take its Linux libraries rebuilt

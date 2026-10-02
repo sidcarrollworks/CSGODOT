@@ -54,6 +54,7 @@ func _ready() -> void:
 	view = PlayerView.new(self)
 	add_child(view)
 	killed.connect(func(_zone: StringName) -> void: died.emit())
+	control_changed.connect(_on_control_changed)
 	# CS2's knife and your side's pistol, the pistol in hand; anything else
 	# is bought (B), or given by whoever set starting_gun.
 	_loadout()
@@ -90,7 +91,16 @@ func place(spawn_position: Vector3, yaw: float) -> void:
 func command_for(tick: int, _dt: float) -> UserCmd:
 	# What the keys asked the game to do (G's drop), sent with the tick: the
 	# game runs it after everyone's commands.
+	# Driving a bot, they are the bot's: its gun dropped, its money spent.
 	for line in input.take_commands():
 		if is_instance_valid(world):
-			world.game.command(userid, line)
+			world.game.command(pawn().userid, line)
 	return input.build_command(tick)
+
+
+## A bot taken over: the mouse takes up where it was looking, so the view
+## does not turn on the takeover.
+func _on_control_changed() -> void:
+	var driven := pawn()
+	input.yaw_degrees = driven.yaw_degrees
+	input.pitch_degrees = driven.pitch_degrees

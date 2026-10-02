@@ -32,6 +32,14 @@ const CT_SPAWNS := [
 	{"position": Vector3(256.0, 0.0, -2000.0), "yaw": 180.0, "priority": 1},
 ]
 
+## A player whose commands walk forward, for a bot it takes over to run.
+class Walker extends PlayerSim:
+	func command_for(tick: int, _dt: float) -> UserCmd:
+		var cmd := standing(tick)
+		cmd.move = Vector2(0.0, 1.0)
+		return cmd
+
+
 var _world: Node3D
 ## The game the players are in, where a dead one finds the teammates to
 ## watch. The checks run the players and the match by hand, so it is never
@@ -68,6 +76,7 @@ func _run() -> void:
 	await _test_teammates_are_solid()
 	await _test_watching_a_teammate()
 	await _test_free_look()
+	await _test_taking_over_a_bot()
 	await _test_a_bot_spawns_where_it_is_put()
 	_report()
 
@@ -673,7 +682,73 @@ func _test_free_look() -> void:
 	await _clear([dead, first, second])
 
 
-## A bot the match spawns on its route sets off for the point after it, and
+## Dead, watching a bot on your side, E takes it over: the world hands it
+## your commands, it stays the bot (its userid, its health), and it is
+## yours until it dies, when the camera goes to its body; one a round, never
+## the other side's or a person's, and the next round gives it back.
+func _test_taking_over_a_bot() -> void:
+	var dead := _new_player(Vector3(-3000.0, 0.0, 4000.0), "T", Walker.new())
+	var bot := _new_player(Vector3(-3000.0, 0.0, 4300.0), "T")
+	bot.is_bot = true
+	var person := _new_player(Vector3(-3000.0, 0.0, 4600.0), "T")
+	var enemy := _new_player(Vector3(-3000.0, 0.0, 3400.0), "CT")
+	enemy.is_bot = true
+	dead.respawns = false
+	_kill(dead)
+	var tick := [SimClock.current_tick() + SimClock.ticks_in(2.0) + 8]
+	var press := func(button: int) -> void:
+		var c := UserCmd.new()
+		tick[0] += 1
+		c.tick = tick[0]
+		if button != 0:
+			c.steps.append(UserCmd.SubtickStep.new(button, true, 0.2, 0.0, 0.0))
+		dead.run_command(c, DT)
+	press.call(0)
+	if dead.observing != bot:
+		press.call(UserCmd.ATTACK)
+	_check(dead.observing == bot, "watching the bot on your side")
+	_check(dead.can_control(bot) and not dead.can_control(person) and not dead.can_control(enemy),
+		"it may be taken over; a person and the other side's bot may not")
+	press.call(UserCmd.JUMP)
+	press.call(UserCmd.JUMP)
+	_check(dead.observer_mode == PlayerSim.ObserverMode.ROAMING and not dead.can_control(bot), "not while flying free")
+	press.call(UserCmd.JUMP)
+	if dead.observing != bot:
+		press.call(UserCmd.ATTACK)
+	var changed := [0]
+	dead.control_changed.connect(func() -> void: changed[0] += 1)
+	press.call(UserCmd.USE)
+	_check(dead.controlling == bot and bot.controlled_by == dead and dead.pawn() == bot and changed[0] == 1,
+		"E takes it over: your pawn is the bot")
+	_check(not dead.alive and bot.alive and bot.userid != dead.userid, "you are still dead, and it is still the bot")
+
+	var start := bot.global_position
+	for i in SimClock.ticks_in(0.5):
+		var running: Array[PlayerSim] = [dead, bot]
+		var commands := _game.commands_for(running, DT)
+		_check(i > 0 or (commands[1].move.y > 0.0 and commands[0].move == Vector2.ZERO),
+			"the world hands the bot your command, and you a standing one")
+		for j in running.size():
+			running[j].run_command(commands[j], DT)
+	_check(bot.global_position.distance_to(start) > 50.0,
+		"your keys walk it (%.0f units)" % bot.global_position.distance_to(start))
+
+	_kill(bot)
+	press.call(0)
+	_check(dead.controlling == null and bot.controlled_by == null and dead.pawn() == dead and changed[0] == 2,
+		"it dies: given back")
+	_check(dead.death_cam_of == bot and dead.observing == null, "and the camera is on its body for the freeze cam")
+	_check(not dead.can_control(person), "one a round")
+	tick[0] += SimClock.ticks_in(2.0)
+	press.call(0)
+	_check(dead.observing == person, "then on to the living teammate")
+	dead.spawn_at(Vector3(-3000.0, 0.0, 4000.0), 0.0)
+	_check(dead.alive and not dead.controlled_bot_this_round and dead.death_cam_of == null,
+		"the next round, you may take one again")
+	await _clear([dead, bot, person, enemy])
+
+
+## A bot the match spawns on its route sets off## A bot the match spawns on its route sets off for the point after it, and
 ## a dead one comes back at the spawn it was given, not its route's start.
 func _test_a_bot_spawns_where_it_is_put() -> void:
 	var bot := (load("res://src/bots/bot.tscn") as PackedScene).instantiate() as Bot
@@ -772,8 +847,9 @@ func _build_floor() -> void:
 
 
 ## A player in the simulation with nothing drawing it, standing on the floor.
-func _new_player(at: Vector3, team: String) -> PlayerSim:
-	var player := PlayerSim.new()
+func _new_player(at: Vector3, team: String, player: PlayerSim = null) -> PlayerSim:
+	if player == null:
+		player = PlayerSim.new()
 	player.team = team
 	player.collision_layer = PlayerSim.PLAYER_LAYER
 	var hull := CollisionShape3D.new()

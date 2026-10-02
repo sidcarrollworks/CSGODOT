@@ -93,6 +93,26 @@ var observer_velocity := Vector3.ZERO
 ## Who was watched before the camera flew free, to go back to.
 var _observed_before: PlayerSim
 
+## Taking control of a bot, as CS2 lets the dead (bot_controllable 1, "Use
+## Control Bot" on its spectator bar): watching a living bot on your side,
+## E takes it over, and your commands drive it until it dies or the round
+## is over. It stays the bot, as CS2 has it: "money, kills, deaths and
+## weapons that you earn are awarded to that bot instead of you"
+## (SFUI_Hint_ControlBotDontKeep). So nothing of it is moved onto you; the
+## world hands it your commands (GameWorld.commands_for), and your view
+## draws it from its eyes (pawn()).
+##
+## On the one who took control: the bot, while it lives under you.
+var controlling: PlayerSim
+## On the bot: who drives it, or null while it drives itself.
+var controlled_by: PlayerSim
+## One bot a round, as CS:GO had it (inferred for CS2 from its
+## m_bHasControlledBotThisRound): the bot you took dies, and you watch.
+var controlled_bot_this_round: bool = false
+## Whose body the death camera is on: your own, or the bot that died
+## under you.
+var death_cam_of: PlayerSim
+
 ## Flying free, CS2's spectator movement convars (GameTracking-CS2's
 ## convars.txt, 2026-09-30): sv_specspeed 1200 units a second at most,
 ## sv_specaccelerate 5, slowed by sv_friction 5.2, half as fast with walk
@@ -203,6 +223,8 @@ signal killed(zone: StringName)
 signal respawned
 ## Now on the other side, wearing that side's body.
 signal team_changed(team: String)
+## Control of a bot taken (pawn() is the bot from now) or given back.
+signal control_changed
 
 ## CS2 holds off the slowdown for a couple of its 64 Hz ticks after the hit
 ## (sv_predictable_damage_tag_ticks 2), so a client predicting its own
@@ -732,6 +754,12 @@ func _run(cmd: UserCmd, dt: float) -> void:
 		velocity = Vector3.ZERO
 
 	if not alive:
+		if is_instance_valid(controlling):
+			# The bot runs your commands (GameWorld.commands_for); you only
+			# notice it die.
+			if not controlling.alive:
+				_lose_control()
+			return
 		if not respawns:
 			_observe(cmd, dt)
 		elif SimClock.tick_end_usec(cmd.tick) >= _respawn_at_usec:
@@ -1283,6 +1311,9 @@ func _observe(cmd: UserCmd, dt: float) -> void:
 		_roam(cmd, dt)
 		return
 	var watching := _can_watch(observing)
+	if watching and cmd.first_press(UserCmd.USE) != null and can_control(observing):
+		take_control(observing)
+		return
 	if cmd.first_press(UserCmd.JUMP) != null:
 		if observer_mode == ObserverMode.IN_EYE and watching:
 			observer_mode = ObserverMode.CHASE
@@ -1295,6 +1326,66 @@ func _observe(cmd: UserCmd, dt: float) -> void:
 		observing = _next_teammate(observing if watching else null)
 	elif cmd.first_press(UserCmd.ATTACK2) != null:
 		observing = _next_teammate(observing, -1)
+
+
+## What this player's commands drive and what they see from: the bot they
+## have taken over, or themselves.
+func pawn() -> PlayerSim:
+	return controlling if is_instance_valid(controlling) else self
+
+
+## Whether this player, dead, may take over a bot: one on their side,
+## alive, that nobody else drives, and only one a round. CS2 needs it
+## watched from its eyes or behind it (the spectator bar offers it there),
+## and bots controllable (bot_controllable 1). Inferred from CS:GO's rules,
+## which CS2 kept the fields of (CCSPlayerController's m_bControllingBot,
+## m_bHasControlledBotThisRound, m_bCanControlObservedBot).
+func can_control(bot: PlayerSim) -> bool:
+	return not alive and not respawns and not controlled_bot_this_round \
+		and not is_instance_valid(controlling) and bot != null and is_instance_valid(bot) \
+		and bot.is_bot and bot.alive and bot.team == team and not is_instance_valid(bot.controlled_by) \
+		and observer_mode != ObserverMode.ROAMING
+
+
+## Takes the bot over: from the next tick the world hands it this player's
+## commands instead of its own.
+func take_control(bot: PlayerSim) -> void:
+	controlling = bot
+	bot.controlled_by = self
+	controlled_bot_this_round = true
+	observing = null
+	observer_mode = ObserverMode.IN_EYE
+	bot._on_taken_over()
+	control_changed.emit()
+
+
+## The bot you drove died under you: back to watching, the death camera
+## on its body first, for the freeze cam's time.
+func _lose_control() -> void:
+	var bot := controlling
+	give_back_control()
+	death_cam_of = bot
+	_died_at_usec = SimClock.now_usec()
+
+
+## Gives the bot back to itself (its death, the next round).
+func give_back_control() -> void:
+	var bot := controlling
+	controlling = null
+	if is_instance_valid(bot):
+		bot.controlled_by = null
+		bot._on_given_back()
+	control_changed.emit()
+
+
+## A bot is taken over, or given back: what a bot thinks with lets go
+## (Bot).
+func _on_taken_over() -> void:
+	pass
+
+
+func _on_given_back() -> void:
+	pass
 
 
 ## Whether a player is one a dead player can watch: alive, on their side.
@@ -1379,6 +1470,10 @@ func _revive() -> void:
 	observing = null
 	observer_mode = ObserverMode.IN_EYE
 	_observed_before = null
+	death_cam_of = null
+	controlled_bot_this_round = false
+	if is_instance_valid(controlling):
+		give_back_control()
 
 
 ## Back where the map put the player, whole, armoured as they started, with
