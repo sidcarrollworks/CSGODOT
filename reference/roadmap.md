@@ -206,6 +206,16 @@ same correction. See `reference/movement_constants.md`, "Crouch turning",
 for the reproduction and the small accuracy-threshold rounding tolerance.
 **Local:** crouch and turn with those guns in the range and on dust2.
 
+**Spectating (Sid's 2026-09-30 playtest): free look Remote done 2026-10-02.**
+Dead in a round, jump goes round CS2's camera modes: a teammate's eyes, the
+camera behind them, then Free Look, flying through walls at CS2's
+`sv_specspeed` 1200 with `sv_specaccelerate` 5 and `sv_friction` 5.2, and
+back to their eyes. Fire is the next teammate, the right button the one
+before. Free look is a departure from competitive's `mp_forcecamera 1`
+(`MatchRules.free_look`, on). Still to build: taking control of a bot
+(E, CS2's `bot_controllable`), and shooting and throwing while noclipping.
+**Local:** fly round dust2 dead, and say if the speed or the feel is off.
+
 **Box3D is the game's physics (2026-09-28, Sid).** Sid chose to take the
 trial below forward. CI and the cloud threads take its Linux libraries rebuilt
 against glibc 2.35 from this repo's release once it is attached, and until

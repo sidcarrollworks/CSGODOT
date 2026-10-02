@@ -67,6 +67,7 @@ func _run() -> void:
 	await _test_friendly_fire()
 	await _test_teammates_are_solid()
 	await _test_watching_a_teammate()
+	await _test_free_look()
 	await _test_a_bot_spawns_where_it_is_put()
 	_report()
 
@@ -604,6 +605,72 @@ func _test_watching_a_teammate() -> void:
 	dead.spawn_at(Vector3(-3000.0, 0.0, 0.0), 0.0)
 	_check(dead.alive and dead.observing == null, "spawned for the next round, nobody is watched")
 	await _clear([dead, first, second, enemy])
+
+
+## Jump goes from a teammate's eyes to behind them to flying free and back
+## to their eyes; the right button goes back a teammate. Flying free, the
+## move keys take the camera where you look, through anything, toward
+## CS2's sv_specspeed, and it stops when they let go. A match that keeps
+## the dead to their teammates (MatchRules.free_look off) never flies.
+func _test_free_look() -> void:
+	var dead := _new_player(Vector3(-3000.0, 0.0, 2000.0), "T")
+	var first := _new_player(Vector3(-3000.0, 0.0, 2300.0), "T")
+	var second := _new_player(Vector3(-3000.0, 0.0, 2600.0), "T")
+	dead.respawns = false
+	_kill(dead)
+	# In an array, which the lambda shares rather than copies.
+	var tick := [SimClock.current_tick() + SimClock.ticks_in(2.0) + 8]
+	var press := func(button: int) -> UserCmd:
+		var c := UserCmd.new()
+		tick[0] += 1
+		c.tick = tick[0]
+		if button != 0:
+			c.steps.append(UserCmd.SubtickStep.new(button, true, 0.2, 0.0, 0.0))
+		dead.run_command(c, DT)
+		return c
+	press.call(0)
+	var watched := dead.observing
+	_check(watched != null and dead.observer_mode == PlayerSim.ObserverMode.IN_EYE, "after the freeze cam, a teammate's eyes")
+	press.call(UserCmd.ATTACK2)
+	_check(dead.observing != watched and dead.observing != null, "the right button goes back a teammate")
+	press.call(UserCmd.ATTACK2)
+	_check(dead.observing == watched, "and round again")
+	press.call(UserCmd.JUMP)
+	_check(dead.observing_chase, "jump: behind them")
+	press.call(UserCmd.JUMP)
+	_check(dead.observer_mode == PlayerSim.ObserverMode.ROAMING and dead.observing == null, "jump again: flying free")
+	var eyes := watched.global_position + Vector3.UP * watched.eye_height()
+	_check(dead.observer_position.distance_to(eyes) < 0.01, "from the eyes of the one watched")
+
+	# Forward, looking straight down the -Z axis and up 30 degrees.
+	var start := dead.observer_position
+	for i in SimClock.ticks_in(1.0):
+		var c := UserCmd.new()
+		tick[0] += 1
+		c.tick = tick[0]
+		c.move = Vector2(0.0, 1.0)
+		c.pitch_degrees = 30.0
+		dead.run_command(c, DT)
+	var moved := dead.observer_position - start
+	var speed := dead.observer_velocity.length()
+	_check(moved.z < -500.0 and moved.y > 250.0 and absf(moved.x) < 0.01,
+		"the move keys fly where you look, pitch and all (%s)" % moved)
+	_check(speed > 1000.0 and speed <= PlayerSim.SPEC_SPEED, "toward sv_specspeed's 1200, never past it (%.0f)" % speed)
+	_check(dead.previous_observer_position.distance_to(dead.observer_position) > 10.0, "the tick before is kept to draw between")
+	for i in SimClock.ticks_in(1.0):
+		press.call(0)
+	_check(dead.observer_velocity.length() < 1.0, "let go, it stops (%.1f)" % dead.observer_velocity.length())
+	_check(dead.observer_mode == PlayerSim.ObserverMode.ROAMING, "and stays free with no key pressed")
+	press.call(UserCmd.JUMP)
+	_check(dead.observer_mode == PlayerSim.ObserverMode.IN_EYE and dead.observing == watched, "jump: back to the eyes of the one watched before")
+
+	dead.free_look = false
+	press.call(UserCmd.JUMP)
+	press.call(UserCmd.JUMP)
+	_check(dead.observer_mode == PlayerSim.ObserverMode.IN_EYE and dead.observing != null, "without free look, jump only goes from the eyes to behind and back")
+	dead.spawn_at(Vector3(-3000.0, 0.0, 2000.0), 0.0)
+	_check(dead.alive and dead.observer_mode == PlayerSim.ObserverMode.IN_EYE, "spawned, the camera is back in your own eyes")
+	await _clear([dead, first, second])
 
 
 ## A bot the match spawns on its route sets off for the point after it, and

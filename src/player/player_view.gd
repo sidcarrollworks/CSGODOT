@@ -394,6 +394,16 @@ func _spectate(watched: PlayerSim) -> void:
 	)
 
 
+## Dead and flying free: the camera where the tick moved it, drawn between
+## the last two ticks, turned by the mouse as it is now.
+func _roam() -> void:
+	var alpha := DrawClock.fraction()
+	camera.global_position = player.previous_observer_position.lerp(player.observer_position, alpha)
+	camera.global_rotation = Vector3(
+		deg_to_rad(player.input.pitch_degrees), deg_to_rad(player.input.yaw_degrees), 0.0
+	)
+
+
 ## Keeps a body out of the camera while the camera is in its head, and
 ## gives the last one back.
 func _watch(watched: PlayerSim) -> void:
@@ -590,6 +600,10 @@ func _process(delta: float) -> void:
 	catch_up()
 	_follow_scope()
 	if _dead_for >= 0.0:
+		if player.observer_mode == PlayerSim.ObserverMode.ROAMING:
+			_watch(null)
+			_roam()
+			return
 		var watched := player.observing
 		if watched != null and is_instance_valid(watched) and watched.alive:
 			_spectate(watched)

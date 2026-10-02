@@ -62,13 +62,46 @@ var team_damage_scale: float = 1.0
 
 ## Dead in a round with no respawn: the living teammate being watched, or
 ## null while the camera is still on your own body (the first
-## freeze_cam_seconds) or nobody on your side is left. Fire moves on to the
-## next teammate, jump switches between their eyes and a camera behind them
-## (observing_chase). Kept here, not in the view, as CS2's server keeps
-## who each player watches: it goes by the commands the player sends.
+## freeze_cam_seconds), nobody on your side is left, or the camera flies
+## free. Fire moves on to the next teammate and the right button back to
+## the one before, as CS2's spectator keys have it (PANOHUD_Spectate_
+## Navigation_Arrows and _Arrows_Prev); jump goes round the camera's modes
+## (observer_mode). Kept here, not in the view, as CS2's server keeps who
+## each player watches and how: it goes by the commands the player sends.
 var observing: PlayerSim
-var observing_chase: bool = false
 var freeze_cam_seconds: float = 2.0
+
+## How a dead player watches, CS2's CSObserverMode (point_script.d.ts) less
+## the two it has no key for (NONE, FIXED): from the eyes of the one
+## watched, from behind them, or flying free round the map ("Free Look",
+## Cstrike_TitlesTXT_OBS_ROAMING). Jump goes round them in that order, as
+## spec_mode does.
+enum ObserverMode { IN_EYE, CHASE, ROAMING }
+var observer_mode := ObserverMode.IN_EYE
+## Whether the camera is behind the one watched, rather than in their eyes.
+var observing_chase: bool:
+	get:
+		return observer_mode == ObserverMode.CHASE
+## Whether the dead may fly free (MatchRules.free_look).
+var free_look: bool = true
+## Flying free: where the camera is, where it was the tick before (to draw
+## between the two), and how fast it is going. Through walls, as CS2's
+## sv_specnoclip 1 has it.
+var observer_position := Vector3.ZERO
+var previous_observer_position := Vector3.ZERO
+var observer_velocity := Vector3.ZERO
+## Who was watched before the camera flew free, to go back to.
+var _observed_before: PlayerSim
+
+## Flying free, CS2's spectator movement convars (GameTracking-CS2's
+## convars.txt, 2026-09-30): sv_specspeed 1200 units a second at most,
+## sv_specaccelerate 5, slowed by sv_friction 5.2, half as fast with walk
+## held. The shape is Source's FullObserverMove (Source SDK 2013, read as a
+## spec): friction on a speed no less than a quarter of the top, then the
+## acceleration toward where you look.
+const SPEC_SPEED := 1200.0
+const SPEC_ACCELERATE := 5.0
+const SPEC_FRICTION := 5.2
 
 ## Where the player is looking, from the last command, in degrees.
 var yaw_degrees: float = 0.0
@@ -700,7 +733,7 @@ func _run(cmd: UserCmd, dt: float) -> void:
 
 	if not alive:
 		if not respawns:
-			_observe(cmd)
+			_observe(cmd, dt)
 		elif SimClock.tick_end_usec(cmd.tick) >= _respawn_at_usec:
 			respawn()
 		return
@@ -1226,24 +1259,97 @@ func body_centre() -> Vector3:
 
 
 ## Dead with no respawn coming: after the freeze cam, watching a living
-## teammate, the next one on a press of fire, from their eyes or from
-## behind them on a press of jump. Only your own side.
-func _observe(cmd: UserCmd) -> void:
+## teammate, the next one on a press of fire and the one before on the
+## right button; jump goes from their eyes to behind them, then, where the
+## match allows it, to flying free, and back to their eyes. Only your own
+## side is watched.
+func _observe(cmd: UserCmd, dt: float) -> void:
 	var now := SimClock.tick_end_usec(cmd.tick)
 	if now < _died_at_usec + int(freeze_cam_seconds * 1_000_000.0):
 		return
-	var watching := observing != null and is_instance_valid(observing) \
-		and observing.alive and observing.team == team
+	if observer_mode == ObserverMode.ROAMING:
+		if cmd.first_press(UserCmd.JUMP) != null or cmd.first_press(UserCmd.ATTACK) != null \
+				or cmd.first_press(UserCmd.ATTACK2) != null or not free_look:
+			# Back to someone's eyes: the one watched before, if they live.
+			observer_mode = ObserverMode.IN_EYE
+			observing = _observed_before if _can_watch(_observed_before) else _next_teammate(null)
+			_observed_before = null
+			return
+		_roam(cmd, dt)
+		return
+	var watching := _can_watch(observing)
+	if cmd.first_press(UserCmd.JUMP) != null:
+		if observer_mode == ObserverMode.IN_EYE and watching:
+			observer_mode = ObserverMode.CHASE
+		elif free_look:
+			_start_roaming(observing if watching else null)
+			return
+		else:
+			observer_mode = ObserverMode.IN_EYE
 	if not watching or cmd.first_press(UserCmd.ATTACK) != null:
 		observing = _next_teammate(observing if watching else null)
-	elif cmd.first_press(UserCmd.JUMP) != null:
-		observing_chase = not observing_chase
+	elif cmd.first_press(UserCmd.ATTACK2) != null:
+		observing = _next_teammate(observing, -1)
 
 
-## The living teammate after this one, round and round; the first when
-## there is none to follow. Only in the player's world: nobody else is in
+## Whether a player is one a dead player can watch: alive, on their side.
+func _can_watch(other: PlayerSim) -> bool:
+	return other != null and is_instance_valid(other) and other.alive and other.team == team
+
+
+## The camera leaves the one watched and flies free from where it was:
+## their eyes, or over your own body with nobody to watch.
+func _start_roaming(watched: PlayerSim) -> void:
+	observer_mode = ObserverMode.ROAMING
+	_observed_before = watched
+	if watched != null:
+		observer_position = watched.global_position + Vector3.UP * watched.eye_height()
+	else:
+		observer_position = body_centre() + Vector3.UP * 64.0
+	previous_observer_position = observer_position
+	observer_velocity = Vector3.ZERO
+	observing = null
+
+
+## Flies the free camera one tick: toward where you look with the move
+## keys, pitch and all, through anything in the way.
+func _roam(cmd: UserCmd, dt: float) -> void:
+	previous_observer_position = observer_position
+	var top := SPEC_SPEED * (0.5 if cmd.held(UserCmd.WALK) else 1.0)
+	var pitch := deg_to_rad(cmd.pitch_degrees)
+	var yaw := deg_to_rad(cmd.yaw_degrees)
+	var forward := Vector3(-sin(yaw) * cos(pitch), sin(pitch), -cos(yaw) * cos(pitch))
+	var right := Vector3(cos(yaw), 0.0, -sin(yaw))
+	var keys := cmd.move.limit_length(1.0)
+	var wish := forward * keys.y + right * keys.x
+	observer_velocity = observer_step(observer_velocity, wish, top, dt)
+	observer_position += observer_velocity * dt
+
+
+## One tick of the free camera's speed (FullObserverMove's shape): wish is
+## the way the keys ask for, as long as how much of top they ask.
+static func observer_step(velocity_now: Vector3, wish: Vector3, top: float, dt: float) -> Vector3:
+	var out := velocity_now
+	var speed := out.length()
+	if speed < 1.0:
+		out = Vector3.ZERO
+	else:
+		var drop := maxf(speed, top / 4.0) * SPEC_FRICTION * dt
+		out *= maxf(speed - drop, 0.0) / speed
+	var wish_speed := minf(wish.length(), 1.0) * top
+	if wish_speed <= 0.0:
+		return out
+	var wish_dir := wish.normalized()
+	var add := wish_speed - out.dot(wish_dir)
+	if add > 0.0:
+		out += wish_dir * minf(SPEC_ACCELERATE * dt * wish_speed, add)
+	return out
+
+
+## The living teammate after this one (step 1) or before it (step -1),
+## round and round; the first when there is none to follow. Only in the player's world: nobody else is in
 ## the game.
-func _next_teammate(after: PlayerSim) -> PlayerSim:
+func _next_teammate(after: PlayerSim, step: int = 1) -> PlayerSim:
 	if not is_instance_valid(world):
 		return null
 	var living: Array[PlayerSim] = []
@@ -1252,7 +1358,10 @@ func _next_teammate(after: PlayerSim) -> PlayerSim:
 			living.append(other)
 	if living.is_empty():
 		return null
-	return living[(living.find(after) + 1) % living.size()]
+	var at := living.find(after)
+	if at < 0:
+		return living[0]
+	return living[posmod(at + step, living.size())]
 
 
 ## Up again: whole, solid, able to be shot, watching nobody.
@@ -1263,7 +1372,8 @@ func _revive() -> void:
 	collision_layer = PLAYER_LAYER
 	PhysicsQueries.sync_object(self, false)
 	observing = null
-	observing_chase = false
+	observer_mode = ObserverMode.IN_EYE
+	_observed_before = null
 
 
 ## Back where the map put the player, whole, armoured as they started, with

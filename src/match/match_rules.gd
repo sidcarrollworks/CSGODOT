@@ -63,3 +63,12 @@ extends Resource
 ## Dead, how long the camera stays on your own body before it moves to a
 ## living teammate (spec_freeze_time).
 @export var freeze_cam_seconds: float = 2.0
+
+## Dead, whether jump can take the camera off your teammates to fly free
+## round the map ("Free Look"). A departure from CS2's competitive, whose
+## mp_forcecamera 1 (gamemode_competitive.cfg) keeps the dead to their
+## teammates' eyes and the camera behind them; casual's 0 lets them fly.
+## Offline against bots there is nobody to pass what you see on to, and
+## Sid asked for it (playtest 2026-09-30). A match with other people in it
+## should turn it off.
+@export var free_look: bool = true

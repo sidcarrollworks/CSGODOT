@@ -366,17 +366,19 @@ func _on_buy_refused(why: StringName) -> void:
 
 
 ## What the line across the middle says while you are dead: when you are
-## back, or, with no respawn coming, whose eyes you are in and how to move
-## on.
+## back, or, with no respawn coming, how you are watching and the keys CS2's
+## spectator bar names (PANOHUD_Spectate_Navigation_*): fire the next
+## player, the right button the one before, jump the camera.
 static func dead_line(dead: PlayerSim) -> String:
 	if dead.respawns:
 		return "You died. Back in %d" % ceili(dead.seconds_to_respawn())
+	if dead.observer_mode == PlayerSim.ObserverMode.ROAMING:
+		return "Free Look    fire: watch a teammate    jump: camera"
 	var watched := dead.observing
 	if watched == null or not is_instance_valid(watched):
-		return "You died"
-	return "Watching %s    fire: next    jump: %s" % [
-		watched.name, "their eyes" if dead.observing_chase else "from behind",
-	]
+		return "You died    jump: free look" if dead.free_look else "You died"
+	var mode := "Chase Camera" if dead.observing_chase else "First Person"
+	return "Watching %s (%s)    fire: next    right: previous    jump: camera" % [watched.name, mode]
 
 
 ## A clock the way CS2 draws it: minutes and seconds, the seconds rounded up
