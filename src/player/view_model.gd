@@ -49,9 +49,11 @@ var _hip_idle: StringName = &""
 var _raised: float = 0.0
 ## Whether it is going up (or up), rather than coming down (or down).
 var _raising := false
-## The scope's glass, which the game draws clear: its surfaces are given
+## The scope's glass, black at the hip and clear at the eye: given
 ## LENS_SHADER when the model is built, and counted here.
 var lens_surfaces: int = 0
+## Per-model glass material: black at the hip, clear up at the eye.
+var _lens_material: ShaderMaterial
 
 ## The clear opening fills 46% of the screen height in Sid's CS2 reference
 ## (2026-10-01). The sight clip centres the gun, but needs its own framing,
@@ -121,7 +123,13 @@ func setup(team: String, weapon_model: String, clip_set: String) -> bool:
 		weapon.free()
 	if weapon_rig != null and weapon_rig.get_bone_count() > 0:
 		pin(weapon_rig.get_parent(), "wpn", weapon_rig.get_bone_rest(0).affine_inverse())
-	lens_surfaces = clear_lenses(self)
+	_lens_material = ShaderMaterial.new()
+	_lens_material.shader = LENS_SHADER
+	_lens_material.resource_name = "scope_lens"
+	_lens_material.set_shader_parameter(&"raised", 0.0)
+	lens_surfaces = clear_lenses(self, _lens_material)
+	if lens_surfaces == 0:
+		_lens_material = null
 
 	scale = Vector3.ONE * MapImporter.SOURCE2_VIEWER_SCALE
 	rotation_degrees = Vector3(0.0, 180.0, 0.0)
@@ -180,6 +188,8 @@ func shoot() -> void:
 ## and goes to the pose or the idle after it. Nothing for a gun without
 ## the pose.
 func raise_to_eye(amount: float, data: WeaponData) -> void:
+	if _lens_material != null:
+		_lens_material.set_shader_parameter(&"raised", clampf(amount, 0.0, 1.0) if data != null and data.has_iron_sight() else 0.0)
 	if data == null or not data.has_iron_sight() or not has_clip(IRON_SIGHT_POSE):
 		if _raising:
 			_lower()
@@ -201,6 +211,8 @@ func raise_to_eye(amount: float, data: WeaponData) -> void:
 
 ## Back at the hip at once, as a draw starts.
 func _lower() -> void:
+	if _lens_material != null:
+		_lens_material.set_shader_parameter(&"raised", 0.0)
 	_raised = 0.0
 	_raising = false
 	if _hip_idle != &"":
@@ -218,13 +230,12 @@ func has_clip(clip: StringName) -> bool:
 	return animation_player != null and animation_player.has_animation(clip)
 
 
-## Gives the surfaces of a scope's glass under node the clear lens: CS2's
+## Gives the surfaces of a scope's glass under node the lens material: CS2's
 ## AUG and SG 553 name the material rif_aug_scope_glass and
 ## rif_sg556_scope_glass, and the lens's dirt scope_lens_dirt
 ## (reference/research/scopes.md). How many it found.
-static func clear_lenses(node: Node) -> int:
+static func clear_lenses(node: Node, lens: ShaderMaterial = null) -> int:
 	var found := 0
-	var lens: ShaderMaterial = null
 	for mesh: MeshInstance3D in node.find_children("*", "MeshInstance3D", true, false):
 		if mesh.mesh == null:
 			continue

@@ -7,7 +7,8 @@ extends "res://tests/check_suite.gd"
 ## comes out; the arms drawn at the iron-sight field of view while up, and
 ## the effects placed on them the same way; the crosshair put away while
 ## up; the first-person clips going to the pose at the eye and firing from
-## it; and the scope's glass drawn clear.
+## it; the lens black at the hip and clear at the eye; and the outside
+## focus effect drawing only while scoped, below the HUD.
 ##
 ##   godot --headless --path . --script tests/run_iron_sight_checks.gd
 ##
@@ -23,6 +24,7 @@ func _initialize() -> void:
 	_test_the_arms_field_of_view()
 	_test_the_view_uses_the_scoped_framing()
 	_test_the_crosshair_is_put_away()
+	_test_focus_only_while_scoped()
 	_test_the_clips_at_the_eye()
 	_test_the_glass_is_clear()
 	_test_the_stand_in()
@@ -164,7 +166,11 @@ func _test_the_glass_is_clear() -> void:
 		and ViewModel.is_lens("scope_lens_dirt"), "the SG 553's and AUG's glass and the lens dirt are the lens")
 	_check(not ViewModel.is_lens("rif_sg556") and not ViewModel.is_lens("scope_sg556"),
 		"the gun and the scope's body are not")
-	var holder := Node3D.new()
+	var holder := ViewModel.new()
+	var lens := ShaderMaterial.new()
+	lens.shader = ViewModel.LENS_SHADER
+	lens.set_shader_parameter(&"raised", 0.0)
+	holder.set("_lens_material", lens)
 	var mesh := MeshInstance3D.new()
 	var array := ArrayMesh.new()
 	for name in ["rif_sg556", "rif_sg556_scope_glass"]:
@@ -175,11 +181,62 @@ func _test_the_glass_is_clear() -> void:
 		array.surface_set_material(array.get_surface_count() - 1, material)
 	mesh.mesh = array
 	holder.add_child(mesh)
-	_check_equal(ViewModel.clear_lenses(holder), 1, "one surface of the two is glass")
+	_check_equal(ViewModel.clear_lenses(holder, lens), 1, "one surface of the two is glass")
 	var glass := mesh.get_active_material(1) as ShaderMaterial
-	_check(glass != null and glass.shader == ViewModel.LENS_SHADER, "and it is drawn clear")
+	_check(glass == lens and glass.shader == ViewModel.LENS_SHADER, "and it uses this model's lens material")
 	_check_equal(mesh.get_active_material(0).resource_name, "rif_sg556", "the gun's own is left alone")
+	_check_near(lens.get_shader_parameter(&"raised"), 0.0, "the lens starts black at the hip")
+	var sg := WeaponLibrary.build("weapon_sg556")
+	holder.raise_to_eye(1.0, sg)
+	_check_near(lens.get_shader_parameter(&"raised"), 1.0, "the lens clears at the eye")
+	holder.raise_to_eye(0.5, sg)
+	_check_near(lens.get_shader_parameter(&"raised"), 0.5, "the glass fades as the scope lowers")
+	holder.call("_lower")
+	_check_near(lens.get_shader_parameter(&"raised"), 0.0, "a deploy resets the lens to black")
+	holder.raise_to_eye(1.0, WeaponLibrary.ak47())
+	_check_near(lens.get_shader_parameter(&"raised"), 0.0, "only an iron sight can clear the lens")
 	holder.free()
+
+
+## The outside blur is below the HUD and stops drawing at the hip, on
+## weapon switches, and on death. It also works without extracted models.
+func _test_focus_only_while_scoped() -> void:
+	var player := PlayerSim.new()
+	player.weapon = _ready_weapon("weapon_sg556")
+	var overlay := IronSightOverlay.new()
+	overlay.player = player
+	root.add_child(overlay)
+	# The suite runs before the root's ready notification.
+	if overlay.get("_focus_layer") == null:
+		overlay.call("_ready")
+	overlay.call("_process", 0.0)
+	var layer := overlay.get("_focus_layer") as CanvasLayer
+	var material := overlay.get("_focus_material") as ShaderMaterial
+	_check(not layer.visible, "the hip view draws no focus pass")
+	_check(layer.layer < 0, "focus draws below the HUD and scope dot")
+	_check((layer.get_child(0) as Control).mouse_filter == Control.MOUSE_FILTER_IGNORE,
+		"the full-screen focus surface leaves firing input through")
+	player.weapon.call("_zoom_to", 1, DrawClock.usec() - SECOND)
+	overlay.call("_process", 0.0)
+	_check(layer.visible, "scoping softens the outside world, even with no model")
+	_check_near(material.get_shader_parameter(&"raised"), 1.0, "focus is fully raised with the scope")
+	player.weapon.call("_zoom_to", 0, DrawClock.usec())
+	overlay.call("_process", 0.0)
+	_check(layer.visible, "focus remains while the gun starts lowering")
+	player.weapon.call("_unscope")
+	overlay.call("_process", 0.0)
+	_check(not layer.visible, "the hip removes the screen-copy and blur pass")
+	player.weapon = _ready_weapon("weapon_awp")
+	player.weapon.call("_zoom_to", 1, DrawClock.usec() - SECOND)
+	overlay.call("_process", 0.0)
+	_check(not layer.visible, "a sniper keeps its own scope view")
+	player.weapon = _ready_weapon("weapon_aug")
+	player.weapon.call("_zoom_to", 1, DrawClock.usec() - SECOND)
+	player.alive = false
+	overlay.call("_process", 0.0)
+	_check(not layer.visible, "death removes the focus effect")
+	overlay.free()
+	player.free()
 
 
 func _test_the_stand_in() -> void:

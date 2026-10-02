@@ -88,7 +88,9 @@ CS2 has it (built here), or on the SSG anyway.
   back to the idle over the way down; fires `ironsight_shoot` while up; a
   shot or reload running is left to finish first. The glass surfaces
   (`scope_glass`, `scope_lens` in the material name) get
-  `scope_lens.gdshader`, a faint tint drawn as the arms are.
+  `scope_lens.gdshader`, black at the hip and fading to a faint clear tint
+  at the eye. It changes the glass's transparency, without cutting the
+  housing mesh or rendering a second view. Each model owns its glass material.
 - `PlayerView._follow_scope`: the arms' field of view goes from 68 to the
   model's calibrated scoped framing (SG 553: 9; AUG: 10) with the amount,
   and the muzzle flash follows it (`ARMS_FOV_META`). These are viewmodel
@@ -100,6 +102,15 @@ CS2 has it (built here), or on the SSG anyway.
   gun's model is not extracted (the cloud, CI), a drawn stand-in housing
   and black rim, sized off Sid's screenshot.
 - The test range uses the same scope dot and crosshair visibility as comp.
+- `iron_sight_focus.gdshader` slightly blurs the complete scene outside
+  the central lens, including the gun and distant background, as Sid
+  clarified from the CS2 reference on 2026-10-01. The clear circle uses
+  the same 46%-of-height framing as the lens. A canvas layer below the
+  HUD reads the finished 3D frame, so transparent effects are included
+  and the dot and HUD stay sharp. The blur fades with the gun's raised
+  amount; at the hip the layer is hidden and draws no screen-copy pass.
+  Its mipmap level 1.5 at 1080p and two-pixel edge feather are visual
+  approximations, scaled with resolution, rather than extracted CS2 values.
 - `tests/run_iron_sight_checks.gd`, including the view's scope/hip projections
   and, where extracted, the real model/clip setup.
 
@@ -127,6 +138,21 @@ proportions. Scoping changes no bullet, recoil, zoom, or movement rules.
 The extracted `graph_data.txt` maps IronsightPose to `ironsight_fidget_aug`
 and `ironsight_fidget_sg556` in the corresponding graph variations.
 
+With the scene frozen in the scoped pose, turning the focus pass off/on/off
+preserved the lens's central 220 x 180 pixels exactly and left all 2,610
+white HUD text pixels in the sampled region unchanged. The outside wall
+changed as expected. On the RTX 4070 Ti at 1920 x 1080, median viewport GPU
+time over 210 warmed frames per variant was 0.364 / 0.493 / 0.364 ms:
+about 0.13 ms for the scoped screen copy, mipmaps and filter. At 3786 x 2130
+(the window's near-4K size), it was 1.686 / 2.149 / 1.682 ms, about 0.46 ms.
+These are isolated test-range render costs, not competitive-match timings.
+
+Both local model exports were checked for missing external files: all
+14 AUG and nine SG 553 textures and both geometry buffers are present,
+as are the 15 first-person clip exports and their buffers. The additional
+CS2 `scope_filter` and `scope_lens_dirt` assets are not separately extracted;
+the focus filter and clear tint here approximate their appearance.
+
 ## Not done, and Local checks
 
 1. **The look beside CS2.** Scope the SG 553 and the AUG on dust2 beside
@@ -136,9 +162,9 @@ and `ironsight_fidget_sg556` in the corresponding graph variations.
    opening size; compare directly with an AUG in CS2 before treating it as exact.
 3. **Scoped framing.** Further visual tuning belongs in
    `ViewModel.IRON_SIGHT_ARMS_FOV`; the game's world zoom remains 45.
-4. **The outside of the lens.** `scope_filter` suggests CS2 filters the
-   world round the scope; Sid's screenshot looks slightly soft there. Not
-   drawn here.
+4. **Focus tuning.** Compare the slight outside-lens blur directly with
+   CS2, especially under recoil: its central circular mask is fitted to
+   the reference, not a stencil taken from the animated glass geometry.
 5. **The dot's default colour** (red, from memory) against "Use crosshair
    color for scope dot"; this build always takes the crosshair's.
 6. The lens dirt (`scope_lens_dirt`) is drawn clear, not dirty.

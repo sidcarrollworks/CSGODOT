@@ -39,17 +39,38 @@ const DOT_FROM := 0.9
 ## once rather than on every frame.
 static var _model_found := {}
 
+const FOCUS_SHADER := preload("res://src/ui/iron_sight_focus.gdshader")
+var _focus_layer: CanvasLayer
+var _focus_material: ShaderMaterial
+
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	visible = false
+	# Below every HUD canvas: the screen copy contains the complete 3D
+	# scene, including the gun and transparent effects, but no HUD text.
+	_focus_layer = CanvasLayer.new()
+	_focus_layer.name = "ScopeFocus"
+	_focus_layer.layer = -1
+	_focus_layer.visible = false
+	add_child(_focus_layer)
+	var focus := ColorRect.new()
+	focus.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_focus_material = ShaderMaterial.new()
+	_focus_material.shader = FOCUS_SHADER
+	_focus_material.set_shader_parameter(&"lens_radius", LENS_RADIUS)
+	focus.material = _focus_material
+	_focus_layer.add_child(focus)
+	focus.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 
 func _process(_delta: float) -> void:
 	var raised := amount_for(player)
 	visible = raised > 0.0
+	_focus_layer.visible = visible
 	if visible:
+		_focus_material.set_shader_parameter(&"raised", raised)
 		queue_redraw()
 
 
