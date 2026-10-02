@@ -8,11 +8,11 @@ extends RefCounted
 ## The amounts are by eye for Sid's PR #160 feedback, not measured CS2
 ## constants (reference/research/jump-camera.md).
 
-## A critically damped spring: about 1 unit of takeoff dip and 2 on landing,
+## A critically damped spring: about 1 unit of takeoff dip and 1.6 on landing,
 ## deepest after 50 ms and almost at rest after 0.3 s. No upward overshoot.
 const RESPONSE := 20.0
 const TAKEOFF_PUSH := 55.0
-const LAND_PUSH := 110.0
+const LAND_PUSH := 88.0
 const MAX_DIP := 4.0
 ## Brief losses of ground on steps do not shake the camera. A full jump or
 ## a fall lasting at least 0.3 s gets the full landing response.

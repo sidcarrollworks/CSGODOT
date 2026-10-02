@@ -35,7 +35,7 @@ const BOB_LATERAL := 1.0
 const BOB_LOWER := 2.1
 
 ## The weapon dips as far relative to the eyes as the eyes dip in world
-## space: about 1 unit on takeoff and 2 on landing. By eye, for Sid's
+## space: about 1 unit on takeoff and 1.6 on landing. By eye, for Sid's
 ## PR #160 playtest, not an extracted CS2 value (research/jump-camera.md).
 const JUMP_DIP_SCALE := 1.0
 

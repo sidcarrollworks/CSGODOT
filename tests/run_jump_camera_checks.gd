@@ -32,7 +32,7 @@ func _test_dip_and_recovery() -> void:
 	var landing := motion.update_at(1800000, PlayerBody.AIR_LAND, 1800000)
 	_check(absf(landing - before_land) < 0.0001, "landing also starts without an instantaneous height change")
 	var land_dip := motion.update_at(1850000, PlayerBody.AIR_LAND, 1800000)
-	_check(land_dip < -1.5 and land_dip > -2.5, "a normal jump lands with a slightly deeper camera dip")
+	_check(land_dip < -1.4 and land_dip > -1.9, "a normal jump lands with about 1.6 units of camera dip")
 	var rise := motion.update_at(1950000, PlayerBody.AIR_LAND, 1800000)
 	_check(rise > land_dip and rise <= 0.0, "landing rises toward the usual eyes without overshooting above them")
 	for i in range(1, 51):
@@ -52,7 +52,7 @@ func _test_falls() -> void:
 	falling.update_at(1000000, PlayerBody.AIR_START_FALL, 1000000)
 	_check(is_zero_approx(falling.update_at(1250000, PlayerBody.AIR_START_FALL, 1000000)), "falling follows the physical height without an extra airborne wave")
 	falling.update_at(1450000, PlayerBody.AIR_LAND, 1450000)
-	_check(falling.update_at(1500000, PlayerBody.AIR_LAND, 1450000) < -1.5, "a longer fall gets a landing dip too")
+	_check(falling.update_at(1500000, PlayerBody.AIR_LAND, 1450000) < -1.4, "a longer fall gets a landing dip too")
 	var before_jump := falling.update_at(1500000, PlayerBody.AIR_LAND, 1450000)
 	_check(absf(falling.update_at(1500000, PlayerBody.AIR_JUMP, 1500000) - before_jump) < 0.0001, "jumping during recovery preserves the height instead of snapping it to zero")
 
@@ -159,7 +159,7 @@ func _test_player_view() -> void:
 	player.view._process(1.0 / 224.0)
 	world.tick = 116
 	player.view._process(1.0 / 224.0)
-	_check(arms.position.y < arms_rest.origin.y - 1.5 and arms.position.y > arms_rest.origin.y - 2.5,
+	_check(arms.position.y < arms_rest.origin.y - 1.4 and arms.position.y > arms_rest.origin.y - 1.9,
 		"landing dips the arms further relative to the camera, including while crouched")
 	world.tick = 157
 	player.view._process(1.0 / 224.0)

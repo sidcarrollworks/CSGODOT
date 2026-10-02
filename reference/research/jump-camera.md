@@ -16,16 +16,18 @@ The extracted first-person gun graph has no jump or air state (`reference/animgr
 |---|---:|---|
 | Spring response | 20 /s | An isolated impulse is deepest after 50 ms |
 | Takeoff velocity push | 55 units/s downward | About 1 unit of eye dip |
-| Landing velocity push | 110 units/s downward | About 2 units of dip after a normal jump |
+| Landing velocity push | 88 units/s downward | About 1.6 units of dip after a normal jump |
 | Maximum dip | 4 units | Bounds overlapping responses |
 | Minimum/full landing air time | 0.08 / 0.3 s | Ignore a brief loss of ground; ease toward the full landing response |
-| Viewmodel dip scale | 1 times the eye dip | About 1 unit on takeoff and 2 on landing, relative to the camera |
+| Viewmodel dip scale | 1 times the eye dip | About 1 unit on takeoff and 1.6 on landing, relative to the camera |
 
 All six choices are **by eye**. Landing strength is approximated from air time, not measured impact speed. Walking off a ledge creates no takeoff response; a longer fall still dips on landing. A stopped or restarted draw clock does not advance or retain stale motion. An action received ahead of the interpolated view waits for its tick to be drawn.
 
 `PlayerView` adds the dip in world-up units to the usual interpolated position and standing/crouched eye height. `ViewModelMotion` also adds that drawn spring height to the arms' camera-local vertical offset, alongside the existing running bob, sway and recoil. The model follows the camera and dips relative to it, so jumping visibly moves the hands and weapon on screen. Guns, knives, grenades and the bomb all use the same composition; switching items during recovery uses the existing spring rather than replaying the impulse. Scoped weapons stay hidden as before.
 
 Sid's competitive Dust2 playtest on October 1 identified the missing part: the eyes moved, but the model stayed fixed relative to them. The initial camera-only implementation supplied no distinct weapon motion. The follow-up keeps the subtle camera tuning and adds the model's relative dip. The first 2-times scale was close but too dramatic in Sid's next playtest, so his requested half-strength bounce uses a scale of 1. This remains an approximation for Local acceptance.
+
+The next playtest found the overall motion good and very close, with a little too much bounce when the feet hit the floor. The landing push is now 20% smaller (110 to 88 units/s), softening both the camera and the relative weapon response to about 1.6 units. Takeoff strength and spring timing retain the accepted tuning.
 
 Death, respawn, round placement, teleport through `PlayerController.place` and noclip clear the shared response. It adds no physics query, per-tick movement calculation, animation clip, asset load or node; only the local view evaluates the spring per frame, and the model reuses its height. It changes no movement, collision, gameplay eye height, look angles, recoil or shot origin. Spectator/death cameras retain their existing placement.
 
