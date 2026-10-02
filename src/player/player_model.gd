@@ -106,6 +106,9 @@ const ADDITIVE_FADE := 0.2
 
 ## Where a gun's own third-person set is (world_clip_set under it).
 const WORLD_DIR := "res://assets/characters/animation/anims/world"
+## Where both default knives' third-person attacks are: their own sets hold
+## only the draw and the idle (reference/weapons/equipment.md).
+const KNIFE_ATTACKS_SET := "knife/_default_knife"
 ## What the gun's own clips are loaded as: weapon_idle, weapon_reload.
 const WEAPON := "weapon_"
 ## CS2's UpperBody bone mask (worldmodel.vnmskel), which its weapon, shooting
@@ -169,6 +172,9 @@ var _fitted_at := Transform3D()
 ## Where in the library the held item's own clips are: WEAPON for the set the
 ## body was built with, "held_<set>_" for one taken in hand since; "" for none.
 var _hold_prefix := ""
+## The attacks of the knife in hand, by short name; none holding anything
+## else.
+var _knife_clips := PackedStringArray()
 ## Whether the held item has a hold of its own, and a shot.
 var _has_hold := false
 var _has_shoot := false
@@ -411,6 +417,8 @@ func prepare_holding(item_classes: PackedStringArray, team: String, models: bool
 	for item_class in item_classes:
 		var look := WeaponLibrary.look(item_class, team)
 		prepared_set(String(look.get("world_clip_set", "")))
+		if item_class.begins_with("weapon_knife"):
+			prepared_set(KNIFE_ATTACKS_SET)
 		if models:
 			preload_scene(String(look.get("model_path", "")))
 
@@ -432,9 +440,14 @@ func hold(item_class: String, look: Dictionary = {}) -> void:
 	_held_model_path = String(look.get("model_path", ""))
 	var weapon_set := String(look.get("world_clip_set", ""))
 	_hold_prefix = ""
+	_knife_clips = PackedStringArray()
 	if not item_class.is_empty() and not weapon_set.is_empty():
 		_hold_prefix = "held_%s_" % weapon_set.get_file()
 		_add_set(weapon_set, _hold_prefix)
+		if item_class.begins_with("weapon_knife"):
+			# The attacks, under the knife's own draw and idle, which win.
+			for clip in _add_set(KNIFE_ATTACKS_SET, _hold_prefix):
+				_knife_clips.append(String(clip).trim_prefix(_hold_prefix))
 	var stand := _held_clip(&"idle")
 	var shot := _held_clip(&"shoot")
 	_has_hold = stand != &""
@@ -894,6 +907,57 @@ static func variation_for(item_class: String) -> String:
 
 func _node(node_name: StringName) -> AnimationNode:
 	return (animation_tree.tree_root as AnimationNodeBlendTree).get_node(node_name)
+
+
+## A knife swing, light or heavy, and what it met (hit, miss or
+## backstab): the attack's own third-person clip over the upper body, as a
+## reload plays, and a gun's shot where the knife's attacks are not there.
+## The extracted worldmodel_knife graph maps its hit/miss/backstab states
+## to these clips (knife_clip_for), on the ground or over the air pose.
+func knife_attack(heavy: bool, met: String, variation: int = 0) -> void:
+	var clip := knife_clip_for(_knife_clips, heavy, met, variation)
+	if clip.is_empty() or not has_weapon_layers:
+		fire()
+		return
+	(_node(&"gun_action_clip") as AnimationNodeAnimation).animation = StringName(_hold_prefix + clip)
+	var gun_action := _node(&"gun_action") as AnimationNodeOneShot
+	gun_action.fadein_time = 0.05
+	gun_action.fadeout_time = ACTION_FADE
+	animation_tree.set("parameters/gun_action/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
+
+
+## Of a knife set's clips (short names), the one for an attack: light or
+## heavy, and met "hit", "miss" or "backstab", as CS2's graph names its
+## attacks (attack_knife_lighthit ... heavybackstab,
+## reference/animgraph/parameters.md). CS2's worldmodel_knife graph's
+## KnifeSlashOptions0/1 Stand states map A/B misses to frontswing(_b),
+## light hits to frontstab/frontswing_b, heavy hits to frontstab, light
+## backstabs to backstab and heavy backstabs to backstab_overhead. Those
+## names contain neither "light" nor "heavy". Named alternative sets still
+## use the matching below. Standing attacks go over the locomotion pose.
+static func knife_clip_for(clips: PackedStringArray, heavy: bool, met: String, variation: int = 0) -> String:
+	var actual := ""
+	if met == "backstab":
+		actual = "backstab_overhead" if heavy else "backstab"
+	elif met == "hit":
+		actual = "frontstab" if heavy or variation % 2 == 0 else "frontswing_b"
+	else:
+		actual = "frontswing" if variation % 2 == 0 else "frontswing_b"
+	if clips.has(actual):
+		return actual
+	var kind := "heavy" if heavy else "light"
+	var sorted := clips.duplicate()
+	sorted.sort()
+	var of_kind := ""
+	for clip in sorted:
+		var lower := clip.to_lower()
+		if not lower.contains(kind) or lower.contains("crouch"):
+			continue
+		if lower.contains(met):
+			return clip
+		if of_kind.is_empty() and (lower.contains("hit") or lower.contains("miss") or lower.contains("attack")):
+			of_kind = clip
+	return of_kind
 
 
 ## A round fired: the gun's shot added over the upper body, from its start,

@@ -39,20 +39,25 @@ static func apply_friction(
 	return velocity * (new_speed / speed)
 
 
-## Ground acceleration toward wish_dir.
+## Ground acceleration toward wish_dir, up to wish_speed. Each tick adds
+## accel of the larger of wish_speed and accel_from a second
+## (PlayerBody.acceleration_speed): the speed that is added comes from the
+## held item's, not from a crouch's third of it, which friction below
+## sv_stopspeed would outrun.
 static func accelerate(
 	velocity: Vector3,
 	wish_dir: Vector3,
 	wish_speed: float,
 	accel: float,
 	surface_friction: float,
-	dt: float
+	dt: float,
+	accel_from: float = 0.0
 ) -> Vector3:
 	var current_speed := velocity.dot(wish_dir)
 	var add_speed := wish_speed - current_speed
 	if add_speed <= 0.0:
 		return velocity
-	var accel_speed := accel * dt * wish_speed * surface_friction
+	var accel_speed := accel * dt * maxf(wish_speed, accel_from) * surface_friction
 	if accel_speed > add_speed:
 		accel_speed = add_speed
 	return velocity + wish_dir * accel_speed

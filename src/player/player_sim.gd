@@ -92,6 +92,9 @@ var weapon: Weapon
 ## Owned current state, reused each update; callers needing history copy its fields.
 var shooter_state := Weapon.ShooterState.new()
 var rounds_fired: int = 0
+## The knife's attacks and when the next may come: in hand whenever the
+## inventory's knife is (_update_knife).
+var knife := Knife.new()
 
 ## Health and armour, and what a round can hit.
 var hit_target: HitTarget
@@ -159,6 +162,9 @@ signal equipped(entry: Inventory.Entry)
 ## only the right button was held.
 signal pin_pulled
 signal grenade_released(underhand: bool)
+## A knife swing, traced and its damage dealt: what it met, for whatever
+## draws and sounds it (its clip, Knife.Swing.sound_events).
+signal knife_swung(swing: Knife.Swing)
 ## Health ran out; zone is where the last round landed.
 signal killed(zone: StringName)
 signal respawned
@@ -584,6 +590,8 @@ func _draw(entry: Inventory.Entry) -> void:
 	if held_weapon != null:
 		held_weapon.trigger_held = false
 		held_weapon.draw(now, deploy)
+	elif _held_class == Knife.ITEM_CLASS:
+		knife.draw(now, deploy)
 	# A dead player's hand empties as what they drop goes; the body lets go
 	# at the death, and takes up what is in hand again when it gets up.
 	if alive:
@@ -684,6 +692,7 @@ func _run(cmd: UserCmd, dt: float) -> void:
 	jump_fraction = -1.0
 	wish_dir = Vector3.ZERO
 	wish_speed = 0.0
+	acceleration_speed = 0.0
 
 	if cmd.toggle_noclip:
 		noclip = not noclip
@@ -758,7 +767,7 @@ func _run(cmd: UserCmd, dt: float) -> void:
 	wants_jump = not still and (cmd.held(UserCmd.JUMP) or jump != null)
 	if jump != null and wants_jump:
 		jump_fraction = jump.when
-	wants_duck = cmd.held(UserCmd.DUCK)
+	wants_duck = cmd.held(UserCmd.DUCK) or _crouched_by_the_game()
 
 	if still:
 		# Still, but falling if there is anywhere to fall, and the weapon
@@ -775,6 +784,7 @@ func _run(cmd: UserCmd, dt: float) -> void:
 	wish_dir = cmd.wish_direction()
 	if wish_dir.length_squared() > 0.0:
 		wish_speed = _max_speed(cmd)
+		acceleration_speed = _uncrouched_speed(cmd)
 
 	simulate(dt)
 	_update_weapon(cmd, dt, false)
@@ -788,6 +798,14 @@ func _held_by_the_game() -> bool:
 	return bool(world.game.query(&"holds_still", [userid], false))
 
 
+## Whether the game makes the player crouch whatever their duck key says:
+## planting the bomb, which the bomb says (the crouches query).
+func _crouched_by_the_game() -> bool:
+	if not is_instance_valid(world):
+		return false
+	return bool(world.game.query(&"crouches", [userid], false))
+
+
 ## Fires every round the command asks for, at the instant and the aim it
 ## asked for it: each press at its own fraction of the tick and its own look
 ## angles, then, while the trigger is held, the next round the moment the
@@ -796,7 +814,10 @@ func _held_by_the_game() -> bool:
 ## a grenade in hand, the buttons throw it instead (_update_grenade).
 func _update_weapon(cmd: UserCmd, dt: float, still: bool) -> void:
 	if weapon == null:
-		_update_grenade(cmd, still)
+		if _held_class == Knife.ITEM_CLASS:
+			_update_knife(cmd, still)
+		else:
+			_update_grenade(cmd, still)
 		return
 
 	var now := SimClock.tick_end_usec(cmd.tick)
@@ -951,6 +972,60 @@ func _update_grenade(cmd: UserCmd, still: bool) -> void:
 		world.game.command(userid, "throw %s %s" % [entry.item.item_class, strength])
 
 
+## The knife in hand: each press of either button swings at its own
+## instant and aim, the left a slash and the right a stab, and while a
+## button stays down the next swing starts the moment the knife is ready,
+## as the guns fire (Knife). The left wins when both are down together.
+func _update_knife(cmd: UserCmd, still: bool) -> void:
+	if still:
+		return
+	var presses: Array[UserCmd.SubtickStep] = []
+	presses.append_array(cmd.presses(UserCmd.ATTACK))
+	presses.append_array(cmd.presses(UserCmd.ATTACK2))
+	presses.sort_custom(func(a: UserCmd.SubtickStep, b: UserCmd.SubtickStep) -> bool: return a.when < b.when)
+	for press in presses:
+		var at := SimClock.usec_at(cmd.tick, press.when)
+		if knife.is_ready(at):
+			_swing(press.button == UserCmd.ATTACK2, at, press.when, press.yaw_degrees, press.pitch_degrees)
+	var light := cmd.held(UserCmd.ATTACK)
+	if light or cmd.held(UserCmd.ATTACK2):
+		var began := SimClock.tick_start_usec(cmd.tick)
+		var now := SimClock.tick_end_usec(cmd.tick)
+		var at := maxi(knife.ready_usec, began)
+		if at <= now:
+			var fraction := float(at - began) / float(SimClock.tick_usec())
+			_swing(not light, at, fraction, cmd.yaw_degrees, cmd.pitch_degrees)
+
+
+## A swing of the knife at at_usec, from where the player was at that
+## instant (as a round leaves: _try_shoot) and the aim of that instant, a
+## hit's flinch in it: traced, its damage dealt, weapon_fire sent as CS2
+## sends it for a swing, and knife_swung for whoever draws it.
+func _swing(heavy: bool, at_usec: int, tick_fraction: float, yaw: float, pitch: float) -> void:
+	var begun := knife.begin(heavy, at_usec)
+	var at := previous_position.lerp(global_position, clampf(tick_fraction, 0.0, 1.0))
+	var origin := at + Vector3.UP * eye_height()
+	var thrown := hit_punch.value
+	var aim_yaw := deg_to_rad(yaw - thrown.x)
+	var aim_pitch := deg_to_rad(pitch + thrown.y)
+	var direction := Vector3(
+		-sin(aim_yaw) * cos(aim_pitch), sin(aim_pitch), -cos(aim_yaw) * cos(aim_pitch)
+	)
+	_send(&"weapon_fire", {"userid": userid, "weapon": Knife.ITEM_CLASS, "silenced": false}, at_usec)
+	var exclude: Array[RID] = [get_rid()]
+	exclude.append_array(hit_target.rids())
+	var teammates: Array[RID] = []
+	if is_instance_valid(world):
+		for other in world.players:
+			if other != self and other.team == team and other.alive:
+				teammates.append_array(other.hit_target.rids())
+	var swing := Knife.swing(
+		get_world_3d().direct_space_state, begun, origin, direction, userid, team,
+		team_damage_scale, exclude, teammates, world.game.events if is_instance_valid(world) else null
+	)
+	knife_swung.emit(swing)
+
+
 ## Sends a game event, when the player is in a game.
 func _send(event_name: StringName, fields: Dictionary, at_usec: int = -1) -> void:
 	if is_instance_valid(world):
@@ -978,15 +1053,39 @@ func _noclip_direction(cmd: UserCmd) -> Vector3:
 ## How fast the player may go this tick. Tagging takes its share off the
 ## top, and friction brings a running player down to it: the slowdown is in
 ## what the player can reach, not a kick to the velocity.
+##
+## Crouched on the ground, the top is duck_modifier (0.34) of the held
+## item's, eased in and out with the duck itself, so a crouch always walks at
+## the same speed and a half crouch at a speed between: the AK-47's 215 gives
+## 73, the knife's 250 gives 85. It was once full speed until the duck
+## finished 0.4 s after the press, then a third of it, and full speed again
+## the tick the key came up. The duck is read as the last tick left it, as
+## Source's CheckParameters reads it before Duck, and only on the ground, as
+## there: in the air the duck leaves the air's acceleration alone. Walking
+## crouched is no slower than crouching.
 func _max_speed(cmd: UserCmd) -> float:
-	# Scoped, the gun's scoped speed (the AWP's 100 against 200).
-	var top := weapon.max_speed() if weapon != null and weapon.zoom_level > 0 else config.max_speed
-	var speed := top * velocity_modifier
-	if is_ducked:
-		speed *= config.duck_modifier
-	elif cmd.held(UserCmd.WALK):
+	var speed := _uncrouched_speed(cmd)
+	if not on_ground:
+		return speed
+	var top := _top_speed() * lerpf(1.0, config.duck_modifier, duck_progress)
+	return minf(speed, top)
+
+
+## The top without the duck: what the held item and a tag allow, walking
+## if the walk key is held. The ground's acceleration works from it
+## (PlayerBody.acceleration_speed), crouched or not.
+func _uncrouched_speed(cmd: UserCmd) -> float:
+	var speed := _top_speed()
+	if cmd.held(UserCmd.WALK):
 		speed *= config.walk_modifier
 	return speed
+
+
+## What the held item lets the player run at, less a tag's share.
+func _top_speed() -> float:
+	# Scoped, the gun's scoped speed (the AWP's 100 against 200).
+	var top := weapon.max_speed() if weapon != null and weapon.zoom_level > 0 else config.max_speed
+	return top * velocity_modifier
 
 
 ## A round, or anything else, did damage: the tag is set to land shortly and

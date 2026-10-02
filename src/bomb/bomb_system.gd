@@ -49,6 +49,9 @@ func attach(game: GameSystems) -> void:
 	# Whether a player is planting or defusing, for whatever runs the
 	# player to hold them still (the contract's holds_still query).
 	game.provide(&"holds_still", holds_still)
+	# Whether a player is made to crouch: the planter (the contract's
+	# crouches query).
+	game.provide(&"crouches", crouches)
 	# Whether E is the bomb's for a player now, which ItemDrops asks before
 	# it takes anything off the ground (the contract's use_claimed query).
 	game.provide(&"use_claimed", use_claimed)
@@ -104,14 +107,25 @@ func use_claimed(userid: int) -> bool:
 	var player := _game.roster.player(userid) as PlayerSim if _game != null else null
 	if player == null:
 		return false
+	var actor := C4.Actor.of_player(player, userid)
+	# The range lets its T defuse as a CT. Use the same side as the bomb's
+	# tick, so its E priority and the pickup hint agree with that action.
+	var asked: Dictionary = input_of.call(userid, player, _game.inventory(userid))
+	if asked.has("team"):
+		actor.team = asked["team"]
 	var carrier := _game.roster.player(bomb.carrier) as PlayerSim if bomb.carrier != C4.NOBODY else null
-	return bomb.claims_use(C4.Actor.of_player(player, userid),
+	return bomb.claims_use(actor,
 		C4.Actor.of_player(carrier, bomb.carrier) if carrier != null else null)
 
 
 ## Whether a player is planting or defusing, which holds them still.
 func holds_still(userid: int) -> bool:
 	return bomb.holds_still(userid)
+
+
+## Whether a player is made to crouch: the planter.
+func crouches(userid: int) -> bool:
+	return bomb.crouches(userid)
 
 
 func save_state() -> Dictionary:

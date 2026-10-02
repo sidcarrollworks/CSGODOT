@@ -90,6 +90,10 @@ var viewmodel: Node3D
 ## The bob of walking and the lag of turning, on the weapon model.
 var viewmodel_motion := ViewModelMotion.new()
 
+## The eyes' small dip and recovery on a jump; the same response also
+## drives the arms' dip relative to the camera, separate from running bob.
+var camera_motion := JumpCameraMotion.new()
+
 ## The arms and what is in hand, drawn under the camera with a projection of
 ## their own (ViewModelProjection), when the models are there.
 var view_model: ViewModel
@@ -191,6 +195,7 @@ func _ready() -> void:
 	player.reload_started.connect(_on_reload_started)
 	player.reload_stopped.connect(_on_reload_stopped)
 	player.shot_traced.connect(_on_shot_traced)
+	player.knife_swung.connect(_on_knife_swung)
 	player.killed.connect(_on_killed)
 	player.respawned.connect(_on_respawned)
 	player.team_changed.connect(_on_team_changed)
@@ -265,6 +270,16 @@ func _on_reload_stopped() -> void:
 	weapon_sounds.stop_reload()
 
 
+## A knife swing: the arms play its clip (light_hit1, heavy_backstab...)
+## from the top, and the body you look down at its attack. Its sounds are
+## WeaponSounds'.
+func _on_knife_swung(swing: Knife.Swing) -> void:
+	if view_model != null:
+		view_model.play(swing.clip(), ViewModel.SHOOT_BLEND, 1.0, true)
+	if body_shadow != null:
+		body_shadow.knife_attack(swing.heavy, swing.met(), swing.variation)
+
+
 func _on_shot_traced(shot: Weapon.Shot, result: Hitscan.Result) -> void:
 	if shot.pellet == 0:
 		if view_model != null:
@@ -280,6 +295,7 @@ func _on_shot_traced(shot: Weapon.Shot, result: Hitscan.Result) -> void:
 ## and the camera out of your head to watch the body the simulation wears
 ## fall (PlayerSim.ragdoll), drawn for you now.
 func _on_killed(_zone: StringName) -> void:
+	camera_motion.reset()
 	_show_player(false)
 	_show_corpse(true)
 	_dead_for = 0.0
@@ -288,6 +304,7 @@ func _on_killed(_zone: StringName) -> void:
 
 
 func _on_respawned() -> void:
+	camera_motion.reset()
 	_watch(null)
 	_show_player(true)
 	_show_corpse(false)
@@ -587,7 +604,13 @@ func _process(delta: float) -> void:
 	var alpha := DrawClock.fraction()
 	var interpolated := player.previous_position.lerp(player.global_position, alpha)
 
-	camera.global_position = interpolated + Vector3.UP * player.eye_height()
+	var dip := 0.0
+	if player.noclip:
+		camera_motion.reset()
+	else:
+		var drawn_usec := SimClock.now_usec() - SimClock.tick_usec() + int(alpha * SimClock.tick_usec())
+		dip = camera_motion.update_at(drawn_usec, player.air_action, player.air_action_usec)
+	camera.global_position = interpolated + Vector3.UP * (player.eye_height() + dip)
 	var yaw := deg_to_rad(player.input.yaw_degrees)
 	for body in [body_model, body_shadow]:
 		if body != null:
@@ -749,8 +772,8 @@ const ZOOM_SENSITIVITY_RATIO := 1.0
 ##
 ## The model is a child of the camera, so it already follows the view kick.
 ## This is the extra movement on top: the gun climbing in the hands relative
-## to the screen, which is most of what reads as recoil. The knife, a
-## grenade and the bomb only bob and sway.
+## to the screen, which is most of what reads as recoil. Every item also
+## bobs, sways and dips on takeoff/landing relative to the camera.
 func _update_viewmodel(delta: float) -> void:
 	if viewmodel == null:
 		return
@@ -762,7 +785,7 @@ func _update_viewmodel(delta: float) -> void:
 	# model's own.
 	var motion := viewmodel_motion.update(
 		delta, player.velocity, player.on_ground,
-		Vector2(player.input.yaw_degrees, player.input.pitch_degrees)
+		Vector2(player.input.yaw_degrees, player.input.pitch_degrees), camera_motion.height
 	)
 	var alpha := DrawClock.fraction()
 	var punch := player.weapon.viewmodel_punch() if player.weapon != null else Vector2.ZERO
