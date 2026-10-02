@@ -114,6 +114,9 @@ const RECOIL_INDEX_DECAY := 2.0
 ## Movement inaccuracy starts at this share of the weapon's top speed and is
 ## all there at the second (CS:GO's 0.34 and 0.95).
 const MOVING_FROM := 0.34
+## Float32 velocity can round a few micro-units above the crouch speed.
+## Its fourth-root penalty would turn that into visible inaccuracy.
+const MOVING_SPEED_EPSILON := 0.0001 # Source units per second.
 const MOVING_FULL := 0.95
 
 var data: WeaponData
@@ -577,10 +580,9 @@ static func _cone_for(numbers: WeaponData, state: ShooterState) -> float:
 	# as CS does. Between, it rises steeply (the fourth root) unless the walk
 	# key is down, when it is in proportion: a little speed costs a lot
 	# unless you are walking, which is what makes counter-strafing matter.
-	var over := inverse_lerp(
-		numbers.max_player_speed * MOVING_FROM, numbers.max_player_speed * MOVING_FULL, state.speed
-	)
-	if over > 0.0:
+	var moving_from := numbers.max_player_speed * MOVING_FROM
+	var over := inverse_lerp(moving_from, numbers.max_player_speed * MOVING_FULL, state.speed)
+	if over > 0.0 and state.speed > moving_from + MOVING_SPEED_EPSILON:
 		over = minf(over, 1.0)
 		if not state.walking:
 			over = pow(over, 0.25)

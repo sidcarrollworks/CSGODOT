@@ -14,6 +14,17 @@ extends "res://tests/check_suite.gd"
 const WEAPONS_DIR := "res://assets/weapons"
 const CHARACTERS_DIR := "res://assets/characters"
 
+## The extracted worldmodel_knife graph, KnifeSlashOptions0/1 Stand
+## states, A then B. These names differ from its light/heavy event IDs.
+const KNIFE_ATTACK_CLIPS := {
+	"light_hit": ["frontstab", "frontswing_b"],
+	"light_miss": ["frontswing", "frontswing_b"],
+	"light_backstab": ["backstab", "backstab"],
+	"heavy_hit": ["frontstab", "frontstab"],
+	"heavy_miss": ["frontswing", "frontswing_b"],
+	"heavy_backstab": ["backstab_overhead", "backstab_overhead"],
+}
+
 var _frames: int = 0
 var _view_model: ViewModel
 var _player_model: PlayerModel
@@ -141,6 +152,7 @@ func _init() -> void:
 	_test_air_rules()
 	_test_air_tree()
 	_test_sound_sets()
+	_test_knife_attack_names()
 	_check(
 		BulletImpacts.surface_for("physics_group_sand") == "sand" and BulletImpacts.surface_for("physics_group_wood_crate") == "wood"
 			and BulletImpacts.surface_for("physics_group_metalvent") == "metal" and BulletImpacts.surface_for("physics_group") == "concrete"
@@ -2312,10 +2324,48 @@ func _test_a_body_holds_what_is_in_hand() -> void:
 	model.update_motion(Vector3.ZERO, 0.0, 0.0, true)
 	tree.advance(0.3)
 	_check_equal(String(tree.get("parameters/variation/current_state")), "knife", "a grenade in hand: the knife's locomotion")
+	_test_a_body_plays_knife_attacks(model)
 	model.let_go()
 	model.show_held()
 	_check(model.holding == "" and model.held_weapon == null and not glock.visible and not ak.visible, "nothing in hand: nothing shown")
 	model.free()
+
+
+## Without extracted assets the real names still catch the old matcher,
+## which required "light" or "heavy" and found none of CS2's attacks.
+func _test_knife_attack_names() -> void:
+	var clips := PackedStringArray([
+		"frontswing", "frontswing_b", "frontstab", "backstab", "backstab_overhead",
+		"backstab_overhead_crouching", "frontstab_crouching", "idle", "inair_stand",
+	])
+	for attack: String in KNIFE_ATTACK_CLIPS:
+		var heavy := attack.begins_with("heavy_")
+		var met := attack.trim_prefix("heavy_" if heavy else "light_")
+		for variation in 2:
+			_check_equal(PlayerModel.knife_clip_for(clips, heavy, met, variation), KNIFE_ATTACK_CLIPS[attack][variation],
+				"CS2's actual world knife %s %s clip" % [attack, "A" if variation == 0 else "B"])
+	_check_equal(PlayerModel.knife_clip_for(PackedStringArray(["heavy_hit_attack", "heavy_backstab_attack"]), true, "backstab"), "heavy_backstab_attack",
+		"an alternative set still matches its explicit heavy backstab name")
+
+
+## Actual imported clips must reach the upper-body action node in both
+## locomotion states; falling back to fire() leaves a knife with no attack.
+func _test_a_body_plays_knife_attacks(model: PlayerModel) -> void:
+	model.hold("weapon_knife", WeaponLibrary.look("weapon_knife", "T"))
+	model._switch_at_usec = SimClock.now_usec()
+	var action := model._node(&"gun_action_clip") as AnimationNodeAnimation
+	for grounded in [true, false]:
+		model.update_motion(Vector3.ZERO, 0.0, 0.0, grounded)
+		for attack: String in KNIFE_ATTACK_CLIPS:
+			var heavy := attack.begins_with("heavy_")
+			var met := attack.trim_prefix("heavy_" if heavy else "light_")
+			for variation in 2:
+				var expected := StringName(model._hold_prefix + KNIFE_ATTACK_CLIPS[attack][variation])
+				model.knife_attack(heavy, met, variation)
+				model.animation_tree.advance(0.01)
+				_check(model.animation_player.has_animation(expected) and action.animation == expected
+					and bool(model.animation_tree.get("parameters/gun_action/active")),
+					"the extracted knife %s %s plays over %s locomotion (%s)" % [attack, "A" if variation == 0 else "B", "ground" if grounded else "air", action.animation])
 
 
 ## What CS2's character shader asks of each agent material, printed for a
