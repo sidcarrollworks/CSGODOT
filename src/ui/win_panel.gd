@@ -19,7 +19,7 @@ extends HudElement
 ## How it opens, as the css's transitions do: the bar opens out from its
 ## middle and fades in over .25 s, ease-in; the foreground title stays at
 ## its size while a faint copy grows behind it, clipped to the bar. This
-## layer and the wider strip follow Sid's 2026-10-01 screenshot and motion
+## layer and the strip follow Sid's 2026-10-01 screenshots and motion
 ## description rather than the older CSS's single shrinking title. The
 ## growth is slowed to 10 s at Sid's request; its range and opacity are an
 ## approximation from the screenshot. The fun fact fades in
@@ -32,15 +32,14 @@ extends HudElement
 ## and the surrender line. The MVP's portrait is the team counter's: CS2's
 ## bot portrait, or a head and shoulders for a player.
 
-## The position, height and gap are hudwinpanel.css's. The wider strip,
-## thin horizontal borders and lettering follow Sid's 2026-10-01 crop,
-## normalized to the same 80 px bar height at the 1080p HUD base size.
+## The position, height and gap are hudwinpanel.css's. Sid's full-screen
+## 2026-10-01 references refine the crop's width to about 640 px at 1080p,
+## with a broad fade at both ends, including the world blur beneath it.
 const TOP := 190.0
-const WIDTH := 800.0
+const WIDTH := 640.0
 const BAR_HEIGHT := 80.0
 const BORDER := 1.0
-const EDGE_FADE := 0.12
-const CORNER := 3.0
+const EDGE_FADE := 0.28
 const GAP := 16.0
 ## The screenshot's foreground has shorter, wider letters with about
 ## 16 px between them. Use Stratum2 Bold rather than the older condensed
@@ -206,15 +205,7 @@ func _blur_rect() -> Rect2:
 func _draw_blur(on: CanvasItem) -> void:
 	if title.is_empty() or openness() <= 0.0:
 		return
-	on.draw_style_box(_rounded(Color.WHITE), _bar())
-
-
-func _rounded(colour: Color) -> StyleBoxFlat:
-	var box := StyleBoxFlat.new()
-	box.bg_color = colour
-	box.set_corner_radius_all(int(CORNER))
-	box.anti_aliasing = true
-	return box
+	_draw_faded_strip(on, _bar(), Color(1, 1, 1, openness()))
 
 
 ## The colour of the bar's borders and title.
@@ -228,28 +219,34 @@ func _draw() -> void:
 	var fade := openness()
 	var bar := _bar()
 	var background: Color = BAR_LOST if lost else (BAR_CT if winner == "CT" else BAR_T)
-	_draw_faded_strip(bar, Color(background, RESULT_TINT_ALPHA * fade))
+	_draw_faded_strip(self, bar, Color(background, RESULT_TINT_ALPHA * fade))
 	var dots := HudStyle.icon("backgrounds/bluedots_large_png")
 	if dots != null:
-		var dot_scale := dots.get_size().x / DOTS_SIZE
-		draw_texture_rect_region(dots, bar, Rect2(bar.position * dot_scale, bar.size * dot_scale), Color(1, 1, 1, DOTS_OPACITY * fade))
+		_draw_faded_strip(self, bar, Color(1, 1, 1, DOTS_OPACITY * fade), dots)
 	var colour := Color(accent(), fade * 0.5)
-	_draw_faded_strip(Rect2(bar.position, Vector2(bar.size.x, BORDER)), colour)
-	_draw_faded_strip(Rect2(bar.position.x, bar.end.y - BORDER, bar.size.x, BORDER), colour)
+	_draw_faded_strip(self, Rect2(bar.position, Vector2(bar.size.x, BORDER)), colour)
+	_draw_faded_strip(self, Rect2(bar.position.x, bar.end.y - BORDER, bar.size.x, BORDER), colour)
 	if not mvp_name.is_empty():
 		_draw_band()
 
 
-## A strip whose ends fade out, including the thin top/bottom borders.
-func _draw_faded_strip(box: Rect2, colour: Color) -> void:
+## One fade for the tint, blur, dot pattern and thin top/bottom borders:
+## leaving a solid blur underneath the faded tint makes a visible rectangle.
+func _draw_faded_strip(on: CanvasItem, box: Rect2, colour: Color, texture: Texture2D = null) -> void:
 	var edge := box.size.x * EDGE_FADE
 	var xs := [box.position.x, box.position.x + edge, box.end.x - edge, box.end.x]
 	var alphas := [0.0, colour.a, colour.a, 0.0]
 	for i in 3:
 		var a := Color(colour, alphas[i])
 		var b := Color(colour, alphas[i + 1])
-		draw_polygon(PackedVector2Array([Vector2(xs[i], box.position.y), Vector2(xs[i + 1], box.position.y),
-			Vector2(xs[i + 1], box.end.y), Vector2(xs[i], box.end.y)]), PackedColorArray([a, b, b, a]))
+		var points := PackedVector2Array([Vector2(xs[i], box.position.y), Vector2(xs[i + 1], box.position.y),
+			Vector2(xs[i + 1], box.end.y), Vector2(xs[i], box.end.y)])
+		var uvs := PackedVector2Array()
+		if texture != null:
+			var dot_scale := texture.get_size().x / DOTS_SIZE
+			for point in points:
+				uvs.append(point * dot_scale / texture.get_size())
+		on.draw_polygon(points, PackedColorArray([a, b, b, a]), uvs, texture)
 
 
 func _draw_result_contents() -> void:

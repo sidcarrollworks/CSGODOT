@@ -328,6 +328,7 @@ func _test_the_panel() -> void:
 	_check(not panel.is_animating(), "and stops redrawing once open")
 	_check_near(panel.echo_scale(), WinPanel.ECHO_END_SCALE, "with only the background copy grown to its final size")
 	_check_near(panel.openness(), 1.0, "and the bar open")
+	_check_near(panel._bar().size.x, 640.0, "the full-screen reference's result strip spans 640 base pixels")
 	panel.show_round("ROUND LOST", "T", true)
 	_check(panel.accent() == WinPanel.NEGATIVE, "a round lost is in CS2's negativeColor")
 	panel.show_round("")
@@ -574,9 +575,18 @@ func _test_the_banner_blurs_the_world() -> void:
 	await process_frame
 	await RenderingServer.frame_post_draw
 	var light := viewport.get_texture().get_image()
-	var world_share := light.get_pixel(200, 85).r - dark.get_pixel(200, 85).r
+	var centre_x := int(50 + WinPanel.WIDTH * 0.5)
+	var world_share := light.get_pixel(centre_x, 95).r - dark.get_pixel(centre_x, 95).r
 	_check(world_share > 0.3 and world_share < 0.5,
 		"the tinted banner keeps a visible share of the world behind it (%.3f)" % world_share)
+	var sides_fade := true
+	for side in [-1, 1]:
+		var outer_x := centre_x + int(side * WinPanel.WIDTH * 0.49)
+		var inner_x := centre_x + int(side * WinPanel.WIDTH * 0.38)
+		var outer_share := light.get_pixel(outer_x, 95).r - dark.get_pixel(outer_x, 95).r
+		var inner_share := light.get_pixel(inner_x, 95).r - dark.get_pixel(inner_x, 95).r
+		sides_fade = sides_fade and outer_share > 0.9 and inner_share > 0.65 and inner_share < 0.85
+	_check(sides_fade, "both ends reveal almost all the world and fade gradually across a broad area")
 	backdrop.kind = 2
 	backdrop.queue_redraw()
 	await process_frame
@@ -588,9 +598,18 @@ func _test_the_banner_blurs_the_world() -> void:
 	var sharp := viewport.get_texture().get_image()
 	var blurred_contrast := 0.0
 	var sharp_contrast := 0.0
-	for x in range(180, 220):
+	for x in range(centre_x - 20, centre_x + 20):
 		blurred_contrast += absf(blurred.get_pixel(x, 85).r - blurred.get_pixel(x + 1, 85).r)
 		sharp_contrast += absf(sharp.get_pixel(x, 85).r - sharp.get_pixel(x + 1, 85).r)
 	_check(sharp_contrast > 1.0 and blurred_contrast < sharp_contrast * 0.2,
 		"the shared HUD blur softens the world beneath the banner (%.3f blurred / %.3f sharp)" % [blurred_contrast, sharp_contrast])
+	var edges_fade := true
+	for edge_x in [52, int(50 + WinPanel.WIDTH) - 6]:
+		var blurred_edge := 0.0
+		var sharp_edge := 0.0
+		for x in range(edge_x, edge_x + 4):
+			blurred_edge += absf(blurred.get_pixel(x, 85).r - blurred.get_pixel(x + 1, 85).r)
+			sharp_edge += absf(sharp.get_pixel(x, 85).r - sharp.get_pixel(x + 1, 85).r)
+		edges_fade = edges_fade and sharp_edge > 1.0 and blurred_edge > sharp_edge * 0.9
+	_check(edges_fade, "the blur fades with the tint at both edges, leaving the world sharp there")
 	viewport.free()

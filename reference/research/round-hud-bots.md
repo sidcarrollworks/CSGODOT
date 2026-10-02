@@ -438,9 +438,14 @@ From GT `panorama/layout/hud/hudwinpanel.xml`,
   borders. The crop has wider, shorter lettering, more space above the fact,
   and thin horizontal borders with faded ends. `WinPanel` follows this
   reference over the older layout's single shrinking title and arrows.
-  Normalized to an 80 px strip at the 1080p HUD base size, its 800 px width,
-  Stratum2 Bold 32 px title and 16 px tracking are **Measured approximately**
-  from the crop. The background's 1× to 3.5× growth at 20% opacity is an
+  Normalized to an 80 px strip at the 1080p HUD base size, its Stratum2 Bold
+  32 px title and 16 px tracking are **Measured approximately** from the
+  crop. Sid's subsequent full-screen references refine the strip to about
+  640 px wide, with a broad fade covering 28% of its width at each end.
+  This replaces the crop's initial 800 px width estimate. The tint, blur,
+  dot pattern and horizontal borders share the fade, so a solid blur does
+  not leave a visible rectangle underneath the translucent edges.
+  The background's 1× to 3.5× growth at 20% opacity is an
   **Approximation** of the described motion; only a still was provided.
   Sid's local review slows it from 5 s to 10 s and makes the result tint
   60% opaque, with faded sides and the existing HUD world blur. These are

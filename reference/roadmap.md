@@ -904,12 +904,14 @@ list, split into Local and Remote items, with the measurements.
     line, staggered reports and next-round reset. Corrected the flipped
     damage-taken frame's origin so it stays behind its text; the renderer
     checks both frames' pixels inside their rows. The latest cropped
-    reference also sets the wider result strip and spaced foreground title:
+    reference also sets the result strip and spaced foreground title:
     a faint copy grows behind it, clipped to the thin horizontal borders,
     while the foreground stays fixed. Local renderer checks cover that
     growth and clipping. Local tuning slows the growth to 10 s and makes
-    the strip translucent with faded sides and the existing world blur;
-    GPU checks cover the visible backdrop and its blur.)*
+    the strip translucent with the existing world blur. The full-screen
+    reference narrows the strip to 640 px and extends the side fades across
+    the tint, blur, dot pattern and borders; GPU checks cover transparency,
+    the broad fade and the world becoming sharp again at both ends.)*
     *(Kill feed done 2026-09-28: CS2's death notices in the top right from
     its huddeathnotice layout and styles (`KillFeed`, from the game's
     player_death events), every mark the event can carry, your kills
