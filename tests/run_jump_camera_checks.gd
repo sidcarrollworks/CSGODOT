@@ -15,6 +15,7 @@ func _initialize() -> void:
 	_test_drawing_rates()
 	await process_frame
 	_test_player_view()
+	_test_view_of_a_bot_taken_over()
 	_finish("jump-camera")
 
 
@@ -187,6 +188,70 @@ func _test_player_view() -> void:
 	player.view.free()
 	player.view = null
 	player.free()
+	GameWorld.current = null
+	world.free()
+	DrawClock._tick_clock_usec = old_tick_clock
+
+
+## Dead and taking over a bot, the view goes into the bot's eyes and looks
+## the way it looked, and draws the bot's hand; the bot dying under you,
+## the death camera goes to its body.
+func _test_view_of_a_bot_taken_over() -> void:
+	var world := GameWorld.new()
+	GameWorld.current = world
+	world.tick = 64
+	var old_tick_clock := DrawClock._tick_clock_usec
+	DrawClock._tick_clock_usec = Time.get_ticks_usec() - 1000000
+	var player := BarePlayer.new()
+	player.config = MovementConfig.new()
+	player.camera = Camera3D.new()
+	player.add_child(player.camera)
+	root.add_child(player)
+	player.set_process(false)
+	player.set_physics_process(false)
+	player.camera.top_level = true
+	player.global_position = Vector3(10, 20, 30)
+	player.previous_position = player.global_position
+	player.view = PlayerView.new(player)
+	player.view.camera = player.camera
+	player.view._read_for_team = player.team
+	var bot := PlayerSim.new()
+	bot.is_bot = true
+	bot.team = player.team
+	root.add_child(bot)
+	bot.set_physics_process(false)
+	bot.global_position = Vector3(500, 0, 500)
+	bot.previous_position = bot.global_position
+	bot.yaw_degrees = 75.0
+	bot.pitch_degrees = 5.0
+
+	player.alive = false
+	player.respawns = false
+	player.view._on_killed(&"head")
+	_check(player.can_control(bot), "dead, a bot on your side may be taken over")
+	player.take_control(bot)
+	player._on_control_changed()
+	player.view._on_control_changed()
+	_check(player.view._in_hand_due and player.view._in_hand_entry == bot.inventory.in_hand(), "its hand to be shown")
+	player.view._process(1.0 / 224.0)
+	_check(player.view.pawn == bot, "the view draws the bot from the inside")
+	var eyes := bot.global_position + Vector3.UP * bot.eye_height()
+	_check(player.camera.global_position.distance_to(eyes) < 0.01, "from its eyes (%s)" % player.camera.global_position)
+	_check(is_equal_approx(player.input.yaw_degrees, 75.0) and is_equal_approx(player.input.pitch_degrees, 5.0)
+		and absf(rad_to_deg(player.camera.global_rotation.y) - 75.0) < 0.01, "looking the way it looked")
+
+	bot.alive = false
+	player._lose_control()
+	player.view._on_control_changed()
+	player.view._process(1.0)
+	var centre := bot.body_centre()
+	_check(player.view.pawn == player and player.camera.global_position.distance_to(centre) > 60.0
+		and player.camera.global_position.distance_to(centre) < PlayerView.DEATH_CAM_DISTANCE + 1.0,
+		"it dies under you: the death camera on its body (%.0f units off)" % player.camera.global_position.distance_to(centre))
+	player.view.free()
+	player.view = null
+	player.free()
+	bot.free()
 	GameWorld.current = null
 	world.free()
 	DrawClock._tick_clock_usec = old_tick_clock

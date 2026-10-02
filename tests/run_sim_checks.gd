@@ -133,6 +133,7 @@ func _run() -> void:
 	await _test_a_press_fires_from_where_the_player_was()
 	await _test_a_semi_automatic_fires_once_a_click()
 	await _test_the_hand()
+	await _test_noclip_fires_and_throws()
 	_test_shots_are_heard_from_the_events()
 	await _test_a_running_tap_misses()
 	await _test_a_crouch_walks_at_a_third()
@@ -1087,6 +1088,52 @@ func _test_the_hand() -> void:
 	world.remove_player(player)
 	player.queue_free()
 	view.queue_free()
+	world.queue_free()
+	await physics_frame
+
+
+## Flying with noclip, the gun still fires and a grenade still throws (Sid,
+## playtest 2026-09-30), off the ground, so with the air's inaccuracy.
+func _test_noclip_fires_and_throws() -> void:
+	var player := Commanded.new()
+	player.starting_gun = WeaponLibrary.ak47()
+	_new_player(Vector3(-2048.0, 0.0, 2048.0), "T", player)
+	player.respawn()
+	var world := GameWorld.new()
+	_world.add_child(world)
+	world.set_physics_process(false)
+	world.game.add_system(GrenadeSystem.new())
+	var events: Array[GameEvent] = []
+	world.game.events.listen_all(func(event: GameEvent) -> void: events.append(event))
+	world.add_player(player)
+	player.noclip = true
+	var steps := func(seconds: float) -> void:
+		for i in maxi(SimClock.ticks_in(seconds), 1):
+			world.step()
+	var ak_ready := ItemRegistry.item("weapon_ak47").deploy_seconds
+	steps.call(ak_ready + DT)
+	player.held = UserCmd.ATTACK
+	steps.call(0.3)
+	player.held = 0
+	steps.call(DT)
+	var fired := _named(events, &"weapon_fire")
+	_check(player.noclip and fired.size() >= 2, "noclip on, held fire shoots the AK-47 (%d rounds)" % fired.size())
+	_check(not player.on_ground and player.shooter_state != null and not player.shooter_state.on_ground,
+		"and the gun is told the shooter is off the ground, as CS2's is in the air")
+
+	player.inventory.add(GrenadeRules.HE)
+	player.select = 4
+	steps.call(ItemRegistry.item(GrenadeRules.HE).deploy_seconds + DT)
+	player.held = UserCmd.ATTACK
+	steps.call(0.2)
+	player.held = 0
+	steps.call(DT)
+	_check_equal(_named(events, &"grenade_thrown").size(), 1, "and a grenade throws")
+	for grenade in world.game.entities.of_class("hegrenade_projectile"):
+		grenade.remove()
+	player.noclip = false
+	world.remove_player(player)
+	player.queue_free()
 	world.queue_free()
 	await physics_frame
 

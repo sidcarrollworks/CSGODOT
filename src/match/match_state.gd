@@ -161,6 +161,7 @@ func add_player(player: PlayerSim) -> void:
 	players.append(player)
 	player.team_damage_scale = rules.friendly_fire_bullets if rules != null else 1.0
 	player.freeze_cam_seconds = rules.freeze_cam_seconds if rules != null else 2.0
+	player.free_look = rules.free_look if rules != null else true
 	_give_spawn_armor(player)
 	_draw_colour(player)
 
@@ -203,6 +204,7 @@ func start(now_usec: int = SimClock.now_usec()) -> void:
 	for player in players:
 		player.team_damage_scale = rules.friendly_fire_bullets
 		player.freeze_cam_seconds = rules.freeze_cam_seconds
+		player.free_look = rules.free_look
 		_give_spawn_armor(player)
 	_score = {"T": 0, "CT": 0}
 	_swapped = false

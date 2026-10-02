@@ -21,15 +21,15 @@ console on a fresh config (Local, below).
 |---|---|---|
 | W, S | `+forward`, `+back` | move |
 | A, D | `+left`, `+right` | strafe (CS2's names; CS:GO's were `+moveleft`, `+moveright`) |
-| SPACE | `+jump` | |
+| SPACE | `+jump` | dead: the camera, first person, chase, Free Look |
 | CTRL | `+duck` | |
 | SHIFT | `+sprint` | walk (CS2 calls it sprint) |
-| MOUSE1, MOUSE2 | `+attack`, `+attack2` | |
+| MOUSE1, MOUSE2 | `+attack`, `+attack2` | dead: the next teammate, the one before |
 | MOUSE3 | `player_ping` | |
 | MOUSE4 | `+voicerecord` | |
 | MWHEELUP, MWHEELDOWN | `invprev`, `invnext` | |
 | R | `+reload` | |
-| E | `+use` | defuse; take the item looked at, swapping the gun in its slot; take the dropped bomb (plant with E is not built) |
+| E | `+use` | defuse; take the item looked at, swapping the gun in its slot; take the dropped bomb (plant with E is not built); dead, take control of the bot watched |
 | F | `+lookatweapon` | inspect |
 | G | `drop` | |
 | Q | `lastinv` | the last weapon held |
