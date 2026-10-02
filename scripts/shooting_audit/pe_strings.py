@@ -1,4 +1,4 @@
-"""Fingerprint PE32+ binaries and find ASCII shooting strings, without loading DLLs."""
+"""Fingerprint PE32+ binaries and find selected ASCII strings, without loading DLLs."""
 import argparse
 import hashlib
 import json
@@ -7,7 +7,11 @@ import re
 import struct
 
 
-def inspect(path):
+DEFAULT_PATTERN = (r"recoil|inaccuracy|accuracypenalty|burst|revolver|silencer|"
+                   r"spread|aimpunch|postpone|taser")
+
+
+def inspect(path, pattern=DEFAULT_PATTERN):
     data = path.read_bytes()
     if data[:2] != b"MZ":
         raise ValueError(f"Not a PE binary: {path}")
@@ -29,8 +33,7 @@ def inspect(path):
                     length=len(data), timestamp=timestamp, machine=hex(machine),
                     imagebase=hex(imagebase), sections=sections)
     rows = []
-    pattern = re.compile(r"recoil|inaccuracy|accuracypenalty|burst|revolver|silencer|"
-                         r"spread|aimpunch|postpone|taser", re.I)
+    pattern = re.compile(pattern, re.I)
     for match in re.finditer(rb"[\x20-\x7e]{5,}", data):
         value = match.group().decode("ascii")
         if not pattern.search(value):
@@ -47,11 +50,13 @@ def inspect(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--pattern", default=DEFAULT_PATTERN,
+                        help="Case-insensitive ASCII string regex (default: shooting anchors)")
     parser.add_argument("binaries", type=Path, nargs="+")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     for path in args.binaries:
-        metadata, rows = inspect(path)
+        metadata, rows = inspect(path, args.pattern)
         name = path.stem
         (args.out / f"{name}-metadata.json").write_text(
             json.dumps(metadata, indent=2) + "\n", encoding="utf-8")

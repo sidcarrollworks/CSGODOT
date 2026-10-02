@@ -930,9 +930,9 @@ list, split into Local and Remote items, with the measurements.
     the map, HE and bullets opening holes, blocking sight for players and
     bots. Bots' sight asks it once `bot.gd` does
     (`reference/systems/grenades.md`, item 4).
-20a. **Grenade flight and lineups.** *(Sid, 2026-09-30; not started, no new
-    research yet. Remote for the code and headless checks, Local for
-    anything measured in CS2)* In play, grenades are floaty and
+20a. **Grenade flight and lineups.** *(Sid, 2026-09-30; static research done
+    2026-10-02, implementation and lineup comparisons open. Remote for the
+    code and headless checks, Local for anything measured in CS2)* In play, grenades are floaty and
     inconsistent in the air, and the map may be part of it. Running and
     jumping should change how far a grenade goes. The goal is to recreate
     CS2's lineups: the same spot, aim and throw lands where it does in CS2.
@@ -942,21 +942,22 @@ list, split into Local and Remote items, with the measurements.
       `src/grenades/grenade_rules.gd` (CS:GO's 750 × 0.9 throw, strength
       0.3 to 1, 1.25 of your velocity, gravity 0.4 of 800, elasticity
       0.45, a radius-2 sphere), and `reference/systems/grenades.md`.
-    - The research: `reference/research/round-bomb-grenades.md` section 2,
-      above all 2.3 "The throw" (CS2 stashes the throw's angles, position
-      and velocity at a jump for jump-throws, which the code does not do
-      yet; no CS2 source found for the throw speeds or the velocity share;
-      `sv_grenade_collision_sphere` off by default, so CS2 does not fly a
-      radius-2 sphere; the default spin), and its summary in
-      `reference/research/round.md` (items 11 and 12, and the throw-speeds row).
-      `reference/research/smokes.md` covers where a smoke settles, not the
-      flight.
+    - The current-build research:
+      [October 2 Ghidra grenade audit](research/grenade-audit-2026-10-02.md)
+      verifies the velocity formula, gradual strength and middle snap,
+      0.1 s release scheduling, jump snapshots, center-to-eye launch box,
+      default box collision and two 1/128 s flight steps per 64 Hz tick.
+      It also recovers bounce/settle rules, spawn-based fuses and smoke/
+      decoy activation. The code still needs these corrections; the
+      audit supersedes the older throw guesses in
+      `reference/research/round-bomb-grenades.md` and its `round.md` summary.
     - The map: the grenade clips are left out of the hull on import
       (`hull_skip_hints` in `src/map/map_importer.gd`;
       `reference/systems/grenades.md`, item 6), so grenades on dust2 do not
       meet what CS2's meet.
-    - **Local:** G1 in `reference/cs2-systems.md` (the throw's speeds and
-      gravity, standing, running and jumping), and a set of dust2 lineups
+    - **Local:** G1 in `reference/cs2-systems.md` now compares the recovered
+      rules against CS2 (standing, running, crouching, jumping, button
+      changes and close-wall releases), and a set of dust2 lineups
       recorded in CS2 to compare against (spot, angles, button, movement,
       and where it lands), which N2's lineups for the bots can share.
 

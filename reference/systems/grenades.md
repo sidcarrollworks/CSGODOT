@@ -7,6 +7,12 @@ section 7 has CS2's rules. This page says what is built, what each number
 rests on, what it costs a tick, and what the files it does not own need to
 do to wire it in.
 
+**October 2 audit:** [current CS2 binary and graph findings](../research/grenade-audit-2026-10-02.md)
+now verify launch, strength, release/jump timing, box collision, substeps,
+bounces, fuses and parts of HE/flash behavior. Those corrections are not
+ported yet. The sections below describe the existing implementation;
+roadmap 20a and G1–G5 track the remaining work.
+
 ## What is built
 
 All in `src/grenades/`, checked by `tests/run_grenade_checks.gd`.
@@ -80,17 +86,28 @@ degree slope, 16 flames 42 apart, 150 and 110 reach, 7 s and 5.5 s, the
 incendiary ten times faster, 6 s of team-damage credit, `bot_max_visible_smoke_length`
 200, `sv_flashed_amount_for_blind_kill` 0.7, grenades' 85% team damage.
 
-CS:GO behaviour as documented by the community, for G1 to check: the throw
+Numbers originally taken from CS:GO community descriptions: the throw
 (750 x 0.9, times 0.3 to 1 by strength; 1.25 of your velocity; lifted 10
 degrees at the horizon; 22 ahead, 12 lower for a lob), 40% gravity, 45%
 kept per bounce (30% of that off a player), resting under 20 u/s on a floor,
 the 1.5 s fuse, the 0.2 s check for a still smoke or decoy, the HE's bell
-curve.
+curve. The October 2 audit confirms the velocity scaling/share, pitch lift,
+drop, gravity, 0.45 elasticity and HE's sigma=radius/3, but supersedes the
+22-unit launch, sphere collision, player bounce multiplier and shared
+smoke/decoy rest rule. It also adds delayed release, gradual strength,
+jump snapshots and 1/128 s flight steps. HE/flash deadlines start at
+projectile spawn; normal smoke activation needs age >= 1.188 s and speed
+<= 0.1 u/s, while decoy activation needs speed <= 0.2 u/s.
 
-Guesses, each to be measured: the molotov's air-burst drop (G1), the fire's
+Remaining guesses/comparisons: the fire's
 spread interval for the molotov, its 30-unit reach and its ramp; the HE's
 smoke hole and the round's tunnel (G4); the smoke's size, shape and 18 s
-(G4); every flash figure (G3); the decoy's bursts and pop (G5).
+(G4); flash presentation and partial-cover behavior (G3); the decoy's
+weapon-dependent bursts and pop (G5). The audit verifies the fire grenade's
+airburst trace from position +10 up to position -128 down, and a one-time
+enemy body hit adds 4 s to its fuse. Its flash server curve reaches 3,000
+units, uses four facing bins and separate hold/fade/network clocks;
+`flash_blind.gd` still uses the older figures described above.
 
 ## What a tick costs
 
@@ -134,8 +151,9 @@ files named:
    (`take_one`), refuses with none, and sends `grenade_thrown`. Then back to
    the last weapon. The throw clip's own
    timing (`reference/weapons/equipment.md`: the overhand throw's sound at
-   0.07 s) says when after the release it leaves the hand; the throw here is
-   at the tick of the command. Holding one caps the speed at 245
+   0.07 s) describes presentation. The October 2 audit verifies a separate
+   0.1 s release timer in CS2; the throw here is still at the tick of the
+   command. Holding one caps the speed at 245
    (`WeaponData.max_player_speed` from `ItemRegistry.weapon_data`).
 3. **Your view (`player_view.gd` or the HUD):** a `FlashOverlay` with your
    userid, on top of the HUD *(done on dust2 2026-09-23)*. The flashed ringing is a sound (below).
