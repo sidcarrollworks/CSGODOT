@@ -903,7 +903,11 @@ list, split into Local and Remote items, with the measurements.
     frame and all kill-type icons: won/lost, the bot MVP tag, shots-fired
     line, staggered reports and next-round reset. Corrected the flipped
     damage-taken frame's origin so it stays behind its text; the renderer
-    checks both frames' pixels inside their rows.)*
+    checks both frames' pixels inside their rows. The latest cropped
+    reference also sets the wider result strip and spaced foreground title:
+    a faint copy grows behind it, clipped to the thin horizontal borders,
+    while the foreground stays fixed. Local renderer checks cover that
+    growth and clipping.)*
     *(Kill feed done 2026-09-28: CS2's death notices in the top right from
     its huddeathnotice layout and styles (`KillFeed`, from the game's
     player_death events), every mark the event can carry, your kills

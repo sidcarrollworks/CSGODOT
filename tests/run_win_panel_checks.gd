@@ -48,6 +48,7 @@ func _initialize() -> void:
 	await _test_the_damage_report()
 	if DisplayServer.get_name() != "headless":
 		await _test_the_report_frames_render_in_place()
+		await _test_the_title_layers_render_in_place()
 	_finish("win-panel")
 
 
@@ -298,17 +299,24 @@ func _test_the_panel() -> void:
 	_check(not panel.is_showing() and not panel.is_animating(), "hidden and idle until a round ends")
 	panel.show_round("ROUND WON", "T", false, "fact", "T1", "MVP", "T", true)
 	_check(panel.is_animating(), "it opens as the round ends")
-	_check_near(panel.title_scale(), WinPanel.TITLE_START_SCALE, "the title starts half as large again")
+	_check_near(panel.echo_scale(), 1.0, "the background title starts at the foreground's size")
+	panel._process(0.1)
+	_check(panel._result_clip.clip_contents and panel._result_clip.size.x < WinPanel.WIDTH,
+		"the opening strip clips the growing copy and reveals the centre of the title")
+	_check(panel._result_contents.mouse_filter == Control.MOUSE_FILTER_IGNORE,
+		"the title's canvas leaves clicks to the game")
 	_check(panel.accent() == HudStyle.T_COLOUR, "a terrorist win is in t-color")
 	for i in 20:
 		panel._process(0.3)
 	_check(not panel.is_animating(), "and stops redrawing once open")
-	_check_near(panel.title_scale(), 1.0, "with the title at its size")
+	_check_near(panel.echo_scale(), WinPanel.ECHO_END_SCALE, "with only the background copy grown to its final size")
 	_check_near(panel.openness(), 1.0, "and the bar open")
 	panel.show_round("ROUND LOST", "T", true)
 	_check(panel.accent() == WinPanel.NEGATIVE, "a round lost is in CS2's negativeColor")
 	panel.show_round("")
-	_check(not panel.is_showing(), "and it goes as the next round starts")
+	_check(not panel.is_showing() and not panel._result_clip.visible, "and both layers go as the next round starts")
+	panel.show_round("ROUND WON", "CT")
+	_check_near(panel.echo_scale(), 1.0, "a new round's title restarts the background growth")
 	panel.free()
 
 
@@ -453,3 +461,72 @@ func _test_the_report_frames_render_in_place() -> void:
 	pixels.save_png("user://win_panel_frame_check.png")
 	frames.counter.free()
 	viewport.free()
+
+
+## Render the production panel at the start/end of the growth, then turn
+## off only its clip to prove that the larger text really reaches beyond
+## the border. The bright foreground's bounds must remain unchanged.
+func _test_the_title_layers_render_in_place() -> void:
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(900, 160)
+	viewport.disable_3d = true
+	viewport.use_hdr_2d = true
+	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	root.add_child(viewport)
+	var panel := WinPanel.new()
+	viewport.add_child(panel)
+	panel.position = Vector2(50, 30)
+	panel.size = Vector2(WinPanel.WIDTH, WinPanel.BAR_HEIGHT)
+	panel.show_round("ROUND LOST", "T", true)
+	panel.set_process(false)
+	panel._t = WinPanel.OPEN_SECONDS
+	panel.redraw()
+	await process_frame
+	await RenderingServer.frame_post_draw
+	var early := viewport.get_texture().get_image()
+	panel._t = WinPanel.ECHO_SECONDS
+	panel.redraw()
+	await process_frame
+	await RenderingServer.frame_post_draw
+	var late := viewport.get_texture().get_image()
+	panel._result_clip.clip_contents = false
+	await process_frame
+	await RenderingServer.frame_post_draw
+	var unclipped := viewport.get_texture().get_image()
+	var early_bounds := _bright_title_bounds(early)
+	var late_bounds := _bright_title_bounds(late)
+	_check(early_bounds.has_area() and early_bounds == late_bounds,
+		"the foreground's size and position stay fixed while the background grows (%s / %s)" % [early_bounds, late_bounds])
+	var bar := Rect2i(50, 30, int(WinPanel.WIDTH), int(WinPanel.BAR_HEIGHT))
+	var growth := 0
+	var clipped := 0
+	var leaks := 0
+	for y in late.get_height():
+		for x in late.get_width():
+			var at := Vector2i(x, y)
+			var colour := late.get_pixelv(at)
+			if bar.has_point(at):
+				if absf(colour.r - early.get_pixelv(at).r) > 0.04:
+					growth += 1
+			else:
+				if unclipped.get_pixelv(at).r - colour.r > 0.04:
+					clipped += 1
+				if absf(colour.r - early.get_pixelv(at).r) > 0.04:
+					leaks += 1
+	_check(growth > 100 and clipped > 100 and leaks == 0,
+		"the faint copy expands behind the title and is cropped at the bar's borders (%d changed, %d clipped, %d leaked)" % [growth, clipped, leaks])
+	early.save_png("user://win_panel_layers_early.png")
+	late.save_png("user://win_panel_layers_late.png")
+	viewport.free()
+
+
+func _bright_title_bounds(pixels: Image) -> Rect2i:
+	var bounds := Rect2i()
+	for y in pixels.get_height():
+		for x in pixels.get_width():
+			if pixels.get_pixel(x, y).r > 0.7:
+				if not bounds.has_area():
+					bounds = Rect2i(x, y, 1, 1)
+				else:
+					bounds = bounds.merge(Rect2i(x, y, 1, 1))
+	return bounds

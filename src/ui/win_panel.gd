@@ -4,21 +4,24 @@ extends HudElement
 ## CS2's win panel (CSGOHudWinPanel; its panorama/layout/hud/hudwinpanel.xml,
 ## styles/hud/hudwinpanel.css and scripts/hud/hudwinpanel.js, read from
 ## GameTracking-CS2 on 2026-09-26): from a round's end until the next round
-## starts, 190 px down in the middle, a bar 400 wide and 80 tall saying ROUND
-## WON or ROUND LOST between two double arrows, the round's fun fact under
+## starts, 190 px down in the middle, a bar saying ROUND WON or ROUND LOST,
+## the round's fun fact under
 ## it, and under that the MVP's band, 640 wide and 90 tall, with their
 ## portrait, why they are MVP and their name.
 ##
 ## Its colours are CS2's: the bar is the winner's (winPanelBgColorT
-## rgba(66, 46, 8, .85) or winPanelBgColorCT rgba(9, 40, 61, .85)) with 4 px
-## ends and the title in t-color or ct-color, or, for the side that lost,
+## rgba(66, 46, 8, .85) or winPanelBgColorCT rgba(9, 40, 61, .85)) and the
+## title in t-color or ct-color, or, for the side that lost,
 ## negativeColor #DB4437 on rgba(32, 2, 2, .877). The MVP's band is always
 ## the winner's, their reason black on the team's colour, their name in it.
 ##
 ## How it opens, as the css's transitions do: the bar opens out from its
-## middle and fades in over .25 s, ease-in; the title starts half as large
-## again and shrinks to its size over 5 s, ease-in; the arrows slide 25 px in
-## over .25 s after .5 s, from ten times as bright; the fun fact fades in
+## middle and fades in over .25 s, ease-in; the foreground title stays at
+## its size while a faint copy grows behind it, clipped to the bar. This
+## layer and the wider strip follow Sid's 2026-10-01 screenshot and motion
+## description rather than the older CSS's single shrinking title. The
+## growth's 5 s duration uses that CSS's title transition; its range and
+## opacity are an approximation from the screenshot. The fun fact fades in
 ## over .25 s; the MVP's band opens out over .25 s under a white flash that
 ## fades from .25 to .5 s.
 ##
@@ -28,36 +31,28 @@ extends HudElement
 ## and the surrender line. The MVP's portrait is the team counter's: CS2's
 ## bot portrait, or a head and shoulders for a player.
 
-## hudwinpanel.css: winPanelPosY, winPanelWidth, the bar's height, its ends,
-## the gap under it (.WinPanelTopSection margin-bottom).
+## The position, height and gap are hudwinpanel.css's. The wider strip,
+## thin horizontal borders and lettering follow Sid's 2026-10-01 crop,
+## normalized to the same 80 px bar height at the 1080p HUD base size.
 const TOP := 190.0
-const WIDTH := 400.0
+const WIDTH := 800.0
 const BAR_HEIGHT := 80.0
-const END := 4.0
+const BORDER := 1.0
+const EDGE_FADE := 0.12
 const CORNER := 3.0
 const GAP := 16.0
-## The title (.WinPanel__Result__Title): Stratum2 Medium Condensed 64 px,
-## 8 px apart, in a label 340 by 60 that shrinks what does not fit, 14 px of
-## margin under it, a soft dark shadow.
-const TITLE_SIZE := 64
-const TITLE_SPACING := 8
+## The screenshot's foreground has shorter, wider letters with about
+## 16 px between them. Use Stratum2 Bold rather than the older condensed
+## face; keep this layer steady while its background copy expands.
+const TITLE_SIZE := 32
+const TITLE_SPACING := 16
 const TITLE_WIDTH := 340.0
-const TITLE_HEIGHT := 60.0
-const TITLE_MARGIN := 14.0
-## Rajdhani, standing in without the extraction, is not condensed, so it
-## is fitted to the width CS2's title has on its screenshot (about 232 px
-## at 1080p) rather than filling the label.
-const TITLE_FALLBACK_WIDTH := 232.0
-const TITLE_START_SCALE := 1.5
-const TITLE_SHRINK_SECONDS := 5.0
+const TITLE_CENTRE_Y := 40.0
+const ECHO_START_SCALE := 1.0
+const ECHO_END_SCALE := 3.5
+const ECHO_SECONDS := 5.0
+const ECHO_OPACITY := 0.2
 const TEXT_SHADOW := Color8(0x35, 0x35, 0x35, 0xbb)
-## The double arrows: 16 px tall, 12 px in from each end, centred with the
-## title; 25 px out and ten times as bright before they slide in.
-const ARROW_HEIGHT := 16.0
-const ARROW_INSET := 12.0
-const ARROW_SLIDE := 25.0
-const ARROW_BRIGHTNESS := 10.0
-const ARROW_DELAY := 0.5
 ## The fun fact: Stratum2 12 px, white, in a 16 px row 3 px off the bar's
 ## bottom.
 const FACT_SIZE := 12
@@ -108,12 +103,45 @@ var mvp_side: String = "T"
 var mvp_bot: bool = false
 ## Seconds since it opened.
 var _t: float = 0.0
+var _result_clip: Control
+var _result_contents: Control
 
 static var _title_font: FontVariation
 
 
 func _ready() -> void:
-	place(Vector2(0.5, 0.0), Rect2(-BAND_WIDTH * 0.5, TOP, BAND_WIDTH, BAR_HEIGHT + GAP + BAND_HEIGHT))
+	var width := maxf(WIDTH, BAND_WIDTH)
+	place(Vector2(0.5, 0.0), Rect2(-width * 0.5, TOP, width, BAR_HEIGHT + GAP + BAND_HEIGHT))
+	# clip_contents clips children, so draw both text layers on a canvas
+	# beneath this separate clip. The MVP band remains outside the clip.
+	_result_clip = Control.new()
+	_result_clip.name = "ResultClip"
+	_result_clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_result_clip.clip_contents = true
+	add_child(_result_clip, false, Node.INTERNAL_MODE_FRONT)
+	_result_contents = Control.new()
+	_result_contents.name = "ResultContents"
+	_result_contents.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_result_contents.draw.connect(_draw_result_contents)
+	_result_clip.add_child(_result_contents)
+	_fit_result()
+
+
+func redraw() -> void:
+	super()
+	if _result_clip != null:
+		_fit_result()
+		_result_contents.queue_redraw()
+
+
+func _fit_result() -> void:
+	var bar := _bar()
+	_result_clip.visible = is_showing() and bar.has_area()
+	_result_clip.position = bar.position + Vector2(0, BORDER)
+	_result_clip.size = Vector2(bar.size.x, BAR_HEIGHT - BORDER * 2.0)
+	# Opening reveals the centre of a full-size title, without stretching it.
+	_result_contents.position = Vector2((bar.size.x - WIDTH) * 0.5, -BORDER)
+	_result_contents.size = Vector2(WIDTH, BAR_HEIGHT)
 
 
 ## Shows a round's end: the title (none hides it), the side that won and
@@ -141,7 +169,7 @@ func is_showing() -> bool:
 
 func _advance(delta: float) -> bool:
 	_t += delta
-	return is_showing() and _t < TITLE_SHRINK_SECONDS
+	return is_showing() and _t < ECHO_SECONDS
 
 
 ## CSS's ease-in: cubic-bezier(.42, 0, 1, 1), close enough as a square.
@@ -197,87 +225,63 @@ func _draw() -> void:
 	var fade := openness()
 	var bar := _bar()
 	var background: Color = BAR_LOST if lost else (BAR_CT if winner == "CT" else BAR_T)
-	draw_style_box(_rounded(Color(background, background.a * fade)), bar)
+	_draw_faded_strip(bar, Color(background, background.a * fade))
 	var dots := HudStyle.icon("backgrounds/bluedots_large_png")
 	if dots != null:
 		var dot_scale := dots.get_size().x / DOTS_SIZE
 		draw_texture_rect_region(dots, bar, Rect2(bar.position * dot_scale, bar.size * dot_scale), Color(1, 1, 1, DOTS_OPACITY * fade))
-	var colour := Color(accent(), fade)
-	draw_rect(Rect2(bar.position, Vector2(minf(END, bar.size.x), BAR_HEIGHT)), colour)
-	draw_rect(Rect2(Vector2(bar.end.x - minf(END, bar.size.x), 0.0), Vector2(minf(END, bar.size.x), BAR_HEIGHT)), colour)
-	_draw_title(fade)
-	_draw_arrows(fade)
-	if not fact.is_empty():
-		var baseline := HudStyle.baseline_centred(BAR_HEIGHT - FACT_MARGIN - FACT_ROW * 0.5, FACT_SIZE, &"regular")
-		HudStyle.draw_text(self, Vector2(size.x * 0.5, baseline), fact, FACT_SIZE, Color(1, 1, 1, fade),
-			HORIZONTAL_ALIGNMENT_CENTER, &"regular", Color(0, 0, 0, 0.5 * fade), 4)
+	var colour := Color(accent(), fade * 0.5)
+	_draw_faded_strip(Rect2(bar.position, Vector2(bar.size.x, BORDER)), colour)
+	_draw_faded_strip(Rect2(bar.position.x, bar.end.y - BORDER, bar.size.x, BORDER), colour)
 	if not mvp_name.is_empty():
 		_draw_band()
 
 
-## The title, CS2's letter spacing, shrunk to fit its label, then scaled
-## from half as large again down to its size.
-func _draw_title(fade: float) -> void:
+## A strip whose ends fade out, including the thin top/bottom borders.
+func _draw_faded_strip(box: Rect2, colour: Color) -> void:
+	var edge := box.size.x * EDGE_FADE
+	var xs := [box.position.x, box.position.x + edge, box.end.x - edge, box.end.x]
+	var alphas := [0.0, colour.a, colour.a, 0.0]
+	for i in 3:
+		var a := Color(colour, alphas[i])
+		var b := Color(colour, alphas[i + 1])
+		draw_polygon(PackedVector2Array([Vector2(xs[i], box.position.y), Vector2(xs[i + 1], box.position.y),
+			Vector2(xs[i + 1], box.end.y), Vector2(xs[i], box.end.y)]), PackedColorArray([a, b, b, a]))
+
+
+func _draw_result_contents() -> void:
+	if not is_showing():
+		return
+	var fade := openness()
+	_draw_title(_result_contents, echo_scale(), fade * ECHO_OPACITY, false)
+	_draw_title(_result_contents, 1.0, fade, true)
+	if not fact.is_empty():
+		var baseline := HudStyle.baseline_centred(BAR_HEIGHT - FACT_MARGIN - FACT_ROW * 0.5, FACT_SIZE, &"regular")
+		HudStyle.draw_text(_result_contents, Vector2(WIDTH * 0.5, baseline), fact, FACT_SIZE, Color(1, 1, 1, fade),
+			HORIZONTAL_ALIGNMENT_CENTER, &"regular", Color(0, 0, 0, 0.5 * fade), 4)
+
+
+## The same shaped text for both layers. Scale its spacing with its glyphs
+## around the title's centre; only the background receives echo_scale().
+func _draw_title(on: CanvasItem, scale_now: float, opacity: float, shadow: bool) -> void:
 	var font := title_font()
-	var size_now := float(TITLE_SIZE)
 	var width := font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, TITLE_SIZE).x
-	var room := TITLE_WIDTH if HudStyle.has_cs2_font() else TITLE_FALLBACK_WIDTH
-	if width > room:
-		size_now *= room / width
-	size_now *= title_scale()
-	var drawn := int(roundf(size_now))
-	width = font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, drawn).x
-	var centre_y := ((BAR_HEIGHT - TITLE_MARGIN) - TITLE_HEIGHT) * 0.5 + TITLE_HEIGHT * 0.5
-	var baseline := centre_y - (font.get_ascent(drawn) + font.get_descent(drawn)) * 0.5 + font.get_ascent(drawn)
 	# The letter spacing trails the last letter too; centre the letters.
-	var at := Vector2(size.x * 0.5 - (width - TITLE_SPACING) * 0.5, baseline)
-	draw_string_outline(font, at, title, HORIZONTAL_ALIGNMENT_LEFT, -1, drawn, 6, Color(TEXT_SHADOW, TEXT_SHADOW.a * fade * 0.5))
-	draw_string(font, at, title, HORIZONTAL_ALIGNMENT_LEFT, -1, drawn, Color(accent(), fade))
+	width -= TITLE_SPACING
+	var fit := minf(1.0, TITLE_WIDTH / maxf(width, 1.0))
+	var baseline := (font.get_ascent(TITLE_SIZE) - font.get_descent(TITLE_SIZE)) * 0.5
+	var at := Vector2(-width * 0.5, baseline)
+	on.draw_set_transform(Vector2(WIDTH * 0.5, TITLE_CENTRE_Y), 0.0, Vector2.ONE * fit * scale_now)
+	if shadow:
+		on.draw_string_outline(font, at, title, HORIZONTAL_ALIGNMENT_LEFT, -1, TITLE_SIZE, 4,
+			Color(TEXT_SHADOW, TEXT_SHADOW.a * opacity * 0.5))
+	on.draw_string(font, at, title, HORIZONTAL_ALIGNMENT_LEFT, -1, TITLE_SIZE, Color(accent(), opacity))
+	on.draw_set_transform(Vector2.ZERO)
 
 
-## How large the title is against its size: 1.5 at the start, 1 after 5 s.
-func title_scale() -> float:
-	return lerpf(TITLE_START_SCALE, 1.0, _ease_in(_t / TITLE_SHRINK_SECONDS))
-
-
-## The two double arrows, pointing in at the title.
-func _draw_arrows(fade: float) -> void:
-	var slide := _ease_in((_t - ARROW_DELAY) / OPEN_SECONDS)
-	var brightness := lerpf(ARROW_BRIGHTNESS, 1.0, slide)
-	var base := accent()
-	var colour := Color(base.r * brightness, base.g * brightness, base.b * brightness, fade)
-	var centre_y := ((BAR_HEIGHT - TITLE_MARGIN) - ARROW_HEIGHT) * 0.5 + ARROW_HEIGHT * 0.5
-	var offset := ARROW_SLIDE * (1.0 - slide)
-	var bar := _bar()
-	var arrows := HudStyle.icon("hud/double_arrows")
-	var arrow_width := ARROW_HEIGHT
-	if arrows != null and arrows.get_size().y > 0.0:
-		arrow_width = ARROW_HEIGHT * arrows.get_size().x / arrows.get_size().y
-	for right in [false, true]:
-		var left_x: float = bar.end.x - ARROW_INSET - arrow_width if right else bar.position.x + ARROW_INSET
-		var box := Rect2(left_x + offset, centre_y - ARROW_HEIGHT * 0.5, arrow_width, ARROW_HEIGHT)
-		if arrows != null:
-			# The image points left (the right one's); the left one is flipped.
-			if right:
-				draw_texture_rect(arrows, box, false, colour)
-			else:
-				draw_texture_rect(arrows, Rect2(box.position + Vector2(box.size.x, 0.0), Vector2(-box.size.x, box.size.y)),
-					false, colour)
-		else:
-			_draw_chevrons(box, not right, colour)
-
-
-## Two chevrons in a box, pointing right or left, where CS2's image is not
-## extracted.
-func _draw_chevrons(box: Rect2, pointing_right: bool, colour: Color) -> void:
-	var w := box.size.x * 0.5
-	for i in 2:
-		var x0 := box.position.x + i * w * 0.9
-		var tip := x0 + w if pointing_right else x0
-		var back := x0 if pointing_right else x0 + w
-		draw_polyline(PackedVector2Array([
-			Vector2(back, box.position.y), Vector2(tip, box.get_center().y), Vector2(back, box.end.y),
-		]), colour, 2.5, true)
+## The faint copy grows over the reveal while the foreground stays still.
+func echo_scale() -> float:
+	return lerpf(ECHO_START_SCALE, ECHO_END_SCALE, clampf(_t / ECHO_SECONDS, 0.0, 1.0))
 
 
 ## The MVP's band: the winner's colour faded in from both ends, the
@@ -355,12 +359,11 @@ func _draw_avatar(box: Rect2) -> void:
 	]), colour)
 
 
-## The title's face: Stratum2 Medium Condensed with CS2's 8 px between
-## letters.
+## The reference's shorter bold title with wider tracking.
 static func title_font() -> FontVariation:
 	if _title_font == null:
 		_title_font = FontVariation.new()
-		_title_font.base_font = HudStyle.face(&"medium_condensed")
+		_title_font.base_font = HudStyle.face(&"bold")
 		_title_font.spacing_glyph = TITLE_SPACING
 	return _title_font
 

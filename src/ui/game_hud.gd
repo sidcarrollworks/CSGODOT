@@ -99,7 +99,6 @@ const IMAGES: Array[String] = [
 	"backgrounds/bluedots_large_png",
 	"hud/armor",
 	"hud/armor_helmet",
-	"hud/double_arrows",
 	"hud/teamcounter/armor",
 	"hud/teamcounter/armor_helmet",
 	"hud/teamcounter/damage-report-frame",

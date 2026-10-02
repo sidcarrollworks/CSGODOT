@@ -432,6 +432,16 @@ From GT `panorama/layout/hud/hudwinpanel.xml`,
   - **MVP section:** a 3D render of the MVP's agent in an "mvp-banner" pose on
     a small map scene, their avatar, the **MVP reason**, their name, and their
     music kit's name and StatTrak count.
+- **Local reference update, 2026-10-01 (Sid's cropped screenshot and motion
+  description):** the foreground ROUND WON / LOST stays fixed, while a
+  faint copy of the same text grows behind it and is cropped at the strip's
+  borders. The crop has wider, shorter lettering, more space above the fact,
+  and thin horizontal borders with faded ends. `WinPanel` follows this
+  reference over the older layout's single shrinking title and arrows.
+  Normalized to an 80 px strip at the 1080p HUD base size, its 800 px width,
+  Stratum2 Bold 32 px title and 16 px tracking are **Measured approximately**
+  from the crop. The background's 1× to 3.5× growth over 5 s at 20% opacity
+  is an **Approximation** of the described motion; only a still was provided.
 - **Title strings:** `SFUI_WinPanel_CT_Win` "Counter-Terrorists Win",
   `SFUI_WinPanel_T_Win` "Terrorists Win", `SFUI_WinPanel_Round_Draw` "Round
   Draw", `SFUI_WinPanel_Team_Win_Team` "{team} Wins The Round" (named teams),
