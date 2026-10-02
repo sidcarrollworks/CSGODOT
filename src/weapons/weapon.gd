@@ -336,6 +336,21 @@ func through_scope() -> bool:
 	return zoom_level > 0 and data.hides_view_model_when_zoomed
 
 
+## How far the gun is up at the eye, 0 to 1, for a gun that aims through
+## its own scope (WeaponData.has_iron_sight): it comes up at the pull-up
+## speed as the scope goes in and down at the put-down speed as it comes
+## out. What the view is drawn with; nothing in the game reads it.
+func iron_sight_amount(now_usec: int) -> float:
+	if not data.has_iron_sight():
+		return 0.0
+	var seconds := float(now_usec - _zoomed_usec) / 1_000_000.0
+	if zoom_level > 0:
+		return clampf(seconds * data.iron_sight_pull_up_speed, 0.0, 1.0)
+	if data.iron_sight_put_down_speed <= 0.0:
+		return 0.0
+	return clampf(1.0 - seconds * data.iron_sight_put_down_speed, 0.0, 1.0)
+
+
 ## How fast the player may run with it: the scoped speed as soon as the
 ## scope is up (the AWP's 100 against 200).
 func max_speed() -> float:

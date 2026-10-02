@@ -45,16 +45,25 @@ static func fov_narrowing(world_fov: float = WORLD_FOV, view_model_fov: float = 
 
 
 ## The narrowing the arms are drawn at under camera: its field of view is
-## the world's, a scope's included, and claim gave the arms the same.
+## the world's, a scope's included, and claim gave the arms the same. The
+## arms' own is VIEW_MODEL_FOV but while an AUG or SG 553 is up at the eye,
+## when the view sets it on the camera (ARMS_FOV_META).
 static func narrowing_under(camera: Camera3D) -> float:
-	return tan(deg_to_rad(camera.fov * 0.5)) / tan(deg_to_rad(vertical_fov(VIEW_MODEL_FOV) * 0.5))
+	var arms_fov: float = camera.get_meta(ARMS_FOV_META, VIEW_MODEL_FOV)
+	return tan(deg_to_rad(camera.fov * 0.5)) / tan(deg_to_rad(vertical_fov(arms_fov) * 0.5))
+
+
+## Where the view keeps the arms' field of view on its camera, in CS2's
+## degrees, while it is not VIEW_MODEL_FOV.
+const ARMS_FOV_META := &"view_model_fov"
 
 
 ## Makes a node's meshes draw as the view model, and stops them casting
 ## shadows: in the game the arms cast none. world_fov is the camera's, in
-## CS2's degrees: a scope narrows it, and the arms keep their own 68.
-static func claim(node: Node, world_fov: float = WORLD_FOV) -> void:
-	var projection := Vector2(fov_narrowing(world_fov), DEPTH_SQUEEZE)
+## CS2's degrees: a scope narrows it, and the arms keep their own 68, or
+## view_model_fov while an AUG or SG 553 is raised to the eye.
+static func claim(node: Node, world_fov: float = WORLD_FOV, view_model_fov: float = VIEW_MODEL_FOV) -> void:
+	var projection := Vector2(fov_narrowing(world_fov, view_model_fov), DEPTH_SQUEEZE)
 	for mesh in node.find_children("*", "MeshInstance3D", true, false):
 		(mesh as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		(mesh as MeshInstance3D).set_instance_shader_parameter(&"view_model_projection", projection)
