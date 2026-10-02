@@ -19,6 +19,8 @@ extends RefCounted
 ## the third-person body cross-fades into the air (PlayerModel.TO_AIR, CS2's
 ## 0.1 s), and landing fades them back in over its return (TO_GROUND), so
 ## a jump from a run does not snap the weapon forward in one frame.
+## The jump's eye dip also lowers the arms relative to the camera, so they
+## visibly dip and recover instead of staying fixed on screen.
 
 ## Seconds per bob cycle at full speed, and the fraction of it spent rising.
 const BOB_CYCLE := 0.98
@@ -31,6 +33,11 @@ const BOB_VERTICAL := 0.6
 const BOB_LATERAL := 1.0
 ## How far the weapon settles back and down at full speed, in units.
 const BOB_LOWER := 2.1
+
+## The weapon dips twice as far relative to the eyes as the eyes dip in
+## world space: about 2 units on takeoff and 4 on landing. By eye, for Sid's
+## PR #160 playtest, not an extracted CS2 value (research/jump-camera.md).
+const JUMP_DIP_SCALE := 2.0
 
 ## Degrees of lag per degree per second of turning, its limit, and how
 ## quickly it follows (per second).
@@ -54,8 +61,9 @@ var _has_look := false
 ## Advances by delta seconds and returns the offset to apply to the view
 ## model in the camera's frame: origin in units (right, up, back), basis a
 ## rotation. velocity is the body's, in units per second; look is the yaw
-## and pitch in degrees.
-func update(delta: float, velocity: Vector3, on_ground: bool, look: Vector2) -> Transform3D:
+## and pitch in degrees. jump_dip is the already drawn eye spring's offset,
+## in units; applying it here moves the weapon relative to the camera.
+func update(delta: float, velocity: Vector3, on_ground: bool, look: Vector2, jump_dip: float = 0.0) -> Transform3D:
 	_ground = move_toward(_ground, 1.0 if on_ground else 0.0,
 			delta / (PlayerModel.TO_GROUND if on_ground else PlayerModel.TO_AIR))
 	var speed := clampf(Vector2(velocity.x, velocity.z).length(), 0.0, BOB_FULL_SPEED) * _ground
@@ -85,7 +93,7 @@ func update(delta: float, velocity: Vector3, on_ground: bool, look: Vector2) -> 
 	# anticlockwise.
 	var origin := Vector3(
 		lateral_bob * 0.8,
-		vertical_bob * 0.1 - BOB_LOWER * fraction * 0.5,
+		vertical_bob * 0.1 - BOB_LOWER * fraction * 0.5 + jump_dip * JUMP_DIP_SCALE,
 		-vertical_bob * 0.4 + BOB_LOWER * fraction
 	)
 	var basis := Basis.from_euler(Vector3(

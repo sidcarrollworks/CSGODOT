@@ -90,7 +90,8 @@ var viewmodel: Node3D
 ## The bob of walking and the lag of turning, on the weapon model.
 var viewmodel_motion := ViewModelMotion.new()
 
-## The eyes' small dip and recovery on a jump, separate from weapon bob.
+## The eyes' small dip and recovery on a jump; the same response also
+## drives the arms' dip relative to the camera, separate from running bob.
 var camera_motion := JumpCameraMotion.new()
 
 ## The arms and what is in hand, drawn under the camera with a projection of
@@ -754,8 +755,8 @@ const ZOOM_SENSITIVITY_RATIO := 1.0
 ##
 ## The model is a child of the camera, so it already follows the view kick.
 ## This is the extra movement on top: the gun climbing in the hands relative
-## to the screen, which is most of what reads as recoil. The knife, a
-## grenade and the bomb only bob and sway.
+## to the screen, which is most of what reads as recoil. Every item also
+## bobs, sways and dips on takeoff/landing relative to the camera.
 func _update_viewmodel(delta: float) -> void:
 	if viewmodel == null:
 		return
@@ -767,7 +768,7 @@ func _update_viewmodel(delta: float) -> void:
 	# model's own.
 	var motion := viewmodel_motion.update(
 		delta, player.velocity, player.on_ground,
-		Vector2(player.input.yaw_degrees, player.input.pitch_degrees)
+		Vector2(player.input.yaw_degrees, player.input.pitch_degrees), camera_motion.height
 	)
 	var alpha := DrawClock.fraction()
 	var punch := player.weapon.viewmodel_punch() if player.weapon != null else Vector2.ZERO

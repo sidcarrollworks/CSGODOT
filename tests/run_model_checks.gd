@@ -1561,6 +1561,12 @@ func _test_player_composes_kick_and_bob() -> void:
 			and player.view_model.transform.origin.is_equal_approx(rest.origin),
 		"standing still, a round's kick reaches the weapon model exactly as the weapon gives it (%.2f, %.2f degrees)" % [kick.x, kick.y]
 	)
+	player.view.camera_motion.height = -1.0
+	player.view._update_viewmodel(1.0 / 60.0)
+	_check(is_equal_approx(player.view_model.position.y, rest.origin.y - 2.0)
+		and player.view_model.transform.basis.is_equal_approx(expected),
+		"the extracted arms and gun dip relative to the camera without replacing the shot's recoil")
+	player.view.camera_motion.height = 0.0
 
 	# Running: the same kick, on top of the bob's offset.
 	player.velocity = Vector3(0.0, 0.0, -250.0)
@@ -1604,6 +1610,18 @@ func _test_player_composes_kick_and_bob() -> void:
 			and player.camera.find_children("ViewModel_*", "", false, false).size() == carried.size() + 1,
 		"switching shows the one in hand, hides the rest and stills them, and builds none anew"
 	)
+	player.velocity = Vector3.ZERO
+	player.view.viewmodel_motion = ViewModelMotion.new()
+	player.view.camera_motion.height = -1.0
+	var every_item_dips := true
+	for item_class in ["weapon_glock", "weapon_ak47", "weapon_knife", "weapon_hegrenade"]:
+		player.inventory.select(item_class)
+		player.view.catch_up()
+		player.view._update_viewmodel(1.0 / 60.0)
+		every_item_dips = every_item_dips and player.view_model != null and is_equal_approx(
+			player.view_model.position.y, player.view._viewmodel_rest.origin.y - 2.0)
+	_check(every_item_dips, "switching during a jump keeps the relative dip on the pistol, rifle, knife and grenade")
+	player.view.camera_motion.height = 0.0
 	# Last, as it swings the view: the body you look down at is walked only
 	# where the camera can see it (PlayerView.body_in_view). Looking ahead
 	# it waits, its time kept; looking down it steps by all of it at once.

@@ -121,10 +121,16 @@ func _test_player_view() -> void:
 	player.input.pitch_degrees = -20.0
 	player.view = PlayerView.new(player)
 	player.view.camera = player.camera
+	var arms := Node3D.new()
+	arms.transform = Transform3D(Basis.from_euler(Vector3(0.0, PI, 0.0)).scaled(Vector3.ONE * 39.37), Vector3(1, 2, 3))
+	player.camera.add_child(arms)
+	player.view.viewmodel = arms
 	player.view._read_for_team = player.team
 	player.view._process(1.0 / 224.0)
 	var usual_eyes := player.camera.global_position
 	var usual_basis := player.camera.global_basis
+	var arms_rest := arms.transform
+	_check(arms_rest.origin == Vector3(1, 2, 3), "at rest the viewmodel keeps its clip placement")
 	player.on_ground = false
 	player.air_action = PlayerBody.AIR_JUMP
 	player.air_action_usec = SimClock.tick_end_usec(65)
@@ -134,6 +140,10 @@ func _test_player_view() -> void:
 	player.view._process(1.0 / 224.0)
 	var shifted := player.camera.global_position
 	_check(shifted.y < usual_eyes.y - 0.5 and shifted.y > usual_eyes.y - 1.5, "PlayerView applies the takeoff dip to the camera, not just the weapon")
+	_check(arms.position.y < arms_rest.origin.y - 1.0 and arms.position.y > arms_rest.origin.y - 3.0,
+		"the arms also dip visibly relative to the camera on takeoff")
+	_check(is_equal_approx(arms.position.x, arms_rest.origin.x) and is_equal_approx(arms.position.z, arms_rest.origin.z)
+		and arms.basis.is_equal_approx(arms_rest.basis), "jump motion keeps the model's scale, rotation and sideways/forward placement")
 	_check(is_equal_approx(shifted.x, usual_eyes.x) and is_equal_approx(shifted.z, usual_eyes.z)
 		and player.camera.global_basis.is_equal_approx(usual_basis), "the dip moves only world height, without pitching or shifting aim sideways")
 	_check(player.global_position == Vector3(10, 20, 30) and player.velocity == Vector3.ZERO
@@ -142,18 +152,34 @@ func _test_player_view() -> void:
 	player.duck_progress = 0.5
 	player.view._process(1.0 / 224.0)
 	_check(absf(player.camera.global_position.y - (20.0 + player.eye_height() + player.view.camera_motion.height)) < 0.0001, "the same dip is relative to the crouched eyes")
+	player.on_ground = true
+	player.air_action = PlayerBody.AIR_LAND
+	player.air_action_usec = SimClock.tick_end_usec(113)
+	world.tick = 113
+	player.view._process(1.0 / 224.0)
+	world.tick = 116
+	player.view._process(1.0 / 224.0)
+	_check(arms.position.y < arms_rest.origin.y - 3.0 and arms.position.y > arms_rest.origin.y - 5.0,
+		"landing dips the arms further relative to the camera, including while crouched")
+	world.tick = 157
+	player.view._process(1.0 / 224.0)
+	_check(arms.transform.is_equal_approx(arms_rest), "the arms return fully to their clip placement after landing")
+	player.view.camera_motion.update_at(2700000, PlayerBody.AIR_JUMP, 2650000)
 	player.noclip = true
 	player.view._process(1.0 / 224.0)
 	_check(is_equal_approx(player.camera.global_position.y, 20.0 + player.eye_height())
 		and is_zero_approx(player.view.camera_motion.height), "noclip clears the dip and uses the usual eyes")
+	_check(arms.transform.is_equal_approx(arms_rest), "noclip clears the viewmodel dip too")
 	player.noclip = false
 	player.view._process(1.0 / 224.0)
 	_check(is_zero_approx(player.view.camera_motion.height), "leaving noclip does not replay an old jump")
-	player.view.camera_motion.update_at(1200000, PlayerBody.AIR_JUMP, 1150000)
+	player.view.camera_motion.update_at(2700000, PlayerBody.AIR_JUMP, 2650000)
+	_check(player.view.camera_motion.height < -0.5, "placement reset is checked during an active dip")
 	player.place(Vector3(40, 20, 0), 120.0)
 	_check(is_zero_approx(player.view.camera_motion.height), "place resets the camera for teleports and surviving players at round spawns")
-	player.view.camera_motion.update_at(1300000, PlayerBody.NO_AIR_ACTION, 0)
-	player.view.camera_motion.update_at(1450000, PlayerBody.AIR_JUMP, 1400000)
+	player.view.camera_motion.update_at(2800000, PlayerBody.NO_AIR_ACTION, 0)
+	player.view.camera_motion.update_at(2950000, PlayerBody.AIR_JUMP, 2900000)
+	_check(player.view.camera_motion.height < -0.5, "death reset is checked during an active dip")
 	player.view._on_killed(&"head")
 	_check(is_zero_approx(player.view.camera_motion.height), "death clears the first-person motion before the death/spectator camera")
 	player.view._on_respawned()
