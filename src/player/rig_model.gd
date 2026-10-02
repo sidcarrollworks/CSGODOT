@@ -47,6 +47,12 @@ var one_shots: PackedStringArray = PackedStringArray()
 ## Prefixes of the one-shot clips that hold their last frame when they end
 ## rather than going back to idle: a death.
 var held: PackedStringArray = PackedStringArray()
+## How far a clip held from outside may drift before it is sent back
+## (hold_at): a frame at 30 frames a second, the clips' rate.
+const HOLD_SLACK := 1.0 / 30.0
+## Whether its eyes are aimed as the rig updates: not on a body drawn only
+## into the shadow maps, where no eye is seen (PlayerView's shadow).
+var aims_eyes := true
 
 var _pins: Array[Dictionary] = []
 ## The character's eyes, where a mesh adopted draws them (CharacterEyes),
@@ -245,6 +251,17 @@ func play(
 	animation_player.play(short, blend)
 
 
+## Keeps a clip that is playing at a moment set from outside: a shotgun's
+## reload, sent back round its loop for every shell (Weapon.shell_clip_seconds).
+## Left to run between, and sent only when it has strayed from there.
+func hold_at(short: StringName, seconds: float) -> void:
+	if animation_player == null or not animation_player.is_playing() \
+			or animation_player.current_animation != short:
+		return
+	if absf(animation_player.current_animation_position - seconds) > HOLD_SLACK:
+		animation_player.seek(seconds, true)
+
+
 ## Every clip loaded whose name starts with the given prefix, in order.
 func clips_named(prefix: String) -> PackedStringArray:
 	var found := PackedStringArray()
@@ -324,7 +341,7 @@ func _take_eyes(mesh: MeshInstance3D, rig: Skeleton3D) -> void:
 
 ## A hidden model's eyes wait: they are aimed at the first update after it is shown.
 func _update_eyes() -> void:
-	if _eyes != null and _eyes.has_any() and is_visible_in_tree():
+	if aims_eyes and _eyes != null and _eyes.has_any() and is_visible_in_tree():
 		_eyes.update()
 
 

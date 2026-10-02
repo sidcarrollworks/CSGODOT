@@ -176,7 +176,7 @@ Roughly in order; L1 to L3 can start at once.
   noscope kills; bots scope before they fire. Guessed until the Local check
   in `reference/research/combat.md`: the scoped accuracy comes in linearly
   over the zoom time, and the zoom times are read as the time to reach each
-  level. The zoom sounds play from `weapon_zoom` (`WeaponSounds`), a sniper coming out silent. Not done: the scope showing inaccuracy.)*
+  level. The zoom sounds play from `weapon_zoom` (`WeaponSounds`), a sniper coming out silent. Not done: the scope showing inaccuracy. The AUG and SG 553 raise the gun to the eye as they scope, with the lens clear, its dot in the crosshair's colour and no crosshair (2026-09-30, `tests/run_iron_sight_checks.gd`, `reference/research/scopes.md`, whose Local checks are the look beside CS2). Their scoped framing now matches the reference's roughly 46%-of-height opening, the outside scene is softly blurred, and the lens is black when lowered (Local rendering checked 2026-10-01, PR #169).)*
 - [x] **R5. Shotguns.** Pellets per shot (Bullets), each traced and damaged
   on its own, shorter range. *(Done 2026-09-24 for the Nova, XM1014,
   Sawed-Off and MAG-7, the player's and the bots': a pull fires
@@ -185,6 +185,13 @@ Roughly in order; L1 to L3 can start at once.
   throws whole (`Weapon.pellet_directions`, `tests/run_shotgun_checks.gd`).
   One report a pull. The pattern's shape is inferred; the Local check in
   `reference/research/combat.md` (R5) gives the real one.)*
+  *(2026-09-30, Sid's playtest: the Nova, XM1014 and Sawed-Off load a
+  shell at a time (`m_bReloadsSingleShells`) rather than the whole tube
+  after one: the reload clip's intro, its loop once a shell with the shell
+  going in at `WPN_RELOAD_ADD_AMMO`, then its outro (`timings.csv`,
+  `WeaponClips`); the arms and the loop's sounds repeat for every shell; a
+  shot after `m_flDisallowAttackAfterReloadStartDuration` with a shell in
+  stops the reload. The body others see still plays its reload clip once.)*
 - [ ] **R6. Random recoil.** Weapons marked "Random" kick by Recoil Amount
   with the two variances rather than by a pattern file. Needs how CS turns
   those into degrees; research first. *(Researched 2026-09-24,
@@ -227,11 +234,16 @@ Roughly in order; L1 to L3 can start at once.
   item 7): every weapon goes through walls by its own `m_flPenetration`.
 - [ ] **R12. HUD per weapon.** Ammo and reserve, the mode, the weapon's icon
   once extracted.
-- [ ] **R13. Cross-check the sheet against CS2's own weapons.vdata** *(the check is done, locally, 2026-09-22: `vdata.md` has it, 914 values agree, and the one real difference, the Desert Eagle's jump inaccuracy, is flagged to Sid; what is left is bringing the fields in)*, which
+- [x] **R13. Cross-check the sheet against CS2's own weapons.vdata** *(the check is done, locally, 2026-09-22: `vdata.md` has it, 914 values agree, and the one real difference, the Desert Eagle's jump inaccuracy, is flagged to Sid; what is left is bringing the fields in)*, which
   SteamDatabase's GameTracking-CS2 repository publishes decompiled. Bring in
   what the sheet lacks: the slower recovery after the first rounds of a
   spray (`_final` recovery times and the rounds they blend over) and spread
   apart from inaccuracy. Flag any figure where the two disagree to Sid.
+  *Done 2026-09-30: the spread is kept apart (`WeaponData.spread`), and the
+  final recovery times blend in over their rounds on the recoil index
+  (`WeaponData.recovery_time`). Whether CS2 counts the decaying float index or
+  whole rounds, and the curve's exact shape, wait on the demo in
+  `reference/research/combat.md` ("R13: recovery after a spray").*
 
 ## Not in the sheet
 

@@ -20,19 +20,23 @@ extends RefCounted
 ##   enemies, 16 for four kills, 15 for three, 1 otherwise; 3 and 2 for the
 ##   bomb. The clutch, fire and blast reasons (13, 14, 10, 11) are not given:
 ##   their rules are unknown.
-## - The fun fact: the first of FUN_FACTS that holds this round. The tokens,
-##   and what each counts, are CS2's (csgo_english.txt); their order is a
-##   guess.
+## - The fun fact: one of FUN_FACTS that holds this round, drawn at random
+##   by a seed from the round's own times, so a server and a replay draw the
+##   same. The tokens, and what each counts, are CS2's (csgo_english.txt).
+##   A fixed order cannot give both of Sid's CS2 screenshots without one
+##   fact that nearly always holds (shots fired) hiding most of the rest: on
+##   2026-09-26 CS2 told four headshots, on 2026-09-30 it told 138 shots
+##   fired over a 3k. How CS2 really chooses is not in its files.
 ##
 ## It reads the roster and nothing else; it never changes the game.
 
-## The fun facts this can tell, in the order they are tried. Each is CS2's
+## The fun facts this can tell. Each is CS2's
 ## token (csgo_english.txt, "Round fun facts") without its leading '#'.
 const FUN_FACTS: Array[String] = [
 	"funfact_t_win_no_casualties", "funfact_ct_win_no_casualties",
 	"funfact_kills_headshots", "funfact_killed_enemies",
 	"funfact_bomb_planted_before_kill", "funfact_damage_no_kills",
-	"funfact_first_blood", "funfact_short_round",
+	"funfact_first_blood", "funfact_short_round", "funfact_shots_fired",
 ]
 ## The least a count must be for its fact to be told: two headshot kills
 ## and three kills are worth a line, one is not; a round with no kills needs
@@ -42,6 +46,18 @@ const KILLS_AT_LEAST := 3
 const DAMAGE_AT_LEAST := 100
 ## A round this short, in seconds from the end of freeze time, is one.
 const SHORT_ROUND_SECONDS := 30
+## Shots fired in the round (every weapon_fire, both sides) worth telling.
+## A guess.
+const SHOTS_AT_LEAST := 10
+
+## How a kill was made, as CS2's post-round report draws it on the team
+## counter (hudteamcounter-postrounddamagereport.css's killtype classes).
+const KILLTYPE_DEFAULT := "default"
+const KILLTYPE_HEADSHOT := "headshot"
+const KILLTYPE_BLAST := "blast"
+const KILLTYPE_BURN := "burn"
+const KILLTYPE_SLASH := "slash"
+const KILLTYPE_SHOCK := "shock"
 
 ## CS2's MVP reasons (hudwinpanel.js _SetMVP).
 const MVP_KILLS := 1
@@ -63,12 +79,15 @@ var last := {}
 
 ## Whether a round is being played: its kills count.
 var _counting := false
+var _start_usec := 0
 var _freeze_end_usec := 0
+var _shots := 0
 var _kills := {}
 var _headshots := {}
 ## Health taken from enemies, by attacker.
 var _damage := {}
-## [attacker][victim]: {"damage", "hits"}, health taken from enemies only.
+## [attacker][victim]: {"damage", "hits", "kill"}, health taken from
+## enemies only, and how the attacker killed the victim ("" if they did not).
 var _pairs := {}
 var _deaths := {"T": 0, "CT": 0}
 var _first_death_usec := -1
@@ -86,6 +105,7 @@ func attach(p_game: GameSystems) -> void:
 	events.listen(&"round_freeze_end", _on_freeze_end)
 	events.listen(&"player_hurt", _on_hurt)
 	events.listen(&"player_death", _on_death)
+	events.listen(&"weapon_fire", _on_fire)
 	events.listen(&"bomb_planted", _on_planted)
 	events.listen(&"bomb_defused", _on_defused)
 	events.listen(&"round_end", _on_round_end)
@@ -98,15 +118,31 @@ func tick(_t: SimTick) -> void:
 
 ## The damage a player did to an enemy this round and in how many hits, and
 ## what they took back: {"given", "hits", "taken", "taken_hits"}, each given
-## up to 100 as CS2's post-round report shows it (prdr_health_removed). For
-## the team counter's report under a dead enemy's card.
+## up to 100 as CS2's post-round report shows it (prdr_health_removed), and
+## how each killed the other where they did ("kill", "taken_kill": a
+## KILLTYPE_, or ""). For the team counter's report under an enemy's card.
 func damage_between(you: int, enemy: int) -> Dictionary:
 	var given: Dictionary = _pairs.get(you, {}).get(enemy, {})
 	var taken: Dictionary = _pairs.get(enemy, {}).get(you, {})
 	return {
 		"given": mini(int(given.get("damage", 0)), 100), "hits": int(given.get("hits", 0)),
 		"taken": mini(int(taken.get("damage", 0)), 100), "taken_hits": int(taken.get("hits", 0)),
+		"kill": String(given.get("kill", "")), "taken_kill": String(taken.get("kill", "")),
 	}
+
+
+## How a kill was made, as the report's icon shows it: the blast of an HE
+## or the bomb, fire, a knife, the Zeus, a headshot, or any other kill.
+static func kill_type(weapon: String, headshot: bool) -> String:
+	if weapon in ["weapon_hegrenade", "hegrenade_projectile", "planted_c4"]:
+		return KILLTYPE_BLAST
+	if weapon in ["weapon_molotov", "weapon_incgrenade", "inferno"]:
+		return KILLTYPE_BURN
+	if weapon.begins_with("weapon_knife") or weapon == "weapon_bayonet":
+		return KILLTYPE_SLASH
+	if weapon == "weapon_taser":
+		return KILLTYPE_SHOCK
+	return KILLTYPE_HEADSHOT if headshot else KILLTYPE_DEFAULT
 
 
 ## Kills of enemies this round.
@@ -116,6 +152,7 @@ func kills_of(userid: int) -> int:
 
 func _reset() -> void:
 	_counting = false
+	_shots = 0
 	_kills.clear()
 	_headshots.clear()
 	_damage.clear()
@@ -133,7 +170,13 @@ func _reset() -> void:
 func _on_round_start(event: GameEvent) -> void:
 	_reset()
 	_counting = true
+	_start_usec = event.at_usec
 	_freeze_end_usec = event.at_usec
+
+
+func _on_fire(_event: GameEvent) -> void:
+	if _counting:
+		_shots += 1
 
 
 func _on_freeze_end(event: GameEvent) -> void:
@@ -158,7 +201,7 @@ func _on_hurt(event: GameEvent) -> void:
 	_damage[attacker] = int(_damage.get(attacker, 0)) + taken
 	if not _pairs.has(attacker):
 		_pairs[attacker] = {}
-	var pair: Dictionary = _pairs[attacker].get(victim, {"damage": 0, "hits": 0})
+	var pair: Dictionary = _pairs[attacker].get(victim, {"damage": 0, "hits": 0, "kill": ""})
 	pair["damage"] += taken
 	pair["hits"] += 1
 	_pairs[attacker][victim] = pair
@@ -180,6 +223,11 @@ func _on_death(event: GameEvent) -> void:
 		_first_kill_usec = event.at_usec
 		_first_killer = attacker
 	_kills[attacker] = kills_of(attacker) + 1
+	if not _pairs.has(attacker):
+		_pairs[attacker] = {}
+	var pair: Dictionary = _pairs[attacker].get(victim, {"damage": 0, "hits": 0, "kill": ""})
+	pair["kill"] = kill_type(String(event.fields["weapon"]), bool(event.fields["headshot"]))
+	_pairs[attacker][victim] = pair
 	if event.fields["headshot"]:
 		_headshots[attacker] = int(_headshots.get(attacker, 0)) + 1
 
@@ -242,42 +290,58 @@ func pick_mvp(winner: String, reason: String) -> Array:
 	return [best, why, kills]
 
 
-## The round's fun fact, as [token without '#', userid, data1]; ["", NOBODY,
-## 0] when none holds.
+## The round's fun fact, as [token without '#', userid, data1]: one of
+## those that hold (fun_facts_holding), drawn by a seed from the round's
+## start and end; ["", NOBODY, 0] when none holds.
 func pick_fun_fact(winner: String, reason: String, end_usec: int) -> Array:
+	var holding := fun_facts_holding(winner, reason, end_usec)
+	if holding.is_empty():
+		return ["", GameEvents.NOBODY, 0]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash([_start_usec, end_usec])
+	return holding[rng.randi_range(0, holding.size() - 1)]
+
+
+## Every fun fact that holds this round, in FUN_FACTS' order, each as
+## [token without '#', userid, data1].
+func fun_facts_holding(winner: String, reason: String, end_usec: int) -> Array:
 	var loser := MatchState.other(winner)
+	var out := []
 	for token in FUN_FACTS:
 		match token:
 			"funfact_t_win_no_casualties", "funfact_ct_win_no_casualties":
 				var side := "T" if token.begins_with("funfact_t_") else "CT"
 				if side == winner and _deaths[winner] == 0 and _deaths[loser] > 0:
-					return [token, GameEvents.NOBODY, 0]
+					out.append([token, GameEvents.NOBODY, 0])
 			"funfact_kills_headshots":
 				var who := _most(_headshots)
 				if int(_headshots.get(who, 0)) >= MOST_HEADSHOTS_AT_LEAST:
-					return [token, who, _headshots[who]]
+					out.append([token, who, _headshots[who]])
 			"funfact_killed_enemies":
 				var who := _most(_kills)
 				if kills_of(who) >= KILLS_AT_LEAST:
-					return [token, who, kills_of(who)]
+					out.append([token, who, kills_of(who)])
 			"funfact_damage_no_kills":
 				var who := GameEvents.NOBODY
 				for userid: int in _damage:
 					if kills_of(userid) == 0 and int(_damage[userid]) > int(_damage.get(who, 0)):
 						who = userid
 				if int(_damage.get(who, 0)) >= DAMAGE_AT_LEAST:
-					return [token, who, _damage[who]]
+					out.append([token, who, _damage[who]])
 			"funfact_first_blood":
 				if _first_killer != GameEvents.NOBODY:
-					return [token, _first_killer, _seconds_in(_first_kill_usec)]
+					out.append([token, _first_killer, _seconds_in(_first_kill_usec)])
 			"funfact_bomb_planted_before_kill":
 				if _plant_usec >= 0 and (_first_death_usec < 0 or _first_death_usec > _plant_usec):
-					return [token, GameEvents.NOBODY, 0]
+					out.append([token, GameEvents.NOBODY, 0])
 			"funfact_short_round":
 				var seconds := _seconds_in(end_usec)
 				if reason != "TargetSaved" and seconds <= SHORT_ROUND_SECONDS:
-					return [token, GameEvents.NOBODY, seconds]
-	return ["", GameEvents.NOBODY, 0]
+					out.append([token, GameEvents.NOBODY, seconds])
+			"funfact_shots_fired":
+				if _shots >= SHOTS_AT_LEAST:
+					out.append([token, GameEvents.NOBODY, _shots])
+	return out
 
 
 ## Whole seconds from the end of freeze time, at least one.

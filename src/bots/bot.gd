@@ -226,7 +226,11 @@ func _ready() -> void:
 	super._ready()
 	killed.connect(_on_killed)
 	shot_traced.connect(_on_shot_traced)
+	knife_swung.connect(_on_knife_swung)
 	reload_started.connect(_on_reload_started)
+	reload_stopped.connect(func() -> void:
+		if weapon_sounds != null:
+			weapon_sounds.stop_reload())
 
 	# The body, drawn, and its hitboxes are PlayerSim's (wear_body).
 	if model != null:
@@ -836,13 +840,19 @@ func _on_shot_traced(shot: Weapon.Shot, result: Hitscan.Result) -> void:
 		model.fire()
 
 
+## A knife swing: the body plays the attack over its upper half.
+func _on_knife_swung(swing: Knife.Swing) -> void:
+	if model != null:
+		model.knife_attack(swing.heavy, swing.met(), swing.variation)
+
+
 func _on_reload_started() -> void:
 	if model != null:
 		model.play(&"reload", 0.1)
 	# Heard by those near, as CS2's reloads are (to 1100 units,
 	# reference/research/audio.md).
 	if weapon_sounds != null:
-		weapon_sounds.reload()
+		weapon_sounds.reload_weapon(weapon)
 
 
 ## Dies where the last round landed: the body has gone limp and fallen

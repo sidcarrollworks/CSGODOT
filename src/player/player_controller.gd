@@ -81,6 +81,8 @@ func _unhandled_input(event: InputEvent) -> void:
 ## Where the map put you, to come back to, looking the way it faced you.
 func place(spawn_position: Vector3, yaw: float) -> void:
 	super.place(spawn_position, yaw)
+	if view != null:
+		view.camera_motion.reset()
 	input.yaw_degrees = yaw
 	input.pitch_degrees = 0.0
 

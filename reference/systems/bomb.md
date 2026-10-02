@@ -45,6 +45,12 @@ it.
 - Only a terrorist carrying it plants it: holding attack with it in hand,
   on the ground, inside a site. Letting go, leaving the ground or leaving
   the site aborts the plant and loses it. It cannot be dropped mid-plant.
+- The plant crouches its planter, as CS2 does (Sid, playtest of
+  2026-09-30): it begins standing or crouched, and from the next tick the
+  planter is ducked whatever their duck key says (`C4.crouches`, the
+  game's `crouches` query, read in `player_sim.gd` beside the key). It goes
+  on only crouched; a planter the runner has not crouched aborts it. A
+  defuser stands or crouches as they like.
 - The planter and the defuser are held still (`C4.holds_still(userid)`).
 - Planted, it goes off 40 s later unless defused. A living CT on the ground,
   close and looking at it, holding use, defuses it; one at a time, the
@@ -96,7 +102,8 @@ until it is down, then a counter-terrorist), wrapping the default
 ### `player_sim.gd` and `PlayerInput` *(done)*
 
 - Held still while planting or defusing, as freeze time holds it: no
-  moving, jumping or firing, free to look and crouch. The bomb answers the
+  moving, jumping or firing, free to look and crouch; crouched while
+  planting whatever the duck key says (the `crouches` query). The bomb answers the
   game's `holds_still` query (`game.query(&"holds_still", [userid], false)`),
   which `player_sim.gd` reads beside `frozen`, the match's, and keeps as
   `held_still` for the view (the plant clip).

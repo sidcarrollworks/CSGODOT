@@ -11,7 +11,9 @@
 
 // x: the field of view's narrowing, as the ratio of the tangents of the
 // half-angles, world over arms. y: the depth squeeze. (1, 1) draws as anything else.
-instance uniform vec2 view_model_projection = vec2(1.0, 1.0);
+// The probe shaders already use slots 0–9. Fix the slot here so a clear
+// scope lens, which has no probes, reads the same projection as its housing.
+instance uniform vec2 view_model_projection : instance_index(10) = vec2(1.0, 1.0);
 
 vec4 view_model_clip_position(vec3 view_vertex, mat4 projection) {
 	vec3 squeezed = view_vertex * view_model_projection.y;

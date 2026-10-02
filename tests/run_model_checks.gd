@@ -14,6 +14,17 @@ extends "res://tests/check_suite.gd"
 const WEAPONS_DIR := "res://assets/weapons"
 const CHARACTERS_DIR := "res://assets/characters"
 
+## The extracted worldmodel_knife graph, KnifeSlashOptions0/1 Stand
+## states, A then B. These names differ from its light/heavy event IDs.
+const KNIFE_ATTACK_CLIPS := {
+	"light_hit": ["frontstab", "frontswing_b"],
+	"light_miss": ["frontswing", "frontswing_b"],
+	"light_backstab": ["backstab", "backstab"],
+	"heavy_hit": ["frontstab", "frontstab"],
+	"heavy_miss": ["frontswing", "frontswing_b"],
+	"heavy_backstab": ["backstab_overhead", "backstab_overhead"],
+}
+
 var _frames: int = 0
 var _view_model: ViewModel
 var _player_model: PlayerModel
@@ -141,6 +152,7 @@ func _init() -> void:
 	_test_air_rules()
 	_test_air_tree()
 	_test_sound_sets()
+	_test_knife_attack_names()
 	_check(
 		BulletImpacts.surface_for("physics_group_sand") == "sand" and BulletImpacts.surface_for("physics_group_wood_crate") == "wood"
 			and BulletImpacts.surface_for("physics_group_metalvent") == "metal" and BulletImpacts.surface_for("physics_group") == "concrete"
@@ -306,6 +318,8 @@ func _process(_delta: float) -> bool:
 
 	_test_player_model()
 	_test_player_composes_kick_and_bob()
+	_test_own_body_in_its_boxes()
+	_test_own_body_jumps_out_of_view()
 	if _bot == null:
 		_start_bot()
 		return false
@@ -1547,6 +1561,12 @@ func _test_player_composes_kick_and_bob() -> void:
 			and player.view_model.transform.origin.is_equal_approx(rest.origin),
 		"standing still, a round's kick reaches the weapon model exactly as the weapon gives it (%.2f, %.2f degrees)" % [kick.x, kick.y]
 	)
+	player.view.camera_motion.height = -1.0
+	player.view._update_viewmodel(1.0 / 60.0)
+	_check(is_equal_approx(player.view_model.position.y, rest.origin.y - 1.0)
+		and player.view_model.transform.basis.is_equal_approx(expected),
+		"the extracted arms and gun dip relative to the camera without replacing the shot's recoil")
+	player.view.camera_motion.height = 0.0
 
 	# Running: the same kick, on top of the bob's offset.
 	player.velocity = Vector3(0.0, 0.0, -250.0)
@@ -1590,6 +1610,57 @@ func _test_player_composes_kick_and_bob() -> void:
 			and player.camera.find_children("ViewModel_*", "", false, false).size() == carried.size() + 1,
 		"switching shows the one in hand, hides the rest and stills them, and builds none anew"
 	)
+	player.velocity = Vector3.ZERO
+	player.view.viewmodel_motion = ViewModelMotion.new()
+	player.view.camera_motion.height = -1.0
+	var every_item_dips := true
+	for item_class in ["weapon_glock", "weapon_ak47", "weapon_knife", "weapon_hegrenade"]:
+		player.inventory.select(item_class)
+		player.view.catch_up()
+		player.view._update_viewmodel(1.0 / 60.0)
+		every_item_dips = every_item_dips and player.view_model != null and is_equal_approx(
+			player.view_model.position.y, player.view._viewmodel_rest.origin.y - 1.0)
+	_check(every_item_dips, "switching during a jump keeps the relative dip on the pistol, rifle, knife and grenade")
+	player.view.camera_motion.height = 0.0
+	# Last, as it swings the view: the body you look down at is walked only
+	# where the camera can see it (PlayerView.body_in_view). Looking ahead
+	# it waits, its time kept; looking down it steps by all of it at once.
+	if player.body_model != null:
+		player.input.pitch_degrees = 0.0
+		player.body_model._unstepped = 0.0
+		player.view._process(1.0 / 60.0)
+		player.view._process(1.0 / 60.0)
+		var waited: float = player.body_model._unstepped
+		player.input.pitch_degrees = -80.0
+		player.view._process(1.0 / 60.0)
+		var body_mixer: AnimationMixer = player.body_model.animation_tree if player.body_model.animation_tree != null \
+			else player.body_model.animation_player
+		_check(player.body_model.stepped_by_view
+				and body_mixer != null and body_mixer.callback_mode_process == AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+				and player.body_model.character_rig.modifier_callback_mode_process == Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_MANUAL
+				and is_equal_approx(waited, 2.0 / 60.0) and player.body_model._unstepped == 0.0,
+			"the body you look down at is stepped by the view, not the engine: it waits out of view (%.3f s kept), and steps once looked at" % waited)
+		# Its eyes, and its twin's, left as they are when the rig updates,
+		# where they would be aimed if it aimed them; a body with no eyes
+		# to aim (the eye textures not extracted) is passed over.
+		var eyes_checked := 0
+		for body: PlayerModel in [player.body_model, player.body_shadow]:
+			var eyes := body.get(&"_eyes") as CharacterEyes if body != null else null
+			if eyes == null or not eyes.has_any():
+				continue
+			var own: ShaderMaterial = eyes._materials[0]
+			own.set_shader_parameter("eye_scale", -1.0)
+			body.character_rig.skeleton_updated.emit()
+			var kept: float = own.get_shader_parameter("eye_scale")
+			body.aims_eyes = true
+			body.character_rig.skeleton_updated.emit()
+			var aimed: float = own.get_shader_parameter("eye_scale")
+			body.aims_eyes = false
+			eyes_checked += 1
+			_check(kept == -1.0 and aimed > 0.0,
+				"%s's eyes are left as they are as its rig updates (%.2f), where they would be aimed if it aimed them (%.2f)" % [body.name, kept, aimed])
+		if eyes_checked == 0:
+			print("no eyes on your body or its twin to check (the eye textures not extracted?)")
 	player.free()
 
 
@@ -1799,11 +1870,25 @@ func _test_view_model_motion() -> void:
 		running.origin.z > 1.0 and running.origin.y < 0.0 and absf(running.origin.x) <= 1.6 * 0.8 + 0.001,
 		"running settles the weapon back and down, and bobs it sideways within its amount (%s)" % running.origin
 	)
-	var airborne := motion.update(1.0 / 60.0, Vector3(0.0, 0.0, -250.0), false, Vector2(90.0, 0.0))
+	var took_off := motion.update(1.0 / 60.0, Vector3(0.0, 0.0, -250.0), false, Vector2(90.0, 0.0))
+	_check(
+		took_off.origin.z > 0.5,
+		"leaving the ground, the settle starts to fade rather than snapping away (%.3f of %.3f)" % [took_off.origin.z, running.origin.z]
+	)
+	var airborne := took_off
+	for frame in 6:
+		airborne = motion.update(1.0 / 60.0, Vector3(0.0, 0.0, -250.0), false, Vector2(90.0, 0.0))
 	_check(
 		is_zero_approx(motion.vertical_bob) and airborne.origin.z < 0.001,
-		"in the air there is no bob and nothing to settle"
+		"%.1f s into the air there is no bob and nothing to settle" % PlayerModel.TO_AIR
 	)
+	var landed := motion.update(1.0 / 60.0, Vector3(0.0, 0.0, -250.0), true, Vector2(90.0, 0.0))
+	_check(
+		landed.origin.z > 0.0 and landed.origin.z < running.origin.z * 0.2,
+		"landing, the settle comes back over %.1f s, not at once (%.3f)" % [PlayerModel.TO_GROUND, landed.origin.z]
+	)
+	for frame in 12:
+		motion.update(1.0 / 60.0, Vector3.ZERO, true, Vector2(90.0, 0.0))
 	var turned := motion.update(1.0 / 60.0, Vector3.ZERO, true, Vector2(95.0, 0.0))
 	_check(
 		motion.sway.x < 0.0 and motion.sway.x >= -ViewModelMotion.SWAY_MAX
@@ -2257,10 +2342,48 @@ func _test_a_body_holds_what_is_in_hand() -> void:
 	model.update_motion(Vector3.ZERO, 0.0, 0.0, true)
 	tree.advance(0.3)
 	_check_equal(String(tree.get("parameters/variation/current_state")), "knife", "a grenade in hand: the knife's locomotion")
+	_test_a_body_plays_knife_attacks(model)
 	model.let_go()
 	model.show_held()
 	_check(model.holding == "" and model.held_weapon == null and not glock.visible and not ak.visible, "nothing in hand: nothing shown")
 	model.free()
+
+
+## Without extracted assets the real names still catch the old matcher,
+## which required "light" or "heavy" and found none of CS2's attacks.
+func _test_knife_attack_names() -> void:
+	var clips := PackedStringArray([
+		"frontswing", "frontswing_b", "frontstab", "backstab", "backstab_overhead",
+		"backstab_overhead_crouching", "frontstab_crouching", "idle", "inair_stand",
+	])
+	for attack: String in KNIFE_ATTACK_CLIPS:
+		var heavy := attack.begins_with("heavy_")
+		var met := attack.trim_prefix("heavy_" if heavy else "light_")
+		for variation in 2:
+			_check_equal(PlayerModel.knife_clip_for(clips, heavy, met, variation), KNIFE_ATTACK_CLIPS[attack][variation],
+				"CS2's actual world knife %s %s clip" % [attack, "A" if variation == 0 else "B"])
+	_check_equal(PlayerModel.knife_clip_for(PackedStringArray(["heavy_hit_attack", "heavy_backstab_attack"]), true, "backstab"), "heavy_backstab_attack",
+		"an alternative set still matches its explicit heavy backstab name")
+
+
+## Actual imported clips must reach the upper-body action node in both
+## locomotion states; falling back to fire() leaves a knife with no attack.
+func _test_a_body_plays_knife_attacks(model: PlayerModel) -> void:
+	model.hold("weapon_knife", WeaponLibrary.look("weapon_knife", "T"))
+	model._switch_at_usec = SimClock.now_usec()
+	var action := model._node(&"gun_action_clip") as AnimationNodeAnimation
+	for grounded in [true, false]:
+		model.update_motion(Vector3.ZERO, 0.0, 0.0, grounded)
+		for attack: String in KNIFE_ATTACK_CLIPS:
+			var heavy := attack.begins_with("heavy_")
+			var met := attack.trim_prefix("heavy_" if heavy else "light_")
+			for variation in 2:
+				var expected := StringName(model._hold_prefix + KNIFE_ATTACK_CLIPS[attack][variation])
+				model.knife_attack(heavy, met, variation)
+				model.animation_tree.advance(0.01)
+				_check(model.animation_player.has_animation(expected) and action.animation == expected
+					and bool(model.animation_tree.get("parameters/gun_action/active")),
+					"the extracted knife %s %s plays over %s locomotion (%s)" % [attack, "A" if variation == 0 else "B", "ground" if grounded else "air", action.animation])
 
 
 ## What CS2's character shader asks of each agent material, printed for a
@@ -2336,6 +2459,173 @@ func _test_character_shading(agents: PackedStringArray) -> void:
 				% [path.get_file(), missing]
 		)
 		scene.free()
+
+
+## The boxes your own body is looked for by (PlayerView.SEEN_STANDING and
+## SEEN_CROUCHED) hold every vertex of it a camera could draw, skinned
+## through the idle, a run, a strafe, the walk back, crouched walks, the
+## take-off standing and crouched, and the landing clips standing and
+## crouched at heights from high to on the floor, for both sides: a vertex
+## out of them could come into view while the body waits, unwalked. The
+## clips' pose, without the skeleton's modifiers (read outside its
+## update). Those weighted mostly to the folded chest collapse to nothing
+## and are left out. No time passes here, so each case's air action is
+## given an age: none for the take-off, a second for the landing.
+func _test_own_body_in_its_boxes() -> void:
+	var cases := [
+		[Vector3.ZERO, 0.0, true, PlayerBody.NO_AIR_ACTION, INF, 0],
+		[Vector3(0.0, 0.0, -250.0), 0.0, true, PlayerBody.NO_AIR_ACTION, INF, 0],
+		[Vector3(-250.0, 0.0, 0.0), 0.0, true, PlayerBody.NO_AIR_ACTION, INF, 0],
+		[Vector3(0.0, 0.0, 130.0), 0.0, true, PlayerBody.NO_AIR_ACTION, INF, 0],
+		[Vector3(0.0, 0.0, -85.0), 1.0, true, PlayerBody.NO_AIR_ACTION, INF, 0],
+		[Vector3(85.0, 0.0, 0.0), 1.0, true, PlayerBody.NO_AIR_ACTION, INF, 0],
+		[Vector3(0.0, 0.0, -250.0), 0.0, false, PlayerBody.AIR_JUMP, 40.0, 0],
+		[Vector3(0.0, 0.0, -250.0), 1.0, false, PlayerBody.AIR_JUMP, 40.0, 0],
+	]
+	for height: float in [60.0, 20.0, 3.0]:
+		for crouch: float in [0.0, 1.0]:
+			cases.append([Vector3(0.0, 0.0, -250.0), crouch, false, PlayerBody.AIR_JUMP, height, 1_000_000])
+	for team: String in ["T", "CT"]:
+		var model := PlayerModel.new()
+		if not model.setup(team, "", "", false):
+			model.free()
+			print("no %s agent; its body's boxes not checked" % team)
+			continue
+		model.fold_bones(PackedStringArray(PlayerView.FOLDED_BONES))
+		root.add_child(model)
+		model.global_position = Vector3.ZERO
+		var rig := model.character_rig
+		var chest := rig.find_bone(PlayerView.FOLDED_BONES[0])
+		var folded := {}
+		for bone in rig.get_bone_count():
+			var up := bone
+			while up >= 0 and not folded.has(bone):
+				if up == chest:
+					folded[bone] = true
+				up = rig.get_bone_parent(up)
+		var outside := 0
+		var drawn := 0
+		var worst := Vector3.ZERO
+		var started := SimClock.now_usec()
+		for case: Array in cases:
+			# The air's crouch eased to the case's at once: no time passes.
+			model._eased_at_usec = -1
+			for step in 64:
+				# Facing yaw 0, as the boxes do: the model turned round, -Z ahead.
+				model.update_motion(case[0], 0.0, case[1], case[2], case[3], started - int(case[5]), case[4])
+				model.animation_tree.advance(1.0 / 64.0)
+				if step != 20 and step != 63:
+					continue
+				var boxes: Array[AABB] = PlayerView.SEEN_CROUCHED if case[1] > 0.5 else PlayerView.SEEN_STANDING
+				for at in _drawn_vertices(model, rig, folded):
+					drawn += 1
+					var inside := false
+					for box in boxes:
+						if box.has_point(at):
+							inside = true
+							break
+					if not inside:
+						outside += 1
+						worst = at
+		_check(drawn > 0 and outside == 0,
+			"the %s agent's body you look down at stays in the boxes it is looked for by (%d of %d drawn vertices out, one at %s)"
+				% [team, outside, drawn, worst])
+		model.free()
+
+
+## A jump made while the body you look down at is out of view is taken as
+## it is made (PlayerModel.show_frame), not replayed the next time you look
+## down: after a take-off, the air and a landing out of view, and a second
+## on the ground, the first frames looked at have it on the ground, with
+## no cross-fade running, the jump's additive done, and its pelvis where it
+## stood before the jump. Before, the requests waited for the look down,
+## which played the air and the landing's dip then.
+func _test_own_body_jumps_out_of_view() -> void:
+	var model := PlayerModel.new()
+	if not model.setup("T", "", "", false):
+		model.free()
+		print("no T agent; a jump out of view not checked")
+		return
+	model.fold_bones(PackedStringArray(PlayerView.FOLDED_BONES))
+	root.add_child(model)
+	model.step_when_shown()
+	var tree := model.animation_tree
+	var rig := model.character_rig
+	var pelvis := rig.find_bone("pelvis")
+	var frame := 1.0 / 60.0
+	var now := SimClock.now_usec()
+	for i in 40:
+		model.update_motion(Vector3.ZERO, 0.0, 0.0, true)
+		model.show_frame(frame, true)
+	var stood: float = rig.get_bone_global_pose(pelvis).origin.y
+	# Out of view: the take-off, the air past it, the landing.
+	for i in 3:
+		model.show_frame(frame, false)
+	model.update_motion(Vector3(0.0, 0.0, -250.0), 0.0, 0.0, false, PlayerBody.AIR_JUMP, now, 30.0)
+	for i in 3:
+		model.show_frame(frame, false)
+	model.update_motion(Vector3(0.0, 0.0, -250.0), 0.0, 0.0, false, PlayerBody.AIR_JUMP, now - 500_000, 20.0)
+	for i in 3:
+		model.show_frame(frame, false)
+	model.update_motion(Vector3.ZERO, 0.0, 0.0, true, PlayerBody.AIR_LAND, now)
+	for i in 60:
+		model.show_frame(frame, false)
+		if i % 4 == 3:
+			model.update_motion(Vector3.ZERO, 0.0, 0.0, true, PlayerBody.AIR_LAND, now)
+	# Looked at, with no tick between the frames.
+	var fading := 0.0
+	var off_ground := false
+	var spread := 0.0
+	for i in 4:
+		model.show_frame(frame, true)
+		off_ground = off_ground or String(tree.get("parameters/ground/current_state")) != "ground"
+		var xfading: Variant = tree.get("parameters/ground/prev_xfading")
+		fading = maxf(fading, float(xfading) if xfading != null else 0.0)
+		spread = maxf(spread, absf(rig.get_bone_global_pose(pelvis).origin.y - stood))
+	_check(not off_ground and fading <= 0.0 and not bool(tree.get("parameters/jump_add/active"))
+			and spread * rig.global_basis.get_scale().y < 2.0,
+		"a jump made out of view is not replayed at the look down: on the ground, no fade (%.2f s), the additive done, the pelvis %.2f units from where it stood"
+			% [fading, spread * rig.global_basis.get_scale().y])
+	model.free()
+
+
+## Every drawn vertex of a model on rig, skinned by the pose as it stands,
+## in world units; those weighted mostly to folded bones left out.
+func _drawn_vertices(model: Node3D, rig: Skeleton3D, folded: Dictionary) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	for node in model.find_children("*", "MeshInstance3D", true, false):
+		var mesh := node as MeshInstance3D
+		if mesh.mesh == null or mesh.skin == null or mesh.get_node_or_null(mesh.skeleton) != rig:
+			continue
+		var bind_bones := PackedInt32Array()
+		var binds: Array[Transform3D] = []
+		for bind in mesh.skin.get_bind_count():
+			var bone_name := mesh.skin.get_bind_name(bind)
+			var bone := rig.find_bone(bone_name) if bone_name != "" else mesh.skin.get_bind_bone(bind)
+			bind_bones.append(bone)
+			binds.append(rig.global_transform * rig.get_bone_global_pose(bone) * mesh.skin.get_bind_pose(bind) if bone >= 0 else Transform3D())
+		for surface in mesh.mesh.get_surface_count():
+			var arrays := mesh.mesh.surface_get_arrays(surface)
+			var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+			var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES] if arrays[Mesh.ARRAY_BONES] != null else PackedInt32Array()
+			var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS] if arrays[Mesh.ARRAY_WEIGHTS] != null else PackedFloat32Array()
+			var per := bones.size() / maxi(vertices.size(), 1)
+			if per == 0:
+				continue
+			for i in vertices.size():
+				var at := Vector3.ZERO
+				var in_folded := 0.0
+				for k in per:
+					var weight := weights[i * per + k]
+					if weight <= 0.0:
+						continue
+					var bind := bones[i * per + k]
+					if folded.has(bind_bones[bind]):
+						in_folded += weight
+					at += (binds[bind] * vertices[i]) * weight
+				if in_folded <= 0.5:
+					out.append(at)
+	return out
 
 
 func _find(dir_path: String, prefix: String) -> PackedStringArray:
