@@ -3,8 +3,8 @@ extends Node
 
 ## F11 (a key CS2 leaves unbound, reference/binds.md) steps through the
 ## culling and the 3D skybox one at a time, so a picture that is wrong in
-## one spot can be pinned on what draws it without leaving the spot: when
-## the fault goes with one step, that step's system is its cause. Sid's
+## one spot can be investigated without leaving the spot: a step that
+## clears the fault points to the system involved. Sid's
 ## flat beige floor ahead of the crates (playtest of 2026-09-30) and the
 ## lower-mid flicker (playtest-2026-09-25.md, issue 11) are what it is for.
 ## Only what is drawn changes; the game runs on as it was.
@@ -31,6 +31,7 @@ func _ready() -> void:
 	layer.layer = 100
 	add_child(layer)
 	_label = Label.new()
+	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_label.position = Vector2(12, 60)
 	_label.add_theme_font_size_override("font_size", 16)
 	_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
@@ -44,6 +45,13 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	if key != null and key.pressed and not key.echo and key.keycode == KEY:
 		go_to((step + 1) % STEPS.size())
+		get_viewport().set_input_as_handled()
+
+
+## A debug step changes the viewport too, which outlives the current map.
+func _exit_tree() -> void:
+	_undo.call()
+	_undo = func() -> void: pass
 
 
 ## Puts the last step back and takes this one.
@@ -77,5 +85,7 @@ static func apply(what: String, root: Node, viewport: Viewport) -> Callable:
 		"draw_occluders":
 			var before := viewport.debug_draw
 			viewport.debug_draw = Viewport.DEBUG_DRAW_OCCLUDERS
-			return func() -> void: viewport.debug_draw = before
+			return func() -> void:
+				if is_instance_valid(viewport):
+					viewport.debug_draw = before
 	return func() -> void: pass
