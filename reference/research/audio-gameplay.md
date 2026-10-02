@@ -435,6 +435,49 @@ Valve's dated hit-sound changes behind the table (*Valve*, newest first):
 | 2023-11-09 | "Fixed issue where at very close proximity, a victims death groan could be mistaken as coming from the attacker" | The death cry's placement (Local check L8) |
 | 2023-09-06 | "Fixed a case where hit feedback sounds wouldn't play for spectators" | Spectators hear the attacker's feedback of the player they watch (*Inferred*) |
 
+### 3.1 Installed hit sounds checked again, 2026-10-02
+
+The installed **CS2 build 2000922, patch 1.41.8.8, September 30 2026** was
+read directly from `game/csgo/pak01_dir.vpk` with Source 2 Viewer CLI:
+`soundevents/game_sounds_player.vsndevts_c`, decompiled to KV3. Every
+`Player.Damage*` and `Player.Death*` definition was resolved through its
+`base`, compared field by field against the committed sound table's own
+fields and `csgo_mega` defaults, and found unchanged. Curves were compared
+after reducing each Source 2 tangent-bearing point to the table's distance
+and value. The September particle changes therefore do not imply new body
+hit audio files or new sound parameters. (*Read*, installed files; scratch
+audit `.godot/pr172-audio-audit.gd` and `pr172-audio-current.json`.)
+
+PR172 routes all three listeners through `HitSounds` from `player_hurt`:
+the attacker's `.AttackerFeedback`, the victim's `.Victim`, and others'
+`.Onlooker`. It starts the whole event through `SoundEvents`, including
+flesh/dink children, random pitch, delays, voice limits, burst blocks and
+mixgroup buses. It removes the previous additional -3 dB adjustment.
+`bullet_damage` supplies visual detail and adds no second audio start.
+Health, armour damage and hitgroup come from each event, so a later pellet
+or hit cannot change an earlier sound into a kill or a different body zone.
+Knife attackers already hear the knife's impact and get no extra silent
+feedback event; knife victims/onlookers use body feedback.
+
+Source position is captured at the victim's feet when the event is handed
+out; each authored `position_offset` is then applied by `SoundEvents`.
+The victim retains the actual stereo curve (body damage is **0.9** plain
+stereo), rather than flattening all its child events. For example,
+`Player.DeathBody.Flesh` still has its spatial distance curve. The attacker's
+body event allows separate fast starts (`block_matching_events = false`)
+but limits simultaneous copies to **3**; a twelve-pellet shot does not
+require a hardcoded twelve-voice pool. The victim body event has its own
+**0.05-second** delay and **0.1-second** block. (*Read*, installed files.)
+
+All authored hit/death/burn files were checked against the local extraction.
+The only missing ones were `sounds/player/burn_damage1` through `5`;
+these were extracted as WAVs to the ignored sound assets. The headless
+checks exercise recipient selection, fatal/armour state, source snapshots,
+one start across hurt/bullet events, shotgun limits, death children,
+rewatching/cleanup, preloading and real stream/bus/stereo parameters when
+the extracted files are present. Hearing the mix beside CS2 remains a
+local playtest; the Dummy audio driver cannot establish audible parity.
+
 ## 4. Grenades
 
 ### 4.1 Pin, throw, flight, bounce

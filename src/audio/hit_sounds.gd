@@ -1,115 +1,38 @@
 class_name HitSounds
 extends Node3D
 
-## What is heard of a hit by everyone but the shooter, and of a death, as
-## CS2's server names them (reference/research/audio-gameplay.md 3): the
-## one hit hears their own (Player.Damage*.Victim, flat in the ears), those
-## near hear it from where it landed (.Onlooker, to about 1100 units), and a
-## death is the groan everyone near hears, the one who died too
-## (Player.Death, to 1400). The shooter's own feedback is WeaponSounds' (the
-## client's, CS2's .AttackerFeedback), so the shooter hears no onlooker
-## version on top (inferred: the server names the victim's and the
-## onlookers', the attacker's client its own).
+## CS2's hit feedback, selected from the authoritative player_hurt rather
+## than a target's final state after the tick. The attacker hears only
+## .AttackerFeedback, the victim .Victim, and everyone else .Onlooker.
+## One player_hurt makes one start: bullet_damage adds no second sound.
 ##
-## Every event is CS2's own, as its game_sounds_player.vsndevts has it
-## (GameTracking-CS2): files, volume, pitch, delay, how far up the body it
-## sounds from, and its distance curve. It reads the game's events,
-## player_hurt and player_death, as they are handed out, and plays what they
-## say on the next frame drawn: nothing is heard from inside the tick. A
-## knife's is a body hit wherever it lands.
+## SoundEvents reads the shipped files, mixgroups, child flesh/dink layers,
+## pitch variation, delays, distance/stereo curves and burst blocks. These
+## match the installed September 30 build (audio-gameplay.md 3.1); no guessed
+## mix offset or overlapping manual WeaponSounds feedback is needed.
+## Victim events are nearly plain stereo by their authored curves; the
+## source remains the victim's feet so a spatial child keeps its own offset.
 ##
-## A hit by fire plays none of these but CS2's Player.BurnDamage, through
-## SoundEvents from its own table entry (silent from 1100 units, one per 0.6
-## s within 300 units), from the one burning, for everyone near them and
-## themselves; Player.BurnDamageKevlar while they wear armour (inferred from
-## the name, as armour takes nothing from fire). A burn is known by the
-## weapon the hurt names; a teammate's fire past its first seconds names
-## none (InfernoEntity), and is not heard.
+## Everything is queued when the tick hands out events and starts on the
+## next drawn frame. Files are preloaded when this view enters the tree.
 
-const MUD := ["physics/surfaces/mud_impact_bullet1", "physics/surfaces/mud_impact_bullet2", "physics/surfaces/mud_impact_bullet3", "physics/surfaces/mud_impact_bullet4"]
-const BODY := ["player/player_damagebody_04", "player/player_damagebody_05", "player/player_damagebody_06", "player/player_damagebody_07", "player/player_damagebody_08"]
-const BODY_HEAD := ["player/player_damagebody_05", "player/player_damagebody_06", "player/player_damagebody_07"]
-const KEVLAR := ["player/kevlar_0"]
-const HEADSHOT := ["player/headshot_noarmor_0"]
-const HEADSHOT_KILL := ["player/headshot_noarmor_02", "player/headshot_noarmor_04", "player/headshot_noarmor_05"]
-const DINK := ["player/headshot_armor_e1"]
-const HEAD_FLESH := ["player/headshot_armor_flesh"]
-const GROAN := ["player/death1", "player/death2", "player/death3", "player/death4", "player/death5", "player/death6"]
-## The distance curves, [units, share] points (WeaponSounds.curve_share).
-const FLAT := [[0.0, 1.0]]
-const BODY_NEAR := [[0.0, 1.0], [35.31, 1.0], [1100.0, 0.0]]
-const HEAD_NEAR := [[22.0, 1.0], [298.29, 0.4292], [1070.0, 0.0]]
-const KILL_NEAR := [[51.97, 1.0], [400.49, 0.4485], [1070.0, 0.0]]
-const KILL_FLESH := [[45.99, 1.0], [187.01, 0.3056], [1073.0, 0.0]]
-const DINK_NEAR := [[22.0, 1.0], [298.29, 0.4292], [1200.0, 0.0]]
-## Each event's layers for the one hit and for those near, each [files,
-## volume, pitch, delay in seconds, curve, units up from the feet], by
-## WeaponSounds.feedback_for's names.
-const EVENTS := {
-	&"DamageBody": {
-		"victim": [[BODY, 1.5, 1.0, 0.05, FLAT, 0.0], [MUD, 1.0, 1.3, 0.05, FLAT, 0.0]],
-		"onlooker": [[MUD, 1.0, 1.3, 0.0, BODY_NEAR, 0.0]],
-	},
-	&"DamageBodyArmor": {
-		"victim": [[KEVLAR, 1.5, 1.0, 0.05, FLAT, 0.0]],
-		"onlooker": [[KEVLAR, 0.7, 1.3, 0.05, BODY_NEAR, 60.0], [MUD, 0.3, 1.1, 0.05, BODY_NEAR, 60.0]],
-	},
-	&"DamageHeadShot": {
-		"victim": [[HEADSHOT, 0.49, 1.0, 0.0, FLAT, 60.0]],
-		"onlooker": [[HEADSHOT, 0.5, 1.0, 0.0, HEAD_NEAR, 60.0]],
-	},
-	&"DamageHeadShotArmor": {
-		"victim": [[DINK, 0.75, 1.0, 0.0, FLAT, 60.0]],
-		"onlooker": [[DINK, 0.5, 1.0, 0.0, HEAD_NEAR, 60.0]],
-	},
-	&"DeathBody": {
-		"victim": [[BODY, 2.0, 0.8, 0.0, FLAT, 60.0], [MUD, 2.0, 1.3, 0.1, KILL_FLESH, 0.0]],
-		"onlooker": [[BODY, 2.0, 0.8, 0.0, KILL_NEAR, 60.0], [MUD, 2.0, 1.3, 0.1, KILL_FLESH, 0.0]],
-	},
-	&"DeathBodyArmor": {
-		"victim": [[BODY, 2.0, 0.8, 0.0, FLAT, 60.0], [MUD, 2.0, 1.3, 0.1, KILL_FLESH, 0.0]],
-		"onlooker": [[BODY, 2.0, 0.8, 0.0, KILL_NEAR, 60.0], [MUD, 2.0, 1.3, 0.1, KILL_FLESH, 0.0]],
-	},
-	&"DeathHeadShot": {
-		"victim": [[HEADSHOT_KILL, 0.55, 1.0, 0.0, FLAT, 60.0]],
-		"onlooker": [[HEADSHOT, 0.5, 1.0, 0.0, HEAD_NEAR, 60.0]],
-	},
-	&"DeathHeadShotArmor": {
-		"victim": [[BODY_HEAD, 0.7, 1.0, 0.0, FLAT, 60.0], [HEAD_FLESH, 0.2, 1.0, 0.0, FLAT, 60.0], [DINK, 0.7, 1.0, 0.0, FLAT, 60.0]],
-		"onlooker": [[BODY_HEAD, 0.5, 1.0, 0.0, HEAD_NEAR, 60.0], [HEAD_FLESH, 0.2, 1.0, 0.0, DINK_NEAR, 60.0], [DINK, 0.7, 1.0, 0.0, DINK_NEAR, 60.0]],
-	},
-}
-## Player.Death: the groan, heard by everyone near, from the body.
-const DEATH := [[GROAN, 0.5, 1.0, 0.0, [[0.0, 1.0], [113.91, 0.5931], [1400.0, 0.0]], 60.0]]
-## The level of these in the mix, by ear, as the shooter's feedback's
-## (WeaponSounds.FEEDBACK_DB): CS2's PlayerVictim and PlayerDamage
-## mixgroups' own levels are not read yet.
-const MIX_DB := -3.0
-## The weapons whose damage plays none of these: fire, which burn_event
-## gives its own.
-const SILENT_WEAPONS := ["weapon_molotov", "weapon_incgrenade", "inferno"]
+const KINDS := ["DamageBody", "DamageBodyArmor", "DamageHeadShot", "DamageHeadShotArmor", "DeathBody", "DeathBodyArmor", "DeathHeadShot", "DeathHeadShotArmor"]
+const ROLES := ["AttackerFeedback", "Victim", "Onlooker"]
+const DEATH_EVENT := "Player.Death"
 const BURN_EVENT := "Player.BurnDamage"
 const BURN_KEVLAR_EVENT := "Player.BurnDamageKevlar"
-## How many hits and deaths can sound at once, those near.
-const VOICES := 12
+const SILENT_WEAPONS := ["weapon_molotov", "weapon_incgrenade", "inferno"]
 
-## Whose ears: the player this machine plays as.
 var listener_id: int = GameEvents.NOBODY
 var game: GameSystems
-## What to play on the next frame: [layers, where (Vector3, or null for flat)].
+## [event name, snapshot of source position (or null), victim userid].
 var _pending: Array = []
-## Burns to play on the next frame: [event name, where, whose].
-var _burns: Array = []
-## The player the burns play through.
 var events: SoundEvents
-var _flat: Array[AudioStreamPlayer] = []
-var _placed: Array[AudioStreamPlayer3D] = []
-var _next_flat := 0
-var _next_placed := 0
 
 
-## Listens to a game's hits and deaths, for listener's ears.
 func watch(p_game: GameSystems, listener: int) -> void:
+	_unwatch()
+	_pending.clear()
 	game = p_game
 	listener_id = listener
 	game.events.listen(&"player_hurt", _on_hurt)
@@ -117,54 +40,44 @@ func watch(p_game: GameSystems, listener: int) -> void:
 
 
 func _ready() -> void:
-	for i in 4:
-		var flat := AudioStreamPlayer.new()
-		# Where a flash's muffle reaches it (FlashMuffle).
-		flat.bus = FlashMuffle.unmixed_bus()
-		add_child(flat)
-		_flat.append(flat)
-	for i in VOICES:
-		var placed := AudioStreamPlayer3D.new()
-		placed.bus = FlashMuffle.unmixed_bus()
-		# The event's own curve sets the level (_play); the player only pans.
-		placed.attenuation_model = AudioStreamPlayer3D.ATTENUATION_DISABLED
-		add_child(placed)
-		_placed.append(placed)
-	SoundBank.load_sets(all_stems())
-	for stems in _layer_stems():
-		SoundBank.randomizer_of(stems)
 	events = SoundEvents.new()
 	events.name = "Events"
 	add_child(events)
-	SoundEvents.load_events(PackedStringArray([BURN_EVENT, BURN_KEVLAR_EVENT]))
+	SoundEvents.load_events(all_events())
 
 
 func _exit_tree() -> void:
+	_unwatch()
+	_pending.clear()
+
+
+func _unwatch() -> void:
 	if game != null:
 		game.events.unlisten(&"player_hurt", _on_hurt)
 		game.events.unlisten(&"player_death", _on_death)
+	game = null
 
 
-## What a hit sounds like to listener: the victim's layers flat when they
-## are the one hit, the onlookers' from the body otherwise, nothing for the
-## shooter (their own feedback is WeaponSounds') or for fire. hurt is
-## player_hurt's fields.
+## The authored event and recipient for one player's ears. Knife swings
+## already supply the attacker's flesh sound; their victim/onlooker sound
+## is still a body hit. Fire uses burn_event instead.
 static func for_hit(hurt: Dictionary, listener: int) -> Dictionary:
 	var weapon := String(hurt.get("weapon", ""))
 	if weapon in SILENT_WEAPONS:
 		return {}
 	var victim: int = hurt.get("userid", GameEvents.NOBODY)
 	var attacker: int = hurt.get("attacker", GameEvents.NOBODY)
-	if listener == attacker and listener != victim:
+	if victim == GameEvents.NOBODY:
 		return {}
-	var head := int(hurt.get("hitgroup", 0)) == DamageInfo.HITGROUP_HEAD and not weapon.begins_with("weapon_knife")
-	var event := WeaponSounds.feedback_for(&"head" if head else &"chest", int(hurt.get("dmg_armor", 0)) > 0, int(hurt.get("health", 1)) <= 0)
-	var who := "victim" if listener == victim else "onlooker"
-	return {"layers": EVENTS[event][who], "flat": who == "victim"}
+	var role := "Victim" if listener == victim else ("AttackerFeedback" if listener == attacker and attacker != GameEvents.NOBODY else "Onlooker")
+	var knife := weapon.begins_with("weapon_knife") or weapon == "weapon_bayonet"
+	if knife and role == "AttackerFeedback":
+		return {}
+	var head := int(hurt.get("hitgroup", 0)) == DamageInfo.HITGROUP_HEAD and not knife
+	var kind := WeaponSounds.feedback_for(&"head" if head else &"chest", int(hurt.get("dmg_armor", 0)) > 0, int(hurt.get("health", 1)) <= 0)
+	return {"event": "Player.%s.%s" % [kind, role], "flat": role == "Victim", "role": role}
 
 
-## What a hurt by fire sounds like: CS2's burn event, by whether the one
-## burning wears armour; "" for any other hurt.
 static func burn_event(hurt: Dictionary) -> String:
 	if String(hurt.get("weapon", "")) not in SILENT_WEAPONS:
 		return ""
@@ -172,100 +85,51 @@ static func burn_event(hurt: Dictionary) -> String:
 
 
 func _on_hurt(event: GameEvent) -> void:
+	var victim: int = event.fields["userid"]
 	var burn := burn_event(event.fields)
 	if not burn.is_empty():
-		var at: Variant = _where(event.fields["userid"])
-		if at != null:
-			_burns.append([burn, at, int(event.fields["userid"])])
+		_queue(burn, victim)
+		return
 	var sound := for_hit(event.fields, listener_id)
-	if sound.is_empty():
-		return
-	if sound["flat"]:
-		_pending.append([sound["layers"], null])
-		return
-	var where: Variant = _where(event.fields["userid"])
-	if where != null:
-		_pending.append([sound["layers"], where])
+	if not sound.is_empty():
+		_queue(sound["event"], victim)
 
 
 func _on_death(event: GameEvent) -> void:
-	var where: Variant = _where(event.fields["userid"])
-	if where != null:
-		_pending.append([DEATH, where])
+	_queue(DEATH_EVENT, event.fields["userid"])
 
 
-## Where a player's hit is heard from: their feet, as the events' offsets
-## are from the feet.
-func _where(userid: int) -> Variant:
-	var node := game.roster.player(userid) if game != null else null
-	if node == null:
-		return null
-	return node.global_position
+func _queue(event_name: String, userid: int) -> void:
+	var source := game.roster.player(userid) if game != null else null
+	if is_instance_valid(source) and source.is_inside_tree():
+		_pending.append([event_name, source.global_position, userid])
+	elif userid == listener_id:
+		# The own victim sound can still play if a view was handed the event
+		# after its player's node left the roster.
+		_pending.append([event_name, null, userid])
 
 
 func _process(_delta: float) -> void:
-	for burn: Array in _burns:
-		events.start(burn[0], burn[1], burn[2])
-	_burns.clear()
-	if _pending.is_empty():
-		return
-	var ears := _ears()
 	for sound: Array in _pending:
-		for layer: Array in sound[0]:
-			var delay := float(layer[3])
-			if delay <= 0.0:
-				_play(layer, sound[1], ears)
-			else:
-				get_tree().create_timer(delay).timeout.connect(_play.bind(layer, sound[1], ears))
+		events.start(sound[0], sound[1], sound[2], {"local": int(sound[2]) == listener_id})
 	_pending.clear()
 
 
-## Where the listener hears from: the camera drawing the frame.
-func _ears() -> Vector3:
-	var camera := get_viewport().get_camera_3d() if is_inside_tree() else null
-	return camera.global_position if camera != null else Vector3.ZERO
+## Every top-level event this view can select; load_events adds children.
+static func all_events() -> PackedStringArray:
+	var names := PackedStringArray([DEATH_EVENT, BURN_EVENT, BURN_KEVLAR_EVENT])
+	for kind: String in KINDS:
+		for role: String in ROLES:
+			names.append("Player.%s.%s" % [kind, role])
+	return names
 
 
-func _play(layer: Array, where: Variant, ears: Vector3) -> void:
-	if not SoundBank.available():
-		return
-	var stream := SoundBank.randomizer_of(PackedStringArray(layer[0]))
-	if stream == null:
-		return
-	var player: Node
-	var share := 1.0
-	if where == null:
-		player = _flat[_next_flat]
-		_next_flat = (_next_flat + 1) % _flat.size()
-	else:
-		var at: Vector3 = (where as Vector3) + Vector3.UP * float(layer[5])
-		share = WeaponSounds.curve_share(layer[4], at.distance_to(ears))
-		if share <= 0.0:
-			return
-		var placed := _placed[_next_placed]
-		_next_placed = (_next_placed + 1) % _placed.size()
-		placed.global_position = at
-		player = placed
-	player.set("stream", stream)
-	player.set("pitch_scale", float(layer[2]))
-	player.set("volume_db", MIX_DB + linear_to_db(float(layer[1]) * share))
-	player.call("play")
-
-
-## Every file stem these play, to read before play.
+## Exact extracted stems, for the shared extraction/preload checks.
 static func all_stems() -> PackedStringArray:
 	var stems := PackedStringArray()
-	for layer_stems in _layer_stems():
-		stems.append_array(layer_stems)
+	for name in SoundEvents.with_children(all_events()):
+		for file in SoundEvents.find(name).files:
+			var stem := file.get_basename().trim_prefix("sounds/")
+			if stem not in stems:
+				stems.append(stem)
 	return stems
-
-
-static func _layer_stems() -> Array[PackedStringArray]:
-	var out: Array[PackedStringArray] = []
-	for event: StringName in EVENTS:
-		for who: String in ["victim", "onlooker"]:
-			for layer: Array in EVENTS[event][who]:
-				out.append(PackedStringArray(layer[0]))
-	for layer: Array in DEATH:
-		out.append(PackedStringArray(layer[0]))
-	return out

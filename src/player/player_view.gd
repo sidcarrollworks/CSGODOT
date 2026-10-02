@@ -286,9 +286,9 @@ func _on_shot_traced(shot: Weapon.Shot, result: Hitscan.Result) -> void:
 			view_model.shoot()
 		if body_shadow != null:
 			body_shadow.fire()
-	if result.hitbox != null and result.hitbox.target != null:
-		weapon_sounds.hit(result.zone, result.hitbox.target, not result.hitbox.target.alive)
-	BulletImpacts.mark_in(get_tree(), result)
+	# HitSounds routes the authoritative hit to attacker, victim and nearby
+	# listeners once; a shooter's trace must not play another copy here.
+	BulletImpacts.mark_in(get_tree(), result, shot.direction, shot.timestamp_usec)
 
 
 ## Dead: the arms and the body you look down at gone until the respawn,

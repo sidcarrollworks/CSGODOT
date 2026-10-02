@@ -26,12 +26,12 @@ CS2 defusal maps.
 | **The match** | CS2's competitive rules: warmup, freeze time, rounds, side swap, overtime. Money and CS2's buy menu, the bomb (plant and defuse), and all six grenades, smoke included. Five a side, with bots filling every place but yours. |
 | **Inventory** | Weapon slots, last-weapon switching and mouse-wheel cycling. Physical dropped items, walking pickups, and E to swap the gun in a slot or take the bomb from a teammate bot. The buy menu marks owned and unavailable items, refunds purchases, and supports Ctrl-click to buy and throw. |
 | **Bots** | The same simulation as you, driven by commands instead of keys. They buy, follow the loaded map's nav mesh to the bomb sites, jump and crouch along the route, make way for teammates, shoot with each gun's spread and recoil, and respect smokes and flashes. |
-| **Map and players** | The map's baked lighting, sun shadows, light probes, reflections and colour grade. First-person arms and guns on CS2's clips, your body when looking down and its full shadow, feet fitted to the ground and hands to the gun, and ragdolls on death. Shots leave muzzle flashes, tracers and bullet holes. |
+| **Map and players** | The map's baked lighting, sun shadows, light probes, reflections and colour grade. First-person arms and guns on CS2's clips, your body when looking down and its full shadow, feet fitted to the ground and hands to the gun, and ragdolls on death. Shots leave muzzle flashes, tracers, material-specific bullet impacts and blood spray. Body hits leave bone-following wounds and play additive body/head flinches. |
 | **HUD** | Health, armour and ammo, money, team cards and the round clock, weapon selection and use prompts, damage directions, a kill feed with assists and kill marks, and round win panels with the MVP and a fun fact. Dead players can spectate teammates. |
-| **Sound** | Weapon shots, reloads, near-empty and dry-fire clicks, footsteps by surface, grenade and bomb sounds, flash ringing and muffling, the announcer, round countdowns and music cues. |
+| **Sound** | Weapon shots, reloads, near-empty and dry-fire clicks, body/head/armour hit feedback for attackers, victims and onlookers, footsteps by surface, grenade and bomb sounds, flash ringing and muffling, the announcer, round countdowns and music cues. |
 
 **Not yet:** Zeus attacks, burst-mode and silencer switching,
-blood impacts, full grenade effects and CS2-matched grenade lineups, radar
+full grenade effects and CS2-matched grenade lineups, radar
 and scoreboard, bots that play the objectives as a team, multiplayer, and
 full main and settings menus.
 [`reference/roadmap.md`](reference/roadmap.md) has everything left, in order.

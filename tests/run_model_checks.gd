@@ -811,23 +811,25 @@ func _test_sound_sets() -> void:
 			and absf(WeaponSounds.curve_share(WeaponSounds.BODY_CURVE, 543.65) - 0.6074) < 0.001,
 		"a hit farther off is softer, by the event's own curve, and never silent"
 	)
-	# What everyone else hears of a hit (HitSounds): CS2's victim and
-	# onlooker events, by who is listening.
+	# The hit's recipient selects CS2's own complete event.
 	var as_victim := HitSounds.for_hit({"userid": 1, "attacker": 2, "hitgroup": DamageInfo.HITGROUP_HEAD, "dmg_armor": 5, "health": 40}, 1)
 	var as_shooter := HitSounds.for_hit({"userid": 1, "attacker": 2, "hitgroup": DamageInfo.HITGROUP_CHEST, "health": 40}, 2)
 	var near := HitSounds.for_hit({"userid": 1, "attacker": 2, "hitgroup": DamageInfo.HITGROUP_CHEST, "health": 0}, 3)
 	var burnt := HitSounds.for_hit({"userid": 1, "attacker": 2, "weapon": "weapon_molotov", "health": 40}, 3)
 	var knifed := HitSounds.for_hit({"userid": 1, "attacker": 2, "weapon": "weapon_knife", "hitgroup": DamageInfo.HITGROUP_HEAD, "health": 40}, 3)
 	_check(
-		as_victim.get("flat", false) and as_victim.get("layers") == HitSounds.EVENTS[&"DamageHeadShotArmor"]["victim"]
-			and as_shooter.is_empty() and not near.get("flat", true) and near.get("layers") == HitSounds.EVENTS[&"DeathBody"]["onlooker"]
-			and burnt.is_empty() and knifed.get("layers") == HitSounds.EVENTS[&"DamageBody"]["onlooker"],
-		"the one hit hears the victim's sound flat, those near the onlookers' from the body, the shooter neither (their own feedback), fire none, a knife a body hit"
+		as_victim.get("flat", false) and as_victim.get("event") == "Player.DamageHeadShotArmor.Victim"
+			and as_shooter.get("event") == "Player.DamageBody.AttackerFeedback"
+			and not near.get("flat", true) and near.get("event") == "Player.DeathBody.Onlooker"
+			and burnt.is_empty() and knifed.get("event") == "Player.DamageBody.Onlooker",
+		"hit feedback selects victim, attacker and onlooker separately; fire plays its burn, a knife a body hit"
 	)
+	var groan := SoundEvents.find(HitSounds.DEATH_EVENT)
+	var helmeted := SoundEvents.find("Player.DeathHeadShotArmor.Onlooker")
 	_check(
-		HitSounds.DEATH[0][0] == HitSounds.GROAN and is_equal_approx(HitSounds.DEATH[0][1], 0.5)
-			and WeaponSounds.curve_share(HitSounds.DEATH[0][4], 1400.0) == 0.0
-			and HitSounds.EVENTS[&"DeathHeadShotArmor"]["onlooker"][2][0] == HitSounds.DINK,
+		groan.files.size() == 6 and is_equal_approx(groan.volume, 0.5)
+			and groan.gain(1400.0) == 0.0
+			and "Player.DeathHeadShot.Dink" in helmeted.children,
 		"a death is CS2's groan (death1 to 6, 0.5, silent at 1400), and a helmeted kill's dink carries to those near"
 	)
 	if not SoundBank.available():
@@ -985,6 +987,7 @@ func _test_bullet_impacts() -> void:
 		print("decals not extracted; skipping the holes (scripts/extract_assets.sh sounds)")
 		return
 	impacts.mark(result)
+	impacts._process(0.0)
 	var decals := impacts.find_children("*", "Decal", false, false)
 	var hole := decals[0] as Decal if decals.size() == 1 else null
 	_check(
@@ -994,22 +997,24 @@ func _test_bullet_impacts() -> void:
 		"and gets a hole there, the game's colour and normal, facing out of the surface, printed on the world and not on people"
 	)
 	if hole != null:
-		# The box reaches 4 units in front of the surface and 8 behind it.
+		# Authored depth variance keeps the front at the material's offset.
 		var along := (result.position - hole.global_position).dot(result.normal)
 		_check(
-			is_equal_approx(hole.size.y, BulletImpacts.DEFAULT_DEPTH) and absf(along - 2.0) < 0.01
+			hole.size.y >= 11.5 and hole.size.y <= 12.5 and absf(along - (hole.size.y * 0.5 + BulletImpacts.DEFAULT_DEPTH_OFFSET)) < 0.01
 				and hole.size.x >= 2.0 and hole.size.x <= 10.0 and hole.upper_fade == 0.0 and hole.lower_fade == 0.0,
-			"projected through a box 12 deep from 4 in front of the surface, a few inches across (%.1f), unfaded" % hole.size.x
+			"projected at the authored depth and variance from 4 in front of the surface, a few inches across (%.1f), unfaded" % hole.size.x
 		)
 	var sky := Hitscan.Result.new()
 	sky.hit = true
 	sky.surface = "physics_sky"
 	sky.normal = Vector3.DOWN
 	impacts.mark(sky)
+	impacts._process(0.0)
 	_check(impacts.holes == 1, "a round into the sky leaves no hole")
 	for i in 3:
 		shot = weapon.fire((i + 1) * 200_000, 0.0, origin, angles.x + i, angles.y, Weapon.ShooterState.new(0.0, true, false))
 		impacts.mark(Hitscan.trace(space, shot, data))
+	impacts._process(0.0)
 	_check(
 		impacts.holes == 4 and impacts.find_children("*", "Decal", false, false).size() == 2,
 		"past the limit the oldest holes are reused (%d holes, %d decals)" % [impacts.holes, impacts.find_children("*", "Decal", false, false).size()]
@@ -1018,6 +1023,7 @@ func _test_bullet_impacts() -> void:
 	person.hit = true
 	person.hitbox = _bot.hitboxes.hitboxes[0]
 	impacts.mark(person)
+	impacts._process(0.0)
 	_check(impacts.holes == 4, "a round into a person leaves no hole")
 
 
@@ -1228,10 +1234,12 @@ func _test_bot_sounds() -> void:
 	hits.watch(hit_game, 7)
 	hit_game.events.send(&"player_hurt", {"userid": 7, "attacker": 3, "hitgroup": DamageInfo.HITGROUP_HEAD, "dmg_armor": 3, "health": 50})
 	hit_game.events.flush()
-	var before := (hits.get_child(0) as AudioStreamPlayer).playing
+	var before := hits.events.voices().size()
 	hits._process(0.0)
+	var victim_sounds := hits.events.voices().filter(func(v: Dictionary) -> bool: return v["event"] == "Player.DamageHeadShotArmor.Victim")
 	_check(
-		missing_hits.is_empty() and not before and (hits.get_child(0) as AudioStreamPlayer).playing,
+		missing_hits.is_empty() and before == 0 and victim_sounds.size() == 1 and victim_sounds[0]["has_player"]
+			and victim_sounds[0]["player"] is AudioStreamPlayer and victim_sounds[0]["bus"] == &"PlayerVictim",
 		"hit, you hear CS2's own victim sound, flat, on the frame after (files missing: %s)" % ", ".join(missing_hits)
 	)
 	hits.free()

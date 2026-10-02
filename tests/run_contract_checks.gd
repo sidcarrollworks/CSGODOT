@@ -361,7 +361,8 @@ func _test_the_dead_take_nothing() -> void:
 
 
 ## A round goes through the record: fire_as knows who fired it, and says so
-## in player_hurt, and says where it landed in bullet_impact. fire_at is the
+## in player_hurt, and says where it landed in bullet_impact and on the body
+## in bullet_damage. fire_at is the
 ## same round from nobody.
 func _test_a_round_carries_its_shooter() -> void:
 	var victim := await _new_target(Vector3(0.0, 0.0, -600.0), "CT", 100.0, true)
@@ -379,8 +380,25 @@ func _test_a_round_carries_its_shooter() -> void:
 	events.flush()
 	_check(result.hitbox != null and result.damage_info != null, "the round hits the chest, with a record")
 	_check_equal(got.map(func(e: GameEvent) -> String: return String(e.name)),
-		["bullet_impact", "player_hurt"], "where it landed, then who it hurt")
-	if got.size() == 2:
+		["bullet_impact", "player_hurt", "bullet_damage"], "where it landed, then who it hurt, then CS2's bullet_damage")
+	if got.size() == 3:
+		var damage := got[2].fields
+		_check(damage.victim == 4 and damage.attacker == 1 and damage.num_penetrations == 0,
+			"bullet_damage: the shooter's round into the victim, through no wall")
+		_check(Vector3(damage.x, damage.y, damage.z).is_equal_approx(result.position)
+			and Vector3(damage.damage_dir_x, damage.damage_dir_y, damage.damage_dir_z).is_equal_approx(shot.direction),
+			"where on the body, and which way it was going")
+		_check_near(damage.distance, shot.origin.distance_to(result.position), "and how far it came")
+		_check_equal(got[2].at_usec, 5 * SECOND, "at the round's own instant")
+		_check_equal(damage.zone, String(result.damage_info.zone), "the draw snapshot identifies the struck body zone")
+		_check_equal(damage.hitgroup, result.damage_info.hitgroup, "the draw snapshot preserves the hitgroup")
+		_check_near(damage.dmg_health, result.damage_info.health_taken, "health taken is this pellet's result")
+		_check_near(damage.dmg_armor, result.damage_info.armor_taken, "armor taken is this pellet's result")
+		_check_near(damage.health, result.damage_info.health_left, "remaining health is captured before another pellet")
+		_check_equal(damage.killed, result.damage_info.killed, "flinches use the actual death outcome, including immortal range targets")
+		_check_near(damage.armor, result.damage_info.armor_left, "remaining armor is captured before another pellet")
+		_check(Vector3(damage.normal_x, damage.normal_y, damage.normal_z).is_equal_approx(result.normal), "body wounds preserve the actual hit normal")
+	if got.size() >= 2:
 		_check(got[0].fields.userid == 1 and is_equal_approx(got[0].fields.z, result.position.z),
 			"bullet_impact is the shooter's, where the round stopped")
 		_check_equal(got[0].at_usec, 5 * SECOND, "at the round's own instant")

@@ -67,6 +67,19 @@ const SCHEMA := {
 	&"weapon_reload": {"userid": NOBODY},
 	&"weapon_zoom": {"userid": NOBODY},
 	&"bullet_impact": {"userid": NOBODY, "x": 0.0, "y": 0.0, "z": 0.0},
+	# bullet_damage's direction/penetration fields follow CS2's event schema.
+	# Position, normal and the damage result below are project extensions,
+	# captured on this hit so effects never read a later pellet's target state.
+	&"bullet_damage": {
+		"victim": NOBODY, "attacker": NOBODY, "distance": 0.0,
+		"damage_dir_x": 0.0, "damage_dir_y": 0.0, "damage_dir_z": 0.0,
+		"num_penetrations": 0, "no_scope": false, "in_air": false,
+		"x": 0.0, "y": 0.0, "z": 0.0,
+		"normal_x": 0.0, "normal_y": 0.0, "normal_z": 0.0,
+		"zone": "", "side": "", "hitgroup": 0, "bone": "",
+		"dmg_health": 0.0, "dmg_armor": 0.0, "health": 0.0, "armor": 0.0,
+		"pellet": 0, "killed": false,
+	},
 	# CS2's CMsgTEFireBullets (its game event 452), the one message other
 	# clients draw a shot from, its tracer and impacts
 	# (reference/research/audio-engine.md 10). One a round, sent between its

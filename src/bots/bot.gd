@@ -828,7 +828,7 @@ func is_blind() -> bool:
 
 
 func _on_shot_traced(shot: Weapon.Shot, result: Hitscan.Result) -> void:
-	BulletImpacts.mark_in(get_tree(), result)
+	BulletImpacts.mark_in(get_tree(), result, shot.direction, shot.timestamp_usec)
 	# One kick of the body a trigger pull, however many pellets it put
 	# out. (The one report a pull comes from its weapon_fire.)
 	if shot.pellet > 0:

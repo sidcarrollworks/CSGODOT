@@ -30,12 +30,13 @@
 #   scripts/extract_assets.sh equipment       # the bomb and kit, grenades, default knives, Zeus: models and animations
 #   scripts/extract_assets.sh hud             # the scope overlay, the HUD's icons and font
 #   scripts/extract_assets.sh effects         # the tracers' and muzzle flashes' textures
+#   scripts/extract_assets.sh impacts         # current blood/helmet/world impact particles, decals, body masks and puff meshes
 #   scripts/extract_assets.sh characters      # two player models and their locomotion
 #   scripts/extract_assets.sh animgraphs      # the animation graphs that drive the clips (seconds)
 #   scripts/extract_assets.sh character-masks # just the player models' cloth masks and eye textures (seconds; the characters step takes them too)
 #   scripts/extract_assets.sh character-animations # just the player models' clips and skeletons (no models or materials)
 #   scripts/extract_assets.sh sounds          # the guns' and the equipment's sounds, footsteps by surface, hits
-#   scripts/extract_assets.sh all             # map + weapons + equipment + hud + effects + characters + animgraphs + sounds
+#   scripts/extract_assets.sh all             # map + weapons + equipment + hud + effects + impacts + characters + animgraphs + sounds
 #
 # The steps for one map (list-map, map, physics, entities, nav, volumes,
 # radar, layers, sky, skybox, lightmaps, visibility, postprocessing, and all) take the map's name after
@@ -180,7 +181,7 @@ usage() {
 COMMAND="${1:-}"
 case "$COMMAND" in
 	list-map|map|physics|entities|nav|volumes|radar|layers|sky|skybox|lightmaps|visibility|postprocessing|all|paths) ;;
-	list-weapons|surfaces|weapons|weapon-animations|weapon-data|weapon-physics|equipment|hud|effects|characters|character-masks|character-animations|animgraphs|sounds)
+	list-weapons|surfaces|weapons|weapon-animations|weapon-data|weapon-physics|equipment|hud|effects|impacts|characters|character-masks|character-animations|animgraphs|sounds)
 		# Not a map's own step: a map name here would be ignored, which is
 		# worse than being told.
 		if [[ $# -gt 1 ]]; then
@@ -329,18 +330,23 @@ find_map_resource() {
 ## Windows caps a command line at 32,767 characters, and a few hundred paths
 ## overrun it ("Argument list too long", and nothing extracted).
 s2v_batched() {
-	local files="$1"
-	shift
+	s2v_archive_batched "$PAK_VPK" "$@"
+}
+
+## The same bounded batches for the Core archive's shared particle textures.
+s2v_archive_batched() {
+	local archive="$1" files="$2"
+	shift 2
 	local batch="" path
 	while IFS= read -r path; do
 		if [[ -n "$batch" ]] && (( ${#batch} + ${#path} > 20000 )); then
-			"$S2V_BIN" -i "$PAK_VPK" -f "$batch" "$@"
+			"$S2V_BIN" -i "$archive" -f "$batch" "$@"
 			batch=""
 		fi
 		batch="${batch:+$batch,}$path"
 	done < <(tr ',' '\n' <<<"$files")
 	if [[ -n "$batch" ]]; then
-		"$S2V_BIN" -i "$PAK_VPK" -f "$batch" "$@"
+		"$S2V_BIN" -i "$archive" -f "$batch" "$@"
 	fi
 }
 
@@ -973,6 +979,80 @@ extract_effects() {
 		| grep -E '^(effect textures|  )' || true
 }
 
+## Current impact graphs and their own texture/material dependencies. DATA
+## decoding does not reconstruct shaders, so CS2's V72 material compiler does
+## not block this extraction. Raw frames/definitions stay under .gdignore;
+## only whole sheets and the two small puff/fleck models are imported. This
+## stage never re-exports the map, weapons or character materials.
+extract_impacts() {
+	require_file "$PAK_VPK"
+	local core="$CS2_DIR/game/core/pak01_dir.vpk"
+	require_file "$core"
+	require_file "$CSGO_DIR/steam.inf"
+	local godot
+	godot="$(find_godot)"
+	if [[ -z "$godot" ]]; then
+		echo "The impacts step needs Godot to generate dependency tables and assemble sprite sheets." >&2
+		return 1
+	fi
+	local dest="$OUT_DIR/effects/impacts" raw="$OUT_DIR/effects/impacts/raw"
+	local log="$PROJECT_DIR/.godot/impact_extract.log"
+	mkdir -p "$raw" "$PROJECT_DIR/.godot"
+	touch "$raw/.gdignore"
+	cp "$CSGO_DIR/steam.inf" "$raw/steam.inf"
+	echo "Extracting current blood and world impact definitions"
+	echo "        -> $raw"
+	"$S2V_BIN" -i "$PAK_VPK" \
+		-f 'particles/blood_impact/,particles/impact_fx/,particles/water_impact/,scripts/decalgroups.vdata_c,scripts/surfaceproperties_impact_effects.txt' \
+		-o "$raw" -d > "$log" 2>&1
+	impact_godot "$godot" scripts/impact_effect_tables.gd "$raw" manifest
+	local materials textures models shared
+	materials="$(tr -d '\r' < "$raw/materials.txt" | paste -sd, -)"
+	require_filter "$materials" "impact materials"
+	s2v_batched "$materials" -b DATA > "$raw/materials_data.txt" 2>> "$log"
+	# The second pass resolves material slots (color, normal, AO, shader masks)
+	# into the texture manifest without replacing generated reference/code.
+	impact_godot "$godot" scripts/impact_effect_tables.gd "$raw" dependencies
+	textures="$(tr -d '\r' < "$raw/textures.txt" | paste -sd, -)"
+	models="$(tr -d '\r' < "$raw/models.txt" | paste -sd, -)"
+	shared="$(tr -d '\r' < "$raw/core_textures.txt" | paste -sd, -)"
+	require_filter "$textures" "impact textures"
+	require_filter "$models" "impact models"
+	require_filter "$shared" "Core impact textures"
+	echo "Extracting impact sprite sheets, projected decal textures and body masks"
+	s2v_batched "$textures" -o "$raw" -d >> "$log" 2>&1
+	s2v_batched "$textures" -b DATA > "$raw/textures_data.txt" 2>> "$log"
+	s2v_archive_batched "$core" "$shared" -o "$raw" -d >> "$log" 2>&1
+	s2v_archive_batched "$core" "$shared" -b DATA >> "$raw/textures_data.txt" 2>> "$log"
+	# DATA is freshly truncated above; old PNG/sheet files cannot mask a
+	# missing resource when Source 2 Viewer reports it with exit status zero.
+	bash "$PROJECT_DIR/scripts/check_impact_texture_data.sh" "$raw/textures.txt" "$raw/textures_data.txt"
+	# Model export deliberately omits material reconstruction. Runtime uses
+	# the decoded material DATA and the extracted textures, including V72.
+	s2v_batched "$models" -o "$dest" -d --gltf_export_format glb >> "$log" 2>&1
+	impact_godot "$godot" scripts/effect_textures.gd "$raw"
+	# Replace tables only after coverage and frame reconstruction succeeded.
+	impact_godot "$godot" scripts/impact_effect_tables.gd "$raw"
+	echo "        whole textures -> $OUT_DIR/effects/materials; models -> $dest/models"
+}
+
+## Parse errors in a --script run have returned exit zero in some Godot
+## releases. Treat explicit engine/script errors as extraction failure too.
+impact_godot() {
+	local godot="$1" script="$2"
+	shift 2
+	local log="$PROJECT_DIR/.godot/impact_generate.log"
+	if ! "$godot" --headless --path "$PROJECT_DIR" --script "$script" -- "$@" > "$log" 2>&1; then
+		cat "$log" >&2
+		return 1
+	fi
+	if grep -Eq '^(SCRIPT ERROR|ERROR:)' "$log"; then
+		cat "$log" >&2
+		return 1
+	fi
+	grep -E '^(impact effects|effect textures|  )' "$log" || true
+}
+
 ## The game's own weapon tuning, scripts/weapons.vdata_c, decoded to KV3 text
 ## (this Source 2 Viewer reads it; older ones did not). Every gun's damage,
 ## fire rate, spread and inaccuracy, recovery, recoil, zoom levels, deploy
@@ -1178,7 +1258,7 @@ extract_characters() {
 }
 
 ## The characters' clips on their own: the rifle set, the shared deaths and
-## jump additives, and the skeletons (extract_characters runs it after the
+## jump/flinch additives, and the skeletons (extract_characters runs it after the
 ## models). Clips carry no materials and need none of CS2's shaders, so this
 ## step can run while the models cannot be re-exported whole (CS2's VCS 72
 ## shaders, 2026-09-23). listing is the archive's, if already read.
@@ -1196,9 +1276,9 @@ extract_character_animations() {
 	# crouch, in the eight directions, plus in-air, the jump's take-off in
 	# each direction and shoot), each weapon's own draw, reload and shoot,
 	# the shared deaths by where the last round landed, and the shared jump
-	# additives, CS2's BodyAdditives layer. (The flinches beside them are additive layers, not
-	# poses, and wait for an animation tree to add them.)
-	clips="$(grep -E '^animation/(anims/viewmodel/rifle/(_default_rifle|rifle_ak)/|anims/world/rifle/(_default_rifle/(idle|run|walk|crouch|inair|jump|shoot)_[a-z_]*|rifle_ak/|rifle_m4a1_silencer/)|anims/world/shared/(death_(chest|gut|rknee|rshoulder)|jump_additive_)[a-z_]*\.vnmclip_c$|skeletons/characters/(viewmodel|worldmodel)\.vnmskel_c$|skeletons/weapons/(ak47|m4a1)[a-z_]*\.vnmskel_c$)' <<<"$listing" \
+	# additives and bullet flinches, CS2's BodyAdditives layer. Flinch clips
+	# include the unsuffixed rifle, pistol and knife sets (42 current clips).
+	clips="$(grep -E '^animation/(anims/viewmodel/rifle/(_default_rifle|rifle_ak)/|anims/world/rifle/(_default_rifle/(idle|run|walk|crouch|inair|jump|shoot)_[a-z_]*|rifle_ak/|rifle_m4a1_silencer/)|anims/world/shared/(death_(chest|gut|rknee|rshoulder)|jump_additive_|flinch_(arm|chest|head|leg|stomach))[a-z_]*\.vnmclip_c$|skeletons/characters/(viewmodel|worldmodel)\.vnmskel_c$|skeletons/weapons/(ak47|m4a1)[a-z_]*\.vnmskel_c$)' <<<"$listing" \
 		| paste -sd, - || true)"
 	require_filter "$clips" "the animations"
 	echo
@@ -1317,6 +1397,7 @@ case "$COMMAND" in
 	equipment) extract_equipment; finish ;;
 	hud) extract_hud; finish ;;
 	effects) extract_effects; finish ;;
+	impacts) extract_impacts; finish ;;
 	sounds) extract_sounds; finish ;;
-	all) extract_map; echo; extract_weapons; echo; extract_equipment; echo; extract_hud; echo; extract_effects; echo; extract_characters; echo; extract_animgraphs; echo; extract_sounds; finish ;;
+	all) extract_map; echo; extract_weapons; echo; extract_equipment; echo; extract_hud; echo; extract_effects; echo; extract_impacts; echo; extract_characters; echo; extract_animgraphs; echo; extract_sounds; finish ;;
 esac
