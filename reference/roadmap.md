@@ -33,187 +33,123 @@ Updated 2026-09-24 later: game modes apart from maps (item 24a, `reference/syste
 Updated 2026-09-25: Sid's dust2 playtest, 22 issues with plans ("Playtest of 2026-09-25", `reference/playtest-2026-09-25.md`).
 Updated 2026-09-30: grenade flight and lineups recorded for later (item 20a, Sid).
 
+## Current status, 2026-10-02
+
+Checked against merged `main` through PR #172. The October playtest PRs
+are all merged; completion here means the described implementation exists,
+while measurements and remaining parity work stay listed below.
+
+| PR | Merged change |
+|---|---|
+| #159 | Stable freed-ragdoll regression check |
+| #160 | Smooth jump transitions, camera/weapon dip and softer landing, accepted in Sid's competitive playtest |
+| #161 | Dry-fire trigger clicks |
+| #162 | Final standing/crouching spray recovery times |
+| #163 | Ground-item E reach and gun/grenade/bomb pickup/swap prompts |
+| #164 | Stable crouch speed and accuracy while turning |
+| #165 | Usable knife, airborne attacks and corrected third-person clips |
+| #166 | Round-end banner spacing, two title layers, slower background growth and narrower side fade |
+| #167 | Nearby skybox terrain clipping and F11 rendering comparisons |
+| #168 | Planting automatically crouches the planter |
+| #169 | AUG/SG 553 framing, clear scoped lens, outside-lens blur and black lowered lens |
+| #170 | Per-shell shotgun reloads and interruption by firing |
+| #171 | Avoid repeated skeleton fitting for bodies that do not need it |
+| #172 | Extracted current hit effects, contact-point mist, wounds, hit sounds and additive flinches |
+| #173 | README gameplay/setup refresh |
+
 ## Part 1: what exists
 
-### Movement
-- Source SDK 2013's movement ported line by line: acceleration, air
-  acceleration, friction, collide-and-slide, step move, at a fixed 64 Hz, as
-  CS2's, in Source units (`src/movement/`). It was 128 until 2026-09-23, when
-  Sid chose 64 for what a server costs; what is drawn is drawn between ticks.
-- Every gap the Source 2 research guide found is closed: `StayOnGround`, the
-  quadrant ground trace, `CheckVelocity` (3500), `NON_JUMP_VELOCITY` 140, the
-  splined duck eye offset, the ground-normal wish projection behind a flag, the
-  trace push-out set to zero, `cs2_deadstrafe` renamed `source_deadstrafe` with
-  its citation.
-- Sub-tick input: clicks and jumps carry their timestamp, the shot is traced
-  from the interpolated position and the look angles at that instant. Since
-  PR #24 this works in the running game, not only in the tests.
+### Movement and simulation
 
-### Simulation and view (PR #24)
-- Every player, you and the bots, is one simulation (`PlayerSim`) run a tick
-  at a time from CS2-shaped input commands (`src/sim/user_cmd.gd`), on
-  simulation time rather than the wall clock (`src/sim/sim_clock.gd`).
-- Your keys become one command a tick (`PlayerInput.build_command`); a bot's
-  brain writes its own. What you see and hear is a view that only reads the
-  simulation (`src/player/player_view.gd`).
-- Scroll up jumps, noclip on V.
-- The match is simulation too (`src/match/match_state.gd`, item 11): it
-  moves on with the tick and changes the game only through the players.
-- One world runs the tick (`src/sim/game_world.gd`, 2026-09-23): every
-  player's command in the order they joined, then the match. Nothing runs
-  itself, and its tick count is simulation time. Everyone's command is
-  asked for before anyone runs, and the bots think theirs out on worker
-  threads (2026-09-28).
-- A movement test course: strafe lane, stairs, ramps at 20/35/44/50 degrees,
-  surf lane, jump gauges.
+- Source movement in inches at 64 Hz: acceleration, air strafing,
+  collide-and-slide, step-up, crouch jumps and bunny hops. Crouch speed
+  stays at the held item's crouched top while turning.
+- Sub-tick button edges and aim angles travel in `UserCmd`; `GameWorld`
+  gathers all commands first, lets bots think on worker threads, runs the
+  players, match and shared systems, then delivers schema-checked events.
+- Box3D owns the game's collision world through the inch/metre bridge.
+  The optional native movement step is held bit-for-bit to the script;
+  Jolt is the explicit legacy comparison and standalone-fixture backend.
+- Draw interpolation, camera/weapon jump response and prepared animation
+  layers run outside the simulation. Skeleton fitting is skipped when it
+  would repeat work; tick-start fits preserve the current hitbox contract.
 
-### Shooting
-- AK-47 and M4A1-S with the real spray patterns read off CS2 plots (30 and 25
-  rounds), every number from CS2's own weapons.vdata through `WeaponVData`
-  (PR #28; the sheet, PR #23, gives only landing and ladder), inaccuracy by
-  movement state with counter-strafing, damage falloff, armour.
-- Spread is seeded per round by the moment it was fired, so a first shot at
-  a run lands anywhere in the running cone (PR #24; before, every first round
-  landed on one spot 0.9 degrees off the aim, and Sid saw running first
-  shots as perfectly accurate).
-- Recoil is view punch only and the bullets follow the pattern alone. Four
-  springs, tuned against Sid's playtests and signed off as good enough (PR #9).
-  Animation and accuracy-reset times measured in CS2.
-- The firing clip replays on every round; viewmodel bob, sway and lag;
-  your own body and shadow when you look down.
-- Tracers and muzzle flashes (2026-09-24), CS2's own: every gun's tracer at
-  its effect's speed, length and colour, from the drawn muzzle, every round
-  but a silenced one's; every gun's flash in first person and third, its
-  flames, beams, sparks, smoke and light (`src/effects/`,
-  `reference/weapons/effects.md`).
-- Test range: a wall ruled in degrees at 496 units, spray export to CSV, and
-  a dummy wearing CS2's own hitboxes with a hit log, damage numbers, armour and
-  distance switches, a never-die mode and a ragdoll death (PR #20).
+### Shooting and inventory
 
-### Map and art
-- dust2 extracted from Sid's CS2 install and imported: visible world, the
-  game's own collision hull, player clips (which stop players and not rounds,
-  PR #21), entity lump, blend layers, sky, 3D skybox.
-- Lighting from the map's own numbers: sun, fog, exposure, the baked
-  lightmaps for bounce light, light probes for props, players and arms.
-  The 3D skybox lit by its own lightmaps, the props with a decal UV set
-  (the kasbah towers, arches, crates) by the map's through their third
-  UV set, and the props' decals and glow; and the two lamps down lower
-  tunnels, which CS2 lights as it draws rather than bakes, lit the same
-  way (`MapLighting.add_lamps`). After Sid found black skybox buildings,
-  orange blocks on the towers and a dark lower tunnel (2026-09-24,
-  `reference/asset-pipeline.md`).
-- What a frame costs to draw, measured on Sid's machine (2026-09-24,
-  `scripts/profile_render.gd`, `reference/rendering.md`): the sun's live
-  shadows are most of it. Occlusion culling from the collision hull and a
-  skybox the depth test can hide went in with it (PR #78).
-- What is drawn is what CS2 draws from where you stand: the map's own
-  visibility (`world_visibility.vvis_c`, `WorldVisibility`), read after
-  Source 2 Viewer, culls the world meshes the camera's cluster cannot see,
-  keeping their shadows. Sid found a kasbah tower at B drawn over the 3D
-  skybox's dome from T spawn, which CS2 does not draw there (2026-09-24).
-  With it, the rest of what he found then: dust2's windows, black where
-  the probes were read at the middle of a mesh merged from all over the
-  map, are lit from their own vertices; and the skybox's palm, bush, olive
-  and antenna cards, exported without their alpha, get it back at
-  extraction (`scripts/export_alpha.gd`).
-- Viewmodel arms and weapons at CS2's `viewmodel_fov`; third-person agents
-  (Phoenix and SAS) on the locomotion rig, moved by CS2's own blend spaces
-  (runs at 225, walks at 136, crouching at 96, kept in step) in an animation
-  tree, with the air blended the same way.
-- Every gun extracted (PR #28): the 34 guns' models, first- and third-person
-  animations and sounds, the scope overlay and the equipment icons, listed in
-  `reference/weapons/`. Only the AK-47 and M4A1-S are in your hands so far;
-  the range's shooter also carries an MP9.
-- dust2's own nav mesh (PR #32), read by `SourceNavMesh`: 2,242 areas and
-  their links, with paths between any two points. Bots walk it, the paths
-  pulled taut, jumping and crouching where it says (item 22).
-- dust2's buy zones, bomb sites and callout volumes (`BrushVolume`), its
-  radar (`MapOverview`) and its baked bomb damage file, extracted and read
-  (PR #34).
-- The equipment extracted: the bomb and the defuse kit, the six grenades,
-  the two default knives and the Zeus, with their animations and sounds,
-  listed with the game's numbers and their clips' timings in
-  `reference/weapons/equipment.md`. Each builds in first person; nothing
-  hands them to a player yet.
-- CS2's animation graphs (AnimGraph 2) read (`NmGraph`): the parameters the
-  game sets, the third-person graph's layers and state machines, the
-  locomotion's blend spaces with each clip's speed, and the first-person
-  gun's actions, in `reference/animgraph/`; `reference/animgraph2.md` says
-  what they are and what they mean here. The locomotion's blend spaces move
-  the third-person body (above); nothing else of them plays yet.
+- All 34 firearms build from CS2's vdata and the weapon registry. Spread,
+  seeded recoil, state-dependent inaccuracy and final recovery times,
+  tagging, armour and per-surface wall penetration are implemented.
+- AK/M4A1-S patterns are measured; 15 more use community patterns. Guns
+  without a pattern retain provisional view kick, not a measured bullet
+  path. Spray scale, random-recoil paths and the R8 delay remain open.
+- Sniper zoom, speed/accuracy and overlays work. AUG/SG 553 use raised
+  sights with a clear lens, black lowered lens and a blurred outside scene;
+  exact CS2 focus/dirt and inaccuracy display still need work.
+- Nova, XM1014 and Sawed-Off reload individual shells from clip events;
+  firing can stop the reload after a shell is available.
+- Inventory slots, Q, wheel-down cycling, G drops, walking pickups and E
+  pickup/swap work. Dropped items use extracted physical hulls. The HUD
+  names the eligible ground gun, grenade or bomb using the same use search.
+- The knife slashes/stabs in the air and on the ground, with backstabs,
+  armour, kill credit, clips and sounds. Its measured CS2 tuning and Zeus
+  attacks remain open.
 
-### Combat
-- Bots and the player share one damage path (`Hitscan.fire_at` then
-  `HitTarget.apply_damage`).
-- Bots and the player wear CS2's 19 hitbox capsules on their bones; bullets
-  pass the hull and only hitboxes count. The player's are on a third-person
-  body the simulation poses each tick and nobody sees (PR #27).
-- Being hit tags you (the weapon's tagging power, from the game's own
-  weapons.vdata through `WeaponVData`, two CS2 ticks after the hit, back
-  over 1.5 s) and throws your aim, and your next rounds with it
-  (PR #27). Bots too.
-- Every player, you included, dies into a ragdoll built from their
-  capsules, with hinged knees and elbows and friction in every joint (PR
-  #30). While you are dead the camera leaves your head and looks at your
-  body. On the range and in warmup you are back at spawn after 3 s, a bot
-  after 5 s; in a round nobody comes back, and after 2 s you watch a
-  living teammate (item 11).
-- Friendly fire in a match: a teammate's round does 33% (item 11). Every
-  player's hull is solid to every other's, teammates included; a dead
-  one's is not.
-- Bullet holes from the game's own decal materials, per surface, with impact
-  sounds.
-- Wall penetration (item 7, PR #31): a round goes through thin walls by what they
-  are made of, with CS2's own per-surface numbers, and loses damage doing it.
-  A hole on both sides of every wall.
+### Map, players and combat
 
-### Bots
-- dust2 fills both sides to five with bots, on the player's own body and
-  movement solver (item 11).
-- They walk their side's spawn points in a loop, see the player (3000 units,
-  75-degree half cone, line of sight, 0.5 s reaction), turn, and fire bursts
-  through the same simulation and trigger path as the player, with 1.2
-  degrees of extra aim error. They target only the other side.
-- Their bodies hold, fire and reload their guns with the guns' own
-  third-person clips, over the upper body (item 6). On dust2 a body holds
-  whatever is in its hand, its model and its clips changing with it, and
-  moves on CS2's locomotion for it: the pistol's, the knife's (knives and
-  grenades) or the rifle's.
-- On dust2 they spawn as you do, with the knife and their side's pistol,
-  and buy in freeze time as CS2's classic bot does (`BotBuying`: nothing
-  below $2,000, a primary by one of `botprofile.db`'s weapon templates,
-  armour, a kit for a CT, a third of the time a grenade), then take their
-  best gun out. They tap a pistol every half second rather than hold the
-  trigger (item 24).
+- dust2 and other extracted defusal maps supply their own collision,
+  entities, nav mesh, buy/bomb volumes, baked lighting, probes, reflections,
+  grade, visibility and skybox. Nearby skybox fragments are clipped; the
+  separate lower-mid occlusion flicker remains open.
+- Extracted agents, first-person arms and every carried item use CS2's
+  clips. Body variations follow the held weapon; feet, hands and twist
+  bones are fitted, the visible local torso folds away, and its full twin
+  casts the shadow. Ragdolls use extracted physics shapes where available.
+- Hitscan meets 19 bone-following capsules per extracted body, using the
+  shared `DamageInfo` path. These poses still follow drawn animation;
+  authoritative tick poses and history remain multiplayer work.
+- Tracers, muzzle flashes, weighted bullet-hole materials and representative
+  surface impact graphs are implemented. Blood uses current extracted
+  layers, shorter/denser mist at the pellet contact, parent-death ground
+  projections, bounded wall marks and bone-following wounds.
+- Surviving hits play independent additive body/head flinches from 42
+  rifle/pistol/knife clips. Full Source particle behavior, skin UV2 wounds
+  and ragdoll wound transfer remain documented approximations. Sustained
+  particle CPU cost is measured in
+  [the hit-effects report](research/hit-effects-performance-2026-10-02.md).
 
-### Sound
-- The game's own sounds: weapon shots, reload and draw (every gun's, from
-  the game's tables), the shooter's hit feedback as CS2's attacker feedback
-  events have it (the body's thud, kevlar, the headshot and the helmet's
-  dink, a kill's own; files, volumes, pitches and distance curves from
-  `game_sounds_player.vsndevts`), what the one hit and those near hear of
-  a hit and the death groan (`HitSounds`), footsteps and landings per
-  surface, impact sounds.
+### Match, bots, HUD and audio
 
-### HUD
-- In a match, the score, each side's players alive, the round's clock and
-  a line saying which part of the match it is; dead in a round, whose eyes
-  you are in (item 11).
-- Crosshair, health, armour, ammo, death countdown, the movement tuning
-  readout, and where you stand and look in the top left (PR #25, F3 hides
-  it), with the frame rate and the slowest frame of the last second under
-  it (`FrameMeter`, 2026-09-24; on the range and the movement course too).
-- A red arc round the crosshair on the side each hit came from (PR #27).
-- On the test range, a shooter that fires at you on B, with its weapon (U),
-  your armour (Y) and never-die (J) switched, a readout of your tag and
-  flinch, and a window on your own hitboxes (T) (PR #27).
+- Competitive is five a side with warmup, freeze, rounds, side swap and
+  overtime; Practice has no bots and unlimited warmup until F5. Any
+  extracted defusal map uses the shared mode.
+- Economy, buy zones/time, purchases/refunds, Ctrl-click buy-and-throw,
+  inventories, the bomb and six grenades are wired into the match.
+  Planting crouches the planter. Grenade effects and lineups remain partial.
+- Bots buy and hold equipment, follow nav routes to sites and back, make
+  way for teammates, shoot with weapon rules and respect smoke/flash.
+  Coordinated objective play remains open.
+- Health/armour/ammo, money, clock/team cards, bomb carrier, use prompts,
+  weapon selection, damage arcs, kill feed/icons, spectators and round-end
+  reports are implemented. Round banners use fixed text plus a slowly
+  growing clipped copy, with translucent blurred panels fading at the sides.
+  Radar, scoreboard, chat and the remaining HUD details are still open.
+- Weapon shots/reloads, dry-fire and low-ammo clicks, surface footsteps,
+  impacts, grenade/C4 sounds, flash ring/muffle, announcer and music cues
+  play. HitSounds selects attacker/victim/onlooker body/head/armour events
+  once; the older manual attacker feedback is no longer dispatched.
 
 ### Tooling
-- `scripts/extract_assets.sh` (map, physics, weapons, characters, sounds and
-  more, the nav mesh with `nav`), `inspect_assets`, and `run_tests.sh` with
-  eight headless test files (movement, map, dust2, model, weapon,
-  penetration, range, simulation): 622 checks pass without the assets.
+
+- Extraction includes current impact KV3/material DATA, checked texture
+  dependencies and sheet reconstruction, small impact models and additive
+  flinch clips. Valve assets remain ignored; generated tables are committed.
+- `scripts/run_tests.sh` discovers each `tests/run_*.gd`, checks native/script
+  equivalence and fails on script errors/timeouts. The October 2 local run
+  passed 7,060 checks in 75 files; asset/GPU checks also ran separately.
+  CI without assets and headless rendering skips are reported explicitly.
+- Render/frame/tick and hit-effects profilers record costs. The 6 ms maximum
+  frame-time target remains open; merged work is not a blanket performance
+  or exact-CS2-parity claim.
 
 ---
 
@@ -226,18 +162,17 @@ Items marked **(Sid)** need Sid's machine or a decision from him.
 
 Sid played dust2 and sent 23 issues. `reference/playtest-2026-09-25.md`
 has each one investigated: what Sid saw, the cause (verified or inferred),
-what already covers it, the plan, and its Remote and Local parts. Its top
-gives the order for cloud threads (which can run side by side and which
-touch the same files) and Sid's Local work batched into a few runs. Every
-issue splits: a Remote part a cloud thread can take now, then an
-extraction run, a look beside CS2 or the asset run of the checks. Mark an
+what already covers it, the plan, and its Remote and Local parts. Its current-status section distinguishes merged fixes from remaining
+comparisons; the original scheduling and extraction batches below it are
+historical. Each issue separates implementation from an extraction run,
+a look beside CS2 or the asset run of the checks. Mark an
 issue done here and on the page in the same pull request.
 
 | # | Issue | Remote | Local | With |
 |---|---|---|---|---|
 | 1 | A mode chosen at start: Competitive, or Practice with no bots | **Done** (2026-09-26, 24c): a picker, `--mode`, Practice as Competitive with no bots and a warmup that does not end | Try it in fullscreen | 24a, 24c, 26 |
 | 2 | Dropped guns sink into slopes, the magazine goes through the floor, they turn about the wrong point | **Done (#117):** a body on CS2's own hull (one convex hull a gun, mass 3 to 6, from the game's physics), swept against the floor; checks on a one-sided trimesh | `extract_assets.sh weapon-physics` and commit `physics.csv`; look on T spawn's ramp | 12 |
-| 3 | E picks up what you look at, swapping out what is in that slot | **Done:** E takes the item looked at in Source's use search (80 units across, CS2's `player_use_radius`; the aim on it far off, well off it up close) and in sight; a gun swaps with the one in its slot, thrown down as a drop; no room sends `item_pickup_failed`; near the bomb E is the bomb's (`use_claimed`), and a T's E takes the dropped bomb. The HUD names the ground gun, grenade or bomb E can take, using the same selection and eligibility; hides it when blocked, full, buying or dead | See in CS2 what E takes and from how far; playtest the pickup prompts | 12, after 2 |
+| 3 | E picks up what you look at, swapping out what is in that slot | **Done:** E takes the item looked at in Source's use search (80 units across, CS2's `player_use_radius`; the aim on it far off, well off it up close) and in sight; a gun swaps with the one in its slot, thrown down as a drop; no room sends `item_pickup_failed`; near the bomb E is the bomb's (`use_claimed`), and a T's E takes the dropped bomb. The HUD names the ground gun, grenade or bomb E can take, using the same selection and eligibility; hides it when blocked, full, buying or dead | Pickup prompts playtested and accepted in #163; precise CS2 reach/tolerance comparison remains | 12, after 2 |
 | 4 | Ragdoll legs through the floor, joints bending too far | **Done** (#121, `reference/research/ragdoll-joints.md`): start clear of the floor and kept over it, CS2's own shapes (in the agents' `.vmdl`), joint limits from standing; checks on a one-sided trimesh | Dump CS2's joints; deaths on the ramp | Housekeeping |
 | 5 | Bots hover over T spawn's ramp in freeze time (the hull rests on the uphill edge; there is no foot IK) | *(Remote done, PR #131)* Research, then foot IK and a ground fit | CS2's feet on the ramp | After 17 |
 | 6 | Bots meet head-on and hop at each other forever | **Done** (PR #113): making way for teammates (`BotSteering`), stuck handling that never jumps at one, goals spread over a site | dust2's chokepoints and 24b's inferno spot; `scripts/run_tests.sh dust2` runs the new no-stall check | 24b, 23 |
@@ -251,7 +186,7 @@ issue done here and on the page in the same pull request.
 | 14 | Recoil on the AK-47 and M4A1-S only | *(done 2026-09-26, PR #111)* The 15 more patterns already in `reference/spray_patterns/`, solved at load; a provisional kick for the rest | Spray the rest in CS2 (TODO L6); the R6 demo | 8 |
 | 15 | Mouse wheel down to the next weapon | **Done 2026-09-28:** CS2's `invnext`, and what you carry in the bottom right after each switch | Its order in CS2, and how long the list stays up | 12a, after 16 |
 | 16 | A quick switch cuts the draw short | **Done 2026-09-26:** the draw restarted on every switch, as CS2's graph does, and R during it reloads once it ends (Sid's CS2 check) | Play quick switches beside CS2 | 12 |
-| 17 | Running into a jump snaps to the air pose | *(Remote done, PR #114; first-person follow-up #160)* The take-off from CS2's graph, weapon bob faded into/out of the air, and camera/relative weapon dip and recovery on takeoff and landing | Extract the jump clips; regenerate the tables; compare #160's camera and weapon motion beside CS2 (amounts by eye, `research/jump-camera.md`) | 6 |
+| 17 | Running into a jump snaps to the air pose | *(Remote done, PR #114; first-person follow-up #160)* The take-off from CS2's graph, weapon bob faded into/out of the air, and camera/relative weapon dip and recovery on takeoff and landing | Extract the jump clips; regenerate the tables; Sid accepted #160's camera/weapon tuning; exact CS2 comparison remains (amounts by eye, `research/jump-camera.md`) | 6 |
 | 18 | Nobody seems to get the bomb | *(done 2026-09-26; "[E] Take Bomb" from a bot done 2026-09-28)* A check end to end, CS2's handing it to the human T (`bot_defer_to_human_items`), a cue for who carries it | Rounds as T and CT; CS2's warmup | 16, 15 |
 | 19 | Grenade sounds and effects | The shared sound-event table and player (**done** 2026-09-26: `reference/sounds/`, `SoundEvents`, `default_bus_layout.tres`), then the grenades' sounds (**done** 2026-09-28: `GrenadeSounds`, `FlashMuffle`, the burn), the effects' research (**done** 2026-09-30: `reference/research/grenade-effects.md`); then the effects | Extract the missing sounds; the particles by grenade-effects.md section 9 | 17 to 20 |
 | 20 | A click as the magazine nears empty (CS2's `Default.NearlyEmpty`) | On the shared sound player, the threshold provisional (**done** 2026-09-28); dry fire on an empty magazine (**done** 2026-09-30) | Measure the threshold in CS2; check dry fire's repeat and auto-reload in CS2 | After 19's groundwork |
@@ -455,8 +390,9 @@ open; the old timings do not measure the full conversion.
 
 ### Phase 1: make being shot feel like CS2
 
-This was the unfinished half of hit registration. Items 1 to 4 are in (PR
-#27); blood and the third-person firing layer are left.
+Items 1 to 4 landed in PR #27. Third-person firing, current extracted blood,
+wounds, hit sounds and additive body/head reactions are implemented through
+PR #172; the remaining comparison and accuracy work is listed per item.
 
 PR #30 fixed what Sid's first playtest of #27 found: a range bot's gunfire
 playing from the middle of the map, bots folded over while firing, and the
@@ -504,7 +440,7 @@ item 6 is built.
    (the `...Small` modifier and A1 in `reference/cs2-systems.md`), and a
    screenshot pair of the view just before and just after an unarmoured
    hit, to size the flinch (2 degrees here).
-5. **Blood on hit.** *(Current assets implemented 2026-10-02, PR #172; Sid checks the feel)*
+5. **Blood on hit.** *(Implemented and merged 2026-10-02, PR #172; controlled CS2 comparison remains)*
    Per-pellet damage snapshots dispatch extracted blood/helmet particles,
    animated motion-vector sheets, parent-death floor splashes and real
    weighted world decals. Body wounds follow the struck bone using CS2's
@@ -514,7 +450,7 @@ item 6 is built.
    Left: compare closed game-side CP/root selection, persistent wall blood,
    skin UV2 accumulation and Source shader aging against current CS2;
    documented approximations in `reference/research/blood-and-impacts.md`.
-6. **Firing on the third-person model.** *(Firing done 2026-09-23; body/head flinches added 2026-10-02, PR #172; Sid checks it)* A bot's body holds, fires and
+6. **Firing on the third-person model.** *(Firing done 2026-09-23; body/head flinches added 2026-10-02, PR #172, merged; controlled comparison remains)* A bot's body holds, fires and
    reloads its own gun: the gun's third-person clips (`WeaponData.world_clip_set`)
    in `PlayerModel.animation_tree`, over the locomotion as CS2's graph
    stacks them (`reference/animgraph/worldmodel.md`), through its UpperBody
@@ -745,9 +681,8 @@ list, split into Local and Remote items, with the measurements.
   the players, your arms and the buy menu's agent are drawn with CS2's
   cloth sheen where their materials ask for it, their occlusion darkening
   the sun too, where they shone like plastic (Sid's buy menu screenshot,
-  2026-09-25). Left of the layers: the softened skin, the eyes (the
-  playtest of 2026-09-25, issue 13), the rim and tint masks, the detail
-  textures.
+  2026-09-25). The eyes' material is also built (playtest issue 13).
+  Left of the layers: softened skin, rim and tint masks, and detail textures.
 - **Research CS2's renderer (R0) and CS2's video settings (R6).**
   *(Remote, not started)*
 
@@ -814,8 +749,8 @@ list, split into Local and Remote items, with the measurements.
     the aim's pitch, from where the player stands and looks), at CS2's
     300 u/s where they look, turning as it flies,
     bouncing, and laid on its side where it stops; a death lets the gun go
-    from the hand, moving as the body was. Left: E to swap with the gun in
-    hand, and blast impulses on dropped guns. The 2026-09-26 Box3D trial
+    from the hand, moving as the body was. E pickup/swap and its ground-item
+    prompts are done (PR #163); blast impulses on dropped guns remain open. The 2026-09-26 Box3D trial
     gives dropped items native rigid bodies on their own physics hulls;
     its follow-up adds bullet impulses to guns and corrects their held
     orientation at release. After a failed shooting playtest, a
@@ -899,7 +834,8 @@ list, split into Local and Remote items, with the measurements.
     in `src/match/`, which picks the MVP and the fun fact by the
     community's rules until CS2's are measured). Left: the glitch video, the
     MVP's 3D agent on the band and the team income line in the chat. Local:
-    a round won and lost beside CS2's at 1080p.)*
+    a round won and lost beside CS2's at 1080p; Sid accepted the refined
+    banner in PR #166, merged 2026-10-02.)*
     *(Matched to Sid's CS2 screenshot of 2026-09-30: the post-round damage
     report under each enemy you traded damage with, "100 in 3" given and
     "27 in 1" taken with how the kill was made (`TeamCounter`, from CS2's
@@ -1182,8 +1118,9 @@ All Remote, except the real ragdoll data, which needs extracting locally.
   (step 0 of `reference/systemization.md`).
 - CS2's ragdoll shapes are in the extracted agents' `.vmdl` (15 bodies);
   its joints and their limits are not extracted. The ragdoll uses the
-  hitbox capsules and estimated limits; the playtest's issue 4 takes both
-  over (`reference/playtest-2026-09-25.md`).
+  extracted physics shapes when available, with hitbox capsules as the
+  fallback and estimated joint limits; playtest issue 4 records the
+  remaining exact-joint work (`reference/playtest-2026-09-25.md`).
 
 ---
 
@@ -1191,13 +1128,13 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 
 | | What | Unblocks |
 |---|---|---|
-| Hands | The playtest's Local work, batched (`reference/playtest-2026-09-25.md`, "Sid's machine, batched") | Playtest issues 1 to 23 |
+| Hands | Remaining playtest CS2 comparisons and extraction work (`reference/playtest-2026-09-25.md`, current follow-up status; the original batches are historical) | Playtest parity checks |
 | Hands | Spray a wall in CS2 from 496 units | Item 8 |
 | Hands | Measure jump height, crouch-jump reach, dead-strafe feel | Movement check |
 | Hands | Check on the range that the shooting bot stays upright while firing, and that the dummy's ragdoll and your own settle without spinning (PR #30) | Confirms PR #30 |
 | Hands | Compare the extracted blood, wounds, hit sounds and additive flinches against current CS2 (PR #172) | Items 5, 6 |
 | Hands | Check that first shots at a run now miss (PR #24) | Item 9 |
-| Hands | Play being shot on the test range (B, U, Y, J, T) and dust2: your capsules' fit, the tag, the flinch, the hit arcs (PR #27) | Items 1 to 4 |
+| Hands | Play being shot on the test range (I, U, Y, J, T) and dust2: your capsules' fit, the tag, the flinch, the hit arcs (PR #27) | Items 1 to 4 |
 | Hands | Measure a tag's length and the flinch's size in CS2 | Item 4a |
 | Hands | Shoot through dust2's walls in CS2 with `sv_showimpacts_penetration 1` and note the damage | Item 7a |
 | Done | CS2's surfaces extracted and read (`SurfaceProperties`): penetration's parents from the game, the friction table | Item 7b, per-surface friction |
@@ -1210,7 +1147,7 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 | Hands | The systems' Local list for bots in `reference/cs2-systems.md`: read the nav mesh's analysis (N3), record grenade lineups (N2) | Phase 8 |
 | Decided | The game's own numbers win over the sheet's wherever the game has them (Sid, 2026-09-22), the Desert Eagle's jump inaccuracy included (46.75, not 378.30) | `WeaponVData`, every gun |
 | Hands | List CS2's binds on a fresh config (`key_listboundkeys`) to confirm the defaults file | Item 12a |
-| Hands | The systems' Local list in `reference/cs2-systems.md`: bomb (C1, the explosion's particles from C3, and decoding C2's damage), grenades (G1 to G5, and G6's particle and smoke textures), knife (K1), sounds (S1, S2) | Phases 4 to 7 |
+| Hands | The systems' Local list in `reference/cs2-systems.md`: bomb (C1, the explosion's particles from C3, and decoding C2's damage), grenades (G1 to G5, and G6's particle and smoke textures), knife (K1), remaining agent/buy UI sounds (S1; S2's event table is built) | Phases 4 to 7 |
 | Hands | Run `scripts/profile_render.gd` again at 1080p and 4K, and walk long doors and top of mid, on PR #78 | Rendering R2, R3 |
 | Decided | dust2's sun shadows come from CS2's baked pages, the live shadow map drawing only what moves (Sid, 2026-09-25) | Rendering R4 |
 | Decided | R5's reflections stay, for 1.15 to 1.18 ms of GPU at 4K: all-metal guns such as the Desert Eagle only look right with them (Sid, 2026-09-25). The profile the R5 Hands row asks for is done; `no_reflections` does not measure it, the builds before and after R5 do (rendering.md R5) | Rendering R5 |
@@ -1225,32 +1162,29 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 - The CS2 features nobody has asked for yet, listed at the end of
   `reference/cs2-systems.md`: pings and radio, voice and text chat, votes,
   other modes, demos, anti-cheat.
-- More maps.
+- Broader map support beyond extracted defusal maps (hostages, doors and
+  breakables); other defusal maps already load through `--map`.
 - Original assets in place of Valve's, if the game is ever sold.
 
 ---
 
-## The order in one line
+## Current dependency order
 
-The game is split from the player first (Sid chose server-side from the
-start, and tagging and aim punch are simulation too, so they are built on
-the split rather than before it); then being shot feels right and the
-shooting model is finished; then a match of rounds with money and
-buying, the bomb, grenades, the knife and Zeus, bots that play the round,
-multiplayer, and menus with a build. Every gun runs alongside all of it.
-The split is done (PR #24) and being shot is in apart from blood and the
-third-person firing layer (PR #27), and wall penetration is in (PR #31),
-so what is left of the shooting model is measuring (7a, 8).
+The player/simulation split, shared world and item/damage/event contracts,
+third-person presenter, economy, buying, bomb, grenade cores and usable
+knife are built. Recent playtest fixes are merged; their remaining CS2
+measurements are listed beside each item rather than keeping their
+implementation tasks open.
 
-`reference/systemization.md` (2026-09-23) plans the shared systems these
-items should be built on, in five steps: the world that owns the tick
-(done, 2026-09-23), an item registry, damage that records its attacker and
-game events come before items 12 and 13, and a third-person presenter,
-hitboxes posed by the tick and bots as brains come before the bomb and
-grenades.
+The remaining work includes gun modes/revolver/random-recoil fidelity,
+Zeus attacks, grenade effects/lineups and omitted map grenade clips,
+HUD details, tactical/objective bots, networking and full menus. The
+networking work still needs authoritative tick hitbox poses, history and
+replay; it must not depend on drawn animation. Rendering and simulation
+optimization continue against measured captures, including the dense
+hit-effects cost and the still-open 6 ms maximum target.
 
-What a thread can start now: what is left of the inventory (item 12: E to
-swap, guns on the ground as rigid bodies); the bind table (12a), taking over
-the keys the inventory put in `PlayerInput`; the
-third-person firing layer (item 6), then the shadow's arms (6a); and the
-housekeeping.
+Use each phase's remaining items, the weapon TODO and the current status
+in `reference/systemization.md` to choose work. The dated playtest and
+performance audits preserve evidence; their original dispatch schedules
+are not a current queue of missing features.

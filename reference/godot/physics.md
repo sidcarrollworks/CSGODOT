@@ -425,7 +425,7 @@ See the ragdoll section. `set_param(Param, float)`/`get_param`, and `set_flag(Fl
   - `src/player/player_view.gd:229`, `src/effects/muzzle_flashes.gd:616`
 - `src/sim/game_world.gd:132`: hands `find_world_3d().direct_space_state` to `GameSystems.step` each tick.
 - `src/sim/sim_clock.gd`: tick length from `Engine.physics_ticks_per_second`; `src/sim/draw_clock.gd`: draw time from the wall clock and where the frame's last tick stood.
-- `project.godot [physics]`: 64 ticks, 16 max steps, Jolt, the Jolt length and speed settings scaled by 39.37, gravity 0.
+- `project.godot`: the game's `physics/backend` is `box3d`; the separate Godot `[physics]` world retains Jolt for legacy queries and fixtures, with 64 ticks, 16 max steps, Jolt length/speed settings scaled by 39.37 and gravity 0. Native Box3D queries use the inch/metre bridge rather than those Jolt settings.
 
 Looks at odds with the docs (not verified):
 

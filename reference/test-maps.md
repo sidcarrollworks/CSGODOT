@@ -61,7 +61,17 @@ against, and off to the left a bot that shoots you when you tell it to.
 | `5`, then `Mouse 1` on site A | plant the bomb, behind the spawn; `E` looking at it defuses, `L` puts the kit on or off, and `O` gives you another |
 | `4`, then the mouse | throw a grenade: the range keeps you in an HE, a flash, a smoke and a molotov |
 
-Every bullet leaves a mark: dark on the wall, red on the dummy. The readout
+Every bullet leaves a mark: a surface decal on the wall and a wound on
+the dummy. With `impacts`, `character-animations` and `sounds` extracted,
+body hits also emit short blood mist at each bullet contact, helmet sparks
+where appropriate, directional body flinches and hit sounds. `[` keeps
+the dummy alive for repeated nonfatal-hit comparisons. Its dropped gun,
+other ground guns, grenades and the bomb show the same E pickup/swap
+prompt as a competitive map when the use query finds an eligible item.
+
+The AUG and SG 553 raise their sights, reveal the world through the lens
+and blur the surrounding scene; lowered lenses are black. Jumping moves
+both the camera and the viewmodel, with a softened landing dip. The readout
 shows the current shot index in the pattern and the size of the inaccuracy cone
 right now, which is the number that moves when you walk, crouch or jump.
 

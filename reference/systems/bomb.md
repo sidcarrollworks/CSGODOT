@@ -4,6 +4,15 @@ The C4 as CS2 has it, built as server-side state in `src/bomb/`, and what
 the files it does not own need, to wire it into the match and dust2. Roadmap
 item 16; `reference/cs2-systems.md` section 6 has CS2's rules.
 
+## Current integration status, 2026-10-02
+
+The bomb is wired into the match and economy through `GameWorld`.
+Planting crouches the planter (PR #168); ground pickup uses the shared E
+prompt (PR #163), and the HUD shows carrier icons. `C4View` and
+`RoundSounds` play the bomb and announcer/music events. Planted-clock and
+full defuse HUD presentation, exact CS2 timings and the July shockwave
+damage bake remain open.
+
 ## What is built
 
 | File | What it is |

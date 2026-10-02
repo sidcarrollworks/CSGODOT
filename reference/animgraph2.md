@@ -11,6 +11,18 @@ times the speed, and adds a placeholder `weapon_temp` among the rifles'
 idle poses; the locomotion's variations and every transition otherwise
 read the same.
 
+## Project status, 2026-10-02
+
+`PlayerModel` uses weapon-specific locomotion and upper-body actions,
+including the corrected knife attack mapping in ground/air poses.
+Planting crouches the planter. PR #172 adds the 42 extracted directional
+body/head flinch clips as rest-relative additive reactions, with zone and
+weapon-family selection; [the flinch audit](research/body-flinches.md)
+records the current graph and remaining approximations. PR #171 skips
+redundant fits of unchanged skeleton poses. The camera/viewmodel jump dip
+is procedural playtest tuning, not an authored first-person jump clip.
+Generated graph tables below remain evidence from their named CS2 builds.
+
 ## What it is
 
 AnimGraph 2 is the animation system CS2 has been moving to. First-person

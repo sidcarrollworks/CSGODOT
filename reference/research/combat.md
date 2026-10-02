@@ -2,8 +2,8 @@
 
 Sid, 2026-09-24: "spin up a couple agents to do some research on how all
 these systems work in the actual game." This page covers combat: the gun
-features `reference/weapons/TODO.md` still has open (R3, R4, R5, R6, R7, R10,
-R13), the knife and Zeus (roadmap item 21), being hit (items 2 to 4a, and A1
+features audited against `reference/weapons/TODO.md` on that date (R3,
+R4, R5, R6, R7, R10, R13), the knife and Zeus (roadmap item 21), being hit (items 2 to 4a, and A1
 in `reference/cs2-systems.md`), and how hits register online (item 25 and
 systemization step 3.3). Money, the bomb, grenades, drops, round flow, the
 round HUD and bots are researched separately.
@@ -11,6 +11,15 @@ round HUD and bots are researched separately.
 It records what CS2 does and what is still unknown. Where an item needs a
 number that no file has, it says how Sid can measure it (Local). It changes
 no code.
+
+## Current implementation status, 2026-10-02
+
+Scopes (R4), ammunition/reloads (R5), tracers (R10), the usable knife, final-shot
+recovery and the new body-hit effects/sounds/flinches are merged.
+Burst/silencer modes, revolver behavior, random recoil fidelity, Zeus
+attacks and networking remain open. The detailed research retains its
+original evidence and dates; [the weapon checklist](../weapons/TODO.md)
+and [roadmap](../roadmap.md) track current completion and parity work.
 
 ## Sources
 

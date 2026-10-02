@@ -1,5 +1,9 @@
 # Every gun: the todo list
 
+Status checked against merged `main` on **2026-10-02**, through PR #172.
+Completed implementation is checked below; direct CS2 measurements and
+remaining visual comparisons stay open even where the feature is playable.
+
 Sid, 2026-09-22: build all the other guns, with every number from the CS2
 weapon sheet (`cs2_weapon_sheet.csv`, explained in `README.md` beside this
 file). This widens the scope from the AK-47 and M4A1-S alone.
@@ -122,7 +126,7 @@ Roughly in order; L1 to L3 can start at once.
   M249, Negev, G3SG1, SCAR-20. Re-take the M4A1-S at 20 rounds while there;
   its plot has 25 (CS:GO's old magazine), and a 496-unit AK spray retires
   `recoil_scale` for both rifles.
-- [ ] **L7. Fit each model.** *(partly answered 2026-09-22: in first person the clips place every gun themselves, with no offset of CS2's own to add, and all 34 render held and posed at `viewmodel_fov`; in third person all 34 sit in the hand on the `wpn` bone, but pistols are held rifle-style until the player model walks the pistols' own locomotion, now extracted (`world/pistol/_default_pistol`); the muzzle point is `m_vecMuzzlePos0` in `vdata.md`. Left for Sid: judging each on screen in play)* Viewmodel offset per weapon at CS2's
+- [ ] **L7. Fit each model.** *(partly answered 2026-09-22: in first person the clips place every gun themselves, with no offset of CS2's own to add, and all 34 render held and posed at `viewmodel_fov`; in third person all 34 sit in the hand on the `wpn` bone, with the player model using weapon-specific locomotion, including `world/pistol/_default_pistol`; the muzzle point is `m_vecMuzzlePos0` in `vdata.md`. Left for Sid: judging each on screen in play)* Viewmodel offset per weapon at CS2's
   `viewmodel_fov`, the weapon in the third-person hand, the muzzle point for
   effects. Needs the models on screen.
 - [ ] **L8. Playtest each weapon at the range** against the sheet: fatal
@@ -153,11 +157,9 @@ Roughly in order; L1 to L3 can start at once.
   round until the trigger comes up or `Weapon.press_trigger()` reports a
   fresh press; checked in `run_weapon_tests.gd` and, through commands, in
   `run_sim_checks.gd`. Thirteen guns: every pistol but the CZ75-Auto and the
-  R8, the Nova, Mag-7 and Sawed-Off, the AWP and the SSG 08. Left to wire,
-  in `player_sim.gd` while the GameWorld owns it: a call to
-  `weapon.press_trigger()` for each press in `_update_weapon`, without which
-  a click that comes a tick or less after letting go is missed; and a
-  semi-automatic gun in hand (R1, R8). To check in CS2 (Local): a click
+  R8, the Nova, Mag-7 and Sawed-Off, the AWP and the SSG 08.
+  `PlayerSim._update_weapon` calls `weapon.press_trigger()` for every press,
+  preserving rapid release/press pairs inside a tick. To check in CS2 (Local): a click
   before the gun is ready fires when it is if held, and nothing if let go
   first; that is CS:GO's behaviour, assumed here.)* "Hold to Shoot: No" fires
   once a click.
@@ -210,18 +212,20 @@ Roughly in order; L1 to L3 can start at once.
   the sheet says "see note". Research first. *(Researched 2026-09-24,
   `reference/research/combat.md`: the shot is postponed to a set tick and
   fraction; the delay, about 0.2 s by community wikis, comes from a demo.)*
-- [ ] **R8. Slots, switching, drop and pick up.** Knife, pistol, primary;
-  number keys and the scroll wheel (scroll up is jump today; ask Sid); a
-  weapon on the ground; bots carrying what they bought. *(Done but for E to
-  swap with the gun in hand, the gun on the ground as a rigid body and the
-  scroll wheel's `invnext`, with roadmap item 12: every player carries an
-  `Inventory`, 1 to 5 and Q, draw times on a switch, G drops and walking
-  over a gun picks it up, each gun keeping its rounds. Bots buying and
-  holding what they bought done 2026-09-23: `BotBuying`, and a bot's body
-  holding whatever is in its hand.)*
-- [ ] **R9. Buy menu and money.** Price and kill award are in the sheet.
-  In scope (Sid, 2026-09-22): CS2's economy and buy menu, detailed in
-  `reference/cs2-systems.md` (sections 2 and 3).
+- [x] **R8. Slots, switching, drop and pick up.** `Inventory` keeps each
+  carried gun and its rounds through switching; 1 to 5, Q and wheel-down
+  `invnext` select items, while wheel-up remains jump. G throws a physical
+  drop on its extracted hull, walking takes an eligible item, and E takes
+  the item looked at or swaps the gun in its occupied slot. PR #163 adds
+  ground gun/grenade/bomb prompts using that same 80-unit use search.
+  Bots buy and show whatever they hold. Bullets push native dropped guns;
+  remaining blast impulses and CS2 comparison work are recorded under
+  roadmap item 12.
+- [x] **R9. Buy menu and money.** `Economy`, `BuyRules` and `BuyMenu` use
+  weapon prices and kill awards, round/loss/plant/defuse income, buy zones,
+  time and affordability. Purchases, refunds and Ctrl-click buy-and-throw
+  are wired into competitive mode. Loadout selection and the short-handed
+  bonus remain open in `reference/cs2-systems.md` (sections 2 and 3).
 - [x] **R10. Tracers.** *(done 2026-09-24, with the muzzle flashes:
   `src/effects/`, `reference/weapons/effects.md`)* Every round of a gun
   with tracers, as CS2's client overrides the sheet's every-third
@@ -232,13 +236,14 @@ Roughly in order; L1 to L3 can start at once.
   (PR #27): every weapon tags with its own figure, which `WeaponVData` reads
   from the game (PR #28; the sheet agrees). Penetration is done (roadmap
   item 7): every weapon goes through walls by its own `m_flPenetration`.
-- [ ] **R12. HUD per weapon.** Ammo and reserve, the mode, the weapon's icon
-  once extracted.
-- [x] **R13. Cross-check the sheet against CS2's own weapons.vdata** *(the check is done, locally, 2026-09-22: `vdata.md` has it, 914 values agree, and the one real difference, the Desert Eagle's jump inaccuracy, is flagged to Sid; what is left is bringing the fields in)*, which
-  SteamDatabase's GameTracking-CS2 repository publishes decompiled. Bring in
-  what the sheet lacks: the slower recovery after the first rounds of a
-  spray (`_final` recovery times and the rounds they blend over) and spread
-  apart from inaccuracy. Flag any figure where the two disagree to Sid.
+- [x] **R12. HUD per weapon.** `HealthAmmoCenter` shows ammo/reserve and
+  `WeaponSelection` shows extracted item icons and what is carried; scoped
+  weapons control crosshair/dot visibility. Mode indicators depend on R3's
+  unfinished burst/silencer controls; this does not mark R3 complete.
+- [x] **R13. Cross-check the sheet against CS2's own weapons.vdata** *(the check is done, locally, 2026-09-22: `vdata.md` has it, 914 values agree, and the one real difference, the Desert Eagle's jump inaccuracy, is flagged to Sid; runtime fields are now imported)*, which
+  SteamDatabase's GameTracking-CS2 repository publishes decompiled.
+  `WeaponVData` imports the spread and final recovery fields the sheet lacks;
+  the Desert Eagle discrepancy stays recorded in `vdata.md`.
   *Done 2026-09-30: the spread is kept apart (`WeaponData.spread`), and the
   final recovery times blend in over their rounds on the recoil index
   (`WeaponData.recovery_time`). Whether CS2 counts the decaying float index or

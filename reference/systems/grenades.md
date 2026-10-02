@@ -158,10 +158,11 @@ files named:
    assist goes only where no enemy did the 25 damage of an assist: to the
    victim's last flasher, if an enemy of theirs and not the killer, while
    the victim is still under it.
-6. **The map importer:** grenade clips are left out of the hull today
-   (`hull_skip_hints` in `map_importer.gd`). They go on a body of their own
-   on `GrenadeRules.GRENADE_CLIP_LAYER` (32), which grenades bounce off and
-   nothing else does. Needs a run on Sid's machine with dust2.
+6. **The map importer (open):** it still omits grenade clips through
+   `hull_skip_hints`. The flight query already includes
+   `GrenadeRules.GRENADE_CLIP_LAYER` (32), but the importer must build
+   those bodies separately so they stop grenades without blocking players.
+   Precise flight/bounce comparison also remains Local work.
 7. **Sounds (done 2026-09-28, playtest issue 19):** `GrenadeSounds`
    (`src/audio/grenade_sounds.gd`) plays every grenade event through CS2's
    own sound events (`reference/sounds/`): the throw, the bounce, the
@@ -170,5 +171,6 @@ files named:
    as the gun it imitates; `FlashMuffle` the flashed ringing and muffle;
    `HitSounds` the burn. Left Local: the listen beside CS2
    (`reference/playtest-2026-09-25.md` issue 19, step 5).
-8. **The HUD:** the grenade slot row and the lineup crosshair (held 2 s)
-   are not built.
+8. **The HUD:** `WeaponSelection` shows the carried grenade slot row;
+   ground grenades use the shared E pickup prompt (PR #163). The lineup
+   crosshair (held 2 s) remains open.

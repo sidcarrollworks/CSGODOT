@@ -17,14 +17,16 @@ A standing player is 72 units tall, gravity is 800 u/s², running speed is
   unit conversion, only the turn from Z-up to Y-up (`SourceEntities.to_game`).
 
 Source 2 Viewer exports glTF in metres, so the map importer scales dust2 up by
-exactly 1/0.0254 on the way in. That is the one place a scale conversion
-happens.
+exactly 1/0.0254 on the way in. The native Box3D boundary also converts
+Source units to metres and back; gameplay state stays in Source units.
 
 It means Godot's default gravity is turned off in project settings and the
 camera near plane is set to one unit. If a number here looks enormous,
 that is why.
 
-The physics engine is Jolt, and Jolt's settings assume metres. The ones that
+The default physics backend is Box3D (`src/physics/`), including movement
+queries, dropped items and ragdolls. Jolt remains available for comparison
+and older fixtures. Its settings assume metres. The ones that
 are lengths or speeds (how far bodies may sink into each other before they
 are pushed apart, how slowly a body must move to fall asleep, the fastest
 any body may go) are set in project settings to their defaults times 39.37.
@@ -70,23 +72,22 @@ them, so a round meets a body where it was seen) and ragdolls.
 
 A tick at 64 Hz is 15.6 ms, and every player's share of it has to fit with
 room left to draw the frames. When it does not, each frame runs more ticks
-to catch up, which makes the frame longer still, and the game crawls. Ten
-players on dust2 take about 3 ms a tick on Jolt, and twenty about 8
-(headless, 2026-09-23), most of it their movement: a trace of the hull
-through dust2's collision costs 20 to 50 us, and a player makes one a tick
+to catch up, which makes the frame longer still, and the game crawls.
+An older Jolt measurement put ten
+players on dust2 at about 3 ms a tick, and twenty at about 8
+(headless, 2026-09-23; not a current Box3D benchmark), most of it their
+movement: a trace of the hull through dust2's collision cost 20 to 50 us,
+and a player made one a tick
 standing still and four running in the open, more against a wall or a slope
 (PlayerBody counts them, and run_tests.gd holds them to that). So nothing
 that reads the disk runs in a tick, and what is only seen, like the probe
 light on a bot's body, follows the frames drawn rather than the ticks. A
-body steps its own animation (`PlayerModel.step_off_tick_frames`): in
-every frame while a camera draws it, otherwise only in the frames that run
-no tick, since a frame that runs one is the one the processor holds up.
-Its skeleton is fitted (the feet on the floor, the hands on the gun, the
-twist bones, and the hitboxes, gun and eyes moved to the bones) in the
-frames it steps, at once when its bones are set another way (a respawn, a
-ragdoll) or it dies or gets up, and, where the frame before a tick went
-without, as that tick begins, so that every tick meets its hitboxes where
-a fit in every frame had them (`PlayerModel.fit_for_tick`). The body you
+body steps its own animation (`PlayerModel.step_off_tick_frames`) on the
+view clock. Its skeleton fit places the feet, hands, twist bones, hitboxes,
+gun and eyes. `PlayerModel.fit_for_tick` ensures that hitboxes have a fitted
+pose when a tick needs them; repeated fits of an unchanged pose are skipped
+(PR #171), while pose changes, respawns and ragdoll transitions invalidate
+the cached fit. The body you
 look down at, which only your camera draws, is stepped and fitted by the
 view only while the camera can see some of it (`PlayerModel.step_when_shown`,
 `PlayerView.body_in_view`).
@@ -162,9 +163,26 @@ once for every shell (`RigModel.hold_at`), and a shot stops the reload with
 the shells in so far.
 The CS2 Weapon Spreadsheet is read first and now supplies only the landing
 and ladder figures, which the game stores another way; the spray patterns
-and recovery timings come from measuring CS2 by hand.
+are measured from plots; recovery timing, including the final-shot values,
+comes from vdata. The view spring still uses playtest tuning.
 `reference/weapons/vdata.md` checks the game's numbers against the sheet, and
 `reference/weapon_stats.md` lists where the rest came from.
+
+The AUG and SG 553 raise their first-person models when scoped. Their
+lenses reveal the world through an aperture, while `IronSightOverlay`
+blurs the surrounding scene; the lenses are black at the hip. Snipers use
+the separate scope overlay. [Scope research](research/scopes.md) records
+the framing approximations and remaining comparisons.
+
+Body hits emit per-pellet contact snapshots for `HitEffects`, alongside
+`player_hurt` for one set of hit sounds. Extracted particle graphs, textures
+and materials drive blood mist, helmet sparks and surface impact effects.
+Mist starts at the bullet contact, with the shorter, denser tuning requested
+in playtesting; `BodyWounds` attaches wounds to the struck bone. These are
+approximations of Source 2 rendering, not complete shader or UV2 parity.
+[Blood and impact research](research/blood-and-impacts.md) and
+[measured costs](research/hit-effects-performance-2026-10-02.md) track the
+limits.
 
 ## Players, bots and the match
 
@@ -187,8 +205,10 @@ models extracted there are simply
 no arms, and everything else works. On top of the clips, the weapon bobs as
 you walk and run, settles lower into the hands at speed, and lags a little
 behind a turn (`src/player/view_model_motion.gd`): the bob in Source's own
-shape, the amounts set by eye against CS2. Look down and your own body is
-there, belt and legs, walking the same clips as a bot's, with your shadow
+shape, the amounts set by eye against CS2. Jumping also gives the camera
+and weapon a small dip, with a softer landing response accepted in
+playtesting ([jump camera](research/jump-camera.md)). Look down and your
+own body is there, belt and legs, walking the same clips as a bot's, with your shadow
 on the ground: the third-person model folded away from the chest up
 (`RigModel.fold_bones` on spine_2), since the camera sits inside the head,
 the view model stands in for the arms, and CS2 shows no chest looking down.
@@ -217,10 +237,9 @@ shot: it wears the game's own hitboxes, the nineteen capsules CS2 defines
 for the model, riding its bones (`src/combat/skinned_hitboxes.gd`), so a
 bullet lands on the head, chest, stomach, an arm or a leg and is priced
 accordingly, ahead of the movement hull, which bullets pass. A kill turns
-the body into a ragdoll (`src/combat/ragdoll.gd`): fifteen bodies from the
-hitbox capsules (CS2's own fifteen ragdoll shapes are read from the model
-description, `RagdollShapes`, but a player's body is not made from them
-yet), jointed with limits measured from standing, knocked the
+the body into a ragdoll (`src/combat/ragdoll.gd`): CS2's extracted physics
+shapes (`RagdollShapes`) when present, otherwise the hitbox capsules,
+jointed with limits measured from standing, knocked the
 way the last round was going, lifted clear of the floor, falling and lying
 where it lands. It is made before it is wanted, on a frame soon after the
 body is put on, and waits switched off; the death puts its parts on the
@@ -242,7 +261,10 @@ later and giving it back over 1.5 s, and it throws your aim up about 2
 degrees, half a degree through armour, taking your next rounds with it
 (`src/player/player_sim.gd`). Smoke hides a player from a bot as far as
 CS2's bot sees through it, and a flash blinds a bot by the same rules it
-blinds you; beyond that, bots do not take cover or think.
+blinds you. Bots also make room for teammates, but tactical cover, utility
+and objective play remain on the roadmap. Nonfatal bullet hits play the
+extracted directional, zone-specific flinch clips over the body pose;
+a lethal hit goes directly to its death response.
 
 The HUD (`src/ui/game_hud.gd`) is laid out as today's CS2 lays it out:
 health, armour and ammunition in one cluster at the bottom round the team's
@@ -250,16 +272,21 @@ emblem, your money in the bottom left, the clock, scores and who is alive
 at the top, a bar saying what part of the match it is, a red arc round the
 crosshair on the side each hit came from, and CS2's buy menu on B. Each
 piece is a `HudElement` that draws with `HudStyle`'s colours, font and icons
-and redraws only when what it shows changes. The kill feed, radar and
-scoreboard are roadmap item 15. On the range and in warmup, three seconds
-dead puts you back at your spawn with a full magazine. In the top left the
+and redraws only when what it shows changes or an animation runs. The
+kill feed, weapon selection, ground-item use prompts and round-end/MVP
+panel are built. The round banner has fixed text over a slowly growing
+copy clipped to its translucent, side-fading panel. Radar, scoreboard,
+chat and the remaining HUD details are roadmap item 15. On the range and
+in warmup, three seconds dead puts you back at your spawn with a full
+magazine. In the top left the
 HUD says where you stand and look,
 like CS2's `getpos`: the feet's position and the view's yaw and pitch,
 which is everything needed to put a render where a screenshot was taken,
 and under it the frame rate and the slowest frame of the last second (the
 range and the movement course show the same). F3 hides them.
 
-dust2 is a match, run the way CS2's server runs one (`src/match/`), with
+Competitive mode on dust2 or another extracted defusal map runs a match
+the way CS2's server runs one (`src/match/`), with
 CS2's competitive numbers (`MatchRules`): two minutes of warmup, where you
 come back when you die (F5 ends it), then rounds of 15 s of freeze time,
 where you can look round but not move or fire, and 1:55 of play. A round
@@ -276,8 +303,12 @@ does a third of its damage, and nobody walks through anybody. The score,
 each side's players alive and the clock are at the top of the screen. A
 spawn from nothing gives the knife and the side's pistol (the Glock-18, the
 CTs' P2000) and no armour, and the rest is bought: B in your buy zone,
-$800 to start, $16,000 in warmup, your money above your health. The bots
+$800 to start, $16,000 in warmup, your money at bottom left. The bots
 buy in freeze time as CS2's own bots do, and hold what is in their hands.
+
+Practice uses the same map and systems with unlimited warmup and no bots
+by default. Choose the mode at startup, or use `--mode competitive` /
+`--mode practice`; see the README for launch options.
 
 ## The round's systems
 
@@ -320,16 +351,26 @@ gunfire as the gun it imitates, and a flash in your own ears, its ring and
 the muffle over everything else (`src/audio/flash_muffle.gd`). The older
 views play on an `Unmixed` bus so the muffle reaches them too.
 
+`HitSounds` now plays attacker, victim and onlooker body/head/armour
+feedback, death sounds and burn damage from the world events through
+`SoundEvents`. The old attacker-only `WeaponSounds` feedback path is no
+longer dispatched during normal play. Dry fire, low-ammo clicks and knife
+attacks also use the event player. Gunfire, reloads, footsteps and world
+impact audio still have parts of the older implementation; their complete
+CS2 distance curves and mixing remain work to do.
+
 ## Lighting
 
 The lighting is the map's own numbers, translated (`src/map/map_lighting.gd`):
 the sun's colour, brightness and size from `light_environment`, the sky
 panorama from `env_sky`, distance haze from `env_cubemap_fog`, exposure from
-the `post_processing_volume`, plus screen-space occlusion and a little bloom.
-The sun's shadows reach across the whole map, and the world casts them with
-both faces of every surface: its walls are one-sided, so a shadow pass that
-only sees front faces lets the sun into every room whose wall faces the
-other way. The 3D skybox casts none, as in the game.
+the `post_processing_volume`, with CS2's filmic curve and colour table
+as the default grade (`--grade aces` selects the older comparison). Bloom
+is on and screen-space occlusion is off. The map's baked sun shadows shade
+the static world; live sun shadows cover moving bodies, and lamps retain
+live world casters. `MapShadows` selects the live fallback where the bake
+is missing. The 3D skybox uses its own baked shading and clips nearby
+terrain at the skybox camera's near plane (PR #167).
 The bounce light is the game's own too: CS2 bakes it into lightmaps, and the
 walls, ground and most props read those (`src/map/lightmap_materials.gd`,
 the `lightmapped*.gdshader`s) in place of Godot's flat sky ambient, so the

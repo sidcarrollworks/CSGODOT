@@ -2,6 +2,11 @@
 
 Read on 2026-10-02 alongside the current installed CS2 impact definitions
 and textures listed in [blood and impacts](blood-and-impacts.md).
+PR #172 merged on 2026-10-02. This page describes the implemented
+renderer and its remaining Source 2 approximations;
+[the effects fixture](hit-effects-performance-2026-10-02.md) measures its
+CPU/GPU costs separately from competitive play.
+
 `HitQuads` prepares one MultiMesh/material batch per texture, motion texture,
 blend and gradient while the map loads. Per-card data contains the current
 flat frame index, next frame index, interpolation fraction and alpha

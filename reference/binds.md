@@ -57,7 +57,18 @@ console on a fresh config (Local, below).
 PAGE DOWN and the keypad; MOUSE5. (F12 is Steam's screenshot key, so
 leave it.) Test and debug actions go only on these.
 
-## Every key on main, and where it goes
+## Current implementation status, 2026-10-02
+
+The shared input map is built. Mouse 1 fires, slashes, throws or plants;
+Mouse 2 scopes, stabs or lobs. E defuses, takes/swaps eligible ground guns
+and grenades, picks up the dropped bomb or takes it from a teammate bot.
+The HUD uses the same selection for pickup/swap prompts (PR #163).
+Wheel-down cycles inventory and wheel-up jumps. F11 on competitive or
+practice maps cycles rendering comparisons. The README and
+[test-map guide](test-maps.md) list the current gameplay and debug keys.
+The bindings/settings UI remains open.
+
+## Historical key audit and migration plan, 2026-09-24
 
 "Stays" means it already does what CS2's default does, or Sid chose it.
 "Moves" is a test key on a key CS2 uses; the new key is a proposal Sid can

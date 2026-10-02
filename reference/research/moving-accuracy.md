@@ -15,6 +15,14 @@ on and does not repeat.
 It records what CS2 does and what is still unknown, says how Sid can measure
 each unknown (Local), and changes no code.
 
+## Implementation status, 2026-10-02
+
+PR #164 is merged: crouched speed and accuracy remain stable while
+turning. PR #162 imports final standing/crouching recovery times from
+vdata. These fixes do not settle the unmeasured curve, recoil-index or
+landing behavior discussed below. The original research keeps its
+September 24 source dates.
+
 ## Sources
 
 Research on 2026-09-24, rechecked the same day against the newest build.

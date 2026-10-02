@@ -153,7 +153,12 @@ as are the 15 first-person clip exports and their buffers. The additional
 CS2 `scope_filter` and `scope_lens_dirt` assets are not separately extracted;
 the focus filter and clear tint here approximate their appearance.
 
-## Not done, and Local checks
+## Merged implementation; remaining comparisons
+
+PR #169 merged on 2026-10-02. Sid found the current view good enough to
+move on, with further refinement still needed. The aperture, black
+unscoped lenses and outside-scene blur are implemented; the items below
+remain visual comparisons and tuning.
 
 1. **The look beside CS2.** Scope the SG 553 and the AUG on dust2 beside
    CS2: where the scope sits, its size, whether the lens reads clear, the
