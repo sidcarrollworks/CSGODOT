@@ -10,6 +10,12 @@ The local audit is `.godot/pr172-flinches/graph-flinch-audit.json`; raw graph
 DATA is beside it. This page is a reading of authored content, not a
 reconstruction of the closed-source damage handler.
 
+PR #172 merged on 2026-10-02. `PlayerModel` now applies the 42 extracted
+clips from nonfatal bullet contact snapshots, selected by zone, direction
+and weapon family. Lethal hits take their death response instead. The
+selection, layering and coordinate choices described below remain
+approximations to compare with CS2.
+
 The current graph matches the flinch parts of the earlier generated
 [worldmodel table](../animgraph/worldmodel.md). BodyFlinch and HeadFlinch
 are **separate full-body additive layers**, after Weapon Shoot and before

@@ -416,7 +416,12 @@ mute voice".
 
 ## 5. What the Godot build needs
 
-### 5.1 Server events against the repo's schema
+### 5.1 Original server-event audit, 2026-09-23
+
+The schema reading below is historical. Current `MatchState` and
+`RoundReport` emit the round countdown, warning, announcement and report
+events used by `RoundSounds`; audio migration is no longer waiting for
+those events. Radio/ping and richer buy UI remain open.
 
 `src/game/game_events.gd` SCHEMA (read-only here) has `round_start`,
 `round_freeze_end`, `round_end {winner, reason, message, player_count}`,
@@ -449,6 +454,11 @@ the listener's position and the soundscape entities; no server work).
 
 ### 5.2 The minimal set to make an offline round sound like CS2
 
+Current status checked 2026-10-02: items **1–3, 7 and 8 are built** by
+`RoundSounds`, `MusicRules`, `AudioSettings` and `C4View` through
+`SoundEvents`. Items **4–6 remain open** (agent callouts, buy/pickup audio
+and ambience). The list retains the intended behavior and research.
+
 In order of what a player notices:
 
 1. Announcer on `round_end` and `bomb_planted`: `Announcer.CTWin/TWin/
@@ -471,9 +481,9 @@ Round-start and round-action music are silent by CS2's defaults and can
 wait. Bot chatter can start at `bot_chatter radio` level (the radio concepts
 only), then grow.
 
-### 5.3 The repo today (*Read*, `main` at `3975eef`)
+### 5.3 Historical snapshot (*Read*, 2026-09-23, `main` at `3975eef`)
 
-*Stale since 2026-09-28 (playtest issue 21):* `MatchState` sends the round's
+*Implementation update, checked 2026-10-02 (playtest issue 21):* `MatchState` sends the round's
 events (it has since 2026-09-23), plus `cs_round_start_beep`,
 `cs_round_final_beep` and `round_time_warning`; `default_bus_layout.tres`
 holds CS2's mixgroups; `RoundSounds` (`src/audio/round_sounds.gd`) plays the

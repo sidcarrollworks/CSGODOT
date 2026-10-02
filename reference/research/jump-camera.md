@@ -23,9 +23,11 @@ The extracted first-person gun graph has no jump or air state (`reference/animgr
 
 All six choices are **by eye**. Landing strength is approximated from air time, not measured impact speed. Walking off a ledge creates no takeoff response; a longer fall still dips on landing. A stopped or restarted draw clock does not advance or retain stale motion. An action received ahead of the interpolated view waits for its tick to be drawn.
 
-`PlayerView` adds the dip in world-up units to the usual interpolated position and standing/crouched eye height. `ViewModelMotion` also adds that drawn spring height to the arms' camera-local vertical offset, alongside the existing running bob, sway and recoil. The model follows the camera and dips relative to it, so jumping visibly moves the hands and weapon on screen. Guns, knives, grenades and the bomb all use the same composition; switching items during recovery uses the existing spring rather than replaying the impulse. Scoped weapons stay hidden as before.
+`PlayerView` adds the dip in world-up units to the usual interpolated position and standing/crouched eye height. `ViewModelMotion` also adds that drawn spring height to the arms' camera-local vertical offset, alongside the existing running bob, sway and recoil. The model follows the camera and dips relative to it, so jumping visibly moves the hands and weapon on screen. Guns, knives, grenades and the bomb all use the same composition; switching items during recovery uses the existing spring rather than replaying the impulse. Sniper overlays still hide the first-person model; the AUG and SG 553
+keep their raised models visible when scoped.
 
-Sid's competitive Dust2 playtest on October 1 identified the missing part: the eyes moved, but the model stayed fixed relative to them. The initial camera-only implementation supplied no distinct weapon motion. The follow-up keeps the subtle camera tuning and adds the model's relative dip. The first 2-times scale was close but too dramatic in Sid's next playtest, so his requested half-strength bounce uses a scale of 1. This remains an approximation for Local acceptance.
+Sid's competitive Dust2 playtest on October 1 identified the missing part: the eyes moved, but the model stayed fixed relative to them. The initial camera-only implementation supplied no distinct weapon motion. The follow-up keeps the subtle camera tuning and adds the model's relative dip. The first 2-times scale was close but too dramatic in Sid's next playtest, so his requested half-strength bounce uses a scale of 1. The procedural motion remains an approximation rather than a measured
+CS2 eye curve.
 
 The next playtest found the overall motion good and very close, with a little too much bounce when the feet hit the floor. The landing push is now 20% smaller (110 to 88 units/s), softening both the camera and the relative weapon response to about 1.6 units. Takeoff strength and spring timing retain the accepted tuning.
 
@@ -33,6 +35,9 @@ Death, respawn, round placement, teleport through `PlayerController.place` and n
 
 `tests/run_jump_camera_checks.gd` checks takeoff and landing continuity, dip/recovery, brief ledges and longer falls, repeated jumps, clock alignment and resets, and the same motion at 30/60/144/224/240 FPS. A model-free controller also exercises the actual camera placement and relative viewmodel movement, including the model's scale/rotation, crouched eyes, recovery, noclip, placement, death and respawn. The existing `run_model_checks.gd` continues to check the weapon bob fade and recoil composition with the extracted models.
 
-## Local acceptance still needed
+## Playtest accepted; remaining CS2 measurements
+
+Sid accepted the softened landing response and merged PR #160. The
+following are further parity checks, not a pending merge requirement.
 
 Compare standing/running jumps and landings on the test range and Dust2 beside CS2, on both teams and while crouching, carrying guns and equipment. Judge the size and timing of both the camera and weapon dip, a jump during landing recovery, switching items while recovering, and falls from ledges. If a closer match needs measured numbers, record the first-person horizon/eye and weapon motion against the physical jump over time in CS2. The procedural constants remain named so the Local result can replace the tuning without changing the simulation.

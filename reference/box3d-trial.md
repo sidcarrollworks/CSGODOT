@@ -37,15 +37,15 @@ interval. These are different scopes; see the audit before comparing them.
 Sid requested this trial on 2026-09-26 after dropped guns continued to
 jitter, and chose to start with dropped guns. He subsequently requested
 conversion of all game physics and a slight increase to the bullet kick;
-the branch applies a 15% increase. The branch remains
-`codex/box3d-dropped-guns`.
+the merged code applies a 15% increase. The original trial branch was
+`codex/box3d-dropped-guns`; Box3D is now the default on main.
 
 The dated dropped-item comparison below is against `DroppedItem`'s
 custom GDScript contact and impulse solver, which uses Jolt's collision
 queries. It is not a comparison
 against Jolt's native rigid-body solver. The shared `DroppedItem` path
 covers guns, unthrown inventory grenades, the Zeus and defuse kits. The
-current branch also routes movement, combat, grenade and presentation
+merged code also routes movement, combat, grenade and presentation
 collision queries through Box3D, and builds ragdolls in the same native
 world. Source movement and grenade-flight rules remain game code; this
 experiment does not establish that Box3D reproduces CS2 physics. Current

@@ -17,8 +17,9 @@ every player (finding 5, 2026-09-23: `ItemRegistry`, and an `Inventory` on
 each `PlayerSim` that the game knows by userid, each gun its own `Weapon`
 through a switch, a drop and a pick-up, the slots in the command); damage
 that knows who dealt it and game events, for rounds (findings 3 and 4, the
-contract threads, wired into `player_sim.gd` the same day; the flinch and
-the fall still read the `last_hit_*` fields).
+contract threads, wired into `player_sim.gd` the same day). Current bullet visuals and body flinches read contact
+snapshots from events; some player damage responses retain `last_hit_*`
+compatibility fields.
 
 The question asked: where does the code repeat itself, or hand-build one
 case at a time, in a way a shared system would replace, and in what order
@@ -26,7 +27,26 @@ should those systems be built so the roadmap's next items (inventory,
 economy, buying, the round HUD, the bomb, grenades, bots that play CS,
 netcode) land on them instead of adding to the repetition.
 
-## In short
+## Current status, 2026-10-02
+
+| Step | Status in merged code | Remaining work |
+|---|---|---|
+| 0: tests and CI | Built; shared check suite and runner | Asset-dependent checks still need the local extraction |
+| 1: world, items, damage, events | Built, including match events, inventory, bomb, grenades and economy | Continue using the shared contracts for new systems |
+| 2: surfaces | Shared `SurfaceProperties` lookup and Box3D surface queries are built | Preserve material identity when refining hulls and blended-surface handling |
+| 3.1: world entities | Built through `GameSystems` and the shared tick | Additional systems as they arrive |
+| 3.2: third-person presenter | `PlayerModel` is built; redundant unchanged-pose fits are skipped (#171) | Further measured animation/render cost reductions |
+| 3.3: hitbox history | Drawn skinned capsules are built | Independent authoritative tick poses and rewind history for networking |
+| 3.4: bot command source | Repeatable commands, seeded choices and parallel thinking are built | `Bot` still extends `PlayerSim`; separate the brain and improve tactical senses |
+| 3.5: saved state | Entity contracts and several system snapshots are built | Complete player/world replay and avoid repeated presentation during prediction |
+| 4: modes and settings | Competitive and Practice modes, startup picker and command-line options are built | Range/server modes, convar registry and console |
+| 5: readers | Shared text `KV3` reader and `MapPaths` are built | Remaining parser consolidation and binary KV3 nav analysis |
+
+The findings below retain their original dated evidence and line numbers;
+they describe the audit's starting point. This status table and the roadmap
+are the current implementation checklist.
+
+## Original summary, 2026-09-23
 
 The split made in PR #24 holds: every player runs from `UserCmd`s on
 `SimClock` time, and what is drawn only reads the simulation. What is
@@ -118,10 +138,10 @@ which `SimClock` reads, holds the players that a bot's sight and a dead
 player's spectating look through instead of the scene's group, and gives
 out the two path searches a tick. The profiler runs its tick in the
 world's own parts (`begin_tick`, each player, `end_tick`) rather than a
-loop of its own. Still to come on it: the world's other things (dropped
-weapons, the bomb, grenades) as they arrive, the tick's events handed out
-at `end_tick` (step 1), sight checks as a per-tick budget, and more of the
-checks on a world they step themselves (finding 13).
+loop of its own. The world now also steps dropped items, the bomb and
+grenades through `GameSystems`, hands out the tick's events, and supports
+checks that step it directly. Shared sight budgets and networking remain
+future work.
 
 ### 2. A bot is a kind of player, not a player with a brain
 
@@ -529,8 +549,8 @@ The three are one contract, `reference/systems/contracts.md`, in
 ground, players' commands and the world's `game`, which the bomb,
 grenades and buying are built on. Wired into `player_sim.gd` and
 `bot.gd` with roadmap item 12: the shooter's id and the inventory in
-place of the one weapon. Left (its section 5): the match's events in
-`match_state.gd`.
+place of the one weapon. The match's events in `match_state.gd` are also
+wired into this stream; step 1 is complete.
 
 **Step 2, any time, small: one surface lookup resolved at import**
 (finding 7), which feeds CS2's per-surface friction into the movement and
@@ -554,8 +574,8 @@ grenades (17 to 20) and netcode:**
    again without its sounds and marks (performance step 4).
 
 **Step 4, before menus and netcode: game modes apart from maps** (finding
-11; *competitive done 2026-09-24, roadmap item 24a; the range as a mode
-and the server mode left*), including a server mode that builds nothing to
+11; *Competitive and Practice built, with startup selection; roadmap
+item 24a; range and server modes remain*), including a server mode that builds nothing to
 be seen (performance step 1), and **convars and the console** (finding 10). The convar registry
 can start earlier, as each step above adds settings.
 
@@ -568,7 +588,7 @@ step 8) as part of the asset list.
 Left to the performance side, since they are not systems: the probe light
 sampled on the GPU and its atlas packed (performance step 6).
 
-Against the roadmap's current "what a thread can start now" list: step 0
+At the time of the original audit, the proposed dependency order was: step 0
 and step 1 go first, then items 12 and 13 on top of them; 6a waits for
 step 3's presenter; R1 is step 1; R2, R10 and R13 can go ahead at any time
 and are easier after R1.

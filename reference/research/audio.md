@@ -85,7 +85,8 @@ Every claim on every page is marked *Read*, *Valve*, *Community*, *SDK* or
 
 ## What it means for the build
 
-Nothing here is agreed as a plan; it is what the research points to.
+The following is the original research direction, with the current
+implementation status recorded below. It is not a fresh implementation checklist.
 
 1. **Game state first.** A shot, a reload part and whether it was silent, a
    step, a landing, a detonation, a bomb beep and a flash's strength are
@@ -113,29 +114,26 @@ Nothing here is agreed as a plan; it is what the research points to.
    squared-distance compare per recipient per event: cull each sound by its
    curve's end, as CS2 does for steps at 1250.
 
-## The biggest differences today
+## Implementation status, 2026-10-02
 
-Read on main 3975eef. Each page lists its own with file:line; these are the
-ones a player would notice first.
+The original September 23 comparisons in the linked research are dated
+evidence, not a current list of missing features. The event table,
+`SoundEvents`, CS2 mixgroup buses and music settings are built. Round
+announcer/music/countdowns, C4 sounds, grenade throws/bounces/detonations,
+fire/decoy loops and flash ringing/muffle use them. Dry fire, low-ammo
+clicks and knife attacks are also implemented. Bots play reload sounds.
 
-- Ranges: ours carry far too far. Gunfire uses inverse distance to 300 m
-  (11,811 units), impacts and steps to 80 m (3150 units), and the bomb to
-  300 m. A silenced shot carries as far as a loud one
-  (`weapon_sounds.gd:56-68`, `bullet_impacts.gd:85-86`, `footsteps.gd:60-62`,
-  `c4_view.gd:80-81`).
-- Missing: grenade sounds (none at all), distant gunfire layers, bots'
-  reloads, the victim's and onlookers' hit sounds, a hit on an unarmoured
-  body, and every round, announcer, radio, music and ambient sound.
-- Wrong files: the kill sound plays `bodyshot_kill_01`, which no CS2 event
-  uses. The bomb's beep stem mixes site A's and site B's beeps at random
-  (`sound_bank.gd:46-49`). The AK's fire set includes `ak47_03`, which its
-  event leaves out.
-- Round events: *(stale since 2026-09-23)* `MatchState` sends the round's
-  events into `GameEvents` (`reference/systems/contracts.md` section 5), and
-  since playtest issue 21 (2026-09-28) also the freeze countdown's beeps and
-  `round_time_warning`; `RoundSounds` plays the announcer, the music kit and
-  the countdown from them, and the bomb's own sounds are CS2's events
-  (`C4View`).
+PR #172 moved attacker, victim and onlooker hit/death feedback and burn
+damage into one `HitSounds` event path, checked against the installed
+CS2 build. The older attacker-only path is not dispatched during normal
+gameplay. See [the current hit-event audit](audio-gameplay.md#31-installed-hit-sounds-checked-again-2026-10-02).
+
+Remaining work includes complete gunfire, handling, footstep and world
+impact migration to CS2 curves/mixing; distant gunfire layers; silent
+reloads; pickup/buy UI sounds; whizzes and ricochets; fall/Zeus/spectator
+sounds; radio, agent voice and ambient soundscapes. Hit-effect visuals and
+their surface selection do not fix world-impact audio. Precise sound
+levels and closed-source audience rules still need controlled CS2 checks.
 
 ## What players criticise and want
 

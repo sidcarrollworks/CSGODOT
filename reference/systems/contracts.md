@@ -436,8 +436,11 @@ yaw/pitch/crouch approximation still does not read animated bones.
   a view will play from `item_pickup` once the files are extracted;
 - clears what lies on the ground at `round_prestart`.
 The C4 on the ground is the bomb's own entity, not a `DroppedItem`.
+`GameHud` reads the `use_pickup_item` query for its E prompt, sharing the
+selection and capacity checks with the actual pickup. PR #163 extends the
+prompt to ground guns, grenades and the bomb.
 
-On `codex/box3d-dropped-guns`, the `box3d` backend owns the shared game
+In merged main, the `box3d` backend owns the shared game
 physics world, including dropped-item dynamics. `legacy` selects the
 old collision/drop comparison; converted ragdolls require a native
 world and have no equivalent legacy fallback.

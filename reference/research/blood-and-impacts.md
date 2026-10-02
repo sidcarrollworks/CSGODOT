@@ -14,6 +14,16 @@ page's collision-triggered blood placement, universal 30+3-second blood
 lifetime, and categorical helmet blood suppression were not established
 by the files and are corrected here.
 
+## Implementation status, 2026-10-02
+
+PR #172 is merged. Current gameplay uses the extracted hit-effect tables,
+surface decals, body wounds, body-hit sound roles and directional body
+flinches. Mist is denser, shorter lived and emitted at each bullet contact
+following Sid's feedback. The approximations and remaining comparisons
+below still apply. [The measured costs](hit-effects-performance-2026-10-02.md)
+include a substantial CPU draw cost under dense blood-particle load; this
+is not a claim of full Source 2 parity or a competitive performance baseline.
+
 ## Sources and update boundary
 
 Valve's [September 22 Rush Hour announcement](https://steamcommunity.com/games/CSGO/announcements/detail/711161056325533827)

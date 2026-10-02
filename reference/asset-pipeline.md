@@ -6,6 +6,19 @@ does the import. Both have been run against real CS2 content (Source 2 Viewer
 The importer is also tested against glTFs that Godot generates and re-reads,
 so the mechanism is checked on machines without the game.
 
+## Current extraction additions, 2026-10-02
+
+The current [extraction guide](extracting.md) includes `impacts` for blood,
+helmet/world hit particles, projected decals, body masks and impact models.
+It decodes material DATA, checks fresh VPK texture metadata before sheet
+reconstruction, and only replaces runtime tables after successful
+reconstruction. [Hit-card rendering](research/hit-card-rendering.md)
+records depth slices, frame timing and supported shader approximations.
+`character-animations` includes 42 body/head flinch clips; `sounds` adds
+current hit-event dependencies, including the five burn-damage variants.
+PR #172 merged this pipeline and its consumers. The observations below
+retain the dates and source versions at which they were measured.
+
 ## Tool
 
 [Source 2 Viewer / ValveResourceFormat](https://github.com/ValveResourceFormat/ValveResourceFormat),
