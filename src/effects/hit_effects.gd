@@ -1,335 +1,299 @@
 class_name HitEffects
 extends Node3D
 
-## What is seen of a round meeting a body: the blood that sprays from it,
-## the blood it leaves on the wall and floor behind, and a helmet's sparks
-## (reference/research/blood-and-impacts.md).
-##
-## It is drawn from the game's events, never inside the tick: player_hurt
-## says how much the round took and where it landed, and the bullet_damage
-## sent after it says where on the body and which way it was going. Both are
-## noted as the tick hands them out, and the next frame starts what they
-## call for (effect_for()), so everyone watching sees the same hit, the
-## victim and spectators included, not only the shooter.
-##
-## Until CS2's own effects are extracted (blood_impact_*, impact_helmet_*
-## and the Blood decal groups; the research page's Local list), what it
-## draws is a stand-in, made here and plainly one: a spray of dark red cards
-## flying on along the round, sparks for a helmet, and a dark red splat of
-## its own making on the world behind. CS2 leaves those splats where its
-## spray's particles land (its C_OP_GameDecalRenderer); here a few rays
-## stand in for them, cast from the hit along the round within a cone and
-## tilted down, and one straight down to the floor, as far as REACH (Source
-## SDK 2013's bleed trace, a stand-in: CS2's number is in its effect files).
-## The rays are only seen, so they run on the physics frame after the hit
-## (the space is only safe there; reference/godot/physics.md), through
-## PhysicsQueries, against the world alone, never the bodies.
-
-## CS2's blood roots (client.dll's strings), and the helmet's.
+## Per-pellet snapshots dispatch blood, helmet sparks, wounds and additive
+## flinches. Events queue values; rendering runs on draw frames, traces in
+## physics. CS2's closed game-side root/CP selection remains inferred.
 const BLOOD_LOW := "blood_impact_low"
 const BLOOD_MED := "blood_impact_med"
 const BLOOD_HIGH := "blood_impact_high"
-const BLOOD_HEADSHOT := "blood_impact_headshot"
+const BLOOD_HEADSHOT := "blood_impact_light_headshot"
 const BLOOD_FRIENDLY := "blood_impact_friendly"
-const BLOOD_LOCAL_FRONT := "blood_impact_localfrontenemy"
+const BLOOD_LOCAL_FRONT := "blood_impact_localfrontsimple"
 const BLOOD_LOCAL_REAR := "blood_impact_localrearhit"
 const HELMET := "impact_helmet_headshot"
-## Where the damage bands split: CS2's damage_impact_medium and
-## damage_impact_heavy (client convars; that the blood follows them is
-## inferred).
 const MEDIUM_DAMAGE := 20
 const HEAVY_DAMAGE := 40
-
-## How far behind a hit its blood can land, and the cone its rays go out
-## in about the round, tilted down: stand-ins until CS2's effect files say.
-const REACH := 172.0
-const CONE_DEGREES := 12.0
-const TILT_DOWN := 0.25
-## How far down under a hit the floor is looked for.
-const FLOOR_REACH := 96.0
-## Rays along the round by band: more blood the harder the hit.
-const RAYS := {BLOOD_LOW: 1, BLOOD_MED: 2, BLOOD_HIGH: 3, BLOOD_HEADSHOT: 3, BLOOD_FRIENDLY: 1}
-## A splat's size across, in units, and how deep its projection reaches.
-const SPLAT_SIZE := 22.0
-const SPLAT_DEPTH := 12.0
-## A spray's cards: how many, how long they live, how far they fly.
-const SPRAY_CARDS := 7
-const SPRAY_SECONDS := 0.35
-const SPRAY_TRAVEL := 18.0
-const SPARK_CARDS := 6
-const SPARK_SECONDS := 0.15
-## CS2's blood decals start to fade at 30 s and are gone 3 s later
-## (r_decals_default_start_fade, _fade_duration).
+const LIMIT_PENDING := 128
+## Wall marks are separate from authored parent-death ground splashes.
+## This reach and trace approximate the unverified client wall-mark path.
+const WALL_REACH := 172.0
 const DECAL_FADE_START := 30.0
 const DECAL_FADE_SECONDS := 3.0
-
-## Splats at once; the oldest goes when a new one is needed.
-@export var max_splats: int = 64
-
+@export var max_splats := 64
 var game: GameSystems
-## Whose eyes (the player this machine plays as): their own hits are not
-## sprayed in their face.
-var listener_id: int = GameEvents.NOBODY
-var quads: EffectQuads
-
-## Each victim's last player_hurt from each attacker in this flush, by
-## "victim:attacker": its bullet_damage comes after it.
-var _hurt := {}
-## Hits to start on the next frame: {"effect", "at", "direction", "victim"}.
+var listener_id := GameEvents.NOBODY
+var quads: HitQuads
+var models: HitModels
+var wounds: BodyWounds
+var particles := HitParticles.new()
 var _pending: Array[Dictionary] = []
-## Rays to cast on the next physics frame: {"from", "to"}.
 var _rays: Array[Dictionary] = []
-## Live sprays and sparks: {"effect", "at", "direction", "born", "seed"}.
-var _bursts: Array[Dictionary] = []
 var _splats: Array[Decal] = []
-var _splat_born: Array[int] = []
-var _next_splat: int = 0
+var _splat_state: Array[Dictionary] = []
+var _next_splat := 0
 var _rng := RandomNumberGenerator.new()
-static var _blood_texture: Texture2D
-static var _card_texture: Texture2D
+var _materials := {}
+## Optional instrumentation for profile_hits, disabled during normal play.
+var profile := false
+var costs_usec := {}
 
 
-## Listens to a game's hits, for listener's eyes.
 func watch(p_game: GameSystems, listener: int) -> void:
+	_unwatch()
 	game = p_game
 	listener_id = listener
-	game.events.listen(&"player_hurt", _on_player_hurt)
 	game.events.listen(&"bullet_damage", _on_bullet_damage)
+	game.events.listen(&"player_spawn", _on_spawn)
 
 
 func _ready() -> void:
-	quads = EffectQuads.new()
-	quads.name = "Quads"
+	add_to_group(&"hit_effects")
+	quads = HitQuads.new()
 	add_child(quads)
-	blood_texture()
-	card_texture()
+	models = HitModels.new()
+	add_child(models)
+	wounds = BodyWounds.new()
+	add_child(wounds)
+	for layer: Dictionary in HitEffectTable.LAYERS.values():
+		for renderer: Dictionary in layer.get("renderers", []):
+			quads.prepare(renderer)
+			models.prepare(renderer)
+	for material: String in HitEffectTable.MATERIALS:
+		if material.contains("/blood/"):
+			_material(material)
 
 
 func _exit_tree() -> void:
+	_unwatch()
+
+
+func _unwatch() -> void:
 	if game != null:
-		game.events.unlisten(&"player_hurt", _on_player_hurt)
 		game.events.unlisten(&"bullet_damage", _on_bullet_damage)
+		game.events.unlisten(&"player_spawn", _on_spawn)
 
 
-func _on_player_hurt(event: GameEvent) -> void:
-	var fields := event.fields
-	_hurt["%d:%d" % [fields["userid"], fields["attacker"]]] = fields
+func _on_spawn(event: GameEvent) -> void:
+	_append({"clear": int(event.fields.userid)})
 
 
-## A round met a living body: what it calls for, noted for the next frame.
 func _on_bullet_damage(event: GameEvent) -> void:
-	var fields := event.fields
-	var victim: int = fields["victim"]
-	var attacker: int = fields["attacker"]
-	var hurt: Dictionary = _hurt.get("%d:%d" % [victim, attacker], {})
-	_hurt.erase("%d:%d" % [victim, attacker])
-	var direction := Vector3(fields["damage_dir_x"], fields["damage_dir_y"], fields["damage_dir_z"])
-	var at := Vector3(fields["x"], fields["y"], fields["z"])
-	var effect := effect_for(
-		int(hurt.get("hitgroup", DamageInfo.HITGROUP_GENERIC)),
-		int(hurt.get("dmg_health", 0)), int(hurt.get("dmg_armor", 0)),
-		_same_team(victim, attacker), victim == listener_id and victim != GameEvents.NOBODY,
-		_from_front(victim, direction)
-	)
-	_pending.append({"effect": effect, "at": at, "direction": direction.normalized(), "victim": victim})
+	var f := event.fields
+	var victim := int(f.victim)
+	var direction := Vector3(f.damage_dir_x, f.damage_dir_y, f.damage_dir_z).normalized()
+	var own := victim == listener_id and victim != GameEvents.NOBODY
+	var effect := effect_for(int(f.hitgroup), int(f.dmg_health), int(f.dmg_armor),
+		_same_team(victim, int(f.attacker)), own, _from_front(victim, direction))
+	_append({"effect": effect, "at": Vector3(f.x, f.y, f.z), "direction": direction,
+		"normal": Vector3(f.normal_x, f.normal_y, f.normal_z), "victim": victim,
+		"zone": StringName(f.zone), "side": StringName(f.side), "bone": StringName(f.bone),
+		"health": float(f.health), "killed": bool(f.killed), "damage": float(f.dmg_health), "born": event.at_usec,
+		"helmet": int(f.hitgroup) == DamageInfo.HITGROUP_HEAD and float(f.dmg_armor) > 0, "screen": own})
 
 
-## What CS2 plays for a round into a body (the effect's root name):
-## - the head of someone in a helmet that took the round: the helmet's
-##   sparks, and no blood (inferred from impact_helmet_headshot, which the
-##   server names);
-## - the victim's own view: the local set, front or rear by where the round
-##   came from;
-## - a teammate: the friendly blood;
-## - the head: headshot blood;
-## - anywhere else: low, medium or heavy blood by the health it took.
-## Which plays when is inferred from their names and CS2's damage_impact
-## convars: CS2's own choice is in its code, not its files.
+func _append(hit: Dictionary) -> void:
+	if _pending.size() < LIMIT_PENDING:
+		_pending.append(hit)
+
+
+## Armor-only helmet hits spark; a helmet hit taking health can also bleed.
+## A blanket blood/spark mutual exclusion is not established by the files.
 static func effect_for(hitgroup: int, dmg_health: int, dmg_armor: int, same_team: bool, own_view: bool, from_front: bool = true) -> String:
-	var head := hitgroup == DamageInfo.HITGROUP_HEAD
-	if head and dmg_armor > 0:
+	if hitgroup == DamageInfo.HITGROUP_HEAD and dmg_armor > 0 and dmg_health <= 0:
 		return HELMET
+	if dmg_health <= 0:
+		return ""
 	if own_view:
 		return BLOOD_LOCAL_FRONT if from_front else BLOOD_LOCAL_REAR
 	if same_team:
 		return BLOOD_FRIENDLY
-	if head:
+	if hitgroup == DamageInfo.HITGROUP_HEAD:
 		return BLOOD_HEADSHOT
-	if dmg_health >= HEAVY_DAMAGE:
-		return BLOOD_HIGH
-	if dmg_health >= MEDIUM_DAMAGE:
-		return BLOOD_MED
-	return BLOOD_LOW
+	return BLOOD_HIGH if dmg_health >= HEAVY_DAMAGE else (BLOOD_MED if dmg_health >= MEDIUM_DAMAGE else BLOOD_LOW)
 
 
-## Whether an effect puts blood on the world behind.
-static func bleeds(effect: String) -> bool:
-	return RAYS.has(effect)
+func queue_world(surface: String, at: Vector3, normal: Vector3, direction: Vector3, at_usec: int) -> void:
+	var properties := BulletImpacts.impact_for(surface)
+	var name := String(properties.get("effect", "impact_concrete")).get_file().get_basename()
+	if not name.is_empty():
+		_append({"effect": name, "at": at + normal * 0.1, "direction": normal,
+			"incoming": direction, "born": at_usec, "world": true})
 
 
-## The rays that look for where a hit's blood lands: count of them along
-## the round from at, each turned within the cone and tilted down, as far as
-## REACH, and one straight down to the floor. Each is [from, to].
-static func blood_rays(at: Vector3, direction: Vector3, count: int, rng: RandomNumberGenerator) -> Array[PackedVector3Array]:
-	var rays: Array[PackedVector3Array] = []
-	var along := direction.normalized()
-	if along.length_squared() < 1e-6:
-		along = Vector3.FORWARD
-	var side := along.cross(Vector3.UP)
-	if side.length_squared() < 1e-6:
-		side = along.cross(Vector3.RIGHT)
-	side = side.normalized()
-	var up := side.cross(along).normalized()
-	var spread := tan(deg_to_rad(CONE_DEGREES))
-	for i in count:
-		var way := along + side * rng.randf_range(-spread, spread) + up * rng.randf_range(-spread, spread)
-		way = (way.normalized() + Vector3.DOWN * TILT_DOWN).normalized()
-		rays.append(PackedVector3Array([at, at + way * REACH]))
-	rays.append(PackedVector3Array([at, at + Vector3.DOWN * FLOOR_REACH]))
-	return rays
-
-
-func _process(_delta: float) -> void:
+func _process(_dt: float) -> void:
+	var measured := Time.get_ticks_usec() if profile else 0
+	if profile:
+		costs_usec.clear()
 	var now := DrawClock.usec()
+	var camera := get_viewport().get_camera_3d()
+	var eye := camera.global_transform if camera != null else Transform3D.IDENTITY
 	for hit in _pending:
-		_start(hit, now)
+		if hit.has("clear"):
+			wounds.clear_player(int(hit.clear))
+		else:
+			_start(hit, eye.origin)
 	_pending.clear()
-	_hurt.clear()
-	_fade_splats(now)
-	_bursts = _bursts.filter(func(burst: Dictionary) -> bool: return _age(burst, now) <= _lifetime(burst))
-	var camera := get_viewport().get_camera_3d() if is_inside_tree() else null
-	if camera == null:
-		return
+	if profile:
+		measured = _measure(measured, "spawn")
+	particles.advance(now)
+	for request in particles.ground:
+		if _rays.size() < LIMIT_PENDING:
+			_rays.append(request)
+	particles.ground.clear()
+	if profile:
+		measured = _measure(measured, "advance")
 	quads.begin()
-	_draw_bursts(now, camera.global_transform)
+	models.begin()
+	particles.draw(quads, models, eye, now, camera.fov if camera != null else 90.0)
+	if profile:
+		measured = _measure(measured, "draw")
 	quads.finish()
+	models.finish()
+	if profile:
+		measured = _measure(measured, "submit")
+	wounds.update_marks()
+	_fade_splats(now)
+	if profile:
+		_measure(measured, "marks")
 
 
-func _physics_process(_delta: float) -> void:
-	if _rays.is_empty() or not is_inside_tree():
+func _measure(since: int, key: String) -> int:
+	var now := Time.get_ticks_usec()
+	costs_usec[key] = now - since
+	return now
+
+
+func _start(hit: Dictionary, eye: Vector3) -> void:
+	var effect := String(hit.effect)
+	var born := int(hit.born)
+	var at: Vector3 = hit.at
+	var direction: Vector3 = hit.direction
+	if bool(hit.get("helmet", false)) or effect == HELMET:
+		var outward: Vector3 = hit.get("normal", Vector3.ZERO)
+		if outward.length_squared() < 1e-8:
+			outward = -direction
+		particles.spawn(HELMET, at, outward, born, eye)
+	if not effect.is_empty() and effect != HELMET:
+		particles.spawn(effect, at, direction, born, eye, float(hit.get("damage", 30)), bool(hit.get("screen", false)))
+	if bool(hit.get("world", false)):
 		return
-	var space := get_world_3d().direct_space_state
-	for ray in _rays:
-		var query := PhysicsRayQueryParameters3D.create(ray["from"], ray["to"], Hitscan.WORLD_LAYER)
-		var hit := PhysicsQueries.intersect_ray(space, query)
-		if not hit.is_empty():
-			splat(hit["position"], hit["normal"])
+	var bodies := drawn_models(int(hit.victim))
+	if not bool(hit.get("killed", false)):
+		for body in bodies:
+			body.flinch(hit.zone, hit.side, direction, born)
+	if float(hit.damage) > 0.0:
+		var normal: Vector3 = hit.normal
+		if normal.length_squared() < 1e-8:
+			normal = -direction
+		wounds.mark(int(hit.victim), bodies, hit.bone, at, normal)
+		if _rays.size() < LIMIT_PENDING:
+			_rays.append({"wall": true, "at": at + direction, "to": at + direction * WALL_REACH, "born": born})
+
+
+func drawn_models(userid: int) -> Array[PlayerModel]:
+	var out: Array[PlayerModel] = []
+	var body := game.roster.player(userid) if game != null else null
+	if body is PlayerSim and is_instance_valid(body.model):
+		out.append(body.model)
+	if body is PlayerController and is_instance_valid(body.view):
+		for model: PlayerModel in [body.view.body_model, body.view.body_shadow]:
+			if is_instance_valid(model) and not out.has(model):
+				out.append(model)
+	return out
+
+
+func _physics_process(_dt: float) -> void:
+	for request in _rays:
+		var at: Vector3 = request.at
+		var wall := bool(request.get("wall", false))
+		var to: Vector3 = request.to if wall else at + Vector3.DOWN * float(HitEffectTable.GROUND[request.effect].get("ground_trace", 256.0))
+		var query := PhysicsRayQueryParameters3D.create(at, to, Hitscan.WORLD_LAYER)
+		var contact := PhysicsQueries.intersect_ray(get_world_3d().direct_space_state, query)
+		if contact.is_empty():
+			continue
+		if wall:
+			var groups: Array = HitEffectTable.DECAL_GROUPS.get("Blood", [])
+			if not groups.is_empty():
+				_rng.seed = hash([at, request.born])
+				var material := String(groups[_rng.randi_range(0, groups.size() - 1)].material)
+				var authored: Dictionary = HitEffectTable.MATERIALS.get(material, {}).get("params", {})
+				var fade_start := float(authored.get("DecalFadeStartTime", DECAL_FADE_START))
+				var fade_duration := float(authored.get("DecalFadeDuration", DECAL_FADE_SECONDS))
+				splat(contact.position, contact.normal, {"material": material, "born": request.born,
+					"life": fade_start + fade_duration, "fade_in": 0.0, "fade_out": fade_duration, "persistent": true})
+		else:
+			var params := request.duplicate()
+			params["material"] = HitEffectTable.GROUND[request.effect].material
+			var layer: Dictionary = HitEffectTable.GROUND[request.effect]
+			params["depth"] = float(layer.get("projection_max", 5)) - float(layer.get("projection_min", -15))
+			splat(contact.position, contact.normal, params)
 	_rays.clear()
 
 
-func _start(hit: Dictionary, now: int) -> void:
-	var effect: String = hit["effect"]
-	# Your own hits are CS2's local set, on your screen; nothing is sprayed
-	# in front of your own eyes.
-	if effect != BLOOD_LOCAL_FRONT and effect != BLOOD_LOCAL_REAR:
-		_bursts.append({"effect": effect, "at": hit["at"], "direction": hit["direction"], "born": now, "seed": _rng.randi()})
-	var count: int = RAYS.get(effect, 0)
-	if effect == BLOOD_LOCAL_FRONT or effect == BLOOD_LOCAL_REAR:
-		count = 1
-	if count <= 0:
-		return
-	for ray in blood_rays(hit["at"], hit["direction"], count, _rng):
-		_rays.append({"from": ray[0], "to": ray[1]})
-
-
-## The rays waiting for the next physics frame.
-func pending_rays() -> int:
-	return _rays.size()
-
-
-## The hits noted and not started yet, as a copy.
-func pending_hits() -> Array[Dictionary]:
-	return _pending.duplicate()
-
-
-## The sprays and sparks being drawn.
-func bursts() -> int:
-	return _bursts.size()
-
-
-## The splats on the world.
-func splats() -> Array[Decal]:
-	return _splats.duplicate()
-
-
-## A blood splat on the world at at, facing out along normal: the next of
-## the pool, the oldest going when it is full. Never on a body (the decal
-## leaves RigModel.LAYER out, as CS2's m_bNoDecalsOnOwner does).
-func splat(at: Vector3, normal: Vector3) -> Decal:
+func splat(at: Vector3, normal: Vector3, params: Dictionary) -> Decal:
+	var material := _material(String(params.material))
+	if material.is_empty() or material.color == null or max_splats <= 0:
+		return null
 	var decal: Decal
+	var index: int
 	if _splats.size() < max_splats:
 		decal = Decal.new()
-		decal.cull_mask = 0xFFFFF & ~RigModel.LAYER
-		decal.upper_fade = 0.0
-		decal.lower_fade = 0.0
-		decal.normal_fade = BulletImpacts.NORMAL_FADE
-		decal.texture_albedo = blood_texture()
 		add_child(decal)
+		index = _splats.size()
 		_splats.append(decal)
-		_splat_born.append(0)
+		_splat_state.append({})
 	else:
-		decal = _splats[_next_splat]
-	var index := _splats.find(decal)
-	_next_splat = (index + 1) % max_splats
-	_splat_born[index] = DrawClock.usec()
-	var scale_by := _rng.randf_range(0.7, 1.3)
-	decal.size = Vector3(SPLAT_SIZE * scale_by, SPLAT_DEPTH, SPLAT_SIZE * scale_by)
-	decal.modulate = Color(1, 1, 1, 1)
+		index = _next_splat
+		decal = _splats[index]
+		_next_splat = (_next_splat + 1) % max_splats
+	var half := float(params.get("half", float(material.width) * 0.5))
+	var height := half * 2.0 if params.has("half") else float(material.height)
+	decal.size = Vector3(half * 2.0, maxf(float(params.get("depth", material.depth)), 1.0), height)
+	decal.texture_albedo = material.color
+	decal.texture_normal = material.normal
+	decal.cull_mask = 0xFFFFF & ~RigModel.LAYER
+	decal.albedo_mix = 1.0
+	var direction := normal.normalized()
+	var basis := Basis.looking_at(-direction, Vector3.RIGHT if absf(direction.y) > 0.99 else Vector3.UP)
+	basis = basis.rotated(basis.x, PI * 0.5)
+	basis = basis.rotated(direction, float(params.get("roll", 0.0)))
+	decal.global_transform = Transform3D(basis, at + direction * 0.05)
 	decal.visible = true
-	var up := normal.normalized()
-	var spin := Basis(Vector3.UP, _rng.randf_range(0.0, TAU))
-	var centre := at + up * (SPLAT_DEPTH * 0.25)
-	if decal.is_inside_tree():
-		decal.global_transform = Transform3D(BulletImpacts._basis_facing(-up) * spin, centre)
-	else:
-		decal.transform = Transform3D(BulletImpacts._basis_facing(-up) * spin, centre)
+	_splat_state[index] = params
 	return decal
 
 
-## Splats past CS2's 30 s fade out over its 3 s, then go.
+func _material(path: String) -> Dictionary:
+	if _materials.has(path):
+		return _materials[path]
+	var data: Dictionary = HitEffectTable.MATERIALS.get(path, {})
+	var textures: Dictionary = data.get("textures", {})
+	var values: Dictionary = data.get("params", {})
+	var color := SpriteSheet.named(String(textures.get("g_tColor", "")))
+	var ao := SpriteSheet.named(String(textures.get("g_tAmbientOcclusion", "")))
+	var normal := SpriteSheet.named(String(textures.get("g_tNormal", "")))
+	var albedo: Texture2D = null
+	if color != null:
+		albedo = ImageTexture.create_from_image(BulletImpacts.occluded(color.texture.get_image(), ao.texture.get_image() if ao != null else null))
+	var out := {"color": albedo, "normal": normal.texture if normal != null else null,
+		"width": float(values.get("DecalWorldWidth", 35.6)), "height": float(values.get("DecalWorldHeight", 35.6)), "depth": float(values.get("DecalDepth", 15.0))}
+	_materials[path] = out
+	return out
+
+
 func _fade_splats(now: int) -> void:
 	for i in _splats.size():
-		var decal := _splats[i]
-		if not decal.visible:
-			continue
-		var age := float(now - _splat_born[i]) / 1_000_000.0
-		var left := 1.0 - clampf((age - DECAL_FADE_START) / DECAL_FADE_SECONDS, 0.0, 1.0)
-		decal.modulate.a = left
-		if left <= 0.0:
-			decal.visible = false
-
-
-static func _age(burst: Dictionary, now: int) -> float:
-	return float(now - int(burst["born"])) / 1_000_000.0
-
-
-static func _lifetime(burst: Dictionary) -> float:
-	return SPARK_SECONDS if burst["effect"] == HELMET else SPRAY_SECONDS
-
-
-func _draw_bursts(now: int, eye: Transform3D) -> void:
-	for burst in _bursts:
-		var helmet: bool = burst["effect"] == HELMET
-		var share := clampf(_age(burst, now) / _lifetime(burst), 0.0, 1.0)
-		var rng := RandomNumberGenerator.new()
-		rng.seed = int(burst["seed"])
-		var along: Vector3 = burst["direction"]
-		var at: Vector3 = burst["at"]
-		var cards := SPARK_CARDS if helmet else SPRAY_CARDS
-		if burst["effect"] == BLOOD_HEADSHOT or burst["effect"] == BLOOD_HIGH:
-			cards += 4
-		for i in cards:
-			var way := (along + Vector3(rng.randf_range(-0.5, 0.5), rng.randf_range(-0.3, 0.5), rng.randf_range(-0.5, 0.5))).normalized()
-			if helmet:
-				# Sparks glance back off the helmet.
-				way = (-along + Vector3(rng.randf_range(-0.8, 0.8), rng.randf_range(-0.2, 0.8), rng.randf_range(-0.8, 0.8))).normalized()
-			var travel := SPRAY_TRAVEL * rng.randf_range(0.4, 1.0) * sqrt(share)
-			var centre := at + way * travel + Vector3.DOWN * 20.0 * share * share
-			var half := (0.6 if helmet else 1.5 + 3.5 * share) * rng.randf_range(0.7, 1.3)
-			var fade := 1.0 - share
-			var color := Color(3.0, 2.2, 1.2, fade) if helmet else Color(0.22, 0.01, 0.01, 0.85 * fade)
-			quads.quad(card_texture(), &"add" if helmet else &"mix", false,
-				EffectQuads.sprite(centre, half, rng.randf_range(0.0, TAU), eye), Rect2(0, 0, 1, 1), color)
+		var state := _splat_state[i]
+		var age := maxf(float(now - int(state.born)) / 1e6, 0.0)
+		var life := float(state.life)
+		var leave := float(state.fade_out) * (1.0 if bool(state.get("persistent", false)) else life)
+		var alpha := clampf((life - age) / maxf(leave, 0.001), 0.0, 1.0)
+		var enter := float(state.fade_in)
+		if enter > 0.0:
+			alpha *= clampf(age / enter, 0.0, 1.0)
+		_splats[i].modulate.a = alpha
+		_splats[i].visible = alpha > 0.0
 
 
 func _same_team(victim: int, attacker: int) -> bool:
@@ -339,48 +303,21 @@ func _same_team(victim: int, attacker: int) -> bool:
 	return not a.is_empty() and a == game.roster.team_of(attacker)
 
 
-## Whether a round going along direction met victim from in front.
 func _from_front(victim: int, direction: Vector3) -> bool:
 	var body := game.roster.player(victim) if game != null else null
-	if body == null:
-		return true
 	if not body is PlayerSim:
 		return true
-	var facing := PlayerInput.aim_direction((body as PlayerSim).yaw_degrees, 0.0)
+	var facing := PlayerInput.aim_direction(body.yaw_degrees, 0.0)
 	return Vector2(facing.x, facing.z).dot(Vector2(direction.x, direction.z)) < 0.0
 
 
-## The splats' stand-in: a dark red blot, ragged at its edge, made once.
-static func blood_texture() -> Texture2D:
-	if _blood_texture != null:
-		return _blood_texture
-	var size := 64
-	var image := Image.create(size, size, false, Image.FORMAT_RGBA8)
-	var noise := FastNoiseLite.new()
-	noise.seed = 7
-	noise.frequency = 0.12
-	for y in size:
-		for x in size:
-			var d := Vector2(x - size * 0.5 + 0.5, y - size * 0.5 + 0.5).length() / (size * 0.5)
-			var edge := 0.62 + 0.3 * noise.get_noise_2d(x, y)
-			var a := clampf((edge - d) * 6.0, 0.0, 1.0)
-			image.set_pixel(x, y, Color(0.28, 0.02, 0.02, a * 0.9))
-	image.generate_mipmaps()
-	_blood_texture = ImageTexture.create_from_image(image)
-	return _blood_texture
+func pending_hits() -> Array[Dictionary]:
+	return _pending.duplicate()
 
 
-## The cards' stand-in: a soft round blot, white, tinted per card.
-static func card_texture() -> Texture2D:
-	if _card_texture != null:
-		return _card_texture
-	var size := 32
-	var image := Image.create(size, size, false, Image.FORMAT_RGBA8)
-	for y in size:
-		for x in size:
-			var d := Vector2(x - size * 0.5 + 0.5, y - size * 0.5 + 0.5).length() / (size * 0.5)
-			var a := clampf(1.0 - d, 0.0, 1.0)
-			image.set_pixel(x, y, Color(1, 1, 1, a * a))
-	image.generate_mipmaps()
-	_card_texture = ImageTexture.create_from_image(image)
-	return _card_texture
+func pending_rays() -> int:
+	return _rays.size()
+
+
+func splats() -> Array[Decal]:
+	return _splats.duplicate()

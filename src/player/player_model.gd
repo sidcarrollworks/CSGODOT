@@ -37,8 +37,7 @@ extends RigModel
 ## model is turned round and then given the body's yaw.
 
 const CLIPS_DIR := "res://assets/characters/animation/anims/world/rifle/_default_rifle"
-## The deaths every weapon shares. (Its flinches are additive, like the
-## guns' shots, and would go in as the shots do; they are not extracted.)
+## The deaths, jump additives and hit flinches every weapon shares.
 const SHARED_DIR := "res://assets/characters/animation/anims/world/shared"
 const AGENTS := ViewModel.AGENTS
 
@@ -263,6 +262,10 @@ var _additive_for_usec := -1
 var _landing_curves := {}
 ## The death being held, if any.
 var _dead: StringName = &""
+## Independent additive reactions above the gun's shooting layer. They
+## sample authored clips rather than bending bones or changing the aim.
+var _body_flinch: PlayerFlinch
+var _head_flinch: PlayerFlinch
 
 
 ## Builds the body and weapon. weapon_set is the gun's own third-person set
@@ -290,6 +293,18 @@ func setup(team: String, weapon_model: String, weapon_set: String = "", holds: b
 			_prepared[additive] = rest_relative(body_tracks_only(library.get_animation(additive), body_node), character_rig)
 		library.remove_animation(additive)
 		library.add_animation(additive, _prepared[additive])
+	for path in list_clips(SHARED_DIR, PackedStringArray(["flinch_"])):
+		# The +non_additive copies are authoring references, not differences.
+		if path.contains("+non_additive") or path.get_file().begins_with("flinch_molotov"):
+			continue
+		if not _prepared.has(path):
+			var source := clip_animation(path)
+			if source == null:
+				continue
+			var prepared := rest_relative(body_tracks_only(source, body_node), character_rig)
+			prepared.loop_mode = Animation.LOOP_NONE
+			_prepared[path] = prepared
+		library.add_animation(short_name(path, ""), _prepared[path])
 	idle = &"idle"
 	holds_items = holds
 	if holds:
@@ -601,6 +616,14 @@ func _build_tree(weapon_clips: PackedStringArray) -> void:
 		_hold_prefix = WEAPON
 		_has_hold = true
 		_has_shoot = true
+	if animation_player.has_animation(&"flinch_chest") and animation_player.has_animation(&"flinch_head"):
+		root.disconnect_node(&"action", 0)
+		_body_flinch = PlayerFlinch.new()
+		_head_flinch = PlayerFlinch.new(true)
+		var over := &"shoot" if has_weapon_layers else moving
+		over = _body_flinch.attach(root, over, &"flinch_chest")
+		over = _head_flinch.attach(root, over, &"flinch_head")
+		root.connect_node(&"action", 0, over)
 	var lengths := {}
 	for clip in animation_player.get_animation_list():
 		lengths[String(clip)] = animation_player.get_animation(clip).length
@@ -622,6 +645,9 @@ func _build_tree(weapon_clips: PackedStringArray) -> void:
 	animation_tree.tree_root = root
 	animation_player.active = false
 	animation_tree.active = true
+	if _body_flinch != null:
+		_body_flinch.initialize(animation_tree)
+		_head_flinch.initialize(animation_tree)
 	_apply()
 
 
@@ -967,6 +993,37 @@ func fire() -> void:
 		animation_tree.set("parameters/shoot/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
 
 
+## A surviving hit, with the capsule's body part and side and the shot's
+## world-space direction (shooter toward victim). The two independent
+## whole-body layers follow CS2's graph above shooting and below the death;
+## they do not interrupt locomotion, reloads or the held weapon. Assets are
+## already prepared, so handling a hit never reads the disk.
+func flinch(zone: StringName, side: StringName, shot_direction: Vector3, at_usec: int = -1) -> void:
+	if _body_flinch == null or animation_tree == null or _dead != &"" or not is_animating():
+		return
+	var toward_source := body_speeds(-shot_direction, rad_to_deg(rotation.y) - 180.0)
+	var clip := PlayerFlinch.clip_for(zone, side, toward_source, _variation)
+	if clip == &"" or not animation_player.has_animation(clip):
+		return
+	var at := SimClock.now_usec() if at_usec < 0 else at_usec
+	var reaction := _head_flinch if zone == &"head" else _body_flinch
+	reaction.start(clip, animation_player.get_animation(clip).length, at)
+	_apply_flinches(at)
+	_requests_due = true
+
+
+func _apply_flinches(at_usec: int) -> void:
+	if _body_flinch != null and animation_tree != null:
+		_body_flinch.apply(animation_tree, at_usec)
+		_head_flinch.apply(animation_tree, at_usec)
+
+
+func _clear_flinches() -> void:
+	if _body_flinch != null and animation_tree != null:
+		_body_flinch.clear(animation_tree)
+		_head_flinch.clear(animation_tree)
+
+
 ## The held gun's own clip for an action (reload, draw), crouched if the body
 ## is down and the gun has one; empty if the gun has none.
 func weapon_clip(action: StringName) -> StringName:
@@ -1002,6 +1059,7 @@ func play(
 		animation_tree.set("parameters/gun_action/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
 		return
 	if _is_held(short) and animation_player.has_animation(short):
+		_clear_flinches()
 		(_node(&"death_clip") as AnimationNodeAnimation).animation = short
 		(_node(&"death") as AnimationNodeTransition).xfade_time = blend
 		animation_tree.set("parameters/death/transition_request", "dead")
@@ -1015,6 +1073,7 @@ func play(
 		animation_tree.set("parameters/action/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
 		return
 	_dead = &""
+	_clear_flinches()
 	(_node(&"death") as AnimationNodeTransition).xfade_time = blend
 	animation_tree.set("parameters/death/transition_request", "alive")
 	animation_tree.set("parameters/action/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_ABORT)
@@ -1047,6 +1106,7 @@ func state() -> StringName:
 ## first, so it steps three times; on a tree already going the rest change
 ## nothing. The pose is fitted at once, by the flags as they stand.
 func pose_now() -> void:
+	_apply_flinches(DrawClock.usec())
 	if animation_tree != null:
 		for i in 3:
 			animation_tree.advance(0.0)
@@ -1068,6 +1128,7 @@ func pose_now() -> void:
 ## (holding nothing) and eased its hands back onto the gun over HandGrip's
 ## EASE.
 func pose_again() -> void:
+	_apply_flinches(DrawClock.usec())
 	if animation_tree != null:
 		animation_tree.advance(0.0)
 	elif animation_player != null:
@@ -1188,6 +1249,10 @@ func is_seen() -> bool:
 
 
 func _process(delta: float) -> void:
+	# Default-stepped shadow bodies need the same sampled hit poses; view-
+	# and self-stepped bodies apply them immediately before their own step.
+	if not stepped_by_hand and not stepped_by_view:
+		_apply_flinches(DrawClock.usec())
 	# The view steps it, its flags with it (show_frame).
 	if stepped_by_view:
 		return
@@ -1274,6 +1339,7 @@ func step(delta: float) -> void:
 
 
 func _step_mixer(delta: float) -> void:
+	_apply_flinches(DrawClock.usec())
 	if animation_tree != null:
 		animation_tree.advance(delta)
 	elif animation_player != null:
@@ -1305,6 +1371,8 @@ func put_at_once() -> void:
 
 ## Stops the animation, for a ragdoll to have the bones, or starts it again.
 func set_animating(on: bool) -> void:
+	if not on:
+		_clear_flinches()
 	if foot_plant != null:
 		foot_plant.active = on and _dead == &""
 	if hand_grip != null:

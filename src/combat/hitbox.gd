@@ -19,6 +19,8 @@ const LAYER := 4
 
 ## The thing that takes the damage. Set by whoever builds the hitboxes.
 var target: HitTarget
+## The authored bone this capsule follows, for visual hit marks.
+var bone_name: StringName = &""
 
 
 func _ready() -> void:

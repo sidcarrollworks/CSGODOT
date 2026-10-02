@@ -1,5 +1,10 @@
 # What everything costs, and what going online will
 
+The [2 October hit-effects measurements](research/hit-effects-performance-2026-10-02.md)
+record the current blood/impact renderer at 1080p and 4K: sustained close-up
+hits add measurable CPU particle-evaluation cost, with the remaining stress
+limit and the repeatable `scripts/profile_hits.gd` fixture documented there.
+
 For the tick as it is on Box3D, see [the walking hitch, and the tick after
 it](research/box3d-walking-hitch-2026-09-28.md) (2026-09-28: ten players
 3.09 ms, what each part of it costs, and what is left of the 6 ms), which

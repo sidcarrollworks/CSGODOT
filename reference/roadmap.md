@@ -504,16 +504,17 @@ item 6 is built.
    (the `...Small` modifier and A1 in `reference/cs2-systems.md`), and a
    screenshot pair of the view just before and just after an unarmoured
    hit, to size the flinch (2 degrees here).
-5. **Blood on hit.** *(Remote stand-in done 2026-09-30; Local extracts the effects, then Remote)* A round into a body leaves no mark, so a hit is only
-   heard, not seen. CS2's blood impact and decal behind the target.
-   Since 2026-09-30 the tick sends CS2's `bullet_damage` beside
-   `player_hurt`, and `HitEffects` (`src/effects/hit_effects.gd`) picks
-   CS2's effect for each hit (the damage bands, headshot, helmet sparks,
-   friendly, your own) and draws a stand-in spray and blood splats on the
-   world behind and below (`reference/research/blood-and-impacts.md`,
-   section 6). Left: Sid's `impacts` extraction (section 7 of that page),
-   then CS2's own effects and decals in place of the stand-in.
-6. **Firing on the third-person model.** *(Done 2026-09-23 but for the flinches; Sid checks it)* A bot's body holds, fires and
+5. **Blood on hit.** *(Current assets implemented 2026-10-02, PR #172; Sid checks the feel)*
+   Per-pellet damage snapshots dispatch extracted blood/helmet particles,
+   animated motion-vector sheets, parent-death floor splashes and real
+   weighted world decals. Body wounds follow the struck bone using CS2's
+   wound mask. The shared hit-audio path plays authored attacker, victim
+   and onlooker sounds once. `scripts/extract_assets.sh impacts` reproduces
+   the definitions, material DATA, textures and small impact meshes.
+   Left: compare closed game-side CP/root selection, persistent wall blood,
+   skin UV2 accumulation and Source shader aging against current CS2;
+   documented approximations in `reference/research/blood-and-impacts.md`.
+6. **Firing on the third-person model.** *(Firing done 2026-09-23; body/head flinches added 2026-10-02, PR #172; Sid checks it)* A bot's body holds, fires and
    reloads its own gun: the gun's third-person clips (`WeaponData.world_clip_set`)
    in `PlayerModel.animation_tree`, over the locomotion as CS2's graph
    stacks them (`reference/animgraph/worldmodel.md`), through its UpperBody
@@ -531,9 +532,9 @@ item 6 is built.
    player's hitboxes with what they hold; the variation switches once the
    draw is over, as CS2's graph has it. Left: CS2 blends the weapon layer in
    model space, Godot in each bone's own, so the upper body follows the hips
-   here; the flinches, additive too and ready to go in the same way, are
-   not extracted yet (the characters step takes only the deaths from
-   `world/shared/`); and the aim: CS2's AimCS bends the upper body and head
+   here. Separate body/head flinch layers now use 42 extracted additive
+   directional rifle/pistol/knife clips, with a 0.1s repeat-hit blend.
+   The aim: CS2's AimCS bends the upper body and head
    with the aim's pitch (and the torso with part of its yaw), on the
    server, so the hitboxes move with it. Here bodies and their hitboxes
    stand as if looking level (`reference/research/hitboxes-aim.md`: a
@@ -1194,7 +1195,7 @@ All Remote, except the real ragdoll data, which needs extracting locally.
 | Hands | Spray a wall in CS2 from 496 units | Item 8 |
 | Hands | Measure jump height, crouch-jump reach, dead-strafe feel | Movement check |
 | Hands | Check on the range that the shooting bot stays upright while firing, and that the dummy's ragdoll and your own settle without spinning (PR #30) | Confirms PR #30 |
-| Hands | Extract CS2's blood impact effects and decals (the `impacts` step, `reference/research/blood-and-impacts.md` section 7) | Item 5 |
+| Hands | Compare the extracted blood, wounds, hit sounds and additive flinches against current CS2 (PR #172) | Items 5, 6 |
 | Hands | Check that first shots at a run now miss (PR #24) | Item 9 |
 | Hands | Play being shot on the test range (B, U, Y, J, T) and dust2: your capsules' fit, the tag, the flinch, the hit arcs (PR #27) | Items 1 to 4 |
 | Hands | Measure a tag's length and the flinch's size in CS2 | Item 4a |

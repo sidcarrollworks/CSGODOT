@@ -390,6 +390,14 @@ func _test_a_round_carries_its_shooter() -> void:
 			"where on the body, and which way it was going")
 		_check_near(damage.distance, shot.origin.distance_to(result.position), "and how far it came")
 		_check_equal(got[2].at_usec, 5 * SECOND, "at the round's own instant")
+		_check_equal(damage.zone, String(result.damage_info.zone), "the draw snapshot identifies the struck body zone")
+		_check_equal(damage.hitgroup, result.damage_info.hitgroup, "the draw snapshot preserves the hitgroup")
+		_check_near(damage.dmg_health, result.damage_info.health_taken, "health taken is this pellet's result")
+		_check_near(damage.dmg_armor, result.damage_info.armor_taken, "armor taken is this pellet's result")
+		_check_near(damage.health, result.damage_info.health_left, "remaining health is captured before another pellet")
+		_check_equal(damage.killed, result.damage_info.killed, "flinches use the actual death outcome, including immortal range targets")
+		_check_near(damage.armor, result.damage_info.armor_left, "remaining armor is captured before another pellet")
+		_check(Vector3(damage.normal_x, damage.normal_y, damage.normal_z).is_equal_approx(result.normal), "body wounds preserve the actual hit normal")
 	if got.size() >= 2:
 		_check(got[0].fields.userid == 1 and is_equal_approx(got[0].fields.z, result.position.z),
 			"bullet_impact is the shooter's, where the round stopped")
