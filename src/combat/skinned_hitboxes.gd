@@ -44,6 +44,7 @@ func build(skeleton: Skeleton3D, capsules: Array[Dictionary], target: HitTarget,
 		hitbox.name = "Hitbox_%s" % capsule["name"]
 		hitbox.zone = capsule["zone"]
 		hitbox.side = capsule["side"]
+		hitbox.bone_name = skeleton.get_bone_name(bone)
 		var collision := CollisionShape3D.new()
 		var shape := CapsuleShape3D.new()
 		shape.radius = capsule["radius"]

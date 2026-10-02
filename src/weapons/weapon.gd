@@ -114,6 +114,9 @@ const RECOIL_INDEX_DECAY := 2.0
 ## Movement inaccuracy starts at this share of the weapon's top speed and is
 ## all there at the second (CS:GO's 0.34 and 0.95).
 const MOVING_FROM := 0.34
+## Float32 velocity can round a few micro-units above the crouch speed.
+## Its fourth-root penalty would turn that into visible inaccuracy.
+const MOVING_SPEED_EPSILON := 0.0001 # Source units per second.
 const MOVING_FULL := 0.95
 
 var data: WeaponData
@@ -331,6 +334,21 @@ func scoped_share(now_usec: int) -> float:
 ## 553's keep both (WeaponData.hides_view_model_when_zoomed).
 func through_scope() -> bool:
 	return zoom_level > 0 and data.hides_view_model_when_zoomed
+
+
+## How far the gun is up at the eye, 0 to 1, for a gun that aims through
+## its own scope (WeaponData.has_iron_sight): it comes up at the pull-up
+## speed as the scope goes in and down at the put-down speed as it comes
+## out. What the view is drawn with; nothing in the game reads it.
+func iron_sight_amount(now_usec: int) -> float:
+	if not data.has_iron_sight():
+		return 0.0
+	var seconds := float(now_usec - _zoomed_usec) / 1_000_000.0
+	if zoom_level > 0:
+		return clampf(seconds * data.iron_sight_pull_up_speed, 0.0, 1.0)
+	if data.iron_sight_put_down_speed <= 0.0:
+		return 0.0
+	return clampf(1.0 - seconds * data.iron_sight_put_down_speed, 0.0, 1.0)
 
 
 ## How fast the player may run with it: the scoped speed as soon as the
@@ -577,10 +595,9 @@ static func _cone_for(numbers: WeaponData, state: ShooterState) -> float:
 	# as CS does. Between, it rises steeply (the fourth root) unless the walk
 	# key is down, when it is in proportion: a little speed costs a lot
 	# unless you are walking, which is what makes counter-strafing matter.
-	var over := inverse_lerp(
-		numbers.max_player_speed * MOVING_FROM, numbers.max_player_speed * MOVING_FULL, state.speed
-	)
-	if over > 0.0:
+	var moving_from := numbers.max_player_speed * MOVING_FROM
+	var over := inverse_lerp(moving_from, numbers.max_player_speed * MOVING_FULL, state.speed)
+	if over > 0.0 and state.speed > moving_from + MOVING_SPEED_EPSILON:
 		over = minf(over, 1.0)
 		if not state.walking:
 			over = pow(over, 0.25)

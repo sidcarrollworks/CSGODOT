@@ -17,7 +17,22 @@ No page in `reference/research/` covers CS2's renderer as a whole. Item
 R0 below proposes one; its post-processing (the grade) is covered by
 `reference/research/cs2-post-processing.md` (R8).
 
-## The budget
+## Current status, 2026-10-02
+
+The current default is the map's CS2 grade, baked static sun shadows,
+lightmaps and probes, with occlusion culling enabled. PR #167 clips near
+skybox terrain while retaining far-plane depth compression. F11 on a
+loaded competitive/practice map cycles the culling and skybox comparisons. The
+original suspects below explain the audit's starting point; resolved items
+are marked in the plan.
+
+AUG/SG scope blur and the new hit effects are included in
+[scope research](research/scopes.md) and the
+[October 2 hit-effects measurements](research/hit-effects-performance-2026-10-02.md).
+The latter measure an isolated effects fixture, not a competitive-match
+regression baseline. Dense blood-particle CPU draw cost remains open.
+
+## The original budget (2026-09-24)
 
 180 frames a second is 5.6 ms a frame. The script already takes some of
 that on one thread (performance.md, ten players): 64 ticks at about 3 ms
@@ -40,16 +55,16 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
 | Map meshes | every visible one casts from both faces (`SHADOW_CASTING_SETTING_DOUBLE_SIDED`), into the lamps' shadows only where the sun's is baked | `MapImporter`, around line 268 |
 | Anti-aliasing | MSAA 4x (`msaa_3d=2` is the enum `MSAA_4X`, not a sample count) | `project.godot` |
 | Screen-space occlusion | off. It drew nothing when it was measured, since the map's materials brought their bounce light in through `light()` then (Measured); they hand it to Godot as its ambient light now (R5), which SSAO would darken, so turning it on is a look to judge beside CS2 | `MapLighting.build` |
-| Bloom, fog, colour adjustment | on: ACES, saturation 1.15, glow 0.4; CS2's own grade (`ColourGrade`, R8) behind `--grade cs2` | `MapLighting.build` |
+| Bloom, fog, colour adjustment | on: CS2's own filmic curve and colour table (`ColourGrade`, R8) by default, glow 0.4; the older ACES comparison is `--grade aces` | `MapLighting.build` |
 | Bounce light | CS2's own baked lightmaps (irradiance and direction), read in every world material's shader and handed to Godot as its ambient light (`IRRADIANCE`), which keeps its reflections (R5) | `lightmap.gdshaderinc`, `baked_light.gdshaderinc`, `LightmapMaterials` |
 | Props without lightmap UVs, players, arms | CS2's light probes, read at one point for each body or prop (an ambient cube; a player's 40 units above the feet) and handed to Godot as its ambient light, as the lightmaps are | `probe_lit.gdshader`, `ProbeMaterials` |
 | Direct light | a custom `light()` on every map material, Godot's own Burley and GGX written out, so the sun's light takes its baked shadow (R4) | `baked_light.gdshaderinc` |
 | Reflections | a Godot reflection probe at each of CS2's cubemaps (dust2's 43 probe volumes), projected onto its box and drawn once as the map starts, and the sky outside them (R5); before R5, none at all | `MapReflections`, `MapImporter`, `MapLighting.build` |
-| 3D skybox | ordinary geometry scaled up, its depth squeezed against the far plane in the vertex shader (per fragment until R2) | `FarMaterials`, `far.gdshaderinc` |
+| 3D skybox | ordinary geometry scaled up, clipped at the skybox camera's near plane (PR #167), its depth squeezed against the far plane in the vertex shader (per fragment until R2) | `FarMaterials`, `far.gdshaderinc` |
 | Occlusion culling | on since R3, from the collision hull; before that, only the frustum culled | `project.godot`, `MapOccluders` |
 | Your own shadow | a second copy of your body, drawn into the shadow maps only | `PlayerView` |
 
-## The suspects, most likely first (inferred, not measured)
+## Original suspects, 2026-09-24 (inferred before measurement)
 
 1. **The sun's shadows.** Four splits over 8192 units means the whole map
    is drawn into the shadow atlas up to four more times a frame, from both
@@ -215,6 +230,29 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
   the skybox's terrain out to half a million units is drawn: the whole
   skybox in every view, at full LOD and never occlusion culled, which
   `no_skybox` should measure again.
+  **Nearby terrain fixed in PR #167 (2026-10-02).** At feet
+  `(2131.2, -128, -382)`, yaw 189, pitch -13.9, the standing eye is at
+  y=-64, almost coincident with the skybox's flat sand mesh at y=-64.003.
+  Its depth's `1/w` becomes nearer than the map even after the squeeze.
+  Disabling either culling system, or both, left the beige plane; hiding
+  the skybox removed it. Every skybox surface already had the squeeze.
+  Skybox materials now clip fragments within 32 units of the eye, reading
+  the real view-space `VERTEX.z`. The existing squeeze already guarantees
+  that map surfaces up to 8,192 units win beyond this cutoff. Distant
+  scenery keeps its sorting and the vertex squeeze, including hills past
+  the far plane; the GPU can still reject hidden skybox fragments before
+  shading them. `run_render_checks.gd` draws terrain almost coincident
+  with the eye, uncovered terrain beyond the cutoff, and a teleported eye.
+  A per-fragment `DEPTH` clamp was tested and rejected: it lost early depth
+  rejection and added 0.75 ms at 1080p. The cutoff avoids that cost and
+  needs no per-frame camera checks or material switching.
+  Final RTX 4070 Ti A/B at 1080p: ten players frozen, eight spawn views,
+  camera panning ±8 degrees, two alternating measurements of 120 frames
+  per view. GPU medians were 1.45–1.47 ms before and 1.43–1.46 ms after;
+  renderer CPU 0.74–0.75 ms for both; frame medians 3.40 ms before and
+  3.39–3.40 ms after. No measurable regression in this run.
+  At 4K with the same setup, paired GPU medians were 4.87 → 4.79 ms and
+  4.42 → 4.41 ms; frame medians 5.96 → 5.87 ms and 5.46 → 5.46 ms.
 - **R3. Culling.** *(Occluders built, 2026-09-24; Sid showed the whole map
   drawn from B tunnels.)* `MapOccluders` builds one `ArrayOccluder3D` at
   load from the collision hull, leaving out player and grenade clips and
@@ -251,6 +289,11 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
   Sid's machine", 11). Shrinking the occluders or turning Godot's
   occlusion culling off beside `WorldVisibility` is Sid's call on the
   `no_occlusion` numbers.
+  F11 now steps through occlusion off, visibility off, the whole skybox
+  hidden, and occluders drawn, then restores the normal view (`RenderDebug`,
+  PR #167). Leaving the map also restores its viewport settings. This
+  supplies issue 11's optional debug key; the lower-mid culling choice
+  above remains open.
 - **R4. Shadows split as CS2 splits them.** *(The first tier built,
   2026-09-25: the map's shadow from CS2's baked pages. Waits on the
   extraction and a playtest, L7.)*

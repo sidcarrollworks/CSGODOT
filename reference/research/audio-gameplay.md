@@ -70,7 +70,27 @@ B4 and B7, the radar's sound ring in `round-hud-bots.md` A-radar and
 `footsteps.md` section 6, and all footstep, landing, ladder, wading and suit
 rustle numbers in `footsteps.md`.
 
-## The short version
+## Current implementation status, 2026-10-02
+
+The comparisons to `3975eef` below are historical September 23 readings,
+with original file/line references. Since then:
+
+- `SoundEvents` and the generated event table provide curves, mixgroups,
+  pitch/volume ranges, limits and layers.
+- `RoundSounds`, `C4View` and `GrenadeSounds` play round/music, bomb and
+  grenade cues; `FlashMuffle` adds flash ringing and attenuation.
+- Dry fire, low-ammo clicks and knife attacks use the event player. Bots
+  also play reload sounds through their weapon sound presenter.
+- PR #172 centralizes attacker, victim and onlooker hit/death feedback and
+  burn damage in `HitSounds`, checked against the installed CS2 build.
+  The old attacker-only feedback path is not dispatched in normal play.
+
+Full gunfire/footstep/world-impact event migration, pickups and buy UI,
+whizzes, ricochets, silent reloads, fall/Zeus/spectator sounds, agent radio
+and ambience remain open. Visual impact effects do not resolve the legacy
+world-impact audio levels or file selection.
+
+## Historical short comparison, 2026-09-23
 
 | What | CS2 (build 2000915) | Ours today (repo `main`, 3975eef, 2026-09-23) |
 |---|---|---|
@@ -435,6 +455,49 @@ Valve's dated hit-sound changes behind the table (*Valve*, newest first):
 | 2023-11-09 | "Fixed issue where at very close proximity, a victims death groan could be mistaken as coming from the attacker" | The death cry's placement (Local check L8) |
 | 2023-09-06 | "Fixed a case where hit feedback sounds wouldn't play for spectators" | Spectators hear the attacker's feedback of the player they watch (*Inferred*) |
 
+### 3.1 Installed hit sounds checked again, 2026-10-02
+
+The installed **CS2 build 2000922, patch 1.41.8.8, September 30 2026** was
+read directly from `game/csgo/pak01_dir.vpk` with Source 2 Viewer CLI:
+`soundevents/game_sounds_player.vsndevts_c`, decompiled to KV3. Every
+`Player.Damage*` and `Player.Death*` definition was resolved through its
+`base`, compared field by field against the committed sound table's own
+fields and `csgo_mega` defaults, and found unchanged. Curves were compared
+after reducing each Source 2 tangent-bearing point to the table's distance
+and value. The September particle changes therefore do not imply new body
+hit audio files or new sound parameters. (*Read*, installed files; scratch
+audit `.godot/pr172-audio-audit.gd` and `pr172-audio-current.json`.)
+
+PR172 routes all three listeners through `HitSounds` from `player_hurt`:
+the attacker's `.AttackerFeedback`, the victim's `.Victim`, and others'
+`.Onlooker`. It starts the whole event through `SoundEvents`, including
+flesh/dink children, random pitch, delays, voice limits, burst blocks and
+mixgroup buses. It removes the previous additional -3 dB adjustment.
+`bullet_damage` supplies visual detail and adds no second audio start.
+Health, armour damage and hitgroup come from each event, so a later pellet
+or hit cannot change an earlier sound into a kill or a different body zone.
+Knife attackers already hear the knife's impact and get no extra silent
+feedback event; knife victims/onlookers use body feedback.
+
+Source position is captured at the victim's feet when the event is handed
+out; each authored `position_offset` is then applied by `SoundEvents`.
+The victim retains the actual stereo curve (body damage is **0.9** plain
+stereo), rather than flattening all its child events. For example,
+`Player.DeathBody.Flesh` still has its spatial distance curve. The attacker's
+body event allows separate fast starts (`block_matching_events = false`)
+but limits simultaneous copies to **3**; a twelve-pellet shot does not
+require a hardcoded twelve-voice pool. The victim body event has its own
+**0.05-second** delay and **0.1-second** block. (*Read*, installed files.)
+
+All authored hit/death/burn files were checked against the local extraction.
+The only missing ones were `sounds/player/burn_damage1` through `5`;
+these were extracted as WAVs to the ignored sound assets. The headless
+checks exercise recipient selection, fatal/armour state, source snapshots,
+one start across hurt/bullet events, shotgun limits, death children,
+rewatching/cleanup, preloading and real stream/bus/stereo parameters when
+the extracted files are present. Hearing the mix beside CS2 remains a
+local playtest; the Dummy audio driver cannot establish audible parity.
+
 ## 4. Grenades
 
 ### 4.1 Pin, throw, flight, bounce
@@ -731,10 +794,15 @@ so the 98-unit broadcast is unexplained by Valve.
   (*Read*, BT `bt_memorize_noises.kv3`; `ai/rush/bt_default.kv3` 47-51 uses
   the same module). round-hud-bots.md B7 has the rest.
 
-## 9. Ours against CS2
+## 9. Historical code audit, 2026-09-23
 
 Ours is `main` at 3975eef (2026-09-23). The `src/` files cited are the same
 on the research branch (95b7d4f, e218e23), so the line numbers hold on both.
+These rows preserve the original findings; use the current status above
+for implementation work. Rows 7–10 were resolved by the shared hit-sound
+path (#172), 15–19 and 21–22 by grenade/C4 audio, and 24 by low-ammo clicks.
+Row 6's reload and dry-fire parts are built; pickup audio remains open.
+Other rows still need checking against the current code before acting.
 
 | # | File:line | Ours | CS2 | Kind |
 |---|---|---|---|---|
@@ -877,12 +945,13 @@ exactly as CS2 does for steps at 1250.
    into the explosion.
 4. *(Applied 2026-09-28, playtest issue 21.)* `src/bomb/c4_view.gd:80-81, 171-173`: beeps silent at 1300 units, not an
    inverse curve to 11 811.
-5. `src/audio/weapon_sounds.gd:33`: `HIT_SETS` should be the CS2 feedback
+5. *(Applied through `HitSounds` and `SoundEvents`, PR #172; old line
+   references retained below.)* `src/audio/weapon_sounds.gd:33`: `HIT_SETS` should be the CS2 feedback
    files: body `physics/surfaces/mud_impact_bullet` (damage and kill),
    kevlar `player/kevlar_0` (1-8), headshot `player/headshot_noarmor_0`,
    helmet `player/headshot_armor_e1` plus `player/headshot_armor_flesh`;
    drop `bodyshot_kill_01` and `headshot_armor_01` (volume 0 in CS2).
-6. `weapon_sounds.gd:108-114`: play the unarmoured body feedback on every
+6. *(Applied through the shared hit-sound path, PR #172.)* `weapon_sounds.gd:108-114`: play the unarmoured body feedback on every
    hit, not only kills; volumes from section 3 (body 1.0, kevlar 1.2,
    headshot 0.5, dink 0.5 to 0.6).
 7. `weapon_sounds.gd:59-62`: replace the inverse curve with the event's own
@@ -894,12 +963,15 @@ exactly as CS2 does for steps at 1250.
    the holder hears a draw), so `bot.gd:150` stops announcing bots' switches.
 10. `src/bots/bot.gd:383-384`: bots' reloads and pickups should be
     heard (1100 units), as CS2's are; that wants the sim to emit the events.
-    Dry fire is done (2026-09-30): the sim sends `weapon_fire_on_empty`.
+    Reloads are now played by `Bot._on_reload_started`; pickup audio
+    remains open. Dry fire is done (2026-09-30): the sim sends
+    `weapon_fire_on_empty`.
 11. `src/combat/bullet_impacts.gd:36, 42-45, 70, 85-86`: the metal stem is
     `physics/metal/bullet_metal_solid_`; add glass
     `physics/glass/glass_impact_bullet`; volume from the event (1.0, wood
     0.3) and silent at 600 (glass 1000).
-12. `reference/systems/grenades.md:158-162` (item 7): the grenade sounds are
+12. *(Grenade audio implemented through `GrenadeSounds`, 2026-09-28.)*
+    `reference/systems/grenades.md:158-162` (item 7): the grenade sounds are
     now tabled by name (section 4); a bounce is per grenade, not per surface.
     `reference/cs2-systems.md:387-389` (G6) can drop "a bounce per surface,
     if the game has one": it has none.

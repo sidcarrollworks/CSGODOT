@@ -222,6 +222,9 @@ func _gone(game: GameSystems, entity: SimEntity) -> void:
 
 
 func _test_a_game_heard() -> void:
+	# Exercise missing-file behavior even on a developer's extracted install.
+	var availability := SoundBank._available
+	SoundBank._available = 0
 	var game := GameSystems.new()
 	var me := _add_player(game, "CT", Vector3.ZERO)
 	var them := _add_player(game, "T", Vector3(500.0, 0.0, 0.0))
@@ -352,6 +355,7 @@ func _test_a_game_heard() -> void:
 		if node is PlayerSim:
 			node.queue_free()
 	await process_frame
+	SoundBank._available = availability
 
 
 func _test_a_burn_heard() -> void:

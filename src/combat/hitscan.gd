@@ -317,9 +317,29 @@ static func fire_as(
 		info.armor_penetration = data.armor_penetration
 		info.walls = result.walls.size()
 		info.noscope = shot.noscope
+		var was_alive := target.alive
 		result.damage = DamageInfo.deal(target, info, shooter.events)
 		result.damage_info = info
+		if was_alive and shooter.events != null:
+			_send_damage(shooter, info, shot, result.normal)
 	return result
+
+
+## CS2's bullet_damage for a round that met a living body, after its
+## player_hurt, with where on the body it landed.
+static func _send_damage(shooter: Shooter, info: DamageInfo, shot: Weapon.Shot, normal: Vector3) -> void:
+	shooter.events.send(&"bullet_damage", {
+		"victim": info.victim, "attacker": shooter.userid,
+		"distance": shot.origin.distance_to(info.position),
+		"damage_dir_x": shot.direction.x, "damage_dir_y": shot.direction.y, "damage_dir_z": shot.direction.z,
+		"num_penetrations": info.walls, "no_scope": info.noscope, "in_air": false,
+		"x": info.position.x, "y": info.position.y, "z": info.position.z,
+		"normal_x": normal.x, "normal_y": normal.y, "normal_z": normal.z,
+		"zone": String(info.zone), "side": String(info.side), "hitgroup": info.hitgroup,
+		"bone": String(info.hitbox.bone_name) if info.hitbox != null else "",
+		"dmg_health": info.health_taken, "dmg_armor": info.armor_taken,
+		"health": info.health_left, "armor": info.armor_left, "pellet": shot.pellet, "killed": info.killed,
+	}, shot.timestamp_usec)
 
 
 static func _send_impact(shooter: Shooter, at: Vector3, shot: Weapon.Shot) -> void:

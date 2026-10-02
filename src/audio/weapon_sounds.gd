@@ -41,6 +41,12 @@ extends Node3D
 ## the same way as the low-ammo click.
 ## A gun's other volumes are set by ear; its sound events (.vsndevts) are not
 ## read yet. The hit feedback's are CS2's (FEEDBACK).
+## A knife swing is heard as CS2's own events (Knife.Swing.sound_events,
+## reference/research/audio-gameplay.md 1.2): the swish, and the miss's
+## slash, the wall's hit or the body's, light or heavy, from the front or
+## behind, played through SoundEvents on the frame after the tick that
+## traced it, as CS2 has played them from the server since 2 November 2023.
+## Everyone near hears them, the swinger's own flat in their ears.
 
 ## CS2's low-ammo click, which every gun's vdata names as its
 ## WEAPON_SOUND_NEARLYEMPTY (as Default.nearlyempty).
@@ -154,6 +160,8 @@ var _dry := PackedStringArray()
 var events: SoundEvents
 ## The zoom sounds to play on the next frame, by weapon_zoom, as stems.
 var _zooms: Array[PackedStringArray] = []
+## The knife swings to be heard on the next frame (knife_swung).
+var _swings: Array[Knife.Swing] = []
 ## Every gun's set, by class, read once (sets()).
 static var _sets := {}
 ## Every set's files read (all_stems()), once for every player: a gun is
@@ -183,7 +191,11 @@ func _ready() -> void:
 ## Hears p_shooter's shots from the game they are in, whichever that is:
 ## a player can join a world, or another, after this is made.
 func watch(p_shooter: PlayerSim) -> void:
+	if is_instance_valid(shooter) and shooter.knife_swung.is_connected(_on_knife_swung):
+		shooter.knife_swung.disconnect(_on_knife_swung)
 	shooter = p_shooter
+	if is_instance_valid(shooter):
+		shooter.knife_swung.connect(_on_knife_swung)
 	_follow_game()
 
 
@@ -209,6 +221,9 @@ func _process(_delta: float) -> void:
 	for stems in _zooms:
 		_play(_handling, stems, HANDLING_DB)
 	_zooms.clear()
+	for swing in _swings:
+		knife_sounds(swing)
+	_swings.clear()
 
 
 ## Listens to the shooter's game's weapon_fire, the one it is in now.
@@ -279,6 +294,31 @@ static func zoom_stems(data: WeaponData, going_in: bool) -> PackedStringArray:
 ## The zoom sounds noted and not heard yet, as a copy.
 func pending_zooms() -> Array[PackedStringArray]:
 	return _zooms.duplicate()
+
+
+## A knife swing traced on the tick: noted, and heard on the next frame.
+func _on_knife_swung(swing: Knife.Swing) -> void:
+	_swings.append(swing)
+
+
+## The knife swings noted and not heard yet, as a copy.
+func pending_swings() -> Array[Knife.Swing]:
+	return _swings.duplicate()
+
+
+## A knife swing's events, now: a bot's from where it swung and what it
+## met, your own flat in your ears. The ids of the voices started (0 for
+## one not heard).
+func knife_sounds(swing: Knife.Swing) -> PackedInt32Array:
+	var owner_id := shooter.userid if is_instance_valid(shooter) else -1
+	var ids := PackedInt32Array()
+	for event_name in swing.sound_events():
+		if not spatial:
+			ids.append(events.start(event_name, null, owner_id, {"local": true}))
+			continue
+		var met := swing.outcome != Knife.Outcome.MISS and not event_name.contains("Swish")
+		ids.append(events.start(event_name, swing.position if met else swing.origin, owner_id))
+	return ids
 
 
 ## The low-ammo clicks noted and not started yet.
@@ -537,6 +577,7 @@ static func _load_all() -> void:
 	if not SoundBank.available():
 		return
 	SoundEvents.load_events(PackedStringArray([NEARLY_EMPTY_EVENT, CLIP_EMPTY_PISTOL, CLIP_EMPTY_RIFLE]))
+	SoundEvents.load_events(Knife.all_sound_events())
 	SoundBank.load_sets(all_stems())
 	for gun: Dictionary in sets().values():
 		SoundBank.randomizer_of(gun["fire"])

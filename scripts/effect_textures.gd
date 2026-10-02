@@ -24,15 +24,18 @@ const OUT_DIR := "res://assets/effects"
 
 
 func _init() -> void:
-	var data := FileAccess.get_file_as_string(RAW_DIR.path_join("textures_data.txt"))
+	# Impacts use the same sheet format, isolated from the shot extraction.
+	var args := OS.get_cmdline_user_args()
+	var raw_dir := args[0] if not args.is_empty() else RAW_DIR
+	var data := FileAccess.get_file_as_string(raw_dir.path_join("textures_data.txt"))
 	if data.is_empty():
-		print("effect textures: no %s; run scripts/extract_assets.sh effects" % RAW_DIR.path_join("textures_data.txt"))
+		print("effect textures: no %s; run scripts/extract_assets.sh effects" % raw_dir.path_join("textures_data.txt"))
 		quit(1)
 		return
 	var written := 0
 	var failed := PackedStringArray()
 	for texture: Dictionary in parse_data(data):
-		var error := _write(texture)
+		var error := _write(texture, raw_dir)
 		if error.is_empty():
 			written += 1
 		else:
@@ -91,9 +94,9 @@ static func parse_data(text: String) -> Array[Dictionary]:
 
 ## Writes one texture: the sheet put back together, or the image copied.
 ## Returns what went wrong, or "".
-static func _write(texture: Dictionary) -> String:
+static func _write(texture: Dictionary, raw_dir: String = RAW_DIR) -> String:
 	var path: String = texture["path"]
-	var base := RAW_DIR.path_join(path.get_basename())
+	var base := raw_dir.path_join(path.get_basename())
 	var out := OUT_DIR.path_join(path.get_basename())
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(out.get_base_dir()))
 	var sequences: Array = texture["sequences"]
@@ -106,6 +109,7 @@ static func _write(texture: Dictionary) -> String:
 	var size := Vector2(texture["width"], texture["height"])
 	var sheet := Image.create_empty(int(size.x), int(size.y), false, Image.FORMAT_RGBA8)
 	var described := []
+	var written_rects: Array[Array] = []
 	for s in sequences.size():
 		var frames: Array = sequences[s]["frames"]
 		var rects := []
@@ -123,6 +127,11 @@ static func _write(texture: Dictionary) -> String:
 			var file := "%s_seq%d_%d.png" % [base, s, f]
 			if frames.size() == 1 and not FileAccess.file_exists(file):
 				file = "%s_seq%d.png" % [base, s]
+			# S2V exports an identical atlas rectangle only once, even when
+			# several sequences reference it. Require BOTH rectangles to match
+			# a successfully written frame; a missing unique frame is an error.
+			if not FileAccess.file_exists(file) and written_rects.has([cropped, uncropped]):
+				continue
 			var image := Image.load_from_file(ProjectSettings.globalize_path(file))
 			if image == null:
 				return "no %s" % file
@@ -133,6 +142,7 @@ static func _write(texture: Dictionary) -> String:
 			if absf(image.get_width() - uncropped.size.x * size.x) < absf(image.get_width() - cropped.size.x * size.x):
 				at = uncropped
 			sheet.blit_rect(image, Rect2i(Vector2i.ZERO, image.get_size()), Vector2i((at.position * size).round()))
+			written_rects.append([cropped, uncropped])
 		described.append({"clamp": sequences[s]["clamp"], "frames": rects, "times": times})
 	if sheet.save_png(ProjectSettings.globalize_path(out + ".png")) != OK:
 		return "could not write it"

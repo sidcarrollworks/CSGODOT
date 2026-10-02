@@ -17,7 +17,11 @@ scripts/extract_assets.sh list-map     # see what is inside the dust2 VPK
 scripts/extract_assets.sh map          # extract it, then import it into Godot (map de_mirage: another map)
 scripts/extract_assets.sh weapons      # every gun: models and animations
 scripts/extract_assets.sh equipment    # the bomb and kit, grenades, knives, Zeus
-scripts/extract_assets.sh sounds       # the weapons' sounds, footsteps by surface, hits
+scripts/extract_assets.sh character-animations # locomotion, jump and directional body flinches
+scripts/extract_assets.sh weapon-animations    # first- and third-person weapon clips
+scripts/extract_assets.sh impacts      # particle graphs, materials, textures and impact models
+scripts/extract_assets.sh sounds       # weapons, hits/burn damage, grenades, C4 and round cues
+scripts/extract_assets.sh all          # complete extraction
 ```
 
 `map` takes a few minutes and a little under two gigabytes. It pulls
@@ -33,7 +37,8 @@ the lightmaps the game baked its bounce light into, with the light probes
 beside them, which parts of the map can be seen from which (what is not
 seen from where you stand is not drawn, as in the game), and the map's
 colour grade (its post-processing file: the filmic curve, the bloom and a
-colour table, which `--grade cs2` draws with; `reference/research/cs2-post-processing.md`).
+colour table, used by the default CS2 grade (`--grade aces` selects the
+older comparison); `reference/research/cs2-post-processing.md`).
 `physics`, `entities`, `nav`, `volumes`, `radar`, `surfaces`, `layers`,
 `sky`, `skybox`, `lightmaps`, `visibility` and `postprocessing` fetch the
 last twelve on their own; all but the lightmaps take seconds. The lightmaps are one 300 MB image, which
@@ -79,7 +84,24 @@ and crouch, idles, in-air, jump, shoot). `animgraphs` reads the logic that
 plays those clips in CS2, its animation graphs (AnimGraph 2): what the game
 tells them, how they blend and layer the clips, and at what speeds, written
 out in `reference/animgraph/`; `reference/animgraph2.md` says what they are
-and how much they give us. `all` does the lot.
+and how much they give us. `character-animations` also extracts the body
+flinch clips used by `PlayerModel`; `weapon-animations` refreshes the gun
+actions separately. `all` does the lot.
+
+`impacts` exports the installed game's blood and surface-hit particle
+graphs and their dependencies into `assets/effects/impacts/`, and generates
+the runtime tables in `reference/effects/`. The current set has 29 roots,
+95 layers, 155 materials, 487 textures and two impact models. Godot
+interprets a supported subset rather than running Source 2 particle code.
+Existing extractions should refresh `impacts`, `character-animations` and
+`sounds` after the hit-effects PR #172.
+
+Texture metadata is checked against the installed game's fresh VPK DATA
+headers by `scripts/check_impact_texture_data.sh`, including depth slices.
+An outdated manifest fails this check rather than silently treating a
+volume texture as a flat sheet. The extraction stages replacement tables
+until reconstruction succeeds. [The pipeline details](research/hit-card-rendering.md)
+record the format handling and approximations.
 
 `assets/` can live on another drive: make it a junction (`mklink /J`) and
 every script and Godot itself read straight through it.
@@ -101,8 +123,9 @@ scripts/extract_assets.sh nav de_inferno    # just inferno's nav mesh
 Then play it with `maps/play/play.tscn`: set **Map Name** on its root, or
 give `--map` on the command line, which wins over the scene's own
 (`godot --path . maps/play/play.tscn -- --map de_mirage`; with no scene
-named, the main scene, dust2's, takes `--map` too). There are no menus yet
-(roadmap item 26). `MapLoader` (`src/map/map_loader.gd`) derives every path
+named, the main scene, dust2's, takes `--map` too). The startup mode picker
+offers Competitive and Practice; broader map and settings menus remain
+roadmap item 26. `MapLoader` (`src/map/map_loader.gd`) derives every path
 from the name (`MapPaths`) and loads what is there; `Competitive`
 (`src/modes/competitive.gd`) plays a match on it: you and the bots, the
 match, money and buying in the map's buy zones, the bomb on its sites,

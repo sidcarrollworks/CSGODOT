@@ -248,10 +248,12 @@ model, built as it comes into the inventory and kept while it is carried,
 so a switch builds nothing.
 
 **Remote**
-- The weapon on the ground as a rigid body (blasts and rounds push it; its
-  own physics hull is extracted beside each model, `*_physics.gltf`). E to
-  take the item looked at and swap it with the one in its slot is done
-  (issue 3 of `reference/playtest-2026-09-25.md`).
+- **Built:** ground items use rigid bodies and extracted physics hulls
+  (`*_physics.gltf`). E takes the eligible item looked at and swaps its
+  occupied slot; guns, grenades and the bomb show a matching pickup/swap
+  prompt (PR #163). Bullets push native dropped guns at the contact point
+  with the playtest-tuned impulse. Blast impulses and precise CS2
+  drop/use/impulse measurements remain open (roadmap item 12).
 - Scroll wheel: CS2 cycles weapons with it, and here scroll up jumps (Sid's
   choice). *Done 2026-09-28 (playtest issue 15, Sid asked):* the wheel
   down is CS2's `invnext`, the next thing carried in slot order, round
@@ -300,8 +302,8 @@ the half-point-per-damage wear, and the range dummy switches it with K.
 (`MatchRules.free_armor`, CS2's `mp_free_armor 0`), warmup included; bought
 through the buy menu, lost with the round when you die, kept by a survivor.
 
-**Remote:** bought through the buy menu, lost with the round when you die.
-Armour is on the HUD (PR #27). Whether armour softens tagging is open
+**Built:** buying, death loss and survivor retention are wired into rounds.
+Armour is on the HUD. Whether armour softens tagging is open
 (**measure**, A1); here it does not, while it does soften the flinch.
 
 **Local**
@@ -340,14 +342,15 @@ says when the plant completes, which is still C1's to measure.
 
 **Remote**
 - ~~The bomb as an item: carry, drop, pick up, plant with its animation lock,
-  the timer and beeps, defuse and the kit.~~ Built; the round-end rules and
-  the rewards are written down for the match and money
-  (`reference/systems/bomb.md`) and wait on the GameWorld.
+  the timer and beeps, defuse and the kit.~~ Built, including the match
+  outcomes and money rewards through `GameWorld`. Planting crouches the
+  planter (PR #168).
 - The explosion. C2 found the baked per-map damage, but its damage values
   are not worked out, so start with the old radius rule, or approximate the
   shockwave by tracing from the bomb to each player, scaled by the site's
   `bomb_damage_power`; read the bake once it is understood.
-- HUD: the carrier's icon, the planted and defusing states, the defuse bar.
+- HUD: carrier icons and ground-bomb pickup prompts are built. The planted
+  clock state and full defuse progress presentation remain work to do.
 
 **Local**
 - **C1.** Measure plant time, the beep cadence against the timer, and the
@@ -419,12 +422,21 @@ timings in `reference/weapons/equipment.md`. All six are server-side
 systems on the shared contracts (`src/grenades/`), thrown on the range
 from your eyes; `reference/systems/grenades.md` says what each does, which
 numbers are guesses, and what the player, the bots and the importer need
-to wire them in. The importer still leaves the map's grenade clip out.
+to wire them in. The importer still leaves the map's grenade clips out.
+Throws, HE damage, flashes, fire, voxel smoke and decoys are wired into
+the shared world and presentation. CS2 visual parity and measured
+timing/trajectory remain open.
 
-**Remote**
+**Implemented core systems; remaining comparisons below**
+
+The following gameplay systems are built. Remaining work is measured CS2
+parity, richer effects, map grenade clips and the lineup crosshair; the
+inventory HUD row is already built.
+
 - The throw (three strengths, your velocity added, the release point) and a
   projectile on its own fixed-step physics with bounce and rest, colliding
-  with the hull and the grenade clip, not player clips.
+  with the hull and player hulls. Its query includes the reserved grenade
+  clip layer; actual map grenade-clip import remains open.
 - HE: damage with falloff and walls, into `HitTarget` with the blast's
   armour rule.
 - Flash: the blind amount per viewer, a white screen that fades, the flashed
@@ -437,9 +449,10 @@ to wire them in. The importer still leaves the map's grenade clip out.
   The fill passes through what the game marks `allowsmokethrough`:
   chain-link and metal railings, and chain, which takes chain-link's
   (`SurfaceProperties.text(surface, "smoke_through")`).
-  The biggest single item here.
+  Implemented as the shared voxel smoke system; full CS2 visual parity
+  and exact measurements remain open.
 - Decoy: fake gunfire through the weapon sounds.
-- Grenade HUD: the slot row, the lineup crosshair.
+- Grenade HUD: the slot row is built; the lineup crosshair remains open.
 
 **Local**
 - **G1.** Measure the throw: left, right and both, standing and running, into
@@ -467,22 +480,42 @@ recharges after 30 s (`mp_taser_recharge_time`), $200, $100 a kill; up to 5 a
 round in competitive.
 
 **Built:** the default knives and the Zeus are extracted (K2) and build in
-first person; nothing hands them to a player yet.
+first person. The knife is usable (`src/weapons/knife.gd`, run by
+`PlayerSim._update_knife`, checked by `tests/run_knife_checks.gd`): left
+slashes and right stabs, held to repeat, traced on the tick from the eye
+against the guns' hitboxes (a line, then a constant-width box sweep with
+16-unit half-size), enemies before teammates, backstabs from behind, damage through
+`DamageInfo.deal` with vdata's armour ratio and flinch, `weapon_fire` for
+each swing, the first- and third-person attack clips and CS2's knife sound
+events. Sid's October 1 feedback sets the forward reach to 48 for a slash
+and 32 for a stab. The hull's motion is shortened by its extent along the
+aim so widening does not add forward reach. Airborne attacks use the same
+trace, including the hull's full width near the eye. Damage, hull width,
+swing rates, run window and backstab angle remain community figures or
+guesses until K1 measures them. Zeus attacks are not implemented.
 
-**Remote:** melee traces (swing range and arc), backstab from behind, the
-Zeus as a short-range hitscan with its recharge.
+**Remote:** the Zeus as a short-range hitscan with its recharge; the knife's
+numbers once K1 has measured them.
 
 **Local**
 - **K1.** Measure knife damage (front and back, left and right, with and
-  without armour) and swing range.
+  without armour, and whether a head takes more), swing range, the swing
+  rates on a hit and a miss, how long before a slash does its 40 again,
+  and the backstab's angle (`reference/research/combat.md` 2 says how).
+  Each goes into `Knife`'s constant of the same name, and
+  `tests/run_knife_checks.gd` follows it. Then play the knife beside CS2:
+  that each swing plays and sounds right. Third-person clip selection now
+  follows the extracted `worldmodel_knife` graph's attack mapping
+  (`reference/research/combat.md` 2), tested over ground and air locomotion.
 - **K2.** *(done 2026-09-23: `scripts/extract_assets.sh equipment` and
   `sounds`, listed in `reference/weapons/equipment.md`)* Extract the default
   knives (T and CT) and the Zeus, with their animations and sounds.
 
 ## 9. HUD and UI
 
-**CS2's HUD:** health and armour (bottom left), money (top left, flashing on
-change), ammo and reserve (bottom right), the weapon and grenade row (right),
+**CS2's current HUD:** health, armour, ammo and reserve around the team
+emblem at bottom centre, money at bottom left, flashing on change, the
+weapon and grenade row (right),
 the round timer and score with each side's players alive (top centre), the kill
 feed (top right, with headshot, wallbang, blind, smoke and noscope icons), the
 radar (top left), the bomb carrier and planted states, the damage direction
@@ -490,11 +523,16 @@ arcs, the flashbang white-out, the buy menu, the scoreboard on Tab, the
 round-end panel with the MVP, the spectator bar, chat, and the crosshair
 with its settings.
 
-**Built:** crosshair, health, armour (with the helmet), ammo, the damage
-direction arcs (PR #27), the death countdown.
+**Built:** crosshair; health, armour/helmet and ammo around the emblem;
+rolling money; damage direction arcs; weapon/grenade selection; buy menu;
+team cards, scores and timer; carrier icons; kill feed; ground-item use
+prompts; death countdown; round-end and MVP panel. The round banner uses
+fixed foreground text and a slower growing copy clipped behind it, with
+a translucent, side-fading panel and its existing blur (PR #166).
 
-**Remote:** every element above, one at a time as its system lands. The
-radar has B3 (`MapOverview`).
+**Remote:** radar, scoreboard, chat, planted-bomb/defuse HUD details and
+remaining health/ammo embellishments (roadmap item 15). The radar data
+is already extracted (`MapOverview`, B3).
 
 **Local**
 - **B3.** *(done 2026-09-22: `scripts/extract_assets.sh radar`,
@@ -506,17 +544,19 @@ radar has B3 (`MapOverview`).
 ## 10. Sound for the new systems
 
 **Built:** the weapon, footstep, hit and impact sounds. The shooter's hit
-feedback is CS2's since 2026-09-24: its attacker feedback events, read from
-`game_sounds_player.vsndevts` in GameTracking-CS2, with their files,
-volumes, pitches, delays and distance curves (`WeaponSounds.FEEDBACK`;
-`reference/research/audio-gameplay.md` 3). What the one hit hears (flat,
+feedback now shares `HitSounds` with victim and onlooker feedback: the
+current installed CS2 hit events, files, volumes, pitches, delays and
+distance curves, played through `SoundEvents` (PR #172;
+`reference/research/audio-gameplay.md` 3.1). The older
+`WeaponSounds.FEEDBACK` path is no longer dispatched in normal gameplay.
+What the one hit hears (flat,
 `Player.Damage*.Victim` and `Death*.Victim`), what those near hear from the
 body (`.Onlooker`, to about 1100 units) and the death groan everyone near
 hears (`Player.Death`, `death1-6`, 0.5, silent at 1400) are CS2's too
 (`HitSounds`, from the game's `player_hurt` and `player_death`, played on
 the frame after). The shooter hears only their own feedback, not an
-onlooker's on top (inferred). Not built: fire's (`Player.BurnDamage`),
-a fall's (`Player.DamageFall`), a Zeus kill's yelp (`Player.DeathTaser`)
+onlooker's on top (inferred). Fire's `Player.BurnDamage` is also built.
+Not built: a fall's (`Player.DamageFall`), a Zeus kill's yelp (`Player.DeathTaser`)
 and the spectator versions.
 
 **Local**
@@ -538,17 +578,22 @@ and the spectator versions.
   which `SoundEvents` plays. The sounds already built still use their levels
   by ear until each moves onto it.)*
 
-**Remote:** play them from the systems above through `SoundBank`.
+**Remote:** migrate remaining legacy gunfire, handling, footstep and world
+impact audio onto `SoundEvents`; add fall/Zeus/spectator sounds, whizzes,
+ricochets, radio, agent voice, buy UI and ambience. `SoundBank` remains the
+file loader for older paths; new sounds use the event player.
 
 ## 11. Bots that play CS
 
-**Today:** bots see and shoot the local player, and walk dust2's own nav
+**Today:** bots see and shoot enemy players, including other bots, and walk
+dust2's own nav
 mesh (`SourceNavMesh.walk_path`: pulled taut, crouching where an area is
 marked crouch-only, jumping where a link rises past a step; roadmap item
 22), from their spawn to a bomb site and back.
 
 **Remote**
-- Teams of bots fighting each other.
+- **Built:** opposing teams of bots fight each other and make room for
+  teammates. Smoke obscures sight and flashes affect their aim.
 - *(Done 2026-09-23.)* Buying as CS2's stock bot does: nothing below
   `bot_eco_limit` $2,000, a primary by its `botprofile.db` template,
   armour, a CT's kit, a third of the time one grenade (`BotBuying`).

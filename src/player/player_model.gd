@@ -37,8 +37,7 @@ extends RigModel
 ## model is turned round and then given the body's yaw.
 
 const CLIPS_DIR := "res://assets/characters/animation/anims/world/rifle/_default_rifle"
-## The deaths every weapon shares. (Its flinches are additive, like the
-## guns' shots, and would go in as the shots do; they are not extracted.)
+## The deaths, jump additives and hit flinches every weapon shares.
 const SHARED_DIR := "res://assets/characters/animation/anims/world/shared"
 const AGENTS := ViewModel.AGENTS
 
@@ -106,6 +105,9 @@ const ADDITIVE_FADE := 0.2
 
 ## Where a gun's own third-person set is (world_clip_set under it).
 const WORLD_DIR := "res://assets/characters/animation/anims/world"
+## Where both default knives' third-person attacks are: their own sets hold
+## only the draw and the idle (reference/weapons/equipment.md).
+const KNIFE_ATTACKS_SET := "knife/_default_knife"
 ## What the gun's own clips are loaded as: weapon_idle, weapon_reload.
 const WEAPON := "weapon_"
 ## CS2's UpperBody bone mask (worldmodel.vnmskel), which its weapon, shooting
@@ -169,6 +171,9 @@ var _fitted_at := Transform3D()
 ## Where in the library the held item's own clips are: WEAPON for the set the
 ## body was built with, "held_<set>_" for one taken in hand since; "" for none.
 var _hold_prefix := ""
+## The attacks of the knife in hand, by short name; none holding anything
+## else.
+var _knife_clips := PackedStringArray()
 ## Whether the held item has a hold of its own, and a shot.
 var _has_hold := false
 var _has_shoot := false
@@ -257,6 +262,10 @@ var _additive_for_usec := -1
 var _landing_curves := {}
 ## The death being held, if any.
 var _dead: StringName = &""
+## Independent additive reactions above the gun's shooting layer. They
+## sample authored clips rather than bending bones or changing the aim.
+var _body_flinch: PlayerFlinch
+var _head_flinch: PlayerFlinch
 
 
 ## Builds the body and weapon. weapon_set is the gun's own third-person set
@@ -284,6 +293,18 @@ func setup(team: String, weapon_model: String, weapon_set: String = "", holds: b
 			_prepared[additive] = rest_relative(body_tracks_only(library.get_animation(additive), body_node), character_rig)
 		library.remove_animation(additive)
 		library.add_animation(additive, _prepared[additive])
+	for path in list_clips(SHARED_DIR, PackedStringArray(["flinch_"])):
+		# The +non_additive copies are authoring references, not differences.
+		if path.contains("+non_additive") or path.get_file().begins_with("flinch_molotov"):
+			continue
+		if not _prepared.has(path):
+			var source := clip_animation(path)
+			if source == null:
+				continue
+			var prepared := rest_relative(body_tracks_only(source, body_node), character_rig)
+			prepared.loop_mode = Animation.LOOP_NONE
+			_prepared[path] = prepared
+		library.add_animation(short_name(path, ""), _prepared[path])
 	idle = &"idle"
 	holds_items = holds
 	if holds:
@@ -411,6 +432,8 @@ func prepare_holding(item_classes: PackedStringArray, team: String, models: bool
 	for item_class in item_classes:
 		var look := WeaponLibrary.look(item_class, team)
 		prepared_set(String(look.get("world_clip_set", "")))
+		if item_class.begins_with("weapon_knife"):
+			prepared_set(KNIFE_ATTACKS_SET)
 		if models:
 			preload_scene(String(look.get("model_path", "")))
 
@@ -432,9 +455,14 @@ func hold(item_class: String, look: Dictionary = {}) -> void:
 	_held_model_path = String(look.get("model_path", ""))
 	var weapon_set := String(look.get("world_clip_set", ""))
 	_hold_prefix = ""
+	_knife_clips = PackedStringArray()
 	if not item_class.is_empty() and not weapon_set.is_empty():
 		_hold_prefix = "held_%s_" % weapon_set.get_file()
 		_add_set(weapon_set, _hold_prefix)
+		if item_class.begins_with("weapon_knife"):
+			# The attacks, under the knife's own draw and idle, which win.
+			for clip in _add_set(KNIFE_ATTACKS_SET, _hold_prefix):
+				_knife_clips.append(String(clip).trim_prefix(_hold_prefix))
 	var stand := _held_clip(&"idle")
 	var shot := _held_clip(&"shoot")
 	_has_hold = stand != &""
@@ -588,6 +616,14 @@ func _build_tree(weapon_clips: PackedStringArray) -> void:
 		_hold_prefix = WEAPON
 		_has_hold = true
 		_has_shoot = true
+	if animation_player.has_animation(&"flinch_chest") and animation_player.has_animation(&"flinch_head"):
+		root.disconnect_node(&"action", 0)
+		_body_flinch = PlayerFlinch.new()
+		_head_flinch = PlayerFlinch.new(true)
+		var over := &"shoot" if has_weapon_layers else moving
+		over = _body_flinch.attach(root, over, &"flinch_chest")
+		over = _head_flinch.attach(root, over, &"flinch_head")
+		root.connect_node(&"action", 0, over)
 	var lengths := {}
 	for clip in animation_player.get_animation_list():
 		lengths[String(clip)] = animation_player.get_animation(clip).length
@@ -609,6 +645,9 @@ func _build_tree(weapon_clips: PackedStringArray) -> void:
 	animation_tree.tree_root = root
 	animation_player.active = false
 	animation_tree.active = true
+	if _body_flinch != null:
+		_body_flinch.initialize(animation_tree)
+		_head_flinch.initialize(animation_tree)
 	_apply()
 
 
@@ -896,11 +935,93 @@ func _node(node_name: StringName) -> AnimationNode:
 	return (animation_tree.tree_root as AnimationNodeBlendTree).get_node(node_name)
 
 
+## A knife swing, light or heavy, and what it met (hit, miss or
+## backstab): the attack's own third-person clip over the upper body, as a
+## reload plays, and a gun's shot where the knife's attacks are not there.
+## The extracted worldmodel_knife graph maps its hit/miss/backstab states
+## to these clips (knife_clip_for), on the ground or over the air pose.
+func knife_attack(heavy: bool, met: String, variation: int = 0) -> void:
+	var clip := knife_clip_for(_knife_clips, heavy, met, variation)
+	if clip.is_empty() or not has_weapon_layers:
+		fire()
+		return
+	(_node(&"gun_action_clip") as AnimationNodeAnimation).animation = StringName(_hold_prefix + clip)
+	var gun_action := _node(&"gun_action") as AnimationNodeOneShot
+	gun_action.fadein_time = 0.05
+	gun_action.fadeout_time = ACTION_FADE
+	animation_tree.set("parameters/gun_action/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
+
+
+## Of a knife set's clips (short names), the one for an attack: light or
+## heavy, and met "hit", "miss" or "backstab", as CS2's graph names its
+## attacks (attack_knife_lighthit ... heavybackstab,
+## reference/animgraph/parameters.md). CS2's worldmodel_knife graph's
+## KnifeSlashOptions0/1 Stand states map A/B misses to frontswing(_b),
+## light hits to frontstab/frontswing_b, heavy hits to frontstab, light
+## backstabs to backstab and heavy backstabs to backstab_overhead. Those
+## names contain neither "light" nor "heavy". Named alternative sets still
+## use the matching below. Standing attacks go over the locomotion pose.
+static func knife_clip_for(clips: PackedStringArray, heavy: bool, met: String, variation: int = 0) -> String:
+	var actual := ""
+	if met == "backstab":
+		actual = "backstab_overhead" if heavy else "backstab"
+	elif met == "hit":
+		actual = "frontstab" if heavy or variation % 2 == 0 else "frontswing_b"
+	else:
+		actual = "frontswing" if variation % 2 == 0 else "frontswing_b"
+	if clips.has(actual):
+		return actual
+	var kind := "heavy" if heavy else "light"
+	var sorted := clips.duplicate()
+	sorted.sort()
+	var of_kind := ""
+	for clip in sorted:
+		var lower := clip.to_lower()
+		if not lower.contains(kind) or lower.contains("crouch"):
+			continue
+		if lower.contains(met):
+			return clip
+		if of_kind.is_empty() and (lower.contains("hit") or lower.contains("miss") or lower.contains("attack")):
+			of_kind = clip
+	return of_kind
+
+
 ## A round fired: the gun's shot added over the upper body, from its start,
 ## as CS2's Weapon Shoot layer restarts it on every round.
 func fire() -> void:
 	if has_weapon_layers and _has_shoot:
 		animation_tree.set("parameters/shoot/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
+
+
+## A surviving hit, with the capsule's body part and side and the shot's
+## world-space direction (shooter toward victim). The two independent
+## whole-body layers follow CS2's graph above shooting and below the death;
+## they do not interrupt locomotion, reloads or the held weapon. Assets are
+## already prepared, so handling a hit never reads the disk.
+func flinch(zone: StringName, side: StringName, shot_direction: Vector3, at_usec: int = -1) -> void:
+	if _body_flinch == null or animation_tree == null or _dead != &"" or not is_animating():
+		return
+	var toward_source := body_speeds(-shot_direction, rad_to_deg(rotation.y) - 180.0)
+	var clip := PlayerFlinch.clip_for(zone, side, toward_source, _variation)
+	if clip == &"" or not animation_player.has_animation(clip):
+		return
+	var at := SimClock.now_usec() if at_usec < 0 else at_usec
+	var reaction := _head_flinch if zone == &"head" else _body_flinch
+	reaction.start(clip, animation_player.get_animation(clip).length, at)
+	_apply_flinches(at)
+	_requests_due = true
+
+
+func _apply_flinches(at_usec: int) -> void:
+	if _body_flinch != null and animation_tree != null:
+		_body_flinch.apply(animation_tree, at_usec)
+		_head_flinch.apply(animation_tree, at_usec)
+
+
+func _clear_flinches() -> void:
+	if _body_flinch != null and animation_tree != null:
+		_body_flinch.clear(animation_tree)
+		_head_flinch.clear(animation_tree)
 
 
 ## The held gun's own clip for an action (reload, draw), crouched if the body
@@ -938,6 +1059,7 @@ func play(
 		animation_tree.set("parameters/gun_action/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
 		return
 	if _is_held(short) and animation_player.has_animation(short):
+		_clear_flinches()
 		(_node(&"death_clip") as AnimationNodeAnimation).animation = short
 		(_node(&"death") as AnimationNodeTransition).xfade_time = blend
 		animation_tree.set("parameters/death/transition_request", "dead")
@@ -951,6 +1073,7 @@ func play(
 		animation_tree.set("parameters/action/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
 		return
 	_dead = &""
+	_clear_flinches()
 	(_node(&"death") as AnimationNodeTransition).xfade_time = blend
 	animation_tree.set("parameters/death/transition_request", "alive")
 	animation_tree.set("parameters/action/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_ABORT)
@@ -983,6 +1106,7 @@ func state() -> StringName:
 ## first, so it steps three times; on a tree already going the rest change
 ## nothing. The pose is fitted at once, by the flags as they stand.
 func pose_now() -> void:
+	_apply_flinches(DrawClock.usec())
 	if animation_tree != null:
 		for i in 3:
 			animation_tree.advance(0.0)
@@ -1004,6 +1128,7 @@ func pose_now() -> void:
 ## (holding nothing) and eased its hands back onto the gun over HandGrip's
 ## EASE.
 func pose_again() -> void:
+	_apply_flinches(DrawClock.usec())
 	if animation_tree != null:
 		animation_tree.advance(0.0)
 	elif animation_player != null:
@@ -1124,6 +1249,10 @@ func is_seen() -> bool:
 
 
 func _process(delta: float) -> void:
+	# Default-stepped shadow bodies need the same sampled hit poses; view-
+	# and self-stepped bodies apply them immediately before their own step.
+	if not stepped_by_hand and not stepped_by_view:
+		_apply_flinches(DrawClock.usec())
 	# The view steps it, its flags with it (show_frame).
 	if stepped_by_view:
 		return
@@ -1210,6 +1339,7 @@ func step(delta: float) -> void:
 
 
 func _step_mixer(delta: float) -> void:
+	_apply_flinches(DrawClock.usec())
 	if animation_tree != null:
 		animation_tree.advance(delta)
 	elif animation_player != null:
@@ -1241,6 +1371,8 @@ func put_at_once() -> void:
 
 ## Stops the animation, for a ragdoll to have the bones, or starts it again.
 func set_animating(on: bool) -> void:
+	if not on:
+		_clear_flinches()
 	if foot_plant != null:
 		foot_plant.active = on and _dead == &""
 	if hand_grip != null:

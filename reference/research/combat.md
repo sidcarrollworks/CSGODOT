@@ -2,8 +2,8 @@
 
 Sid, 2026-09-24: "spin up a couple agents to do some research on how all
 these systems work in the actual game." This page covers combat: the gun
-features `reference/weapons/TODO.md` still has open (R3, R4, R5, R6, R7, R10,
-R13), the knife and Zeus (roadmap item 21), being hit (items 2 to 4a, and A1
+features audited against `reference/weapons/TODO.md` on that date (R3,
+R4, R5, R6, R7, R10, R13), the knife and Zeus (roadmap item 21), being hit (items 2 to 4a, and A1
 in `reference/cs2-systems.md`), and how hits register online (item 25 and
 systemization step 3.3). Money, the bomb, grenades, drops, round flow, the
 round HUD and bots are researched separately.
@@ -11,6 +11,15 @@ round HUD and bots are researched separately.
 It records what CS2 does and what is still unknown. Where an item needs a
 number that no file has, it says how Sid can measure it (Local). It changes
 no code.
+
+## Current implementation status, 2026-10-02
+
+Scopes (R4), ammunition/reloads (R5), tracers (R10), the usable knife, final-shot
+recovery and the new body-hit effects/sounds/flinches are merged.
+Burst/silencer modes, revolver behavior, random recoil fidelity, Zeus
+attacks and networking remain open. The detailed research retains its
+original evidence and dates; [the weapon checklist](../weapons/TODO.md)
+and [roadmap](../roadmap.md) track current completion and parity work.
 
 ## Sources
 
@@ -380,11 +389,36 @@ here. Nothing on this page comes from Valve's leaked CS:GO source.
   and backstab hits sound different (WS: hltv.org/news/43689; the sound
   names arrive in SS between September 2025 and January 2026). An
   armoured victim plays its own hit sound for the attacker (SS).
-- **Reach, trace shape, backstab angle and swing rates are unknown.** The
-  usual 48 units left and 32 right, a line then a box, are from memory and
-  probably trace back to Valve's code, so they are guesses to measure.
+- **Reach:** Sid's PR #165 feedback (2026-10-01) specifies 48 units left
+  and 32 right. The trace shape, backstab angle and swing rates still need
+  measuring in CS2.
   Guides give about 0.4 s a left swing and 1.0 s a right (WS: profilerr
   guide, not measured).
+- **Airborne misses (PR #165, 2026-10-01):** airborne-command checks with
+  narrow capsules expose gaps between the endpoint fan's rays and near
+  the eye. The
+  correction uses the center line first, then an axis-aligned box with
+  16-unit half-size, including initial overlaps. Its center stops short
+  by `16 * (abs(dx) + abs(dy) + abs(dz))`, keeping its forward extent at
+  the requested 48/32 while preserving width near the eye. A center-line
+  wall stops the fallback; a hull-only wall also produces a wall hit.
+  This is the project's bounded reach rule, not verified CS2 internals.
+  Valve's [Source SDK bludgeon weapon](https://github.com/ValveSoftware/source-sdk-2013/blob/singleplayer/src/game/server/basebludgeonweapon.cpp)
+  demonstrates a line followed by a constant-width hull, but concerns
+  Half-Life's melee weapons and backs the endpoint off by the hull's
+  corner radius. Its ranges and exact geometry are not CS2 knife evidence.
+- **Third-person clips (PR #165, 2026-10-01):** the extracted
+  `assets/characters/animation/graphs/graph_data.txt`, `worldmodel_knife`,
+  maps `KnifeSlashOptions0/1/Stand` identically. Names contain neither
+  "light" nor "heavy", so matching those words silently found no attack.
+  The player and bot now use the graph's mapping, carrying the swing's
+  A/B variation to the body action layer over ground or air locomotion:
+
+  | Outcome | Slash A / B | Stab A / B |
+  |---|---|---|
+  | Miss | `frontswing` / `frontswing_b` | `frontswing` / `frontswing_b` |
+  | Hit | `frontstab` / `frontswing_b` | `frontstab` / `frontstab` |
+  | Backstab | `backstab` / `backstab` | `backstab_overhead` / `backstab_overhead` |
 - **Teammates.** Competitive has friendly fire with bullets at 33% and
   everything else at 40% (`ff_damage_reduction_bullets 0.33`,
   `ff_damage_reduction_other 0.4`, CFG competitive 36-52). Which the knife

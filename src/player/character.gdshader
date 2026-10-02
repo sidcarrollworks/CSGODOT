@@ -117,6 +117,7 @@ varying vec3 character_albedo;
 varying float character_occlusion;
 varying float character_cloth;
 varying vec3 character_sheen;
+varying vec3 character_diffuse_share;
 
 // The albedo in linear light, and back, whichever renderer draws it: the
 // Compatibility renderer hands fragment() its colours in sRGB and turns
@@ -276,7 +277,11 @@ void fragment() {
 	vec3 halfway = shading_normal + VIEW;
 	float n_dot_h = clamp(dot(shading_normal, halfway) * inversesqrt(max(dot(halfway, halfway), 1e-8)), 0.0, 1.0);
 	float reflection = character_charlie(max(ROUGHNESS * ROUGHNESS, 1e-4), n_dot_h) * 0.25 * PI;
-	ALBEDO = character_from_linear(character_albedo + character_sheen * cloth * reflection);
+	vec3 reflected_albedo = character_albedo + character_sheen * cloth * reflection;
+	// Keep the cloth correction before Godot mixes projected decals into
+	// ALBEDO. Dividing by the later ALBEDO would cancel wound colour in sun.
+	character_diffuse_share = character_albedo / max(reflected_albedo, vec3(1e-4));
+	ALBEDO = character_from_linear(reflected_albedo);
 }
 
 void light() {
@@ -294,8 +299,7 @@ void light() {
 
 	// Lambert. Godot multiplies this by ALBEDO, which carries the cloth's
 	// reflection as well (fragment()), so that share is taken back out.
-	vec3 diffuse_share = character_albedo / max(ALBEDO, vec3(1e-4));
-	DIFFUSE_LIGHT += arriving / PI * mix(1.0, character_occlusion, direct_diffuse_occlusion) * diffuse_share;
+	DIFFUSE_LIGHT += arriving / PI * mix(1.0, character_occlusion, direct_diffuse_occlusion) * character_diffuse_share;
 
 	// GGX with Schlick-Smith visibility, or on cloth the sheen, which is
 	// lit by the cosine once more (Source 2's CLOTH_ENERGY_SCALE times N.L,

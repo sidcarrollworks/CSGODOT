@@ -77,6 +77,26 @@ The new cluster also holds things the old HUD did not:
 - The fire mode icon (single, burst, full auto) and a reserve-ammo icon per
   magazine type.
 
+## A0.1. Ground-item pickup prompt (2026-10-01)
+
+CS2's [hudreticle.css](https://github.com/SteamDatabase/GameTracking-CS2/blob/master/game/csgo/pak01_dir/panorama/styles/hud/hudreticle.css)
+sets `.targetid` to Stratum2, bold, 22 px, centered in a 1040 by 74 px box
+whose top is at y=580 in Panorama's 1080p layout. It uses additive blending;
+the rule has no text shadow. Both the action and the weapon name inherit
+the bold face. Sid's CS2 screenshot on 2026-10-01 shows the line's baseline
+about 60 px below the crosshair (**measured from the screenshot**).
+
+The game's [English localization](https://github.com/SteamDatabase/GameTracking-CS2/blob/master/game/csgo/pak01_dir/resource/csgo_english.txt)
+has `Panorama_HUD_weaponid_swap` and `Panorama_HUD_weaponid_pickup`:
+the action is `[E] Swap for` or `[E] Pick up`, with the bound use key
+substituted for E. Its HTML colors the action prefix `#6a6156` and the item
+name separately with `weapon_color`; the reference screenshot's name is
+white. Thus the action's softer appearance comes from its color, rather
+than a lighter font weight. `UsePrompt` follows this styling and selects
+the swap wording when a primary or pistol slot is occupied. The dropped
+bomb keeps Sid's requested `Press [E] to pick up bomb` wording; taking the
+bomb from a bot keeps its existing yellow `[E] Take Bomb`.
+
 ## A1. Kill feed (death notices)
 
 **Layout**, from GT `panorama/layout/hud/huddeathnotice.xml`. One notice is a
@@ -412,6 +432,24 @@ From GT `panorama/layout/hud/hudwinpanel.xml`,
   - **MVP section:** a 3D render of the MVP's agent in an "mvp-banner" pose on
     a small map scene, their avatar, the **MVP reason**, their name, and their
     music kit's name and StatTrak count.
+- **Local reference update, 2026-10-01 (Sid's cropped screenshot and motion
+  description):** the foreground ROUND WON / LOST stays fixed, while a
+  faint copy of the same text grows behind it and is cropped at the strip's
+  borders. The crop has wider, shorter lettering, more space above the fact,
+  and thin horizontal borders with faded ends. `WinPanel` follows this
+  reference over the older layout's single shrinking title and arrows.
+  Normalized to an 80 px strip at the 1080p HUD base size, its Stratum2 Bold
+  32 px title and 16 px tracking are **Measured approximately** from the
+  crop. Sid's subsequent full-screen references refine the strip to about
+  640 px wide, with a broad fade covering 28% of its width at each end.
+  This replaces the crop's initial 800 px width estimate. The tint, blur,
+  dot pattern and horizontal borders share the fade, so a solid blur does
+  not leave a visible rectangle underneath the translucent edges.
+  The background's 1× to 3.5× growth at 20% opacity is an
+  **Approximation** of the described motion; only a still was provided.
+  Sid's local review slows it from 5 s to 10 s and makes the result tint
+  60% opaque, with faded sides and the existing HUD world blur. These are
+  requested presentation settings, rather than verified values from CS2's files.
 - **Title strings:** `SFUI_WinPanel_CT_Win` "Counter-Terrorists Win",
   `SFUI_WinPanel_T_Win` "Terrorists Win", `SFUI_WinPanel_Round_Draw` "Round
   Draw", `SFUI_WinPanel_Team_Win_Team` "{team} Wins The Round" (named teams),

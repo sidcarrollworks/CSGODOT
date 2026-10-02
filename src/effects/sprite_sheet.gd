@@ -22,6 +22,13 @@ var clamped: Array[bool] = []
 ## How long each frame of each sequence shows, where the sheet says (a frame
 ## can show for none: the steam's last); every frame alike where not.
 var times: Array[PackedFloat32Array] = []
+## The frame rectangles flattened into a one-row float texture, for a
+## batched renderer to interpolate frames with different atlas rectangles.
+## Created once at preparation; ordinary frame() users need none of it.
+var _frame_metadata: Texture2D
+var _frame_offsets := PackedInt32Array()
+var _sequence_seconds := PackedFloat32Array()
+var _frame_ends: Array[PackedFloat64Array] = []
 
 
 ## The texture at CS2's path (materials/... .vtex), with its sheet; null
@@ -47,16 +54,93 @@ func read(parsed: Dictionary) -> void:
 	sequences.clear()
 	clamped.clear()
 	times.clear()
+	_frame_metadata = null
+	_frame_offsets.clear()
+	_sequence_seconds.clear()
+	_frame_ends.clear()
+	var offset := 0
 	for sequence: Dictionary in parsed.get("sequences", []):
 		var frames: Array[Rect2] = []
 		for r: Array in sequence.get("frames", []):
 			frames.append(Rect2(r[0], r[1], r[2] - r[0], r[3] - r[1]))
 		sequences.append(frames)
+		_frame_offsets.append(offset)
+		offset += frames.size()
 		clamped.append(bool(sequence.get("clamp", true)))
 		var shown := PackedFloat32Array()
 		for time: Variant in sequence.get("times", []):
 			shown.append(float(time))
 		times.append(shown if shown.size() == frames.size() else PackedFloat32Array())
+		var seconds := 0.0
+		var ends := PackedFloat64Array()
+		for time in times[times.size() - 1]:
+			seconds += maxf(time, 0.0)
+			ends.append(seconds)
+		_sequence_seconds.append(seconds)
+		_frame_ends.append(ends)
+
+
+## Current and next flat frame indices, and interpolation between them.
+## Display times and zero-duration final frames follow frame(); a looping
+## sequence interpolates its last frame back into the first.
+func interpolation_data(seq: int, fraction: float) -> Vector3:
+	if sequences.is_empty():
+		return Vector3.ZERO
+	var s := posmod(seq, sequences.size())
+	var count := sequences[s].size()
+	if count == 0:
+		return Vector3.ZERO
+	var offset := _frame_offsets[s]
+	var shown: PackedFloat32Array = times[s] if s < times.size() else PackedFloat32Array()
+	if shown.is_empty():
+		var at := maxf(fraction, 0.0) * count if clamped[s] else fraction * count
+		if clamped[s] and at >= count - 1:
+			return Vector3(offset + count - 1, offset + count - 1, 0)
+		var frame_index := floori(at)
+		var index := clampi(frame_index, 0, count - 1) if clamped[s] else posmod(frame_index, count)
+		return Vector3(offset + index, offset + (index + 1) % count, at - floorf(at))
+	var total := _sequence_seconds[s]
+	var into := maxf(fraction, 0.0) * total if clamped[s] else fraction * total
+	if total <= 0.0 or (clamped[s] and into >= total):
+		return Vector3(offset + count - 1, offset + count - 1, 0)
+	if not clamped[s]:
+		into = fposmod(into, total)
+	var ends := _frame_ends[s]
+	var low := 0
+	var high := count
+	# First end strictly after the requested stamp; duplicate ends skip
+	# zero-duration frames exactly as the old duration walk did.
+	while low < high:
+		var middle := (low + high) >> 1
+		if ends[middle] <= into:
+			low = middle + 1
+		else:
+			high = middle
+	if low >= count:
+		return Vector3(offset + count - 1, offset + count - 1, 0)
+	var before := ends[low - 1] if low > 0 else 0.0
+	var next := mini(low + 1, count - 1) if clamped[s] else (low + 1) % count
+	return Vector3(offset + low, offset + next, (into - before) / maxf(shown[low], 0.00000001))
+
+
+## Each texel contains (u0, v0, u1, v1), without colour-space conversion.
+## A plain texture has one whole-image frame. Call while loading the map.
+func frame_metadata() -> Texture2D:
+	if _frame_metadata != null:
+		return _frame_metadata
+	var count := 0
+	for frames: Array in sequences:
+		count += frames.size()
+	var data := Image.create_empty(maxi(1, count), 1, false, Image.FORMAT_RGBAF)
+	if count == 0:
+		data.set_pixel(0, 0, Color(0, 0, 1, 1))
+	var index := 0
+	for frames: Array in sequences:
+		for rectangle: Rect2 in frames:
+			data.set_pixel(index, 0, Color(rectangle.position.x, rectangle.position.y, rectangle.end.x, rectangle.end.y))
+			index += 1
+	_frame_metadata = ImageTexture.create_from_image(data)
+	return _frame_metadata
 
 
 ## The rectangle a sprite is drawn with: sequence seq (wrapped to those

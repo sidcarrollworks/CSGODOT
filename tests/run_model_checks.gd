@@ -14,6 +14,17 @@ extends "res://tests/check_suite.gd"
 const WEAPONS_DIR := "res://assets/weapons"
 const CHARACTERS_DIR := "res://assets/characters"
 
+## The extracted worldmodel_knife graph, KnifeSlashOptions0/1 Stand
+## states, A then B. These names differ from its light/heavy event IDs.
+const KNIFE_ATTACK_CLIPS := {
+	"light_hit": ["frontstab", "frontswing_b"],
+	"light_miss": ["frontswing", "frontswing_b"],
+	"light_backstab": ["backstab", "backstab"],
+	"heavy_hit": ["frontstab", "frontstab"],
+	"heavy_miss": ["frontswing", "frontswing_b"],
+	"heavy_backstab": ["backstab_overhead", "backstab_overhead"],
+}
+
 var _frames: int = 0
 var _view_model: ViewModel
 var _player_model: PlayerModel
@@ -141,6 +152,7 @@ func _init() -> void:
 	_test_air_rules()
 	_test_air_tree()
 	_test_sound_sets()
+	_test_knife_attack_names()
 	_check(
 		BulletImpacts.surface_for("physics_group_sand") == "sand" and BulletImpacts.surface_for("physics_group_wood_crate") == "wood"
 			and BulletImpacts.surface_for("physics_group_metalvent") == "metal" and BulletImpacts.surface_for("physics_group") == "concrete"
@@ -799,23 +811,25 @@ func _test_sound_sets() -> void:
 			and absf(WeaponSounds.curve_share(WeaponSounds.BODY_CURVE, 543.65) - 0.6074) < 0.001,
 		"a hit farther off is softer, by the event's own curve, and never silent"
 	)
-	# What everyone else hears of a hit (HitSounds): CS2's victim and
-	# onlooker events, by who is listening.
+	# The hit's recipient selects CS2's own complete event.
 	var as_victim := HitSounds.for_hit({"userid": 1, "attacker": 2, "hitgroup": DamageInfo.HITGROUP_HEAD, "dmg_armor": 5, "health": 40}, 1)
 	var as_shooter := HitSounds.for_hit({"userid": 1, "attacker": 2, "hitgroup": DamageInfo.HITGROUP_CHEST, "health": 40}, 2)
 	var near := HitSounds.for_hit({"userid": 1, "attacker": 2, "hitgroup": DamageInfo.HITGROUP_CHEST, "health": 0}, 3)
 	var burnt := HitSounds.for_hit({"userid": 1, "attacker": 2, "weapon": "weapon_molotov", "health": 40}, 3)
 	var knifed := HitSounds.for_hit({"userid": 1, "attacker": 2, "weapon": "weapon_knife", "hitgroup": DamageInfo.HITGROUP_HEAD, "health": 40}, 3)
 	_check(
-		as_victim.get("flat", false) and as_victim.get("layers") == HitSounds.EVENTS[&"DamageHeadShotArmor"]["victim"]
-			and as_shooter.is_empty() and not near.get("flat", true) and near.get("layers") == HitSounds.EVENTS[&"DeathBody"]["onlooker"]
-			and burnt.is_empty() and knifed.get("layers") == HitSounds.EVENTS[&"DamageBody"]["onlooker"],
-		"the one hit hears the victim's sound flat, those near the onlookers' from the body, the shooter neither (their own feedback), fire none, a knife a body hit"
+		as_victim.get("flat", false) and as_victim.get("event") == "Player.DamageHeadShotArmor.Victim"
+			and as_shooter.get("event") == "Player.DamageBody.AttackerFeedback"
+			and not near.get("flat", true) and near.get("event") == "Player.DeathBody.Onlooker"
+			and burnt.is_empty() and knifed.get("event") == "Player.DamageBody.Onlooker",
+		"hit feedback selects victim, attacker and onlooker separately; fire plays its burn, a knife a body hit"
 	)
+	var groan := SoundEvents.find(HitSounds.DEATH_EVENT)
+	var helmeted := SoundEvents.find("Player.DeathHeadShotArmor.Onlooker")
 	_check(
-		HitSounds.DEATH[0][0] == HitSounds.GROAN and is_equal_approx(HitSounds.DEATH[0][1], 0.5)
-			and WeaponSounds.curve_share(HitSounds.DEATH[0][4], 1400.0) == 0.0
-			and HitSounds.EVENTS[&"DeathHeadShotArmor"]["onlooker"][2][0] == HitSounds.DINK,
+		groan.files.size() == 6 and is_equal_approx(groan.volume, 0.5)
+			and groan.gain(1400.0) == 0.0
+			and "Player.DeathHeadShot.Dink" in helmeted.children,
 		"a death is CS2's groan (death1 to 6, 0.5, silent at 1400), and a helmeted kill's dink carries to those near"
 	)
 	if not SoundBank.available():
@@ -973,6 +987,7 @@ func _test_bullet_impacts() -> void:
 		print("decals not extracted; skipping the holes (scripts/extract_assets.sh sounds)")
 		return
 	impacts.mark(result)
+	impacts._process(0.0)
 	var decals := impacts.find_children("*", "Decal", false, false)
 	var hole := decals[0] as Decal if decals.size() == 1 else null
 	_check(
@@ -982,22 +997,24 @@ func _test_bullet_impacts() -> void:
 		"and gets a hole there, the game's colour and normal, facing out of the surface, printed on the world and not on people"
 	)
 	if hole != null:
-		# The box reaches 4 units in front of the surface and 8 behind it.
+		# Authored depth variance keeps the front at the material's offset.
 		var along := (result.position - hole.global_position).dot(result.normal)
 		_check(
-			is_equal_approx(hole.size.y, BulletImpacts.DEFAULT_DEPTH) and absf(along - 2.0) < 0.01
+			hole.size.y >= 11.5 and hole.size.y <= 12.5 and absf(along - (hole.size.y * 0.5 + BulletImpacts.DEFAULT_DEPTH_OFFSET)) < 0.01
 				and hole.size.x >= 2.0 and hole.size.x <= 10.0 and hole.upper_fade == 0.0 and hole.lower_fade == 0.0,
-			"projected through a box 12 deep from 4 in front of the surface, a few inches across (%.1f), unfaded" % hole.size.x
+			"projected at the authored depth and variance from 4 in front of the surface, a few inches across (%.1f), unfaded" % hole.size.x
 		)
 	var sky := Hitscan.Result.new()
 	sky.hit = true
 	sky.surface = "physics_sky"
 	sky.normal = Vector3.DOWN
 	impacts.mark(sky)
+	impacts._process(0.0)
 	_check(impacts.holes == 1, "a round into the sky leaves no hole")
 	for i in 3:
 		shot = weapon.fire((i + 1) * 200_000, 0.0, origin, angles.x + i, angles.y, Weapon.ShooterState.new(0.0, true, false))
 		impacts.mark(Hitscan.trace(space, shot, data))
+	impacts._process(0.0)
 	_check(
 		impacts.holes == 4 and impacts.find_children("*", "Decal", false, false).size() == 2,
 		"past the limit the oldest holes are reused (%d holes, %d decals)" % [impacts.holes, impacts.find_children("*", "Decal", false, false).size()]
@@ -1006,6 +1023,7 @@ func _test_bullet_impacts() -> void:
 	person.hit = true
 	person.hitbox = _bot.hitboxes.hitboxes[0]
 	impacts.mark(person)
+	impacts._process(0.0)
 	_check(impacts.holes == 4, "a round into a person leaves no hole")
 
 
@@ -1216,10 +1234,12 @@ func _test_bot_sounds() -> void:
 	hits.watch(hit_game, 7)
 	hit_game.events.send(&"player_hurt", {"userid": 7, "attacker": 3, "hitgroup": DamageInfo.HITGROUP_HEAD, "dmg_armor": 3, "health": 50})
 	hit_game.events.flush()
-	var before := (hits.get_child(0) as AudioStreamPlayer).playing
+	var before := hits.events.voices().size()
 	hits._process(0.0)
+	var victim_sounds := hits.events.voices().filter(func(v: Dictionary) -> bool: return v["event"] == "Player.DamageHeadShotArmor.Victim")
 	_check(
-		missing_hits.is_empty() and not before and (hits.get_child(0) as AudioStreamPlayer).playing,
+		missing_hits.is_empty() and before == 0 and victim_sounds.size() == 1 and victim_sounds[0]["has_player"]
+			and victim_sounds[0]["player"] is AudioStreamPlayer and victim_sounds[0]["bus"] == &"PlayerVictim",
 		"hit, you hear CS2's own victim sound, flat, on the frame after (files missing: %s)" % ", ".join(missing_hits)
 	)
 	hits.free()
@@ -1549,6 +1569,12 @@ func _test_player_composes_kick_and_bob() -> void:
 			and player.view_model.transform.origin.is_equal_approx(rest.origin),
 		"standing still, a round's kick reaches the weapon model exactly as the weapon gives it (%.2f, %.2f degrees)" % [kick.x, kick.y]
 	)
+	player.view.camera_motion.height = -1.0
+	player.view._update_viewmodel(1.0 / 60.0)
+	_check(is_equal_approx(player.view_model.position.y, rest.origin.y - 1.0)
+		and player.view_model.transform.basis.is_equal_approx(expected),
+		"the extracted arms and gun dip relative to the camera without replacing the shot's recoil")
+	player.view.camera_motion.height = 0.0
 
 	# Running: the same kick, on top of the bob's offset.
 	player.velocity = Vector3(0.0, 0.0, -250.0)
@@ -1592,6 +1618,18 @@ func _test_player_composes_kick_and_bob() -> void:
 			and player.camera.find_children("ViewModel_*", "", false, false).size() == carried.size() + 1,
 		"switching shows the one in hand, hides the rest and stills them, and builds none anew"
 	)
+	player.velocity = Vector3.ZERO
+	player.view.viewmodel_motion = ViewModelMotion.new()
+	player.view.camera_motion.height = -1.0
+	var every_item_dips := true
+	for item_class in ["weapon_glock", "weapon_ak47", "weapon_knife", "weapon_hegrenade"]:
+		player.inventory.select(item_class)
+		player.view.catch_up()
+		player.view._update_viewmodel(1.0 / 60.0)
+		every_item_dips = every_item_dips and player.view_model != null and is_equal_approx(
+			player.view_model.position.y, player.view._viewmodel_rest.origin.y - 1.0)
+	_check(every_item_dips, "switching during a jump keeps the relative dip on the pistol, rifle, knife and grenade")
+	player.view.camera_motion.height = 0.0
 	# Last, as it swings the view: the body you look down at is walked only
 	# where the camera can see it (PlayerView.body_in_view). Looking ahead
 	# it waits, its time kept; looking down it steps by all of it at once.
@@ -1840,11 +1878,25 @@ func _test_view_model_motion() -> void:
 		running.origin.z > 1.0 and running.origin.y < 0.0 and absf(running.origin.x) <= 1.6 * 0.8 + 0.001,
 		"running settles the weapon back and down, and bobs it sideways within its amount (%s)" % running.origin
 	)
-	var airborne := motion.update(1.0 / 60.0, Vector3(0.0, 0.0, -250.0), false, Vector2(90.0, 0.0))
+	var took_off := motion.update(1.0 / 60.0, Vector3(0.0, 0.0, -250.0), false, Vector2(90.0, 0.0))
+	_check(
+		took_off.origin.z > 0.5,
+		"leaving the ground, the settle starts to fade rather than snapping away (%.3f of %.3f)" % [took_off.origin.z, running.origin.z]
+	)
+	var airborne := took_off
+	for frame in 6:
+		airborne = motion.update(1.0 / 60.0, Vector3(0.0, 0.0, -250.0), false, Vector2(90.0, 0.0))
 	_check(
 		is_zero_approx(motion.vertical_bob) and airborne.origin.z < 0.001,
-		"in the air there is no bob and nothing to settle"
+		"%.1f s into the air there is no bob and nothing to settle" % PlayerModel.TO_AIR
 	)
+	var landed := motion.update(1.0 / 60.0, Vector3(0.0, 0.0, -250.0), true, Vector2(90.0, 0.0))
+	_check(
+		landed.origin.z > 0.0 and landed.origin.z < running.origin.z * 0.2,
+		"landing, the settle comes back over %.1f s, not at once (%.3f)" % [PlayerModel.TO_GROUND, landed.origin.z]
+	)
+	for frame in 12:
+		motion.update(1.0 / 60.0, Vector3.ZERO, true, Vector2(90.0, 0.0))
 	var turned := motion.update(1.0 / 60.0, Vector3.ZERO, true, Vector2(95.0, 0.0))
 	_check(
 		motion.sway.x < 0.0 and motion.sway.x >= -ViewModelMotion.SWAY_MAX
@@ -2298,10 +2350,48 @@ func _test_a_body_holds_what_is_in_hand() -> void:
 	model.update_motion(Vector3.ZERO, 0.0, 0.0, true)
 	tree.advance(0.3)
 	_check_equal(String(tree.get("parameters/variation/current_state")), "knife", "a grenade in hand: the knife's locomotion")
+	_test_a_body_plays_knife_attacks(model)
 	model.let_go()
 	model.show_held()
 	_check(model.holding == "" and model.held_weapon == null and not glock.visible and not ak.visible, "nothing in hand: nothing shown")
 	model.free()
+
+
+## Without extracted assets the real names still catch the old matcher,
+## which required "light" or "heavy" and found none of CS2's attacks.
+func _test_knife_attack_names() -> void:
+	var clips := PackedStringArray([
+		"frontswing", "frontswing_b", "frontstab", "backstab", "backstab_overhead",
+		"backstab_overhead_crouching", "frontstab_crouching", "idle", "inair_stand",
+	])
+	for attack: String in KNIFE_ATTACK_CLIPS:
+		var heavy := attack.begins_with("heavy_")
+		var met := attack.trim_prefix("heavy_" if heavy else "light_")
+		for variation in 2:
+			_check_equal(PlayerModel.knife_clip_for(clips, heavy, met, variation), KNIFE_ATTACK_CLIPS[attack][variation],
+				"CS2's actual world knife %s %s clip" % [attack, "A" if variation == 0 else "B"])
+	_check_equal(PlayerModel.knife_clip_for(PackedStringArray(["heavy_hit_attack", "heavy_backstab_attack"]), true, "backstab"), "heavy_backstab_attack",
+		"an alternative set still matches its explicit heavy backstab name")
+
+
+## Actual imported clips must reach the upper-body action node in both
+## locomotion states; falling back to fire() leaves a knife with no attack.
+func _test_a_body_plays_knife_attacks(model: PlayerModel) -> void:
+	model.hold("weapon_knife", WeaponLibrary.look("weapon_knife", "T"))
+	model._switch_at_usec = SimClock.now_usec()
+	var action := model._node(&"gun_action_clip") as AnimationNodeAnimation
+	for grounded in [true, false]:
+		model.update_motion(Vector3.ZERO, 0.0, 0.0, grounded)
+		for attack: String in KNIFE_ATTACK_CLIPS:
+			var heavy := attack.begins_with("heavy_")
+			var met := attack.trim_prefix("heavy_" if heavy else "light_")
+			for variation in 2:
+				var expected := StringName(model._hold_prefix + KNIFE_ATTACK_CLIPS[attack][variation])
+				model.knife_attack(heavy, met, variation)
+				model.animation_tree.advance(0.01)
+				_check(model.animation_player.has_animation(expected) and action.animation == expected
+					and bool(model.animation_tree.get("parameters/gun_action/active")),
+					"the extracted knife %s %s plays over %s locomotion (%s)" % [attack, "A" if variation == 0 else "B", "ground" if grounded else "air", action.animation])
 
 
 ## What CS2's character shader asks of each agent material, printed for a

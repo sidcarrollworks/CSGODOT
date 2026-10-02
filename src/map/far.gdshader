@@ -24,6 +24,7 @@ void vertex() {
 }
 
 void fragment() {
+	if (-VERTEX.z < FAR_NEAR_DISTANCE) { discard; }
 	vec4 albedo = texture(albedo_texture, UV) * albedo_color;
 	vec3 orm = texture(orm_texture, UV).rgb;
 	ALBEDO = albedo.rgb;

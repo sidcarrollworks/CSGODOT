@@ -6,16 +6,17 @@ extends Node3D
 ## "bullet_impacts" group, and every shooter reports its hits to it
 ## (mark); a scene without one has silent, markless walls, as before.
 ##
-## The holes are the game's own bullet-hole materials (scripts/extract_assets.sh
-## sounds fetches them with the impact sounds): concrete, plaster, metal and
-## wood. Each .vmat names a colour, an occlusion and a normal texture and the
-## hole's size in the world, and is read rather than copied into here. A hole
+## The installed surface/decal/material tables select weighted materials,
+## including separate grazing marks. Each names colour, occlusion and normal
+## textures and the hole's size and projection in the world. A hole
 ## is a Decal with the colour darkened by the occlusion, which is where the
 ## depth of the crater is, and the normal map, which is how the sun finds its
 ## rim; projected through a box deep enough to reach the drawn surface from
 ## the hull the round hit, which on a prop can be a few units out. There are
 ## only so many at once; the oldest goes when a new one is needed. The sounds
-## are the game's impact sets by surface, from the hit.
+## are the game's impact sets by surface, from the hit. A trace queues plain
+## contact data; decals, sounds and HitEffects particles start on a drawn
+## frame. Nothing here queries physics or reads files during a tick.
 
 const DECALS_ROOT := "res://assets/decals/materials/decals"
 ## The bullet-hole materials by the surface they are for, under DECALS_ROOT.
@@ -60,6 +61,17 @@ const NORMAL_FADE := 0.7
 ## The most texels a hole's textures keep across: a few inches wide needs no
 ## more, and the occlusion is folded into the colour texel by texel.
 const MAX_TEXELS := 256
+## Current shipped convars. The use of the incidence cosine, uniform
+## cutoff jitter, size variance and linear distance ramp are approximations
+## until measured in CS2; the weights and material dimensions are authored.
+const GRAZING_CUTOFF := 0.55
+const GRAZING_VARIANCE := 0.1
+const DISTANCE_START := 256.0
+const DISTANCE_END := 1536.0
+const DISTANCE_SCALE := 1.35
+const DEFAULT_FADE_START := 30.0
+const DEFAULT_FADE_DURATION := 3.0
+const MAX_PENDING := 512
 
 ## Holes at once.
 @export var max_holes: int = 96
@@ -76,10 +88,16 @@ var _variants := {}  # hole set -> Array of read_hole() results, with textures
 var _players: Array[AudioStreamPlayer3D] = []
 var _next_player: int = 0
 var _rng := RandomNumberGenerator.new()
+var _pending: Array[Dictionary] = []
+var _groups := {}  # decal group -> weighted prepared materials
+var _materials := {}  # authored path -> prepared material, or {}
+var _hole_states: Array[Dictionary] = []
+var _now := 0.0
 
 
 func _ready() -> void:
 	add_to_group(&"bullet_impacts")
+	SurfaceProperties.rows()
 	for i in 8:
 		var player := AudioStreamPlayer3D.new()
 		player.unit_size = 4.0 * METRE
@@ -92,32 +110,122 @@ func _ready() -> void:
 	# The textures are made here, once, rather than on the first round into
 	# each surface, which would hitch; and the sounds are loaded, for the
 	# same reason.
+	for group: String in HitEffectTable.DECAL_GROUPS:
+		if group.begins_with("Impact."):
+			_group_variants(group)
 	for hole_set in HOLE_MATERIALS:
 		_variants_for(hole_set)
 	SoundBank.load_sets(PackedStringArray(SOUND_SETS.values()))
 
 
 ## Reports a shot's result to the scene's impacts, if it has any.
-static func mark_in(tree: SceneTree, result: Hitscan.Result) -> void:
+static func mark_in(tree: SceneTree, result: Hitscan.Result, direction := Vector3.ZERO, at_usec: int = 0) -> void:
 	var impacts := tree.get_first_node_in_group(&"bullet_impacts") as BulletImpacts
 	if impacts != null:
-		impacts.mark(result)
+		impacts.mark(result, direction, at_usec)
 
 
 ## A hole and a sound where a round met the world, and a hole in and out
 ## of every wall it went through on the way. A round that met a person
 ## leaves nothing where it met them, and nor does one into the sky.
-func mark(result: Hitscan.Result) -> void:
+func mark(result: Hitscan.Result, direction := Vector3.ZERO, at_usec: int = 0) -> void:
 	for wall in result.walls:
-		var went_in := surface_for(wall.surface)
-		_sound(went_in, wall.entry)
-		_hole(went_in, wall.entry, wall.entry_normal)
-		_hole(surface_for(wall.exit_surface), wall.exit, wall.exit_normal)
+		_queue_contact(wall.surface, wall.entry, wall.entry_normal, direction, at_usec, true)
+		_queue_contact(wall.exit_surface, wall.exit, wall.exit_normal, direction, at_usec, false)
 	if not result.hit or result.hitbox != null or result.surface.contains("sky"):
 		return
-	var surface := surface_for(result.surface)
-	_sound(surface, result.position)
-	_hole(surface, result.position, result.normal)
+	_queue_contact(result.surface, result.position, result.normal, direction, at_usec, true)
+
+
+func _queue_contact(surface: String, at: Vector3, normal: Vector3, direction: Vector3, at_usec: int, sound: bool) -> void:
+	if surface.to_lower().contains("sky"):
+		return
+	if _pending.size() >= MAX_PENDING:
+		return
+	_pending.append({"surface": surface, "at": at, "normal": normal, "direction": direction, "at_usec": at_usec, "sound": sound})
+
+
+func _process(delta: float) -> void:
+	_now += delta
+	for i in _hole_states.size():
+		var state: Dictionary = _hole_states[i]
+		var decal := _hole_nodes[i]
+		if not decal.visible:
+			continue
+		var alpha := fade_at(_now - float(state["born"]), float(state["fade_start"]), float(state["fade_duration"]))
+		var tint: Color = state["tint"]
+		tint.a *= alpha
+		decal.modulate = tint
+		if alpha <= 0.0:
+			decal.hide()
+	if _pending.is_empty():
+		return
+	var effects := get_tree().get_first_node_in_group(&"hit_effects")
+	var camera := get_viewport().get_camera_3d()
+	for contact: Dictionary in _pending:
+		var sound_surface := surface_for(contact["surface"])
+		if contact["sound"]:
+			_sound(sound_surface, contact["at"])
+		var distance := camera.global_position.distance_to(contact["at"]) if camera != null else 0.0
+		_hole(contact["surface"], contact["at"], contact["normal"], contact["direction"], distance)
+		if effects != null and effects.has_method(&"queue_world"):
+			effects.call(&"queue_world", surface_name(contact["surface"]), contact["at"], contact["normal"], contact["direction"], contact["at_usec"])
+	_pending.clear()
+
+
+static func surface_name(hull_name: String) -> String:
+	return hull_name.to_lower().trim_prefix("physics_group_").trim_prefix("physics_")
+
+
+## Resolve each authored field separately; an explicit empty decal keeps
+## a wet/no_decal surface unmarked rather than inheriting concrete.
+static func impact_for(hull_name: String) -> Dictionary:
+	var at := surface_name(hull_name)
+	var result := {}
+	for i in SurfaceProperties.MOST_PARENTS:
+		var own: Dictionary = HitEffectTable.SURFACES.get(at, {})
+		for field: String in own:
+			if not result.has(field):
+				result[field] = own[field]
+		if at == SurfaceProperties.ROOT:
+			break
+		var parent := SurfaceProperties.parent(at)
+		at = parent if not parent.is_empty() else SurfaceProperties.ROOT
+	return result
+
+
+static func is_grazing(direction: Vector3, normal: Vector3, cutoff: float = GRAZING_CUTOFF) -> bool:
+	if direction.length_squared() < 1e-8 or normal.length_squared() < 1e-8:
+		return false
+	return absf(direction.normalized().dot(normal.normalized())) < cutoff
+
+
+static func decal_group(fields: Dictionary, grazing: bool) -> String:
+	return String(fields.get("grazing", fields.get("decal", ""))) if grazing else String(fields.get("decal", ""))
+
+
+static func distance_scale(distance: float) -> float:
+	return lerpf(1.0, DISTANCE_SCALE, clampf((distance - DISTANCE_START) / (DISTANCE_END - DISTANCE_START), 0.0, 1.0))
+
+
+static func fade_at(age: float, start: float = DEFAULT_FADE_START, duration: float = DEFAULT_FADE_DURATION) -> float:
+	if age <= start or start < 0.0:
+		return 1.0
+	return clampf(1.0 - (age - start) / duration, 0.0, 1.0) if duration > 0.0 else 0.0
+
+
+## One authored weighted choice, useful without extracted assets too.
+static func pick_material(group: String, share: float) -> String:
+	var options: Array = HitEffectTable.DECAL_GROUPS.get(group, [])
+	var total := 0.0
+	for option: Dictionary in options:
+		total += maxf(float(option["weight"]), 0.0)
+	var remaining := clampf(share, 0.0, 0.999999) * total
+	for option: Dictionary in options:
+		remaining -= maxf(float(option["weight"]), 0.0)
+		if remaining < 0.0:
+			return option["material"]
+	return ""
 
 
 ## The impact surface for a hull part's name.
@@ -168,13 +276,36 @@ func _sound(surface: String, at: Vector3) -> void:
 	player.play()
 
 
-func _hole(surface: String, at: Vector3, normal: Vector3) -> void:
-	var variants := _variants_for(HOLE_FOR.get(surface, "concrete"))
-	if variants.is_empty():
+func _hole(surface: String, at: Vector3, normal: Vector3, direction := Vector3.ZERO, distance: float = 0.0) -> void:
+	if max_holes <= 0 or normal.length_squared() < 1e-8:
 		return
-	var hole: Dictionary = variants[_rng.randi_range(0, variants.size() - 1)]
+	var fields := impact_for(surface)
+	var grazing := is_grazing(direction, normal, GRAZING_CUTOFF + _rng.randf_range(-GRAZING_VARIANCE, GRAZING_VARIANCE))
+	var group := decal_group(fields, grazing)
+	if group.is_empty():
+		return
+	var variants := _group_variants(group)
+	var hole := {}
+	if not variants.is_empty():
+		var weights := PackedFloat32Array()
+		for variant: Dictionary in variants:
+			weights.append(variant["weight"])
+		hole = variants[_rng.rand_weighted(weights)]
+	else:
+		# Existing extractions still supply the original four families.
+		var fallback := _variants_for(HOLE_FOR.get(surface_for(surface), "concrete"))
+		if fallback.is_empty():
+			return
+		hole = fallback[_rng.randi_range(0, fallback.size() - 1)]
 	var decal: Decal
-	if _hole_nodes.size() < max_holes:
+	var slot := -1
+	for i in _hole_nodes.size():
+		if not _hole_nodes[i].visible:
+			slot = i
+			break
+	if slot >= 0:
+		decal = _hole_nodes[slot]
+	elif _hole_nodes.size() < max_holes:
 		decal = Decal.new()
 		# Everything but the people (RigModel.LAYER).
 		decal.cull_mask = 0xFFFFF & ~RigModel.LAYER
@@ -183,27 +314,132 @@ func _hole(surface: String, at: Vector3, normal: Vector3) -> void:
 		# in it.
 		decal.upper_fade = 0.0
 		decal.lower_fade = 0.0
-		decal.normal_fade = NORMAL_FADE
 		add_child(decal)
+		slot = _hole_nodes.size()
 		_hole_nodes.append(decal)
+		_hole_states.append({})
 	else:
-		decal = _hole_nodes[_next_hole]
+		slot = _next_hole
+		decal = _hole_nodes[slot]
 		_next_hole = (_next_hole + 1) % _hole_nodes.size()
 	decal.texture_albedo = hole["albedo_texture"]
 	decal.texture_normal = hole["normal_texture"]
-	# How the game spreads a hole's size by its variance is not in the file;
-	# a quarter of it either way looks right.
-	var scale_by := 1.0 + _rng.randf_range(-0.25, 0.25) * float(hole["variance"])
-	var depth: float = hole["depth"]
-	decal.size = Vector3(float(hole["width"]) * scale_by, depth, float(hole["height"]) * scale_by)
+	decal.texture_orm = hole.get("orm_texture")
+	decal.normal_fade = float(hole.get("normal_fade", NORMAL_FADE))
+	var size := placement_size(hole, Vector3(_rng.randf_range(-1.0, 1.0), _rng.randf_range(-1.0, 1.0), _rng.randf_range(-1.0, 1.0)), distance)
+	decal.size = size
 	# A decal projects down its own -Y; that is turned into the surface, the
 	# box starting the material's offset in front of it, and the hole spun
 	# about it so no two look alike.
 	var up := normal.normalized()
-	var centre := at - up * (float(hole["offset"]) + depth * 0.5)
+	var centre := at - up * (float(hole["offset"]) + size.y * 0.5)
 	var spin := Basis(Vector3.UP, _rng.randf_range(0.0, TAU))
-	decal.global_transform = Transform3D(_basis_facing(-up) * spin, centre)
+	var tangent := direction - up * direction.dot(up)
+	var basis := _basis_facing(-up) * spin
+	if grazing and tangent.length_squared() >= 1e-8:
+		# Grazing textures are scratches; their long axis follows the bullet.
+		tangent = tangent.normalized()
+		basis = Basis(up.cross(tangent), up, tangent)
+	decal.global_transform = Transform3D(basis, centre)
+	var tint: Color = hole.get("tint", Color.WHITE)
+	decal.modulate = tint
+	decal.set_meta(&"material", hole.get("material", ""))
+	decal.show()
+	_hole_states[slot] = {"born": _now, "fade_start": hole.get("fade_start", DEFAULT_FADE_START), "fade_duration": hole.get("fade_duration", DEFAULT_FADE_DURATION), "tint": tint}
 	holes += 1
+
+
+## Authored base dimensions; additive uniform variance is a documented
+## approximation of Source 2's variance controls. Legacy fallback retains
+## its former size spread. Distance enlargement is applied at placement.
+static func placement_size(hole: Dictionary, variation: Vector3, distance: float) -> Vector3:
+	var width := float(hole["width"])
+	var height := float(hole["height"])
+	var depth := float(hole["depth"])
+	if bool(hole.get("authored", false)):
+		var shared := variation.x * float(hole["variance"])
+		width += shared
+		height += shared + variation.z * float(hole.get("height_variance", 0.0))
+		depth += variation.y * float(hole.get("depth_variance", 0.0))
+	else:
+		var scale_by := 1.0 + variation.x * 0.25 * float(hole["variance"])
+		width *= scale_by
+		height *= scale_by
+	var boost := distance_scale(distance)
+	return Vector3(maxf(width, 0.01) * boost, maxf(depth, 0.01), maxf(height, 0.01) * boost)
+
+
+static func material_description(path: String) -> Dictionary:
+	var material: Dictionary = HitEffectTable.MATERIALS.get(path, {})
+	if material.is_empty():
+		return {}
+	var params: Dictionary = material.get("params", {})
+	var textures: Dictionary = material.get("textures", {})
+	var tint := Color.WHITE
+	var color: Variant = params.get("g_vColorTint")
+	if color is Array and color.size() >= 3:
+		tint = Color(float(color[0]), float(color[1]), float(color[2]), float(color[3]) if color.size() > 3 else 1.0)
+	return {
+		"material": path, "authored": true,
+		"color": textures.get("g_tColor", ""), "occlusion": textures.get("g_tAmbientOcclusion", ""), "normal": textures.get("g_tNormal", ""),
+		"width": params.get("DecalWorldWidth", 5.0), "height": params.get("DecalWorldHeight", 5.0),
+		"variance": params.get("DecalSizeVariance", 0.0), "height_variance": params.get("DecalHeightVariance", 0.0), "depth_variance": params.get("DecalDepthVariance", 0.0),
+		"depth": params.get("DecalDepth", DEFAULT_DEPTH), "offset": params.get("DecalDepthOffset", DEFAULT_DEPTH_OFFSET),
+		"fade_start": params.get("DecalFadeStartTime", DEFAULT_FADE_START), "fade_duration": params.get("DecalFadeDuration", DEFAULT_FADE_DURATION),
+		# Godot's one scalar cannot reproduce Source 2's cutoff/softness pair;
+		# the cosine gives a conservative approximation rather than disabling it.
+		"normal_fade": cos(deg_to_rad(float(params.get("g_flCutoffAngle", 60.0)))) if float(params.get("F_CUTOFF_ANGLE", 1.0)) != 0.0 else 0.0,
+		"cutoff_angle": params.get("g_flCutoffAngle", 60.0), "cutoff_softness": params.get("g_flCutoffAngleSoftness", 5.0), "tint": tint,
+	}
+
+
+func _group_variants(group: String) -> Array:
+	if _groups.has(group):
+		return _groups[group]
+	var result := []
+	for option: Dictionary in HitEffectTable.DECAL_GROUPS.get(group, []):
+		var hole := _material_for(option["material"])
+		if hole.is_empty() or float(option["weight"]) <= 0.0:
+			continue
+		var variant := hole.duplicate()
+		variant["weight"] = float(option["weight"])
+		result.append(variant)
+	_groups[group] = result
+	return result
+
+
+func _material_for(path: String) -> Dictionary:
+	if _materials.has(path):
+		return _materials[path]
+	var hole := material_description(path)
+	if hole.is_empty():
+		_materials[path] = {}
+		return {}
+	var color := _authored_texture(hole["color"])
+	if color == null:
+		_materials[path] = {}
+		return {}
+	var ao := _authored_texture(hole["occlusion"])
+	var normal := _authored_texture(hole["normal"])
+	hole["albedo_texture"] = ImageTexture.create_from_image(occluded(color.get_image(), ao.get_image() if ao != null else null))
+	if normal != null:
+		var image := _plain(normal.get_image())
+		image.generate_mipmaps()
+		hole["normal_texture"] = ImageTexture.create_from_image(image)
+	else:
+		hole["normal_texture"] = null
+	_materials[path] = hole
+	return hole
+
+
+static func _authored_texture(path: String) -> Texture2D:
+	if path.is_empty():
+		return null
+	for root in [SpriteSheet.DIR, DECALS_ROOT.get_base_dir().get_base_dir()]:
+		var png: String = root.path_join(path.get_basename() + ".png")
+		if ResourceLoader.exists(png):
+			return load(png) as Texture2D
+	return null
 
 
 ## The holes of a set, read and made once: the ones whose colour texture
@@ -211,9 +447,16 @@ func _hole(surface: String, at: Vector3, normal: Vector3) -> void:
 func _variants_for(hole_set: String) -> Array:
 	if _variants.has(hole_set):
 		return _variants[hole_set]
+	var authored: Array = _groups.get("Impact." + hole_set.capitalize(), [])
+	if not authored.is_empty():
+		_variants[hole_set] = authored
+		return authored
 	var found := []
 	for material in HOLE_MATERIALS.get(hole_set, []):
-		var hole := read_hole(DECALS_ROOT.path_join(material + ".vmat"))
+		var path := DECALS_ROOT.path_join(material + ".vmat")
+		if not FileAccess.file_exists(path):
+			continue
+		var hole := read_hole(path)
 		if hole.is_empty() or not ResourceLoader.exists(hole["color"]):
 			continue
 		var color := (load(hole["color"]) as Texture2D).get_image()
@@ -255,8 +498,10 @@ static func _plain(image: Image) -> Image:
 		copy.decompress()
 	copy.clear_mipmaps()
 	copy.convert(Image.FORMAT_RGBA8)
-	if copy.get_width() > MAX_TEXELS:
-		copy.resize(MAX_TEXELS, maxi(1, roundi(float(copy.get_height()) * MAX_TEXELS / copy.get_width())), Image.INTERPOLATE_LANCZOS)
+	var longest := maxi(copy.get_width(), copy.get_height())
+	if longest > MAX_TEXELS:
+		var ratio := float(MAX_TEXELS) / longest
+		copy.resize(maxi(1, roundi(copy.get_width() * ratio)), maxi(1, roundi(copy.get_height() * ratio)), Image.INTERPOLATE_LANCZOS)
 	return copy
 
 

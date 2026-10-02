@@ -17,9 +17,20 @@ claim, is in three files:
 | `round-bomb-grenades.md` | the bomb (plant, timer and beeps, defuse, the July 2026 blast and its baked file, carrying and dropping); every grenade convar and each grenade; what drops on death and how pickups work |
 | `round-hud-bots.md` | the HUD element by element (kill feed, team counter, money, scoreboard, radar, win panel and MVP, death panel, alerts); bots: the two bot brains, profiles, buying, how the classic bot plays a round, sight, smoke, hearing, Valve's dust2 training tree |
 
-None of this changes code. The systems' own pages (`reference/systems/`,
-`reference/cs2-systems.md`) are left as they are; whoever next works on a
-system takes the verdicts below into its page and code.
+This research preserves its original September 24 readings and source
+dates. The systems' own pages (`reference/systems/`,
+`reference/cs2-systems.md`) and roadmap track the current implementation.
+
+## Implementation status, 2026-10-02
+
+Economy/buying, the round event stream, bomb and grenade cores, physical
+drops, E pickup/swap prompts, team cards, kill feed and the round-end/MVP
+panel are built. The recent playtest PRs are merged, including planting
+crouch, the banner refinements and body/world hit feedback. Remaining work
+includes exact CS2 measurements, the baked bomb shockwave, richer grenade
+effects and map grenade clips, radar/scoreboard/chat, tactical/objective
+bots and networking. Use the [roadmap](../roadmap.md) for completion
+markers; the findings below are evidence rather than a new work queue.
 
 ## Sources, and how far to trust them
 

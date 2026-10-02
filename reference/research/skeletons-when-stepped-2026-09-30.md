@@ -7,6 +7,13 @@ class reference, and the watched games of 2026-09-29 had where a frame goes
 with nine bots. This page is what was found, what was changed, and what it
 is worth.
 
+## Implementation status, 2026-10-02
+
+PR #171 merged after Sid's playtest acceptance. The manual fit scheduling
+and tick-start fallback below are implemented. The tables retain the
+original September 30 before/after runs; their savings are not a fresh
+benchmark of the later hit-effect and flinch workload.
+
 ## What a frame was fitting
 
 A body's skeleton carries four modifiers: `FootPlant` (the feet on the

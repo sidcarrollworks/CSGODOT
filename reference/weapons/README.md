@@ -48,7 +48,7 @@ takes.
 
 | Column | What it is | In the build |
 |---|---|---|
-| Price, Kill Award | Buy price and the money a kill with it pays | Not yet: no economy |
+| Price, Kill Award | Buy price and the money a kill with it pays | `WeaponData.price`, `kill_award`; `BuyRules` and `Economy` use them |
 | Damage | To an unarmoured chest at point blank | `base_damage` |
 | Bullets | Rounds per trigger pull: 1, or a shotgun's pellets (6 to 9) | `pellets`, each traced on its own (`Weapon.pellet_directions`) |
 | Armor Penetration | Share of damage that gets through armour | `armor_penetration` |

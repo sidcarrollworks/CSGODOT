@@ -57,7 +57,18 @@ console on a fresh config (Local, below).
 PAGE DOWN and the keypad; MOUSE5. (F12 is Steam's screenshot key, so
 leave it.) Test and debug actions go only on these.
 
-## Every key on main, and where it goes
+## Current implementation status, 2026-10-02
+
+The shared input map is built. Mouse 1 fires, slashes, throws or plants;
+Mouse 2 scopes, stabs or lobs. E defuses, takes/swaps eligible ground guns
+and grenades, picks up the dropped bomb or takes it from a teammate bot.
+The HUD uses the same selection for pickup/swap prompts (PR #163).
+Wheel-down cycles inventory and wheel-up jumps. F11 on competitive or
+practice maps cycles rendering comparisons. The README and
+[test-map guide](test-maps.md) list the current gameplay and debug keys.
+The bindings/settings UI remains open.
+
+## Historical key audit and migration plan, 2026-09-24
 
 "Stays" means it already does what CS2's default does, or Sid chose it.
 "Moves" is a test key on a key CS2 uses; the new key is a proposal Sid can
@@ -91,6 +102,7 @@ change.
 | Y | your armour | range | `messagemode` | moves to `'` |
 | F3 | the position and frame-rate readout | HUD | `autobuy` | moves to F8 |
 | F5 | ends warmup (`mp_warmup_end`) | dust2 | `jpeg` | moves to F9 |
+| F11 | steps through the culling and the 3D skybox, one off at a time (`RenderDebug`: occlusion culling, the map's visibility, the skybox, the occluders drawn), to find what draws a wrong picture | dust2 and any competitive map | unbound | stays |
 | K | the dummy's armour | range | unbound | stays |
 | N | the dummy's distance | range | unbound | stays |
 | J | you never die | range | unbound | stays |
