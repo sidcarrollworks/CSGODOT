@@ -90,6 +90,9 @@ var viewmodel: Node3D
 ## The bob of walking and the lag of turning, on the weapon model.
 var viewmodel_motion := ViewModelMotion.new()
 
+## The eyes' small dip and recovery on a jump, separate from weapon bob.
+var camera_motion := JumpCameraMotion.new()
+
 ## The arms and what is in hand, drawn under the camera with a projection of
 ## their own (ViewModelProjection), when the models are there.
 var view_model: ViewModel
@@ -288,6 +291,7 @@ func _on_shot_traced(shot: Weapon.Shot, result: Hitscan.Result) -> void:
 ## and the camera out of your head to watch the body the simulation wears
 ## fall (PlayerSim.ragdoll), drawn for you now.
 func _on_killed(_zone: StringName) -> void:
+	camera_motion.reset()
 	_show_player(false)
 	_show_corpse(true)
 	_dead_for = 0.0
@@ -296,6 +300,7 @@ func _on_killed(_zone: StringName) -> void:
 
 
 func _on_respawned() -> void:
+	camera_motion.reset()
 	_watch(null)
 	_show_player(true)
 	_show_corpse(false)
@@ -595,7 +600,13 @@ func _process(delta: float) -> void:
 	var alpha := DrawClock.fraction()
 	var interpolated := player.previous_position.lerp(player.global_position, alpha)
 
-	camera.global_position = interpolated + Vector3.UP * player.eye_height()
+	var dip := 0.0
+	if player.noclip:
+		camera_motion.reset()
+	else:
+		var drawn_usec := SimClock.now_usec() - SimClock.tick_usec() + int(alpha * SimClock.tick_usec())
+		dip = camera_motion.update_at(drawn_usec, player.air_action, player.air_action_usec)
+	camera.global_position = interpolated + Vector3.UP * (player.eye_height() + dip)
 	var yaw := deg_to_rad(player.input.yaw_degrees)
 	for body in [body_model, body_shadow]:
 		if body != null:
