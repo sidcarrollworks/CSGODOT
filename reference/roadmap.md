@@ -907,7 +907,9 @@ list, split into Local and Remote items, with the measurements.
     reference also sets the wider result strip and spaced foreground title:
     a faint copy grows behind it, clipped to the thin horizontal borders,
     while the foreground stays fixed. Local renderer checks cover that
-    growth and clipping.)*
+    growth and clipping. Local tuning slows the growth to 10 s and makes
+    the strip translucent with faded sides and the existing world blur;
+    GPU checks cover the visible backdrop and its blur.)*
     *(Kill feed done 2026-09-28: CS2's death notices in the top right from
     its huddeathnotice layout and styles (`KillFeed`, from the game's
     player_death events), every mark the event can carry, your kills

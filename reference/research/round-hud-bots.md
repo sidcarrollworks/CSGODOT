@@ -440,8 +440,11 @@ From GT `panorama/layout/hud/hudwinpanel.xml`,
   reference over the older layout's single shrinking title and arrows.
   Normalized to an 80 px strip at the 1080p HUD base size, its 800 px width,
   Stratum2 Bold 32 px title and 16 px tracking are **Measured approximately**
-  from the crop. The background's 1× to 3.5× growth over 5 s at 20% opacity
-  is an **Approximation** of the described motion; only a still was provided.
+  from the crop. The background's 1× to 3.5× growth at 20% opacity is an
+  **Approximation** of the described motion; only a still was provided.
+  Sid's local review slows it from 5 s to 10 s and makes the result tint
+  60% opaque, with faded sides and the existing HUD world blur. These are
+  requested presentation settings, rather than verified values from CS2's files.
 - **Title strings:** `SFUI_WinPanel_CT_Win` "Counter-Terrorists Win",
   `SFUI_WinPanel_T_Win` "Terrorists Win", `SFUI_WinPanel_Round_Draw` "Round
   Draw", `SFUI_WinPanel_Team_Win_Team` "{team} Wins The Round" (named teams),

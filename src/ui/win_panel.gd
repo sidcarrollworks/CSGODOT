@@ -9,19 +9,20 @@ extends HudElement
 ## it, and under that the MVP's band, 640 wide and 90 tall, with their
 ## portrait, why they are MVP and their name.
 ##
-## Its colours are CS2's: the bar is the winner's (winPanelBgColorT
-## rgba(66, 46, 8, .85) or winPanelBgColorCT rgba(9, 40, 61, .85)) and the
-## title in t-color or ct-color, or, for the side that lost,
-## negativeColor #DB4437 on rgba(32, 2, 2, .877). The MVP's band is always
-## the winner's, their reason black on the team's colour, their name in it.
+## Its hues are CS2's: the bar is the winner's (winPanelBgColorT or
+## winPanelBgColorCT), or dark red for the side that lost; the title is in
+## t-color or ct-color, or negativeColor #DB4437. Sid's 2026-10-01 tuning
+## sets the result tint to 60% opacity over the shared HUD world blur. The
+## MVP's band keeps the winner's original tint, their reason black on the
+## team's colour, their name in it.
 ##
 ## How it opens, as the css's transitions do: the bar opens out from its
 ## middle and fades in over .25 s, ease-in; the foreground title stays at
 ## its size while a faint copy grows behind it, clipped to the bar. This
 ## layer and the wider strip follow Sid's 2026-10-01 screenshot and motion
 ## description rather than the older CSS's single shrinking title. The
-## growth's 5 s duration uses that CSS's title transition; its range and
-## opacity are an approximation from the screenshot. The fun fact fades in
+## growth is slowed to 10 s at Sid's request; its range and opacity are an
+## approximation from the screenshot. The fun fact fades in
 ## over .25 s; the MVP's band opens out over .25 s under a white flash that
 ## fades from .25 to .5 s.
 ##
@@ -50,7 +51,7 @@ const TITLE_WIDTH := 340.0
 const TITLE_CENTRE_Y := 40.0
 const ECHO_START_SCALE := 1.0
 const ECHO_END_SCALE := 3.5
-const ECHO_SECONDS := 5.0
+const ECHO_SECONDS := 10.0
 const ECHO_OPACITY := 0.2
 const TEXT_SHADOW := Color8(0x35, 0x35, 0x35, 0xbb)
 ## The fun fact: Stratum2 12 px, white, in a 16 px row 3 px off the bar's
@@ -87,6 +88,8 @@ const FLASH_SECONDS := 0.25
 const BAR_T := Color8(66, 46, 8, 217)
 const BAR_CT := Color8(9, 40, 61, 217)
 const BAR_LOST := Color(32 / 255.0, 2 / 255.0, 2 / 255.0, 0.877)
+## Keep the blurred world visible through the tint without washing out the title.
+const RESULT_TINT_ALPHA := 0.6
 const NEGATIVE := Color8(0xDB, 0x44, 0x37)
 ## The dot pattern over the bar: 360 px at 4 %.
 const DOTS_SIZE := 360.0
@@ -214,7 +217,7 @@ func _rounded(colour: Color) -> StyleBoxFlat:
 	return box
 
 
-## The colour of the bar's ends, arrows and title.
+## The colour of the bar's borders and title.
 func accent() -> Color:
 	return NEGATIVE if lost else HudStyle.team_colour(winner)
 
@@ -225,7 +228,7 @@ func _draw() -> void:
 	var fade := openness()
 	var bar := _bar()
 	var background: Color = BAR_LOST if lost else (BAR_CT if winner == "CT" else BAR_T)
-	_draw_faded_strip(bar, Color(background, background.a * fade))
+	_draw_faded_strip(bar, Color(background, RESULT_TINT_ALPHA * fade))
 	var dots := HudStyle.icon("backgrounds/bluedots_large_png")
 	if dots != null:
 		var dot_scale := dots.get_size().x / DOTS_SIZE

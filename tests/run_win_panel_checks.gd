@@ -28,6 +28,18 @@ class ReportFrames extends Control:
 		counter._draw_report_frame(self, Rect2(8, 48, 48, 32), true, Color.WHITE)
 
 
+## Flat black/white fields measure the share of the world visible through
+## the banner; fine stripes then distinguish its blur from plain tinting.
+class BannerBackdrop extends Control:
+	var kind := 0
+
+	func _draw() -> void:
+		draw_rect(Rect2(0, 0, 900, 160), Color.BLACK if kind == 0 else Color.WHITE)
+		if kind == 2:
+			for x in range(0, 900, 4):
+				draw_rect(Rect2(x, 0, 2, 160), Color.BLACK)
+
+
 var _game: GameSystems
 var _report: RoundReport
 var _ids := {}
@@ -49,6 +61,7 @@ func _initialize() -> void:
 	if DisplayServer.get_name() != "headless":
 		await _test_the_report_frames_render_in_place()
 		await _test_the_title_layers_render_in_place()
+		await _test_the_banner_blurs_the_world()
 	_finish("win-panel")
 
 
@@ -306,6 +319,10 @@ func _test_the_panel() -> void:
 	_check(panel._result_contents.mouse_filter == Control.MOUSE_FILTER_IGNORE,
 		"the title's canvas leaves clicks to the game")
 	_check(panel.accent() == HudStyle.T_COLOUR, "a terrorist win is in t-color")
+	for i in 17:
+		panel._process(0.3)
+	_check(panel.is_animating() and panel.echo_scale() < WinPanel.ECHO_END_SCALE,
+		"five seconds after opening, the slower background is still growing")
 	for i in 20:
 		panel._process(0.3)
 	_check(not panel.is_animating(), "and stops redrawing once open")
@@ -530,3 +547,50 @@ func _bright_title_bounds(pixels: Image) -> Rect2i:
 				else:
 					bounds = bounds.merge(Rect2i(x, y, 1, 1))
 	return bounds
+
+
+func _test_the_banner_blurs_the_world() -> void:
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(900, 160)
+	viewport.disable_3d = true
+	viewport.use_hdr_2d = true
+	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	root.add_child(viewport)
+	var backdrop := BannerBackdrop.new()
+	viewport.add_child(backdrop)
+	var panel := WinPanel.new()
+	viewport.add_child(panel)
+	panel.position = Vector2(50, 30)
+	panel.size = Vector2(WinPanel.WIDTH, WinPanel.BAR_HEIGHT)
+	panel.show_round("ROUND LOST", "T", true)
+	panel.set_process(false)
+	panel._t = WinPanel.OPEN_SECONDS
+	panel.redraw()
+	await process_frame
+	await RenderingServer.frame_post_draw
+	var dark := viewport.get_texture().get_image()
+	backdrop.kind = 1
+	backdrop.queue_redraw()
+	await process_frame
+	await RenderingServer.frame_post_draw
+	var light := viewport.get_texture().get_image()
+	var world_share := light.get_pixel(200, 85).r - dark.get_pixel(200, 85).r
+	_check(world_share > 0.3 and world_share < 0.5,
+		"the tinted banner keeps a visible share of the world behind it (%.3f)" % world_share)
+	backdrop.kind = 2
+	backdrop.queue_redraw()
+	await process_frame
+	await RenderingServer.frame_post_draw
+	var blurred := viewport.get_texture().get_image()
+	panel._blur.visible = false
+	await process_frame
+	await RenderingServer.frame_post_draw
+	var sharp := viewport.get_texture().get_image()
+	var blurred_contrast := 0.0
+	var sharp_contrast := 0.0
+	for x in range(180, 220):
+		blurred_contrast += absf(blurred.get_pixel(x, 85).r - blurred.get_pixel(x + 1, 85).r)
+		sharp_contrast += absf(sharp.get_pixel(x, 85).r - sharp.get_pixel(x + 1, 85).r)
+	_check(sharp_contrast > 1.0 and blurred_contrast < sharp_contrast * 0.2,
+		"the shared HUD blur softens the world beneath the banner (%.3f blurred / %.3f sharp)" % [blurred_contrast, sharp_contrast])
+	viewport.free()
