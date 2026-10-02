@@ -494,7 +494,10 @@ func _draw_report_frame(on: CanvasItem, box: Rect2, flipped: bool, colour: Color
 	var frame := HudStyle.icon("hud/teamcounter/damage-report-frame")
 	if frame != null:
 		if flipped:
-			on.draw_texture_rect(frame, Rect2(Vector2(box.position.x, box.end.y), Vector2(box.size.x, -box.size.y)),
+			# A negative draw_texture_rect size flips its UVs; its origin
+			# stays the top-left. Moving to box.end.y would draw it a whole
+			# frame height below the damage-taken text.
+			on.draw_texture_rect(frame, Rect2(box.position, Vector2(box.size.x, -box.size.y)),
 				false, colour)
 		else:
 			on.draw_texture_rect(frame, box, false, colour)

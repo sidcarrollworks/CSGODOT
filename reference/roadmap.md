@@ -899,6 +899,11 @@ list, split into Local and Remote items, with the measurements.
     the "shots fired" fun fact; and the fun fact drawn among those that
     hold rather than the first in a fixed order. Left: the players' names
     over their cards in the down time.)*
+    *(Local checked 2026-10-01 at 1080p on dust2, with the extracted report
+    frame and all kill-type icons: won/lost, the bot MVP tag, shots-fired
+    line, staggered reports and next-round reset. Corrected the flipped
+    damage-taken frame's origin so it stays behind its text; the renderer
+    checks both frames' pixels inside their rows.)*
     *(Kill feed done 2026-09-28: CS2's death notices in the top right from
     its huddeathnotice layout and styles (`KillFeed`, from the game's
     player_death events), every mark the event can carry, your kills

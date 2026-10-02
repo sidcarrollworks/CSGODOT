@@ -17,6 +17,17 @@ class Someone extends Node3D:
 	var team: String = "T"
 
 
+## Two report frames drawn through the production helper. Their pixels
+## must mirror within the same boxes, including with the extracted SVG.
+class ReportFrames extends Control:
+	var counter: TeamCounter
+
+	func _draw() -> void:
+		draw_rect(Rect2(0, 0, 64, 88), Color.BLACK)
+		counter._draw_report_frame(self, Rect2(8, 8, 48, 32), false, Color.WHITE)
+		counter._draw_report_frame(self, Rect2(8, 48, 48, 32), true, Color.WHITE)
+
+
 var _game: GameSystems
 var _report: RoundReport
 var _ids := {}
@@ -35,6 +46,8 @@ func _initialize() -> void:
 	await _test_the_panel()
 	await _test_the_hud_shows_it()
 	await _test_the_damage_report()
+	if DisplayServer.get_name() != "headless":
+		await _test_the_report_frames_render_in_place()
 	_finish("win-panel")
 
 
@@ -401,3 +414,42 @@ func _test_the_damage_report() -> void:
 		if sim is PlayerSim:
 			sim.free()
 	await process_frame
+
+
+func _test_the_report_frames_render_in_place() -> void:
+	HudStyle.read_ahead(["hud/teamcounter/damage-report-frame"])
+	# An unscaled offscreen canvas, independent of the desktop's resolution.
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(64, 88)
+	viewport.disable_3d = true
+	viewport.use_hdr_2d = true
+	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	root.add_child(viewport)
+	var frames := ReportFrames.new()
+	frames.counter = TeamCounter.new()
+	frames.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	viewport.add_child(frames)
+	await process_frame
+	await RenderingServer.frame_post_draw
+	var pixels := viewport.get_texture().get_image()
+	var largest_error := 0.0
+	var total_error := 0.0
+	var filled := 0
+	for y in 32:
+		for x in 48:
+			var given := pixels.get_pixel(8 + x, 8 + y)
+			var taken := pixels.get_pixel(8 + x, 48 + 31 - y)
+			var error := maxf(absf(given.r - taken.r), maxf(absf(given.g - taken.g), absf(given.b - taken.b)))
+			largest_error = maxf(largest_error, error)
+			total_error += error
+			if given.r > 0.01:
+				filled += 1
+	_check(filled > 100, "the renderer draws a visible damage-report frame")
+	# Filtered SVG edges can round differently with reversed UVs. Compare
+	# the whole shape while allowing that small edge sampling difference.
+	var mean_error := total_error / (48 * 32)
+	_check(mean_error <= 0.002 and largest_error <= 0.02,
+		"the taken frame mirrors the given one inside its row (mean %.6f, max %.6f)" % [mean_error, largest_error])
+	pixels.save_png("user://win_panel_frame_check.png")
+	frames.counter.free()
+	viewport.free()
