@@ -6,6 +6,10 @@ work, with a smaller Zeus pass for roadmap item 21. It changes no gameplay.
 It supersedes the September 24 guesses about these algorithms in
 [combat.md](combat.md); implementation checkboxes remain as they were.
 
+The [focused follow-up](shooting-followup-2026-10-02.md) extends this audit
+with silencer completion/holstering, scope accuracy settling, fall-speed
+landing penalties and first-person camera composition for the same build.
+
 The useful result is that most missing shooting behavior can now be built
 from the installed data and code. The remaining local checks concern
 animation transitions, input ordering and observed bullet/camera paths,
@@ -138,8 +142,11 @@ The implementation differs beyond the constants: CS2 builds cached
 velocity cutoff, and quaternion interpolation between angle samples.
 Our 512 Hz integration, one-second forced settling and measured-pattern
 impulse fitting are not that exact reconstruction. A separate **0.055**
-view-kick contribution also exists in the impulse path; its complete camera
-composition needs observation before replacing our cosmetic springs.
+view-kick contribution also exists in the impulse path. The
+[camera follow-up](shooting-followup-2026-10-02.md#camera-recoil-has-a-scaled-aim-channel-and-a-separate-view-channel)
+recovers its separate decay/suppression and the camera's **0.45** scale on
+composed, scaled aim punch. Visible interpolation still needs observation
+before replacing our cosmetic springs.
 
 **Code gap.** Guns without a measured/community pattern still have
 provisional view kick and no corresponding bullet climb. Generate their
@@ -194,11 +201,12 @@ enabling convars register **false** by default in this build. Their presence
 does not justify adding a new default movement penalty. Total inaccuracy
 is capped at **1** in raw cone units.
 
-**Open.** Exact zoom-mode accuracy transition/settling, landing penalty
-application, and animation-driven changes to the attack gates need a
-focused follow-up trace/capture. Our linear `scoped_share()` over ZoomTime
-remains provisional; do not present camera FOV animation as proof of that
-accuracy curve.
+**Follow-up traced.** [Zoom and landing](shooting-followup-2026-10-02.md)
+use an immediate mode change with shared penalty recovery, and an additive
+raw landing coefficient times processed fall speed. Our linear
+`scoped_share()` over ZoomTime and fixed/max landing cone differ from those
+paths. Tick/input boundaries and special landings retain explicit local
+captures; FOV animation does not establish the accuracy curve.
 
 ## Spread and R5: shotgun pattern parity
 
@@ -277,13 +285,14 @@ detach event. The freshly decoded event times agree with `timings.csv`:
 | M4A1-S attach | 3.4333 s | 4.8333 s |
 | M4A1-S detach | 3.2666 s | 4.8333 s |
 
-**Open.** Neither event time nor full clip length alone establishes when
-shooting becomes available. The initial action applies a long **100 s**
-blocking placeholder; leaving the action resets gates. Animation/action
-completion must be followed to get actual timing. That placeholder is
-not the silencer duration. Port event-driven mode changes and measure the
-earliest accepted primary shot, interrupt/switch behavior and playback rate
-before choosing lockout timers.
+**Follow-up traced.** Neither state-change event time nor full clip length
+alone establishes shooting availability. The
+[completion/holster trace](shooting-followup-2026-10-02.md#silencers-state-change-and-firing-unlock-are-different-events)
+finds the graph-generated `WPN_ACTION_COMPLETE` at **remaining <= 0.1 s**,
+its return to idle, and gate cleanup. The initial **100 s** block is a
+placeholder. Holstering leaves the action without forcing the silencer
+flag; the clip event decides that flag. Earliest accepted input, graph
+playback timing and switching boundaries still need local captures.
 
 ## Zeus: useful anchors, not a complete damage audit
 
@@ -306,10 +315,12 @@ hitgroup/armour handling or the trace-mask policy; keep item 21 open.
    numeric streams before replacing measured-pattern fitting.
 3. **R3/R7:** deterministic burst and R8 states in the simulation, with
    button edges, magazines, switching, death and reload boundary checks.
-   Silencers additionally need their animation completion trace.
-4. **Remaining R13 visual/state checks:** record zoom settling, landing,
-   camera kick and viewmodel motion independently. Scope artwork cannot
-   validate bullet accuracy or camera composition.
+   Silencers use the follow-up's animation completion/cancellation trace,
+   then local checks of effective playback and input boundaries.
+4. **Remaining R13 visual/state checks:** use the follow-up's mode/floor,
+   fall-speed and camera formulas, and record their boundary/visual cases
+   independently from viewmodel motion. Scope artwork cannot validate
+   bullet accuracy or camera composition.
 5. **Zeus:** dedicated simulation state and trace/damage follow-up.
 
 Use an offline CS2 practice session: log build, weapon, convars, tick and

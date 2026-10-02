@@ -168,8 +168,9 @@ Roughly in order; L1 to L3 can start at once.
   USP-S), fan fire (R8). A mode reads its own row over the weapon's.
   *Audited 2026-10-02: [installed-build findings](../research/shooting-audit-2026-10-02.md)
   establish three-round burst scheduling and event-driven silencer mode
-  changes. Actual silencer firing lockout/interrupt timing still needs the
-  animation completion trace; full clip length alone is not the lockout.*
+  changes. The [follow-up](../research/shooting-followup-2026-10-02.md)
+  traces graph completion at 0.1 s remaining and holster gate cleanup;
+  effective playback and earliest accepted input still need local captures.*
 - [x] **R4. Scopes.** Zoom levels, scoped mobility and accuracy from the
   scoped rows, the sniper unscoping after a shot, the scope overlay (L4) when
   it exists. *(Done 2026-09-24, `tests/run_scope_checks.gd`: right click
@@ -268,7 +269,11 @@ Roughly in order; L1 to L3 can start at once.
   Our continuous blend, two-cycle index decay delay and missing 0.1 cutoff
   still need correction. The tenfold penalty recovery agrees; airborne
   recovery/state floors and vertical-speed inaccuracy also need parity
-  work. R13's data import is complete, not those formula fixes.*
+  work. The [follow-up](../research/shooting-followup-2026-10-02.md) also
+  recovers immediate zoom mode/floor recovery and additive landing penalties
+  from raw coefficients times fall speed. Our linear zoom blend and fixed/max
+  landing cone still need correction. R13's data import is complete,
+  not those formula fixes.*
 
 ## Not in the sheet
 

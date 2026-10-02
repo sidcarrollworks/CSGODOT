@@ -28,6 +28,9 @@ It also verifies the 8/18/4.5 decay constants and 2x bullet-angle scale in
 this CS2 build, superseding correction 3's earlier "from memory" status.
 Its function ledger and open capture cases take precedence over the
 older guesses below. The corresponding gameplay fixes remain open.
+The [focused follow-up](shooting-followup-2026-10-02.md) also traces
+silencer completion/holstering, scope mode/floor recovery, fall-speed
+landing penalties and the separate camera aim/view-punch channels.
 
 ## Sources
 

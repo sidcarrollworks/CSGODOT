@@ -86,8 +86,10 @@ while measurements and remaining parity work stay listed below.
   completes installed-build research for seeded recoil/RNG, shotgun
   patterns, burst/R8 timing and core recovery formulas. Implementation
   remains open: whole-index recovery and decay timing first, then shared
-  RNG/recoil/spread and weapon modes. Silencer completion, zoom/landing
-  transitions and camera composition retain explicit local checks.
+  RNG/recoil/spread and weapon modes. The
+  [follow-up](research/shooting-followup-2026-10-02.md) traces silencer
+  completion/holstering, zoom mode/floor recovery, fall-speed landing
+  penalties and camera composition; their boundary/visual captures stay open.
 - Sniper zoom, speed/accuracy and overlays work. AUG/SG 553 use raised
   sights with a clear lens, black lowered lens and a blurred outside scene;
   exact CS2 focus/dirt and inaccuracy display still need work.

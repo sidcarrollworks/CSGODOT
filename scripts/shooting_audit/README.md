@@ -100,6 +100,44 @@ missing register arguments and function-boundary errors occur. Check XMM
 instructions, constants, unwind ranges, call sites and field serialization
 before recording a formula. Preserve operation order/float32 rounding in a port.
 
+## Actions, zoom, landing and camera follow-up
+
+The [follow-up ledger](../../reference/research/shooting-followup-2026-10-02.md)
+uses the same DLL hashes. Export its central paths from the analyzed
+projects (additional supporting methods are listed in that ledger):
+
+```powershell
+& $ghidraHeadless $auditProjects CS2_Shooting_Server -process server.dll -noanalysis `
+  -scriptPath scripts/shooting_audit `
+  -postScript AuditDecompile.java "$auditOut\server\decompiled" `
+    180b15ec0 180a179c0 180a15ac0 1809f0d90 1809fd6c0 1809fd5d0 `
+    180a20b40 180a1fdd0 180abdf20 180ab4c40 180ad3cb0 180a16a90 `
+    180a37f20 180a45890 180c776b0 180a982f0 1800da670 1800cb240
+& $ghidraHeadless $auditProjects CS2_Shooting_Client -process client.dll -noanalysis `
+  -scriptPath scripts/shooting_audit `
+  -postScript AuditDecompile.java "$auditOut\client\decompiled" `
+    180829980 1808283f0 180820480 18085dd90 180a74440 18088b760 `
+    180882790 1808533c0 18084e0c0 18082ce60 1808a6420
+
+$silencerGraphs = 'animation/graphs/viewmodel/viewmodel_gun.vnmgraph+m4a1s.vnmgraph_c,' +
+  'animation/graphs/viewmodel/viewmodel_gun.vnmgraph+usp.vnmgraph_c'
+& $source2Cli -i "$cs2Game\csgo\pak01_dir.vpk" -f $silencerGraphs -b DATA `
+  > "$auditOut\raw\silencer-graphs.txt"
+$silencerClips = 'animation/anims/viewmodel/rifle/_default_rifle/silencer_attach_rifle.vnmclip_c,' +
+  'animation/anims/viewmodel/rifle/_default_rifle/silencer_detach_rifle.vnmclip_c,' +
+  'animation/anims/viewmodel/pistol/_default_pistol/silencer_attach_pistol.vnmclip_c,' +
+  'animation/anims/viewmodel/pistol/_default_pistol/silencer_detach_pistol.vnmclip_c'
+& $source2Cli -i "$cs2Game\csgo\pak01_dir.vpk" -f $silencerClips -b DATA `
+  > "$auditOut\raw\silencer-clips.txt"
+```
+
+Use `m_nodePaths` to associate graph node indices with states. Inspect each
+state's `m_timedRemainingEvents` and child clip's data-slot/resource mapping;
+completion need not appear in the clip's ID-event list. Confirm mode-array
+getters in disassembly and resolve each module's vtable independently.
+Keep local captures separate from static findings: these commands do not
+measure wall-clock lockouts or visible recoil interpolation.
+
 ## Validation
 
 ```powershell
