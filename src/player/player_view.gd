@@ -729,7 +729,7 @@ static func any_box_in_view(frustum: Array[Plane], boxes: Array[AABB], feet: Vec
 ## field of view over the unzoomed one (CS2's zoom_sensitivity_ratio 1).
 ## The arms keep their own field of view whatever the world's, but for the
 ## AUG and SG 553, which come up to the eye as they scope: their arms go
-## from 68 to the gun's iron-sight field of view as far as the gun is up
+## from 68 to the model's calibrated scope framing as far as the gun is up
 ## (Weapon.iron_sight_amount; reference/research/scopes.md).
 func _follow_scope() -> void:
 	var weapon := player.weapon if player.alive and _dead_for < 0.0 else null
@@ -743,7 +743,8 @@ func _follow_scope() -> void:
 		hidden = weapon.through_scope()
 		sensitivity = weapon.data.zoom_fov(weapon.zoom_level) / ViewModelProjection.WORLD_FOV * ZOOM_SENSITIVITY_RATIO
 		raised = weapon.iron_sight_amount(DrawClock.usec())
-		arms_fov = lerpf(arms_fov, weapon.data.iron_sight_fov, raised)
+		var sight_fov := view_model.iron_sight_arms_fov if view_model != null else weapon.data.iron_sight_fov
+		arms_fov = lerpf(arms_fov, sight_fov, raised)
 	_arms_raised = raised
 	player.input.zoom_sensitivity = sensitivity
 	if view_model != null:

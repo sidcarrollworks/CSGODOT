@@ -53,6 +53,14 @@ var _raising := false
 ## LENS_SHADER when the model is built, and counted here.
 var lens_surfaces: int = 0
 
+## The clear opening fills 46% of the screen height in Sid's CS2 reference
+## (2026-10-01). The sight clip centres the gun, but needs its own framing,
+## beyond the world zoom. Arms FOVs are calibrated against rendered views
+## of these extracted models; see reference/research/scopes.md.
+const IRON_SIGHT_LENS_HEIGHT := 0.46
+var iron_sight_arms_fov := 45.0
+const IRON_SIGHT_ARMS_FOV := {"rifle/rifle_sg556": 9.0, "rifle/rifle_aug": 10.0}
+
 const LENS_SHADER := preload("res://src/player/scope_lens.gdshader")
 
 
@@ -118,6 +126,7 @@ func setup(team: String, weapon_model: String, clip_set: String) -> bool:
 	scale = Vector3.ONE * MapImporter.SOURCE2_VIEWER_SCALE
 	rotation_degrees = Vector3(0.0, 180.0, 0.0)
 	position = offset
+	iron_sight_arms_fov = IRON_SIGHT_ARMS_FOV.get(clip_set, 45.0)
 	play(&"draw")
 	return true
 

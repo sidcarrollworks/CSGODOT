@@ -51,11 +51,11 @@ CS2 has it (built here), or on the SSG anyway.
   the way a second, so 0.1 s up and 0.125 s down (*Inferred*: the names,
   and the zoom's own 0.1 s in, `m_flZoomTime1`).
 - **The field of view.** The world zooms to `m_nZoomFOV1` 45 over 0.1 s
-  (*WV*). `m_flIronSightFOV` is 45 too (*WV*). Read here as the arms' field
-  of view at the eye, where the hip's is `viewmodel_fov` 68 (*Inferred*:
-  as the world's it would repeat the zoom's). With both at 45 the scope is
-  drawn true to its model, and its axis, which the pose puts through the
-  eye, lands in the middle of the screen whatever the field of view.
+  (*WV*). `m_flIronSightFOV` is 45 too (*WV*). Treating that as the arms'
+  projection was disproved by Sid's 2026-10-01 playtest: the scope was far
+  too small. The extra viewmodel framing needed to match CS2 is inferred.
+  The arms projection here is calibrated from the screenshots below;
+  the world still uses the game's 45 and aiming is unchanged.
 - **Steadiness.** `m_flIronSightLooseness` 0.03 and
   `m_flIronSightPivotForward` 8 (SG 553) and 10 (AUG) (*WV*): the gun barely
   sways at the eye. Here the walk bob and turn sway fade out as the gun comes
@@ -83,35 +83,59 @@ CS2 has it (built here), or on the SSG anyway.
 - `Weapon.iron_sight_amount(now)`: 0 to 1, up at the pull-up speed from the
   press that scopes, down at the put-down speed from the one that unscopes.
   View only.
-- `ViewModel.raise_to_eye`: fades into `ironsight_fidget` (the pose at the
-  eye, *Inferred* to be IronsightPose's clip) over the rest of the way up,
+- `ViewModel.raise_to_eye`: fades into `ironsight_fidget` (confirmed as
+  IronsightPose's clip in both extracted graph variations) over the rest of the way up,
   back to the idle over the way down; fires `ironsight_shoot` while up; a
   shot or reload running is left to finish first. The glass surfaces
   (`scope_glass`, `scope_lens` in the material name) get
   `scope_lens.gdshader`, a faint tint drawn as the arms are.
-- `PlayerView._follow_scope`: the arms' field of view goes from 68 to 45
-  with the amount, and the muzzle flash follows it (`ARMS_FOV_META`).
+- `PlayerView._follow_scope`: the arms' field of view goes from 68 to the
+  model's calibrated scoped framing (SG 553: 9; AUG: 10) with the amount,
+  and the muzzle flash follows it (`ARMS_FOV_META`). These are viewmodel
+  values, not changes to the vdata or the world zoom. The lens shader and
+  the housing use the same instance-uniform slot (10), so their projections
+  agree even though the clear lens has no light-probe uniforms.
 - `IronSightOverlay`: the dot in the crosshair's colour once the gun is 90%
   up, and the crosshair put away (`GameHud.shows_crosshair`). Where the
   gun's model is not extracted (the cloud, CI), a drawn stand-in housing
   and black rim, sized off Sid's screenshot.
-- `tests/run_iron_sight_checks.gd`.
+- The test range uses the same scope dot and crosshair visibility as comp.
+- `tests/run_iron_sight_checks.gd`, including the view's scope/hip projections
+  and, where extracted, the real model/clip setup.
 
 Nothing new needs extracting: the SG 553's and AUG's models and clips come
 with the `weapons` and `weapon-animations` steps Sid has already run.
+
+## Local framing measurement, 2026-10-01
+
+Sid's [PR review screenshots](https://github.com/sidcarrollworks/CSGODOT/pull/169#issuecomment-5938980088)
+show the SG 553's clear opening about 330 pixels across in a 720-pixel-high
+scaled view of CS2 (46% of the image height), against about 70 pixels in
+the corresponding game screenshot. The sight clip aligns the lens with
+the eye, but using the vdata's 45 for the arms produces that small view.
+
+Rendered 1920 x 1080 test-range captures with the extracted models were
+used to fit the arms' projection: SG 553 at 9 and AUG at 10 give openings
+about 490–500 pixels across. Values are Source's horizontal-at-4:3 FOV,
+converted by `ViewModelProjection`, so sizing follows screen height at
+other resolutions and aspect ratios. The different values account for
+the models' different lens diameters and scope tube lengths. These are
+measured visual approximations; a direct CS2 AUG comparison remains open.
+The pose and model distance stay as exported, preserving the tube's
+proportions. Scoping changes no bullet, recoil, zoom, or movement rules.
+
+The extracted `graph_data.txt` maps IronsightPose to `ironsight_fidget_aug`
+and `ironsight_fidget_sg556` in the corresponding graph variations.
 
 ## Not done, and Local checks
 
 1. **The look beside CS2.** Scope the SG 553 and the AUG on dust2 beside
    CS2: where the scope sits, its size, whether the lens reads clear, the
    dot's size and colour.
-2. **IronsightPose's clip.** Whether the SG 553's variation of
-   `viewmodel_gun.vnmgraph` puts `ironsight_fidget` in IronsightPose: in the
-   extracted `graph_data.txt`, the `viewmodel_gun.vnmgraph+sg556` entry's
-   clip for that node.
-3. **`m_flIronSightFOV`.** If the scope looks too big or too small against
-   CS2's, the reading above is wrong and the arms keep 68: one line in
-   `PlayerView._follow_scope`.
+2. **AUG comparison.** Its current framing uses the SG screenshot's
+   opening size; compare directly with an AUG in CS2 before treating it as exact.
+3. **Scoped framing.** Further visual tuning belongs in
+   `ViewModel.IRON_SIGHT_ARMS_FOV`; the game's world zoom remains 45.
 4. **The outside of the lens.** `scope_filter` suggests CS2 filters the
    world round the scope; Sid's screenshot looks slightly soft there. Not
    drawn here.

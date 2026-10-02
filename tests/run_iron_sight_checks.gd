@@ -21,6 +21,7 @@ func _initialize() -> void:
 	_test_the_games_numbers()
 	_test_the_gun_comes_up_and_goes_down()
 	_test_the_arms_field_of_view()
+	_test_the_view_uses_the_scoped_framing()
 	_test_the_crosshair_is_put_away()
 	_test_the_clips_at_the_eye()
 	_test_the_glass_is_clear()
@@ -32,7 +33,7 @@ func _test_the_games_numbers() -> void:
 	for gun in ["weapon_aug", "weapon_sg556"]:
 		var data := WeaponLibrary.build(gun)
 		_check(data.has_iron_sight(), "%s raises the gun to the eye as it scopes" % gun)
-		_check_near(data.iron_sight_fov, 45.0, "%s's arms at fov 45 there (m_flIronSightFOV)" % gun)
+		_check_near(data.iron_sight_fov, 45.0, "%s's iron-sight vdata FOV is 45" % gun)
 		_check_near(data.iron_sight_pull_up_speed, 10.0, "%s comes up at 10 a second" % gun)
 		_check_near(data.iron_sight_put_down_speed, 8.0, "%s goes down at 8 a second" % gun)
 	for gun in ["weapon_awp", "weapon_ssg08", "weapon_g3sg1", "weapon_scar20", "weapon_ak47"]:
@@ -67,6 +68,38 @@ func _test_the_arms_field_of_view() -> void:
 	camera.set_meta(ViewModelProjection.ARMS_FOV_META, 45.0)
 	_check_near(ViewModelProjection.narrowing_under(camera), 1.0, "and with it the arms' 45, as the gun is drawn")
 	camera.free()
+
+
+## Exercise the view's actual projection and its return to the hip. The
+## world zoom stays at 45; framing the housing changes only the arms and
+## the projection the muzzle effects read from the camera.
+func _test_the_view_uses_the_scoped_framing() -> void:
+	for gun in ["weapon_sg556", "weapon_aug"]:
+		var player := PlayerController.new()
+		player.input = PlayerInput.new()
+		player.weapon = _ready_weapon(gun)
+		player.weapon.call("_zoom_to", 1, DrawClock.usec() - SECOND)
+		var view := PlayerView.new(player)
+		view.camera = Camera3D.new()
+		view.view_model = ViewModel.new()
+		var expected_fov := 9.0 if gun == "weapon_sg556" else 10.0
+		var look := WeaponLibrary.look(gun)
+		if ResourceLoader.exists(look.model_path) and not RigModel.list_clips(ViewModel.clips_dir(look.clip_set)).is_empty():
+			_check(view.view_model.setup("T", look.model_path, look.clip_set), "%s builds from its extracted sight clips" % gun)
+			_check_near(view.view_model.iron_sight_arms_fov, expected_fov, "%s uses the framing calibrated with the extracted model" % gun)
+		else:
+			view.view_model.iron_sight_arms_fov = expected_fov
+		view.call("_follow_scope")
+		_check_near(view.camera.fov, ViewModelProjection.vertical_fov(45.0), "%s keeps the world's zoom at 45" % gun)
+		_check(ViewModelProjection.narrowing_under(view.camera) > 4.0, "%s fills the scoped view, including its muzzle effects" % gun)
+		player.weapon.call("_unscope")
+		view.call("_follow_scope")
+		_check_near(view.camera.fov, ViewModelProjection.vertical_fov(90.0), "%s restores the world at the hip" % gun)
+		_check(not view.camera.has_meta(ViewModelProjection.ARMS_FOV_META), "%s restores the normal arms projection" % gun)
+		view.view_model.free()
+		view.camera.free()
+		view.free()
+		player.free()
 
 
 func _test_the_crosshair_is_put_away() -> void:

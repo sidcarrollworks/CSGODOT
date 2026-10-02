@@ -25,9 +25,9 @@ var crosshair: Crosshair
 
 ## The dot's radius, and the stand-in's lens, rim and housing, as shares of
 ## the screen's height (Sid's screenshot, 2158 high: a dot about 6 across,
-## the lens 1085, its black rim out to 1160, the housing about 2050).
+## the clear opening about 990, its black rim out to 1160, the housing about 2050).
 const DOT_RADIUS := 0.0027
-const LENS_RADIUS := 0.25
+const LENS_RADIUS := ViewModel.IRON_SIGHT_LENS_HEIGHT * 0.5
 const RIM_RADIUS := 0.27
 const HOUSING_RADIUS := 0.475
 const RIM_COLOUR := Color(0.02, 0.02, 0.02)
