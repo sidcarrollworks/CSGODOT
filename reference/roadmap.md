@@ -82,6 +82,12 @@ while measurements and remaining parity work stay listed below.
 - AK/M4A1-S patterns are measured; 15 more use community patterns. Guns
   without a pattern retain provisional view kick, not a measured bullet
   path. Spray scale, random-recoil paths and the R8 delay remain open.
+- [The October 2 shooting audit](research/shooting-audit-2026-10-02.md)
+  completes installed-build research for seeded recoil/RNG, shotgun
+  patterns, burst/R8 timing and core recovery formulas. Implementation
+  remains open: whole-index recovery and decay timing first, then shared
+  RNG/recoil/spread and weapon modes. Silencer completion, zoom/landing
+  transitions and camera composition retain explicit local checks.
 - Sniper zoom, speed/accuracy and overlays work. AUG/SG 553 use raised
   sights with a clear lens, black lowered lens and a blurred outside scene;
   exact CS2 focus/dirt and inaccuracy display still need work.

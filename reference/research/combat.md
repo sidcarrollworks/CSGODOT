@@ -21,6 +21,14 @@ attacks and networking remain open. The detailed research retains its
 original evidence and dates; [the weapon checklist](../weapons/TODO.md)
 and [roadmap](../roadmap.md) track current completion and parity work.
 
+The [October 2 installed-build shooting audit](shooting-audit-2026-10-02.md)
+now recovers seeded recoil/RNG, shotgun spread, burst timing, the R8's
+13-tick arm delay, and recovery rounding/decay from Ghidra and fresh data.
+It also verifies the 8/18/4.5 decay constants and 2x bullet-angle scale in
+this CS2 build, superseding correction 3's earlier "from memory" status.
+Its function ledger and open capture cases take precedence over the
+older guesses below. The corresponding gameplay fixes remain open.
+
 ## Sources
 
 Four research passes on 2026-09-24, each citing every claim. The key:

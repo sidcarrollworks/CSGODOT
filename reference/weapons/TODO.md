@@ -166,6 +166,10 @@ Roughly in order; L1 to L3 can start at once.
 - [ ] **R3. Weapon modes.** Right click switches mode where the sheet has
   one: burst (FAMAS, Glock), silencer on and off with its attach time (M4A1-S,
   USP-S), fan fire (R8). A mode reads its own row over the weapon's.
+  *Audited 2026-10-02: [installed-build findings](../research/shooting-audit-2026-10-02.md)
+  establish three-round burst scheduling and event-driven silencer mode
+  changes. Actual silencer firing lockout/interrupt timing still needs the
+  animation completion trace; full clip length alone is not the lockout.*
 - [x] **R4. Scopes.** Zoom levels, scoped mobility and accuracy from the
   scoped rows, the sniper unscoping after a shot, the scope overlay (L4) when
   it exists. *(Done 2026-09-24, `tests/run_scope_checks.gd`: right click
@@ -187,6 +191,10 @@ Roughly in order; L1 to L3 can start at once.
   throws whole (`Weapon.pellet_directions`, `tests/run_shotgun_checks.gd`).
   One report a pull. The pattern's shape is inferred; the Local check in
   `reference/research/combat.md` (R5) gives the real one.)*
+  *Audited 2026-10-02: [R5 pattern parity](../research/shooting-audit-2026-10-02.md)
+  now has the seeded radial-stratum table, firing-index lookup, 64-pellet
+  boundary and per-pellet inaccuracy roll. The current repeated pattern
+  plus shared offset remains an approximation; parity is not implemented.*
   *(2026-09-30, Sid's playtest: the Nova, XM1014 and Sawed-Off load a
   shell at a time (`m_bReloadsSingleShells`) rather than the whole tube
   after one: the reload clip's intro, its loop once a shell with the shell
@@ -208,10 +216,19 @@ Roughly in order; L1 to L3 can start at once.
   climb: they stay on the cone and the per-shot penalty until the demo
   gives their path. That demo also decides whether the magnitude-scaled
   kick stays.)*
+  *Audited 2026-10-02: [R6 binary findings](../research/shooting-audit-2026-10-02.md)
+  recover tier0's RNG, 64-entry per-mode recoil generator, full-auto
+  smoothing/attenuation and aim-punch constants. A demo can validate the
+  port, but is no longer needed to guess the magnitude-to-velocity rule.
+  The seeded bullet paths remain to implement.*
 - [ ] **R7. The R8's hammer.** Its first round waits on a trigger pull delay;
   the sheet says "see note". Research first. *(Researched 2026-09-24,
   `reference/research/combat.md`: the shot is postponed to a set tick and
   fraction; the delay, about 0.2 s by community wikis, comes from a demo.)*
+  *Audited 2026-10-02: [R7 binary findings](../research/shooting-audit-2026-10-02.md)
+  establish 13 ticks (203.125 ms at 64 Hz), preserving the start fraction;
+  primary/alternate cycles are 0.50/0.40 s. Mixed-button and cancellation
+  cases remain local validation for the eventual implementation.*
 - [x] **R8. Slots, switching, drop and pick up.** `Inventory` keeps each
   carried gun and its rounds through switching; 1 to 5, Q and wheel-down
   `invnext` select items, while wheel-up remains jump. G throws a physical
@@ -246,9 +263,12 @@ Roughly in order; L1 to L3 can start at once.
   the Desert Eagle discrepancy stays recorded in `vdata.md`.
   *Done 2026-09-30: the spread is kept apart (`WeaponData.spread`), and the
   final recovery times blend in over their rounds on the recoil index
-  (`WeaponData.recovery_time`). Whether CS2 counts the decaying float index or
-  whole rounds, and the curve's exact shape, wait on the demo in
-  `reference/research/combat.md` ("R13: recovery after a spray").*
+  (`WeaponData.recovery_time`). Audited 2026-10-02:
+  [CS2 truncates the decaying float index before linear interpolation](../research/shooting-audit-2026-10-02.md).
+  Our continuous blend, two-cycle index decay delay and missing 0.1 cutoff
+  still need correction. The tenfold penalty recovery agrees; airborne
+  recovery/state floors and vertical-speed inaccuracy also need parity
+  work. R13's data import is complete, not those formula fixes.*
 
 ## Not in the sheet
 
