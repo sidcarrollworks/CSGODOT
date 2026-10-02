@@ -254,7 +254,7 @@ func _process(_delta: float) -> void:
 	if camera != null:
 		_crosshair.fov_degrees = camera.fov
 	# Through a sniper's scope its lines are the crosshair.
-	_crosshair.visible = not ScopeOverlay.shown_for(player)
+	_crosshair.visible = GameHud.shows_crosshair(player)
 	_label.text = "\n".join([
 		"\n".join(_gun_readout()),
 		"impacts    %d" % _impacts.size(),
@@ -1079,6 +1079,10 @@ func _build_hud() -> void:
 	_crosshair = Crosshair.new()
 	_crosshair.centre_dot = true
 	layer.add_child(_crosshair)
+	var iron_sight := IronSightOverlay.new()
+	iron_sight.player = player
+	iron_sight.crosshair = _crosshair
+	layer.add_child(iron_sight)
 	# Read its face at startup, before a ground pickup first shows it.
 	HudStyle.face(&"bold")
 	use_prompt = UsePrompt.new()
