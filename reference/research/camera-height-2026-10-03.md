@@ -35,6 +35,15 @@ the remaining trajectory discrepancy are still unresolved. The
 walk/air, crouch, ground and takeoff paths. A successful synthetic door
 landing is not evidence that CS2 parity is established.
 
+**Live follow-up:** Sid confirms the B-doors throw lands correctly, while
+the mid-door landmark throw misses. Its recorded upward pitches are
+14.27/14.49 degrees rather than the supplied 14.96. A local collision-ray
+comparison shows that our higher standing camera would aim at the same
+close wall point at about 14.24 degrees. This supports the missing visual
+eye adjustment as the cause of those landmark-based angle differences;
+exact CS2 launch/contact comparison remains open. See the
+[live aim comparison](movement-ghidra-2026-10-03.md#live-landmark-aim-comparison).
+
 ## Valve's documented changes
 
 Valve's [April 1 Animgraph 2 beta notes](https://www.counter-strike.net/newsentry/528750051218948826)

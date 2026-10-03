@@ -94,6 +94,46 @@ jump throw with exact angles. Horizontal integration differences likewise
 do not affect a stationary jump with no horizontal input. Recorded CS2
 launch/contact data is still needed to attribute the remaining door miss.
 
+### Live landmark-aim comparison
+
+Sid confirmed that the B-doors throw lands perfectly in the rendered game,
+while the mid-door landmark setup still misses. The same practice run
+records the B-doors jump using its snapshot and settling near
+`(2159.795, 234.001, -1336.495)`. The two mid-door misses also use the
+snapshot, with inherited vertical speed **218.868 u/s**, but their upward
+aim differs from the supplied **14.960024-degree** CS2 reference:
+
+| Live mid-door throw | Upward pitch | First door-side contact height |
+|---|---|---|
+| First | 14.273711 | 43.4506 |
+| Second | 14.493711 | 46.0617 |
+
+Both hit the vertical wooden side; the door-top contacts are near height
+51. The local fixture using the supplied exact angle lands on top. This
+distinguishes the observed landmark miss from a failure to use the saved
+jump state.
+
+A diagnostic ray from the supplied CS2 camera and aim through the extracted
+local collision reaches `(-396.881, 220.7512, -355.9754)`, approximately
+**263.42 horizontal units** away. Our standing eyes near this setup are
+height **153.825**, about **3.46 units above** the CS2 camera's **150.3644**,
+including the small pawn-origin difference. Aiming at that same point from
+the local eyes requires upward pitch **14.24359**, about **0.71644 degrees
+lower**. That is close to the first recorded miss's 14.273711.
+
+At B-doors, local standing eyes are height **192.2962**, versus the supplied
+CS2 camera's **192.0148**. Its analogous local collision target is about
+**965.07 horizontal units** away, and the same-point pitch changes by only
+**0.01782 degrees**. This explains why the camera discrepancy can affect
+the close mid-door landmark much more than the working B reference.
+
+These rays use the locally extracted collision, not a captured CS2
+crosshair hit. They give concrete support for a visual-origin/aim mismatch
+in the recorded throws; they do not establish complete CS2 flight parity
+or the exact terrain sampler result. The next implementation target is
+the shared terrain-aware eye state and its transitions. Do not compensate
+with a per-lineup pitch correction or a universal eye-height reduction.
+
 ## B-doors standing jump reference
 
 Sid supplied a second paired setup and confirmed a standing jump throw:
