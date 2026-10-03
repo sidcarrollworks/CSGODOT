@@ -26,11 +26,14 @@ procedural jump/landing dip and interpolates position; grenade snapshots
 use simulation position and eye height. These paths must be compared
 separately when reproducing a reference.
 
-**Unresolved:** the missing terrain adjustment is a plausible contributor
-to Sid's aiming difference. Its value at this exact CS2 starting point,
-and the remaining trajectory discrepancy, require paired camera/pawn
-coordinates and recorded throws. A successful synthetic door landing is
-not evidence that those differences are resolved.
+**Measured:** Sid's paired `getpos`/`getpos_exact` at this starting point
+give an effective eye height of **60.75 units**, 3.25 below the base height.
+The fixture now uses the supplied pawn coordinates. The missing terrain
+adjustment is a plausible contributor, but its exact sampled value and
+the remaining trajectory discrepancy are still unresolved. The
+[movement follow-up](movement-ghidra-2026-10-03.md) compares the current
+walk/air, crouch, ground and takeoff paths. A successful synthetic door
+landing is not evidence that CS2 parity is established.
 
 ## Valve's documented changes
 
@@ -59,8 +62,10 @@ built October 2, 2026 at 14:45:21:
 Ghidra 12.1.4 processed the existing projects read-only. All **31 server
 function spans** exported for this follow-up match the installed server
 byte for byte. Constants were also read from the installed PE. The wider
-server comparison, including the preceding movement audit, now covers
-**64 distinct spans**, all unchanged.
+server comparison at the completion of that pass covered **64 distinct
+spans**, all unchanged. The subsequent [movement audit](movement-ghidra-2026-10-03.md)
+extends the installed-server comparison to **97 distinct spans**, all
+matching byte for byte.
 
 Client addresses were resolved independently from current RTTI/vtables.
 Four supporting methods match byte for byte: `18015f810`, `1801604d0`,
@@ -126,7 +131,11 @@ logic is not yet ported.
 
 When topology use changes, it initializes a residual from the previous
 root adjustment minus the new target, then approaches that residual to
-zero at a rate determined by the current movement branch. The combined
+zero at a rate determined by the current movement branch. The subsequent
+helper audit confirms an airborne rate of
+`max(abs(vertical_velocity) * 0.5, gravity * 0.05)`. At ordinary gravity
+800, even the minimum 40-unit/s rate removes a 3.25-unit residual before
+the 100-ms jump snapshot, assuming no other root/view offsets. The combined
 root adjustment is clamped to **-32–32 units**. It is written through
 `180cb1aa0`; `180ca6760`/`180ca6740` read it back when assembling the eye.
 Duck root/view adjustments have their own approach rates and account for
@@ -150,15 +159,15 @@ as the grenade eye position. This establishes that matching only a visual
 camera adjustment while leaving launch eyes unchanged would miss CS2's
 behavior.
 
-## Door-lineup comparison and next reference
+## Paired door-lineup comparison
 
-At the known local floor height **89.8**, our stationary standing camera
-is **153.8** before any visual dip. Sid's supplied CS2 plain `getpos`
-camera Z is **150.361557**, a difference of about **3.44 units**. A terrain
-offset could account for a difference of that size, but this is an
-inference: the actual CS2 pawn origin at that spot is still missing.
-Local grounding/collision can also contribute. Do not turn this difference
-into a hard-coded global camera correction.
+Sid's paired camera/pawn Z values are **150.364380** and **89.614380**,
+with pitch **-14.960024** and yaw **92.602875** in Source coordinates.
+Their difference is **60.75**, confirming a **3.25-unit** deficit against
+the standing base. The Godot preset now uses those exact pawn coordinates
+and converted angles. Local collision still settles the feet near 89.8,
+so that small grounding difference is separate from the eye-offset gap.
+Do not turn either difference into a hard-coded global camera correction.
 
 For each subsequent reference, collect both `getpos` and `getpos_exact`
 while grounded and settled at the same starting point. The former gives

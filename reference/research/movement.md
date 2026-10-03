@@ -18,6 +18,16 @@ verifies 64/46 base eye heights and recovers the terrain/root offset path
 used before grenade snapshot capture. That adjustment and the April 2026
 duck root/view rules remain unported.
 
+**October 3 binary follow-up:** the
+[movement Ghidra audit](movement-ghidra-2026-10-03.md) compares ordinary
+walk/air integration, ground queries, crouch and modern jump paths. Matching
+defaults and matching script/native steps do not establish CS2 parity:
+horizontal acceleration/friction use different displacement state, and
+terrain eyes, crouch and the modern landing/press window remain unported.
+The door reference now has paired pawn/camera coordinates and a measured
+60.75-unit eye height. This supersedes the historical status below where
+the ordinary jump adjustment is described as unknown.
+
 `reference/research/combat.md` already covers the user command's fields,
 netcode and the guns; this page builds on its section 4.
 

@@ -4,25 +4,39 @@ extends "res://scripts/watch_game.gd"
 ## godot --path . --script scripts/watch_grenades.gd -- --mode practice --map de_dust2 --window=1920x1080 --grenades=.godot/grenade-throws.jsonl
 ## Each record is flushed to disk during play. Only launches and contacts
 ## are recorded; flight, collision masks and movement are unchanged.
-## --lineup=mid-door uses Sid's October 3 CS2 horizontal position and aim.
-## Keep the verified local floor height; plain getpos gives camera position.
-const MID_DOOR_FEET := Vector3(-660.031250, 89.8, -344.002014)
-const MID_DOOR_YAW := 272.595718
-const MID_DOOR_PITCH := 15.030418
+## --lineup=mid-door uses Sid's paired October 3 getpos/getpos_exact reference.
+## CS2's measured standing eye offset here is 60.75; movement settles the feet.
+const MID_DOOR_FEET := Vector3(-660.031250, 89.614380, -344.012573)
+const MID_DOOR_YAW := 272.602875
+const MID_DOOR_PITCH := 14.960024
+## The B-doors reference has a measured eye offset of 63.9375.
+const B_DOORS_FEET := Vector3(-256.021118, 128.077347, -1667.957031)
+const B_DOORS_YAW := 262.148254
+const B_DOORS_PITCH := 14.713711
+const LINEUPS := {
+	"mid-door": {"feet": MID_DOOR_FEET, "yaw": MID_DOOR_YAW, "pitch": MID_DOOR_PITCH, "reference_eye_height": 60.75},
+	"b-doors": {"feet": B_DOORS_FEET, "yaw": B_DOORS_YAW, "pitch": B_DOORS_PITCH, "reference_eye_height": 63.9375},
+}
 
 var _grenade_log: FileAccess
 var _grenade_world: GameWorld
 var _contact_ticks := {}
 var _tracked_grenades := {}
-var _prepare_mid_door := false
+var _prepare_lineup := ""
 
 
 func _initialize() -> void:
 	var path := "res://.godot/grenade-throws.jsonl"
-	_prepare_mid_door = OS.get_cmdline_user_args().has("--lineup=mid-door")
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--grenades="):
 			path = argument.trim_prefix("--grenades=")
+		elif argument.begins_with("--lineup="):
+			var name := argument.trim_prefix("--lineup=")
+			if not LINEUPS.has(name):
+				push_error("Unknown grenade lineup '%s'; use mid-door or b-doors" % name)
+				quit(1)
+				return
+			_prepare_lineup = name
 	_grenade_log = FileAccess.open(path, FileAccess.WRITE)
 	if _grenade_log == null:
 		push_error("Cannot write grenade records to %s: %s" % [path, FileAccess.get_open_error()])
@@ -44,18 +58,22 @@ func _find_world(now: int) -> void:
 		_tracked_grenades.clear()
 		_world.game.entities.spawned.connect(_on_grenade_spawned)
 		_world.game.entities.removed.connect(_on_grenade_removed)
-	if _prepare_mid_door:
+	if not _prepare_lineup.is_empty():
+		var setup: Dictionary = LINEUPS[_prepare_lineup]
 		for player in _world.players:
 			if player is PlayerController:
-				player.place(MID_DOOR_FEET, MID_DOOR_YAW)
+				player.place(setup.feet, setup.yaw)
 				player.velocity = Vector3.ZERO
-				player.pitch_degrees = MID_DOOR_PITCH
-				player.previous_pitch_degrees = MID_DOOR_PITCH
-				player.input.pitch_degrees = MID_DOOR_PITCH
+				player.pitch_degrees = setup.pitch
+				player.previous_pitch_degrees = setup.pitch
+				player.input.pitch_degrees = setup.pitch
 				player.inventory.add(GrenadeRules.SMOKE)
 				player.inventory.select_slot(ItemDef.Slot.GRENADE)
-				_prepare_mid_door = false
-				print("GRENADE mid-door setup: feet ", MID_DOOR_FEET, ", yaw ", MID_DOOR_YAW, ", pitch ", MID_DOOR_PITCH)
+				_write_grenade({"event": "reference_setup", "lineup": _prepare_lineup,
+					"feet": _vector(setup.feet), "yaw": setup.yaw, "pitch": setup.pitch,
+					"reference_eye_height": setup.reference_eye_height})
+				print("GRENADE ", _prepare_lineup, " setup: feet ", setup.feet, ", yaw ", setup.yaw, ", pitch ", setup.pitch)
+				_prepare_lineup = ""
 				break
 
 

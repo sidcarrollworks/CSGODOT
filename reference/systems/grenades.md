@@ -172,13 +172,19 @@ files named:
    The [mid-door regression](../research/grenade-sky-clipping-2026-10-02.md#mid-door-landing-reference)
    originally used Godot screenshot aim. Sid's CS2 console aim reaches the
    door top with the current movement and unchanged flight physics; the
-   preset retains its known local floor height pending the exact CS2 pawn
-   origin. Exact recorded trajectory parity remains open. Sid still reports
+   preset now uses the exact pawn origin supplied with paired console
+   coordinates. Exact recorded trajectory parity remains open. Sid still reports
    needing to aim higher at matching landmarks. The
    [camera-height audit](../research/camera-height-2026-10-03.md) verifies
    matching 64/46 base heights, but CS2's terrain adjustment also reaches
-   launch eyes and is missing from our simulation. Its value at the reference
-   point and a shared eye-offset implementation remain open.
+   launch eyes and is missing from our simulation. The effective reference
+   eye height is measured at 60.75; the exact sampler and a shared eye-offset
+   implementation remain open. The [movement audit](../research/movement-ghidra-2026-10-03.md)
+   also records integration, crouch and modern landing/press-window gaps.
+   The watcher with `--mode practice --map de_dust2 --lineup=b-doors`
+   prepares Sid's second paired console reference (63.9375-unit effective
+   eye height). Its stationary jump replay reaches the roof above the gate;
+   the three-lineup regression passes 201 checks.
    The [subtick audit](../research/grenade-subtick-snapshot-2026-10-03.md)
    verifies that CS2 uses segment time and explicitly splits movement at the
    snapshot deadline. The port now implements it, together with the ordinary

@@ -405,14 +405,18 @@ verifies an explicit movement boundary at takeoff +0.1 s. The port now uses
 that boundary and the recovered ordinary jump adjustment, at Sid's request
 for playtest. It removes phase variation. The earlier mid-door miss used
 Godot screenshot aim; Sid's subsequent CS2 console aim lands on the door
-without changing flight physics. The local preset retains its verified
-ground height until CS2's exact pawn origin is supplied. Recorded trajectory
+without changing flight physics. The local preset now uses Sid's paired
+`getpos_exact` pawn coordinates. Recorded trajectory
 comparison and general jump feel still need validation before merge.
 Sid still needs to aim higher at matching landmarks. The
 [camera-height audit](research/camera-height-2026-10-03.md) verifies the
 64/46 base eye heights and a missing terrain-dependent eye adjustment,
-which CS2 also uses for grenade snapshots. Matching reference eye height
-and implementing that adjustment remain open.
+which CS2 also uses for grenade snapshots. The effective reference eye
+height is now measured at 60.75 units; the shared adjustment remains
+unported. The [movement audit](research/movement-ghidra-2026-10-03.md)
+also finds horizontal integration, crouch and modern landing/press-window
+differences. The B-doors reference measures 63.9375 units and is available
+in the watcher with `--lineup=b-doors`.
 
 **HE (WV):** 99 damage at the centre, 350 units radius, falling off smoothly
 with Gaussian falloff sigma=radius/3 (binary verified; target points and

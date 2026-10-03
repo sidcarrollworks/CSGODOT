@@ -8,13 +8,17 @@ mid-door reference. Sid subsequently requested applying it for playtesting.
 The branch now runs these movement changes. The subsequent
 [CS2 console setup](#cs2-console-setup) resolves the local door miss with
 unchanged physics: the earlier Godot screenshot aim was about 0.8 degrees
-lower. Surface and landing checks remain strict. Exact CS2 pawn height,
-recorded trajectory comparison and general jump validation remain open.
+lower. Surface and landing checks remain strict. Sid subsequently supplied
+paired camera/pawn coordinates, and the fixture now uses the exact pawn
+origin. Recorded trajectory comparison and general jump validation remain open.
 Sid subsequently confirmed that aiming at matching landmarks still requires
 an upward correction. The [camera-height follow-up](camera-height-2026-10-03.md)
 verifies matching 64/46 base values and a missing ground-topology eye
-adjustment that also reaches CS2's jump snapshots. Its value at the reference
-spot and its contribution to the discrepancy still require measurement.
+adjustment that also reaches CS2's jump snapshots. The measured effective
+eye height is 60.75; the exact sampler result and its contribution to the
+remaining trajectory discrepancy stay open. The
+[movement audit](movement-ghidra-2026-10-03.md) also finds horizontal
+integration, crouch and modern landing/press-window differences.
 
 ## Binary identity and method
 
@@ -194,10 +198,11 @@ practice run with:
 godot --path . --script scripts/watch_grenades.gd -- --mode practice --map de_dust2 --movement native --window=1920x1080 --grenades=.godot/grenade-throws.jsonl
 ```
 
-Add `--lineup=mid-door` to start at the current local lineup setup with a smoke
-selected. It now uses the CS2 console horizontal coordinates and aim described
-below, retaining the verified local floor height. This optional setup only
-places the player once; you supply the throw input.
+Add `--lineup=mid-door` to start at the paired CS2 pawn coordinates and aim
+with a smoke selected. `--lineup=b-doors` prepares the second paired
+standing-jump reference described in the [movement audit](movement-ghidra-2026-10-03.md#b-doors-standing-jump-reference).
+This optional setup places the player once; local movement settles the feet,
+and you supply the throw input.
 
 Records flush during play, allowing the launch and first collision to be
 read without closing the game. Diagnostic disk writes are additional work;
@@ -228,9 +233,10 @@ pitch **15.030418**. The previous local preset used pitch 14.2; the latest
 recorded user throw used 14.244. These are different launch inputs.
 
 Plain `getpos` reports a cached camera position; `getpos_exact` reports the
-pawn origin. The local preset and fixture retain their verified grounded
-height **89.8** while awaiting the latter. The supplied camera Z is not
-silently treated as the pawn's feet or converted by assuming an eye offset.
+pawn origin. At this stage the local preset and fixture retained their
+verified grounded height **89.8** while awaiting the latter. The supplied
+camera Z was not treated as the pawn's feet or converted by assuming an
+eye offset. The paired-coordinate follow-up below supersedes this setup.
 
 At the supplied horizontal point and the local grounded height:
 
@@ -248,6 +254,25 @@ initially passes all 82 checks; expanding the door to jump fractions
 for bit. The nine Xbox cases and sky/grenade-clip queries remain covered.
 This explains the local miss under the earlier aim; it is not a measured
 CS2 launch/contact trajectory match.
+
+### Paired-coordinate follow-up
+
+Sid subsequently supplied:
+
+```text
+setpos -344.012573 -660.031250 150.364380;setang -14.960024 92.602875 0.000000
+setpos_exact -344.012573 -660.031250 89.614380;setang_exact -14.960024 92.602875 0.000000
+```
+
+The watcher and fixture now use that exact pawn origin and aim. The local
+mid-door throw still settles on the door, near
+`(1594.406, 50.5391, -456.7559)`, after **4.390625 s**. The measured
+stationary eye offset is **60.75 units**; the terrain sampler remains
+unported. The [movement follow-up](movement-ghidra-2026-10-03.md) records
+the takeoff transition and additional integration differences, plus the
+B-doors standing jump reference. The three-fixture suite now passes
+**201 checks** and **12,339 bit-identical native/script movement steps**.
+Runtime movement and grenade flight remain unchanged in this follow-up.
 
 For the height distinction, the imported client's `180c0ccf0` reads cached
 camera values for `getpos` and calls the pawn-origin getter for the exact

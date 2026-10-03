@@ -1,17 +1,21 @@
 extends "res://tests/check_suite.gd"
 
-## Sid's T-spawn Xbox screenshot and October 3 CS2 mid-door console values.
+## Sid's Xbox screenshot and paired CS2 mid-door/B-doors console values.
 ## This is a local landing regression, not a recorded CS2 trajectory match.
 ## Loads collision only and uses the real movement, hand and flight paths.
 ## godot --headless --path . --script tests/run_grenade_lineup_checks.gd
 const FEET := Vector3(-1163.7, 77.8, -299.7)
 const YAW := 270.2
 const PITCH := 11.8
-## CS2 getpos supplied horizontal position and aim; use the known local
-## grounded height until getpos_exact supplies the pawn origin.
-const MID_DOOR_FEET := Vector3(-660.031250, 89.8, -344.002014)
-const MID_DOOR_YAW := 272.595718
-const MID_DOOR_PITCH := 15.030418
+## Paired CS2 getpos/getpos_exact reference. These are the pawn coordinates;
+## local collision recovery/ground categorization may adjust them on settling.
+const MID_DOOR_FEET := Vector3(-660.031250, 89.614380, -344.012573)
+const MID_DOOR_YAW := 272.602875
+const MID_DOOR_PITCH := 14.960024
+const B_DOORS_FEET := Vector3(-256.021118, 128.077347, -1667.957031)
+const B_DOORS_YAW := 262.148254
+const B_DOORS_PITCH := 14.713711
+enum Lineup { XBOX, MID_DOOR, B_DOORS }
 var _host: Node3D
 var _world: GameWorld
 
@@ -89,9 +93,19 @@ func _run() -> void:
 		reference = Vector3.INF
 		for fraction in [0.0, 0.25, 0.75]:
 			for offset in [0, 2, 8]:
-				var landed := await _throw(fraction, offset, MID_DOOR_FEET, MID_DOOR_YAW, MID_DOOR_PITCH, false)
+				var landed := await _throw(fraction, offset, MID_DOOR_FEET, MID_DOOR_YAW, MID_DOOR_PITCH, Lineup.MID_DOOR)
 				if reference.is_finite():
 					_check(landed.distance_to(reference) < 0.1, "jump phases and eligible releases use the same mid-door trajectory")
+				else:
+					reference = landed
+		# Sid confirmed a stationary left-click jump throw. The screenshot's
+		# path bounces across the upper roof and wooden awning to above B doors.
+		reference = Vector3.INF
+		for fraction in [0.0, 0.25, 0.75]:
+			for offset in [0, 2, 8]:
+				var landed := await _throw(fraction, offset, B_DOORS_FEET, B_DOORS_YAW, B_DOORS_PITCH, Lineup.B_DOORS)
+				if reference.is_finite():
+					_check(landed.distance_to(reference) < 0.1, "jump phases and eligible releases use the same B-doors trajectory")
 				else:
 					reference = landed
 	else:
@@ -122,7 +136,7 @@ func _check_clip_queries() -> void:
 		"live grenade sweeps still hit Dust2's extracted grenade-only clipping")
 
 
-func _throw(fraction: float, release_offset: int, feet := FEET, yaw := YAW, pitch := PITCH, xbox := true) -> Vector3:
+func _throw(fraction: float, release_offset: int, feet := FEET, yaw := YAW, pitch := PITCH, lineup := Lineup.XBOX) -> Vector3:
 	var player := _Pawn.new()
 	player.position = feet
 	player.team = "T"
@@ -143,7 +157,10 @@ func _throw(fraction: float, release_offset: int, feet := FEET, yaw := YAW, pitc
 	var touched_sky := false
 	var furthest_x := -INF
 	var rest := Vector3.INF
-	var target_surface := "physics_group_wood2" if xbox else "physics_group_wood_dense"
+	var contact_surfaces: Array[String] = []
+	var target_surface := "physics_group_wood2" if lineup == Lineup.XBOX else "physics_group_wood_dense"
+	if lineup == Lineup.B_DOORS:
+		target_surface = "physics_group_concrete"
 	for i in 500:
 		_world.step()
 		if grenade == null:
@@ -154,6 +171,7 @@ func _throw(fraction: float, release_offset: int, feet := FEET, yaw := YAW, pitc
 			continue
 		furthest_x = maxf(furthest_x, grenade.position.x)
 		for touch in grenade.flight.touches:
+			contact_surfaces.append(touch.surface)
 			touched_sky = touched_sky or touch.surface == "physics_sky"
 			if touch.surface == target_surface and touch.normal.y > 0.9:
 				top_contact = true
@@ -161,17 +179,25 @@ func _throw(fraction: float, release_offset: int, feet := FEET, yaw := YAW, pitc
 			rest = grenade.position
 			_check(not grenade.flight.blocked_start, "lineup flight settles through contacts without a blocked start")
 			_check(not touched_sky, "sky brushes never bounce the lineup's smoke")
-			if xbox:
+			if lineup == Lineup.XBOX:
 				_check(top_contact, "jump smoke reaches the wooden box's upward-facing surface")
 				_check(rest.x > 1400.0 and rest.x < 1480.0 and absf(rest.y + 27.0) < 2.0 and absf(rest.z + 309.0) < 10.0,
 					"jump smoke rests on Xbox instead of the floor beside it: %s" % rest)
-			else:
+			elif lineup == Lineup.MID_DOOR:
 				_check(furthest_x > 1304.0,
 					"the second lineup travels beyond the sky plane instead of rebounding backward")
 				_check(top_contact, "jump smoke reaches the mid door's upward-facing wooden surface")
 				_check(rest.x > 1580.0 and rest.x < 1605.0 and absf(rest.y - 50.5) < 2.0 and absf(rest.z + 457.0) < 10.0,
 					"jump smoke rests on the open mid door below the lintel: %s" % rest)
+			else:
+				_check(top_contact, "B-doors jump smoke reaches an upward-facing concrete roof")
+				_check(rest.x > 2080.0 and rest.x < 2220.0 and absf(rest.y - 234.0) < 2.0 and rest.z > -1410.0 and rest.z < -1280.0,
+					"jump smoke rests on the roof directly above B doors: %s" % rest)
+				_check(contact_surfaces.size() >= 3 and contact_surfaces[0] == "physics_group_concrete"
+					and contact_surfaces[1] == "physics_group_wood" and contact_surfaces[2] == "physics_group_concrete",
+					"B-doors smoke bounces across the upper roof and wooden awning onto the gate roof")
 			print("LINEUP ", JSON.stringify({"jump_fraction": fraction, "release_offset_ticks": release_offset,
+				"lineup": Lineup.keys()[lineup],
 				"snapshot_velocity": str(player.grenade_throw.snapshot.get("velocity")),
 				"rest": str(rest), "flight_seconds": grenade.age(_world.game.now_usec())}))
 			grenade.remove()

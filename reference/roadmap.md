@@ -997,14 +997,18 @@ list, split into Local and Remote items, with the measurements.
       Both are now implemented for Sid's playtest. Snapshot state is consistent
       across jump phases. Sid's subsequent CS2 console aim resolves the local
       mid-door miss with unchanged physics; the screenshot-derived aim was
-      about 0.8 degrees lower. The preset retains its verified local floor
-      height pending CS2's exact pawn origin. Recorded trajectory comparison
+      about 0.8 degrees lower. The preset now uses the supplied exact CS2
+      pawn origin. Recorded trajectory comparison
       and general jump validation remain open. Sid still reports needing to
       aim higher at matching landmarks. The
       [camera-height follow-up](research/camera-height-2026-10-03.md) confirms
       64/46 base eye heights and a missing terrain eye adjustment used by
-      CS2's grenade snapshots. Measure the effective reference eye height
-      and implement the shared simulation offset before claiming parity.
+      CS2's grenade snapshots. Paired console coordinates now measure an
+      effective 60.75-unit eye height there and 63.9375 at the new B-doors
+      reference. Implement and validate the shared simulation offset before
+      claiming parity. The [movement audit](research/movement-ghidra-2026-10-03.md)
+      also confirms horizontal integration, crouch and modern landing/press-window
+      gaps; matching native/script output is not evidence of CS2 parity.
     - **Local:** G1 in `reference/cs2-systems.md` now compares the recovered
       rules against CS2 (standing, running, crouching, jumping, button
       changes and close-wall releases), and a set of dust2 lineups

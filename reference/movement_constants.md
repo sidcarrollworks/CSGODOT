@@ -3,9 +3,13 @@
 Every number in `src/movement/movement_config.gd`, where it came from, and
 whether it has actually been checked against CS2.
 
-**Nothing here has been measured in-game yet.** These are published defaults
-and code-derived values, which is a starting point and not the finish line.
-As each one gets measured, record the measurement and the method below.
+Most motion values still lack controlled in-game measurements. Published
+defaults and binary-derived values are evidence for parameters, not proof
+that our movement integration matches CS2. The
+[October 3 Ghidra audit](research/movement-ghidra-2026-10-03.md) records
+confirmed algorithm differences. Paired CS2 console coordinates measure
+an effective eye height of **60.75** at the mid-door setup and **63.9375**
+at the B-doors setup; the base 64/46 eye values remain unchanged.
 
 ## Status
 
