@@ -149,7 +149,14 @@ explicit choice rather than an accident.
 
 ### Jump height is tick-rate dependent in Source
 
-`MovementConfig.tick_rate_independent_jump`, default **off** (Source-faithful).
+**October 3 default:** `MovementConfig.cs2_jump` is now **on** for playtest,
+using the [Ghidra-audited ordinary jump](research/grenade-subtick-snapshot-2026-10-03.md).
+At gravity 800 its fixed adjustment subtracts 3.125 u/s from the 301.993
+impulse, and interval gravity then integrates independently of jump phase.
+The following Source-height comparison describes the legacy mode selected
+with `cs2_jump = false`; it remains available to the course's comparison tests.
+
+`MovementConfig.tick_rate_independent_jump`, default **off**, applies to that legacy mode.
 
 Source splits gravity into two halves around the move, which normally makes
 jump height independent of tick rate. But the jump impulse is applied *after*

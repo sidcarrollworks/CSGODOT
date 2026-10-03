@@ -990,12 +990,13 @@ list, split into Local and Remote items, with the measurements.
       T-spawn fixture now bounces onto Xbox across nine jump/release combinations;
       exact recorded CS2 trajectories and input-window comparisons remain open.
       The [mid-door reference](research/grenade-sky-clipping-2026-10-02.md#mid-door-landing-reference)
-      also reaches the open door top at a quarter-tick jump, but other jump
-      phases can fall off it. Subtick snapshot consistency remains open.
+      reached the open door top with the previous quarter-tick movement,
+      while other jump phases could fall off it.
       The [October 3 Ghidra audit](research/grenade-subtick-snapshot-2026-10-03.md)
       recovered the exact movement boundary and ordinary jump gravity adjustment.
-      Its consistent candidate remains unapplied after failing the mid-door
-      landing checks; exact CS2 launch/input recordings are still required.
+      Both are now implemented for Sid's playtest. Snapshot state is consistent
+      across jump phases, but the updated movement misses the mid-door landing;
+      exact CS2 launch/input recordings and general jump validation remain open.
     - **Local:** G1 in `reference/cs2-systems.md` now compares the recovered
       rules against CS2 (standing, running, crouching, jumping, button
       changes and close-wall releases), and a set of dust2 lineups

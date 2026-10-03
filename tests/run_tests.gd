@@ -182,6 +182,7 @@ func _step(
 func _phase_jump(tick_rate_independent: bool) -> void:
 	if _phase_tick == 1:
 		_player.config.tick_rate_independent_jump = tick_rate_independent
+		_player.config.cs2_jump = false # This phase measures the legacy Source mode.
 		_place(Vector3(0.0, 8.0, 256.0))
 		return
 	if _phase_tick <= SETTLE_TICKS:

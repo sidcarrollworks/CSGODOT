@@ -9,8 +9,9 @@ There is no recorded CS2 launch state or time series for this comparison yet.
 **October 3 follow-up:** the [subtick audit](grenade-subtick-snapshot-2026-10-03.md)
 establishes that CS2 scopes this clock to each movement segment and inserts
 an exact snapshot boundary. The sign fix below remains in PR #184, but its
-whole-tick capture is incomplete. A tested replacement is saved as a local
-patch because it still fails the mid-door landing regression.
+whole-tick capture was incomplete. Sid subsequently requested applying the
+audited replacement for playtest; it now runs on the branch, while the
+mid-door landing regression remains unresolved.
 
 ## Cause and correction
 
@@ -35,11 +36,11 @@ The relevant server addresses are unchanged from the original audit:
   crosses the stash time.
 
 `GrenadeThrowState.jumped` now subtracts the movement interval.
-`PlayerSim` currently passes whole-tick time at movement finish. The jump's
-physical movement still uses its subtick press. CS2 instead uses segment-end
+The initial `PlayerSim` correction passed whole-tick time at movement finish.
+The jump's physical movement used its subtick press. CS2 uses segment-end
 time and segment duration, implicitly retaining the button fraction, and
 adds a movement boundary at the deadline. This remaining difference was
-established by the October 3 audit.
+established by the October 3 audit and is now implemented for playtest.
 
 The delayed release, snapshot age checks, box flight, restitution `0.45`
 and high-speed floor reduction stay as recovered. The error was in the

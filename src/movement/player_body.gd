@@ -166,6 +166,10 @@ var wants_duck: bool = false
 ## MovementConfig.subtick_jump.
 var jump_fraction: float = -1.0
 
+## An additional movement boundary this tick, or -1. A grenade snapshot
+## uses it to finish a real collision step exactly at its deadline.
+var movement_fraction: float = -1.0
+
 ## Previous tick's position, so the camera can interpolate between physics
 ## ticks instead of stuttering at the 64 Hz tick boundary.
 var previous_position: Vector3 = Vector3.ZERO
@@ -366,6 +370,7 @@ func simulate(dt: float) -> void:
 		global_position += velocity * dt
 		on_ground = false
 		jump_fraction = -1.0
+		movement_fraction = -1.0
 		height_above_ground = INF
 		if _native_physics() != null:
 			_native.queries.sync_object(self, false)
@@ -395,20 +400,38 @@ func simulate(dt: float) -> void:
 		# down, so the impulse happens at the fraction it was pressed at.
 		var pressed := wants_jump
 		wants_jump = false
-		_step(mover, dt * jump_fraction)
+		_movement_interval(mover, dt, 0.0, jump_fraction)
 		wants_jump = pressed
-		_step(mover, dt * (1.0 - jump_fraction))
+		_movement_interval(mover, dt, jump_fraction, 1.0)
 	else:
-		_step(mover, dt)
+		_movement_interval(mover, dt, 0.0, 1.0)
 
 	_jump_held_last_tick = wants_jump
 	jump_fraction = -1.0
+	movement_fraction = -1.0
 	_update_air(was_on_ground)
 	if _adapter != null:
 		_adapter.queries.end_scope()
 		# Later players and shots in this same tick see the completed movement.
 		_adapter.queries.sync_object(self, false)
 	_adapter = null
+
+
+func _movement_interval(mover: Object, dt: float, start: float, end: float) -> void:
+	if movement_fraction > start and movement_fraction < end:
+		var boundary := movement_fraction
+		_step(mover, dt * (boundary - start))
+		_movement_finished(start, boundary)
+		_step(mover, dt * (end - boundary))
+		_movement_finished(boundary, end)
+	else:
+		_step(mover, dt * (end - start))
+		_movement_finished(start, end)
+
+
+## Called outside _step: native/script comparison must not save state twice.
+func _movement_finished(_start: float, _end: float) -> void:
+	pass
 
 
 ## The native code's mover when this tick's steps can be run by it, else
@@ -759,7 +782,12 @@ func _try_jump(dt: float) -> void:
 	velocity = MovementSolver.clamp_bunnyhop(velocity, config)
 	velocity.y = config.jump_impulse
 	_jumped = true
-	if config.tick_rate_independent_jump:
+	if config.cs2_jump:
+		# CS2 sets impulse - gravity * 0.5 * (1/128), then applies full
+		# gravity over this segment. Restore our overwritten leading half.
+		velocity.y -= config.gravity * 0.5 / 128.0
+		velocity.y -= config.gravity * 0.5 * dt
+	elif config.tick_rate_independent_jump:
 		# Put back the leading half-step of gravity that the impulse just
 		# overwrote. See MovementConfig.tick_rate_independent_jump.
 		velocity.y -= config.gravity * 0.5 * dt

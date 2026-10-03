@@ -134,7 +134,8 @@ func _run() -> void:
 	await _test_a_press_fires_from_where_the_player_was()
 	await _test_a_semi_automatic_fires_once_a_click()
 	await _test_the_hand()
-	await _test_a_jump_throw()
+	for fraction in [0.0, 0.001, 0.25, 0.6, 0.75, 0.999]:
+		await _test_a_jump_throw(fraction)
 	_test_shots_are_heard_from_the_events()
 	await _test_a_running_tap_misses()
 	await _test_a_crouch_walks_at_a_third()
@@ -785,7 +786,7 @@ func _test_a_semi_automatic_fires_once_a_click() -> void:
 
 ## The real movement/hand/command path, with a subtick jump and a later
 ## mouse turn before its deferred grenade release.
-func _test_a_jump_throw() -> void:
+func _test_a_jump_throw(fraction: float) -> void:
 	var player := Commanded.new()
 	_new_player(Vector3(-1024.0, 0.0, 1024.0), "T", player)
 	player.respawn()
@@ -801,14 +802,15 @@ func _test_a_jump_throw() -> void:
 	for frame in SimClock.ticks_in(1.25):
 		world.step()
 	_check(player._pin_pulled and player.on_ground, "jump fixture holds a drawn HE on the floor")
+	var takeoff_height := player.global_position.y
 	player.held = 0
 	player.tap = UserCmd.JUMP
-	player.tap_fraction = 0.25
+	player.tap_fraction = fraction
 	world.step()
 	var jumped_tick := world.tick
 	var release_usec := SimClock.tick_end_usec(jumped_tick)
-	_check(player.velocity.y > 0.0 and player.grenade_throw.stash_usec == SimClock.tick_start_usec(jumped_tick) + 100_000,
-		"an actual subtick jump schedules its snapshot from simulation time minus the movement interval")
+	_check(player.velocity.y > 0.0 and player.grenade_throw.stash_usec == SimClock.usec_at(jumped_tick, fraction) + 100_000,
+		"an actual subtick jump schedules its snapshot 100 ms after takeoff")
 	for frame in 10:
 		world.step()
 	_check(not player.grenade_throw.snapshot.is_empty() and player.grenade_throw.jump_throw
@@ -816,7 +818,9 @@ func _test_a_jump_throw() -> void:
 		"movement captures the airborne snapshot while the first jump release is deferred")
 	var saved_eye: Vector3 = player.grenade_throw.snapshot.get("eye", Vector3.INF)
 	var saved_velocity: Vector3 = player.grenade_throw.snapshot.get("velocity", Vector3.INF)
-	_check_near(saved_velocity.y, 222.3055, "the quarter-tick jump keeps the earlier snapshot's upward velocity")
+	_check_near(saved_velocity.y, 218.868, "the snapshot captures CS2's adjusted impulse after exactly 100 ms of gravity")
+	_check_near(saved_eye.y - player.eye_height() - takeoff_height, 25.8868,
+		"the snapshot's eye follows the same 100-ms arc at jump fraction %.3f" % fraction)
 	player.yaw_degrees = 180.0
 	player.pitch_degrees = -25.0
 	for frame in 5:

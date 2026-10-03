@@ -701,15 +701,27 @@ func _live_grenade_parameters() -> Dictionary:
 		"yaw": yaw_degrees, "pitch": pitch_degrees, "velocity": velocity}
 
 
-## Capture after movement, before the weapon consumes its release timer.
-func _finish_grenade_movement(cmd: UserCmd, dt: float) -> void:
-	var now := SimClock.tick_end_usec(cmd.tick)
-	if _jumped and not noclip:
-		# The recovered timer uses simulation time, not the input fraction.
-		# Movement itself still applies the jump at its subtick press.
-		grenade_throw.jumped(now, int(roundf(dt * 1_000_000.0)))
+var _grenade_jump_recorded := false
+
+
+## CS2 scopes the clock to each movement segment and inserts a boundary
+## at the stash deadline. Save the actual moved state before the remainder.
+func _movement_finished(start: float, end: float) -> void:
+	if last_command == null:
+		return
+	if not (_jumped and not _grenade_jump_recorded) and (grenade_throw.stash_usec < 0 or not grenade_throw.snapshot.is_empty()):
+		return
+	var now := SimClock.usec_at(last_command.tick, end)
+	if _jumped and not _grenade_jump_recorded:
+		grenade_throw.jumped(now, now - SimClock.usec_at(last_command.tick, start))
+		_grenade_jump_recorded = true
 	if grenade_throw.stash_usec >= 0 and now >= grenade_throw.stash_usec and grenade_throw.snapshot.is_empty():
 		grenade_throw.finish_movement(now, _live_grenade_parameters())
+
+
+## Weapon timers are consumed after the whole command's movement.
+func _finish_grenade_movement(cmd: UserCmd) -> void:
+	var now := SimClock.tick_end_usec(cmd.tick)
 	var item_class := grenade_throw.consume(now)
 	if not item_class.is_empty() and is_instance_valid(world):
 		world.game.command(userid, "throw %s %s" % [item_class, GrenadeRules.launch_strength(grenade_throw.strength)])
@@ -717,6 +729,10 @@ func _finish_grenade_movement(cmd: UserCmd, dt: float) -> void:
 
 func _run(cmd: UserCmd, dt: float) -> void:
 	last_command = cmd
+	_grenade_jump_recorded = false
+	movement_fraction = -1.0
+	if grenade_throw.stash_usec >= SimClock.tick_start_usec(cmd.tick) and grenade_throw.snapshot.is_empty():
+		movement_fraction = float(grenade_throw.stash_usec - SimClock.tick_start_usec(cmd.tick)) / float(SimClock.tick_usec())
 	wants_jump = false
 	wants_duck = false
 	jump_fraction = -1.0
@@ -803,14 +819,14 @@ func _run(cmd: UserCmd, dt: float) -> void:
 		# Still, but falling if there is anywhere to fall, and the weapon
 		# still reloads.
 		simulate(dt)
-		_finish_grenade_movement(cmd, dt)
+		_finish_grenade_movement(cmd)
 		_update_weapon(cmd, dt, true)
 		return
 
 	if noclip:
 		wish_dir = _noclip_direction(cmd)
 		simulate(dt)
-		_finish_grenade_movement(cmd, dt)
+		_finish_grenade_movement(cmd)
 		return
 
 	wish_dir = cmd.wish_direction()
@@ -819,7 +835,7 @@ func _run(cmd: UserCmd, dt: float) -> void:
 		acceleration_speed = _uncrouched_speed(cmd)
 
 	simulate(dt)
-	_finish_grenade_movement(cmd, dt)
+	_finish_grenade_movement(cmd)
 	_update_weapon(cmd, dt, false)
 
 

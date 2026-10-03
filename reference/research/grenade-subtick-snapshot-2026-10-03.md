@@ -3,7 +3,10 @@
 Following the Xbox and mid-door screenshots, Sid requested a Ghidra audit
 of the remaining jump-throw inconsistency. This report corrects the clock
 interpretation in the [initial lineup follow-up](grenade-jump-lineup-2026-10-02.md).
-It records a tested implementation candidate, **not a shipped movement fix**.
+The implementation was initially saved separately because it missed the
+mid-door reference. Sid subsequently requested applying it for playtesting.
+The branch now runs these movement changes; the landing discrepancy remains
+open and its checks remain strict.
 
 ## Binary identity and method
 
@@ -114,13 +117,39 @@ Candidate verification:
   mid-door surface and rest-region checks for three releases. Xbox and
   sky/grenade-clip checks passed; 5,310 script/native steps agreed.
 
-The candidate is saved locally at
+The initial candidate was saved locally at
 `.godot/grenade-timing-audit/grenade-subtick-candidate.patch`, based on
-`eebdbc914c5ec1e746344e72d30144d7b41af9ec`. It is not applied to PR #184:
-the existing mid-door checks remain strict and the current jump behavior
-is retained. After restoring the runtime and rebuilding its native library,
+`eebdbc914c5ec1e746344e72d30144d7b41af9ec`. Before the playtest request,
+it was removed from the runtime. After restoring that runtime and rebuilding its native library,
 all **82 landing checks passed again**, with 5,037 script/native steps agreeing.
 No global bounce coefficient was fitted to compensate for either result.
+
+## Applied for playtest
+
+At Sid's request, the branch now applies the snapshot boundary and ordinary
+jump correction in script and native movement. The simulation suite exercises
+jump fractions 0, 0.001, 0.25, 0.6, 0.75 and 0.999, including a snapshot exactly
+on a tick boundary. It checks the saved deadline, airborne position/velocity,
+delayed release and retained aim through the real held-grenade path. Native
+movement comparisons cover both the new default and the legacy jump mode.
+
+`MovementConfig.cs2_jump` defaults to true. Its false setting retains the
+older Source ordering and the existing optional textbook correction for
+comparisons/custom modes. The legacy course's Source-height tests explicitly
+select that mode. General jumps therefore also change under the new default;
+standing jump height and ledge reach belong in this playtest, alongside grenades.
+Only the snapshot's scheduled tick gains an additional collision-aware movement
+step; the global tick rate, grenade gravity and bounce coefficient stay the same.
+
+Focused verification of the applied playtest version passed **243 simulation**,
+**80 movement**, **32 native movement**, **45 grenade timer/port** and
+**68 native query/gameplay** checks. The simulation suite's six jump phases
+all keep the expected 100-ms eye height and vertical velocity. Its 6,690 steps,
+the native course's 49,567 steps and the movement course's 1,358 steps agree
+between script and native movement. The landing suite still reports the same
+six mid-door failures out of 82 checks; they are not suppressed. The full
+suite was stopped to prioritize getting the playtest running and is not claimed
+as passing for this implementation.
 
 ## Next validation
 
@@ -129,8 +158,9 @@ mid-door lineup, then compare launch position/velocity and first contact
 before its final landing. Confirm whether it is stationary, moving or
 crouched and whether it uses a jump. Those measurements can distinguish
 rounded setup inputs, jump-state differences and collision/flight errors.
-The recovered clock/boundary behavior is established; shipping its candidate
-still requires resolving the demonstrated landing regression.
+The recovered clock/boundary behavior is established. The applied implementation
+is ready for local playtesting; merging it still requires assessing the
+demonstrated landing regression and general jump feel.
 
 For subsequent builds, recheck binary identity before reusing any address.
 The selected functions can be exported with the repository's

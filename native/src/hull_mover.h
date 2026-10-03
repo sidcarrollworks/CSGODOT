@@ -82,6 +82,7 @@ private:
 		double air_max_wishspeed = 30.0;
 		double max_speed = 250.0;
 		double jump_impulse = 301.993;
+		bool cs2_jump = true;
 		bool tick_rate_independent_jump = false;
 		double non_jump_velocity = 140.0;
 		double max_velocity = 3500.0;

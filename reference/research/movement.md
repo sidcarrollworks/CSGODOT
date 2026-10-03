@@ -8,6 +8,13 @@ in `src/movement/` and `src/player/`, and what players criticise and want
 changed. Accuracy while moving and landing is researched separately; this
 page only gives the movement timings it rests on. It changes no code.
 
+**October 3 follow-up:** the [grenade subtick audit](grenade-subtick-snapshot-2026-10-03.md)
+recovers the ordinary jump's fixed gravity adjustment and interval integration
+from the installed binary. That movement is now applied for Sid's playtest,
+with `MovementConfig.cs2_jump` on by default. The older Source jump-height
+comparison below is historical; measured CS2 height and full movement parity
+remain open.
+
 `reference/research/combat.md` already covers the user command's fields,
 netcode and the guns; this page builds on its section 4.
 

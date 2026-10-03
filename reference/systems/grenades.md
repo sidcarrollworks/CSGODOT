@@ -158,9 +158,9 @@ files named:
    later button changes approach by 0.0203124992549 per eligible hold tick.
    Release starts the hand clip and a separate 0.1 s simulation timer.
    A qualifying first jump consume can defer once by another 0.1 s. Movement
-   schedules the jump stash at simulation time minus the movement interval
-   plus 0.1 s, then captures eye, collision center, aim and velocity at the first
-   movement finish that reaches that time. Launch uses the snapshot while its
+   schedules the jump stash from actual takeoff plus 0.1 s, inserts a movement
+   boundary at that deadline, and captures eye, collision center, aim and velocity
+   after that collision-aware step, before the tick's remainder. Launch uses the snapshot while its
    age is >0 and <=0.2 s.
    Inventory removal and `grenade_thrown` occur at projectile spawn.
    The hand stays busy for its clip (0.77 s overhand, 0.50 s underhand),
@@ -170,12 +170,13 @@ files named:
    The [Xbox lineup regression](../research/grenade-jump-lineup-2026-10-02.md)
    catches a late snapshot that previously left the smoke below the box.
    The [mid-door regression](../research/grenade-sky-clipping-2026-10-02.md#mid-door-landing-reference)
-   reaches the open door top for its quarter-tick jump; other jump phases
-   can still fall off, so exact CS2 subtick consistency remains open.
+   previously reached the open door top for a quarter-tick jump; the new
+   movement misses that landing, so exact CS2 lineup parity remains open.
    The [subtick audit](../research/grenade-subtick-snapshot-2026-10-03.md)
    verifies that CS2 uses segment time and explicitly splits movement at the
-   snapshot deadline. The port still captures at whole-tick finish; a tested
-   replacement is saved locally because it misses the mid-door landing.
+   snapshot deadline. The port now implements it, together with the ordinary
+   jump's gravity correction, at Sid's request for local playtest. General
+   jump feel and the mid-door landing remain to be assessed before merge.
 3. **Your view (`player_view.gd` or the HUD):** a `FlashOverlay` with your
    userid, on top of the HUD *(done on dust2 2026-09-23)*. The flashed ringing is a sound (below).
 4. **`bot.gd`: sight.** *(Done 2026-09-24, except keeping out of fire:

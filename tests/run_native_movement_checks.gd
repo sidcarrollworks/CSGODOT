@@ -200,10 +200,11 @@ func _test_the_course() -> void:
 			if chance.randf() < 0.004:
 				# The settings a match leaves alone, each way.
 				var config := walker.config
-				match chance.randi_range(0, 11):
+				match chance.randi_range(0, 12):
 					0: config.auto_bunnyhop = not config.auto_bunnyhop
 					1: config.enable_bunnyhopping = not config.enable_bunnyhopping
 					2: config.tick_rate_independent_jump = not config.tick_rate_independent_jump
+					12: config.cs2_jump = not config.cs2_jump
 					3: config.project_wish_dir_on_ground = not config.project_wish_dir_on_ground
 					4: config.source_deadstrafe = not config.source_deadstrafe
 					5: config.stay_on_ground = not config.stay_on_ground

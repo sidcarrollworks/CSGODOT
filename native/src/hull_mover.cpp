@@ -101,7 +101,7 @@ void HullMover::_bind_methods() {
 void HullMover::read_config(Object *p_config) {
 	static const StringName gravity("gravity"), accelerate("accelerate"), air_accelerate("air_accelerate"),
 			friction("friction"), stop_speed("stop_speed"), air_max_wishspeed("air_max_wishspeed"),
-			max_speed("max_speed"), jump_impulse("jump_impulse"),
+			max_speed("max_speed"), jump_impulse("jump_impulse"), cs2_jump("cs2_jump"),
 			tick_rate_independent_jump("tick_rate_independent_jump"), non_jump_velocity("non_jump_velocity"),
 			max_velocity("max_velocity"), auto_bunnyhop("auto_bunnyhop"),
 			enable_bunnyhopping("enable_bunnyhopping"), bunnyhop_speed_cap("bunnyhop_speed_cap"),
@@ -119,6 +119,7 @@ void HullMover::read_config(Object *p_config) {
 	cfg.air_max_wishspeed = p_config->get(air_max_wishspeed);
 	cfg.max_speed = p_config->get(max_speed);
 	cfg.jump_impulse = p_config->get(jump_impulse);
+	cfg.cs2_jump = p_config->get(cs2_jump);
 	cfg.tick_rate_independent_jump = p_config->get(tick_rate_independent_jump);
 	cfg.non_jump_velocity = p_config->get(non_jump_velocity);
 	cfg.max_velocity = p_config->get(max_velocity);
@@ -472,7 +473,10 @@ void HullMover::try_jump(double dt) {
 	velocity = clamp_bunnyhop(velocity);
 	velocity.y = (real_t)cfg.jump_impulse;
 	jumped = true;
-	if (cfg.tick_rate_independent_jump) {
+	if (cfg.cs2_jump) {
+		velocity.y = (real_t)((double)velocity.y - cfg.gravity * 0.5 / 128.0);
+		velocity.y = (real_t)((double)velocity.y - cfg.gravity * 0.5 * dt);
+	} else if (cfg.tick_rate_independent_jump) {
 		velocity.y = (real_t)((double)velocity.y - cfg.gravity * 0.5 * dt);
 	}
 	on_ground = false;

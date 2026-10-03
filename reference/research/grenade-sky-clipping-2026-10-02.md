@@ -102,8 +102,9 @@ The [October 3 Ghidra follow-up](grenade-subtick-snapshot-2026-10-03.md)
 now establishes the missing segment clock and explicit snapshot boundary,
 and identifies the ordinary jump's fixed gravity adjustment. Its tested
 candidate makes throws consistent across jump phases, but this rounded
-mid-door setup lands on the floor. The candidate is saved locally; it is
-not applied, and this report's passing landing remains the PR runtime.
+mid-door setup lands on the floor. Sid requested applying it for playtest,
+so that candidate now runs on the branch. The passing quarter-tick landing
+above describes the previous runtime; the landing checks still report the miss.
 Exact CS2 throw inputs and launch/contact measurements are the next step.
 
 The asset-dependent lineup suite now checks the actual mid sky plane,
