@@ -12,6 +12,11 @@ now verify launch, strength, release/jump timing, box collision, substeps,
 bounces, fuses and parts of HE/flash behavior. Those corrections are not
 ported yet. The sections below describe the existing implementation;
 roadmap 20a and G1–G5 track the remaining work.
+The [collision follow-up](../research/collision-foundation-2026-10-02.md)
+fixes repeated bounces reusing the full step's time and makes a contacting
+sweep read its fractions and contact in one adapter query. The existing
+sphere's backend contact tolerances remain; the CS2 box-flight port needs
+an explicit projectile trace contract before changing the hull.
 
 ## What is built
 

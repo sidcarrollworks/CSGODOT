@@ -212,3 +212,25 @@ In this build `CCSGameRules +0x1f8` points at `18094fbb0`, which jumps to
 `18094ebf0`. Do not copy offsets, vtable entries or addresses onto an updated
 binary without rediscovering them. The grenade report records the equations,
 constants and unresolved paths; local lineup/flash/smoke captures remain separate.
+
+## Collision callers before the grenade port
+
+The [collision foundation audit](../../reference/research/collision-foundation-2026-10-02.md)
+follows the entity push, collision dispatch, trace filtering and result
+conversion in the same hash-matched server project. Additional exports:
+
+```powershell
+$collisionAuditOut = '.godot\collision-audit'
+& $ghidraHeadless $auditProjects CS2_Shooting_Server -process server.dll -noanalysis `
+  -scriptPath scripts/shooting_audit `
+  -postScript AuditDecompile.java "$collisionAuditOut\server" `
+    180e88aa0 180e86890 180e8c720 180e87e10 180c27940 180c28520 `
+    180be76a0 180e887a0 180bd6d50 1814a0920 1814a0b90
+```
+
+The gameplay trace's end and fraction are copied from one engine result;
+solid-state flags and a missing normal are separate concepts. Inspect the
+imported collision-interface calls as well as the server wrappers before
+claiming the engine's inner sweep tolerances. This audit's addon comparison
+uses the pinned v0.4.3 source and local box/triangle fixtures, not an inferred
+match between Box3D and CS2's engine solver.

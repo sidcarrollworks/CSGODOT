@@ -189,6 +189,10 @@ dropped items and ragdolls. The bridge converts inches to metres at its
 boundary; Source movement and grenade flight remain game rules. Godot's
 Jolt physics is used for standalone fixtures and the comparison mode,
 selected with `--physics legacy` after `--`; that mode has no ragdolls.
+The [grenade collision audit](reference/research/collision-foundation-2026-10-02.md)
+documents the small-hull differences and the corrected travel budget for
+repeated bounces in one step. Grenades still need the recovered CS2 box flight and throw-timing
+port before lineup parity can be checked.
 
 The GDScript movement step is the reference for the native implementation.
 Tests compare their results bit for bit. Hitbox proxies update when needed,
