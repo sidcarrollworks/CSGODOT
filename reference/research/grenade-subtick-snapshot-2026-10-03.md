@@ -153,6 +153,39 @@ as passing for this implementation.
 
 ## Next validation
 
+Sid's follow-up playtest still missed the door and appeared to rebound
+earlier. Replaying the current defaults at the rounded screenshot inputs
+identifies the stationary jump throw's first contact as
+`physics_group_wood_dense`, the **door's side**, near
+`(1585.539, 41.413, -445.985)` after about **3.58 seconds**. Its normal is
+`(-0.893376, 0, -0.44931)`. A standing throw instead first contacts nearby
+concrete near `(-401.062, 237.265, -355.769)` after about **0.39 seconds**.
+Neither replay contacts `physics_sky`. These distinguish two local paths;
+they do not identify the collision in Sid's actual throw.
+
+`scripts/watch_grenades.gd` extends the performance watcher to record exact
+launch position/velocity, the player's current state, selected launch
+parameters, jump-snapshot eligibility and contact position/normal/material.
+It observes entity spawning before flight starts and deduplicates bounce
+events within a tick. Contact times and velocities are tick-end values,
+not exact collision instants or per-contact incoming/outgoing velocities.
+It does not change movement, flight or collision queries. Start a diagnostic
+practice run with:
+
+```text
+godot --path . --script scripts/watch_grenades.gd -- --mode practice --map de_dust2 --movement native --window=1920x1080 --grenades=.godot/grenade-throws.jsonl
+```
+
+Add `--lineup=mid-door` to start at the screenshot's rounded position and
+view angles with a smoke selected. This optional setup only places the player
+once; you supply the throw input.
+
+Records flush during play, allowing the launch and first collision to be
+read without closing the game. Diagnostic disk writes are additional work;
+use the ordinary watcher for performance comparisons. Throws made directly
+through `throw_from` with synthetic parameters should use userid -1: player
+metadata reflects the normal command path's selected parameters.
+
 Record the exact CS2 position, view angles and throw input sequence for the
 mid-door lineup, then compare launch position/velocity and first contact
 before its final landing. Confirm whether it is stationary, moving or

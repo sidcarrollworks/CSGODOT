@@ -82,8 +82,8 @@ func _run() -> void:
 					else:
 						reference = landed
 		# The CS2 inset puts this smoke on the open door leaf below the lintel.
-		# A quarter-tick jump reproduces that landing; this does not establish
-		# CS2 parity across other subtick jump phases (see the research report).
+		# The current movement misses that landing. Keep the checks strict
+		# while comparing the launch and first contact with the reference.
 		reference = Vector3.INF
 		for offset in [0, 2, 8]:
 			var landed := await _throw(0.25, offset, MID_DOOR_FEET, MID_DOOR_YAW, MID_DOOR_PITCH, false)
