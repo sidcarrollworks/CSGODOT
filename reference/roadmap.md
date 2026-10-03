@@ -981,6 +981,10 @@ list, split into Local and Remote items, with the measurements.
     - **Map import done:** grenade clips are retained on layer 32 and
       excluded from camera occluders; players retain their separate clips.
       Synthetic layer checks and the extracted Dust2 run validate the import.
+    - **Jump timer corrected:** [Xbox lineup follow-up](research/grenade-jump-lineup-2026-10-02.md)
+      fixes the interval sign recovered from the instructions. The screenshot's
+      T-spawn fixture now bounces onto Xbox across nine jump/release combinations;
+      exact recorded CS2 trajectories and input-window comparisons remain open.
     - **Local:** G1 in `reference/cs2-systems.md` now compares the recovered
       rules against CS2 (standing, running, crouching, jumping, button
       changes and close-wall releases), and a set of dust2 lineups

@@ -807,14 +807,16 @@ func _test_a_jump_throw() -> void:
 	world.step()
 	var jumped_tick := world.tick
 	var release_usec := SimClock.tick_end_usec(jumped_tick)
-	_check(player.velocity.y > 0.0 and player.grenade_throw.stash_usec == SimClock.usec_at(jumped_tick, 0.25) + TICK + 100_000,
-		"an actual subtick jump schedules the grenade snapshot from the jump instant")
+	_check(player.velocity.y > 0.0 and player.grenade_throw.stash_usec == SimClock.tick_start_usec(jumped_tick) + 100_000,
+		"an actual subtick jump schedules its snapshot from simulation time minus the movement interval")
 	for frame in 10:
 		world.step()
 	_check(not player.grenade_throw.snapshot.is_empty() and player.grenade_throw.jump_throw
 		and world.game.entities.of_class("hegrenade_projectile").is_empty(),
 		"movement captures the airborne snapshot while the first jump release is deferred")
 	var saved_eye: Vector3 = player.grenade_throw.snapshot.get("eye", Vector3.INF)
+	var saved_velocity: Vector3 = player.grenade_throw.snapshot.get("velocity", Vector3.INF)
+	_check_near(saved_velocity.y, 222.3055, "the quarter-tick jump keeps the earlier snapshot's upward velocity")
 	player.yaw_degrees = 180.0
 	player.pitch_degrees = -25.0
 	for frame in 5:

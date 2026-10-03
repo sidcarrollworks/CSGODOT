@@ -35,8 +35,8 @@ func _hold_and_release() -> void:
 
 func _jump_snapshot() -> void:
 	var state := GrenadeThrowState.new()
-	state.jumped(1_003_906, 15_625)
-	_check_equal(state.stash_usec, 1_119_531, "subtick jump schedules the stash one movement interval plus 0.1 seconds later")
+	state.jumped(1_015_625, 15_625)
+	_check_equal(state.stash_usec, 1_100_000, "jump stash subtracts the movement interval before adding 0.1 seconds")
 	var saved := {"eye": Vector3(10.0, 96.0, 20.0), "center": Vector3(10.0, 68.0, 20.0),
 		"yaw": 15.0, "pitch": 25.0, "velocity": Vector3(120.0, 220.0, -30.0)}
 	state.finish_movement(state.stash_usec - 1, saved)

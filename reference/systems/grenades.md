@@ -158,13 +158,17 @@ files named:
    later button changes approach by 0.0203124992549 per eligible hold tick.
    Release starts the hand clip and a separate 0.1 s simulation timer.
    A qualifying first jump consume can defer once by another 0.1 s. Movement
-   captures eye, collision center, aim and velocity after the scheduled
-   jump stash time; launch uses that snapshot while its age is >0 and <=0.2 s.
+   schedules the jump stash at simulation time minus the movement interval
+   plus 0.1 s, then captures eye, collision center, aim and velocity at the first
+   movement finish that reaches that time. Launch uses the snapshot while its
+   age is >0 and <=0.2 s.
    Inventory removal and `grenade_thrown` occur at projectile spawn.
    The hand stays busy for its clip (0.77 s overhand, 0.50 s underhand),
    then draws the next item. Holding one caps speed at 245 u/s.
    Explicit console/range/bot `throw <class> <strength>` commands still
    request an immediate spawn; they do not simulate pulling a pin.
+   The [Xbox lineup regression](../research/grenade-jump-lineup-2026-10-02.md)
+   catches a late snapshot that previously left the smoke below the box.
 3. **Your view (`player_view.gd` or the HUD):** a `FlashOverlay` with your
    userid, on top of the HUD *(done on dust2 2026-09-23)*. The flashed ringing is a sound (below).
 4. **`bot.gd`: sight.** *(Done 2026-09-24, except keeping out of fire:

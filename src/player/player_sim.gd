@@ -705,11 +705,9 @@ func _live_grenade_parameters() -> Dictionary:
 func _finish_grenade_movement(cmd: UserCmd, dt: float) -> void:
 	var now := SimClock.tick_end_usec(cmd.tick)
 	if _jumped and not noclip:
-		# simulate() consumes jump_fraction; keep the command's actual press.
-		var press := cmd.first_press(UserCmd.JUMP)
-		var fraction := press.when if config.subtick_jump and press != null else 0.0
-		var at := SimClock.usec_at(cmd.tick, fraction)
-		grenade_throw.jumped(at, int(roundf(dt * 1_000_000.0)))
+		# The recovered timer uses simulation time, not the input fraction.
+		# Movement itself still applies the jump at its subtick press.
+		grenade_throw.jumped(now, int(roundf(dt * 1_000_000.0)))
 	if grenade_throw.stash_usec >= 0 and now >= grenade_throw.stash_usec and grenade_throw.snapshot.is_empty():
 		grenade_throw.finish_movement(now, _live_grenade_parameters())
 	var item_class := grenade_throw.consume(now)

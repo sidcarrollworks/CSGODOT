@@ -5,6 +5,10 @@ now supplies the dedicated contact contract and core throw/flight/activation
 rules. This page retains the audit-time implementation gaps and measurements;
 the follow-up records what was ported and what still needs local comparison.
 
+**Jump-timer correction:** the [Xbox lineup follow-up](grenade-jump-lineup-2026-10-02.md)
+checks the helper's instructions and corrects the movement interval's sign.
+The initial audit incorrectly described that interval as an addition.
+
 Roadmap **20a**, with supporting findings for **G1–G5**. This is the research
 phase: no grenade gameplay code has been changed. The next implementation
 should address release timing, jump snapshots, launch geometry, flight and
@@ -128,7 +132,10 @@ the eye**, sweep origin and discrete strength selection do not.
 ## Jump-throw snapshot
 
 The jump paths `180ab57f0` and `180adf830` schedule movement-service
-`m_fStashGrenadeParameterWhen` at **current time + movement interval + 0.1 s**.
+`m_fStashGrenadeParameterWhen` at **simulation time − movement interval + 0.1 s**.
+Helper `1801bdb80` executes `SUBSS`, not addition; the subsequent
+`18017e3f0` call adds the 0.1 s delay. The clock comes from the pawn's
+simulation tick (`180c7fe60`), rather than directly from a button fraction.
 They copy the timestamp to the pawn and clear its snapshot-ready flag.
 Movement finish `180abe000` detects crossing that scheduled tick/fraction
 and calls `180add6f0`, which stores aim, eye position, pawn center and velocity.
