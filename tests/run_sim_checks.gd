@@ -76,6 +76,7 @@ class Mortal extends PlayerSim:
 class Commanded extends PlayerSim:
 	var held := 0
 	var tap := 0
+	var tap_fraction := 0.0
 	var select := UserCmd.SELECT_NONE
 	var cycle := 0
 	var walks := false
@@ -84,7 +85,7 @@ class Commanded extends PlayerSim:
 		var cmd := super.command_for(tick, dt)
 		cmd.buttons = held
 		if tap != 0:
-			cmd.steps.append(UserCmd.SubtickStep.new(tap, true, 0.0, yaw_degrees, pitch_degrees))
+			cmd.steps.append(UserCmd.SubtickStep.new(tap, true, tap_fraction, yaw_degrees, pitch_degrees))
 			tap = 0
 		cmd.weapon_select = select
 		select = UserCmd.SELECT_NONE
@@ -133,6 +134,7 @@ func _run() -> void:
 	await _test_a_press_fires_from_where_the_player_was()
 	await _test_a_semi_automatic_fires_once_a_click()
 	await _test_the_hand()
+	await _test_a_jump_throw()
 	_test_shots_are_heard_from_the_events()
 	await _test_a_running_tap_misses()
 	await _test_a_crouch_walks_at_a_third()
@@ -781,14 +783,57 @@ func _test_a_semi_automatic_fires_once_a_click() -> void:
 	await physics_frame
 
 
-## What a player carries and holds, through commands on a world's ticks: a
-## spawn's loadout, drawn on the world's clock; each gun its own, keeping its
-## rounds through a switch; asking for what is in hand leaving it as it is,
-## as Source does (no draw, not a full magazine); anything else drawn, and
-## firing only once the draw is over; a switch stopping a reload; the knife;
-## a grenade thrown from the hand; a gun dropped and picked up again with
-## its rounds; and the bomb holding the player still. Every round is the
-## game's: weapon_fire, and the hurt it does is the shooter's.
+## The real movement/hand/command path, with a subtick jump and a later
+## mouse turn before its deferred grenade release.
+func _test_a_jump_throw() -> void:
+	var player := Commanded.new()
+	_new_player(Vector3(-1024.0, 0.0, 1024.0), "T", player)
+	player.respawn()
+	var world := GameWorld.new()
+	_world.add_child(world)
+	world.set_physics_process(false)
+	world.game.add_system(GrenadeSystem.new())
+	world.add_player(player)
+	player.inventory.add(GrenadeRules.HE)
+	player.select = 4
+	player.held = UserCmd.ATTACK
+	await physics_frame
+	for frame in SimClock.ticks_in(1.25):
+		world.step()
+	_check(player._pin_pulled and player.on_ground, "jump fixture holds a drawn HE on the floor")
+	player.held = 0
+	player.tap = UserCmd.JUMP
+	player.tap_fraction = 0.25
+	world.step()
+	var jumped_tick := world.tick
+	var release_usec := SimClock.tick_end_usec(jumped_tick)
+	_check(player.velocity.y > 0.0 and player.grenade_throw.stash_usec == SimClock.usec_at(jumped_tick, 0.25) + TICK + 100_000,
+		"an actual subtick jump schedules the grenade snapshot from the jump instant")
+	for frame in 10:
+		world.step()
+	_check(not player.grenade_throw.snapshot.is_empty() and player.grenade_throw.jump_throw
+		and world.game.entities.of_class("hegrenade_projectile").is_empty(),
+		"movement captures the airborne snapshot while the first jump release is deferred")
+	var saved_eye: Vector3 = player.grenade_throw.snapshot.get("eye", Vector3.INF)
+	player.yaw_degrees = 180.0
+	player.pitch_degrees = -25.0
+	for frame in 5:
+		world.step()
+	var grenades := world.game.entities.of_class("hegrenade_projectile")
+	_check(grenades.size() == 1 and not player.inventory.has(GrenadeRules.HE), "the deferred jump release spawns once and consumes its grenade")
+	if grenades.size() == 1:
+		var grenade := grenades[0] as GrenadeEntity
+		_check(grenade.thrown_usec > release_usec + 200_000 and grenade.flight.velocity.z < -600.0,
+			"jump launch keeps the saved aim after the player turns around before release")
+		_check(saved_eye.is_finite() and saved_eye.y < player.global_position.y + player.eye_height(),
+			"jump launch uses the earlier airborne eye position")
+		grenade.remove()
+	player.queue_free()
+	world.queue_free()
+	await physics_frame
+
+
+## Inventory, draw/reload/switch, hand release, drops and the bomb's hold.
 func _test_the_hand() -> void:
 	var player := Commanded.new()
 	player.starting_gun = WeaponLibrary.ak47()
@@ -984,11 +1029,17 @@ func _test_the_hand() -> void:
 	events.clear()
 	player.held = 0
 	steps.call(DT)
+	_check(released.size() == 1 and released[0] and inventory.has(GrenadeRules.HE)
+		and _named(events, &"grenade_thrown").is_empty(),
+		"release starts the underhand clip and keeps the grenade until its simulation timer expires")
+	steps.call(0.09)
+	_check(_named(events, &"grenade_thrown").is_empty(), "the grenade has not spawned before the 0.1-second release deadline")
+	steps.call(DT)
 	var thrown := _named(events, &"grenade_thrown")
 	_check(
 		released.size() == 1 and released[0] and thrown.size() == 1 and int(thrown[0].fields["userid"]) == player.userid
 			and not inventory.has(GrenadeRules.HE) and world.game.entities.of_class("hegrenade_projectile").size() == 1,
-		"let go, the right button alone throws it underhand, from the hand: grenade_thrown, the HE in the world and out of the inventory"
+		"after the release timer, the underhand HE spawns once and leaves the inventory"
 	)
 	# Not to go off at the thrower's feet.
 	for grenade in world.game.entities.of_class("hegrenade_projectile"):

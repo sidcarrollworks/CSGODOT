@@ -218,12 +218,14 @@ func _check_grenade_time_budget() -> void:
 	if flight.touches.size() == 2:
 		var first: Vector3 = flight.touches[0]["position"]
 		var second: Vector3 = flight.touches[1]["position"]
-		var spent := first.x / 1000.0 + (first.x - 0.01 - second.x) / 450.0
-		var expected := second.x + 0.01 + 202.5 * (0.04 - spent)
+		var first_speed := (1000.0 + 0.03125) * 0.45
+		var second_speed := (first_speed + 0.03125) * 0.45
+		var spent := first.x / 1000.0 + (first.x - 0.01 - second.x) / first_speed
+		var expected := second.x + 0.01 + second_speed * (0.04 - spent)
 		_check(absf(flight.position.x - expected) < 0.01,
 			"two bounces share the original 40 ms travel budget (x=%.5f, expected %.5f)" % [flight.position.x, expected])
-	_check(absf(flight.velocity.x - 202.5) < 0.01,
-		"the time correction preserves each bounce's existing velocity response")
+	_check(absf(flight.velocity.x - 202.520390625) < 0.01,
+		"each bounce uses the recovered 0.03125 clip push and 0.45 elasticity")
 	_close(test)
 
 

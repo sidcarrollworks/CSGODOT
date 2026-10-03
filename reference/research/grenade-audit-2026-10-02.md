@@ -1,5 +1,10 @@
 # CS2 grenade and throw audit — October 2, 2026
 
+**Implementation follow-up:** [grenade port, October 2](grenade-port-2026-10-02.md)
+now supplies the dedicated contact contract and core throw/flight/activation
+rules. This page retains the audit-time implementation gaps and measurements;
+the follow-up records what was ported and what still needs local comparison.
+
 Roadmap **20a**, with supporting findings for **G1–G5**. This is the research
 phase: no grenade gameplay code has been changed. The next implementation
 should address release timing, jump snapshots, launch geometry, flight and

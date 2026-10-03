@@ -9,23 +9,25 @@ do to wire it in.
 
 **October 2 audit:** [current CS2 binary and graph findings](../research/grenade-audit-2026-10-02.md)
 now verify launch, strength, release/jump timing, box collision, substeps,
-bounces, fuses and parts of HE/flash behavior. Those corrections are not
-ported yet. The sections below describe the existing implementation;
-roadmap 20a and G1–G5 track the remaining work.
-The [collision follow-up](../research/collision-foundation-2026-10-02.md)
-fixes repeated bounces reusing the full step's time and makes a contacting
-sweep read its fractions and contact in one adapter query. The existing
-sphere's backend contact tolerances remain; the CS2 box-flight port needs
-an explicit projectile trace contract before changing the hull.
+bounces, fuses and parts of HE/flash behavior. The [implementation follow-up](../research/grenade-port-2026-10-02.md)
+ports throw strength, delayed release and jump parameters, launch/flight
+boxes, substeps, surface bounce/rest, activation and one-time enemy body
+hits. `ProjectileTrace` separates contact fraction from normal clearance
+with an opt-in Box3D query. G1 still needs recorded lineups; HE/flash
+effects, water, spin and additional entity filters remain open.
 
 ## What is built
 
-All in `src/grenades/`, checked by `tests/run_grenade_checks.gd`.
+In `src/grenades/` and `src/physics/projectile_trace.gd`, checked by
+`run_grenade_checks.gd`, `run_grenade_port_checks.gd`,
+`run_projectile_trace_checks.gd` and the hand/jump integration in `run_sim_checks.gd`.
 
 | File | What it is |
 |---|---|
 | `grenade_rules.gd` | Every number: the game's from `vdata.csv` (damage, reach, armour ratio, throw speed), the rest marked with the measurement that settles it |
-| `grenade_flight.gd` | The throw (three strengths, the thrower's velocity, the release point) and the flight: 40% gravity, a sphere of radius 2 swept each tick, bounces keeping 45%, a floor leaving it under 20 u/s puts it down |
+| `grenade_flight.gd` | Pawn-center launch with a ±2.02 box, 16 units ahead; ±2 flight box, two 1/128 s steps at 64 Hz, midpoint gravity, clip-push/restitution and floor rest |
+| `grenade_throw_state.gd` | Gradual held strength, middle snap, 0.1 s release scheduling, one jump deferral and movement-finish snapshot with a 0.2 s age limit |
+| `../physics/projectile_trace.gd` | Original collider/RID/shape, geometric flight fraction, separate 0.01-inch normal clearance and conservative blocked starts |
 | `smoke_voxels.gd` | The smoke's cloud: 16-unit cubes filled from where it stopped, round walls and through doors, over a 1 s bloom; holes from HE, tunnels from rounds; how much of a line is in smoke |
 | `fire_spread.gd` | A molotov's or incendiary's flames spreading over the ground, up to 16, 42 apart, within 150 (110) units, never through walls or into smoke |
 | `flash_blind.gd` | How a flash blinds one player (by distance and facing, not through walls) and how it wears off |
@@ -45,33 +47,36 @@ game, its `GameWorld`'s, which steps it after the players each tick.
 
 ## What each does
 
-- **HE.** Goes off 1.5 s after the throw. 99 at the centre, falling along a
+- **HE.** Deadline 1.5 s after projectile spawn, detonating when a
+  0.2 s think finds time strictly beyond it. 99 at the centre, falling along a
   bell curve to nothing at 350 (CS:GO's documented curve; G2), to anyone
   with a clear line from the blast to their middle, eyes or feet. `DMG_BLAST`,
   no zone, armour ratio 1.2 (kevlar lets 60% through). Clears the smoke
   within 128 units for 3 s.
-- **Flashbang.** Goes off 1.5 s after the throw. Blinds anyone whose eyes it
+- **Flashbang.** Uses the same spawn-based deadline and think schedule as HE. Blinds anyone whose eyes it
   can see, the thrower and teammates too: up to 4.87 s looking at it close
   up, falling off past 250 units to nothing at 2000, less side-on, a fifth
   with your back to it. Held white, then fading over the last 3 s; seen
   weakly, grey rather than white. `player_blind` for each. Smoke does not
   stop it (as in CS:GO).
-- **Smoke.** Pops at the first check (every 0.2 s from the throw) at which
-  it lies still. 1,600 cubes of 16 units, about 300 across and 130 tall in
+- **Smoke.** Checks every tick; activates at speed <= 0.1 u/s and age
+  >= 1.188 s. 1,600 cubes of 16 units, about 300 across and 130 tall in
   the open, grown over 1 s, lasting 18 s. A fire it pops in goes out whole;
   flames it grows over go out one by one, and a fire cannot spread into it.
   A round cuts a tunnel that closes in a quarter of a second (from
   `bullet_impact`: the shooter's eyes to where it landed).
 - **Molotov and incendiary.** Break on ground no steeper than 30 degrees, or
-  in the air 2 s after the throw, the fire then falling on ground up to 128
-  below. Into smoke they fizzle. The fire spreads a flame every 0.2 s
+  on a think strictly past the 2 s spawn-based air deadline, or after
+  more than 0.5 s at speed <= 5 u/s. A one-time enemy body hit extends the
+  deadline by 4 s. The airburst ray starts 10 units above and ends 128 below. Into smoke they fizzle. The fire spreads a flame every 0.2 s
   (the incendiary every 0.02 s), burns 7 s (5.5 s), and hurts anyone
   standing within 30 units of a flame: 40 a second in 0.2 s steps, ramping
   from half to all of it over the first second in it. `DMG_BURN`, armour
   neither softens it nor wears. Credited to the thrower for as long as it
   burns, except that burns on the thrower's teammates are the thrower's only
   for the first 6 s and nobody's after (`inferno_friendly_fire_duration`).
-- **Decoy.** Once still, fires its thrower's primary (else pistol) in bursts
+- **Decoy.** First thinks 2 s after spawn, then every 0.2 s until speed
+  <= 0.2 u/s activates it. Fires its thrower's primary (else pistol) in bursts
   of 1 to 5 at the gun's own rate with 0.5 to 2 s between, for 15 s
   (`decoy_firing`, at the moment in the tick each round falls), then pops
   for 5 to the other side within 64 units.
@@ -99,8 +104,8 @@ the 1.5 s fuse, the 0.2 s check for a still smoke or decoy, the HE's bell
 curve. The October 2 audit confirms the velocity scaling/share, pitch lift,
 drop, gravity, 0.45 elasticity and HE's sigma=radius/3, but supersedes the
 22-unit launch, sphere collision, player bounce multiplier and shared
-smoke/decoy rest rule. It also adds delayed release, gradual strength,
-jump snapshots and 1/128 s flight steps. HE/flash deadlines start at
+smoke/decoy rest rule. The port replaces those and adds delayed release,
+gradual strength, jump snapshots and 1/128 s flight steps. HE/flash deadlines start at
 projectile spawn; normal smoke activation needs age >= 1.188 s and speed
 <= 0.1 u/s, while decoy activation needs speed <= 0.2 u/s.
 
@@ -118,8 +123,14 @@ units, uses four facing bins and separate hold/fade/network clocks;
 
 Counted in the checks, for the performance rules:
 
-- A grenade in flight: one shape cast a tick, and one more (and a rest-info
-  query) for each surface it meets, at most four sweeps.
+- A moving grenade: normally two box sweeps per 64 Hz tick, up to four
+  sweeps per substep when rebounding. Each native sweep supplies contact
+  and fraction in one adapter query. A player-owned moving grenade also
+  queries a radius-3 enemy-body overlap once per tick until its first hit;
+  settled grenades do neither. The 0.001-inch query slop is local to this
+  cast; it does not change the player or rigid-body solver.
+- Paired timings and a ten-grenade Dust2 workload are recorded in the
+  [port validation](../research/grenade-port-2026-10-02.md).
 - A smoke while it blooms: about 37 ray traces a tick for its first second
   (2,386 for the whole cloud in the open), none after. Asking how much smoke
   a line crosses walks the line in half-cube steps inside the cloud's box
@@ -142,24 +153,18 @@ files named:
    (`round_prestart`) the grenades and fires are removed and the system's
    blinding with them (`GrenadeSystem.clear()`). In a match,
    `team_damage_scale = GrenadeRules.TEAM_DAMAGE_IN_MATCH`.
-2. **`player_sim.gd`: the throw from the hand.** *(Done: `_update_grenade`,
-   with the throw at the release and the hand busy for the throw clip's
-   length, 0.77 s overhand and 0.50 s underhand, before what is next is
-   drawn.)* With a grenade in hand
-   (`Inventory.in_hand_class()`), the attack buttons pull the pin and the
-   release throws: the strength is from the buttons held at the release
-   (`GrenadeRules.strength_for(left, right)`, from `UserCmd.ATTACK` and
-   `UserCmd.ATTACK2`). The pin can be pulled once
-   the draw (1 s) is over. At the release:
-   `system.throw(userid, class, strength, space)`, or the command
-   `throw <class> <strength>`; it takes the grenade from the inventory
-   (`take_one`), refuses with none, and sends `grenade_thrown`. Then back to
-   the last weapon. The throw clip's own
-   timing (`reference/weapons/equipment.md`: the overhand throw's sound at
-   0.07 s) describes presentation. The October 2 audit verifies a separate
-   0.1 s release timer in CS2; the throw here is still at the tick of the
-   command. Holding one caps the speed at 245
-   (`WeaponData.max_player_speed` from `ItemRegistry.weapon_data`).
+2. **`player_sim.gd`: the throw from the hand (ported 2026-10-02).**
+   Attack pulls the pin once drawn. The first hold assigns strength directly;
+   later button changes approach by 0.0203124992549 per eligible hold tick.
+   Release starts the hand clip and a separate 0.1 s simulation timer.
+   A qualifying first jump consume can defer once by another 0.1 s. Movement
+   captures eye, collision center, aim and velocity after the scheduled
+   jump stash time; launch uses that snapshot while its age is >0 and <=0.2 s.
+   Inventory removal and `grenade_thrown` occur at projectile spawn.
+   The hand stays busy for its clip (0.77 s overhand, 0.50 s underhand),
+   then draws the next item. Holding one caps speed at 245 u/s.
+   Explicit console/range/bot `throw <class> <strength>` commands still
+   request an immediate spawn; they do not simulate pulling a pin.
 3. **Your view (`player_view.gd` or the HUD):** a `FlashOverlay` with your
    userid, on top of the HUD *(done on dust2 2026-09-23)*. The flashed ringing is a sound (below).
 4. **`bot.gd`: sight.** *(Done 2026-09-24, except keeping out of fire:
@@ -181,11 +186,10 @@ files named:
    assist goes only where no enemy did the 25 damage of an assist: to the
    victim's last flasher, if an enemy of theirs and not the killer, while
    the victim is still under it.
-6. **The map importer (open):** it still omits grenade clips through
-   `hull_skip_hints`. The flight query already includes
-   `GrenadeRules.GRENADE_CLIP_LAYER` (32), but the importer must build
-   those bodies separately so they stop grenades without blocking players.
-   Precise flight/bounce comparison also remains Local work.
+6. **The map importer (done 2026-10-02):** `grenadeclip` shapes are retained
+   in a separate `GrenadeClip` body on layer 32. They stop grenade queries,
+   are excluded from camera occluders, and leave player clips on layer 8.
+   Recorded Dust2 lineup comparison remains Local work.
 7. **Sounds (done 2026-09-28, playtest issue 19):** `GrenadeSounds`
    (`src/audio/grenade_sounds.gd`) plays every grenade event through CS2's
    own sound events (`reference/sounds/`): the throw, the bounce, the

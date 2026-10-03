@@ -35,7 +35,7 @@ Updated 2026-09-30: grenade flight and lineups recorded for later (item 20a, Sid
 
 ## Current status, 2026-10-02
 
-Checked against merged `main` through PR #172. The October playtest PRs
+Checked against merged `main` through PR #181. The October playtest PRs
 are all merged; completion here means the described implementation exists,
 while measurements and remaining parity work stay listed below.
 
@@ -56,6 +56,7 @@ while measurements and remaining parity work stay listed below.
 | #171 | Avoid repeated skeleton fitting for bodies that do not need it |
 | #172 | Extracted current hit effects, contact-point mist, wounds, hit sounds and additive flinches |
 | #173 | README gameplay/setup refresh |
+| #181 | Grenade collision audit, full sweep result and repeated-bounce time budget |
 
 ## Part 1: what exists
 
@@ -215,11 +216,11 @@ for the reproduction and the small accuracy-threshold rounding tolerance.
 **Local:** crouch and turn with those guns in the range and on dust2.
 
 **Box3D is the game's physics (2026-09-28, Sid).** Sid chose to take the
-trial below forward. CI and the cloud threads take its Linux libraries rebuilt
-against glibc 2.35 from this repo's release once it is attached, and until
-then build the debug library from the pinned release's source
-(`scripts/install_box3d.sh`), since the release's need glibc 2.43 and Ubuntu
-24.04 has 2.39, and the AWP's four settling checks
+trial below forward. The October 2 grenade port builds debug and release
+libraries from pinned source plus the opt-in projectile-query patch
+(`scripts/install_box3d.sh`, `.ps1`); it requires Git, Python and a C/C++
+compiler and caches compilation under `.godot/`. This also avoids the
+upstream Linux release's glibc requirement. The AWP's four settling checks
 are known open (`_check_known_open`: reported every run, not failing it).
 Every query goes through `PhysicsQueries` (`reference/godot/physics.md`); E's
 sight test (#126), written straight on Godot's space, was ported with #125's
@@ -918,7 +919,7 @@ list, split into Local and Remote items, with the measurements.
     throw on letting go; on dust2 too since 2026-09-23, bought from the
     menu, the map cleared of them at each round's start; Local measures, G1)*
     Three throw strengths, your velocity added, bounces off the hull. The
-    grenade clip is still left out of the hull on import
+    grenade clip is retained separately on layer 32 since 2026-10-02
     (`reference/systems/grenades.md`, item 6).
 18. **HE, flashbang, decoy.** *(done on the range, the grenades PR; Local
     measures G2, G3, G5 and extracts the particles)*
@@ -931,7 +932,8 @@ list, split into Local and Remote items, with the measurements.
     bots. Bots' sight asks it once `bot.gd` does
     (`reference/systems/grenades.md`, item 4).
 20a. **Grenade flight and lineups.** *(Sid, 2026-09-30; static research done
-    2026-10-02, implementation and lineup comparisons open. Remote for the
+    2026-10-02, core throw/flight/activation port done; lineup comparisons
+    and additional entity/water/spin behavior open. Remote for the
     code and headless checks, Local for anything measured in CS2)* In play, grenades are floaty and
     inconsistent in the air, and the map may be part of it. Running and
     jumping should change how far a grenade goes. The goal is to recreate
@@ -939,31 +941,30 @@ list, split into Local and Remote items, with the measurements.
     Start from what the repo has:
     - The grenade systems from the grenades PR (#53): the flight in
       `src/grenades/grenade_flight.gd`, the throw's numbers in
-      `src/grenades/grenade_rules.gd` (CS:GO's 750 × 0.9 throw, strength
-      0.3 to 1, 1.25 of your velocity, gravity 0.4 of 800, elasticity
-      0.45, a radius-2 sphere), and `reference/systems/grenades.md`.
+      `src/grenades/grenade_rules.gd`, the hand timer/jump snapshot in
+      `grenade_throw_state.gd`, and `reference/systems/grenades.md`.
     - The current-build research:
       [October 2 Ghidra grenade audit](research/grenade-audit-2026-10-02.md)
       verifies the velocity formula, gradual strength and middle snap,
       0.1 s release scheduling, jump snapshots, center-to-eye launch box,
       default box collision and two 1/128 s flight steps per 64 Hz tick.
       It also recovers bounce/settle rules, spawn-based fuses and smoke/
-      decoy activation. The code still needs these corrections; the
-      audit supersedes the older throw guesses in
+      decoy activation. The [core port](research/grenade-port-2026-10-02.md)
+      implements these corrections, including a separate one-time enemy
+      body hit and fire fuse extension; the audit supersedes older guesses in
       `reference/research/round-bomb-grenades.md` and its `round.md` summary.
     - **Collision foundation audited and narrow fixes done 2026-10-02:**
       [the follow-up](research/collision-foundation-2026-10-02.md) traces
       the engine push/filter/result callers, tests grenade-sized boxes
       and spheres against solid and triangle floors, and fixes repeated
       bounces reusing the full step's time. Grenade contact now comes from
-      one complete sweep result. This does not close the box-flight port:
-      backend contact tolerances and blocked starts need an explicit
-      projectile trace contract first. A general physics rewrite is not
-      a prerequisite established by the audit.
-    - The map: the grenade clips are left out of the hull on import
-      (`hull_skip_hints` in `src/map/map_importer.gd`;
-      `reference/systems/grenades.md`, item 6), so grenades on dust2 do not
-      meet what CS2's meet.
+      one complete sweep result. The subsequent core port adds
+      `ProjectileTrace`, per-query tolerance, blocked starts and departure
+      from touching planes. Player and rigid-body settings remain unchanged;
+      a general physics rewrite is not a prerequisite established by the audit.
+    - **Map import done:** grenade clips are retained on layer 32 and
+      excluded from camera occluders; players retain their separate clips.
+      Synthetic layer checks and the extracted Dust2 run validate the import.
     - **Local:** G1 in `reference/cs2-systems.md` now compares the recovered
       rules against CS2 (standing, running, crouching, jumping, button
       changes and close-wall releases), and a set of dust2 lineups
@@ -1214,7 +1215,7 @@ measurements are listed beside each item rather than keeping their
 implementation tasks open.
 
 The remaining work includes gun modes/revolver/random-recoil fidelity,
-Zeus attacks, grenade effects/lineups and omitted map grenade clips,
+Zeus attacks, grenade effects/lineups and additional entity physics,
 HUD details, tactical/objective bots, networking and full menus. The
 networking work still needs authoritative tick hitbox poses, history and
 replay; it must not depend on drawn animation. Rendering and simulation

@@ -310,6 +310,14 @@ Practice uses the same map and systems with unlimited warmup and no bots
 by default. Choose the mode at startup, or use `--mode competitive` /
 `--mode practice`; see the README for launch options.
 
+Grenade flight uses its own `ProjectileTrace` for the audited CS2 box hull.
+Each native sweep returns its contact and flight fraction together; normal
+clearance is applied separately from elapsed time. The small per-query
+tolerance leaves the player and rigid-body solver settings unchanged.
+`GrenadeThrowState` holds gradual strength, delayed release and movement-finish
+jump parameters, all on simulation time. The [port record](research/grenade-port-2026-10-02.md)
+lists the recovered rules and remaining lineup comparisons.
+
 ## The round's systems
 
 The bomb (`src/bomb/`), grenades (`src/grenades/`: HE, flash, smoke with its

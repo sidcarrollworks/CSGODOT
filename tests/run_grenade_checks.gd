@@ -92,7 +92,7 @@ func _test_flight() -> void:
 	var level := _throw(GrenadeRules.HE, eye, 0.0, 0.0)
 	var direction := level.velocity.normalized()
 	_check_near(rad_to_deg(asin(direction.y)), 10.0, "a throw at the horizon goes ten degrees up")
-	_check(level.position.z < -20.0 and level.position.y < 64.0 + GrenadeRules.RELEASE_AHEAD * sin(deg_to_rad(10.0)) + 0.01,
+	_check(level.position.z < -15.0 and level.position.y < 64.0 + GrenadeRules.RELEASE_AHEAD * sin(deg_to_rad(10.0)) + 0.01,
 		"it leaves the hand ahead of the eyes (%s)" % level.position)
 	var lob := _throw(GrenadeRules.HE, eye, 0.0, 0.0, Vector3.ZERO, 0.0)
 	_check_near(lob.position.y, 52.0 + sin(deg_to_rad(10.0)) * GrenadeRules.RELEASE_AHEAD, "a lob leaves 12 units lower")
@@ -103,7 +103,7 @@ func _test_flight() -> void:
 
 	var ticks := _fly(level, 20.0)
 	_check(ticks > 0, "thrown flat, it comes to rest (%d ticks)" % ticks)
-	_check_near(level.position.y, GrenadeRules.RADIUS, "on the floor")
+	_check_near(level.position.y, GrenadeRules.RADIUS + ProjectileTrace.CLEARANCE, "on the floor with the numerical contact clearance")
 	_check(level.bounces >= 2, "after bouncing (%d)" % level.bounces)
 	_check(level.position.z < -600.0, "a long way off (%.0f units)" % -level.position.z)
 	var again := _throw(GrenadeRules.HE, eye, 0.0, 0.0)
@@ -401,9 +401,9 @@ func _test_the_range() -> void:
 	var grenades := game.entities.of_class("hegrenade_projectile")
 	_check_equal(grenades.size(), 1, "and it is in the world")
 	_check(inventory.has(GrenadeRules.HE), "and the range hands you another")
-	for i in SimClock.ticks_in(1.6):
+	for i in SimClock.ticks_in(1.8):
 		await physics_frame
-	_check_equal(_named(&"hegrenade_detonate").size(), 1, "it goes off 1.5 s later")
+	_check_equal(_named(&"hegrenade_detonate").size(), 1, "it goes off on a danger-think poll after its 1.5-second spawn deadline")
 	_check(game.entities.of_class("hegrenade_projectile").is_empty(), "and is gone")
 	_lane.clear()
 	_events.clear()
@@ -557,9 +557,12 @@ func _set_off(weapon_class: String, at: Vector3) -> void:
 	grenade.flight.velocity = Vector3.ZERO
 	grenade.flight.at_rest = weapon_class in [GrenadeRules.SMOKE, GrenadeRules.DECOY]
 	if GrenadeRules.is_fire(weapon_class):
+		# Start beside the dummy's hull, above the floor. A fire fixture may
+		# not manufacture a ground touch by embedding a box inside a player.
+		grenade.flight.position += Vector3.RIGHT * 24.0 + Vector3.UP
 		grenade.flight.at_rest = false
 		grenade.flight.velocity = Vector3.DOWN * 200.0
-	grenade.position = at
+	grenade.position = grenade.flight.position
 	# Two seconds out of the hand, all but a tick: past the fuse, and a
 	# still smoke's or decoy's check falls on the next tick.
 	grenade.thrown_usec = SimClock.now_usec() - 2_000_000 + SimClock.tick_usec()
