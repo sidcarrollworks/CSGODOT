@@ -59,11 +59,12 @@ const LAMP_SHADOW_BIAS := 1.0
 ## (MapShadows), which the live shadow map then leaves to what moves;
 ## post, the map's post-processing file (MapPostProcessing), or null for
 ## Source 2 Viewer's defaults; grade, "aces" or "cs2" (ColourGrade), or ""
-## for what the switch says (ColourGrade.mode).
+## for what the switch says (ColourGrade.mode); sky_vmat, the extracted
+## sky material text, with its authored brightness adjustments.
 ## Returns what was used, for the report.
 static func build(
 	parent: Node, sun: Dictionary, entities: Array[Dictionary], sky_path: String, bounce: Variant = null,
-	baked_shadows: bool = false, post: MapPostProcessing = null, grade: String = ""
+	baked_shadows: bool = false, post: MapPostProcessing = null, grade: String = "", sky_vmat: String = ""
 ) -> Dictionary:
 	var sun_entity := _first(entities, "light_environment")
 	var fog_entity := _first(entities, "env_cubemap_fog")
@@ -119,11 +120,9 @@ static func build(
 	var sky := Sky.new()
 	var sky_colour := _colour(sun_entity.get("skycolor", ""), Color(0.83, 0.89, 0.97))
 	var panorama := load(sky_path) as Texture2D if not sky_path.is_empty() and ResourceLoader.exists(sky_path) else null
+	var sky_values := MapSky.settings(MapSky.entity(entities), sky_vmat)
 	if panorama != null:
-		var material := PanoramaSkyMaterial.new()
-		material.panorama = panorama
-		material.energy_multiplier = float(sun_entity.get("skyintensity", "1.0"))
-		sky.sky_material = material
+		sky.sky_material = MapSky.material(panorama, sky_values)
 	else:
 		var material := ProceduralSkyMaterial.new()
 		material.sky_top_color = sky_colour.darkened(0.3)
@@ -218,6 +217,7 @@ static func build(
 		"lamps_left_out": lamps["left_out"],
 		"ambient": "the lightmap's average" if bounce is Color else "the sky",
 		"sky": "the map's panorama" if panorama != null else "a procedural stand-in",
+		"sky_settings": sky_values,
 		"fog": environment.fog_enabled,
 		"exposure": environment.tonemap_exposure if mode != "cs2" else float(environment.get_meta(&"grade_exposure")),
 		"grade": mode,

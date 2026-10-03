@@ -37,6 +37,12 @@ Source 2 Viewer 20.0 from decompiling the current sky material. The saved
 material text is original DATA, which `MapLoader.sky_file` can read as well
 as the older decompiled VMAT text.
 
+`MapSky` also reads the sky material's brightness and render-only exposure
+biases from either format, with the active `env_sky`'s brightness and tint.
+Dust2's +0.765-stop adjustment now reaches the renderer; Mirage's zero bias
+stays neutral. The [sky audit](research/sky-brightness-2026-10-03.md) records
+the extracted values and current-client Ghidra confirmation.
+
 For local lineup testing, run `--map de_mirage --mode practice` with the
 existing game or grenade watcher. Practice enables the actual grenade
 trails and bounce markers. This import supplies another map for comparison;

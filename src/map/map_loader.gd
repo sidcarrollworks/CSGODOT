@@ -79,13 +79,19 @@ func _ready() -> void:
 		self, importer.stats.get("sun", {}), entities, sky,
 		importer.stats.get("lightmaps", {}).get("ambient"),
 		importer.stats.get("lightmaps", {}).get("shadows", false),
-		MapPostProcessing.load_file(MapLighting.post_processing_file(entities, paths.map_dir))
+		MapPostProcessing.load_file(MapLighting.post_processing_file(entities, paths.map_dir)), "",
+		FileAccess.get_file_as_string(sky_material_file(entities, paths.map_dir)) if not sky.is_empty() else ""
 	)
 	print("--- lighting: sun energy %.2f, shadows %s, exposure %.2f, sky from %s, fog %s, ambient from %s, %d lamps lit live" % [
 		lighting["sun_energy"], lighting["shadows"], lighting["exposure"], lighting["sky"], "on" if lighting["fog"] else "off",
 		lighting["ambient"], lighting["lamps"],
 	])
 	print("--- grade: %s; post-processing: %s" % [lighting["grade"], lighting["post_processing"]])
+	if not sky.is_empty():
+		var values: Dictionary = lighting.sky_settings
+		print("--- sky: exposure %.3f + render-only %.3f stops, brightness %.3f, energy %.3f, linear tint %s" % [
+			values.exposure_bias, values.render_only_bias, values.brightness_scale, values.energy, values.tint,
+		])
 	_build_skybox()
 	_read_contents(entities_path)
 
@@ -139,23 +145,26 @@ func _missing(line: String) -> void:
 ## sky_de_dust2.vmat is drawn from sky_de_dust2.exr). Both are under the
 ## map's directory, by the path they have in the game.
 static func sky_file(map_entities: Array[Dictionary], map_dir: String) -> String:
-	var material := ""
-	for entity in map_entities:
-		if entity.get("classname", "") == "env_sky" and entity.has("skyname"):
-			material = resource_path(entity["skyname"])
-			break
+	var material := sky_material_file(map_entities, map_dir)
 	if material.is_empty():
 		return ""
 	var stems := PackedStringArray()
-	for texture in sky_textures(FileAccess.get_file_as_string(map_dir.path_join(material))):
-		stems.append(texture.get_basename())
+	for texture in sky_textures(FileAccess.get_file_as_string(material)):
+		stems.append(map_dir.path_join(texture.get_basename()))
 	stems.append(material.get_basename())
 	for stem in stems:
 		for extension: String in ["exr", "hdr", "png"]:
-			var path := map_dir.path_join("%s.%s" % [stem, extension])
+			var path := "%s.%s" % [stem, extension]
 			if FileAccess.file_exists(path):
 				return path
 	return ""
+
+
+## The same active env_sky supplies both the panorama and its brightness.
+static func sky_material_file(map_entities: Array[Dictionary], map_dir: String) -> String:
+	var entity := MapSky.entity(map_entities)
+	var material := resource_path(String(entity.get("skyname", "")))
+	return "" if material.is_empty() else map_dir.path_join(material)
 
 
 ## A resource reference as the entity lump writes one

@@ -38,6 +38,7 @@ func _run() -> void:
 	_test_the_map_from_the_command_line()
 	_test_the_mode_from_the_command_line()
 	_test_the_sky_from_the_maps_own_material()
+	_test_sky_brightness()
 	_test_site_floors_from_callouts_or_volumes()
 	# The tree takes nodes in from its first frame on.
 	await physics_frame
@@ -180,8 +181,42 @@ func _test_the_sky_from_the_maps_own_material() -> void:
 	_write(SKY_DIR.path_join("materials/skybox/sky_de_mirage_exr_71e5f2a1.exr"), "stand-in")
 	_check_equal(MapLoader.sky_file(entities, SKY_DIR), SKY_DIR.path_join("materials/skybox/sky_de_mirage_exr_71e5f2a1.exr"),
 		"raw material DATA finds the directly exported hashed sky texture without shader decompilation")
+	var enabled_sky: Dictionary = entities[0].duplicate()
+	entities[0]["startdisabled"] = "true"
+	_check_equal(MapLoader.sky_file(entities, SKY_DIR), "", "a disabled sky does not select a panorama")
+	entities.append(enabled_sky)
+	_check_equal(MapLoader.sky_file(entities, SKY_DIR), SKY_DIR.path_join("materials/skybox/sky_de_mirage_exr_71e5f2a1.exr"),
+		"texture selection skips a disabled sky and finds the active one")
 	for file in ["sky_de_mirage.exr", "sky_de_mirage.vmat", "sky_mirage_hdr.exr", "sky_de_mirage_exr_71e5f2a1.exr"]:
 		DirAccess.remove_absolute(SKY_DIR.path_join("materials/skybox").path_join(file))
+
+
+func _test_sky_brightness() -> void:
+	var dust2 := MapSky.settings({}, '"g_flBrightnessExposureBias" "0.765"\n"g_flRenderOnlyExposureBias" "0"')
+	_check(absf(dust2.energy - 1.6993708) < 0.00001,
+		"Dust2's authored 0.765-stop exposure brightens the sky in linear light")
+	var data := 'm_floatParams = [{m_name = "g_flBrightnessExposureBias"\n m_flValue = 7.65e-1},'
+	data += '{m_name = "g_flRenderOnlyExposureBias"\n m_flValue = -.25}]'
+	var raw := MapSky.settings({"brightnessscale": "2", "tint_color": "[128, 255, 64]"}, data)
+	_check(absf(raw.energy - 2.0 * pow(2.0, 0.515)) < 0.00001
+		and absf(raw.lighting_energy - dust2.energy * 2.0) < 0.00001,
+		"compiled DATA combines entity brightness with signed material stops; render-only bias leaves sky lighting alone")
+	_check((raw.tint as Color).is_equal_approx(Color(128.0 / 255.0, 1.0, 64.0 / 255.0).srgb_to_linear()),
+		"the entity's byte tint is converted from sRGB to linear before multiplying the HDR sky")
+	var mirage := MapSky.settings({}, 'm_name = "g_flBrightnessExposureBias"\nm_flValue = 0.0')
+	_check_equal(mirage.energy, 1.0, "Mirage's zero-bias sky keeps its own authored brightness")
+	_check_equal(MapSky.settings({"brightnessscale": "0"}, "").energy, 1.0,
+		"a non-positive entity brightness follows C_EnvSky's neutral fallback")
+	_check_equal(MapSky.settings({}, "").tint, Color.WHITE, "missing sky settings are neutral")
+	var image := Image.create(1, 1, false, Image.FORMAT_RGBF)
+	image.fill(Color.WHITE)
+	var texture := ImageTexture.create_from_image(image)
+	var material := MapSky.material(texture, raw)
+	_check(material.shader.get_mode() == Shader.MODE_SKY
+		and material.get_shader_parameter(&"panorama") == texture
+		and is_equal_approx(material.get_shader_parameter(&"energy"), raw.energy)
+		and is_equal_approx(material.get_shader_parameter(&"lighting_energy"), raw.lighting_energy),
+		"the panorama shader receives the authored render and lighting gains")
 
 
 func _write(path: String, text: String) -> void:
