@@ -334,6 +334,22 @@ asks for; Godot's renderer on a thread of its own measured
 drawn, not shipped on (Godot marks it experimental).
 Measurements and the list:
 [box3d-walking-hitch-2026-09-28.md](research/box3d-walking-hitch-2026-09-28.md).
+**Where the slow frames come from (2026-10-02, Sid's "audit what is
+necessary for performance and consistency").** Sid's play at 1080p, split
+by what happened in each second: quiet play holds about 4.6 ms a frame,
+ticks or not, and the slow frames come with events. A second with shots
+averages 6.06 ms, one with a death 6.75, and seconds with spawns or buys
+hold ticks of 5.2 to 5.5 ms. Scripts are the largest excess in 55% of slow
+frames, and the tick in 37%; these percentages count frames, rather than
+shares of the summed excess time. The list, ranked, is in
+[frame-consistency-audit-2026-10-02.md](research/frame-consistency-audit-2026-10-02.md).
+It runs: the hit particles culled and then made native; decal fades and
+the MultiMeshes' bounds; respawns and new items posed off the tick; a
+trace's hitbox sets; then the frames everywhere. The priorities follow
+the measured event-related costs; frames without a tick can also exceed
+6 ms. `scripts/profile_worst_ticks.gd` now makes the
+bodies players die into before each tick, as the game does on frames; it
+had built each death's ragdoll on the tick, 2.0 ms where the game pays 0.6.
 
 **Box3D physics trial (2026-09-26, Sid).** The branch
 `codex/box3d-dropped-guns` started with dropped-gun jitter and now follows

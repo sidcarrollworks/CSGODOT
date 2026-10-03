@@ -11,6 +11,12 @@ record the current blood/impact renderer at 1080p and 4K: sustained close-up
 hits add measurable CPU particle-evaluation cost, with the remaining stress
 limit and the repeatable `scripts/profile_hits.gd` fixture documented there.
 
+[Where the slow frames come from](research/frame-consistency-audit-2026-10-02.md)
+(2026-10-02): Sid's play split by what happened in each second. Quiet
+play is steady at about 4.6 ms a frame; the slow frames come with shots,
+deaths, spawns and buys. The page ranks what to cut, from the code read
+against those measurements.
+
 For the tick as it is on Box3D, see [the walking hitch, and the tick after
 it](research/box3d-walking-hitch-2026-09-28.md) (2026-09-28: ten players
 3.09 ms, what each part of it costs, and what is left of the 6 ms), which
