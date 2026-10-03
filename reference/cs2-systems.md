@@ -408,6 +408,11 @@ Godot screenshot aim; Sid's subsequent CS2 console aim lands on the door
 without changing flight physics. The local preset retains its verified
 ground height until CS2's exact pawn origin is supplied. Recorded trajectory
 comparison and general jump feel still need validation before merge.
+Sid still needs to aim higher at matching landmarks. The
+[camera-height audit](research/camera-height-2026-10-03.md) verifies the
+64/46 base eye heights and a missing terrain-dependent eye adjustment,
+which CS2 also uses for grenade snapshots. Matching reference eye height
+and implementing that adjustment remain open.
 
 **HE (WV):** 99 damage at the centre, 350 units radius, falling off smoothly
 with Gaussian falloff sigma=radius/3 (binary verified; target points and

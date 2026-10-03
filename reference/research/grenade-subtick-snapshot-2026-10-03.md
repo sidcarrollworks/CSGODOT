@@ -10,6 +10,11 @@ The branch now runs these movement changes. The subsequent
 unchanged physics: the earlier Godot screenshot aim was about 0.8 degrees
 lower. Surface and landing checks remain strict. Exact CS2 pawn height,
 recorded trajectory comparison and general jump validation remain open.
+Sid subsequently confirmed that aiming at matching landmarks still requires
+an upward correction. The [camera-height follow-up](camera-height-2026-10-03.md)
+verifies matching 64/46 base values and a missing ground-topology eye
+adjustment that also reaches CS2's jump snapshots. Its value at the reference
+spot and its contribution to the discrepancy still require measurement.
 
 ## Binary identity and method
 

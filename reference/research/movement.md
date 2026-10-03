@@ -13,7 +13,10 @@ recovers the ordinary jump's fixed gravity adjustment and interval integration
 from the installed binary. That movement is now applied for Sid's playtest,
 with `MovementConfig.cs2_jump` on by default. The older Source jump-height
 comparison below is historical; measured CS2 height and full movement parity
-remain open.
+remain open. The [camera-height follow-up](camera-height-2026-10-03.md)
+verifies 64/46 base eye heights and recovers the terrain/root offset path
+used before grenade snapshot capture. That adjustment and the April 2026
+duck root/view rules remain unported.
 
 `reference/research/combat.md` already covers the user command's fields,
 netcode and the guns; this page builds on its section 4.
