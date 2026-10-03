@@ -1,12 +1,15 @@
 extends "res://tests/check_suite.gd"
 
-## Sid's October 2 T-spawn Xbox screenshot, rounded HUD coordinates/angles.
+## Sid's October 2 T-spawn Xbox and mid-door screenshots, rounded HUD values.
 ## This is a local landing regression, not a recorded CS2 trajectory match.
 ## Loads collision only and uses the real movement, hand and flight paths.
 ## godot --headless --path . --script tests/run_grenade_lineup_checks.gd
 const FEET := Vector3(-1163.7, 77.8, -299.7)
 const YAW := 270.2
 const PITCH := 11.8
+const MID_DOOR_FEET := Vector3(-660.3, 89.8, -344.0)
+const MID_DOOR_YAW := 272.6
+const MID_DOOR_PITCH := 14.2
 var _host: Node3D
 var _world: GameWorld
 
@@ -78,9 +81,16 @@ func _run() -> void:
 						_check(landed.distance_to(reference) < 0.1, "eligible release times use the same Xbox jump trajectory")
 					else:
 						reference = landed
-		# Sid's second screenshot crossed the conditional sky plane above mid.
-		# Its CS2 landing target has not been captured; test the bad bounce only.
-		await _throw(0.25, 0, Vector3(-660.3, 89.8, -343.9), 272.6, 14.1, false)
+		# The CS2 inset puts this smoke on the open door leaf below the lintel.
+		# A quarter-tick jump reproduces that landing; this does not establish
+		# CS2 parity across other subtick jump phases (see the research report).
+		reference = Vector3.INF
+		for offset in [0, 2, 8]:
+			var landed := await _throw(0.25, offset, MID_DOOR_FEET, MID_DOOR_YAW, MID_DOOR_PITCH, false)
+			if reference.is_finite():
+				_check(landed.distance_to(reference) < 0.1, "eligible release times use the same mid-door jump trajectory")
+			else:
+				reference = landed
 	else:
 		_check(false, "patched Box3D initializes on extracted Dust2 collision")
 	_world.game.entities.clear()
@@ -130,6 +140,7 @@ func _throw(fraction: float, release_offset: int, feet := FEET, yaw := YAW, pitc
 	var touched_sky := false
 	var furthest_x := -INF
 	var rest := Vector3.INF
+	var target_surface := "physics_group_wood2" if xbox else "physics_group_wood_dense"
 	for i in 500:
 		_world.step()
 		if grenade == null:
@@ -141,7 +152,7 @@ func _throw(fraction: float, release_offset: int, feet := FEET, yaw := YAW, pitc
 		furthest_x = maxf(furthest_x, grenade.position.x)
 		for touch in grenade.flight.touches:
 			touched_sky = touched_sky or touch.surface == "physics_sky"
-			if touch.surface == "physics_group_wood2" and touch.normal.y > 0.9:
+			if touch.surface == target_surface and touch.normal.y > 0.9:
 				top_contact = true
 		if grenade.flight.at_rest:
 			rest = grenade.position
@@ -154,6 +165,9 @@ func _throw(fraction: float, release_offset: int, feet := FEET, yaw := YAW, pitc
 			else:
 				_check(furthest_x > 1304.0,
 					"the second lineup travels beyond the sky plane instead of rebounding backward")
+				_check(top_contact, "jump smoke reaches the mid door's upward-facing wooden surface")
+				_check(rest.x > 1580.0 and rest.x < 1605.0 and absf(rest.y - 50.5) < 2.0 and absf(rest.z + 457.0) < 10.0,
+					"jump smoke rests on the open mid door below the lintel: %s" % rest)
 			print("LINEUP ", JSON.stringify({"jump_fraction": fraction, "release_offset_ticks": release_offset,
 				"snapshot_velocity": str(player.grenade_throw.snapshot.get("velocity")),
 				"rest": str(rest), "flight_seconds": grenade.age(_world.game.now_usec())}))

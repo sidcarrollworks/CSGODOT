@@ -989,6 +989,9 @@ list, split into Local and Remote items, with the measurements.
       fixes the interval sign recovered from the instructions. The screenshot's
       T-spawn fixture now bounces onto Xbox across nine jump/release combinations;
       exact recorded CS2 trajectories and input-window comparisons remain open.
+      The [mid-door reference](research/grenade-sky-clipping-2026-10-02.md#mid-door-landing-reference)
+      also reaches the open door top at a quarter-tick jump, but other jump
+      phases can fall off it. Subtick snapshot consistency remains open.
     - **Local:** G1 in `reference/cs2-systems.md` now compares the recovered
       rules against CS2 (standing, running, crouching, jumping, button
       changes and close-wall releases), and a set of dust2 lineups

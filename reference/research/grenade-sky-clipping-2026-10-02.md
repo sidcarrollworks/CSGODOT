@@ -3,8 +3,11 @@
 Follow-up to the [jump timer correction](grenade-jump-lineup-2026-10-02.md),
 in PR #184. Sid's second screenshot shows Godot feet
 `(-660.3, 89.8, -343.9)`, yaw `272.6`, pitch `14.1`. A stationary left-click
-jump throw reproduced the reported backward bounce above mid. The exact
-throw input and intended CS2 landing still need a side-by-side capture.
+jump throw reproduced the reported backward bounce above mid. Sid then
+supplied a CS2 landing inset and an updated Godot screenshot: feet
+`(-660.3, 89.8, -344.0)`, yaw `272.6`, pitch `14.2`. The intended landing
+is the top of the open wooden door leaf entering mid, below its lintel.
+Exact CS2 throw input and trajectory coordinates have not been recorded.
 
 ## Extraction check
 
@@ -67,13 +70,38 @@ or additional trace is needed. Gravity, throw speed and bounce remain unchanged.
 
 For the second screenshot's jump fixture, the old first contact was
 `physics_sky` at `(1173.999, 389.7683, -427.1916)`, normal `(-1, 0, 0)`.
-After correction, it passes that plane. Its first contact is a real wooden
-roof at `(1590.942, 51.43002, -446.1241)`. This does not establish the intended
-CS2 landing, which the screenshot does not show.
+After correction, it passes that plane. Its first contact is the wooden
+door assembly at `(1590.942, 51.43002, -446.1241)`. The initial material-only
+description called this a roof; inspecting the visible `dust_door_arch_01`
+geometry and rendering the rest point identifies the open door leaf.
+
+## Mid-door landing reference
+
+With the updated HUD values and a stationary full-strength left-click jump
+at tick fraction `0.25`, the smoke first touches `physics_group_wood_dense`
+at `(1593.160, 51.33661, -446.3311)`. It rebounds against the nearby wooden
+frame and settles at `(1591.739, 50.5113, -457.0676)` after `4.40625` seconds.
+Rendering that point on the extracted visible geometry puts it on the same
+open door leaf pictured in Sid's CS2 inset. Release offsets of 0, 2 and 8
+ticks all produce that rest point. This adds a second landing regression
+without changing throw speed, gravity or bounce.
+
+The reference also exposes a remaining timing limit. The same rounded aim
+with jump fractions `0` and `0.75` contacts the door but eventually falls
+to the ground: respectively `(1635.546, -124.0718, -432.1899)` and
+`(2156.528, -125.4671, -423.5171)`. Their stashed upward pawn velocities
+are `220.743` and `225.4305` u/s versus `222.3055` for the quarter-tick case.
+Each fraction repeats across all three release offsets. The present port
+captures at a whole movement finish; this narrow door landing is sensitive
+to the resulting jump-phase variation. The passing quarter-tick regression
+does not prove repeatable CS2 jump-throw parity. Recovering the remaining
+subtick movement/snapshot scheduling or recording exact CS2 launch states
+is still required; these screenshots do not justify fitting global bounce.
 
 The asset-dependent lineup suite now checks the actual mid sky plane,
-actual grenade-only clipping, all nine original Xbox cases, and the second
-throw crossing the formerly blocking plane. The original Xbox rest points
-are unchanged. The synthetic native gameplay suite checks sky pass-through,
+actual grenade-only clipping, all nine original Xbox cases, and three
+quarter-tick mid-door releases passing the formerly blocking plane and
+settling on the open door. The original Xbox rest points are unchanged.
+The synthetic native gameplay suite checks sky pass-through,
 collision with a real wall behind it, and explicit sky queries. The map
 export fixture checks that sky and grenade clipping import to separate layers.

@@ -169,6 +169,9 @@ files named:
    request an immediate spawn; they do not simulate pulling a pin.
    The [Xbox lineup regression](../research/grenade-jump-lineup-2026-10-02.md)
    catches a late snapshot that previously left the smoke below the box.
+   The [mid-door regression](../research/grenade-sky-clipping-2026-10-02.md#mid-door-landing-reference)
+   reaches the open door top for its quarter-tick jump; other jump phases
+   can still fall off, so exact CS2 subtick consistency remains open.
 3. **Your view (`player_view.gd` or the HUD):** a `FlashOverlay` with your
    userid, on top of the HUD *(done on dust2 2026-09-23)*. The flashed ringing is a sound (below).
 4. **`bot.gd`: sight.** *(Done 2026-09-24, except keeping out of fire:
