@@ -104,8 +104,13 @@ and identifies the ordinary jump's fixed gravity adjustment. Its tested
 candidate makes throws consistent across jump phases, but this rounded
 mid-door setup lands on the floor. Sid requested applying it for playtest,
 so that candidate now runs on the branch. The passing quarter-tick landing
-above describes the previous runtime; the landing checks still report the miss.
-Exact CS2 throw inputs and launch/contact measurements are the next step.
+above describes the previous runtime. The later
+[CS2 console setup](grenade-subtick-snapshot-2026-10-03.md#cs2-console-setup)
+reveals the screenshot-derived Godot aim was about 0.8 degrees lower.
+The supplied CS2 aim reaches the door with the audited movement and unchanged
+flight physics; 130 strict lineup checks now pass. The fixture retains the
+verified local floor height pending CS2's exact pawn origin. Recorded CS2
+launch/contact measurements and general jump validation remain open.
 
 The asset-dependent lineup suite now checks the actual mid sky plane,
 actual grenade-only clipping, all nine original Xbox cases, and three

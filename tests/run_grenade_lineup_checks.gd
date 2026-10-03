@@ -1,15 +1,17 @@
 extends "res://tests/check_suite.gd"
 
-## Sid's October 2 T-spawn Xbox and mid-door screenshots, rounded HUD values.
+## Sid's T-spawn Xbox screenshot and October 3 CS2 mid-door console values.
 ## This is a local landing regression, not a recorded CS2 trajectory match.
 ## Loads collision only and uses the real movement, hand and flight paths.
 ## godot --headless --path . --script tests/run_grenade_lineup_checks.gd
 const FEET := Vector3(-1163.7, 77.8, -299.7)
 const YAW := 270.2
 const PITCH := 11.8
-const MID_DOOR_FEET := Vector3(-660.3, 89.8, -344.0)
-const MID_DOOR_YAW := 272.6
-const MID_DOOR_PITCH := 14.2
+## CS2 getpos supplied horizontal position and aim; use the known local
+## grounded height until getpos_exact supplies the pawn origin.
+const MID_DOOR_FEET := Vector3(-660.031250, 89.8, -344.002014)
+const MID_DOOR_YAW := 272.595718
+const MID_DOOR_PITCH := 15.030418
 var _host: Node3D
 var _world: GameWorld
 
@@ -82,15 +84,16 @@ func _run() -> void:
 					else:
 						reference = landed
 		# The CS2 inset puts this smoke on the open door leaf below the lintel.
-		# The current movement misses that landing. Keep the checks strict
-		# while comparing the launch and first contact with the reference.
+		# Use the supplied CS2 aim rather than the earlier Godot HUD aim.
+		# Surface and rest-region checks remain strict.
 		reference = Vector3.INF
-		for offset in [0, 2, 8]:
-			var landed := await _throw(0.25, offset, MID_DOOR_FEET, MID_DOOR_YAW, MID_DOOR_PITCH, false)
-			if reference.is_finite():
-				_check(landed.distance_to(reference) < 0.1, "eligible release times use the same mid-door jump trajectory")
-			else:
-				reference = landed
+		for fraction in [0.0, 0.25, 0.75]:
+			for offset in [0, 2, 8]:
+				var landed := await _throw(fraction, offset, MID_DOOR_FEET, MID_DOOR_YAW, MID_DOOR_PITCH, false)
+				if reference.is_finite():
+					_check(landed.distance_to(reference) < 0.1, "jump phases and eligible releases use the same mid-door trajectory")
+				else:
+					reference = landed
 	else:
 		_check(false, "patched Box3D initializes on extracted Dust2 collision")
 	_world.game.entities.clear()

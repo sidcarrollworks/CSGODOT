@@ -995,8 +995,11 @@ list, split into Local and Remote items, with the measurements.
       The [October 3 Ghidra audit](research/grenade-subtick-snapshot-2026-10-03.md)
       recovered the exact movement boundary and ordinary jump gravity adjustment.
       Both are now implemented for Sid's playtest. Snapshot state is consistent
-      across jump phases, but the updated movement misses the mid-door landing;
-      exact CS2 launch/input recordings and general jump validation remain open.
+      across jump phases. Sid's subsequent CS2 console aim resolves the local
+      mid-door miss with unchanged physics; the screenshot-derived aim was
+      about 0.8 degrees lower. The preset retains its verified local floor
+      height pending CS2's exact pawn origin. Recorded trajectory comparison
+      and general jump validation remain open.
     - **Local:** G1 in `reference/cs2-systems.md` now compares the recovered
       rules against CS2 (standing, running, crouching, jumping, button
       changes and close-wall releases), and a set of dust2 lineups

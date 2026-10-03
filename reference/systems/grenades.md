@@ -170,13 +170,15 @@ files named:
    The [Xbox lineup regression](../research/grenade-jump-lineup-2026-10-02.md)
    catches a late snapshot that previously left the smoke below the box.
    The [mid-door regression](../research/grenade-sky-clipping-2026-10-02.md#mid-door-landing-reference)
-   previously reached the open door top for a quarter-tick jump; the new
-   movement misses that landing, so exact CS2 lineup parity remains open.
+   originally used Godot screenshot aim. Sid's CS2 console aim reaches the
+   door top with the current movement and unchanged flight physics; the
+   preset retains its known local floor height pending the exact CS2 pawn
+   origin. Exact recorded trajectory parity remains open.
    The [subtick audit](../research/grenade-subtick-snapshot-2026-10-03.md)
    verifies that CS2 uses segment time and explicitly splits movement at the
    snapshot deadline. The port now implements it, together with the ordinary
    jump's gravity correction, at Sid's request for local playtest. General
-   jump feel and the mid-door landing remain to be assessed before merge.
+   jump feel and the corrected mid-door setup remain to be assessed in play.
 3. **Your view (`player_view.gd` or the HUD):** a `FlashOverlay` with your
    userid, on top of the HUD *(done on dust2 2026-09-23)*. The flashed ringing is a sound (below).
    Practice and the test range also enable `GrenadeTrail`: a green overlay

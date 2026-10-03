@@ -5,8 +5,11 @@ of the remaining jump-throw inconsistency. This report corrects the clock
 interpretation in the [initial lineup follow-up](grenade-jump-lineup-2026-10-02.md).
 The implementation was initially saved separately because it missed the
 mid-door reference. Sid subsequently requested applying it for playtesting.
-The branch now runs these movement changes; the landing discrepancy remains
-open and its checks remain strict.
+The branch now runs these movement changes. The subsequent
+[CS2 console setup](#cs2-console-setup) resolves the local door miss with
+unchanged physics: the earlier Godot screenshot aim was about 0.8 degrees
+lower. Surface and landing checks remain strict. Exact CS2 pawn height,
+recorded trajectory comparison and general jump validation remain open.
 
 ## Binary identity and method
 
@@ -147,7 +150,8 @@ Focused verification of the applied playtest version passed **243 simulation**,
 all keep the expected 100-ms eye height and vertical velocity. Its 6,690 steps,
 the native course's 49,567 steps and the movement course's 1,358 steps agree
 between script and native movement. The landing suite still reports the same
-six mid-door failures out of 82 checks; they are not suppressed. The full
+six mid-door failures out of 82 checks before the CS2 console aim was supplied;
+they were not suppressed. The full
 suite was stopped to prioritize getting the playtest running and is not claimed
 as passing for this implementation.
 
@@ -185,9 +189,10 @@ practice run with:
 godot --path . --script scripts/watch_grenades.gd -- --mode practice --map de_dust2 --movement native --window=1920x1080 --grenades=.godot/grenade-throws.jsonl
 ```
 
-Add `--lineup=mid-door` to start at the screenshot's rounded position and
-view angles with a smoke selected. This optional setup only places the player
-once; you supply the throw input.
+Add `--lineup=mid-door` to start at the current local lineup setup with a smoke
+selected. It now uses the CS2 console horizontal coordinates and aim described
+below, retaining the verified local floor height. This optional setup only
+places the player once; you supply the throw input.
 
 Records flush during play, allowing the launch and first collision to be
 read without closing the game. Diagnostic disk writes are additional work;
@@ -195,14 +200,59 @@ use the ordinary watcher for performance comparisons. Throws made directly
 through `throw_from` with synthetic parameters should use userid -1: player
 metadata reflects the normal command path's selected parameters.
 
-Record the exact CS2 position, view angles and throw input sequence for the
-mid-door lineup, then compare launch position/velocity and first contact
-before its final landing. Confirm whether it is stationary, moving or
-crouched and whether it uses a jump. Those measurements can distinguish
-rounded setup inputs, jump-state differences and collision/flight errors.
-The recovered clock/boundary behavior is established. The applied implementation
-is ready for local playtesting; merging it still requires assessing the
-demonstrated landing regression and general jump feel.
+Record the CS2 pawn origin and launch/contact time series for the supplied
+console setup, then compare them with the local stationary jump throw.
+Those measurements can distinguish camera height, jump-state differences
+and collision/flight errors. The recovered clock/boundary behavior is
+established; the corrected local lineup is ready for playtesting. General
+jump feel and exact recorded trajectory parity still require assessment.
+
+## CS2 console setup
+
+After the trail made the first door-side contact visible, Sid supplied this
+CS2 command output:
+
+```text
+setpos -344.002014 -660.031250 150.361557;setang -15.030418 92.595718 0.000000
+```
+
+`SourceEntities.to_game` maps Source X/Y/Z to Godot Z/X/Y, yaw adds 180
+degrees, and upward pitch changes sign. The known horizontal point is
+therefore Godot X/Z `(-660.031250, -344.002014)`, yaw **272.595718**,
+pitch **15.030418**. The previous local preset used pitch 14.2; the latest
+recorded user throw used 14.244. These are different launch inputs.
+
+Plain `getpos` reports a cached camera position; `getpos_exact` reports the
+pawn origin. The local preset and fixture retain their verified grounded
+height **89.8** while awaiting the latter. The supplied camera Z is not
+silently treated as the pawn's feet or converted by assuming an eye offset.
+
+At the supplied horizontal point and the local grounded height:
+
+| Local jump replay | First contact | Rest |
+|---|---|---|
+| Godot screenshot pitch 14.2 | Door side `(1585.447, 41.77911, -445.8009)` | Floor `(1481.398, -124.6448, -423.4414)` |
+| CS2 console pitch 15.030418 | Door top `(1592.765, 51.36539, -446.124)` | Door top `(1592.502, 50.5321, -456.8343)` |
+
+The corrected local throw settles after **4.421875 seconds**. No changes
+to jump movement, grenade speed, inherited velocity, gravity, bounce or
+collision masks were needed. Updating the fixture to the supplied aim
+initially passes all 82 checks; expanding the door to jump fractions
+0, 0.25 and 0.75 crossed with release offsets 0, 2 and 8 ticks passes
+**130 checks**, with **7,383 script/native movement steps** agreeing bit
+for bit. The nine Xbox cases and sky/grenade-clip queries remain covered.
+This explains the local miss under the earlier aim; it is not a measured
+CS2 launch/contact trajectory match.
+
+For the height distinction, the imported client's `180c0ccf0` reads cached
+camera values for `getpos` and calls the pawn-origin getter for the exact
+variant. The current client's corresponding body is at `180c0cc00`: its
+351-byte instruction layout matches apart from ten RIP-relative/call
+addresses, whose operands were checked against current command strings.
+The client module SHA-256 is
+`d7db25d48f1d10c5e0b0296e20ed803426eb9509da41760daeda39dd35ba89b9`.
+This relocated body is not described as byte-identical. Local exports
+and instruction listings remain ignored.
 
 For subsequent builds, recheck binary identity before reusing any address.
 The selected functions can be exported with the repository's

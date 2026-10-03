@@ -403,8 +403,11 @@ local CS2 comparison.
 The [October 3 subtick audit](research/grenade-subtick-snapshot-2026-10-03.md)
 verifies an explicit movement boundary at takeoff +0.1 s. The port now uses
 that boundary and the recovered ordinary jump adjustment, at Sid's request
-for playtest. It removes phase variation but misses the mid-door reference;
-that landing and general jump feel still need validation before merge.
+for playtest. It removes phase variation. The earlier mid-door miss used
+Godot screenshot aim; Sid's subsequent CS2 console aim lands on the door
+without changing flight physics. The local preset retains its verified
+ground height until CS2's exact pawn origin is supplied. Recorded trajectory
+comparison and general jump feel still need validation before merge.
 
 **HE (WV):** 99 damage at the centre, 350 units radius, falling off smoothly
 with Gaussian falloff sigma=radius/3 (binary verified; target points and

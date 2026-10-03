@@ -4,7 +4,12 @@ extends "res://scripts/watch_game.gd"
 ## godot --path . --script scripts/watch_grenades.gd -- --mode practice --map de_dust2 --window=1920x1080 --grenades=.godot/grenade-throws.jsonl
 ## Each record is flushed to disk during play. Only launches and contacts
 ## are recorded; flight, collision masks and movement are unchanged.
-## --lineup=mid-door places you at the screenshot's rounded setup with a smoke.
+## --lineup=mid-door uses Sid's October 3 CS2 horizontal position and aim.
+## Keep the verified local floor height; plain getpos gives camera position.
+const MID_DOOR_FEET := Vector3(-660.031250, 89.8, -344.002014)
+const MID_DOOR_YAW := 272.595718
+const MID_DOOR_PITCH := 15.030418
+
 var _grenade_log: FileAccess
 var _grenade_world: GameWorld
 var _contact_ticks := {}
@@ -42,15 +47,15 @@ func _find_world(now: int) -> void:
 	if _prepare_mid_door:
 		for player in _world.players:
 			if player is PlayerController:
-				player.place(Vector3(-660.3, 89.8, -344.0), 272.6)
+				player.place(MID_DOOR_FEET, MID_DOOR_YAW)
 				player.velocity = Vector3.ZERO
-				player.pitch_degrees = 14.2
-				player.previous_pitch_degrees = 14.2
-				player.input.pitch_degrees = 14.2
+				player.pitch_degrees = MID_DOOR_PITCH
+				player.previous_pitch_degrees = MID_DOOR_PITCH
+				player.input.pitch_degrees = MID_DOOR_PITCH
 				player.inventory.add(GrenadeRules.SMOKE)
 				player.inventory.select_slot(ItemDef.Slot.GRENADE)
 				_prepare_mid_door = false
-				print("GRENADE mid-door setup: feet (-660.3, 89.8, -344.0), yaw 272.6, pitch 14.2")
+				print("GRENADE mid-door setup: feet ", MID_DOOR_FEET, ", yaw ", MID_DOOR_YAW, ", pitch ", MID_DOOR_PITCH)
 				break
 
 
