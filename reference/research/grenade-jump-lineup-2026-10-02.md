@@ -6,11 +6,17 @@ the expected landing surface and our rounded HUD values: feet
 `(-1163.7, 77.8, -299.7)`, yaw `270.2`, pitch `11.8` in Godot coordinates.
 There is no recorded CS2 launch state or time series for this comparison yet.
 
+**October 3 follow-up:** the [subtick audit](grenade-subtick-snapshot-2026-10-03.md)
+establishes that CS2 scopes this clock to each movement segment and inserts
+an exact snapshot boundary. The sign fix below remains in PR #184, but its
+whole-tick capture is incomplete. A tested replacement is saved as a local
+patch because it still fails the mid-door landing regression.
+
 ## Cause and correction
 
 The initial grenade audit misread the helper that offsets the jump snapshot
 timer. The port added a movement interval to the input's jump instant.
-The instructions instead use the pawn's simulation tick time, subtract the
+The instructions instead use the scoped simulation time, subtract the
 current movement interval, then add 0.1 seconds:
 
 ```text
@@ -21,16 +27,19 @@ The relevant server addresses are unchanged from the original audit:
 
 - `180ab57f0` and `180adf830`: the two jump paths read the movement interval,
   obtain the pawn's simulation time and schedule the stash.
-- `180c7fe60`: supplies the simulation tick used by the clock conversion.
+- `180c7fe60`: supplies the pawn tick used to select the scoped clock;
+  `180921a10` reads current time rather than converting this tick to seconds.
 - `1801bdb80`: subtracts its float argument (`SUBSS XMM0,XMM2`).
 - `18017e3f0`: adds the subsequent 0.1-second delay.
 - `180abe000` / `180add6f0`: capture the parameters when movement finish
   crosses the stash time.
 
 `GrenadeThrowState.jumped` now subtracts the movement interval.
-`PlayerSim` passes simulation time at movement finish. The jump's physical
-movement still uses its subtick press; the timer does not add that button
-fraction to a clock that comes from the simulation tick.
+`PlayerSim` currently passes whole-tick time at movement finish. The jump's
+physical movement still uses its subtick press. CS2 instead uses segment-end
+time and segment duration, implicitly retaining the button fraction, and
+adds a movement boundary at the deadline. This remaining difference was
+established by the October 3 audit.
 
 The delayed release, snapshot age checks, box flight, restitution `0.45`
 and high-speed floor reduction stay as recovered. The error was in the
@@ -49,7 +58,7 @@ recorded in the original audit. Before using its instructions, the bytes at
 the same addresses were compared against the current installed module.
 All nineteen checked function spans are byte-identical: the two jump paths,
 movement finish and snapshot writer/getter, jump predicate, release writer
-and consumer, launch calculation, simulation-tick getter and clock conversion,
+and consumer, launch calculation, pawn-tick getter and scoped-clock getter,
 subtraction and addition helpers,
 flight/gravity routines, collision callback, velocity clip, collision dispatch
 and push routine. Current-module constants independently read as

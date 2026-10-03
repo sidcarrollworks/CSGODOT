@@ -98,6 +98,14 @@ does not prove repeatable CS2 jump-throw parity. Recovering the remaining
 subtick movement/snapshot scheduling or recording exact CS2 launch states
 is still required; these screenshots do not justify fitting global bounce.
 
+The [October 3 Ghidra follow-up](grenade-subtick-snapshot-2026-10-03.md)
+now establishes the missing segment clock and explicit snapshot boundary,
+and identifies the ordinary jump's fixed gravity adjustment. Its tested
+candidate makes throws consistent across jump phases, but this rounded
+mid-door setup lands on the floor. The candidate is saved locally; it is
+not applied, and this report's passing landing remains the PR runtime.
+Exact CS2 throw inputs and launch/contact measurements are the next step.
+
 The asset-dependent lineup suite now checks the actual mid sky plane,
 actual grenade-only clipping, all nine original Xbox cases, and three
 quarter-tick mid-door releases passing the formerly blocking plane and

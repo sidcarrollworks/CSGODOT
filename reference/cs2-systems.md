@@ -400,6 +400,11 @@ elasticity 0.45, with additional bounce/rest rules. These core rules are
 ported, including the separate one-time enemy body hit; G1 still needs
 local CS2 comparison.
 
+The [October 3 subtick audit](research/grenade-subtick-snapshot-2026-10-03.md)
+verifies an explicit movement boundary at takeoff +0.1 s. Our snapshot still
+uses whole-tick finish. A tested candidate removes phase variation but misses
+the mid-door reference, so that movement replacement remains unapplied.
+
 **HE (WV):** 99 damage at the centre, 350 units radius, falling off smoothly
 with Gaussian falloff sigma=radius/3 (binary verified; target points and
 wall attenuation still G2), cut by walls between;

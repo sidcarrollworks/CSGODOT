@@ -134,8 +134,12 @@ the eye**, sweep origin and discrete strength selection do not.
 The jump paths `180ab57f0` and `180adf830` schedule movement-service
 `m_fStashGrenadeParameterWhen` at **simulation time − movement interval + 0.1 s**.
 Helper `1801bdb80` executes `SUBSS`, not addition; the subsequent
-`18017e3f0` call adds the 0.1 s delay. The clock comes from the pawn's
-simulation tick (`180c7fe60`), rather than directly from a button fraction.
+`18017e3f0` call adds the 0.1 s delay. The getter reads the
+scoped movement-segment clock (`180921a10`); the pawn tick supplied by
+`180c7fe60` selects that clock but is not converted into seconds. The
+[October 3 follow-up](grenade-subtick-snapshot-2026-10-03.md) verifies that
+the resulting deadline is actual takeoff time +0.1 s and that CS2 inserts
+a movement boundary there. The original whole-tick interpretation was wrong.
 They copy the timestamp to the pawn and clear its snapshot-ready flag.
 Movement finish `180abe000` detects crossing that scheduled tick/fraction
 and calls `180add6f0`, which stores aim, eye position, pawn center and velocity.
