@@ -832,7 +832,7 @@ func _run(cmd: UserCmd, dt: float) -> void:
 	wish_dir = cmd.wish_direction()
 	if wish_dir.length_squared() > 0.0:
 		wish_speed = _max_speed(cmd)
-		acceleration_speed = _uncrouched_speed(cmd)
+		acceleration_speed = _ground_acceleration_speed(cmd)
 
 	simulate(dt)
 	_finish_grenade_movement(cmd)
@@ -1116,9 +1116,20 @@ func _max_speed(cmd: UserCmd) -> float:
 	return minf(speed, top)
 
 
+## CS2's ordinary land crouch accelerates from max(250, wish_speed) * 0.34,
+## not the standing weapon speed. The 250 floor keeps rifles moving against
+## stop friction; using the full standing speed instead creates a fast burst.
+## The duck key/transition applies this during entry and exit too. AirMove
+## ignores this ground-only scale and keeps its existing wish-speed rules.
+## Binary: 180ab00d0, constants 1818ca884/1818ca8ac.
+func _ground_acceleration_speed(cmd: UserCmd) -> float:
+	if cmd.held(UserCmd.DUCK) or is_ducked or duck_progress > 0.0:
+		return maxf(250.0, wish_speed) * config.duck_modifier
+	return _uncrouched_speed(cmd)
+
+
 ## The top without the duck: what the held item and a tag allow, walking
-## if the walk key is held. The ground's acceleration works from it
-## (PlayerBody.acceleration_speed), crouched or not.
+## if the walk key is held.
 func _uncrouched_speed(cmd: UserCmd) -> float:
 	var speed := _top_speed()
 	if cmd.held(UserCmd.WALK):

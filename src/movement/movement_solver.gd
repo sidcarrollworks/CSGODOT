@@ -39,11 +39,11 @@ static func apply_friction(
 	return velocity * (new_speed / speed)
 
 
-## Ground acceleration toward wish_dir, up to wish_speed. Each tick adds
-## accel of the larger of wish_speed and accel_from a second
-## (PlayerBody.acceleration_speed): the speed that is added comes from the
-## held item's, not from a crouch's third of it, which friction below
-## sv_stopspeed would outrun.
+## Ground acceleration toward wish_dir, up to wish_speed. accel_from is an
+## explicit acceleration scale (PlayerBody.acceleration_speed), independent
+## of the target speed. CS2 reduces that scale during crouch transitions too;
+## taking max(wish_speed, accel_from) would erase the reduced entry scale.
+## Zero leaves callers without an override using their wish speed.
 static func accelerate(
 	velocity: Vector3,
 	wish_dir: Vector3,
@@ -57,7 +57,8 @@ static func accelerate(
 	var add_speed := wish_speed - current_speed
 	if add_speed <= 0.0:
 		return velocity
-	var accel_speed := accel * dt * maxf(wish_speed, accel_from) * surface_friction
+	var scale := accel_from if accel_from > 0.0 else wish_speed
+	var accel_speed := accel * dt * scale * surface_friction
 	if accel_speed > add_speed:
 		accel_speed = add_speed
 	return velocity + wish_dir * accel_speed

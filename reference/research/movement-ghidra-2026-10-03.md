@@ -4,8 +4,9 @@ Sid requested rechecking movement against Ghidra after supplying paired
 camera/pawn coordinates for the Dust2 mid-door smoke. The movement port
 predates the binary audits; matching its native and script implementations
 does not establish CS2 parity. This pass examines the ordinary walk/air,
-ground, crouch and jump paths. It records differences without changing the
-runtime solver or choosing new physics values by eye.
+ground, crouch and jump paths. The initial audit recorded differences
+without changing the runtime solver. Sid's subsequent slope playtest led
+to the crouch acceleration fix documented below; other gaps remain open.
 
 ## Evidence and scope
 
@@ -32,6 +33,7 @@ quantization and all jump/landing branches require further work.
 | Ground-dependent eyes | Topology/root adjustment assembled during movement finish, before grenade capture | Base 64/46 eye heights with a duck spline | Landmark aim and standing/crouched launch eyes can differ on slopes and edges |
 | Air acceleration | Applies part before collision movement and defers the remainder until after it | Applies the full capped addition before moving | Matching final speed can still produce different displacement and contacts |
 | Ground acceleration/friction | Tracks acceleration and a deferred velocity contribution; collision movement uses an intermediate velocity | Friction and acceleration update velocity fully before movement | Starts, stops and running throws can sample different positions |
+| Crouch acceleration | Applies the 0.34 scale after a 250-unit wish-speed floor in the ordinary land branch | Now uses that independent scale; previously used standing weapon speed | Removes the fast crouched start without starving rifle movement against stop friction |
 | Crouch | Separate duck amount, duck speed, root and view state; repeated-duck gate | A fixed 0.4-second progress and immediate airborne hull/eye changes | Crouch-jump geometry and camera transitions differ |
 | Jump/landing | Modern press/landing time state and a bhop window; ordinary impulse already recovered | Ordinary impulse and grenade deadline splits are implemented; no complete modern landing/press-window port | An ordinary stationary jump passing does not validate chained hops or landing slowdown |
 | Ground queries | Grounded step-size reach, inset vertical hull and recovery/quadrant branches | Two-unit categorization plus a separate walking snap and Box3D recovery | Broad Source resemblance does not establish identical edge/step contacts |
@@ -229,6 +231,42 @@ Press helper `180ab5260` checks `sv_jump_spam_penalty_time`, whose
 registration `1800c9fe0` defaults to **0.015625 s**. Our fresh-press latch
 does not reproduce that complete state machine. The full landing-speed
 penalty formula is not established by this pass.
+
+## Crouch acceleration implementation follow-up
+
+Sid reports excessively fast crouch acceleration on slopes. In current
+server `180ab00d0`, constants `1818ca884` and `1818ca8ac` are **250** and
+**0.34**. The ordinary land branch detects the duck button, duck transition
+or ducked flag, then applies the crouch factor to the acceleration scale.
+For ordinary weapon speeds this is `max(250, wish_speed) * 0.34`.
+The weapon-speed ratio can still limit special scoped branches; water and
+all weapon/walk special cases are not ported by this targeted fix.
+
+Our command path previously supplied the standing item speed, even while
+wish speed was crouched. A new actual-body fixture reproduced that on
+flat ground and both slope directions, with ground contact intact: the
+knife gained **21.484375 u/s** in the first 64 Hz step and reached
+**66.4375** after four steps. Sixty of its initial 126 checks failed the
+recovered acceleration bounds.
+
+`PlayerSim` now supplies the 85-unit ordinary crouch acceleration scale.
+The script and native accelerators accept the supplied scale independently
+of the target, so the old `max(target, scale)` does not restore standing
+acceleration during partial crouches. The total-speed guard remains active
+while crouched, preserving turning accuracy and gradual decay of inherited
+running momentum. No trace or collision operation was added.
+
+After correction the knife's first/fourth speeds are **7.3046875 / 9.71875**.
+It still reaches 85, the AK reaches 73.1, and the unscoped AWP reaches 68.
+`tests/run_crouch_movement_checks.gd` covers those items with/without Walk
+on flat, uphill and downhill 5/20-degree floors, plus entry/exit from a
+partial crouch. It passes **138 checks**, with **6,636 bit-identical
+native/script steps**. Existing suites pass **243 simulation**, **80
+movement**, **32 native movement** and **201 grenade-lineup checks**.
+The 49,567-step native course also agrees bit for bit. A full suite run
+is not claimed. The tests exercise the port and recovered scale; they do
+not establish full CS2 movement parity. Duck transitions and combined
+deferred acceleration/friction remain unported.
 
 ## Implementation order and validation
 

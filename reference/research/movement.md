@@ -28,6 +28,14 @@ The door reference now has paired pawn/camera coordinates and a measured
 60.75-unit eye height. This supersedes the historical status below where
 the ordinary jump adjustment is described as unknown.
 
+**Slope playtest follow-up:** ordinary land crouch acceleration is now
+scaled from `max(250, wish_speed) * 0.34`, replacing the standing-speed
+burst. The actual-command flat/slope regression passes 138 checks, and
+existing movement, shooting and grenade-lineup checks pass. The duck
+speed target still uses the prior interpolation; complete crouch state
+and deferred displacement integration remain open. See the
+[implementation evidence](movement-ghidra-2026-10-03.md#crouch-acceleration-implementation-follow-up).
+
 `reference/research/combat.md` already covers the user command's fields,
 netcode and the guns; this page builds on its section 4.
 

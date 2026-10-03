@@ -25,7 +25,7 @@ at the B-doors setup; the base 64/46 eye values remain unchanged.
 | `sv_gravity` | 800 | Source/CS:GO default | No |
 | `sv_jump_impulse` | 301.993 | Source/CS:GO default | No |
 | walk modifier | 0.52 | CS:GO | No |
-| duck modifier | 0.34 | CS:GO; the Counter-Strike wiki's Movement page (Speed Stats), Sid's source on 2026-09-30, gives crouched speed as 34% of the held item's speed in CS2 (the page itself is blocked from the cloud). Eased in and out with the duck, on the ground only (`PlayerSim._max_speed`), and the ground's acceleration works from the item's speed rather than the crouched third (`PlayerBody.acceleration_speed`): with sv_friction 5.2 and sv_stopspeed 80, acceleration from 73 cannot hold a crouched rifle at 73. Both are inferred, the second from `sv_accelerate_use_weapon_speed` (reference/research/movement.md, section 1); the run from rest crouched in that page's Local table checks them | No |
+| duck modifier | 0.34 | Crouched speed is 34% of the held item's speed. Current server `180ab00d0` also scales ordinary land crouch acceleration by 0.34 after a 250-unit wish-speed floor; constants `1818ca884` and `1818ca8ac`. The port now uses that independent acceleration scale, including duck transitions. The speed target still uses the existing duck interpolation. See the October 3 audit below. | Binary verified; complete movement timing still requires CS2 captures |
 | hull 32 x 32 x 72 | | Source player hull | No |
 | duck height 54 | | CS:GO | No |
 | step height 18 | | Source | No |
@@ -35,14 +35,14 @@ at the B-doors setup; the base 64/46 eye values remain unchanged.
 
 ## Crouch turning (Sid's PR #164 feedback, 2026-10-01)
 
-The faster ground acceleration above held a straight crouch at 0.34 of the
+The earlier standing-speed acceleration held a straight crouch at 0.34 of the
 weapon's speed, but turning kept adding sideways velocity beyond that top.
 The actual-body check reproduced an AK-47 rising from 73.1 to 79.0 u/s;
 its movement cone widened from the crouched 0.310 to 4.878 degrees. A pure
 solver run turning 5 degrees every tick reached 100.6 u/s.
 
-When ground acceleration works from a speed above the crouched top,
-`PlayerBody._walk_move` now limits the resulting horizontal speed to the
+For crouched commands, and when acceleration uses a speed above the target,
+`PlayerBody._walk_move` limits the resulting horizontal speed to the
 greater of the top and the speed left after friction. This lets residual
 running speed decay gradually while preventing a turn from adding more.
 The native step has the same arithmetic. Ordinary ground acceleration and
@@ -58,6 +58,32 @@ that rounding; actual running, jumping and residual excess speed still
 affect accuracy. `tests/run_sim_checks.gd` covers AK-47 and AWP turns with
 and without Walk, turning on the spot, and real run/jump penalties alongside
 the existing crouch transition checks.
+
+## Crouch acceleration (Sid's slope playtest, 2026-10-03)
+
+The previous correction kept the crouched speed limit, but acceleration
+still used the uncrouched weapon speed. Current CS2's ordinary land branch
+uses `max(250, wish_speed) * 0.34`, or 85 for ordinary crouched speeds.
+That floor exceeds the AK's 73.1-unit target, so it overcomes stop friction
+without the knife's old 250-unit acceleration burst.
+
+`PlayerSim._ground_acceleration_speed` now supplies the crouched scale.
+`MovementSolver.accelerate` and native `HullMover::accelerate` treat a
+positive supplied scale independently of the speed target. This matters
+during duck entry, when the target has not yet reached crouched speed.
+The existing total-speed/accuracy guard remains active during crouching.
+
+At 64 Hz with accelerate 5.5, the knife's first fully crouched step changes
+from **21.484375** to **7.3046875 u/s**; after four steps it is **9.71875**
+instead of **66.4375**. Holding movement still reaches 85 with the knife,
+73.1 with the AK and 68 with the unscoped AWP. Crouching with Walk uses the
+same acceleration as crouching without it.
+
+The new real-command fixture passes **138 checks** on flat and +/-5/20-degree
+Box3D floors, with **6,636 native/script steps** matching bit for bit.
+The simulation, movement course, native movement and three grenade-lineup
+suites also pass. No collision queries were added. Duck-rate/hull/view
+transitions and deferred movement integration remain separate audit gaps.
 
 ## How to measure each kind
 

@@ -151,12 +151,10 @@ var noclip: bool = false
 ## horizontal; with noclip on it carries the full 3D fly direction.
 var wish_dir: Vector3 = Vector3.ZERO
 var wish_speed: float = 0.0
-## The speed ground acceleration works from when it is above wish_speed:
-## the held item's, where a crouch keeps wish_speed to a third of it
-## (MovementSolver.accelerate). At a crouched rifle's 73, below
-## sv_stopspeed's 80, friction takes 6.5 u/s a tick and acceleration from
-## 73 adds only 6.3, so the player ground to a stop. Nothing below
-## wish_speed changes anything.
+## Explicit ground acceleration scale, independent of the speed target.
+## PlayerSim supplies CS2's 250 * 0.34 crouch scale: slower than a standing
+## burst, but large enough to overcome stop friction for a crouched rifle.
+## Zero lets plain bodies accelerate from wish_speed.
 var acceleration_speed: float = 0.0
 var wants_jump: bool = false
 var wants_duck: bool = false
@@ -804,11 +802,11 @@ func _walk_move(surface_friction: float, dt: float) -> void:
 		if dir.length_squared() > 0.0:
 			dir = dir.normalized()
 
-	# Faster crouch acceleration must not turn sideways momentum into
-	# extra speed. Keep any speed left after friction when crouching from
+	# Crouch acceleration must not turn sideways momentum into extra speed.
+	# Keep any speed left after friction when crouching from
 	# a run, so the crouch still slows gradually rather than snapping down.
 	var speed_limit := INF
-	if acceleration_speed > wish_speed:
+	if acceleration_speed > wish_speed or (acceleration_speed > 0.0 and duck_progress > 0.0):
 		speed_limit = maxf(wish_speed, velocity.length())
 	velocity = MovementSolver.accelerate(
 		velocity, dir, wish_speed, config.accelerate, surface_friction, dt, acceleration_speed

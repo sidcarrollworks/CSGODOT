@@ -215,6 +215,15 @@ same correction. See `reference/movement_constants.md`, "Crouch turning",
 for the reproduction and the small accuracy-threshold rounding tolerance.
 **Local:** crouch and turn with those guns in the range and on dust2.
 
+**October 3 slope playtest:** crouched starts still accelerated from the
+standing weapon speed. PR #184 now uses the binary-derived ordinary land
+crouch acceleration scale (250 * 0.34), independently of the speed target.
+138 real-command checks cover flat/uphill/downhill floors and crouch
+entry/exit; existing crouch turning/accuracy and grenade lineups pass.
+**Local:** retest the acceleration feel on Dust2. Full crouch transitions,
+terrain eyes and deferred movement integration remain open in the
+[movement audit](research/movement-ghidra-2026-10-03.md).
+
 **Box3D is the game's physics (2026-09-28, Sid).** Sid chose to take the
 trial below forward. The October 2 grenade port builds debug and release
 libraries from pinned source plus the opt-in projectile-query patch
