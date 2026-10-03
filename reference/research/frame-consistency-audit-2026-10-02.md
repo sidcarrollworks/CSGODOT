@@ -5,8 +5,7 @@ main at 8414b1b the mean is 5.17 ms after subtracting the watcher's own
 work. Of 199 reported one-second windows, 24 kept every frame under 6 ms;
 the target is not yet met consistently. This page finds which frames are
 slow and why, then ranks what to cut. It is an audit: nothing in the game
-is changed by it. The one
-change it makes is to `scripts/profile_worst_ticks.gd`, which overstated a
+is changed by it. It changes `scripts/profile_worst_ticks.gd`, which overstated a
 kill's tick (below).
 
 Godot 4.7.2, Vulkan Forward+, an AMD Ryzen 7 7800X3D and an RTX 4070 Ti.
@@ -315,8 +314,8 @@ thread with headless checks (**Remote**).
       voxel set is unchanged. Invalidate on growth, clearing and the expiry
       of a clearing deadline: holes refill as time passes even when
       `cleared_until` is unchanged. Keep the final two-second fade updating
-      with draw time, either in a shader or through a shared scale, so a
-      stable cloud still thins away. Check both timed refills and fading
+      with draw time, for example through a shader uniform that scales each
+      voxel around its own centre. Check both timed refills and fading
       with unchanged voxel dictionaries before measuring the saved uploads.
     - Bots throw nothing yet, so only Sid's smokes cost this today.
 
