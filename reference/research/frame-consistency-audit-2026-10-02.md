@@ -1,9 +1,11 @@
 # Where the slow frames come from, and what to cut: 2 October 2026
 
 Sid's target is every frame under 6 ms with nine bots, every second. On
-main at 8414b1b the mean is 5.07 ms and no second of play has every frame
-under 6 ms. This page finds which frames are slow and why, then ranks
-what to cut. It is an audit: nothing in the game is changed by it. The one
+main at 8414b1b the mean is 5.17 ms after subtracting the watcher's own
+work. Of 199 reported one-second windows, 24 kept every frame under 6 ms;
+the target is not yet met consistently. This page finds which frames are
+slow and why, then ranks what to cut. It is an audit: nothing in the game
+is changed by it. The one
 change it makes is to `scripts/profile_worst_ticks.gd`, which overstated a
 kill's tick (below).
 
@@ -15,8 +17,8 @@ relies on them.
 ## What was measured
 
 - **Sid playing** competitive dust2 with nine bots at 1080p, 2 October
-  2026, through `scripts/watch_game.gd`: 200 seconds, 38,090 frames, with
-  every frame split into its parts (`reference/performance.md`, "Where the
+  2026, through `scripts/watch_game.gd`: 38,091 recorded frames, with the
+  draw timing aligned for 38,090 (`reference/performance.md`, "Where the
   rest of a frame goes"). The seconds cover warmup, freeze time, live
   rounds and round ends.
 - **Headless, by system:** `scripts/profile_dust2.gd -- 5 6 round --physics
@@ -29,6 +31,20 @@ relies on them.
 - **The code:** four read-only reviews, one each for the bodies and their
   animation, the effects, HUD and audio, the tick, and hitches and the
   draw. Their findings are below, ranked against the measurements.
+
+The local capture is `game_oct2_1080.csv` and `game_oct2_1080.log`.
+The overall mean is the mean of `frame_ms - watcher_ms` in the CSV, with
+no additional frame filtering. The 24 of 199 windows come from the log's
+"frames less the watcher's own work" summary. Including watcher overhead,
+the mean is 5.25 ms and 19 of those windows stay under 6 ms.
+
+The event table below uses the log's 200 per-second summaries numbered
+4 through 203, leaving out the first three startup summaries. Its means
+are unweighted averages of the rounded per-second frame means, and its
+maxima include watcher overhead. Buying means buying with no shots in
+that second; the buying and spawn rows overlap the other rows. These
+per-second groups and the watcher's 199 overall windows have different
+sampling boundaries and should not be treated as the same set.
 
 ## Quiet play is steady; events make the slow frames
 
@@ -45,13 +61,14 @@ Sid's play, grouped by what happened in it:
 | No shots, no deaths | 123 | 4.88 ms | 8.2 ms | 2.2 ms | 55% |
 | Shots, no deaths | 47 | 6.06 ms | 10.6 ms | 2.8 ms | 85% |
 | A death | 30 | 6.75 ms | 13.2 ms | 4.1 ms | 100% |
-| Buying | 15 | 5.41 ms | 11.2 ms | 5.2 ms | 100% |
+| Buying, no shots | 15 | 5.41 ms | 11.2 ms | 5.2 ms | 100% |
 | Spawns | 20 | 5.97 ms | 12.6 ms | 5.5 ms | 100% |
 
 Shooting raises the mean of a whole second by 1.2 ms, so it is a cost
 that lasts, not only a spike.
 
-In the 1,670 frames of 8 ms or more, the time over a normal frame was:
+In the 1,670 aligned frames whose raw `frame_ms` was 8 ms or more
+(including watcher overhead), the time over a normal frame was:
 
 | Part of the frame | Excess over a normal frame, summed | Frames where it was the biggest excess |
 |---|---|---|
@@ -60,6 +77,10 @@ In the 1,670 frames of 8 ms or more, the time over a normal frame was:
 | The draw's CPU | 1,006 ms | 89 |
 | Deferred calls | 501 ms | 23 |
 | Skeletons fitted | 125 ms | 0 |
+
+Scripts were the largest excess in 923 / 1,670 frames (55%), and the tick
+in 613 / 1,670 (37%). These are shares of slow frames, not shares of the
+summed excess time. Frames without a tick also exceed the 6 ms target.
 
 A slow frame without a tick still runs about 5 ms of scripts, against
 1.6 ms normally. This happens even with nobody in view.
@@ -290,7 +311,13 @@ thread with headless checks (**Remote**).
 18. **A smoke's cloud rebuilt every frame.** Remote.
     - **What happens:** `src/grenades/grenade_view.gd:143-163` runs up to
       1,600 voxels and uploads 77 KB a frame for 18 s.
-    - **The fix:** rebuild only when `SmokeVoxels` changes.
+    - **The fix:** cache the centres and base transforms while the effective
+      voxel set is unchanged. Invalidate on growth, clearing and the expiry
+      of a clearing deadline: holes refill as time passes even when
+      `cleared_until` is unchanged. Keep the final two-second fade updating
+      with draw time, either in a shader or through a shared scale, so a
+      stable cloud still thins away. Check both timed refills and fading
+      with unchanged voxel dictionaries before measuring the saved uploads.
     - Bots throw nothing yet, so only Sid's smokes cost this today.
 
 ### To measure before choosing

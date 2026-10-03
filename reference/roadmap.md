@@ -338,14 +338,15 @@ necessary for performance and consistency").** Sid's play at 1080p, split
 by what happened in each second: quiet play holds about 4.6 ms a frame,
 ticks or not, and the slow frames come with events. A second with shots
 averages 6.06 ms, one with a death 6.75, and seconds with spawns or buys
-hold ticks of 5.2 to 5.5 ms. The slow frames' excess is the frame's
-scripts (55%), the tick (37%) and the draw. The list, ranked, is in
+hold ticks of 5.2 to 5.5 ms. Scripts are the largest excess in 55% of slow
+frames, and the tick in 37%; these percentages count frames, rather than
+shares of the summed excess time. The list, ranked, is in
 [frame-consistency-audit-2026-10-02.md](research/frame-consistency-audit-2026-10-02.md).
 It runs: the hit particles culled and then made native; decal fades and
 the MultiMeshes' bounds; respawns and new items posed off the tick; a
-trace's hitbox sets; then the frames everywhere. Frames without a tick
-already sit under 6 ms, so the bodies nobody sees (above) come after the
-fights and the spawns. `scripts/profile_worst_ticks.gd` now makes the
+trace's hitbox sets; then the frames everywhere. The priorities follow
+the measured event-related costs; frames without a tick can also exceed
+6 ms. `scripts/profile_worst_ticks.gd` now makes the
 bodies players die into before each tick, as the game does on frames; it
 had built each death's ragdoll on the tick, 2.0 ms where the game pays 0.6.
 
