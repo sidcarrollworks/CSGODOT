@@ -484,7 +484,9 @@ inventory HUD row is already built.
 - **G1.** *(Static throw/flight/fuse audit and core port done 2026-10-02; captures
   and additional entity/water/spin branches open.)* Compare left/right/both, button changes, standing/running/crouching/
   jumping, close walls, bounce/settle and fuses; record dust2 lineups including
-  grenade clips. The 0.2 s snapshot-age predicate is not a measured input window.
+  grenade clips. [Conditional sky clipping](research/grenade-sky-clipping-2026-10-02.md)
+  is corrected: authored sky brushes remain outside ordinary gameplay masks.
+  The 0.2 s snapshot-age predicate is not a measured input window.
 - **G2.** *(Gaussian recovered; comparisons open.)* HE damage at 50, 100,
   200 and 300 units, airborne and on ground, with walls and kevlar.
 - **G3.** *(Server distance/facing/timing/overlap rules recovered; port and

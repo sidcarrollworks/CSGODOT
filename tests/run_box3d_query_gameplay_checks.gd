@@ -233,6 +233,8 @@ func _check_grenade_masks() -> void:
 	var test := _case()
 	_box(test.geometry, Vector3(64.0, 128.0, 8.0), Vector3(0.0, 64.0, -64.0), "grenade_clip", GrenadeRules.GRENADE_CLIP_LAYER)
 	_box(test.geometry, Vector3(64.0, 128.0, 8.0), Vector3(128.0, 64.0, -64.0), "player_clip", MapImporter.PLAYER_CLIP_LAYER)
+	_box(test.geometry, Vector3(64.0, 128.0, 8.0), Vector3(256.0, 64.0, -64.0), "physics_sky", MapImporter.SKY_LAYER)
+	_box(test.geometry, Vector3(64.0, 128.0, 8.0), Vector3(256.0, 64.0, -128.0), "concrete", Hitscan.WORLD_LAYER)
 	if not await _start(test):
 		_close(test)
 		return
@@ -242,6 +244,15 @@ func _check_grenade_masks() -> void:
 	var pass_player_clip := GrenadeFlight._sweep(test.space(), Vector3(128.0, 64.0, 0.0), Vector3(0.0, 0.0, -128.0), [])
 	_check(float(pass_player_clip["safe"]) == 1.0,
 		"live grenade collision masks still pass through player-only clips")
+	var pass_sky := GrenadeFlight._sweep(test.space(), Vector3(256.0, 64.0, 0.0), Vector3(0.0, 0.0, -96.0), [])
+	_check(float(pass_sky["safe"]) == 1.0 and not pass_sky["blocked_start"],
+		"live grenades pass through conditional sky brushes")
+	var behind_sky := GrenadeFlight._sweep(test.space(), Vector3(256.0, 64.0, 0.0), Vector3(0.0, 0.0, -192.0), [])
+	_check(behind_sky.get("surface", "") == "physics_group_concrete" and float(behind_sky["safe"]) > 0.6,
+		"ignoring sky still hits the real wall behind it in the same sweep")
+	var sky_query := PhysicsRayQueryParameters3D.create(Vector3(256.0, 64.0, 0.0), Vector3(256.0, 64.0, -96.0), MapImporter.SKY_LAYER)
+	_check(not PhysicsQueries.intersect_ray(test.space(), sky_query).is_empty(),
+		"explicit sky queries can still inspect retained sky geometry")
 	_close(test)
 
 

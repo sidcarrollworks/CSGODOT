@@ -193,6 +193,9 @@ files named:
 6. **The map importer (done 2026-10-02):** `grenadeclip` shapes are retained
    in a separate `GrenadeClip` body on layer 32. They stop grenade queries,
    are excluded from camera occluders, and leave player clips on layer 8.
+   `physics_sky` brushes retain their separate conditional interaction on
+   layer 64. They do not bounce grenades: [the sky clipping follow-up](../research/grenade-sky-clipping-2026-10-02.md)
+   verifies the installed mask and the second T-spawn screenshot's bad bounce.
    Recorded Dust2 lineup comparison remains Local work.
 7. **Sounds (done 2026-09-28, playtest issue 19):** `GrenadeSounds`
    (`src/audio/grenade_sounds.gd`) plays every grenade event through CS2's

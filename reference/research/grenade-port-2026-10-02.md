@@ -19,7 +19,7 @@ It does not mark recorded CS2 lineup parity or G2–G5 effects complete.
 | HE / flash activation | Spawn +1.5 s deadline; danger thinks poll every 0.2 s from the actual executed think and detonate strictly beyond the deadline. |
 | Smoke / decoy activation | Smoke checks each tick for age >=1.18799996376 s and speed <=0.1. Decoy first thinks at spawn +2 s, then polls every 0.2 s until speed <=0.2; its existing 15 s active lifetime remains. |
 | Fire activation | Ground normal >=cos30 detonates at its contact point. Air think checks the strict spawn +2 s deadline (plus body extension), or more than 0.5 s at speed <=5. Airburst ray goes from position +10 up to position -128 down. |
-| Map clips | `grenadeclip` meshes are retained on layer 32, separate from world and player clips, and excluded from camera occluders. |
+| Map clips | `grenadeclip` meshes are retained on layer 32, separate from world and player clips, and excluded from camera occluders. The [sky clipping follow-up](grenade-sky-clipping-2026-10-02.md) puts conditional `physics_sky` brushes on layer 64; ordinary gameplay masks ignore them. |
 
 Explicit console/range/bot `throw` commands remain immediate spawn requests.
 The player's pin and hand release use the timer above. Existing throw clips

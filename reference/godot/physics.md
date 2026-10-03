@@ -132,6 +132,7 @@ Doc: `tutorials/physics/physics_introduction.rst`, `classes/class_collisionobjec
 | 4 | 8 | player clip `MapImporter.PLAYER_CLIP_LAYER` |
 | 5 | 16 | ragdoll bodies `Ragdoll.LAYER` (they mask it too: a body's parts collide) |
 | 6 | 32 | grenade clip `GrenadeRules.GRENADE_CLIP_LAYER` |
+| 7 | 64 | conditional sky brushes `MapImporter.SKY_LAYER`; ordinary gameplay masks exclude them |
 | 20 | 1<<19 | `PlayerSim.UNSEEN_LAYER` |
 
 ## Body types

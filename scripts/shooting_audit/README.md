@@ -234,3 +234,12 @@ imported collision-interface calls as well as the server wrappers before
 claiming the engine's inner sweep tolerances. This audit's addon comparison
 uses the pinned v0.4.3 source and local box/triangle fixtures, not an inferred
 match between Box3D and CS2's engine solver.
+
+The [Dust2 sky clipping follow-up](../../reference/research/grenade-sky-clipping-2026-10-02.md)
+compares a fresh `world_physics.vmdl_c` export and its PHYS attributes with
+the installed collision masks. Server targets `1809cc3a0`, `180d08410`,
+`180bd6d50`, `180e88aa0`, `180c27940` and `180934c70` are byte-matched to
+build 2000924. A fresh `vphysics2.dll` project supplies `180296fa0`, the
+common interaction registration: `sky` is bit 3 and grenade clip is bit 33.
+The grenade mask `0x200003001` excludes sky. Verify these addresses again
+after updates; the report records both DLL hashes and the Listing checks.

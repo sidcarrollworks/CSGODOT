@@ -174,6 +174,10 @@ func _write_export_fixture() -> bool:
 		to_metres, "physics_npcclip_playerclip", Vector3(16.0, 128.0, 256.0),
 		Vector3(200.0, 64.0, 0.0), "", hull
 	)
+	_add_mesh(
+		to_metres, "physics_sky", Vector3(256.0, 16.0, 256.0),
+		Vector3(0.0, 160.0, 0.0), "", hull
+	)
 
 	# Something that sorts ahead of world.gltf and must not be mistaken for it.
 	var decoy := Node3D.new()
@@ -324,12 +328,16 @@ func _test_export_shaped_import() -> void:
 
 	_check_equal(stats.get("collision_from", ""), "the collision hull", "collision comes from the hull")
 	_check_equal(
-		stats.get("collision_bodies", 0), 3,
-		"the hull retains world, player clips and grenade clips in separate bodies"
+		stats.get("collision_bodies", 0), 4,
+		"the hull retains world, player clips, grenade clips and sky in separate bodies"
 	)
 	var world_body := importer.get_node_or_null("Collision") as StaticBody3D
 	var clip_body := importer.get_node_or_null("PlayerClip") as StaticBody3D
 	var grenade_body := importer.get_node_or_null("GrenadeClip") as StaticBody3D
+	var sky_body := importer.get_node_or_null("SkyClip") as StaticBody3D
+	_check(sky_body != null and sky_body.collision_layer == MapImporter.SKY_LAYER
+		and sky_body.get_child_count() == 1 and sky_body.collision_layer & GrenadeRules.COLLIDE_MASK == 0,
+		"sky brushes retain their geometry without becoming ordinary world or grenade collision")
 	_check(grenade_body != null and grenade_body.collision_layer == GrenadeRules.GRENADE_CLIP_LAYER
 		and grenade_body.get_child_count() == 1,
 		"the imported grenade clip is on the projectile-only layer")

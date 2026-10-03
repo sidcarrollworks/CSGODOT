@@ -15,6 +15,8 @@ class _Pawn extends PlayerSim:
 	var jump_at := -1
 	var release_at := 100000
 	var fraction := 0.25
+	var aim_yaw := YAW
+	var aim_pitch := PITCH
 	func _init() -> void:
 		var shape := CollisionShape3D.new()
 		shape.shape = BoxShape3D.new()
@@ -24,12 +26,12 @@ class _Pawn extends PlayerSim:
 	func command_for(tick: int, _dt: float) -> UserCmd:
 		var cmd := UserCmd.new()
 		cmd.tick = tick
-		cmd.yaw_degrees = YAW
-		cmd.pitch_degrees = PITCH
+		cmd.yaw_degrees = aim_yaw
+		cmd.pitch_degrees = aim_pitch
 		cmd.weapon_select = 4
 		cmd.buttons = UserCmd.ATTACK if tick < release_at else 0
 		if tick == jump_at:
-			cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.JUMP, true, fraction, YAW, PITCH))
+			cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.JUMP, true, fraction, aim_yaw, aim_pitch))
 		return cmd
 
 
@@ -66,6 +68,7 @@ func _run() -> void:
 	_world.game.add_system(GrenadeSystem.new())
 	await physics_frame
 	if _world.initialize_drop_physics(_host, "box3d"):
+		_check_clip_queries()
 		var reference := Vector3.INF
 		for fraction in [0.0, 0.25, 0.75]:
 			for offset in [0, 2, 8]:
@@ -75,6 +78,9 @@ func _run() -> void:
 						_check(landed.distance_to(reference) < 0.1, "eligible release times use the same Xbox jump trajectory")
 					else:
 						reference = landed
+		# Sid's second screenshot crossed the conditional sky plane above mid.
+		# Its CS2 landing target has not been captured; test the bad bounce only.
+		await _throw(0.25, 0, Vector3(-660.3, 89.8, -343.9), 272.6, 14.1, false)
 	else:
 		_check(false, "patched Box3D initializes on extracted Dust2 collision")
 	_world.game.entities.clear()
@@ -88,22 +94,41 @@ func _run() -> void:
 	_finish.call_deferred("grenade-lineup")
 
 
-func _throw(fraction: float, release_offset: int) -> Vector3:
+func _check_clip_queries() -> void:
+	var space := _host.get_world_3d().direct_space_state
+	var from := Vector3(1160.0, 390.0, -427.2)
+	var to := from + Vector3.RIGHT * 32.0
+	var sky := PhysicsRayQueryParameters3D.create(from, to, MapImporter.SKY_LAYER)
+	_check(not PhysicsQueries.intersect_ray(space, sky).is_empty(),
+		"the extracted sky plane above mid is retained for explicit sky queries")
+	var flight := GrenadeFlight._sweep(space, from, to - from, [])
+	_check(float(flight["safe"]) == 1.0 and not flight["blocked_start"],
+		"live grenade sweeps pass through Dust2's sky plane above mid")
+	var clip := GrenadeFlight._sweep(space, Vector3(-1040.0, 485.0, -2272.0), Vector3(0.0, 0.0, 32.0), [])
+	_check(clip.get("surface", "") == "physics_csgo_grenadeclip",
+		"live grenade sweeps still hit Dust2's extracted grenade-only clipping")
+
+
+func _throw(fraction: float, release_offset: int, feet := FEET, yaw := YAW, pitch := PITCH, xbox := true) -> Vector3:
 	var player := _Pawn.new()
-	player.position = FEET
+	player.position = feet
 	player.team = "T"
 	player.fraction = fraction
+	player.aim_yaw = yaw
+	player.aim_pitch = pitch
 	_host.add_child(player)
 	_world.add_player(player)
 	player.inventory.add(GrenadeRules.SMOKE)
 	await physics_frame
 	for i in 80:
 		_world.step()
-	_check(player._pin_pulled and player.on_ground, "Xbox fixture starts with a held smoke on the T-spawn floor")
+	_check(player._pin_pulled and player.on_ground, "lineup fixture starts with a held smoke on the T-spawn floor")
 	player.jump_at = _world.tick + 1
 	player.release_at = player.jump_at + release_offset
 	var grenade: GrenadeEntity
 	var top_contact := false
+	var touched_sky := false
+	var furthest_x := -INF
 	var rest := Vector3.INF
 	for i in 500:
 		_world.step()
@@ -113,21 +138,28 @@ func _throw(fraction: float, release_offset: int) -> Vector3:
 				grenade = entities[0]
 		if grenade == null:
 			continue
+		furthest_x = maxf(furthest_x, grenade.position.x)
 		for touch in grenade.flight.touches:
+			touched_sky = touched_sky or touch.surface == "physics_sky"
 			if touch.surface == "physics_group_wood2" and touch.normal.y > 0.9:
 				top_contact = true
 		if grenade.flight.at_rest:
 			rest = grenade.position
-			_check(not grenade.flight.blocked_start, "Xbox flight settles through contacts without a blocked start")
-			_check(top_contact, "jump smoke reaches the wooden box's upward-facing surface")
-			_check(rest.x > 1400.0 and rest.x < 1480.0 and absf(rest.y + 27.0) < 2.0 and absf(rest.z + 309.0) < 10.0,
-				"jump smoke rests on Xbox instead of the floor beside it: %s" % rest)
+			_check(not grenade.flight.blocked_start, "lineup flight settles through contacts without a blocked start")
+			_check(not touched_sky, "sky brushes never bounce the lineup's smoke")
+			if xbox:
+				_check(top_contact, "jump smoke reaches the wooden box's upward-facing surface")
+				_check(rest.x > 1400.0 and rest.x < 1480.0 and absf(rest.y + 27.0) < 2.0 and absf(rest.z + 309.0) < 10.0,
+					"jump smoke rests on Xbox instead of the floor beside it: %s" % rest)
+			else:
+				_check(furthest_x > 1304.0,
+					"the second lineup travels beyond the sky plane instead of rebounding backward")
 			print("LINEUP ", JSON.stringify({"jump_fraction": fraction, "release_offset_ticks": release_offset,
 				"snapshot_velocity": str(player.grenade_throw.snapshot.get("velocity")),
 				"rest": str(rest), "flight_seconds": grenade.age(_world.game.now_usec())}))
 			grenade.remove()
 			break
-	_check(rest.is_finite(), "Xbox smoke spawns and settles within the bounded flight")
+	_check(rest.is_finite(), "lineup smoke spawns and settles within the bounded flight")
 	if grenade != null and not rest.is_finite():
 		grenade.remove()
 	_world.remove_player(player)

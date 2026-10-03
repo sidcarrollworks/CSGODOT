@@ -980,6 +980,10 @@ list, split into Local and Remote items, with the measurements.
       a general physics rewrite is not a prerequisite established by the audit.
     - **Map import done:** grenade clips are retained on layer 32 and
       excluded from camera occluders; players retain their separate clips.
+      [Sky clipping corrected](research/grenade-sky-clipping-2026-10-02.md):
+      conditional sky brushes use layer 64, outside ordinary gameplay masks,
+      rather than making invisible walls above mid. Fresh Dust2 collision
+      matches the existing extraction; the bug was interaction classification.
       Synthetic layer checks and the extracted Dust2 run validate the import.
     - **Jump timer corrected:** [Xbox lineup follow-up](research/grenade-jump-lineup-2026-10-02.md)
       fixes the interval sign recovered from the instructions. The screenshot's
