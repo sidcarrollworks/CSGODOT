@@ -373,6 +373,10 @@ says when the plant completes, which is still C1's to measure.
 **Current-build source:** [October 2 Ghidra grenade audit](research/grenade-audit-2026-10-02.md),
 patch 1.41.8.8. Its ledger distinguishes recovered server rules from the
 implementation and from remaining local captures (20a / G1–G5).
+The [collision follow-up](research/collision-foundation-2026-10-02.md)
+records the engine trace caller contract, backend small-hull tolerances,
+and the current flight's corrected remaining-time budget. The full grenade
+port remains open; native rigid-body solver settings do not control this flight.
 
 **Shared (WV and CV):** every grenade costs its price above, is thrown at 750
 (the base speed; left click, right click and both give three strengths),
