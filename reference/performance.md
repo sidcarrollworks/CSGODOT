@@ -1,5 +1,11 @@
 # What everything costs, and what going online will
 
+[Where the slow frames come from](research/frame-consistency-audit-2026-10-02.md)
+(2026-10-02): Sid's play split by what happened in each second. Quiet
+play is steady at about 4.6 ms a frame; the slow frames come with shots,
+deaths, spawns and buys. The page ranks what to cut, from the code read
+against those measurements.
+
 The [2 October hit-effects measurements](research/hit-effects-performance-2026-10-02.md)
 record the current blood/impact renderer at 1080p and 4K: sustained close-up
 hits add measurable CPU particle-evaluation cost, with the remaining stress
