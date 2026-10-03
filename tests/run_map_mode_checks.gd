@@ -174,7 +174,13 @@ func _test_the_sky_from_the_maps_own_material() -> void:
 		"the texture the material names wins over the name's guess"
 	)
 	_check_equal(MapLoader.sky_file([], SKY_DIR), "", "no env_sky, no sky")
-	for file in ["sky_de_mirage.exr", "sky_de_mirage.vmat", "sky_mirage_hdr.exr"]:
+	var raw_data := '{m_textureParams = [{m_name = "g_tSkyTexture"\n'
+	raw_data += 'm_pValue = resource:"materials/skybox/sky_de_mirage_exr_71e5f2a1.vtex"}]}'
+	_write(SKY_DIR.path_join("materials/skybox/sky_de_mirage.vmat"), raw_data)
+	_write(SKY_DIR.path_join("materials/skybox/sky_de_mirage_exr_71e5f2a1.exr"), "stand-in")
+	_check_equal(MapLoader.sky_file(entities, SKY_DIR), SKY_DIR.path_join("materials/skybox/sky_de_mirage_exr_71e5f2a1.exr"),
+		"raw material DATA finds the directly exported hashed sky texture without shader decompilation")
+	for file in ["sky_de_mirage.exr", "sky_de_mirage.vmat", "sky_mirage_hdr.exr", "sky_de_mirage_exr_71e5f2a1.exr"]:
 		DirAccess.remove_absolute(SKY_DIR.path_join("materials/skybox").path_join(file))
 
 

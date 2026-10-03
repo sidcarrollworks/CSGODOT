@@ -31,6 +31,11 @@ passes through sky as on Dust2. There were no missing map components:
 areas, the sky and 3D skybox, lightmaps, probes and visibility were extracted.
 Eleven blend materials cover 360 surfaces; the paint preparation fix below
 keeps Mirage's railing colours without losing the wall paint.
+The sky step reads the material's DATA and exports its referenced HDR
+texture directly. This avoids the VCS 72 shader dependency that prevents
+Source 2 Viewer 20.0 from decompiling the current sky material. The saved
+material text is original DATA, which `MapLoader.sky_file` can read as well
+as the older decompiled VMAT text.
 
 For local lineup testing, run `--map de_mirage --mode practice` with the
 existing game or grenade watcher. Practice enables the actual grenade
