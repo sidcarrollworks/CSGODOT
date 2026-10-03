@@ -76,6 +76,7 @@ func step(space: PhysicsDirectSpaceState3D, dt: float, exclude: Array[RID] = [])
 	var start_velocity := velocity
 	velocity.y -= gravity * dt
 	var motion := (start_velocity + velocity) * 0.5 * dt
+	var remaining := dt
 	for sweep in MOST_SWEEPS:
 		if motion.length_squared() < 1e-8:
 			break
@@ -99,7 +100,8 @@ func step(space: PhysicsDirectSpaceState3D, dt: float, exclude: Array[RID] = [])
 		# What is left of the tick goes on at the new velocity, a little off
 		# the surface so the next sweep does not start in it.
 		position += normal * 0.01
-		motion = velocity * dt * (1.0 - safe)
+		remaining *= 1.0 - safe
+		motion = velocity * remaining
 		if safe <= 0.0 and sweep > 0:
 			# Wedged: nowhere to go this tick.
 			break
@@ -130,24 +132,25 @@ static func _sweep(
 	query.motion = motion
 	query.collision_mask = GrenadeRules.COLLIDE_MASK
 	query.exclude = exclude
-	var fractions := PhysicsQueries.cast_motion(space, query)
-	if fractions.is_empty() or fractions[1] >= 1.0:
+	# The bridge already returns the original collider and contact with the
+	# fractions. Read that one result rather than recovering it through a
+	# separate rest query (and relying on the bridge's last-cast cache).
+	var hit := PhysicsQueries.shape_cast(space, query)
+	if hit.is_empty() or float(hit.get("unsafe_fraction", 1.0)) >= 1.0:
 		return {"safe": 1.0}
-	var safe: float = fractions[0]
-	# What it met: the contact just past where it could go.
-	query.transform = Transform3D(Basis.IDENTITY, from + motion * fractions[1])
-	query.motion = Vector3.ZERO
-	var rest := PhysicsQueries.get_rest_info(space, query)
-	if rest.is_empty():
+	var safe: float = hit["fraction"]
+	if not hit.has("normal"):
 		return {"safe": safe}
-	var collider := instance_from_id(int(rest.get("collider_id", 0)))
+	var collider := hit.get("collider") as CollisionObject3D
+	if collider == null:
+		collider = instance_from_id(int(hit.get("collider_id", 0))) as CollisionObject3D
 	var surface := ""
-	if collider is CollisionObject3D and rest.has("shape"):
-		var owner_id: int = (collider as CollisionObject3D).shape_find_owner(int(rest["shape"]))
-		var shape_node := (collider as CollisionObject3D).shape_owner_get_owner(owner_id)
+	if collider != null and hit.has("shape"):
+		var owner_id: int = collider.shape_find_owner(int(hit["shape"]))
+		var shape_node := collider.shape_owner_get_owner(owner_id)
 		if shape_node != null:
 			surface = shape_node.name
-	var normal: Vector3 = rest["normal"]
+	var normal: Vector3 = hit["normal"]
 	if normal.length_squared() < 1e-6:
 		normal = -motion.normalized()
 	return {

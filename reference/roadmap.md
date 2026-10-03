@@ -967,6 +967,15 @@ list, split into Local and Remote items, with the measurements.
       decoy activation. The code still needs these corrections; the
       audit supersedes the older throw guesses in
       `reference/research/round-bomb-grenades.md` and its `round.md` summary.
+    - **Collision foundation audited and narrow fixes done 2026-10-02:**
+      [the follow-up](research/collision-foundation-2026-10-02.md) traces
+      the engine push/filter/result callers, tests grenade-sized boxes
+      and spheres against solid and triangle floors, and fixes repeated
+      bounces reusing the full step's time. Grenade contact now comes from
+      one complete sweep result. This does not close the box-flight port:
+      backend contact tolerances and blocked starts need an explicit
+      projectile trace contract first. A general physics rewrite is not
+      a prerequisite established by the audit.
     - The map: the grenade clips are left out of the hull on import
       (`hull_skip_hints` in `src/map/map_importer.gd`;
       `reference/systems/grenades.md`, item 6), so grenades on dust2 do not
