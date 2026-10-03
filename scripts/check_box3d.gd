@@ -13,6 +13,8 @@ extends SceneTree
 func _init() -> void:
 	var classes := [&"Box3DWorld", &"Box3DBody", &"Box3DContactRules"]
 	var missing := classes.filter(func(name: StringName) -> bool: return not ClassDB.class_exists(name))
+	if ClassDB.class_exists(&"Box3DWorld") and not ClassDB.class_has_method(&"Box3DWorld", &"shape_cast_projectile_box"):
+		missing.append(&"Box3DWorld.shape_cast_projectile_box (rerun installer)")
 	if missing.is_empty():
 		print("BOX3D loaded")
 		quit(0)

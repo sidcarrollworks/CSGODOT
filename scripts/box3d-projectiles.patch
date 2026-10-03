@@ -1,0 +1,259 @@
+diff --git a/godot/src/box3d_world.cpp b/godot/src/box3d_world.cpp
+index 37f8d68..cbe4664 100644
+--- a/godot/src/box3d_world.cpp
++++ b/godot/src/box3d_world.cpp
+@@ -1528,6 +1528,44 @@ Dictionary Box3DWorld::shape_cast_box(const Vector3 &p_from, const Vector3 &p_to
+ 	return result;
+ }
+ 
++Dictionary Box3DWorld::shape_cast_projectile_box(const Vector3 &p_from, const Vector3 &p_to, const Vector3 &p_size, double p_slop, uint64_t p_mask, uint64_t p_layer) {
++	join_async_step();
++	// The upstream query recording format has no per-query tolerance field.
++	ERR_FAIL_COND_V_MSG(is_recording(), Dictionary(), "Projectile casts cannot use upstream query recording.");
++	ERR_FAIL_COND_V_MSG(!(p_slop > 0.0 && p_slop <= 0.005), Dictionary(), "Projectile slop must be in (0, 0.005] metres.");
++	Dictionary result;
++	ensure_world();
++	if (!b3World_IsValid(world_id)) {
++		result["hit"] = false;
++		return result;
++	}
++	b3Vec3 points[8];
++	fill_box_proxy(points, p_size);
++	b3ShapeProxy proxy;
++	proxy.points = points;
++	proxy.count = 8;
++	proxy.radius = 0.0f;
++	b3QueryFilter filter = b3DefaultQueryFilter();
++	filter.maskBits = p_mask;
++	filter.categoryBits = p_layer;
++	CastContext ctx;
++	ctx.world = this;
++	last_query_stats = b3World_CastShapeWithSlop(world_id, to_b3_pos(p_from), &proxy, to_b3(p_to - p_from), (float)p_slop, filter, cast_result_cb, &ctx);
++	if (ctx.hit) {
++		result["hit"] = true;
++		result["position"] = to_gd_pos(ctx.point);
++		result["normal"] = to_gd(ctx.normal);
++		result["fraction"] = ctx.fraction;
++		result["blocked_start"] = ctx.fraction == 0.0f && ctx.normal.x == 0.0f && ctx.normal.y == 0.0f && ctx.normal.z == 0.0f;
++		if (ctx.body != nullptr) {
++			result["collider"] = static_cast<Object *>(ctx.body);
++		}
++	} else {
++		result["hit"] = false;
++	}
++	return result;
++}
++
+ bool Box3DWorld::is_contact_valid(const Vector3i &p_contact) const {
+ 	// Reads the world's contact array, so an in-flight step has to be joined
+ 	// even though b3Contact_IsValid itself takes no world id.
+@@ -2860,6 +2898,7 @@ void Box3DWorld::_bind_methods() {
+ 	ClassDB::bind_method(D_METHOD("is_recording"), &Box3DWorld::is_recording);
+ 	ClassDB::bind_method(D_METHOD("get_recording"), &Box3DWorld::get_recording);
+ 	ClassDB::bind_method(D_METHOD("shape_cast_box", "from", "to", "size", "collision_mask", "collision_layer"), &Box3DWorld::shape_cast_box, DEFVAL(B3_DEFAULT_MASK_BITS), DEFVAL(B3_DEFAULT_CATEGORY_BITS));
++	ClassDB::bind_method(D_METHOD("shape_cast_projectile_box", "from", "to", "size", "linear_slop", "collision_mask", "collision_layer"), &Box3DWorld::shape_cast_projectile_box, DEFVAL(B3_DEFAULT_MASK_BITS), DEFVAL(B3_DEFAULT_CATEGORY_BITS));
+ 	ClassDB::bind_method(D_METHOD("is_contact_valid", "contact_id"), &Box3DWorld::is_contact_valid);
+ 	ClassDB::bind_method(D_METHOD("get_contact_data", "contact_id"), &Box3DWorld::get_contact_data);
+ 	ClassDB::bind_method(D_METHOD("get_awake_body_count"), &Box3DWorld::get_awake_body_count);
+diff --git a/godot/src/box3d_world.h b/godot/src/box3d_world.h
+index a69d75b..aa00621 100644
+--- a/godot/src/box3d_world.h
++++ b/godot/src/box3d_world.h
+@@ -538,6 +538,8 @@ public:
+ 			uint64_t p_mask = B3_DEFAULT_MASK_BITS, uint64_t p_layer = B3_DEFAULT_CATEGORY_BITS);
+ 	Dictionary shape_cast_sphere(const Vector3 &p_from, const Vector3 &p_to, double p_radius,
+ 			uint64_t p_mask = B3_DEFAULT_MASK_BITS, uint64_t p_layer = B3_DEFAULT_CATEGORY_BITS);
++	Dictionary shape_cast_projectile_box(const Vector3 &p_from, const Vector3 &p_to, const Vector3 &p_size, double p_slop,
++			uint64_t p_mask = B3_DEFAULT_MASK_BITS, uint64_t p_layer = B3_DEFAULT_CATEGORY_BITS);
+ 	Dictionary shape_cast_box(const Vector3 &p_from, const Vector3 &p_to, const Vector3 &p_size,
+ 			uint64_t p_mask = B3_DEFAULT_MASK_BITS, uint64_t p_layer = B3_DEFAULT_CATEGORY_BITS);
+ 	// Sweeps of the two proxies above. The shape is where it starts and
+diff --git a/include/box3d/box3d.h b/include/box3d/box3d.h
+index ad9933d..bbe681c 100644
+--- a/include/box3d/box3d.h
++++ b/include/box3d/box3d.h
+@@ -106,6 +106,10 @@ B3_API b3RayResult b3World_CastRayClosest( b3WorldId worldId, b3Pos origin, b3Ve
+ B3_API b3TreeStats b3World_CastShape( b3WorldId worldId, b3Pos origin, const b3ShapeProxy* proxy, b3Vec3 translation,
+ 									  b3QueryFilter filter, b3CastResultFcn* fcn, void* context );
+ 
++/// Optional query slop. This does not change rigid-body contacts or other casts.
++B3_API b3TreeStats b3World_CastShapeWithSlop( b3WorldId worldId, b3Pos origin, const b3ShapeProxy* proxy, b3Vec3 translation,
++									  float linearSlop, b3QueryFilter filter, b3CastResultFcn* fcn, void* context );
++
+ /// Cast a capsule mover through the world. This is a special shape cast that handles sliding along other shapes while reducing
+ /// clipping. This is not a good source of information about what the mover is touching. Instead use the planes returned by
+ /// b3World_CollideMover. Ignores back-side collision on meshes and height-fields.
+diff --git a/include/box3d/types.h b/include/box3d/types.h
+index ed4a1d9..ac1fff5 100644
+--- a/include/box3d/types.h
++++ b/include/box3d/types.h
+@@ -1405,6 +1405,8 @@ typedef struct b3ShapeCastInput
+ 
+ 	/// Allow shape cast to encroach when initially touching. This only works if the radius is greater than zero.
+ 	bool canEncroach;
++	/// Optional per-query slop; zero retains the world/solver default.
++	float linearSlop;
+ } b3ShapeCastInput;
+ 
+ /// Input for sweeping an AABB through a dynamic tree. The box is in the tree's world float frame.
+@@ -1550,6 +1552,8 @@ typedef struct b3ShapeCastPairInput
+ 	b3Vec3 translationB;   ///< The translation of shape B, in A's frame
+ 	float maxFraction;	   ///< The fraction of the translation to consider, typically 1
+ 	bool canEncroach;	   ///< Allows shapes with a radius to move slightly closer if already touching
++	/// Optional per-query slop; zero retains the world/solver default.
++	float linearSlop;
+ } b3ShapeCastPairInput;
+ 
+ /// Input for b3ShapeDistance
+diff --git a/src/capsule.c b/src/capsule.c
+index 2927740..2390d6a 100644
+--- a/src/capsule.c
++++ b/src/capsule.c
+@@ -348,6 +348,7 @@ b3CastOutput b3ShapeCastCapsule( const b3Capsule* capsule, const b3ShapeCastInpu
+ 	pairInput.translationB = input->translation;
+ 	pairInput.maxFraction = input->maxFraction;
+ 	pairInput.canEncroach = input->canEncroach;
++	pairInput.linearSlop = input->linearSlop;
+ 
+ 	b3CastOutput output = b3ShapeCast( &pairInput );
+ 	return output;
+diff --git a/src/compound.c b/src/compound.c
+index 38b5571..af959cc 100644
+--- a/src/compound.c
++++ b/src/compound.c
+@@ -881,6 +881,7 @@ static float b3CompoundShapeCastCallback( const b3BoxCastInput* input, int proxy
+ 	localInput.translation = b3InvRotateVector( child.transform.q, shapeInput->translation );
+ 	localInput.maxFraction = input->maxFraction;
+ 	localInput.canEncroach = shapeInput->canEncroach;
++	localInput.linearSlop = shapeInput->linearSlop;
+ 
+ 	b3CastOutput output = { 0 };
+ 
+diff --git a/src/distance.c b/src/distance.c
+index ffe0c0e..864c110 100644
+--- a/src/distance.c
++++ b/src/distance.c
+@@ -1044,7 +1044,7 @@ b3DistanceOutput b3ShapeDistance( const b3DistanceInput* input, b3SimplexCache*
+ b3CastOutput b3ShapeCast( const b3ShapeCastPairInput* input )
+ {
+ 	// Compute tolerance
+-	float linearSlop = B3_LINEAR_SLOP;
++	float linearSlop = input->linearSlop > 0.0f ? input->linearSlop : B3_LINEAR_SLOP;
+ 	float totalRadius = input->proxyA.radius + input->proxyB.radius;
+ 	float target = b3MaxFloat( linearSlop, totalRadius - linearSlop );
+ 	float tolerance = 0.25f * linearSlop;
+@@ -1089,7 +1089,40 @@ b3CastOutput b3ShapeCast( const b3ShapeCastPairInput* input )
+ 				}
+ 				else
+ 				{
+-					// Initial overlap
++					// The optional projectile query distinguishes a near contact
++					// from an embedded start. Recover a touching plane locally;
++					// an outward/tangent cast may leave it without excluding an
++					// entire body (a mesh body can contain other walls).
++					if ( input->linearSlop > 0.0f )
++					{
++						b3DistanceOutput contact = distanceOutput;
++						float bestDistance = distanceOutput.distance;
++						for ( int axis = 0; axis < 6; ++axis )
++						{
++							b3DistanceInput probe = distanceInput;
++							b3Vec3 shift = b3Vec3_zero;
++							if ( axis / 2 == 0 ) shift.x = axis % 2 == 0 ? 2.0f * linearSlop : -2.0f * linearSlop;
++							if ( axis / 2 == 1 ) shift.y = axis % 2 == 0 ? 2.0f * linearSlop : -2.0f * linearSlop;
++							if ( axis / 2 == 2 ) shift.z = axis % 2 == 0 ? 2.0f * linearSlop : -2.0f * linearSlop;
++							probe.transform.p = b3Add( distanceInput.transform.p, shift );
++							b3SimplexCache probeCache = { 0 };
++							b3DistanceOutput candidate = b3ShapeDistance( &probe, &probeCache, NULL, 0 );
++							if ( candidate.distance >= totalRadius + linearSlop )
++							{
++								if ( b3Dot( delta2, candidate.normal ) >= 0.0f ) return output;
++								if ( candidate.distance > bestDistance ) { bestDistance = candidate.distance; contact = candidate; }
++							}
++						}
++						if ( bestDistance > totalRadius )
++						{
++							if ( b3Dot( delta2, contact.normal ) >= 0.0f ) return output;
++							output.normal = contact.normal;
++							output.point = b3MulAdd( contact.pointA, input->proxyA.radius, contact.normal );
++							output.hit = true;
++							return output;
++						}
++					}
++					// Initial overlap: no resolvable contact plane.
+ 					output.hit = true;
+ 
+ 					// Compute a common point
+diff --git a/src/height_field.c b/src/height_field.c
+index 37ff65f..b0378a6 100644
+--- a/src/height_field.c
++++ b/src/height_field.c
+@@ -764,6 +764,7 @@ b3CastOutput b3ShapeCastHeightField( const b3HeightFieldData* heightField, const
+ 	pairInput.transform = b3Transform_identity;
+ 	pairInput.translationB = input->translation;
+ 	pairInput.canEncroach = input->canEncroach;
++	pairInput.linearSlop = input->linearSlop;
+ 
+ 	b3AABB castBounds;
+ 	castBounds.lowerBound = b3Sub( b3Min( centerStart, centerEnd ), shapeExtents );
+diff --git a/src/hull.c b/src/hull.c
+index 33954d4..92ae674 100644
+--- a/src/hull.c
++++ b/src/hull.c
+@@ -2624,6 +2624,7 @@ b3CastOutput b3ShapeCastHull( const b3HullData* shape, const b3ShapeCastInput* i
+ 	pairInput.translationB = input->translation;
+ 	pairInput.maxFraction = input->maxFraction;
+ 	pairInput.canEncroach = input->canEncroach;
++	pairInput.linearSlop = input->linearSlop;
+ 
+ 	b3CastOutput output = b3ShapeCast( &pairInput );
+ 	return output;
+diff --git a/src/mesh.c b/src/mesh.c
+index 312dbab..7be0108 100644
+--- a/src/mesh.c
++++ b/src/mesh.c
+@@ -2179,6 +2179,7 @@ b3CastOutput b3ShapeCastMesh( const b3Mesh* mesh, const b3ShapeCastInput* input
+ 					pairInput.maxFraction = bestOutput.fraction;
+ 					pairInput.translationB = input->translation;
+ 					pairInput.canEncroach = input->canEncroach;
++					pairInput.linearSlop = input->linearSlop;
+ 
+ 					b3CastOutput pairOutput = b3ShapeCast( &pairInput );
+ 
+diff --git a/src/physics_world.c b/src/physics_world.c
+index 3a68a80..30e1d1d 100644
+--- a/src/physics_world.c
++++ b/src/physics_world.c
+@@ -3085,6 +3085,12 @@ static float b3ShapeCastCallback( const b3BoxCastInput* input, int proxyId, uint
+ 
+ b3TreeStats b3World_CastShape( b3WorldId worldId, b3Pos origin, const b3ShapeProxy* proxy, b3Vec3 translation,
+ 							   b3QueryFilter filter, b3CastResultFcn* fcn, void* context )
++{
++	return b3World_CastShapeWithSlop( worldId, origin, proxy, translation, 0.0f, filter, fcn, context );
++}
++
++b3TreeStats b3World_CastShapeWithSlop( b3WorldId worldId, b3Pos origin, const b3ShapeProxy* proxy, b3Vec3 translation,
++							   float linearSlop, b3QueryFilter filter, b3CastResultFcn* fcn, void* context )
+ {
+ 	b3TreeStats treeStats = { 0 };
+ 
+@@ -3119,6 +3125,7 @@ b3TreeStats b3World_CastShape( b3WorldId worldId, b3Pos origin, const b3ShapePro
+ 	worldContext.fraction = 1.0f;
+ 	worldContext.origin = origin;
+ 	worldContext.input.proxy = *proxy;
++	worldContext.input.linearSlop = linearSlop;
+ 	worldContext.input.translation = translation;
+ 	worldContext.input.maxFraction = 1.0f;
+ 	worldContext.input.canEncroach = false;
+diff --git a/src/sphere.c b/src/sphere.c
+index 7b2e6cd..d17688d 100644
+--- a/src/sphere.c
++++ b/src/sphere.c
+@@ -211,6 +211,7 @@ b3CastOutput b3ShapeCastSphere( const b3Sphere* sphere, const b3ShapeCastInput*
+ 	pairInput.translationB = input->translation;
+ 	pairInput.maxFraction = input->maxFraction;
+ 	pairInput.canEncroach = input->canEncroach;
++	pairInput.linearSlop = input->linearSlop;
+ 
+ 	b3CastOutput output = b3ShapeCast( &pairInput );
+ 	return output;

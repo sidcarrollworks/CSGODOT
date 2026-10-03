@@ -233,8 +233,7 @@ var _reload_after_draw: bool = false
 ## A grenade in hand with its pin out, and the attack buttons held while it
 ## is: which of them say how hard it goes when they are let go.
 var _pin_pulled: bool = false
-var _throw_left: bool = false
-var _throw_right: bool = false
+var grenade_throw := GrenadeThrowState.new()
 ## A grenade thrown: the hand throwing it until then, in simulation time,
 ## and only after it drawing what is in hand next.
 var _throwing: bool = false
@@ -529,6 +528,7 @@ func equip(data: WeaponData) -> void:
 ## starting_gun in hand where there is one, drawn. Everything else they
 ## carried is gone (CS2 strips a player at their next spawn).
 func _loadout() -> void:
+	grenade_throw.reset()
 	_changing_inventory = true
 	# The strip takes the armour off with the rest; what a player wears at a
 	# spawn is the body's (HitTarget.wear and reset), so it is put back as it
@@ -551,6 +551,7 @@ func _loadout() -> void:
 ## whose clock times the draw (one armed before it was timed by the
 ## engine's).
 func draw_again() -> void:
+	grenade_throw.reset()
 	_throwing = false
 	_draw(inventory.in_hand())
 
@@ -579,6 +580,7 @@ func _draw(entry: Inventory.Entry) -> void:
 	_held_class = entry.item.item_class if entry != null else ""
 	weapon = held_weapon
 	_pin_pulled = false
+	grenade_throw.cancel_hold()
 	_reload_after_draw = false
 	if held_weapon != null:
 		config.max_speed = held_weapon.data.max_player_speed
@@ -685,6 +687,36 @@ func view_punch() -> Vector2:
 	return (weapon.aim_punch if weapon != null else Vector2.ZERO) + hit_punch.value
 
 
+## Pawn collision center, including the actual standing/crouched hull.
+func grenade_center() -> Vector3:
+	return global_position + Vector3.UP * _hull_height * 0.5
+
+
+func grenade_parameters(now_usec: int) -> Dictionary:
+	return grenade_throw.launch(now_usec, _live_grenade_parameters())
+
+
+func _live_grenade_parameters() -> Dictionary:
+	return {"eye": global_position + Vector3.UP * eye_height(), "center": grenade_center(),
+		"yaw": yaw_degrees, "pitch": pitch_degrees, "velocity": velocity}
+
+
+## Capture after movement, before the weapon consumes its release timer.
+func _finish_grenade_movement(cmd: UserCmd, dt: float) -> void:
+	var now := SimClock.tick_end_usec(cmd.tick)
+	if _jumped and not noclip:
+		# simulate() consumes jump_fraction; keep the command's actual press.
+		var press := cmd.first_press(UserCmd.JUMP)
+		var fraction := press.when if config.subtick_jump and press != null else 0.0
+		var at := SimClock.usec_at(cmd.tick, fraction)
+		grenade_throw.jumped(at, int(roundf(dt * 1_000_000.0)))
+	if grenade_throw.stash_usec >= 0 and now >= grenade_throw.stash_usec and grenade_throw.snapshot.is_empty():
+		grenade_throw.finish_movement(now, _live_grenade_parameters())
+	var item_class := grenade_throw.consume(now)
+	if not item_class.is_empty() and is_instance_valid(world):
+		world.game.command(userid, "throw %s %s" % [item_class, GrenadeRules.launch_strength(grenade_throw.strength)])
+
+
 func _run(cmd: UserCmd, dt: float) -> void:
 	last_command = cmd
 	wants_jump = false
@@ -773,12 +805,14 @@ func _run(cmd: UserCmd, dt: float) -> void:
 		# Still, but falling if there is anywhere to fall, and the weapon
 		# still reloads.
 		simulate(dt)
+		_finish_grenade_movement(cmd, dt)
 		_update_weapon(cmd, dt, true)
 		return
 
 	if noclip:
 		wish_dir = _noclip_direction(cmd)
 		simulate(dt)
+		_finish_grenade_movement(cmd, dt)
 		return
 
 	wish_dir = cmd.wish_direction()
@@ -787,6 +821,7 @@ func _run(cmd: UserCmd, dt: float) -> void:
 		acceleration_speed = _uncrouched_speed(cmd)
 
 	simulate(dt)
+	_finish_grenade_movement(cmd, dt)
 	_update_weapon(cmd, dt, false)
 
 
@@ -945,31 +980,27 @@ func _update_grenade(cmd: UserCmd, still: bool) -> void:
 	var entry := inventory.in_hand()
 	if entry == null or not entry.item.is_grenade() or still or _throwing:
 		_pin_pulled = false
+		grenade_throw.cancel_hold()
 		return
 	var left := cmd.held(UserCmd.ATTACK) or cmd.pressed_during(UserCmd.ATTACK)
 	var right := cmd.held(UserCmd.ATTACK2) or cmd.pressed_during(UserCmd.ATTACK2)
 	if not _pin_pulled:
 		if (left or right) and SimClock.tick_end_usec(cmd.tick) >= _drawn_until_usec:
 			_pin_pulled = true
-			_throw_left = left
-			_throw_right = right
+			grenade_throw.hold(left, right, cmd.tick)
 			pin_pulled.emit()
 		return
 	if cmd.held(UserCmd.ATTACK) or cmd.held(UserCmd.ATTACK2):
-		# Still held: whichever are down now say how hard.
-		_throw_left = cmd.held(UserCmd.ATTACK)
-		_throw_right = cmd.held(UserCmd.ATTACK2)
+		grenade_throw.hold(cmd.held(UserCmd.ATTACK), cmd.held(UserCmd.ATTACK2), cmd.tick)
 		return
 	_pin_pulled = false
-	var underhand := _throw_right and not _throw_left
+	var underhand := GrenadeRules.launch_strength(grenade_throw.strength) <= 0.33
 	_throwing = true
 	_throwing_until_usec = SimClock.tick_end_usec(cmd.tick) + int(roundf(
 		(THROW_UNDERHAND_SECONDS if underhand else THROW_OVERHAND_SECONDS) * 1_000_000.0
 	))
 	grenade_released.emit(underhand)
-	if is_instance_valid(world):
-		var strength := GrenadeRules.strength_for(_throw_left, _throw_right)
-		world.game.command(userid, "throw %s %s" % [entry.item.item_class, strength])
+	grenade_throw.release(entry.item.item_class, SimClock.tick_end_usec(cmd.tick))
 
 
 ## The knife in hand: each press of either button swings at its own
@@ -1133,6 +1164,7 @@ func _forget_hits() -> void:
 ## falls the way it was going).
 func _on_hit_target_died() -> void:
 	alive = false
+	grenade_throw.reset()
 	hit_target.set_active(false)
 	# Nobody walks into a body that is not there, from this moment: whoever
 	# moves after it in this tick meets nothing (the hulls are looked over

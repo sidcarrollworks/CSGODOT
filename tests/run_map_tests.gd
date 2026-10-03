@@ -324,11 +324,15 @@ func _test_export_shaped_import() -> void:
 
 	_check_equal(stats.get("collision_from", ""), "the collision hull", "collision comes from the hull")
 	_check_equal(
-		stats.get("collision_bodies", 0), 2,
-		"the hull's grenade clip is left out and the world adds nothing"
+		stats.get("collision_bodies", 0), 3,
+		"the hull retains world, player clips and grenade clips in separate bodies"
 	)
 	var world_body := importer.get_node_or_null("Collision") as StaticBody3D
 	var clip_body := importer.get_node_or_null("PlayerClip") as StaticBody3D
+	var grenade_body := importer.get_node_or_null("GrenadeClip") as StaticBody3D
+	_check(grenade_body != null and grenade_body.collision_layer == GrenadeRules.GRENADE_CLIP_LAYER
+		and grenade_body.get_child_count() == 1,
+		"the imported grenade clip is on the projectile-only layer")
 	_check(
 		world_body != null and clip_body != null
 			and world_body.collision_layer == Hitscan.WORLD_LAYER and clip_body.collision_layer == MapImporter.PLAYER_CLIP_LAYER

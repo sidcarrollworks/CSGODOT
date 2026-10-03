@@ -73,6 +73,17 @@ static func shape_cast(space: PhysicsDirectSpaceState3D, query: PhysicsShapeQuer
 	return hit
 
 
+## A projectile's geometric fraction and normal offset are independent.
+## Player movement and the generic sweep retain their existing contracts.
+static func projectile_trace(space: PhysicsDirectSpaceState3D, query: PhysicsShapeQueryParameters3D) -> Dictionary:
+	var native := for_space(space)
+	if native != null:
+		native_queries += 1
+	else:
+		legacy_queries += 1
+	return ProjectileTrace.cast(space, query, native)
+
+
 static func cast_motion(space: PhysicsDirectSpaceState3D, query: PhysicsShapeQueryParameters3D) -> PackedFloat32Array:
 	var native := for_space(space)
 	if native == null:

@@ -1,5 +1,10 @@
 # Collision foundation before the grenade port — October 2, 2026
 
+**Implementation follow-up:** [grenade port, October 2](grenade-port-2026-10-02.md)
+now supplies the dedicated contact contract and core throw/flight/activation
+rules. This page retains the audit-time implementation gaps and measurements;
+the follow-up records what was ported and what still needs local comparison.
+
 Roadmap **20a**, following the [grenade audit](grenade-audit-2026-10-02.md).
 The shared world does not need replacing before the grenade port. It needs
 a projectile trace contract that handles small hulls and contact tolerances

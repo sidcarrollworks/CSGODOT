@@ -7,11 +7,10 @@ extends RefCounted
 ## Where the game's files have a number it comes from them, through
 ## WeaponVData (reference/weapons/vdata.csv): each grenade's damage, reach,
 ## armour ratio, throw speed, price and the speed you move holding it. The
-## rest is the game's code, which nobody has the source of. Those numbers
-## are CS:GO's behaviour as the community has documented it (CS2 is thought
-## to keep it) or the figures reference/cs2-systems.md gives, and every one
-## is marked with the measurement in the roadmap that would settle it
-## (G1 to G5, all Local). Nothing here is from Valve's leaked code.
+## throw, flight and activation rules come from the October 2 static audit
+## of the installed CS2 binary (reference/research/grenade-audit-2026-10-02.md).
+## Effects still use the documented approximations below; G1 to G5 track
+## local comparisons. Nothing here is from Valve's leaked code.
 ##
 ## A grenade is named by its CS2 class name (weapon_hegrenade), as every
 ## item is to be (reference/systemization.md, step 1).
@@ -28,65 +27,76 @@ const ALL: Array[String] = [HE, FLASHBANG, SMOKE, MOLOTOV, INCENDIARY, DECOY]
 
 ## The layers a grenade in flight bounces off: the world (not the player
 ## clips, which are on MapImporter.PLAYER_CLIP_LAYER), players' hulls, and
-## the map's grenade clips once the importer puts them on a layer of their
-## own (it leaves them out for now: reference/systems/grenades.md).
+## the map's grenade clips on their own layer (32).
 const GRENADE_CLIP_LAYER := 32
 const COLLIDE_MASK := Hitscan.WORLD_LAYER | PlayerSim.PLAYER_LAYER | GRENADE_CLIP_LAYER
 
 # --- The throw (G1) -------------------------------------------------------
 
 ## How hard each button throws: left click all the way, right click a lob,
-## both between (CS:GO's m_flThrowStrength).
+## both between. Switching buttons approaches the target while held.
 const STRENGTH_LEFT := 1.0
 const STRENGTH_BOTH := 0.5
 const STRENGTH_RIGHT := 0.0
 
 ## The throw speed is the game's m_flThrowVelocity (750) times this, then
-## times 0.3 at the weakest throw up to 1 at the strongest (CS:GO).
+## times 0.3 at the weakest throw up to 1 at the strongest.
 const THROW_SPEED_SCALE := 0.9
 const THROW_POWER_MIN := 0.3
-## How much of the thrower's own velocity the grenade takes (CS:GO).
+## How much of the thrower's own velocity the grenade takes.
 const THROWER_VELOCITY_SHARE := 1.25
 ## A throw aims up a little: ten degrees at the horizon, none straight up
-## or down (CS:GO).
+## or down.
 const THROW_LIFT_DEGREES := 10.0
 ## Where it leaves the hand: this far ahead of the eyes, and up to 12 units
-## lower for a lob (CS:GO).
-const RELEASE_AHEAD := 22.0
+## lower for a lob. The launch box traces from the pawn's collision center.
+const RELEASE_AHEAD := 16.0
 const RELEASE_DROP := 12.0
+const STRENGTH_STEP := 0.0203124992549
+const RELEASE_DELAY_USEC := 100_000
+const SNAPSHOT_AGE_USEC := 200_000
 
 # --- Flight (G1) ----------------------------------------------------------
 
 ## sv_gravity, as MovementConfig has it.
 const SV_GRAVITY := 800.0
 ## A grenade falls at this share of sv_gravity, and keeps this share
-## of its speed off each bounce, less off a player (CS:GO).
+## of its speed off each surface bounce. Enemy body hits are a separate path.
 const GRAVITY_SCALE := 0.4
 const ELASTICITY := 0.45
-const PLAYER_ELASTICITY := 0.3
+const BODY_SPEED_SHARE := 0.3
+const BODY_HIT_DAMAGE := 2.0
+const BODY_HIT_RADIUS := 3.0
+const CLIP_PUSH := 0.03125
+const MOST_BOUNCES := 21
 ## A floor is anything facing up more than this (about 45 degrees of
 ## slope), and a bounce off one that leaves it slower than REST_SPEED puts
-## it down (CS:GO).
+## it down.
 const FLOOR_NORMAL_Y := 0.7
 const REST_SPEED := 20.0
-## The grenade's size: a box two units each way from its centre, traced as
-## a sphere of that radius.
+## The flight box extends two units each way from its centre.
 const RADIUS := 2.0
 
 # --- Fuses (G1) -----------------------------------------------------------
 
-## The HE and the flash go off this long after the throw.
+## The HE and flash deadline starts at projectile spawn, checked by think.
 const FUSE_SECONDS := 1.5
-## The smoke and the decoy go off once they have stopped, looked at every
-## this often.
-const REST_CHECK_SECONDS := 0.2
+## HE/flash/fire and subsequent decoy thinks reschedule from the actual tick.
+const THINK_USEC := 200_000
+const SMOKE_MIN_SECONDS := 1.18799996376
+const SMOKE_ACTIVATE_SPEED := 0.1
+const DECOY_FIRST_THINK_USEC := 2_000_000
+const DECOY_ACTIVATE_SPEED := 0.2
+const FIRE_BODY_EXTENSION_USEC := 4_000_000
+const FIRE_LOW_SPEED := 5.0
+const FIRE_LOW_SPEED_USEC := 500_000
 ## A molotov goes off in the air this long after the throw, if it has not
 ## met the ground by then (molotov_throw_detonate_time, CS2's convar).
 const MOLOTOV_AIR_SECONDS := 2.0
 ## It goes off on ground no steeper than this (weapon_molotov_maxdetonateslope).
 const MOLOTOV_MAX_SLOPE_DEGREES := 30.0
 ## Gone off in the air, its fire lands on the ground below if there is any
-## this close (a guess, G1).
+## this close; the ray starts ten units above the projectile.
 const MOLOTOV_AIRBURST_DROP := 128.0
 
 # --- HE (G2) --------------------------------------------------------------
@@ -255,3 +265,8 @@ static func strength_for(left: bool, right: bool) -> float:
 	if left and right:
 		return STRENGTH_BOTH
 	return STRENGTH_RIGHT if right else STRENGTH_LEFT
+
+
+## The server launch getter snaps the middle before clamping.
+static func launch_strength(strength: float) -> float:
+	return 0.5 if absf(strength - 0.5) <= 0.1 else clampf(strength, 0.0, 1.0)

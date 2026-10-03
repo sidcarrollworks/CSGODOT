@@ -1,5 +1,11 @@
 # What everything costs, and what going online will
 
+The [2 October grenade-port measurements](research/grenade-port-2026-10-02.md#performance)
+record the added box substep and body check: about 0.051 ms per moving
+grenade in a ten-grenade Dust2 fixture. The moving-round comparison showed
+no regression in its measured window; combat, rendering and CS2 lineup
+comparison remain separate checks.
+
 The [2 October hit-effects measurements](research/hit-effects-performance-2026-10-02.md)
 record the current blood/impact renderer at 1080p and 4K: sustained close-up
 hits add measurable CPU particle-evaluation cost, with the remaining stress

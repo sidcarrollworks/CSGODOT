@@ -48,6 +48,11 @@ var popped_usec: int = 0
 ## thrower's primary, else their pistol).
 var bursts: DecoyBursts
 var decoy_weapon: String = ""
+var next_think_usec: int = -1
+var body_hit: bool = false
+var fire_extension_usec: int = 0
+var _low_speed_since_usec: int = -1
+var _body_query: PhysicsShapeQueryParameters3D
 
 
 static func entity_class_for(item_class: String) -> String:
@@ -70,6 +75,7 @@ func age(now_usec: int) -> float:
 
 
 func _fly(t: SimTick) -> void:
+	_check_body_hit(t)
 	flight.step(t.space, t.dt, system.exclude_for(owner_id))
 	previous_position = flight.previous_position
 	position = flight.position
@@ -77,27 +83,68 @@ func _fly(t: SimTick) -> void:
 		_send(t, &"grenade_bounce", {"userid": owner_id}, touch["position"])
 	match weapon_class:
 		GrenadeRules.HE, GrenadeRules.FLASHBANG:
-			if age(t.now_usec) >= GrenadeRules.FUSE_SECONDS:
+			if _think_due(t) and t.now_usec > thrown_usec + int(GrenadeRules.FUSE_SECONDS * 1_000_000.0):
 				_detonate(t)
-		GrenadeRules.SMOKE, GrenadeRules.DECOY:
-			if flight.at_rest and _on_rest_check(t):
+		GrenadeRules.SMOKE:
+			if flight.velocity.length() <= GrenadeRules.SMOKE_ACTIVATE_SPEED and age(t.now_usec) >= GrenadeRules.SMOKE_MIN_SECONDS:
+				_detonate(t)
+		GrenadeRules.DECOY:
+			if _think_due(t, GrenadeRules.DECOY_FIRST_THINK_USEC) and flight.velocity.length() <= GrenadeRules.DECOY_ACTIVATE_SPEED:
 				_detonate(t)
 		GrenadeRules.MOLOTOV, GrenadeRules.INCENDIARY:
 			if flight.landed_normal.y >= cos(deg_to_rad(GrenadeRules.MOLOTOV_MAX_SLOPE_DEGREES)):
-				_break(t, position + Vector3.DOWN * GrenadeRules.RADIUS)
-			elif age(t.now_usec) >= GrenadeRules.MOLOTOV_AIR_SECONDS:
+				_break(t, flight.landed_position)
+			elif _think_due(t) and _fire_due(t.now_usec):
 				_airburst(t)
 
 
-## Whether this tick is one of the checks every GrenadeRules.REST_CHECK_SECONDS
-## since the throw, at which a smoke or a decoy lying still goes off.
-func _on_rest_check(t: SimTick) -> bool:
-	var every := int(GrenadeRules.REST_CHECK_SECONDS * 1_000_000.0)
-	@warning_ignore("integer_division")
-	var checks_by_now := (t.now_usec - thrown_usec) / every
-	@warning_ignore("integer_division")
-	var checks_before := (t.now_usec - SimClock.tick_usec() - thrown_usec) / every
-	return checks_by_now > checks_before
+## Think timers reschedule from the actual simulation time of each poll.
+func _think_due(t: SimTick, initial_delay_usec: int = 0) -> bool:
+	if next_think_usec < 0:
+		next_think_usec = thrown_usec + initial_delay_usec
+	if t.now_usec < next_think_usec:
+		return false
+	next_think_usec = t.now_usec + GrenadeRules.THINK_USEC
+	return true
+
+
+func _fire_due(now_usec: int) -> bool:
+	if now_usec > thrown_usec + int(GrenadeRules.MOLOTOV_AIR_SECONDS * 1_000_000.0) + fire_extension_usec:
+		return true
+	if flight.velocity.length() > GrenadeRules.FIRE_LOW_SPEED:
+		_low_speed_since_usec = -1
+	elif _low_speed_since_usec < 0:
+		_low_speed_since_usec = now_usec
+	return _low_speed_since_usec >= 0 and now_usec - _low_speed_since_usec > GrenadeRules.FIRE_LOW_SPEED_USEC
+
+
+## The one-time nearby enemy body path is separate from hull restitution.
+## We query our player hulls; Source2's complete entity filters remain a
+## local comparison item in the audit. No query after a successful hit.
+func _check_body_hit(t: SimTick) -> void:
+	if body_hit or flight.at_rest or flight.velocity.is_zero_approx() or t.space == null \
+		or owner_id < 0 or not t.roster.player(owner_id) is PlayerSim:
+		return
+	if _body_query == null:
+		_body_query = PhysicsShapeQueryParameters3D.new()
+		var shape := SphereShape3D.new()
+		shape.radius = GrenadeRules.BODY_HIT_RADIUS
+		_body_query.shape = shape
+		_body_query.margin = 0.0
+		_body_query.collision_mask = PlayerSim.PLAYER_LAYER
+	_body_query.transform.origin = flight.position
+	for hit in PhysicsQueries.intersect_shape(t.space, _body_query):
+		var player := hit.get("collider") as PlayerSim
+		if player == null or not player.alive or player.userid == owner_id or player.team == team:
+			continue
+		body_hit = true
+		var normal := (flight.position - player.grenade_center()).normalized()
+		if not normal.is_zero_approx():
+			flight.velocity = (flight.velocity - normal * 2.0 * flight.velocity.dot(normal)).normalized() * flight.velocity.length() * GrenadeRules.BODY_SPEED_SHARE
+		_hurt(t, player.userid, GrenadeRules.BODY_HIT_DAMAGE, DamageInfo.DMG_GENERIC, entity_class, flight.position, 1.0)
+		if GrenadeRules.is_fire(weapon_class):
+			fire_extension_usec += GrenadeRules.FIRE_BODY_EXTENSION_USEC
+		break
 
 
 func _detonate(t: SimTick) -> void:
@@ -191,7 +238,7 @@ func _smoke(t: SimTick) -> void:
 ## below, and comes to nothing if none is.
 func _airburst(t: SimTick) -> void:
 	var query := PhysicsRayQueryParameters3D.create(
-		position, position + Vector3.DOWN * GrenadeRules.MOLOTOV_AIRBURST_DROP, Hitscan.WORLD_LAYER
+		position + Vector3.UP * 10.0, position + Vector3.DOWN * GrenadeRules.MOLOTOV_AIRBURST_DROP, Hitscan.WORLD_LAYER
 	)
 	var ground := PhysicsQueries.intersect_ray(t.space, query)
 	if ground.is_empty() or (ground["normal"] as Vector3).y < GrenadeRules.FLOOR_NORMAL_Y:

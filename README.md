@@ -22,6 +22,7 @@ CS2 defusal maps.
 |---|---|
 | **Movement** | Source's movement ported line by line: acceleration, air strafing, collide-and-slide, step-up, crouch jumps, bunny hops. Crouch speed and accuracy stay steady while turning. A fixed 64 Hz tick with sub-tick input, so a click is traced from where you were aiming at that instant. Jumping and landing add a subtle camera and weapon dip. |
 | **Shooting** | Every CS2 firearm is available, with the game's own weapon data. Spray patterns, tapping and burst-dependent accuracy recovery, wall penetration by surface and thickness, nineteen hitbox capsules per extracted player model, tagging and aim punch, scopes and shotgun pellets. The AUG and SG 553 raise their sights, keeping the lens clear while blurring the scene outside it; the lowered lens is black. The Nova, XM1014 and Sawed-Off reload one shell at a time, and firing interrupts the reload. |
+| **Grenades** | All six, with delayed hand release, gradual throw strength and saved jump parameters. Flight uses the audited CS2 box hull and two physics steps per tick, with grenade clips retained from the map. Recorded CS2 lineup comparison and full effect parity remain open. |
 | **Knife** | Left-click slashes and right-click stabs, with 48/32-unit forward reach, backstabs, armour and kill credit. Attacks work in the air, with first- and third-person clips and sounds. Damage and timing still await CS2 measurements. |
 | **The match** | CS2's competitive rules: warmup, freeze time, rounds, side swap, overtime. Money and CS2's buy menu, the bomb (plant and defuse), and all six grenades, smoke included. Five a side, with bots filling every place but yours. |
 | **Inventory** | Weapon slots, last-weapon switching and mouse-wheel cycling. Physical dropped items, walking pickups, and E to take ground items, swap the gun in a slot or take the bomb from a teammate bot. A prompt identifies the gun, grenade or bomb you can pick up. The buy menu marks owned and unavailable items, refunds purchases, and supports Ctrl-click to buy and throw. |
@@ -59,10 +60,14 @@ On Linux:
 scripts/install_box3d.sh
 ```
 
-The installer checks the download's pinned checksum. On Linux with an older
-glibc, it installs compatible rebuilt libraries or builds from pinned
-source. See [`reference/box3d-trial.md`](reference/box3d-trial.md) for the
-details. Restart Godot after installing the addon if the project is open.
+The installer builds **debug and release** libraries from pinned source with
+our projectile-query patch. It requires Git, Python 3 and a C/C++ compiler
+(Visual Studio C++ Build Tools on Windows; GCC/Clang on Linux). The first
+build takes several minutes; later runs use the ignored `.godot/` cache.
+The addon archive supplies checksum-verified resources; its unpatched
+binaries are not installed. Restart Godot after installation.
+[The grenade port](reference/research/grenade-port-2026-10-02.md) explains
+the patch and its separate projectile tolerance.
 
 ### Play
 
@@ -191,8 +196,9 @@ Jolt physics is used for standalone fixtures and the comparison mode,
 selected with `--physics legacy` after `--`; that mode has no ragdolls.
 The [grenade collision audit](reference/research/collision-foundation-2026-10-02.md)
 documents the small-hull differences and the corrected travel budget for
-repeated bounces in one step. Grenades still need the recovered CS2 box flight and throw-timing
-port before lineup parity can be checked.
+repeated bounces in one step. The [grenade port](reference/research/grenade-port-2026-10-02.md)
+adds a dedicated projectile trace, CS2 box flight, release/jump timing and
+activation rules. Local CS2 lineup comparison remains open.
 
 The GDScript movement step is the reference for the native implementation.
 Tests compare their results bit for bit. Hitbox proxies update when needed,

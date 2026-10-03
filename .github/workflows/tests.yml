@@ -47,22 +47,21 @@ jobs:
           mv ~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64 ~/godot/godot
           chmod +x ~/godot/godot
 
-      # The release's Linux library needs glibc 2.43 and this runner has
-      # 2.39, so the install lays over it the same tag rebuilt against glibc
-      # 2.35 from this repo's release, or builds it from the release's pinned
-      # source where that cannot be fetched (scripts/install_box3d.sh); the
-      # upstream zip and any build are kept between runs, under a key that
-      # follows the script.
+      # Pinned source + our opt-in projectile cast. Build locally against
+      # the runner's libc; keep compilation outputs for subsequent runs.
       - name: Cache Box3D
         uses: actions/cache@v4
         with:
           path: |
             .godot/box3d-download
-            .godot/box3d-build/out
-          key: box3d-${{ runner.os }}-${{ hashFiles('scripts/install_box3d.sh') }}
+            .godot/box3d-build
+          key: box3d-${{ runner.os }}-${{ hashFiles('scripts/install_box3d.sh', 'scripts/build_box3d_projectiles.py', 'scripts/box3d-projectiles.patch') }}
 
       - name: Install pinned Box3D addon
         run: scripts/install_box3d.sh
+
+      - name: Check Box3D installer destinations
+        run: python3 -m unittest discover -s tests -p 'test_box3d_installer.py'
 
       # The game's own native code, the movement's step, which every check
       # file then holds to the script's results (tests/check_suite.gd).

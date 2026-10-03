@@ -375,8 +375,10 @@ patch 1.41.8.8. Its ledger distinguishes recovered server rules from the
 implementation and from remaining local captures (20a / G1–G5).
 The [collision follow-up](research/collision-foundation-2026-10-02.md)
 records the engine trace caller contract, backend small-hull tolerances,
-and the current flight's corrected remaining-time budget. The full grenade
-port remains open; native rigid-body solver settings do not control this flight.
+and the corrected remaining-time budget. The [grenade port](research/grenade-port-2026-10-02.md)
+implements the core throw/flight/activation rules with a separate projectile
+query; native rigid-body solver settings do not control this flight.
+Recorded lineups and additional entity/water/spin branches remain open.
 
 **Shared (WV and CV):** every grenade costs its price above, is thrown at 750
 (the base speed; left click, right click and both give three strengths),
@@ -385,7 +387,7 @@ throw adds a share of your own velocity, which is what makes running and
 jump throws work. There is no trajectory preview in matchmaking; CS2 has a
 lineup crosshair that appears after holding the pin 2 s
 (`cl_grenadecrosshair_*`). Grenades collide with the hull and with
-`physics_csgo_grenadeclip`, which our importer still discards, bounce
+`physics_csgo_grenadeclip`, retained on layer 32 by our importer, bounce
 losing speed each time, and stop on floors.
 
 **Verified in the binary:** authored speed × 0.9 × (0.7 × strength + 0.3),
@@ -394,8 +396,9 @@ Strength changes gradually and snaps near 0.5. Release schedules a 0.1 s
 timer and can use a delayed jump snapshot. Default launch traces a ±2.02
 box from pawn center to lowered eyes + forward16. Flight normally uses a
 ±2 box, two 1/128 s steps per 64 Hz tick, gravity 0.4 × sv_gravity and
-elasticity 0.45, with additional bounce/rest rules. Our immediate release,
-22-unit eye launch and 64 Hz sphere flight still need a port and G1 comparison.
+elasticity 0.45, with additional bounce/rest rules. These core rules are
+ported, including the separate one-time enemy body hit; G1 still needs
+local CS2 comparison.
 
 **HE (WV):** 99 damage at the centre, 350 units radius, falling off smoothly
 with Gaussian falloff sigma=radius/3 (binary verified; target points and
@@ -434,7 +437,8 @@ Up to 16 flames 42 units apart spread over the ground; the molotov reaches
 ten times faster. 40 damage a second in 0.2 s steps, ramping up, and armour
 does not stop fire. Team damage from it is the thrower's for 6 s.
 
-**Decoy:** activates at 3D speed <= 0.2 u/s, plays its thrower's weapon firing
+**Decoy:** first thinks 2 s after spawn, then polls every 0.2 s until
+3D speed <= 0.2 u/s activates it. Plays its thrower's weapon firing
 in authored weapon-dependent bursts with a deadline 15 s after activation,
 then pops for a few points of damage; no team damage
 from the pop (`ff_damage_decoy_explosion false`). Timing and burst lengths:
@@ -445,7 +449,7 @@ timings in `reference/weapons/equipment.md`. All six are server-side
 systems on the shared contracts (`src/grenades/`), thrown on the range
 from your eyes; `reference/systems/grenades.md` says what each does, which
 numbers are guesses, and what the player, the bots and the importer need
-to wire them in. The importer still leaves the map's grenade clips out.
+to wire them in. The importer retains the map's grenade clips on layer 32.
 Throws, HE damage, flashes, fire, voxel smoke and decoys are wired into
 the shared world and presentation. CS2 visual parity and measured
 timing/trajectory remain open.
@@ -453,13 +457,12 @@ timing/trajectory remain open.
 **Implemented core systems; remaining comparisons below**
 
 The following gameplay systems are built. Remaining work is measured CS2
-parity, richer effects, map grenade clips and the lineup crosshair; the
+parity, richer effects and the lineup crosshair; the
 inventory HUD row is already built.
 
 - The throw (three strengths, your velocity added, the release point) and a
   projectile on its own fixed-step physics with bounce and rest, colliding
-  with the hull and player hulls. Its query includes the reserved grenade
-  clip layer; actual map grenade-clip import remains open.
+  with the hull, player hulls and imported grenade clips.
 - HE: damage with falloff and walls, into `HitTarget` with the blast's
   armour rule.
 - Flash: the blind amount per viewer, a white screen that fades, the flashed
@@ -478,8 +481,8 @@ inventory HUD row is already built.
 - Grenade HUD: the slot row is built; the lineup crosshair remains open.
 
 **Local**
-- **G1.** *(Static throw/flight/fuse audit done 2026-10-02; port and captures
-  open.)* Compare left/right/both, button changes, standing/running/crouching/
+- **G1.** *(Static throw/flight/fuse audit and core port done 2026-10-02; captures
+  and additional entity/water/spin branches open.)* Compare left/right/both, button changes, standing/running/crouching/
   jumping, close walls, bounce/settle and fuses; record dust2 lineups including
   grenade clips. The 0.2 s snapshot-age predicate is not a measured input window.
 - **G2.** *(Gaussian recovered; comparisons open.)* HE damage at 50, 100,

@@ -1,5 +1,6 @@
 # Godot
 .godot/
+__pycache__/
 .import/
 export.cfg
 export_presets.cfg
