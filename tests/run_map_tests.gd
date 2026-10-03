@@ -1155,6 +1155,20 @@ func _test_paint_channel() -> void:
 	)
 	_check_equal(FileAccess.get_file_as_string(both), clash, "and its file is left as it was")
 
+	var mixed := dir.path_join("mixed.gltf")
+	var mixed_text := '{"meshes":[{"primitives":['
+	mixed_text += '{"attributes":{"POSITION":0,"_TEXCOORD_4":1}},'
+	mixed_text += '{"attributes":{"COLOR_0" : 2,"_TEXCOORD_4":3}},'
+	mixed_text += '{"attributes":{"POSITION":4,"_TEXCOORD_4":5}}]}],"accessors":[{"count":26639}]}'
+	_write_text(mixed, mixed_text)
+	_check_equal(ExportPaintChannel.fix_file(mixed), 2, "a conflicting railing does not skip unrelated walls' paint")
+	var mixed_after := FileAccess.get_file_as_string(mixed)
+	_check_equal(mixed_after, mixed_text.replace('"_TEXCOORD_4":1', '"COLOR_0":1').replace('"_TEXCOORD_4":5', '"COLOR_0":5'),
+		"only the two safe attributes change; original vertex colour, paint and integer text survive")
+	_check(JSON.parse_string(mixed_after) is Dictionary, "mixed colour and paint remains valid JSON")
+	_check_equal(ExportPaintChannel.fix_file(mixed), -1, "a second run only finds the preserved conflict")
+	_check_equal(FileAccess.get_file_as_string(mixed), mixed_after, "the mixed export is unchanged on a second run")
+
 
 ## The second layer comes from the material's own description plus textures
 ## fetched by the paths in it. Tiny stand-in textures, laid out as the
