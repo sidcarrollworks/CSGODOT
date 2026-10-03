@@ -78,12 +78,19 @@ def host_target(system, machine):
 
 
 def checkout(url, commit, path):
-    if not path.exists():
-        path.mkdir(parents=True)
+    # A fresh parent checkout creates empty submodule directories. Without a
+    # local .git entry, rev-parse would silently find the parent's repository.
+    if not (path / ".git").exists():
+        if path.exists() and any(path.iterdir()):
+            raise RuntimeError(f"Refusing to initialize nonempty build directory: {path}")
+        path.mkdir(parents=True, exist_ok=True)
         run("git", "init", "-q", str(path))
         run("git", "-C", str(path), "remote", "add", "origin", url)
         run("git", "-C", str(path), "fetch", "-q", "--depth", "1", "origin", commit)
         run("git", "-C", str(path), "-c", "core.autocrlf=false", "checkout", "-q", "FETCH_HEAD")
+    root = subprocess.check_output(["git", "-C", str(path), "rev-parse", "--show-toplevel"], text=True).strip()
+    if Path(root).resolve() != path.resolve():
+        raise RuntimeError(f"Unexpected repository root {root} in {path}; use a fresh build directory")
     head = subprocess.check_output(["git", "-C", str(path), "rev-parse", "HEAD"], text=True).strip()
     if head != commit:
         raise RuntimeError(f"Unexpected checkout {head} in {path}; use a fresh build directory")

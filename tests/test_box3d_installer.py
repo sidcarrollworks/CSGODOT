@@ -1,4 +1,4 @@
-"""Offline tests for the installer destinations; no downloads or compiler."""
+"""Offline installer tests using local Git repositories; no downloads or compiler."""
 import importlib.util
 import os
 from pathlib import Path
@@ -37,6 +37,66 @@ class InstallerTests(unittest.TestCase):
             for name, data in entries:
                 package.writestr(name, data)
         return path
+
+    def git(self, path, *args):
+        return subprocess.check_output(["git", "-C", str(path), *args], text=True, stderr=subprocess.PIPE).strip()
+
+    def repository(self, path, contents):
+        path.mkdir(parents=True)
+        self.git(path, "init", "-q")
+        (path / "source.txt").write_text(contents, encoding="utf-8")
+        self.git(path, "add", "source.txt")
+        self.git(path, "-c", "user.name=Installer Test", "-c", "user.email=installer@example.invalid", "commit", "-qm", "Fixture")
+        return self.git(path, "rev-parse", "HEAD")
+
+    def test_checks_out_missing_directory(self):
+        remote = self.root / "remote"
+        commit = self.repository(remote, "dependency")
+        destination = self.root / "build/source"
+        installer.checkout(str(remote), commit, destination)
+        self.assertEqual(self.git(destination, "rev-parse", "HEAD"), commit)
+        self.assertEqual((destination / "source.txt").read_text(), "dependency")
+
+    def test_initializes_empty_submodule_directory_inside_parent_repository(self):
+        remote = self.root / "remote"
+        commit = self.repository(remote, "dependency")
+        parent = self.root / "box3d"
+        parent_commit = self.repository(parent, "parent")
+        destination = parent / "godot/godot-cpp"
+        destination.mkdir(parents=True)
+        # Git searches ancestors until this empty submodule has its own repo.
+        self.assertEqual(self.git(destination, "rev-parse", "HEAD"), parent_commit)
+        installer.checkout(str(remote), commit, destination)
+        self.assertEqual(self.git(destination, "rev-parse", "HEAD"), commit)
+        self.assertEqual(Path(self.git(destination, "rev-parse", "--show-toplevel")).resolve(), destination.resolve())
+        self.assertEqual(self.git(parent, "rev-parse", "HEAD"), parent_commit)
+
+    def test_reuses_pinned_checkout_without_discarding_patch(self):
+        destination = self.root / "source"
+        commit = self.repository(destination, "original")
+        (destination / "source.txt").write_text("patched", encoding="utf-8")
+        # No fetch is needed to reuse an existing checkout at the pinned commit.
+        installer.checkout(str(self.root / "unavailable-remote"), commit, destination)
+        self.assertEqual((destination / "source.txt").read_text(), "patched")
+
+    def test_refuses_wrong_checkout_without_modifying_it(self):
+        remote = self.root / "remote"
+        commit = self.repository(remote, "dependency")
+        destination = self.root / "source"
+        wrong_commit = self.repository(destination, "unexpected")
+        with self.assertRaisesRegex(RuntimeError, "Unexpected checkout"):
+            installer.checkout(str(remote), commit, destination)
+        self.assertEqual(self.git(destination, "rev-parse", "HEAD"), wrong_commit)
+        self.assertEqual((destination / "source.txt").read_text(), "unexpected")
+
+    def test_refuses_nonempty_directory_without_repository(self):
+        destination = self.root / "source"
+        destination.mkdir()
+        (destination / "keep.txt").write_text("keep", encoding="utf-8")
+        with self.assertRaisesRegex(RuntimeError, "nonempty"):
+            installer.checkout(str(self.root / "unavailable-remote"), "0" * 40, destination)
+        self.assertEqual((destination / "keep.txt").read_text(), "keep")
+        self.assertFalse((destination / ".git").exists())
 
     def test_detaches_only_bin_link(self):
         self.link(self.project / "addons/box3d/bin")

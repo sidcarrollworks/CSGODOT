@@ -84,7 +84,10 @@ General upstream recording and ordinary casts retain their prior format.
 
 `scripts/run_tests.sh`: **7,335 checks in 78 files, all passed**, with
 extracted assets and native movement comparison enabled. Offline installer
-checks: **5 tests passed**. Both patched Windows libraries built successfully;
+checks: **10 tests passed**. Fresh pinned Box3D/godot-cpp checkouts and patch
+validation also passed. Checkout regression tests cover empty submodule
+directories inside the parent repository, which caused the first CI install
+to read Box3D's commit instead of initializing godot-cpp. Both patched Windows libraries built successfully;
 projectile checks were also rerun against the final installed debug library.
 The checks cover:
 

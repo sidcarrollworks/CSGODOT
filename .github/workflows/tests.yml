@@ -31,6 +31,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check Box3D installer
+        run: python3 -m unittest discover -s tests -p 'test_box3d_installer.py'
+
       - name: Cache Godot
         id: cache-godot
         uses: actions/cache@v4
@@ -59,9 +62,6 @@ jobs:
 
       - name: Install pinned Box3D addon
         run: scripts/install_box3d.sh
-
-      - name: Check Box3D installer destinations
-        run: python3 -m unittest discover -s tests -p 'test_box3d_installer.py'
 
       # The game's own native code, the movement's step, which every check
       # file then holds to the script's results (tests/check_suite.gd).
