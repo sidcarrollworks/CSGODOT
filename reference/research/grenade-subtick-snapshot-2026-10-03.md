@@ -163,6 +163,15 @@ concrete near `(-401.062, 237.265, -355.769)` after about **0.39 seconds**.
 Neither replay contacts `physics_sky`. These distinguish two local paths;
 they do not identify the collision in Sid's actual throw.
 
+The subsequent diagnostic practice run recorded two actual full-strength
+jump throws. Both used the saved jump snapshot, with upward pawn velocity
+about **218.868 u/s**, and first contacted `physics_group_wood_dense` after
+**3.578125 seconds**. Their contact heights were **42.379** and **40.550**
+units, with the door-side normal above. They then bounced onto the ground.
+Neither recorded a sky contact or blocked launch. This confirms the same
+remaining door-side miss in actual play, rather than a failed snapshot or
+the old sky brush collision.
+
 `scripts/watch_grenades.gd` extends the performance watcher to record exact
 launch position/velocity, the player's current state, selected launch
 parameters, jump-snapshot eligibility and contact position/normal/material.

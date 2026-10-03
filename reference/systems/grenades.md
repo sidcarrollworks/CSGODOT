@@ -179,6 +179,15 @@ files named:
    jump feel and the mid-door landing remain to be assessed before merge.
 3. **Your view (`player_view.gd` or the HUD):** a `FlashOverlay` with your
    userid, on top of the HUD *(done on dust2 2026-09-23)*. The flashed ringing is a sound (below).
+   Practice and the test range also enable `GrenadeTrail`: a green overlay
+   follows the actual flight, with orange dots at contacts, visible through
+   geometry. Completed paths remain for eight seconds and fade during the
+   last two. Only the last eight throws are retained; round starts clear
+   them. Trail tips use the grenade model's interpolation, and completed
+   segments include actual tick contact points. No prediction or extra
+   physics queries are performed. Competitive play omits trails by default;
+   `--grenade-trails` enables them, and `--no-grenade-trails` disables them
+   for ordinary play or performance comparisons.
 4. **`bot.gd`: sight.** *(Done 2026-09-24, except keeping out of fire:
    `Bot.can_see` and `Bot.is_blind`, blinded past 0.7; blinded, it fires
    where it last saw the one it was engaging, or backs off; checks in
