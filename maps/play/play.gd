@@ -20,6 +20,14 @@ extends Node3D
 ##   - --mode competitive or --mode practice, which wins over game_mode:
 ##       godot --path . maps/de_dust2/de_dust2.tscn -- --mode practice
 ##
+## and the side, after the mode, as CS2's team select asks it:
+##
+##   - spawn_team, in the inspector: Ask (the default) shows TeamPicker
+##     under the same rule as the mode's picker; otherwise you play T;
+##   - --team t, --team ct or --team auto (either, at random), which wins
+##     over spawn_team:
+##       godot --path . maps/de_dust2/de_dust2.tscn -- --mode practice --team ct
+##
 ## Any map scripts/extract_assets.sh has taken (map <name>) plays, as far as
 ## it has been extracted; what is missing is said in the top left.
 
@@ -30,8 +38,8 @@ extends Node3D
 @export_enum("Ask", "Competitive", "Practice") var game_mode: String = "Ask"
 
 @export_group("Competitive")
-## Which side you play.
-@export_enum("T", "CT") var spawn_team: String = "T"
+## Which side you play; Ask shows CS2's team select at start.
+@export_enum("Ask", "T", "CT") var spawn_team: String = "Ask"
 ## Players on each side, you among them; bots fill every other place.
 @export var team_size: int = 5
 ## How long warmup lasts before the first round; F5 ends it early.
@@ -52,6 +60,9 @@ var map: MapLoader
 var mode: Competitive
 ## The picker while it is open (game_mode Ask); null once a mode is chosen.
 var picker: ModePicker
+## The team select while it is open (spawn_team Ask); null once a side is
+## chosen.
+var team_picker: TeamPicker
 
 
 func _ready() -> void:
@@ -67,18 +78,34 @@ func _ready() -> void:
 			picker = null
 		else:
 			mode_name = "Competitive"
-	_play(mode_name)
+	var side := team_from_args(OS.get_cmdline_user_args(), team_from_args(OS.get_cmdline_args(), spawn_team))
+	if side == "Ask":
+		if _can_ask():
+			# A frame between the pickers, so the key that chose the mode is
+			# not also read as a side.
+			await get_tree().process_frame
+			team_picker = TeamPicker.new()
+			team_picker.name = "TeamPicker"
+			team_picker.bots_per_side = 0 if mode_name == "Practice" else team_size
+			add_child(team_picker)
+			side = await team_picker.chosen
+			team_picker = null
+		else:
+			side = "T"
+	elif side == "Auto":
+		side = TeamPicker.auto_side()
+	_play(mode_name, side)
 
 
-## Whether to show the picker: only when this is the scene being played,
+## Whether to show the pickers: only when this is the scene being played,
 ## on a screen. Added under something else (the profilers, the checks) or
 ## run headless, Ask plays Competitive.
 func _can_ask() -> bool:
 	return get_tree().current_scene == self and DisplayServer.get_name() != "headless"
 
 
-## The world, the map, and the mode on it.
-func _play(mode_name: String) -> void:
+## The world, the map, and the mode on it, you on the side given.
+func _play(mode_name: String, side: String) -> void:
 	world = GameWorld.new()
 	world.name = "World"
 	add_child(world)
@@ -94,7 +121,7 @@ func _play(mode_name: String) -> void:
 	mode.name = mode_name
 	if mode_name == "Practice":
 		mode.practice()
-	mode.spawn_team = spawn_team
+	mode.spawn_team = side
 	mode.team_size = team_size
 	mode.warmup_seconds = warmup_seconds
 	mode.bots_walk_to_sites = bots_walk_to_sites
@@ -134,6 +161,29 @@ static func mode_from_args(args: PackedStringArray, otherwise: String) -> String
 			if named.to_lower() == known.to_lower():
 				return known
 		push_warning("--mode %s is not a mode (%s); playing %s" % [named, ", ".join(ModePicker.MODES).to_lower(), otherwise])
+	return otherwise
+
+
+## The side named by --team t, --team ct or --team auto (or --team=...) among
+## a command line's arguments: "T", "CT" or "Auto"; otherwise the one given.
+## A name that is not a side leaves the one given, and says so.
+static func team_from_args(args: PackedStringArray, otherwise: String) -> String:
+	for i in args.size():
+		var named := ""
+		if args[i] == "--team" and i + 1 < args.size():
+			named = args[i + 1]
+		elif args[i].begins_with("--team="):
+			named = args[i].trim_prefix("--team=")
+		else:
+			continue
+		match named.to_lower():
+			"t":
+				return "T"
+			"ct":
+				return "CT"
+			"auto":
+				return "Auto"
+		push_warning("--team %s is not a side (t, ct, auto); playing %s" % [named, otherwise])
 	return otherwise
 
 
