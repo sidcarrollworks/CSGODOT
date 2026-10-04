@@ -490,7 +490,7 @@ func _test_practice_on_a_small_map() -> void:
 		"with the match, money and buying, the bomb and grenades")
 	_check(mode.economy.rules.unlimited_money and mode.economy.rules.unlimited_grenade_purchases,
 		"Practice enables unlimited money and grenade rebuys in the running economy")
-	_check(mode.notes.has(Competitive.PRACTICE_NOTE), "and says what Practice is in the top left (%s)" % [mode.notes])
+	_check(mode.notes.is_empty(), "complete Practice maps leave the performance HUD clear of informational notes (%s)" % [mode.notes])
 	var userid := (mode.player as PlayerSim).userid
 	for i in 40:
 		await physics_frame

@@ -178,6 +178,14 @@ local-screen reactions, visible spray and ground/persistent decals keep
 their own timings. The generated authored table remains unchanged by that
 runtime override.
 
+The October 4 wall-impact correction aligns the authored local +Z ejection
+of dust, bursts and debris with the contact normal. World-event children
+inherit that frame for local velocity, offsets and explicitly transformed
+noise; gravity and untransformed noise retain their Source world axes.
+Blood keeps its separate local +X spray frame. This corrects dust rising
+along a wall instead of ejecting from it. Exact game-side CP orientation
+and ricochet frames remain inferred, rather than decompiled equivalence.
+
 Explicit approximations, not measured current-CS2 equivalence:
 
 - Damage/root precedence, CP assignments and local-view positioning.

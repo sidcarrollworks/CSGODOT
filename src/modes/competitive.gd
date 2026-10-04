@@ -45,9 +45,6 @@ extends Node3D
 var grenade_trails := false
 var _practice_buying := false
 
-## The line Practice shows in the top left.
-const PRACTICE_NOTE := "Practice: unlimited money and grenade buys; no bots; F5 starts the rounds."
-
 ## How far round a side's spawn points the stand-in buy zone reaches, where
 ## the map's own zones have not been extracted.
 const BUY_ZONE_STAND_IN_MARGIN := 128.0
@@ -96,8 +93,6 @@ func practice() -> void:
 func start(game_world: GameWorld, map_contents: MapContents) -> void:
 	world = game_world
 	map = map_contents
-	if not with_bots and warmup_paused:
-		notes.append(PRACTICE_NOTE)
 	_place_player()
 	_place_bots()
 	_prepare_holding()

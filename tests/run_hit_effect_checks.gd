@@ -119,6 +119,13 @@ func _test_events() -> void:
 	_check(view.particles.live.any(func(p: Dictionary) -> bool: return p.name.begins_with("impact_helmet")), "helmet and lethal flesh effects can coexist")
 	view.queue_world("solidmetal", Vector3.ZERO, Vector3.UP, Vector3.DOWN, 1000002)
 	_check_equal(view.pending_hits()[0].effect, "impact_metal", "world material chooses its authored root")
+	view.particles.live.clear()
+	view.queue_world("concrete", Vector3.ZERO, Vector3.RIGHT, Vector3.LEFT, 1000002)
+	view._start(view.pending_hits()[-1], Vector3.RIGHT * 128.0)
+	var wall_dust := view.particles.live.filter(func(p: Dictionary) -> bool: return p.name == "impact_concrete_child_base")
+	_check(not wall_dust.is_empty(), "queued wall impacts dispatch their authored dust child")
+	for p in wall_dust:
+		_check(p.velocity.normalized().is_equal_approx(Vector3.RIGHT), "world-event dispatch passes the surface-normal frame through to children")
 	for i in 200:
 		view.queue_world("concrete", Vector3.ZERO, Vector3.UP, Vector3.DOWN, i)
 	_check_equal(view.pending_hits().size(), HitEffects.LIMIT_PENDING, "event flood is bounded")
