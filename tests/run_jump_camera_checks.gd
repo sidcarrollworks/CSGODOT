@@ -242,6 +242,8 @@ func _test_view_of_a_bot_taken_over() -> void:
 	var hud := GameHud.new()
 	hud.player = player
 	hud.damage_indicator = DamageIndicator.new()
+	hud.kill_feed = KillFeed.new()
+	hud.kill_feed.watch(world.game, player.userid)
 	player.control_changed.connect(hud._follow_damage_pawn)
 	hud._follow_damage_pawn()
 
@@ -254,6 +256,10 @@ func _test_view_of_a_bot_taken_over() -> void:
 		"taken over, the bot's muzzle is first person even though the controller is dead")
 	_check(sounds.listener_id == bot.userid and flash.viewer_id == bot.userid,
 		"hit audio and flash overlays follow the controlled bot's recipient")
+	world.game.events.send(&"player_death", {"userid": 3, "attacker": bot.userid, "weapon": "weapon_ak47"})
+	world.game.events.flush()
+	_check(hud.kill_feed.notices()[0].yours == KillFeed.Yours.KILLER,
+		"a controlled bot's kill receives the local-player kill-feed highlight")
 	bot.hurt.emit(10.0, &"chest", Vector3(500, 0, 450))
 	player.hurt.emit(10.0, &"chest", Vector3.ZERO)
 	_check(hud.damage_indicator.showing() == 1,
@@ -287,6 +293,10 @@ func _test_view_of_a_bot_taken_over() -> void:
 	_check(sounds.listener_id == player.userid and flash.viewer_id == player.userid
 		and not shots._in_first_person(bot.userid) and hud.damage_indicator.showing() == 0,
 		"given back, the recipient returns to the controller and clears the former pawn's damage arcs")
+	world.game.events.send(&"player_death", {"userid": 3, "attacker": bot.userid, "weapon": "weapon_ak47"})
+	world.game.events.flush()
+	_check(hud.kill_feed.notices()[1].yours == KillFeed.Yours.NONE,
+		"after returning control, another bot kill is no longer highlighted as yours")
 	player.view._on_control_changed()
 	player.view._process(1.0)
 	var centre := bot.body_centre()
@@ -301,6 +311,7 @@ func _test_view_of_a_bot_taken_over() -> void:
 	world.free()
 	DrawClock._tick_clock_usec = old_tick_clock
 	hud.damage_indicator.free()
+	hud.kill_feed.free()
 	hud.free()
 	shots.free()
 	flash.free()

@@ -81,9 +81,10 @@ Pending review and local playtest, not part of merged `main`:
 Shared terrain-aware simulation eyes and ordinary combined horizontal
 integration are merged. The movement section below records the remaining
 command/crouch work and CS2 capture limits. PR #189 preserves the accepted
-local playtest changes; #177 is reconciled on top of it because both edit
-viewmodel recoil and tracer drawing. Merge #189 before #177. Team selection
-and foot placement remain separate PRs against main. All four require fresh
+local playtest changes; #177 includes it because both edit viewmodel recoil
+and tracer drawing. Both target main; merge #189 before #177 so its remaining
+diff is the spectator feature. Team selection and foot placement remain
+separate PRs against main. All four require fresh
 CI; the three feature PRs still need their local gameplay checks.
 
 ## Part 1: what exists
@@ -277,6 +278,13 @@ view and HUD draw it from the inside, its health, gun and money; it stays
 the bot, as CS2's hint says, so what you earn is its. One a round; it dies
 under you and the death camera goes to its body. Shooting and throwing
 while noclipping: Remote done 2026-10-02, with the air's inaccuracy.
+**October 4 reconciliation:** current terrain eyes, grenade snapshots and
+delayed release are retained. Hit/flash recipients, damage directions,
+tracers, recoil-follow arms, kill-feed highlighting and HUD reports follow
+the controlled bot; returning control restores the original player. The
+combined branch passed 8,702 checks in 82 files with extracted assets
+available (three drawing-only suites skipped); the final HUD recipient
+correction also passed its targeted checks. Local gameplay remains below.
 **Local:** fly round dust2 dead and say if the speed or the feel is off;
 take over a bot and play it (arms, sounds, buying, its death); in CS2,
 whether a noclip shot standing still in the air is as wide as a jump's.
