@@ -32,6 +32,12 @@ const CS2_SUN_ENERGY_PER_BRIGHTNESS := 1.0
 ## and ground came to 1.01 of the game's and the shaded ground to 0.99.
 const CS2_EXPOSURE_FIT := 1.2
 
+## Dust2's paired T-spawn reference, 2026-10-03: at 1.5 the shaded wall
+## is within 1% of CS2's luminance and the sunlit plaster within 4%.
+## This is a renderer calibration, not a value extracted from CS2. Other
+## maps keep the prior fit until they have paired world-lighting references.
+const DUST2_EXPOSURE_FIT := 1.5
+
 
 ## The sun's energy for a light_environment brightness of 1 under the grade
 ## mode (ColourGrade.mode() unless given).
@@ -70,6 +76,7 @@ static func build(
 	var fog_entity := _first(entities, "env_cubemap_fog")
 	var post_entity := post_processing_volume(entities)
 	var mode := grade if grade in ColourGrade.MODES else ColourGrade.mode()
+	var exposure_fit := cs2_exposure_fit(entities)
 
 	var light := DirectionalLight3D.new()
 	light.name = "Sun"
@@ -121,6 +128,14 @@ static func build(
 	var sky_colour := _colour(sun_entity.get("skycolor", ""), Color(0.83, 0.89, 0.97))
 	var panorama := load(sky_path) as Texture2D if not sky_path.is_empty() and ResourceLoader.exists(sky_path) else null
 	var sky_values := MapSky.settings(MapSky.entity(entities), sky_vmat, mode)
+	# Preserve the approved backdrop's exposed input when increasing world
+	# exposure. This affects the visible pass only, never the radiance capture.
+	var sky_compensation := CS2_EXPOSURE_FIT / exposure_fit
+	var cs2_sky_energy := float(sky_values.energy) if mode == "cs2" else float(MapSky.settings(MapSky.entity(entities), sky_vmat, "cs2").energy)
+	var sky_energy_by_grade := {"cs2": cs2_sky_energy * sky_compensation, "aces": sky_values.authored_energy}
+	environment.set_meta(&"grade_sky_energy", sky_energy_by_grade)
+	sky_values["exposure_compensation"] = sky_compensation if mode == "cs2" else 1.0
+	sky_values.energy = sky_energy_by_grade[mode]
 	if panorama != null:
 		# Changing the backdrop must not re-light accepted map materials or
 		# alter cubemap fog. Keep the previous panorama capture's energy.
@@ -204,7 +219,7 @@ static func build(
 	# (RenderVariants); the sun and the bounce stay in the mode's units.
 	environment.set_meta(&"grade_aces", ColourGrade.current(environment))
 	environment.set_meta(&"grade_post", post if post != null else MapPostProcessing.load_file(""))
-	environment.set_meta(&"grade_exposure", cs2_exposure(post_entity) * CS2_EXPOSURE_FIT)
+	environment.set_meta(&"grade_exposure", cs2_exposure(post_entity) * exposure_fit)
 	ColourGrade.use(environment, mode)
 
 	var world_environment := WorldEnvironment.new()
@@ -223,6 +238,7 @@ static func build(
 		"sky_settings": sky_values,
 		"fog": environment.fog_enabled,
 		"exposure": environment.tonemap_exposure if mode != "cs2" else float(environment.get_meta(&"grade_exposure")),
+		"exposure_fit": exposure_fit if mode == "cs2" else 1.0,
 		"grade": mode,
 		"post_processing": (environment.get_meta(&"grade_post") as MapPostProcessing).summary(),
 	}
@@ -306,6 +322,13 @@ static func barn_light(entity: Dictionary) -> SpotLight3D:
 	lamp.shadow_bias = LAMP_SHADOW_BIAS
 	lamp.transform = Transform3D(Basis.looking_at(forward, up), eye)
 	return lamp
+
+
+## A measured renderer fit for the identified map. Maps without a paired
+## world-lighting calibration retain the original factor.
+static func cs2_exposure_fit(entities: Array[Dictionary]) -> float:
+	var world := _first(entities, "worldspawn")
+	return DUST2_EXPOSURE_FIT if world.get("worldname", "") == "de_dust2" else CS2_EXPOSURE_FIT
 
 
 ## The exposure CS2's grade starts from, before its file's bias: the middle

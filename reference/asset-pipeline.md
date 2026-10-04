@@ -42,7 +42,9 @@ biases from either format, with the active `env_sky`'s brightness and tint.
 Dust2's +0.765-stop adjustment reaches the renderer through a documented
 0.75 backdrop fit; Mirage's zero bias stays neutral. The fit comes from a
 paired render, not decompiled code. Lighting, reflections and fog retain
-their previous panorama capture. The
+their previous panorama capture. Dust2's later world-exposure increase
+is countered in the visible sky pass so the approved sky brightness is
+preserved. The
 [sky audit](research/sky-brightness-2026-10-03.md) records the extracted values,
 current-client Ghidra confirmation and corrected HDR screenshot comparison.
 

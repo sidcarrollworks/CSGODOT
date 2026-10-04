@@ -30,6 +30,7 @@ func _initialize() -> void:
 	_check_table(_near_linear(), "dust2's own curve")
 	_check_reader()
 	_check_environment()
+	_check_world_exposure()
 	_check_mode()
 	_finish("grade")
 
@@ -401,6 +402,54 @@ func _check_environment() -> void:
 	_check_equal(aces.tonemap_mode, Environment.TONE_MAPPER_LINEAR, "and the other way")
 	aces_holder.free()
 	cs2_holder.free()
+
+
+## A map's exposure correction brightens the world without undoing the
+## approved sky. The running grade comparison must be reversible too.
+func _check_world_exposure() -> void:
+	for map_name: String in ["de_dust2", "de_mirage"]:
+		var holder := Node3D.new()
+		root.add_child(holder)
+		var sky_entity := {"classname": "env_sky", "skyname": 'resource_name:"materials/skybox/sky_%s.vmat"' % map_name}
+		var entities: Array[Dictionary] = [
+			{"classname": "worldspawn", "worldname": map_name},
+			{"classname": "light_environment", "brightness": "2.5", "skyintensity": "0.960784"},
+			sky_entity,
+		]
+		var vmat := '"g_flBrightnessExposureBias" "%.3f"' % (0.765 if map_name == "de_dust2" else 0.0)
+		var post := MapPostProcessing.load_file("")
+		var used := MapLighting.build(holder, {}, entities, "", null, false, post, "cs2", vmat)
+		var environment := (holder.get_node("Atmosphere") as WorldEnvironment).environment
+		var expected_fit := 1.5 if map_name == "de_dust2" else 1.2
+		_check_near(used.exposure, expected_fit,
+			"%s receives its world exposure fit; Mirage retains the prior calibration" % map_name)
+		var bias := pow(2.0, float(post.tonemap["m_flExposureBias"]))
+		var white := float(post.tonemap["m_flWhitePoint"])
+		_check_near(environment.tonemap_exposure, expected_fit * bias / white,
+			"%s's fit reaches the tone mapper without changing the curve" % map_name)
+		# A tiny in-memory panorama needs no extracted Valve content.
+		var image := Image.create(1, 1, false, Image.FORMAT_RGBF)
+		image.fill(Color(0.2, 0.4, 0.6))
+		var texture := ImageTexture.create_from_image(image)
+		var approved := MapSky.settings(sky_entity, vmat, "cs2")
+		var material := MapSky.material(texture, approved, 0.960784)
+		environment.sky.sky_material = material
+		ColourGrade.use(environment, "cs2")
+		var cs2_sky := float(material.get_shader_parameter(&"energy"))
+		_check_near(cs2_sky * used.exposure, approved.energy * MapLighting.CS2_EXPOSURE_FIT,
+			"%s's visible sky has the same exposed input after the world adjustment" % map_name)
+		_check(is_equal_approx(float(material.get_shader_parameter(&"lighting_energy")), 0.960784)
+			and is_equal_approx((holder.get_node("Sun") as DirectionalLight3D).light_energy, 2.5),
+			"%s's radiance capture and sun energy are not multiplied by the exposure fit" % map_name)
+		ColourGrade.use(environment, "aces")
+		_check(is_equal_approx(float(material.get_shader_parameter(&"energy")), approved.authored_energy)
+			and is_equal_approx(environment.tonemap_exposure, 1.0),
+			"%s's ACES comparison restores its own sky gain and exposure" % map_name)
+		ColourGrade.use(environment, "cs2")
+		_check(is_equal_approx(float(material.get_shader_parameter(&"energy")), cs2_sky)
+			and is_equal_approx(environment.tonemap_exposure, expected_fit * bias / white),
+			"%s returns to its compensated sky and world exposure after the comparison" % map_name)
+		holder.free()
 
 
 func _check_mode() -> void:
