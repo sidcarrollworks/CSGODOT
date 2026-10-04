@@ -3,7 +3,8 @@ extends "res://tests/check_suite.gd"
 ## Checks maps apart from modes: every path of a map derived from its name,
 ## as the extraction script writes them (dust2's exactly as they always
 ## were); the sky found from the map's own sky material; the map chosen by
-## --map; the mode chosen by --mode, the scene's game_mode or the picker;
+## --map; the mode chosen by --mode, the scene's game_mode or the picker,
+## and the side by --team, spawn_team or CS2's team select;
 ## competitive and practice set up on a small map built here, with spawn
 ## points, buy zones and bomb sites given directly; and the bots' way to the
 ## bomb sites on a map whose callouts are not named BombsiteA and BombsiteB.
@@ -37,6 +38,7 @@ func _run() -> void:
 	_test_the_extraction_script_agrees()
 	_test_the_map_from_the_command_line()
 	_test_the_mode_from_the_command_line()
+	_test_the_team_from_the_command_line()
 	_test_the_sky_from_the_maps_own_material()
 	_test_sky_brightness()
 	_test_site_floors_from_callouts_or_volumes()
@@ -48,6 +50,8 @@ func _run() -> void:
 	await _test_practice_on_a_small_map()
 	_test_the_picker()
 	await _test_the_scene_plays_the_mode_chosen()
+	_test_the_team_select()
+	await _test_the_scene_plays_the_side_chosen()
 	await _test_the_bomb_each_round("T")
 	await _test_the_bomb_each_round("CT")
 	_finish("map-mode")
@@ -126,6 +130,7 @@ func _test_the_map_from_the_command_line() -> void:
 	_check(dust2 is PlayScene and dust2.get("map_name") == "de_dust2", "maps/de_dust2/de_dust2.tscn is the play scene set to de_dust2")
 	_check(dust2.get("team_size") == 5, "and still takes a team size, as scripts/profile_dust2.gd sets it")
 	_check(dust2.get("game_mode") == "Ask", "and asks for the mode as it starts")
+	_check(dust2.get("spawn_team") == "Ask", "and then the side")
 	dust2.free()
 
 
@@ -134,6 +139,14 @@ func _test_the_mode_from_the_command_line() -> void:
 	_check_equal(PlayScene.mode_from_args(PackedStringArray(["--map", "de_dust2", "--mode=Competitive"]), "Ask"), "Competitive", "--mode=Competitive, in any case, chooses Competitive")
 	_check_equal(PlayScene.mode_from_args(PackedStringArray(["--mode"]), "Practice"), "Practice", "--mode with no name leaves the scene's mode")
 	_check_equal(PlayScene.mode_from_args(PackedStringArray(), "Ask"), "Ask", "without --mode the scene's own game_mode stands")
+
+
+func _test_the_team_from_the_command_line() -> void:
+	_check_equal(PlayScene.team_from_args(PackedStringArray(["--team", "ct"]), "Ask"), "CT", "--team ct chooses CT")
+	_check_equal(PlayScene.team_from_args(PackedStringArray(["--mode", "practice", "--team=T"]), "Ask"), "T", "--team=T, in any case, chooses T")
+	_check_equal(PlayScene.team_from_args(PackedStringArray(["--team", "auto"]), "Ask"), "Auto", "--team auto leaves it to Auto Select")
+	_check_equal(PlayScene.team_from_args(PackedStringArray(["--team"]), "CT"), "CT", "--team with no name leaves the scene's side")
+	_check_equal(PlayScene.team_from_args(PackedStringArray(), "Ask"), "Ask", "without --team the scene's own spawn_team stands")
 
 
 # --- The sky -------------------------------------------------------------------
@@ -558,5 +571,58 @@ func _test_the_scene_plays_the_mode_chosen() -> void:
 			"game_mode %s, added under root: no picker" % asked)
 		_check(scene.mode != null and scene.mode.name == expected and scene.mode.with_bots == (expected == "Competitive"),
 			"game_mode %s plays %s" % [asked, expected])
+		scene.queue_free()
+		await process_frame
+
+
+## CS2's team select, headless: 1 is T, 2 CT, 3 Auto Select, which is also
+## what the countdown picks when it runs out; each side says its players and
+## bots.
+func _test_the_team_select() -> void:
+	_check_equal(TeamPicker.side_line(0, 5), "0 Players - 5 Bots", "a side's line reads as CS2's does")
+	_check_equal(TeamPicker.side_line(1, 1), "1 Player - 1 Bot", "in the singular too")
+	var sides := {}
+	for i in 64:
+		sides[TeamPicker.auto_side()] = true
+	_check(sides.size() == 2 and sides.has("T") and sides.has("CT"), "Auto Select joins either side (%s)" % [sides.keys()])
+
+	for case: Array in [[KEY_1, "T"], [KEY_2, "CT"]]:
+		var picker := TeamPicker.new()
+		root.add_child(picker)
+		var chosen: Array[String] = []
+		picker.chosen.connect(func(side: String) -> void: chosen.append(side))
+		_check(picker.handle_key(_key(case[0])), "%s is the team select's" % OS.get_keycode_string(case[0]))
+		_check_equal(chosen, [case[1]] as Array[String], "and joins %s" % case[1])
+		_check(picker.is_queued_for_deletion(), "and the screen goes")
+
+	var picker := TeamPicker.new()
+	root.add_child(picker)
+	var chosen: Array[String] = []
+	picker.chosen.connect(func(side: String) -> void: chosen.append(side))
+	_check(not picker.handle_key(_key(KEY_F5)), "a key it does not use passes through")
+	_check_near(picker.seconds_left, TeamPicker.PICK_SECONDS, "the countdown starts full")
+	picker.tick_down(TeamPicker.PICK_SECONDS - 1.0)
+	_check(chosen.is_empty(), "and nothing is picked before it runs out")
+	picker.tick_down(1.0)
+	_check(chosen.size() == 1 and chosen[0] in ["T", "CT"], "when it runs out, Auto Select picks a side (%s)" % [chosen])
+	picker.tick_down(1.0)
+	picker.handle_key(_key(KEY_3))
+	_check_equal(chosen.size(), 1, "it picks once")
+
+
+## The play scene added under root: spawn_team Ask plays T without the team
+## select, since it is not the scene being played, and spawn_team CT plays CT.
+func _test_the_scene_plays_the_side_chosen() -> void:
+	for asked: String in ["Ask", "CT"]:
+		var scene := (load("res://maps/play/play.tscn") as PackedScene).instantiate() as PlayScene
+		scene.map_name = "de_never_extracted"
+		scene.game_mode = "Competitive"
+		scene.spawn_team = asked
+		root.add_child(scene)
+		await process_frame
+		var expected := "T" if asked == "Ask" else "CT"
+		_check(scene.team_picker == null and scene.find_children("*", "TeamPicker", true, false).is_empty(),
+			"spawn_team %s, added under root: no team select" % asked)
+		_check(scene.mode != null and scene.mode.spawn_team == expected, "spawn_team %s plays %s" % [asked, expected])
 		scene.queue_free()
 		await process_frame
