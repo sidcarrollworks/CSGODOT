@@ -15,15 +15,16 @@ with `MovementConfig.cs2_jump` on by default. The older Source jump-height
 comparison below is historical; measured CS2 height and full movement parity
 remain open. The [camera-height follow-up](camera-height-2026-10-03.md)
 verifies 64/46 base eye heights and recovers the terrain/root offset path
-used before grenade snapshot capture. That adjustment and the April 2026
-duck root/view rules remain unported.
+used before grenade snapshot capture. The
+[terrain-eye port](terrain-eyes-2026-10-03.md) now implements that shared
+topology state and ordinary transitions; full duck root/view rules remain open.
 
 **October 3 binary follow-up:** the
 [movement Ghidra audit](movement-ghidra-2026-10-03.md) compares ordinary
 walk/air integration, ground queries, crouch and modern jump paths. Matching
 defaults and matching script/native steps do not establish CS2 parity:
 horizontal acceleration/friction use different displacement state, and
-terrain eyes, crouch and the modern landing/press window remain unported.
+complete crouch and the modern landing/press window remain unported.
 The door reference now has paired pawn/camera coordinates and a measured
 60.75-unit eye height. This supersedes the historical status below where
 the ordinary jump adjustment is described as unknown.

@@ -1,5 +1,13 @@
 # What everything costs, and what going online will
 
+The [3 October terrain-eye measurements](research/terrain-eyes-2026-10-03.md#performance)
+record the new shared simulation sampler: the paired ten-player Dust2
+fixture adds **0.693 ms per tick** on average (2.6155 vs 1.9225 ms with the
+sampler disabled). Stationary cached positions issue no additional casts;
+moving near failed sample cells retries them. `scripts/profile_ground_eyes.gd`
+repeats the comparison. This is headless simulation cost; rendered-frame
+acceptance and the 6-ms maximum target remain open.
+
 The [2 October grenade-port measurements](research/grenade-port-2026-10-02.md#performance)
 record the added box substep and body check: about 0.051 ms per moving
 grenade in a ten-grenade Dust2 fixture. The moving-round comparison showed

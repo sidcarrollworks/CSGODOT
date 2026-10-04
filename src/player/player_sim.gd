@@ -637,6 +637,7 @@ func place(spawn_position: Vector3, yaw: float) -> void:
 	_spawn_yaw = yaw
 	global_position = spawn_position
 	previous_position = spawn_position
+	reset_eye_state()
 	yaw_degrees = yaw
 	pitch_degrees = 0.0
 	previous_yaw_degrees = yaw
@@ -743,6 +744,7 @@ func _run(cmd: UserCmd, dt: float) -> void:
 	if cmd.toggle_noclip:
 		noclip = not noclip
 		velocity = Vector3.ZERO
+		reset_eye_state()
 
 	if not alive:
 		if not respawns:
@@ -935,7 +937,7 @@ func _try_shoot(at_usec: int, tick_fraction: float, yaw: float, pitch: float) ->
 	# belongs, which is exactly the strafe-and-tap case that hit registration
 	# arguments are made of.
 	var at := previous_position.lerp(global_position, clampf(tick_fraction, 0.0, 1.0))
-	var origin := at + Vector3.UP * eye_height()
+	var origin := at + Vector3.UP * interpolated_eye_height(tick_fraction)
 	# A hit's flinch throws the round as far as it throws the view.
 	var thrown := hit_punch.value
 	var reloading := weapon.is_reloading(at_usec)
@@ -1049,7 +1051,7 @@ func _update_knife(cmd: UserCmd, still: bool) -> void:
 func _swing(heavy: bool, at_usec: int, tick_fraction: float, yaw: float, pitch: float) -> void:
 	var begun := knife.begin(heavy, at_usec)
 	var at := previous_position.lerp(global_position, clampf(tick_fraction, 0.0, 1.0))
-	var origin := at + Vector3.UP * eye_height()
+	var origin := at + Vector3.UP * interpolated_eye_height(tick_fraction)
 	var thrown := hit_punch.value
 	var aim_yaw := deg_to_rad(yaw - thrown.x)
 	var aim_pitch := deg_to_rad(pitch + thrown.y)
@@ -1315,6 +1317,9 @@ func _next_teammate(after: PlayerSim) -> PlayerSim:
 ## Up again: whole, solid, able to be shot, watching nobody.
 func _revive() -> void:
 	alive = true
+	# Bots may return directly to a route point instead of calling place().
+	# Every revival clears the old floor's eye/root and sample cache.
+	reset_eye_state()
 	hit_target.reset()
 	hit_target.set_active(true)
 	collision_layer = PLAYER_LAYER

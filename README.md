@@ -205,11 +205,14 @@ adds a dedicated projectile trace, CS2 box flight, release/jump timing and
 activation rules. Local CS2 lineup comparison remains open.
 
 The [movement audit](reference/research/movement-ghidra-2026-10-03.md)
-separates the merged jump/crouch corrections from the next work: shared
-terrain-aware eye state for the camera and grenade snapshots, combined
-horizontal acceleration/friction integration, then complete crouch and
-modern jump transitions. Script/native agreement checks our two ports;
-paired CS2 captures are still needed to establish parity.
+records the jump/crouch corrections and the shared terrain-aware eye state.
+The camera, weapon origins and grenade snapshots read one simulation value,
+with cached support samples updated before snapshot capture. The
+[terrain-eye follow-up](reference/research/terrain-eyes-2026-10-03.md)
+records the recovered rules, query cost and paired Dust2 camera checks.
+Combined horizontal acceleration/friction integration, then complete crouch
+and modern jump transitions remain next. Script/native agreement checks our
+two ports; paired CS2 trajectories are still needed to establish parity.
 
 Dust2's sky and world exposure were calibrated against paired T-spawn
 captures and accepted in play. The world exposure fit is 1.5, with inverse

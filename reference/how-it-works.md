@@ -109,6 +109,17 @@ than the checkout's is not run: it carries a stamp of what it copies, and
 the game compares it as it starts. `--movement script` has the script
 run every step. `native/README.md` has the rules for changing either.
 
+Each movement segment finishes the shared terrain-aware eyes in
+`GroundEyes` before grenade snapshot capture. It samples a cached 5-by-5
+grid of small support squares on fixed world geometry, applies topology
+transitions, and quantizes the result while retaining the 64/46 base
+heights. Camera interpolation and weapon origins read this state without
+physics queries; the drawn jump dip remains separate. Ground-owner flags
+come from the existing collision traces in both movement implementations.
+Full crouch/root timing remains open; the
+[terrain-eye report](research/terrain-eyes-2026-10-03.md) records the port's
+measurements and limits.
+
 ## Shooting
 
 Hitscan, traced from the sub-tick position of the eye, with three things done
@@ -324,8 +335,8 @@ PR #184 splits movement at takeoff +0.1 s so a grenade snapshot uses the
 moved pawn state at that boundary. Script and native movement share the
 audited ordinary jump and crouch acceleration corrections. Base eyes
 remain 64 standing / 46 crouched; the terrain/root adjustment recovered
-from CS2 remains unported. The next change is one simulation eye state
-for rendering and grenade snapshots, followed by combined horizontal
+from CS2 now supplies one shared simulation eye state for rendering,
+weapon origins and grenade snapshots. The next changes are combined horizontal
 integration and complete crouch/modern jump transitions
 ([movement audit](research/movement-ghidra-2026-10-03.md)).
 
