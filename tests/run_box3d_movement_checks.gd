@@ -330,8 +330,10 @@ func _check_steps_and_jump() -> void:
 	for tick in 60:
 		player.simulate(DT)
 		peak = maxf(peak, player.position.y)
-	_check(peak - start_y > 58.0 and peak - start_y < 60.0 and player.on_ground,
-		"native sweeps preserve the Source jump arc and landing")
+	# The audited CS2 take-off and restored leading half-gravity give a
+	# 55.8255-inch sampled arc at 64 Hz, rather than the legacy Source arc.
+	_check(absf(peak - start_y - 55.8255) < 0.02 and player.on_ground,
+		"native sweeps preserve the CS2 jump arc and landing (peak %.6f, ground %s)" % [peak - start_y, player.on_ground])
 	_close()
 	await process_frame
 

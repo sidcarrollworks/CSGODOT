@@ -41,6 +41,8 @@ extends Node3D
 ## Whether warmup's clock stands still, so warmup lasts until F5 ends it
 ## (mp_warmup_pausetimer 1, MatchRules.warmup_paused). Practice pauses it.
 @export var warmup_paused: bool = false
+## Real grenade trajectories, for practice lineups only by default.
+var grenade_trails := false
 
 ## The line Practice shows in the top left.
 const PRACTICE_NOTE := "Practice: no bots; warmup does not end; F5 starts the rounds."
@@ -85,6 +87,7 @@ var _sites := PackedVector3Array()
 func practice() -> void:
 	with_bots = false
 	warmup_paused = true
+	grenade_trails = true
 
 
 ## Sets the game up on a map, in a world, once this node is in the scene.
@@ -374,6 +377,12 @@ func _add_views() -> void:
 	if grenade_system != null:
 		var grenade_view := GrenadeView.new()
 		grenade_view.name = "Grenades"
+		grenade_view.trails_enabled = grenade_trails
+		var arguments := OS.get_cmdline_user_args()
+		if arguments.has("--grenade-trails"):
+			grenade_view.trails_enabled = true
+		if arguments.has("--no-grenade-trails"):
+			grenade_view.trails_enabled = false
 		add_child(grenade_view)
 		grenade_view.watch(world.game)
 		var canvas := CanvasLayer.new()

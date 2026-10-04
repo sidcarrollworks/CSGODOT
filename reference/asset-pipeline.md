@@ -125,11 +125,17 @@ What dust2 turned out to be:
   footsteps, penetration and grenades will want. Player clips do survive, so
   no hand-authored clip layer is needed; but they must stop players only.
   The importer puts `playerclip` and `passbullets` parts in a body of their
-  own on collision layer 4 (`MapImporter.PLAYER_CLIP_LAYER`), which the
+  own on collision layer 8 (`MapImporter.PLAYER_CLIP_LAYER`), which the
   players' movement collides with and rounds, bots' sight and footstep
   traces do not. In with the rest they stopped rounds on thin air: 10 units
   in front of B site's back wall, 2.5 in front of its stacked blocks, with
-  the bullet holes printed on nothing. Grenade clips are left out entirely.
+  the bullet holes printed on nothing. Grenade clips are retained separately
+  on layer 32. `physics_sky` is retained on layer 64 for explicit sky queries;
+  its conditional `sky` interaction is not ordinary world solidity. Grenades
+  pass through it, as the installed game's collision mask requires. Both
+  already come from `world_physics.vmdl_c`; no separate grenade skybox export
+  is needed. [The clipping audit](research/grenade-sky-clipping-2026-10-02.md)
+  records the archive comparison and recovered interaction bits.
 - **Tool and effect geometry comes along** in the visible world: light
   blockers spanning the whole map, light shafts, steam cards. Every material
   carries its vmat path and shader flags as glTF extras, and the importer hides

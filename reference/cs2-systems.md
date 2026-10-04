@@ -400,6 +400,24 @@ elasticity 0.45, with additional bounce/rest rules. These core rules are
 ported, including the separate one-time enemy body hit; G1 still needs
 local CS2 comparison.
 
+The [October 3 subtick audit](research/grenade-subtick-snapshot-2026-10-03.md)
+verifies an explicit movement boundary at takeoff +0.1 s. The port now uses
+that boundary and the recovered ordinary jump adjustment, at Sid's request
+for playtest. It removes phase variation. The earlier mid-door miss used
+Godot screenshot aim; Sid's subsequent CS2 console aim lands on the door
+without changing flight physics. The local preset now uses Sid's paired
+`getpos_exact` pawn coordinates. Recorded trajectory
+comparison and general jump feel still need validation before merge.
+Sid still needs to aim higher at matching landmarks. The
+[camera-height audit](research/camera-height-2026-10-03.md) verifies the
+64/46 base eye heights and a missing terrain-dependent eye adjustment,
+which CS2 also uses for grenade snapshots. The effective reference eye
+height is now measured at 60.75 units; the shared adjustment remains
+unported. The [movement audit](research/movement-ghidra-2026-10-03.md)
+also finds horizontal integration, crouch and modern landing/press-window
+differences. The B-doors reference measures 63.9375 units and is available
+in the watcher with `--lineup=b-doors`.
+
 **HE (WV):** 99 damage at the centre, 350 units radius, falling off smoothly
 with Gaussian falloff sigma=radius/3 (binary verified; target points and
 wall attenuation still G2), cut by walls between;
@@ -484,7 +502,9 @@ inventory HUD row is already built.
 - **G1.** *(Static throw/flight/fuse audit and core port done 2026-10-02; captures
   and additional entity/water/spin branches open.)* Compare left/right/both, button changes, standing/running/crouching/
   jumping, close walls, bounce/settle and fuses; record dust2 lineups including
-  grenade clips. The 0.2 s snapshot-age predicate is not a measured input window.
+  grenade clips. [Conditional sky clipping](research/grenade-sky-clipping-2026-10-02.md)
+  is corrected: authored sky brushes remain outside ordinary gameplay masks.
+  The 0.2 s snapshot-age predicate is not a measured input window.
 - **G2.** *(Gaussian recovered; comparisons open.)* HE damage at 50, 100,
   200 and 300 units, airborne and on ground, with walls and kevlar.
 - **G3.** *(Server distance/facing/timing/overlap rules recovered; port and

@@ -151,12 +151,10 @@ var noclip: bool = false
 ## horizontal; with noclip on it carries the full 3D fly direction.
 var wish_dir: Vector3 = Vector3.ZERO
 var wish_speed: float = 0.0
-## The speed ground acceleration works from when it is above wish_speed:
-## the held item's, where a crouch keeps wish_speed to a third of it
-## (MovementSolver.accelerate). At a crouched rifle's 73, below
-## sv_stopspeed's 80, friction takes 6.5 u/s a tick and acceleration from
-## 73 adds only 6.3, so the player ground to a stop. Nothing below
-## wish_speed changes anything.
+## Explicit ground acceleration scale, independent of the speed target.
+## PlayerSim supplies CS2's 250 * 0.34 crouch scale: slower than a standing
+## burst, but large enough to overcome stop friction for a crouched rifle.
+## Zero lets plain bodies accelerate from wish_speed.
 var acceleration_speed: float = 0.0
 var wants_jump: bool = false
 var wants_duck: bool = false
@@ -165,6 +163,10 @@ var wants_duck: bool = false
 ## there was no fresh press. CS2 sends this per button transition; see
 ## MovementConfig.subtick_jump.
 var jump_fraction: float = -1.0
+
+## An additional movement boundary this tick, or -1. A grenade snapshot
+## uses it to finish a real collision step exactly at its deadline.
+var movement_fraction: float = -1.0
 
 ## Previous tick's position, so the camera can interpolate between physics
 ## ticks instead of stuttering at the 64 Hz tick boundary.
@@ -366,6 +368,7 @@ func simulate(dt: float) -> void:
 		global_position += velocity * dt
 		on_ground = false
 		jump_fraction = -1.0
+		movement_fraction = -1.0
 		height_above_ground = INF
 		if _native_physics() != null:
 			_native.queries.sync_object(self, false)
@@ -395,20 +398,38 @@ func simulate(dt: float) -> void:
 		# down, so the impulse happens at the fraction it was pressed at.
 		var pressed := wants_jump
 		wants_jump = false
-		_step(mover, dt * jump_fraction)
+		_movement_interval(mover, dt, 0.0, jump_fraction)
 		wants_jump = pressed
-		_step(mover, dt * (1.0 - jump_fraction))
+		_movement_interval(mover, dt, jump_fraction, 1.0)
 	else:
-		_step(mover, dt)
+		_movement_interval(mover, dt, 0.0, 1.0)
 
 	_jump_held_last_tick = wants_jump
 	jump_fraction = -1.0
+	movement_fraction = -1.0
 	_update_air(was_on_ground)
 	if _adapter != null:
 		_adapter.queries.end_scope()
 		# Later players and shots in this same tick see the completed movement.
 		_adapter.queries.sync_object(self, false)
 	_adapter = null
+
+
+func _movement_interval(mover: Object, dt: float, start: float, end: float) -> void:
+	if movement_fraction > start and movement_fraction < end:
+		var boundary := movement_fraction
+		_step(mover, dt * (boundary - start))
+		_movement_finished(start, boundary)
+		_step(mover, dt * (end - boundary))
+		_movement_finished(boundary, end)
+	else:
+		_step(mover, dt * (end - start))
+		_movement_finished(start, end)
+
+
+## Called outside _step: native/script comparison must not save state twice.
+func _movement_finished(_start: float, _end: float) -> void:
+	pass
 
 
 ## The native code's mover when this tick's steps can be run by it, else
@@ -759,7 +780,12 @@ func _try_jump(dt: float) -> void:
 	velocity = MovementSolver.clamp_bunnyhop(velocity, config)
 	velocity.y = config.jump_impulse
 	_jumped = true
-	if config.tick_rate_independent_jump:
+	if config.cs2_jump:
+		# CS2 sets impulse - gravity * 0.5 * (1/128), then applies full
+		# gravity over this segment. Restore our overwritten leading half.
+		velocity.y -= config.gravity * 0.5 / 128.0
+		velocity.y -= config.gravity * 0.5 * dt
+	elif config.tick_rate_independent_jump:
 		# Put back the leading half-step of gravity that the impulse just
 		# overwrote. See MovementConfig.tick_rate_independent_jump.
 		velocity.y -= config.gravity * 0.5 * dt
@@ -776,11 +802,11 @@ func _walk_move(surface_friction: float, dt: float) -> void:
 		if dir.length_squared() > 0.0:
 			dir = dir.normalized()
 
-	# Faster crouch acceleration must not turn sideways momentum into
-	# extra speed. Keep any speed left after friction when crouching from
+	# Crouch acceleration must not turn sideways momentum into extra speed.
+	# Keep any speed left after friction when crouching from
 	# a run, so the crouch still slows gradually rather than snapping down.
 	var speed_limit := INF
-	if acceleration_speed > wish_speed:
+	if acceleration_speed > wish_speed or (acceleration_speed > 0.0 and duck_progress > 0.0):
 		speed_limit = maxf(wish_speed, velocity.length())
 	velocity = MovementSolver.accelerate(
 		velocity, dir, wish_speed, config.accelerate, surface_friction, dt, acceleration_speed

@@ -11,7 +11,7 @@ It does not mark recorded CS2 lineup parity or G2–G5 effects complete.
 |---|---|
 | Held strength | First hold assigns left/both/right directly; later eligible command ticks approach the target by 0.0203124992549. Launch snaps within 0.1 of 0.5, then clamps. |
 | Release | A hand release schedules simulation time +0.1 s. Consume requires time strictly greater than the deadline; a first qualifying jump consume defers once by another 0.1 s. Inventory removal/event occur at spawn. |
-| Jump parameters | An actual jump schedules its stash at the subtick jump instant + movement interval +0.1 s. Movement finish captures eye, collision center, aim and velocity. Ready snapshots are used only at age >0 and <=0.2 s. Death/respawn clear pending state. |
+| Jump parameters | An actual jump schedules its stash at simulation time − movement interval +0.1 s, corrected by the [Xbox lineup follow-up](grenade-jump-lineup-2026-10-02.md). Movement finish captures eye, collision center, aim and velocity. Ready snapshots are used only at age >0 and <=0.2 s. Death/respawn clear pending state. |
 | Launch | ±2.02-inch box from pawn collision center to lowered eye + forward16; no six-unit backward adjustment. Pitch wrap/lift, authored speed ×0.9 clamped 15..750, strength scale 0.7S+0.3 and pawn velocity ×1.25. |
 | Flight | Axis-aligned ±2-inch box. Normal 64 Hz ticks run two 1/128 s steps; the recovered nonintegral-interval fallback remains. Gravity is 320 u/s² with midpoint vertical displacement. |
 | Surface bounce | Clip push max(-2 dot(v,n),0)+0.03125, then elasticity 0.45. Player surfaces use a radial normal, with no universal ×0.3 restitution. Floor rest/high-speed outward reduction, the 21-count bounce cap and nine zero-velocity updates are retained. |
@@ -19,7 +19,7 @@ It does not mark recorded CS2 lineup parity or G2–G5 effects complete.
 | HE / flash activation | Spawn +1.5 s deadline; danger thinks poll every 0.2 s from the actual executed think and detonate strictly beyond the deadline. |
 | Smoke / decoy activation | Smoke checks each tick for age >=1.18799996376 s and speed <=0.1. Decoy first thinks at spawn +2 s, then polls every 0.2 s until speed <=0.2; its existing 15 s active lifetime remains. |
 | Fire activation | Ground normal >=cos30 detonates at its contact point. Air think checks the strict spawn +2 s deadline (plus body extension), or more than 0.5 s at speed <=5. Airburst ray goes from position +10 up to position -128 down. |
-| Map clips | `grenadeclip` meshes are retained on layer 32, separate from world and player clips, and excluded from camera occluders. |
+| Map clips | `grenadeclip` meshes are retained on layer 32, separate from world and player clips, and excluded from camera occluders. The [sky clipping follow-up](grenade-sky-clipping-2026-10-02.md) puts conditional `physics_sky` brushes on layer 64; ordinary gameplay masks ignore them. |
 
 Explicit console/range/bot `throw` commands remain immediate spawn requests.
 The player's pin and hand release use the timer above. Existing throw clips

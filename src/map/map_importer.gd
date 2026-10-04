@@ -128,6 +128,12 @@ enum CollisionSource {
 @export var grenade_only_hints: PackedStringArray = PackedStringArray(["grenadeclip"])
 const GRENADE_CLIP_LAYER := 32
 
+## Sky brushes carry only Source2's conditional `sky` interaction, not
+## ordinary solidity. Keep their geometry for explicit sky queries without
+## making an invisible wall for grenades, movement or bullets.
+@export var sky_only_hints: PackedStringArray = PackedStringArray(["physics_sky"])
+const SKY_LAYER := 64
+
 ## Node name fragments in the collision hull for the parts that stop players
 ## and nothing else: player clips, which keep you off ledges and smooth the
 ## edges of stairs and boxes, and the parts the game marks as letting rounds
@@ -376,7 +382,7 @@ func import_map() -> Dictionary:
 	# faces cannot (MapOccluders says why), so without a hull nothing does.
 	var occluder_triangles := 0
 	if collision_from == "the collision hull" and not behind_everything:
-		occluder_triangles = MapOccluders.build(self, targets, player_only_hints + grenade_only_hints + hull_skip_hints)
+		occluder_triangles = MapOccluders.build(self, targets, player_only_hints + grenade_only_hints + sky_only_hints + hull_skip_hints)
 
 	stats = {
 		"meshes": meshes.size(),
@@ -608,6 +614,7 @@ func _build_collision(targets: Array[MeshInstance3D]) -> int:
 	var body := _collision_body("Collision", Hitscan.WORLD_LAYER)
 	var player_only: StaticBody3D = null
 	var grenade_only: StaticBody3D = null
+	var sky_only: StaticBody3D = null
 	var to_body := body.global_transform.affine_inverse()
 
 	var triangles := 0
@@ -623,7 +630,11 @@ func _build_collision(targets: Array[MeshInstance3D]) -> int:
 		# _sand...), which is what footsteps and penetration will want.
 		collision.name = mesh_instance.name
 		collision.shape = shape
-		if _matches_any(PackedStringArray([mesh_instance.name]), grenade_only_hints):
+		if _matches_any(PackedStringArray([mesh_instance.name]), sky_only_hints):
+			if sky_only == null:
+				sky_only = _collision_body("SkyClip", SKY_LAYER)
+			sky_only.add_child(collision)
+		elif _matches_any(PackedStringArray([mesh_instance.name]), grenade_only_hints):
 			if grenade_only == null:
 				grenade_only = _collision_body("GrenadeClip", GRENADE_CLIP_LAYER)
 			grenade_only.add_child(collision)

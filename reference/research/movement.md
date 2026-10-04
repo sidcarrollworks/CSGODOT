@@ -8,6 +8,34 @@ in `src/movement/` and `src/player/`, and what players criticise and want
 changed. Accuracy while moving and landing is researched separately; this
 page only gives the movement timings it rests on. It changes no code.
 
+**October 3 follow-up:** the [grenade subtick audit](grenade-subtick-snapshot-2026-10-03.md)
+recovers the ordinary jump's fixed gravity adjustment and interval integration
+from the installed binary. That movement is now applied for Sid's playtest,
+with `MovementConfig.cs2_jump` on by default. The older Source jump-height
+comparison below is historical; measured CS2 height and full movement parity
+remain open. The [camera-height follow-up](camera-height-2026-10-03.md)
+verifies 64/46 base eye heights and recovers the terrain/root offset path
+used before grenade snapshot capture. That adjustment and the April 2026
+duck root/view rules remain unported.
+
+**October 3 binary follow-up:** the
+[movement Ghidra audit](movement-ghidra-2026-10-03.md) compares ordinary
+walk/air integration, ground queries, crouch and modern jump paths. Matching
+defaults and matching script/native steps do not establish CS2 parity:
+horizontal acceleration/friction use different displacement state, and
+terrain eyes, crouch and the modern landing/press window remain unported.
+The door reference now has paired pawn/camera coordinates and a measured
+60.75-unit eye height. This supersedes the historical status below where
+the ordinary jump adjustment is described as unknown.
+
+**Slope playtest follow-up:** ordinary land crouch acceleration is now
+scaled from `max(250, wish_speed) * 0.34`, replacing the standing-speed
+burst. The actual-command flat/slope regression passes 138 checks, and
+existing movement, shooting and grenade-lineup checks pass. The duck
+speed target still uses the prior interpolation; complete crouch state
+and deferred displacement integration remain open. See the
+[implementation evidence](movement-ghidra-2026-10-03.md#crouch-acceleration-implementation-follow-up).
+
 `reference/research/combat.md` already covers the user command's fields,
 netcode and the guns; this page builds on its section 4.
 

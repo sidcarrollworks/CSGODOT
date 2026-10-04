@@ -215,6 +215,15 @@ same correction. See `reference/movement_constants.md`, "Crouch turning",
 for the reproduction and the small accuracy-threshold rounding tolerance.
 **Local:** crouch and turn with those guns in the range and on dust2.
 
+**October 3 slope playtest:** crouched starts still accelerated from the
+standing weapon speed. PR #184 now uses the binary-derived ordinary land
+crouch acceleration scale (250 * 0.34), independently of the speed target.
+138 real-command checks cover flat/uphill/downhill floors and crouch
+entry/exit; existing crouch turning/accuracy and grenade lineups pass.
+**Local:** retest the acceleration feel on Dust2. Full crouch transitions,
+terrain eyes and deferred movement integration remain open in the
+[movement audit](research/movement-ghidra-2026-10-03.md).
+
 **Box3D is the game's physics (2026-09-28, Sid).** Sid chose to take the
 trial below forward. The October 2 grenade port builds debug and release
 libraries from pinned source plus the opt-in projectile-query patch
@@ -980,7 +989,35 @@ list, split into Local and Remote items, with the measurements.
       a general physics rewrite is not a prerequisite established by the audit.
     - **Map import done:** grenade clips are retained on layer 32 and
       excluded from camera occluders; players retain their separate clips.
+      [Sky clipping corrected](research/grenade-sky-clipping-2026-10-02.md):
+      conditional sky brushes use layer 64, outside ordinary gameplay masks,
+      rather than making invisible walls above mid. Fresh Dust2 collision
+      matches the existing extraction; the bug was interaction classification.
       Synthetic layer checks and the extracted Dust2 run validate the import.
+    - **Jump timer corrected:** [Xbox lineup follow-up](research/grenade-jump-lineup-2026-10-02.md)
+      fixes the interval sign recovered from the instructions. The screenshot's
+      T-spawn fixture now bounces onto Xbox across nine jump/release combinations;
+      exact recorded CS2 trajectories and input-window comparisons remain open.
+      The [mid-door reference](research/grenade-sky-clipping-2026-10-02.md#mid-door-landing-reference)
+      reached the open door top with the previous quarter-tick movement,
+      while other jump phases could fall off it.
+      The [October 3 Ghidra audit](research/grenade-subtick-snapshot-2026-10-03.md)
+      recovered the exact movement boundary and ordinary jump gravity adjustment.
+      Both are now implemented for Sid's playtest. Snapshot state is consistent
+      across jump phases. Sid's subsequent CS2 console aim resolves the local
+      mid-door miss with unchanged physics; the screenshot-derived aim was
+      about 0.8 degrees lower. The preset now uses the supplied exact CS2
+      pawn origin. Recorded trajectory comparison
+      and general jump validation remain open. Sid still reports needing to
+      aim higher at matching landmarks. The
+      [camera-height follow-up](research/camera-height-2026-10-03.md) confirms
+      64/46 base eye heights and a missing terrain eye adjustment used by
+      CS2's grenade snapshots. Paired console coordinates now measure an
+      effective 60.75-unit eye height there and 63.9375 at the new B-doors
+      reference. Implement and validate the shared simulation offset before
+      claiming parity. The [movement audit](research/movement-ghidra-2026-10-03.md)
+      also confirms horizontal integration, crouch and modern landing/press-window
+      gaps; matching native/script output is not evidence of CS2 parity.
     - **Local:** G1 in `reference/cs2-systems.md` now compares the recovered
       rules against CS2 (standing, running, crouching, jumping, button
       changes and close-wall releases), and a set of dust2 lineups

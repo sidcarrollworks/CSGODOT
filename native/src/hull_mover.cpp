@@ -101,7 +101,7 @@ void HullMover::_bind_methods() {
 void HullMover::read_config(Object *p_config) {
 	static const StringName gravity("gravity"), accelerate("accelerate"), air_accelerate("air_accelerate"),
 			friction("friction"), stop_speed("stop_speed"), air_max_wishspeed("air_max_wishspeed"),
-			max_speed("max_speed"), jump_impulse("jump_impulse"),
+			max_speed("max_speed"), jump_impulse("jump_impulse"), cs2_jump("cs2_jump"),
 			tick_rate_independent_jump("tick_rate_independent_jump"), non_jump_velocity("non_jump_velocity"),
 			max_velocity("max_velocity"), auto_bunnyhop("auto_bunnyhop"),
 			enable_bunnyhopping("enable_bunnyhopping"), bunnyhop_speed_cap("bunnyhop_speed_cap"),
@@ -119,6 +119,7 @@ void HullMover::read_config(Object *p_config) {
 	cfg.air_max_wishspeed = p_config->get(air_max_wishspeed);
 	cfg.max_speed = p_config->get(max_speed);
 	cfg.jump_impulse = p_config->get(jump_impulse);
+	cfg.cs2_jump = p_config->get(cs2_jump);
 	cfg.tick_rate_independent_jump = p_config->get(tick_rate_independent_jump);
 	cfg.non_jump_velocity = p_config->get(non_jump_velocity);
 	cfg.max_velocity = p_config->get(max_velocity);
@@ -305,7 +306,8 @@ Vector3 HullMover::accelerate(const Vector3 &p_velocity, const Vector3 &p_wish_d
 	if (add_speed <= 0.0) {
 		return p_velocity;
 	}
-	double accel_speed = accel * dt * maxf(p_wish_speed, accel_from) * surface_friction;
+	const double scale = accel_from > 0.0 ? accel_from : p_wish_speed;
+	double accel_speed = accel * dt * scale * surface_friction;
 	if (accel_speed > add_speed) {
 		accel_speed = add_speed;
 	}
@@ -472,7 +474,10 @@ void HullMover::try_jump(double dt) {
 	velocity = clamp_bunnyhop(velocity);
 	velocity.y = (real_t)cfg.jump_impulse;
 	jumped = true;
-	if (cfg.tick_rate_independent_jump) {
+	if (cfg.cs2_jump) {
+		velocity.y = (real_t)((double)velocity.y - cfg.gravity * 0.5 / 128.0);
+		velocity.y = (real_t)((double)velocity.y - cfg.gravity * 0.5 * dt);
+	} else if (cfg.tick_rate_independent_jump) {
 		velocity.y = (real_t)((double)velocity.y - cfg.gravity * 0.5 * dt);
 	}
 	on_ground = false;
@@ -487,10 +492,10 @@ void HullMover::walk_move(double surface_friction, double dt) {
 		}
 	}
 
-	// PlayerBody's faster crouch acceleration cannot add speed beyond
+	// PlayerBody's crouch acceleration cannot add speed beyond
 	// the top, or beyond residual speed left after this tick's friction.
 	double speed_limit = std::numeric_limits<double>::infinity();
-	if (acceleration_speed > wish_speed) {
+	if (acceleration_speed > wish_speed || (acceleration_speed > 0.0 && duck_progress > 0.0)) {
 		speed_limit = maxf(wish_speed, (double)velocity.length());
 	}
 	velocity = accelerate(velocity, dir, wish_speed, cfg.accelerate, surface_friction, dt, acceleration_speed);

@@ -158,15 +158,49 @@ files named:
    later button changes approach by 0.0203124992549 per eligible hold tick.
    Release starts the hand clip and a separate 0.1 s simulation timer.
    A qualifying first jump consume can defer once by another 0.1 s. Movement
-   captures eye, collision center, aim and velocity after the scheduled
-   jump stash time; launch uses that snapshot while its age is >0 and <=0.2 s.
+   schedules the jump stash from actual takeoff plus 0.1 s, inserts a movement
+   boundary at that deadline, and captures eye, collision center, aim and velocity
+   after that collision-aware step, before the tick's remainder. Launch uses the snapshot while its
+   age is >0 and <=0.2 s.
    Inventory removal and `grenade_thrown` occur at projectile spawn.
    The hand stays busy for its clip (0.77 s overhand, 0.50 s underhand),
    then draws the next item. Holding one caps speed at 245 u/s.
    Explicit console/range/bot `throw <class> <strength>` commands still
    request an immediate spawn; they do not simulate pulling a pin.
+   The [Xbox lineup regression](../research/grenade-jump-lineup-2026-10-02.md)
+   catches a late snapshot that previously left the smoke below the box.
+   The [mid-door regression](../research/grenade-sky-clipping-2026-10-02.md#mid-door-landing-reference)
+   originally used Godot screenshot aim. Sid's CS2 console aim reaches the
+   door top with the current movement and unchanged flight physics; the
+   preset now uses the exact pawn origin supplied with paired console
+   coordinates. Exact recorded trajectory parity remains open. Sid still reports
+   needing to aim higher at matching landmarks. The
+   [camera-height audit](../research/camera-height-2026-10-03.md) verifies
+   matching 64/46 base heights, but CS2's terrain adjustment also reaches
+   launch eyes and is missing from our simulation. The effective reference
+   eye height is measured at 60.75; the exact sampler and a shared eye-offset
+   implementation remain open. The [movement audit](../research/movement-ghidra-2026-10-03.md)
+   also records integration, crouch and modern landing/press-window gaps.
+   The watcher with `--mode practice --map de_dust2 --lineup=b-doors`
+   prepares Sid's second paired console reference (63.9375-unit effective
+   eye height). Its stationary jump replay reaches the roof above the gate;
+   the three-lineup regression passes 201 checks.
+   The [subtick audit](../research/grenade-subtick-snapshot-2026-10-03.md)
+   verifies that CS2 uses segment time and explicitly splits movement at the
+   snapshot deadline. The port now implements it, together with the ordinary
+   jump's gravity correction, at Sid's request for local playtest. General
+   jump feel and the corrected mid-door setup remain to be assessed in play.
 3. **Your view (`player_view.gd` or the HUD):** a `FlashOverlay` with your
    userid, on top of the HUD *(done on dust2 2026-09-23)*. The flashed ringing is a sound (below).
+   Practice and the test range also enable `GrenadeTrail`: a green overlay
+   follows the actual flight, with orange dots at contacts, visible through
+   geometry. Completed paths remain for eight seconds and fade during the
+   last two. Only the last eight throws are retained; round starts clear
+   them. Trail tips use the grenade model's interpolation, and completed
+   segments include actual tick contact points. No prediction or extra
+   physics queries are performed. Competitive play omits trails by default;
+   `--grenade-trails` enables them, and `--no-grenade-trails` disables them
+   for ordinary play or performance comparisons.
 4. **`bot.gd`: sight.** *(Done 2026-09-24, except keeping out of fire:
    `Bot.can_see` and `Bot.is_blind`, blinded past 0.7; blinded, it fires
    where it last saw the one it was engaging, or backs off; checks in
@@ -189,6 +223,9 @@ files named:
 6. **The map importer (done 2026-10-02):** `grenadeclip` shapes are retained
    in a separate `GrenadeClip` body on layer 32. They stop grenade queries,
    are excluded from camera occluders, and leave player clips on layer 8.
+   `physics_sky` brushes retain their separate conditional interaction on
+   layer 64. They do not bounce grenades: [the sky clipping follow-up](../research/grenade-sky-clipping-2026-10-02.md)
+   verifies the installed mask and the second T-spawn screenshot's bad bounce.
    Recorded Dust2 lineup comparison remains Local work.
 7. **Sounds (done 2026-09-28, playtest issue 19):** `GrenadeSounds`
    (`src/audio/grenade_sounds.gd`) plays every grenade event through CS2's

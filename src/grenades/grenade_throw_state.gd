@@ -42,8 +42,10 @@ func consume(now_usec: int) -> String:
 	return weapon_class
 
 
-func jumped(at_usec: int, movement_usec: int) -> void:
-	stash_usec = at_usec + movement_usec + GrenadeRules.RELEASE_DELAY_USEC
+func jumped(now_usec: int, movement_usec: int) -> void:
+	# CS2 subtracts the current movement interval from simulation time,
+	# then adds 0.1 s. Adding the interval captures a later, slower jump.
+	stash_usec = now_usec - movement_usec + GrenadeRules.RELEASE_DELAY_USEC
 	snapshot.clear()
 
 

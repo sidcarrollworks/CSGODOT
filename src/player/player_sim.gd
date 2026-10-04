@@ -701,17 +701,27 @@ func _live_grenade_parameters() -> Dictionary:
 		"yaw": yaw_degrees, "pitch": pitch_degrees, "velocity": velocity}
 
 
-## Capture after movement, before the weapon consumes its release timer.
-func _finish_grenade_movement(cmd: UserCmd, dt: float) -> void:
-	var now := SimClock.tick_end_usec(cmd.tick)
-	if _jumped and not noclip:
-		# simulate() consumes jump_fraction; keep the command's actual press.
-		var press := cmd.first_press(UserCmd.JUMP)
-		var fraction := press.when if config.subtick_jump and press != null else 0.0
-		var at := SimClock.usec_at(cmd.tick, fraction)
-		grenade_throw.jumped(at, int(roundf(dt * 1_000_000.0)))
+var _grenade_jump_recorded := false
+
+
+## CS2 scopes the clock to each movement segment and inserts a boundary
+## at the stash deadline. Save the actual moved state before the remainder.
+func _movement_finished(start: float, end: float) -> void:
+	if last_command == null:
+		return
+	if not (_jumped and not _grenade_jump_recorded) and (grenade_throw.stash_usec < 0 or not grenade_throw.snapshot.is_empty()):
+		return
+	var now := SimClock.usec_at(last_command.tick, end)
+	if _jumped and not _grenade_jump_recorded:
+		grenade_throw.jumped(now, now - SimClock.usec_at(last_command.tick, start))
+		_grenade_jump_recorded = true
 	if grenade_throw.stash_usec >= 0 and now >= grenade_throw.stash_usec and grenade_throw.snapshot.is_empty():
 		grenade_throw.finish_movement(now, _live_grenade_parameters())
+
+
+## Weapon timers are consumed after the whole command's movement.
+func _finish_grenade_movement(cmd: UserCmd) -> void:
+	var now := SimClock.tick_end_usec(cmd.tick)
 	var item_class := grenade_throw.consume(now)
 	if not item_class.is_empty() and is_instance_valid(world):
 		world.game.command(userid, "throw %s %s" % [item_class, GrenadeRules.launch_strength(grenade_throw.strength)])
@@ -719,6 +729,10 @@ func _finish_grenade_movement(cmd: UserCmd, dt: float) -> void:
 
 func _run(cmd: UserCmd, dt: float) -> void:
 	last_command = cmd
+	_grenade_jump_recorded = false
+	movement_fraction = -1.0
+	if grenade_throw.stash_usec >= SimClock.tick_start_usec(cmd.tick) and grenade_throw.snapshot.is_empty():
+		movement_fraction = float(grenade_throw.stash_usec - SimClock.tick_start_usec(cmd.tick)) / float(SimClock.tick_usec())
 	wants_jump = false
 	wants_duck = false
 	jump_fraction = -1.0
@@ -805,23 +819,23 @@ func _run(cmd: UserCmd, dt: float) -> void:
 		# Still, but falling if there is anywhere to fall, and the weapon
 		# still reloads.
 		simulate(dt)
-		_finish_grenade_movement(cmd, dt)
+		_finish_grenade_movement(cmd)
 		_update_weapon(cmd, dt, true)
 		return
 
 	if noclip:
 		wish_dir = _noclip_direction(cmd)
 		simulate(dt)
-		_finish_grenade_movement(cmd, dt)
+		_finish_grenade_movement(cmd)
 		return
 
 	wish_dir = cmd.wish_direction()
 	if wish_dir.length_squared() > 0.0:
 		wish_speed = _max_speed(cmd)
-		acceleration_speed = _uncrouched_speed(cmd)
+		acceleration_speed = _ground_acceleration_speed(cmd)
 
 	simulate(dt)
-	_finish_grenade_movement(cmd, dt)
+	_finish_grenade_movement(cmd)
 	_update_weapon(cmd, dt, false)
 
 
@@ -1102,9 +1116,20 @@ func _max_speed(cmd: UserCmd) -> float:
 	return minf(speed, top)
 
 
+## CS2's ordinary land crouch accelerates from max(250, wish_speed) * 0.34,
+## not the standing weapon speed. The 250 floor keeps rifles moving against
+## stop friction; using the full standing speed instead creates a fast burst.
+## The duck key/transition applies this during entry and exit too. AirMove
+## ignores this ground-only scale and keeps its existing wish-speed rules.
+## Binary: 180ab00d0, constants 1818ca884/1818ca8ac.
+func _ground_acceleration_speed(cmd: UserCmd) -> float:
+	if cmd.held(UserCmd.DUCK) or is_ducked or duck_progress > 0.0:
+		return maxf(250.0, wish_speed) * config.duck_modifier
+	return _uncrouched_speed(cmd)
+
+
 ## The top without the duck: what the held item and a tag allow, walking
-## if the walk key is held. The ground's acceleration works from it
-## (PlayerBody.acceleration_speed), crouched or not.
+## if the walk key is held.
 func _uncrouched_speed(cmd: UserCmd) -> float:
 	var speed := _top_speed()
 	if cmd.held(UserCmd.WALK):
