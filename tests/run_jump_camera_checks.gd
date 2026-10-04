@@ -267,6 +267,20 @@ func _test_view_of_a_bot_taken_over() -> void:
 	_check(player.camera.global_position.distance_to(eyes) < 0.01, "from its eyes (%s)" % player.camera.global_position)
 	_check(is_equal_approx(player.input.yaw_degrees, 75.0) and is_equal_approx(player.input.pitch_degrees, 5.0)
 		and absf(rad_to_deg(player.camera.global_rotation.y) - 75.0) < 0.01, "looking the way it looked")
+	# The spectator's former gun must not drive the bot's drawn recoil.
+	var arms := Node3D.new()
+	player.camera.add_child(arms)
+	player.view.viewmodel = arms
+	player.view._viewmodel_rest = Transform3D.IDENTITY
+	player.view._viewmodel_rest_captured = true
+	bot.weapon = Weapon.new(WeaponLibrary.ak47())
+	bot.weapon._model_aim_recoil.value = Vector2(2.0, -6.0)
+	bot.previous_viewmodel_punch = bot.viewmodel_punch()
+	player.view.viewmodel_motion = ViewModelMotion.new()
+	player.view._update_viewmodel(0.0)
+	var kick := bot.viewmodel_punch()
+	_check(arms.basis.is_equal_approx(Basis.from_euler(Vector3(deg_to_rad(kick.y), deg_to_rad(-kick.x), 0.0))),
+		"the controlled bot supplies the new aim-recoil follow channel to its drawn arms")
 
 	bot.alive = false
 	player._lose_control()
