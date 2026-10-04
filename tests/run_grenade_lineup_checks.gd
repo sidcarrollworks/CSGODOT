@@ -26,6 +26,7 @@ class _Pawn extends PlayerSim:
 	var jump_at := -1
 	var release_at := 100000
 	var fraction := 0.25
+	var fresh_click := false
 	var aim_yaw := YAW
 	var aim_pitch := PITCH
 	func _init() -> void:
@@ -40,7 +41,12 @@ class _Pawn extends PlayerSim:
 		cmd.yaw_degrees = aim_yaw
 		cmd.pitch_degrees = aim_pitch
 		cmd.weapon_select = 4
-		cmd.buttons = UserCmd.ATTACK if tick < release_at else 0
+		cmd.buttons = UserCmd.ATTACK if tick < release_at and (not fresh_click or (jump_at >= 0 and tick >= jump_at)) else 0
+		if fresh_click and tick == jump_at:
+			cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.ATTACK, true, fraction, aim_yaw, aim_pitch))
+		if fresh_click and tick == release_at:
+			var released := minf(fraction + 0.02, 1.0) if release_at == jump_at else 0.25
+			cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.ATTACK, false, released, aim_yaw, aim_pitch))
 		if tick == jump_at:
 			cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.JUMP, true, fraction, aim_yaw, aim_pitch))
 		return cmd
@@ -80,6 +86,11 @@ func _run() -> void:
 	await physics_frame
 	if _world.initialize_drop_physics(_host, "box3d"):
 		_check_clip_queries()
+		# Fresh Space + click, including press/release inside one command
+		# and a click held for roughly 125–191 ms before releasing.
+		for fraction in [0.0, 0.25, 0.75]:
+			for offset in [0, 8, 11, 12]:
+				await _throw(fraction, offset, MID_DOOR_FEET, MID_DOOR_YAW, MID_DOOR_PITCH, Lineup.MID_DOOR, true)
 		var reference := Vector3.INF
 		for fraction in [0.0, 0.25, 0.75]:
 			for offset in [0, 2, 8]:
@@ -138,11 +149,12 @@ func _check_clip_queries() -> void:
 		"live grenade sweeps still hit Dust2's extracted grenade-only clipping")
 
 
-func _throw(fraction: float, release_offset: int, feet := FEET, yaw := YAW, pitch := PITCH, lineup := Lineup.XBOX) -> Vector3:
+func _throw(fraction: float, release_offset: int, feet := FEET, yaw := YAW, pitch := PITCH, lineup := Lineup.XBOX, fresh_click := false) -> Vector3:
 	var player := _Pawn.new()
 	player.position = feet
 	player.team = "T"
 	player.fraction = fraction
+	player.fresh_click = fresh_click
 	player.aim_yaw = yaw
 	player.aim_pitch = pitch
 	_host.add_child(player)
@@ -151,7 +163,7 @@ func _throw(fraction: float, release_offset: int, feet := FEET, yaw := YAW, pitc
 	await physics_frame
 	for i in 80:
 		_world.step()
-	_check(player._pin_pulled and player.on_ground, "lineup fixture starts with a held smoke on the T-spawn floor")
+	_check(player._pin_pulled != fresh_click and player.on_ground, "lineup fixture starts drawn on the floor with the requested pin state")
 	if lineup != Lineup.XBOX:
 		# Compare absolute camera height, not a hardcoded offset: Box3D's
 		# resting hull clearance also changes the settled feet coordinate.
@@ -206,6 +218,7 @@ func _throw(fraction: float, release_offset: int, feet := FEET, yaw := YAW, pitc
 					and contact_surfaces[1] == "physics_group_wood" and contact_surfaces[2] == "physics_group_concrete",
 					"B-doors smoke bounces across the upper roof and wooden awning onto the gate roof")
 			print("LINEUP ", JSON.stringify({"jump_fraction": fraction, "release_offset_ticks": release_offset,
+				"fresh_click": fresh_click,
 				"lineup": Lineup.keys()[lineup],
 				"snapshot_velocity": str(player.grenade_throw.snapshot.get("velocity")),
 				"rest": str(rest), "flight_seconds": grenade.age(_world.game.now_usec())}))

@@ -152,7 +152,11 @@ path passes false.
 
 Eligibility helper `180acb810` tests the same age predicate with a caller
 time offset: **0 < (now + offset) − stash timestamp <= 0.2 s**. The release
-check uses offset 0; the timer consumer uses 0.1. On the first qualifying
+check and timer consumer both use offset 0.1. The original release-offset
+reading was incorrect: the October 4 instruction audit confirms
+`1809cd52a MOVAPS XMM1,XMM6`, where XMM6 contains 0.1, immediately before
+the call at `1809cd530`. Ghidra's C output omits that float argument.
+On the first qualifying
 consume, `1809c1930` postpones release to now + 0.1 and marks the jump throw.
 
 | Pawn offset, this build only | Recovered use |

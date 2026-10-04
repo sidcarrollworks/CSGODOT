@@ -7,6 +7,7 @@ var strength := 1.0
 var holding := false
 var next_hold_tick := 0
 var pending_class := ""
+var release_usec := -1
 var due_usec := -1
 var jump_throw := false
 var stash_usec := -1
@@ -25,8 +26,11 @@ func hold(left: bool, right: bool, tick: int) -> void:
 func release(weapon_class: String, now_usec: int) -> void:
 	holding = false
 	pending_class = weapon_class
+	release_usec = now_usec
 	due_usec = now_usec + GrenadeRules.RELEASE_DELAY_USEC
-	jump_throw = jump_eligible(now_usec)
+	# The release writer passes 0.1 s in XMM1 to 180acb810, just like
+	# the timer consumer. Ghidra's C output omits this float argument.
+	jump_throw = jump_eligible(now_usec, GrenadeRules.RELEASE_DELAY_USEC)
 
 
 func consume(now_usec: int) -> String:
@@ -73,5 +77,6 @@ func reset() -> void:
 	pending_class = ""
 	due_usec = -1
 	jump_throw = false
+	release_usec = -1
 	stash_usec = -1
 	snapshot.clear()
