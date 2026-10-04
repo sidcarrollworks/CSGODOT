@@ -35,7 +35,7 @@ Updated 2026-09-30: grenade flight and lineups recorded for later (item 20a, Sid
 
 ## Current status, 2026-10-03
 
-Checked against merged `main` at `3d8aab6`, through PR #185. Completion
+Checked against merged `main` at `9ab763f`, through PR #186. Completion
 means the described implementation exists; measurements and remaining
 parity work stay listed below. Three follow-up playtest PRs remain open.
 
@@ -65,6 +65,7 @@ parity work stay listed below. Three follow-up playtest PRs remain open.
 | #183 | Audited grenade strength/release, launch box, flight substeps and activation port |
 | #184 | Exact jump-snapshot boundary, ordinary CS2 jump, sky collision classification, practice trails and crouch acceleration |
 | #185 | Mirage extraction/import fixes and accepted Dust2 sky/world exposure calibration |
+| #186 | README, documentation and roadmap synchronized with merged gameplay and remaining audits |
 
 Pending review and local playtest, not part of merged `main`:
 
@@ -74,9 +75,10 @@ Pending review and local playtest, not part of merged `main`:
 | [#178](https://github.com/sidcarrollworks/CSGODOT/pull/178) | Startup team selection |
 | [#179](https://github.com/sidcarrollworks/CSGODOT/pull/179) | Feet planted while walking on slopes and stairs |
 
-The next implementation is shared terrain-aware simulation eye state,
-used by the camera and grenade snapshots. The movement section below
-records its validation and the subsequent integration/transition work.
+This follow-up implements shared terrain-aware simulation eye state,
+used by the camera, weapon origins and grenade snapshots. Its local
+landmark playtest remains. Combined horizontal integration is the next
+implementation; the movement section below records the sequence and limits.
 
 ## Part 1: what exists
 
@@ -87,6 +89,11 @@ records its validation and the subsequent integration/transition work.
   stays at the held item's crouched top while turning. PR #184 adds the
   audited ordinary CS2 jump and crouch acceleration scale, including
   partially crouched commands; full movement parity remains open.
+- Shared terrain-aware eyes finish each movement segment before grenade
+  capture. Cached support squares and world-owner flags supply one value
+  for simulation consumers and interpolated cameras. Settled mid-door and
+  B-doors camera heights match paired CS2 values within 0.04 units; full
+  duck/root timing, additional CS2 captures and landmark playtest remain.
 - Sub-tick button edges and aim angles travel in `UserCmd`; `GameWorld`
   gathers all commands first, lets bots think on worker threads, runs the
   players, match and shared systems, then delivers schema-checked events.
@@ -250,8 +257,9 @@ standing weapon speed. PR #184 now uses the binary-derived ordinary land
 crouch acceleration scale (250 * 0.34), independently of the speed target.
 138 real-command checks cover flat/uphill/downhill floors and crouch
 entry/exit; existing crouch turning/accuracy and grenade lineups pass.
-**Local:** retest the acceleration feel on Dust2. Full crouch transitions,
-terrain eyes and deferred movement integration remain open in the
+**Local:** retest the acceleration feel on Dust2. Terrain eyes are now
+implemented; full crouch transitions and deferred movement integration
+remain open in the
 [movement audit](research/movement-ghidra-2026-10-03.md).
 
 **Box3D is the game's physics (2026-09-28, Sid).** Sid chose to take the
@@ -1219,14 +1227,16 @@ acceleration corrections; it did not complete movement parity.
 The next work, in order (Remote implementation and checks; Local binary
 audit, CS2 captures and performance measurements):
 
-1. **Shared terrain-aware eye state.** Finish tracing the actual terrain
-   sampler, then port the topology/root and duck adjustments into
-   simulation state, used by both the rendered camera and grenade snapshot
-   capture. Bound and cache its collision
-   queries. Validate flat ground, slopes, thin edges, takeoff, landing
-   and duck transitions against paired `getpos`/`getpos_exact` captures.
-   Mid-door's effective eye offset is 60.75 units, B-doors' 63.9375;
-   retain the 64/46 base values rather than hard-coding a global offset.
+1. **Shared terrain-aware eye state — implementation done in this follow-up.**
+   The recovered sampler and ordinary topology transitions now run in
+   simulation before snapshot capture. Support flags match in script/native
+   movement; cached queries are counted in the trace budget. Synthetic
+   flat/sloped/ledge, takeoff/landing and support-owner cases pass. Absolute
+   camera heights match paired mid-door/B-doors CS2 values within 0.04 units,
+   retaining the 64/46 bases without lineup-specific offsets. See the
+   [terrain-eye report](research/terrain-eyes-2026-10-03.md) for measured cost.
+   **Local remaining:** rendered landmark/transition playtest and additional
+   CS2 captures. Full duck/root adjustments belong to step 3.
 2. **Combined horizontal integration.** Port acceleration/friction and
    deferred velocity together in script and native movement. Test
    displacement, blocked motion, slopes and run/jump throws, not just

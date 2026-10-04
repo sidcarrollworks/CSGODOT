@@ -72,11 +72,14 @@ class TraceResult:
 	var normal: Vector3
 	## Positional depenetration belongs in travel, but consumes no move time.
 	var recovery: Vector3
+	## The actual supporting entity, not a world-only probe beside it.
+	var is_world: bool
 
-	func _init(p_travel: Vector3, p_normal: Vector3, p_recovery: Vector3 = Vector3.ZERO) -> void:
+	func _init(p_travel: Vector3, p_normal: Vector3, p_recovery: Vector3 = Vector3.ZERO, p_is_world: bool = false) -> void:
 		travel = p_travel
 		normal = p_normal
 		recovery = p_recovery
+		is_world = p_is_world
 
 	func get_travel() -> Vector3:
 		return travel
@@ -134,6 +137,9 @@ static var _own_functions: Dictionary = {}
 
 var on_ground: bool = false
 var ground_normal: Vector3 = Vector3.UP
+## CS2 enables topology eyes on world support, never another player or a
+## moving platform. Taken from the existing grounding trace, with no probe.
+var ground_is_world: bool = false
 
 ## True once the hull has actually shrunk, which is not the same as holding the
 ## duck key: on the ground the hull only changes after duck_time has elapsed.
@@ -171,6 +177,12 @@ var movement_fraction: float = -1.0
 ## Previous tick's position, so the camera can interpolate between physics
 ## ticks instead of stuttering at the 64 Hz tick boundary.
 var previous_position: Vector3 = Vector3.ZERO
+
+## Eye/root adjustment belongs to movement, so snapshots and every view
+## read the same completed state. GroundEyes queries only during movement;
+## eye_height() is a pure read, including when bots think on worker threads.
+var ground_eyes := GroundEyes.new()
+var previous_eye_height: float = 64.0
 
 ## How many times the hull has been traced: most of what a tick costs, at
 ## tens of microseconds a trace on dust2, counted so the checks can hold the
@@ -218,6 +230,10 @@ var _native: Box3DDrops
 var _floor_at := Vector3.INF
 var _floor_with := 0.0
 var _floor_normal := Vector3.UP
+var _floor_is_world := false
+## The quadrant fallback shares its helper with native movement. Its owner
+## flag travels beside the normal without repeating those four rays.
+var _quadrant_is_world := false
 ## The native code's mover, made the first time a step can be run by it.
 var _mover: Object
 ## Has the native code step this body though its script has its own of the
@@ -325,6 +341,7 @@ func _ready() -> void:
 		_collision_shape.shape = _collision_shape.shape.duplicate()
 	_set_hull(config.stand_height)
 	previous_position = global_position
+	reset_eye_state()
 	# We run our own gravity in Source units, and our own collide-and-slide.
 	motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
 	# Player clips stop bodies, not rounds: they are on a layer of their own.
@@ -360,13 +377,16 @@ func _find_collision_shape() -> CollisionShape3D:
 ## when you pressed them rather than up to a tick later.
 func simulate(dt: float) -> void:
 	previous_position = global_position
+	previous_eye_height = eye_height()
 	# This is only a hint between sweeps of one tick, not replay state.
 	_native_recovery_direction = Vector3.UP
 
 	if noclip:
+		reset_eye_state()
 		velocity = wish_dir * config.noclip_speed
 		global_position += velocity * dt
 		on_ground = false
+		ground_is_world = false
 		jump_fraction = -1.0
 		movement_fraction = -1.0
 		height_above_ground = INF
@@ -419,11 +439,14 @@ func _movement_interval(mover: Object, dt: float, start: float, end: float) -> v
 	if movement_fraction > start and movement_fraction < end:
 		var boundary := movement_fraction
 		_step(mover, dt * (boundary - start))
+		ground_eyes.update(self, dt * (boundary - start))
 		_movement_finished(start, boundary)
 		_step(mover, dt * (end - boundary))
+		ground_eyes.update(self, dt * (end - boundary))
 		_movement_finished(boundary, end)
 	else:
 		_step(mover, dt * (end - start))
+		ground_eyes.update(self, dt * (end - start))
 		_movement_finished(start, end)
 
 
@@ -524,10 +547,12 @@ func _native_step(mover: Object, dt: float) -> void:
 func _step_state() -> Dictionary:
 	return {
 		"position": global_position, "velocity": velocity, "on_ground": on_ground,
-		"ground_normal": ground_normal, "is_ducked": is_ducked, "duck_progress": duck_progress,
+		"ground_normal": ground_normal, "ground_is_world": ground_is_world,
+		"is_ducked": is_ducked, "duck_progress": duck_progress,
 		"jumped": _jumped, "looked_from": _looked_from, "looked_with": _looked_with,
 		"hull_height": _hull_height, "floor_at": _floor_at, "floor_with": _floor_with,
-		"floor_normal": _floor_normal, "recovery_direction": _native_recovery_direction,
+		"floor_normal": _floor_normal, "floor_is_world": _floor_is_world,
+		"quadrant_is_world": _quadrant_is_world, "recovery_direction": _native_recovery_direction,
 		"last_recovery": _last_native_trace_recovery, "traces": traces,
 	}
 
@@ -539,6 +564,7 @@ func _restore_step_state(state: Dictionary) -> void:
 	velocity = state["velocity"]
 	on_ground = state["on_ground"]
 	ground_normal = state["ground_normal"]
+	ground_is_world = state["ground_is_world"]
 	is_ducked = state["is_ducked"]
 	duck_progress = state["duck_progress"]
 	_jumped = state["jumped"]
@@ -547,6 +573,8 @@ func _restore_step_state(state: Dictionary) -> void:
 	_floor_at = state["floor_at"]
 	_floor_with = state["floor_with"]
 	_floor_normal = state["floor_normal"]
+	_floor_is_world = state["floor_is_world"]
+	_quadrant_is_world = state["quadrant_is_world"]
 	_native_recovery_direction = state["recovery_direction"]
 	_last_native_trace_recovery = state["last_recovery"]
 	traces = state["traces"]
@@ -756,17 +784,31 @@ func _set_hull(height: float) -> void:
 	PhysicsQueries.sync_object(self)
 
 
-## The eye offset above the feet for the current duck state.
+## The simulation eye offset above the feet, including the terrain/root
+## adjustment already updated at the movement segment's end.
 ##
 ## Splined rather than linear, because Source runs duck_progress through
 ## SimpleSpline before SetDuckedEyeOffset (gamemovement.cpp:4421). Ducking is
 ## constant in CS, so an ease is a visible difference from a slide.
 func eye_height() -> float:
-	return lerpf(
+	return ground_eyes.height(lerpf(
 		config.stand_eye_height,
 		config.duck_eye_height,
 		MovementSolver.simple_spline(duck_progress)
-	)
+	))
+
+
+## The same temporal sample as previous_position.lerp(global_position).
+## Interpolating only the feet would leave terrain/crouch eyes a tick ahead.
+func interpolated_eye_height(fraction: float) -> float:
+	return lerpf(previous_eye_height, eye_height(), clampf(fraction, 0.0, 1.0))
+
+
+## A spawn or teleport must not carry the previous floor's residual or
+## sample cache, nor interpolate from the old location's eye adjustment.
+func reset_eye_state() -> void:
+	ground_eyes.reset()
+	previous_eye_height = eye_height()
 
 
 ## Jumping requires a fresh press unless auto bunnyhop is on, which is the CS2
@@ -790,6 +832,7 @@ func _try_jump(dt: float) -> void:
 		# overwrote. See MovementConfig.tick_rate_independent_jump.
 		velocity.y -= config.gravity * 0.5 * dt
 	on_ground = false
+	ground_is_world = false
 
 
 func _walk_move(surface_friction: float, dt: float) -> void:
@@ -898,6 +941,7 @@ func _stay_on_native_ground() -> void:
 		# Nothing to stand on within a step.
 		return
 	var normal: Vector3 = hit["normal"]
+	var world_ground := _is_world_ground(hit.get("collider"))
 	var landing: Vector3
 	if normal.is_zero_approx():
 		# Something over its head where it would start: from where it
@@ -907,6 +951,7 @@ func _stay_on_native_ground() -> void:
 			global_position = start + _last_native_trace_recovery
 			return
 		normal = collision.get_normal()
+		world_ground = collision.is_world
 		landing = start + collision.get_travel()
 	elif not MovementSolver.is_walkable(normal, config):
 		return
@@ -916,6 +961,7 @@ func _stay_on_native_ground() -> void:
 	_floor_at = global_position
 	_floor_with = _hull_height
 	_floor_normal = normal
+	_floor_is_world = world_ground
 
 
 func _air_move(surface_friction: float, dt: float) -> void:
@@ -974,6 +1020,7 @@ func _step_move(dt: float) -> void:
 			_floor_at = global_position
 			_floor_with = _hull_height
 			_floor_normal = landing.get_normal()
+			_floor_is_world = landing.is_world
 		return
 	global_position = flat_position
 	velocity = flat_velocity
@@ -1099,6 +1146,7 @@ func _categorize_position() -> void:
 	# what bounds the dead-strafe friction zone.
 	if velocity.y > config.non_jump_velocity:
 		on_ground = false
+		ground_is_world = false
 		ground_normal = Vector3.UP
 		_looked_from = Vector3.INF
 		_floor_at = Vector3.INF
@@ -1108,6 +1156,7 @@ func _categorize_position() -> void:
 		# own, which is the sweep this would make.
 		on_ground = true
 		ground_normal = _floor_normal
+		ground_is_world = _floor_is_world
 		_looked_from = global_position
 		_looked_with = _hull_height
 		_floor_at = Vector3.INF
@@ -1118,6 +1167,7 @@ func _categorize_position() -> void:
 		Vector3.DOWN * GROUND_TRACE_DISTANCE, true
 	)
 	var normal := Vector3.ZERO
+	var world_ground := collision != null and collision.is_world
 	# Where the trace stopped, which is where moving down would stop.
 	var travel := Vector3.ZERO
 	if collision != null:
@@ -1129,8 +1179,10 @@ func _categorize_position() -> void:
 		# four sub-boxes of the hull before giving up, so that standing with
 		# most of yourself off a crate edge keeps you on the crate.
 		normal = _ground_normal_in_quadrants()
+		world_ground = _quadrant_is_world
 		if normal == Vector3.ZERO:
 			on_ground = false
+			ground_is_world = false
 			ground_normal = Vector3.UP
 			_looked_from = global_position
 			_looked_with = _hull_height
@@ -1138,6 +1190,7 @@ func _categorize_position() -> void:
 
 	on_ground = true
 	ground_normal = normal
+	ground_is_world = world_ground
 	# Snap down onto the surface so we do not hover a fraction above it: by
 	# the trace's own travel when the centre met something, rather than
 	# tracing the same move again; moved when only a corner found the ground.
@@ -1160,7 +1213,8 @@ func _trace(motion: Vector3, test_only: bool = false) -> TraceResult:
 	if adapter == null:
 		traces += 1
 		var collision := move_and_collide(motion, test_only)
-		return TraceResult.new(collision.get_travel(), collision.get_normal()) if collision != null else null
+		return TraceResult.new(collision.get_travel(), collision.get_normal(), Vector3.ZERO,
+			_is_world_ground(collision.get_collider())) if collision != null else null
 	if _collision_shape == null or _collision_shape.shape == null:
 		if not test_only:
 			global_position += motion
@@ -1209,7 +1263,13 @@ func _trace(motion: Vector3, test_only: bool = false) -> TraceResult:
 		global_position += travel
 		# The next query that can hit this body refreshes its proxy. Our own
 		# next sweep excludes it; simulate publishes the final pose once.
-	return TraceResult.new(travel, hit["normal"], recovery) if not hit.is_empty() else null
+	return TraceResult.new(travel, hit["normal"], recovery, _is_world_ground(hit.get("collider"))) if not hit.is_empty() else null
+
+
+## The map importer and bare fixtures author fixed world geometry as
+## StaticBody3D. AnimatableBody3D inherits it, but is a moving entity.
+static func _is_world_ground(collider: Object) -> bool:
+	return collider is StaticBody3D and not collider is AnimatableBody3D
 
 
 ## What every sweep of the hull asks alike: its shape, its margin, what it
@@ -1339,6 +1399,7 @@ func _ground_normal_in_quadrants() -> Vector3:
 ## The same for a body standing at `at`: the native step asks from where it
 ## has the body, which the node is told when the step is over.
 func _ground_normal_in_quadrants_at(at: Vector3) -> Vector3:
+	_quadrant_is_world = false
 	var space := get_world_3d().direct_space_state
 	if space == null:
 		return Vector3.ZERO
@@ -1362,5 +1423,6 @@ func _ground_normal_in_quadrants_at(at: Vector3) -> Vector3:
 			continue
 		var normal: Vector3 = hit["normal"]
 		if MovementSolver.is_walkable(normal, config):
+			_quadrant_is_world = _is_world_ground(hit.get("collider"))
 			return normal
 	return Vector3.ZERO

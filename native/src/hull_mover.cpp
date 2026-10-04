@@ -1,11 +1,13 @@
 #include "hull_mover.h"
 
 #include <godot_cpp/classes/box_shape3d.hpp>
+#include <godot_cpp/classes/animatable_body3d.hpp>
 #include <godot_cpp/classes/character_body3d.hpp>
 #include <godot_cpp/classes/collision_object3d.hpp>
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/script.hpp>
 #include <godot_cpp/classes/shape3d.hpp>
+#include <godot_cpp/classes/static_body3d.hpp>
 #include <godot_cpp/core/object.hpp>
 #include <godot_cpp/variant/basis.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
@@ -73,6 +75,13 @@ bool is_player_body(Object *p_object) {
 		depth++;
 	}
 	return false;
+}
+
+// PlayerBody._is_world_ground: fixed authoring geometry is world; the
+// AnimatableBody3D subclass represents a moving entity instead.
+bool is_world_ground(Object *p_object) {
+	return Object::cast_to<StaticBody3D>(p_object) != nullptr &&
+		Object::cast_to<AnimatableBody3D>(p_object) == nullptr;
 }
 
 } // namespace
@@ -144,6 +153,7 @@ const StringName &global_position() { static const StringName n("global_position
 const StringName &velocity() { static const StringName n("velocity"); return n; }
 const StringName &on_ground() { static const StringName n("on_ground"); return n; }
 const StringName &ground_normal() { static const StringName n("ground_normal"); return n; }
+const StringName &ground_is_world() { static const StringName n("ground_is_world"); return n; }
 const StringName &is_ducked() { static const StringName n("is_ducked"); return n; }
 const StringName &duck_progress() { static const StringName n("duck_progress"); return n; }
 const StringName &wish_dir() { static const StringName n("wish_dir"); return n; }
@@ -159,6 +169,8 @@ const StringName &hull_height() { static const StringName n("_hull_height"); ret
 const StringName &floor_at() { static const StringName n("_floor_at"); return n; }
 const StringName &floor_with() { static const StringName n("_floor_with"); return n; }
 const StringName &floor_normal() { static const StringName n("_floor_normal"); return n; }
+const StringName &floor_is_world() { static const StringName n("_floor_is_world"); return n; }
+const StringName &quadrant_is_world() { static const StringName n("_quadrant_is_world"); return n; }
 const StringName &recovery_direction() { static const StringName n("_native_recovery_direction"); return n; }
 const StringName &last_recovery() { static const StringName n("_last_native_trace_recovery"); return n; }
 const StringName &collision_mask() { static const StringName n("collision_mask"); return n; }
@@ -177,6 +189,7 @@ void HullMover::read_body() {
 	velocity = body->get(names::velocity());
 	on_ground = body->get(names::on_ground());
 	ground_normal = body->get(names::ground_normal());
+	ground_is_world = body->get(names::ground_is_world());
 	is_ducked = body->get(names::is_ducked());
 	duck_progress = body->get(names::duck_progress());
 	wish_dir = body->get(names::wish_dir());
@@ -192,6 +205,8 @@ void HullMover::read_body() {
 	floor_at = body->get(names::floor_at());
 	floor_with = body->get(names::floor_with());
 	floor_normal = body->get(names::floor_normal());
+	floor_is_world = body->get(names::floor_is_world());
+	quadrant_is_world = body->get(names::quadrant_is_world());
 	recovery_direction = body->get(names::recovery_direction());
 	last_trace_recovery = body->get(names::last_recovery());
 	collision_mask = body->get(names::collision_mask());
@@ -208,6 +223,7 @@ void HullMover::write_body(const Vector3 &p_position_before) {
 	body->set(names::velocity(), velocity);
 	body->set(names::on_ground(), on_ground);
 	body->set(names::ground_normal(), ground_normal);
+	body->set(names::ground_is_world(), ground_is_world);
 	body->set(names::is_ducked(), is_ducked);
 	body->set(names::duck_progress(), duck_progress);
 	body->set(names::jumped(), jumped);
@@ -216,6 +232,8 @@ void HullMover::write_body(const Vector3 &p_position_before) {
 	body->set(names::floor_at(), floor_at);
 	body->set(names::floor_with(), floor_with);
 	body->set(names::floor_normal(), floor_normal);
+	body->set(names::floor_is_world(), floor_is_world);
+	body->set(names::quadrant_is_world(), quadrant_is_world);
 	body->set(names::recovery_direction(), recovery_direction);
 	body->set(names::last_recovery(), last_trace_recovery);
 	if (casts != 0) {
@@ -481,6 +499,7 @@ void HullMover::try_jump(double dt) {
 		velocity.y = (real_t)((double)velocity.y - cfg.gravity * 0.5 * dt);
 	}
 	on_ground = false;
+	ground_is_world = false;
 }
 
 void HullMover::walk_move(double surface_friction, double dt) {
@@ -530,6 +549,7 @@ void HullMover::stay_on_native_ground() {
 		return;
 	}
 	Vector3 normal = hit.normal;
+	bool world_ground = is_world_ground(hit.collider);
 	Vector3 landing;
 	if (normal.is_zero_approx()) {
 		// Something over its head where it would start: from where it
@@ -540,6 +560,7 @@ void HullMover::stay_on_native_ground() {
 			return;
 		}
 		normal = collision.normal;
+		world_ground = collision.is_world;
 		landing = start + collision.travel;
 	} else if (!is_walkable(normal)) {
 		return;
@@ -550,6 +571,7 @@ void HullMover::stay_on_native_ground() {
 	floor_at = position;
 	floor_with = hull_height;
 	floor_normal = normal;
+	floor_is_world = world_ground;
 }
 
 void HullMover::air_move(double surface_friction, double dt) {
@@ -595,6 +617,7 @@ void HullMover::step_move(double dt) {
 		floor_at = position;
 		floor_with = hull_height;
 		floor_normal = landing.normal;
+		floor_is_world = landing.is_world;
 		return;
 	}
 	position = flat_position;
@@ -706,6 +729,7 @@ bool HullMover::try_player_move(double dt) {
 void HullMover::categorize_position() {
 	if ((double)velocity.y > cfg.non_jump_velocity) {
 		on_ground = false;
+		ground_is_world = false;
 		ground_normal = UP;
 		looked_from = inf3();
 		floor_at = inf3();
@@ -714,6 +738,7 @@ void HullMover::categorize_position() {
 	if (floor_at == position && floor_with == hull_height) {
 		on_ground = true;
 		ground_normal = floor_normal;
+		ground_is_world = floor_is_world;
 		looked_from = position;
 		looked_with = hull_height;
 		floor_at = inf3();
@@ -723,6 +748,7 @@ void HullMover::categorize_position() {
 
 	const Trace collision = trace(times(DOWN, GROUND_TRACE_DISTANCE), true);
 	Vector3 normal = ZERO;
+	bool world_ground = collision.met && collision.is_world;
 	Vector3 travel = ZERO;
 	if (collision.met) {
 		normal = collision.normal;
@@ -731,8 +757,10 @@ void HullMover::categorize_position() {
 
 	if (normal == ZERO || !is_walkable(normal)) {
 		normal = ground_normal_in_quadrants();
+		world_ground = quadrant_is_world;
 		if (normal == ZERO) {
 			on_ground = false;
+			ground_is_world = false;
 			ground_normal = UP;
 			looked_from = position;
 			looked_with = hull_height;
@@ -742,6 +770,7 @@ void HullMover::categorize_position() {
 
 	on_ground = true;
 	ground_normal = normal;
+	ground_is_world = world_ground;
 	if (collision.met) {
 		position += travel;
 	} else {
@@ -797,6 +826,7 @@ HullMover::Trace HullMover::trace(const Vector3 &motion, bool test_only) {
 	result.travel = travel;
 	result.normal = hit.normal;
 	result.recovery = recovery;
+	result.is_world = is_world_ground(hit.collider);
 	return result;
 }
 
@@ -984,7 +1014,9 @@ Vector3 HullMover::recover_trace_start() {
 Vector3 HullMover::ground_normal_in_quadrants() {
 	// Four rays through the bridge, as the script asks them: from where the
 	// body stands now.
-	return body->call(names::quadrants(), position);
+	const Vector3 normal = body->call(names::quadrants(), position);
+	quadrant_is_world = body->get(names::quadrant_is_world());
+	return normal;
 }
 
 } // namespace godot
