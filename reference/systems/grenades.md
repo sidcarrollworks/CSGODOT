@@ -14,7 +14,11 @@ ports throw strength, delayed release and jump parameters, launch/flight
 boxes, substeps, surface bounce/rest, activation and one-time enemy body
 hits. `ProjectileTrace` separates contact fraction from normal clearance
 with an opt-in Box3D query. G1 still needs recorded lineups; HE/flash
-effects, water, spin and additional entity filters remain open.
+effects, water, spin and additional entity filters remain open. The core
+port is merged in #183; #184 adds the exact movement snapshot boundary,
+ordinary CS2 jump correction, sky-brush classification and practice trails.
+B-doors' standing jump throw was accepted in play. The mid-door visual aim
+discrepancy remains open; shared terrain-aware simulation eye state is next.
 
 ## What is built
 
@@ -184,12 +188,13 @@ files named:
    The watcher with `--mode practice --map de_dust2 --lineup=b-doors`
    prepares Sid's second paired console reference (63.9375-unit effective
    eye height). Its stationary jump replay reaches the roof above the gate;
-   the three-lineup regression passes 201 checks.
+   the three-lineup regression passes 201 checks, and Sid accepted the
+   B-doors landing in play. This does not close recorded trajectory parity.
    The [subtick audit](../research/grenade-subtick-snapshot-2026-10-03.md)
    verifies that CS2 uses segment time and explicitly splits movement at the
    snapshot deadline. The port now implements it, together with the ordinary
-   jump's gravity correction, at Sid's request for local playtest. General
-   jump feel and the corrected mid-door setup remain to be assessed in play.
+   jump's gravity correction, merged in #184. General jump feel and the
+   mid-door visual aim discrepancy still need CS2 comparison after that merge.
 3. **Your view (`player_view.gd` or the HUD):** a `FlashOverlay` with your
    userid, on top of the HUD *(done on dust2 2026-09-23)*. The flashed ringing is a sound (below).
    Practice and the test range also enable `GrenadeTrail`: a green overlay

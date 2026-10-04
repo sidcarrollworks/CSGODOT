@@ -4,6 +4,9 @@ Roadmap **20a / G1**, following merged PR #181. This implements the core
 rules recovered in the [current-build audit](grenade-audit-2026-10-02.md)
 after the [collision foundation](collision-foundation-2026-10-02.md).
 It does not mark recorded CS2 lineup parity or G2–G5 effects complete.
+The core port is merged in #183. The subsequent snapshot, ordinary-jump,
+sky classification and crouch acceleration corrections are merged in #184;
+the roadmap records the current remaining movement and lineup work.
 
 ## Implemented rules
 

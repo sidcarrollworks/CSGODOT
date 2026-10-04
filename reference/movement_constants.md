@@ -21,7 +21,7 @@ at the B-doors setup; the base 64/46 eye values remain unchanged.
 | `sv_stopspeed` | 80 | Source/CS:GO default | No |
 | `sv_air_max_wishspeed` | 30 | [deadstrafe writeup](https://gist.github.com/zer0k-z/808bc8bfc494e0bbb5a423c2b1ca6685) | No |
 | `sv_maxspeed` | 250 | Same; base speed with a knife | No |
-| `duck_time` | 0.4 s | Source's TIME_TO_DUCK. CS:GO ducks faster than this. | No, and it is probably wrong |
+| `duck_time` | 0.4 s | The port's Source-style interpolation duration. CS2's separately audited `sv_timebetweenducks = 0.4` is a repeated-input gate, not proof of this duration. | Full duck/root/view transitions remain unported |
 | `sv_gravity` | 800 | Source/CS:GO default | No |
 | `sv_jump_impulse` | 301.993 | Source/CS:GO default | No |
 | walk modifier | 0.52 | CS:GO | No |
@@ -109,9 +109,13 @@ Ducking in the air shrinks the hull and moves the body up by the difference, so
 your head stays put and your feet come up 18 units. That is what a crouch jump
 is, and it is the only way to reach a ledge a standing jump cannot.
 
-Measured in our build at 64 Hz: a standing jump peaks at 59.37 units and a
-crouch jump at 77.37, the difference being exactly the 18 unit hull delta
+Historical legacy-mode measurements (September 23) at 64 Hz: a standing
+jump peaks at 59.37 units and a crouch jump at 77.37, the difference being
+exactly the 18 unit hull delta
 (58.19 and 76.19 at 128 Hz, the tick until 2026-09-23).
+These are not the current default standing arc: #184's ordinary CS2 jump
+peaks at 55.825516 units in the Box3D regression at 64 Hz. Complete CS2
+crouch-jump reach and transition timing still need paired captures.
 
 **76 may well be too generous.** The feet-raise is faithful to Source's
 `FinishDuck`, but CS:GO and CS2 also gate how fast you can duck in the air, and
@@ -177,12 +181,15 @@ We keep it on by default because the goal is CS2, not a better CS2. Anyone who
 plays a lot of CS will feel the difference either way, so this should be an
 explicit choice rather than an accident.
 
-### Jump height is tick-rate dependent in Source
+### Current jump height and the legacy Source comparison
 
-**October 3 default:** `MovementConfig.cs2_jump` is now **on** for playtest,
+**October 3 default, merged in #184:** `MovementConfig.cs2_jump` is **on**,
 using the [Ghidra-audited ordinary jump](research/grenade-subtick-snapshot-2026-10-03.md).
 At gravity 800 its fixed adjustment subtracts 3.125 u/s from the 301.993
 impulse, and interval gravity then integrates independently of jump phase.
+The current Box3D test samples a standing peak of **55.825516 units** at
+64 Hz and requires a grounded landing. This measures our port, not a
+captured CS2 trajectory.
 The following Source-height comparison describes the legacy mode selected
 with `cs2_jump = false`; it remains available to the course's comparison tests.
 
@@ -199,13 +206,10 @@ and the jump ends up higher than the physics alone would give:
 | Source ordering at 128 Hz | 58.18 units |
 | Source ordering at 64 Hz | 59.36 units |
 
-**This project now simulates at 64 Hz, as CS2 moves** (2026-09-23; it was 128,
-which left its jumps about 1.2 units short of CS2's). Faithful to Source, a
-jump peaks at 59.36, which is CS2's if CS2 kept Source's order of gravity and
-impulse; a real CS2 jump against the jump gauges will say. If it did not,
-`tick_rate_independent_jump` and `sv_jump_impulse` can be set to the measured
-height at any tick rate. The test suite pins both behaviours so the choice
-cannot drift by accident.
+The project switched from 128 to 64 Hz on September 23. The older assumption
+that CS2 kept Source's impulse/gravity order is superseded by the October 3
+binary audit and #184. The legacy comparison remains selectable and tested;
+controlled CS2 jump/landing captures still need to validate the default port.
 
 ## What the tick rate does to the movement (2026-09-23)
 
