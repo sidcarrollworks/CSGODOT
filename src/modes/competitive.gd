@@ -391,11 +391,13 @@ func _add_views() -> void:
 		overlay.game = world.game
 		overlay.viewer_id = (player as PlayerSim).userid
 		canvas.add_child(overlay)
+		_follow_recipient(overlay, &"viewer_id")
 		# What this player hears of them, the flash in their ears included.
 		var grenade_sounds := GrenadeSounds.new()
 		grenade_sounds.name = "GrenadeSounds"
 		add_child(grenade_sounds)
 		grenade_sounds.watch(world.game, (player as PlayerSim).userid)
+		_follow_recipient(grenade_sounds, &"listener_id")
 	if bomb_system != null:
 		var bomb_view := C4View.new()
 		bomb_view.name = "Bomb"
@@ -407,21 +409,35 @@ func _add_views() -> void:
 	round_sounds.name = "RoundSounds"
 	add_child(round_sounds)
 	round_sounds.watch(world.game, (player as PlayerSim).userid, bomb_system.bomb if bomb_system != null else null)
+	_follow_recipient(round_sounds, &"listener_id")
 	# What the one hit and those near hear of a hit, and the death groan.
 	var hit_sounds := HitSounds.new()
 	hit_sounds.name = "HitSounds"
 	add_child(hit_sounds)
 	hit_sounds.watch(world.game, (player as PlayerSim).userid)
+	_follow_recipient(hit_sounds, &"listener_id")
 	# The rounds' tracers and the guns' muzzle flashes.
 	var shot_effects := ShotEffects.new()
 	shot_effects.name = "ShotEffects"
 	add_child(shot_effects)
 	shot_effects.watch(world.game, (player as PlayerSim).userid, player as PlayerController)
+	_follow_recipient(shot_effects, &"listener_id")
 	# The blood of a hit and a helmet's sparks.
 	var hit_effects := HitEffects.new()
 	hit_effects.name = "HitEffects"
 	add_child(hit_effects)
 	hit_effects.watch(world.game, (player as PlayerSim).userid)
+	_follow_recipient(hit_effects, &"listener_id")
+
+
+## View/audio recipients follow the pawn controlled by the local player.
+## Do not re-watch the game: that would discard events queued this tick.
+func _follow_recipient(view: Node, property: StringName) -> void:
+	var controller := player as PlayerSim
+	view.set(property, controller.pawn().userid)
+	controller.control_changed.connect(func() -> void:
+		if is_instance_valid(view):
+			view.set(property, controller.pawn().userid))
 
 
 ## F5 ends warmup, as mp_warmup_end does, on the world's next tick.

@@ -47,6 +47,11 @@ func showing() -> int:
 	return _hits.size()
 
 
+func clear() -> void:
+	_hits.clear()
+	queue_redraw()
+
+
 func _process(delta: float) -> void:
 	if _hits.is_empty():
 		return
@@ -62,7 +67,7 @@ func _draw() -> void:
 		return
 	var centre := size * 0.5
 	for hit in _hits:
-		var angle := screen_angle(player.global_position, player.input.yaw_degrees, hit["from"])
+		var angle := screen_angle(player.pawn().global_position, player.input.yaw_degrees, hit["from"])
 		var colour := COLOUR
 		colour.a *= clampf(hit["left"] / FADE_SECONDS, 0.0, 1.0)
 		# Godot measures arcs from +x, clockwise on screen; straight up is -90.

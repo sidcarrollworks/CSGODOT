@@ -15,6 +15,7 @@ func _initialize() -> void:
 	_test_drawing_rates()
 	await process_frame
 	_test_player_view()
+	_test_view_of_a_bot_taken_over()
 	_finish("jump-camera")
 
 
@@ -194,6 +195,128 @@ func _test_player_view() -> void:
 	GameWorld.current = null
 	world.free()
 	DrawClock._tick_clock_usec = old_tick_clock
+
+
+## Dead and taking over a bot, the view goes into the bot's eyes and looks
+## the way it looked, and draws the bot's hand; the bot dying under you,
+## the death camera goes to its body.
+func _test_view_of_a_bot_taken_over() -> void:
+	var world := GameWorld.new()
+	GameWorld.current = world
+	world.tick = 64
+	var old_tick_clock := DrawClock._tick_clock_usec
+	DrawClock._tick_clock_usec = Time.get_ticks_usec() - 1000000
+	var player := BarePlayer.new()
+	player.config = MovementConfig.new()
+	player.camera = Camera3D.new()
+	player.add_child(player.camera)
+	root.add_child(player)
+	player.set_process(false)
+	player.set_physics_process(false)
+	player.camera.top_level = true
+	player.global_position = Vector3(10, 20, 30)
+	player.previous_position = player.global_position
+	player.view = PlayerView.new(player)
+	player.view.camera = player.camera
+	player.view._read_for_team = player.team
+	var bot := PlayerSim.new()
+	bot.is_bot = true
+	bot.team = player.team
+	root.add_child(bot)
+	bot.set_physics_process(false)
+	bot.global_position = Vector3(500, 0, 500)
+	bot.previous_position = bot.global_position
+	bot.yaw_degrees = 75.0
+	bot.pitch_degrees = 5.0
+	player.userid = 1
+	bot.userid = 2
+	var mode := Competitive.new()
+	mode.player = player
+	var sounds := HitSounds.new()
+	var flash := FlashOverlay.new()
+	mode._follow_recipient(sounds, &"listener_id")
+	mode._follow_recipient(flash, &"viewer_id")
+	var shots := ShotEffects.new()
+	shots.you = player
+	shots.listener_id = player.userid
+	var hud := GameHud.new()
+	hud.player = player
+	hud.damage_indicator = DamageIndicator.new()
+	hud.kill_feed = KillFeed.new()
+	hud.kill_feed.watch(world.game, player.userid)
+	player.control_changed.connect(hud._follow_damage_pawn)
+	hud._follow_damage_pawn()
+
+	player.alive = false
+	player.respawns = false
+	player.view._on_killed(&"head")
+	_check(player.can_control(bot), "dead, a bot on your side may be taken over")
+	player.take_control(bot)
+	_check(shots._in_first_person(bot.userid) and not shots._in_first_person(player.userid),
+		"taken over, the bot's muzzle is first person even though the controller is dead")
+	_check(sounds.listener_id == bot.userid and flash.viewer_id == bot.userid,
+		"hit audio and flash overlays follow the controlled bot's recipient")
+	world.game.events.send(&"player_death", {"userid": 3, "attacker": bot.userid, "weapon": "weapon_ak47"})
+	world.game.events.flush()
+	_check(hud.kill_feed.notices()[0].yours == KillFeed.Yours.KILLER,
+		"a controlled bot's kill receives the local-player kill-feed highlight")
+	bot.hurt.emit(10.0, &"chest", Vector3(500, 0, 450))
+	player.hurt.emit(10.0, &"chest", Vector3.ZERO)
+	_check(hud.damage_indicator.showing() == 1,
+		"damage directions listen to the bot, without also listening to the old body")
+	player._on_control_changed()
+	player.view._on_control_changed()
+	_check(player.view._in_hand_due and player.view._in_hand_entry == bot.inventory.in_hand(), "its hand to be shown")
+	player.view._process(1.0 / 224.0)
+	_check(player.view.pawn == bot, "the view draws the bot from the inside")
+	var eyes := bot.global_position + Vector3.UP * bot.eye_height()
+	_check(player.camera.global_position.distance_to(eyes) < 0.01, "from its eyes (%s)" % player.camera.global_position)
+	_check(is_equal_approx(player.input.yaw_degrees, 75.0) and is_equal_approx(player.input.pitch_degrees, 5.0)
+		and absf(rad_to_deg(player.camera.global_rotation.y) - 75.0) < 0.01, "looking the way it looked")
+	# The spectator's former gun must not drive the bot's drawn recoil.
+	var arms := Node3D.new()
+	player.camera.add_child(arms)
+	player.view.viewmodel = arms
+	player.view._viewmodel_rest = Transform3D.IDENTITY
+	player.view._viewmodel_rest_captured = true
+	bot.weapon = Weapon.new(WeaponLibrary.ak47())
+	bot.weapon._model_aim_recoil.value = Vector2(2.0, -6.0)
+	bot.previous_viewmodel_punch = bot.viewmodel_punch()
+	player.view.viewmodel_motion = ViewModelMotion.new()
+	player.view._update_viewmodel(0.0)
+	var kick := bot.viewmodel_punch()
+	_check(arms.basis.is_equal_approx(Basis.from_euler(Vector3(deg_to_rad(kick.y), deg_to_rad(-kick.x), 0.0))),
+		"the controlled bot supplies the new aim-recoil follow channel to its drawn arms")
+
+	bot.alive = false
+	player._lose_control()
+	_check(sounds.listener_id == player.userid and flash.viewer_id == player.userid
+		and not shots._in_first_person(bot.userid) and hud.damage_indicator.showing() == 0,
+		"given back, the recipient returns to the controller and clears the former pawn's damage arcs")
+	world.game.events.send(&"player_death", {"userid": 3, "attacker": bot.userid, "weapon": "weapon_ak47"})
+	world.game.events.flush()
+	_check(hud.kill_feed.notices()[1].yours == KillFeed.Yours.NONE,
+		"after returning control, another bot kill is no longer highlighted as yours")
+	player.view._on_control_changed()
+	player.view._process(1.0)
+	var centre := bot.body_centre()
+	_check(player.view.pawn == player and player.camera.global_position.distance_to(centre) > 60.0
+		and player.camera.global_position.distance_to(centre) < PlayerView.DEATH_CAM_DISTANCE + 1.0,
+		"it dies under you: the death camera on its body (%.0f units off)" % player.camera.global_position.distance_to(centre))
+	player.view.free()
+	player.view = null
+	player.free()
+	bot.free()
+	GameWorld.current = null
+	world.free()
+	DrawClock._tick_clock_usec = old_tick_clock
+	hud.damage_indicator.free()
+	hud.kill_feed.free()
+	hud.free()
+	shots.free()
+	flash.free()
+	sounds.free()
+	mode.free()
 
 
 func _test_eye_interpolation(player: PlayerController) -> void:

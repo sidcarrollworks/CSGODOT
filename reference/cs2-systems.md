@@ -64,7 +64,7 @@ below; this page is not yet updated to match.
 | Freeze time | 15 s (20 in TMM) |
 | Round time | 1:55 (`mp_roundtime_defuse 1.92`) |
 | After a round | win panel 3 s, next round after 7 s (CV) |
-| Death | no respawn; spectate your own team only; 2 s freeze cam |
+| Death | no respawn; spectate your own team only (`mp_forcecamera 1`, no free look); 2 s freeze cam (`spec_freeze_time` 3 in the convars, not yet matched) |
 | Friendly fire | on: bullets 33%, grenades 85%, your own grenades 100%, other 40% |
 | Teammates | solid (`mp_solid_teammates 1`): you cannot walk through them |
 | Half time | 15 s, money back to $800 |
@@ -88,6 +88,12 @@ with bots filling the places. The list below says what is left of it.
   (on dust2, 2026-09-23); the rest come with what deals it. ~~Solid
   teammates in the movement solver.~~ Done.
 - ~~Death: body stays (ragdoll), spectating teammates, the freeze cam.~~ Done.
+- ~~The spectator keys: fire next, the right button back, jump round first
+  person, chase and Free Look.~~ Done 2026-10-02 (free look on offline,
+  `MatchRules.free_look`).
+- ~~Taking control of a teammate bot while dead (E, `bot_controllable 1`;
+  what you earn goes to the bot, `SFUI_Hint_ControlBotDontKeep`).~~ Done
+  2026-10-02, one a round.
 - ~~Bots fill empty slots on either side.~~ Done.
 - ~~The bomb's round ends (section 4) and money at half time and in
   overtime (section 2) plug into the match when they are built.~~ Done

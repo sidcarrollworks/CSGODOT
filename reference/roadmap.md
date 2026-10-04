@@ -81,9 +81,10 @@ Pending review and local playtest, not part of merged `main`:
 Shared terrain-aware simulation eyes and ordinary combined horizontal
 integration are merged. The movement section below records the remaining
 command/crouch work and CS2 capture limits. PR #189 preserves the accepted
-local playtest changes; #177 is reconciled on top of it because both edit
-viewmodel recoil and tracer drawing. Merge #189 before #177. Team selection
-and foot placement remain separate PRs against main. All four require fresh
+local playtest changes; #177 includes it because both edit viewmodel recoil
+and tracer drawing. Both target main; merge #189 before #177 so its remaining
+diff is the spectator feature. Team selection and foot placement remain
+separate PRs against main. All four require fresh
 CI; the three feature PRs still need their local gameplay checks.
 
 ## Part 1: what exists
@@ -263,6 +264,30 @@ while turning, with or without Walk; script and native movement share the
 same correction. See `reference/movement_constants.md`, "Crouch turning",
 for the reproduction and the small accuracy-threshold rounding tolerance.
 **Local:** crouch and turn with those guns in the range and on dust2.
+
+**Spectating (Sid's 2026-09-30 playtest): free look Remote done 2026-10-02.**
+Dead in a round, jump goes round CS2's camera modes: a teammate's eyes, the
+camera behind them, then Free Look, flying through walls at CS2's
+`sv_specspeed` 1200 with `sv_specaccelerate` 5 and `sv_friction` 5.2, and
+back to their eyes. Fire is the next teammate, the right button the one
+before. Free look is a departure from competitive's `mp_forcecamera 1`
+(`MatchRules.free_look`, on). Taking control of a bot: Remote done
+2026-10-02. Watching a bot on your side from its eyes or behind it, E takes
+it over (`bot_controllable 1`): the world hands it your commands, and the
+view and HUD draw it from the inside, its health, gun and money; it stays
+the bot, as CS2's hint says, so what you earn is its. One a round; it dies
+under you and the death camera goes to its body. Shooting and throwing
+while noclipping: Remote done 2026-10-02, with the air's inaccuracy.
+**October 4 reconciliation:** current terrain eyes, grenade snapshots and
+delayed release are retained. Hit/flash recipients, damage directions,
+tracers, recoil-follow arms, kill-feed highlighting and HUD reports follow
+the controlled bot; returning control restores the original player. The
+combined branch passed 8,702 checks in 82 files with extracted assets
+available (three drawing-only suites skipped); the final HUD recipient
+correction also passed its targeted checks. Local gameplay remains below.
+**Local:** fly round dust2 dead and say if the speed or the feel is off;
+take over a bot and play it (arms, sounds, buying, its death); in CS2,
+whether a noclip shot standing still in the air is as wide as a jump's.
 
 **October 3 slope playtest:** crouched starts still accelerated from the
 standing weapon speed. PR #184 now uses the binary-derived ordinary land

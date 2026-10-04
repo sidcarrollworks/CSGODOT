@@ -78,6 +78,8 @@ const DEATH_CAM_SECONDS := 0.6
 const DEATH_CAM_WALL_GAP := 6.0
 
 var player: PlayerController
+## What is drawn from the inside: player, or the bot they drive (_follow).
+var pawn: PlayerSim
 var camera: Camera3D
 
 ## The weapon model, if there is one. It rides the recoil.
@@ -157,6 +159,7 @@ var _watched: PlayerSim
 
 func _init(p_player: PlayerController) -> void:
 	player = p_player
+	pawn = p_player
 	name = "View"
 
 
@@ -183,22 +186,81 @@ func _ready() -> void:
 	weapon_sounds = WeaponSounds.new()
 	weapon_sounds.name = "WeaponSounds"
 	player.add_child(weapon_sounds)
-	weapon_sounds.watch(player)
 	footsteps = Footsteps.new()
 	footsteps.name = "Footsteps"
 	player.add_child(footsteps)
 
-	player.equipped.connect(_on_equipped)
-	player.inventory.changed.connect(func() -> void: _view_models_due = true)
-	player.pin_pulled.connect(_on_pin_pulled)
-	player.grenade_released.connect(_on_grenade_released)
-	player.reload_started.connect(_on_reload_started)
-	player.reload_stopped.connect(_on_reload_stopped)
-	player.shot_traced.connect(_on_shot_traced)
-	player.knife_swung.connect(_on_knife_swung)
+	_listen(pawn, true)
+	weapon_sounds.watch(pawn)
 	player.killed.connect(_on_killed)
 	player.respawned.connect(_on_respawned)
 	player.team_changed.connect(_on_team_changed)
+	player.control_changed.connect(_on_control_changed)
+
+
+## The player drawn from the inside: you, or the bot you have taken over
+## (PlayerSim.pawn): its arms, what it holds and fires, from its eyes.
+## Its signals are heard instead of the last one's.
+func _follow(next: PlayerSim) -> void:
+	if pawn == next:
+		return
+	if is_instance_valid(pawn):
+		_listen(pawn, false)
+	pawn = next
+	_listen(pawn, true)
+	if weapon_sounds != null:
+		weapon_sounds.watch(pawn)
+	# Arms round what the new one carries, its hand shown from the next
+	# frame.
+	for model: ViewModel in _view_models.values():
+		_let_go(model)
+	_view_models.clear()
+	view_model = null
+	viewmodel = null
+	_viewmodel_rest_captured = false
+	_view_models_due = true
+	_in_hand_due = true
+	_in_hand_entry = pawn.inventory.in_hand()
+
+
+## Hears what the one drawn from the inside does, or stops.
+func _listen(who: PlayerSim, on: bool) -> void:
+	var heard := {
+		who.equipped: _on_equipped, who.inventory.changed: _on_inventory_changed,
+		who.pin_pulled: _on_pin_pulled, who.grenade_released: _on_grenade_released,
+		who.reload_started: _on_reload_started, who.reload_stopped: _on_reload_stopped,
+		who.shot_traced: _on_shot_traced, who.knife_swung: _on_knife_swung,
+	}
+	for heard_signal: Signal in heard:
+		if on:
+			heard_signal.connect(heard[heard_signal])
+		elif heard_signal.is_connected(heard[heard_signal]):
+			heard_signal.disconnect(heard[heard_signal])
+
+
+func _on_inventory_changed() -> void:
+	_view_models_due = true
+
+
+## A bot taken over: the camera into its eyes, its body kept from the
+## camera as a watched teammate's is, your arms and the body you look down
+## at back, drawing what it holds. Given back as it dies: the death camera
+## on its body, as on your own. Given back at a round's start: the respawn
+## puts everything else right.
+func _on_control_changed() -> void:
+	_follow(player.pawn())
+	camera_motion.reset()
+	if pawn != player:
+		_watch(pawn)
+		_dead_for = -1.0
+		_show_player(true)
+		return
+	_watch(null)
+	if not pawn.alive:
+		_show_player(false)
+		_dead_for = 0.0
+		if camera != null:
+			_died_at = camera.global_transform
 
 
 ## Something else in hand: its model shown, drawing, and a gun's sounds,
@@ -261,7 +323,7 @@ func _on_reload_started() -> void:
 		view_model.play(&"reload")
 	if body_shadow != null:
 		body_shadow.play(&"reload", 0.1)
-	weapon_sounds.reload_weapon(player.weapon)
+	weapon_sounds.reload_weapon(pawn.weapon)
 
 
 ## A shot stopped a shotgun's reload: the rest of its sounds are not heard
@@ -328,8 +390,8 @@ func _on_team_changed(_team: String) -> void:
 	viewmodel = null
 	_view_models_due = true
 	_in_hand_due = true
-	_in_hand_entry = player.inventory.in_hand()
-	_show_player(player.alive)
+	_in_hand_entry = pawn.inventory.in_hand()
+	_show_player(pawn.alive)
 
 
 ## Your body as everyone else sees it, shown to your own camera or put back
@@ -394,6 +456,16 @@ func _spectate(watched: PlayerSim) -> void:
 	)
 
 
+## Dead and flying free: the camera where the tick moved it, drawn between
+## the last two ticks, turned by the mouse as it is now.
+func _roam() -> void:
+	var alpha := DrawClock.fraction()
+	camera.global_position = player.previous_observer_position.lerp(player.observer_position, alpha)
+	camera.global_rotation = Vector3(
+		deg_to_rad(player.input.pitch_degrees), deg_to_rad(player.input.yaw_degrees), 0.0
+	)
+
+
 ## Keeps a body out of the camera while the camera is in its head, and
 ## gives the last one back.
 func _watch(watched: PlayerSim) -> void:
@@ -409,7 +481,8 @@ func _watch(watched: PlayerSim) -> void:
 
 func _death_cam(delta: float) -> void:
 	_dead_for += delta
-	var centre := player.body_centre()
+	var body: PlayerSim = player.death_cam_of if is_instance_valid(player.death_cam_of) else player
+	var centre := body.body_centre()
 	var at := death_cam_position(centre, player.input.yaw_degrees, player.input.pitch_degrees)
 	var there := Transform3D(Basis.IDENTITY, at)
 	if at.distance_to(centre) > 1.0:
@@ -421,8 +494,8 @@ func _death_cam(delta: float) -> void:
 		_died_at.basis.get_rotation_quaternion().slerp(there.basis.get_rotation_quaternion(), t),
 		_died_at.origin.lerp(there.origin, t)
 	)
-	if player.model != null:
-		player.model.light_from(centre)
+	if body.model != null:
+		body.model.light_from(centre)
 
 
 func _show_player(shown: bool) -> void:
@@ -442,7 +515,7 @@ func _show_in_hand(entry: Inventory.Entry) -> void:
 		var model: ViewModel = _view_models[item_class]
 		if model == shown:
 			continue
-		if not player.inventory.has(item_class):
+		if not pawn.inventory.has(item_class):
 			_let_go(model)
 			_view_models.erase(item_class)
 			continue
@@ -453,7 +526,7 @@ func _show_in_hand(entry: Inventory.Entry) -> void:
 	_planting = false
 	if shown == null:
 		return
-	shown.deploy(player.alive)
+	shown.deploy(pawn.alive)
 
 
 ## A model for everything carried that has none, hidden until it is taken
@@ -462,7 +535,7 @@ func _show_in_hand(entry: Inventory.Entry) -> void:
 func _build_view_models() -> void:
 	if camera == null:
 		return
-	for entry in player.inventory.entries():
+	for entry in pawn.inventory.entries():
 		if not _view_models.has(entry.item.item_class):
 			_build_view_model(entry)
 
@@ -498,7 +571,7 @@ static func _let_go(model: ViewModel) -> void:
 ## The bomb's plant clip while planting with it in hand, and back to the
 ## idle when a plant stops short.
 func _follow_plant() -> void:
-	var planting := player.alive and player.held_still and player.in_hand_class() == "weapon_c4"
+	var planting := pawn.alive and pawn.held_still and pawn.in_hand_class() == "weapon_c4"
 	if planting == _planting:
 		return
 	_planting = planting
@@ -551,9 +624,9 @@ func _build_body(node_name: String, folded: Array[String], casting: GeometryInst
 ## into the shadow maps. Per frame, from what the tick left in the hand: the
 ## body the hitboxes ride took it up on the tick (PlayerSim._body_holds).
 func _follow_hand() -> void:
-	if body_shadow == null or not player.alive:
+	if body_shadow == null or not pawn.alive:
 		return
-	var item_class := player.in_hand_class()
+	var item_class := pawn.in_hand_class()
 	if body_shadow.holding != item_class:
 		body_shadow.hold(item_class, WeaponLibrary.look(item_class, player.team) if not item_class.is_empty() else {})
 	var shown := body_shadow.held_weapon
@@ -566,13 +639,13 @@ func _follow_hand() -> void:
 ## After each tick the player has run (the world runs the tick before any
 ## other node's physics callback): the body walks the clips for how it moved.
 func _physics_process(_delta: float) -> void:
-	if not player.alive:
+	if not pawn.alive:
 		return
 	for body in [body_model, body_shadow]:
 		if body != null:
 			body.update_motion(
-				player.velocity, player.input.yaw_degrees, player.duck_progress, player.on_ground,
-				player.air_action, player.air_action_usec, player.height_above_ground
+				pawn.velocity, player.input.yaw_degrees, pawn.duck_progress, pawn.on_ground,
+				pawn.air_action, pawn.air_action_usec, pawn.height_above_ground
 			)
 
 
@@ -590,6 +663,10 @@ func _process(delta: float) -> void:
 	catch_up()
 	_follow_scope()
 	if _dead_for >= 0.0:
+		if player.observer_mode == PlayerSim.ObserverMode.ROAMING:
+			_watch(null)
+			_roam()
+			return
 		var watched := player.observing
 		if watched != null and is_instance_valid(watched) and watched.alive:
 			_spectate(watched)
@@ -602,15 +679,15 @@ func _process(delta: float) -> void:
 	# between their ticks, so the view is smooth at any framerate rather than
 	# stepping at the 64 Hz tick.
 	var alpha := DrawClock.fraction()
-	var interpolated := player.previous_position.lerp(player.global_position, alpha)
+	var interpolated := pawn.previous_position.lerp(pawn.global_position, alpha)
 
 	var dip := 0.0
-	if player.noclip:
+	if pawn.noclip:
 		camera_motion.reset()
 	else:
 		var drawn_usec := SimClock.now_usec() - SimClock.tick_usec() + int(alpha * SimClock.tick_usec())
-		dip = camera_motion.update_at(drawn_usec, player.air_action, player.air_action_usec)
-	camera.global_position = interpolated + Vector3.UP * (player.interpolated_eye_height(alpha) + dip)
+		dip = camera_motion.update_at(drawn_usec, pawn.air_action, pawn.air_action_usec)
+	camera.global_position = interpolated + Vector3.UP * (pawn.interpolated_eye_height(alpha) + dip)
 	var yaw := deg_to_rad(player.input.yaw_degrees)
 	for body in [body_model, body_shadow]:
 		if body != null:
@@ -626,7 +703,7 @@ func _process(delta: float) -> void:
 	# hit has thrown the aim, all of it: that one is where the rounds go, so
 	# the crosshair tells the truth about it. Both between the last two
 	# ticks, as the position is.
-	var punch := player.previous_view_punch.lerp(player.view_punch(), alpha)
+	var punch := pawn.previous_view_punch.lerp(pawn.view_punch(), alpha)
 	camera.global_rotation = Vector3(
 		deg_to_rad(player.input.pitch_degrees + punch.y),
 		deg_to_rad(player.input.yaw_degrees - punch.x),
@@ -651,7 +728,7 @@ func _process(delta: float) -> void:
 ## A shotgun loading a shell at a time: its arms round the reload clip's
 ## loop once for every shell, where the reload is at this frame.
 func _follow_reload() -> void:
-	var weapon := player.weapon
+	var weapon := pawn.weapon
 	if view_model == null or weapon == null or not weapon.data.reloads_single_shells:
 		return
 	var seconds := weapon.shell_clip_seconds(DrawClock.usec())
@@ -732,7 +809,7 @@ static func any_box_in_view(frustum: Array[Plane], boxes: Array[AABB], feet: Vec
 ## from 68 to the model's calibrated scope framing as far as the gun is up
 ## (Weapon.iron_sight_amount; reference/research/scopes.md).
 func _follow_scope() -> void:
-	var weapon := player.weapon if player.alive and _dead_for < 0.0 else null
+	var weapon := pawn.weapon if pawn.alive and _dead_for < 0.0 else null
 	var fov := ViewModelProjection.WORLD_FOV
 	var arms_fov := ViewModelProjection.VIEW_MODEL_FOV
 	var raised := 0.0
@@ -748,7 +825,7 @@ func _follow_scope() -> void:
 	_arms_raised = raised
 	player.input.zoom_sensitivity = sensitivity
 	if view_model != null:
-		view_model.visible = player.alive and not hidden
+		view_model.visible = pawn.alive and not hidden
 		view_model.raise_to_eye(raised, weapon.data if weapon != null else null)
 	if is_equal_approx(fov, _fov) and is_equal_approx(arms_fov, _arms_fov) and _fov_model == view_model:
 		return
@@ -786,12 +863,12 @@ func _update_viewmodel(delta: float) -> void:
 	# turns the Source2Viewer rig around 180 degrees; applying pitch after
 	# that basis reverses the recoil's vertical direction.
 	var motion := viewmodel_motion.update(
-		delta, player.velocity, player.on_ground,
+		delta, pawn.velocity, pawn.on_ground,
 		Vector2(player.input.yaw_degrees, player.input.pitch_degrees), camera_motion.height
 	)
 	var alpha := DrawClock.fraction()
-	var punch := player.viewmodel_punch()
-	var kick := player.previous_viewmodel_punch.lerp(punch, alpha)
+	var punch := pawn.viewmodel_punch()
+	var kick := pawn.previous_viewmodel_punch.lerp(punch, alpha)
 	# Up at the eye, the gun keeps its scope in front of it: no bob or sway
 	# (CS2 holds it nearly still there, m_flIronSightLooseness 0.03).
 	var loose := 1.0 - _arms_raised

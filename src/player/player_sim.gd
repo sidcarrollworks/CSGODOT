@@ -62,13 +62,66 @@ var team_damage_scale: float = 1.0
 
 ## Dead in a round with no respawn: the living teammate being watched, or
 ## null while the camera is still on your own body (the first
-## freeze_cam_seconds) or nobody on your side is left. Fire moves on to the
-## next teammate, jump switches between their eyes and a camera behind them
-## (observing_chase). Kept here, not in the view, as CS2's server keeps
-## who each player watches: it goes by the commands the player sends.
+## freeze_cam_seconds), nobody on your side is left, or the camera flies
+## free. Fire moves on to the next teammate and the right button back to
+## the one before, as CS2's spectator keys have it (PANOHUD_Spectate_
+## Navigation_Arrows and _Arrows_Prev); jump goes round the camera's modes
+## (observer_mode). Kept here, not in the view, as CS2's server keeps who
+## each player watches and how: it goes by the commands the player sends.
 var observing: PlayerSim
-var observing_chase: bool = false
 var freeze_cam_seconds: float = 2.0
+
+## How a dead player watches, CS2's CSObserverMode (point_script.d.ts) less
+## the two it has no key for (NONE, FIXED): from the eyes of the one
+## watched, from behind them, or flying free round the map ("Free Look",
+## Cstrike_TitlesTXT_OBS_ROAMING). Jump goes round them in that order, as
+## spec_mode does.
+enum ObserverMode { IN_EYE, CHASE, ROAMING }
+var observer_mode := ObserverMode.IN_EYE
+## Whether the camera is behind the one watched, rather than in their eyes.
+var observing_chase: bool:
+	get:
+		return observer_mode == ObserverMode.CHASE
+## Whether the dead may fly free (MatchRules.free_look).
+var free_look: bool = true
+## Flying free: where the camera is, where it was the tick before (to draw
+## between the two), and how fast it is going. Through walls, as CS2's
+## sv_specnoclip 1 has it.
+var observer_position := Vector3.ZERO
+var previous_observer_position := Vector3.ZERO
+var observer_velocity := Vector3.ZERO
+## Who was watched before the camera flew free, to go back to.
+var _observed_before: PlayerSim
+
+## Taking control of a bot, as CS2 lets the dead (bot_controllable 1, "Use
+## Control Bot" on its spectator bar): watching a living bot on your side,
+## E takes it over, and your commands drive it until it dies or the round
+## is over. It stays the bot, as CS2 has it: "money, kills, deaths and
+## weapons that you earn are awarded to that bot instead of you"
+## (SFUI_Hint_ControlBotDontKeep). So nothing of it is moved onto you; the
+## world hands it your commands (GameWorld.commands_for), and your view
+## draws it from its eyes (pawn()).
+##
+## On the one who took control: the bot, while it lives under you.
+var controlling: PlayerSim
+## On the bot: who drives it, or null while it drives itself.
+var controlled_by: PlayerSim
+## One bot a round, as CS:GO had it (inferred for CS2 from its
+## m_bHasControlledBotThisRound): the bot you took dies, and you watch.
+var controlled_bot_this_round: bool = false
+## Whose body the death camera is on: your own, or the bot that died
+## under you.
+var death_cam_of: PlayerSim
+
+## Flying free, CS2's spectator movement convars (GameTracking-CS2's
+## convars.txt, 2026-09-30): sv_specspeed 1200 units a second at most,
+## sv_specaccelerate 5, slowed by sv_friction 5.2, half as fast with walk
+## held. The shape is Source's FullObserverMove (Source SDK 2013, read as a
+## spec): friction on a speed no less than a quarter of the top, then the
+## acceleration toward where you look.
+const SPEC_SPEED := 1200.0
+const SPEC_ACCELERATE := 5.0
+const SPEC_FRICTION := 5.2
 
 ## Where the player is looking, from the last command, in degrees.
 var yaw_degrees: float = 0.0
@@ -170,6 +223,8 @@ signal killed(zone: StringName)
 signal respawned
 ## Now on the other side, wearing that side's body.
 signal team_changed(team: String)
+## Control of a bot taken (pawn() is the bot from now) or given back.
+signal control_changed
 
 ## CS2 holds off the slowdown for a couple of its 64 Hz ticks after the hit
 ## (sv_predictable_damage_tag_ticks 2), so a client predicting its own
@@ -753,8 +808,14 @@ func _run(cmd: UserCmd, dt: float) -> void:
 		reset_eye_state()
 
 	if not alive:
+		if is_instance_valid(controlling):
+			# The bot runs your commands (GameWorld.commands_for); you only
+			# notice it die.
+			if not controlling.alive:
+				_lose_control()
+			return
 		if not respawns:
-			_observe(cmd)
+			_observe(cmd, dt)
 		elif SimClock.tick_end_usec(cmd.tick) >= _respawn_at_usec:
 			respawn()
 		return
@@ -832,9 +893,14 @@ func _run(cmd: UserCmd, dt: float) -> void:
 		return
 
 	if noclip:
+		# Flying, the gun still fires and a grenade still throws, as CS2's
+		# noclip lets you (Sid, playtest 2026-09-30). Off the ground, so a
+		# round takes the air's inaccuracy and the speed's, as CS2's
+		# weapons judge anyone not on the ground (inferred, not measured).
 		wish_dir = _noclip_direction(cmd)
 		simulate(dt)
 		_finish_grenade_movement(cmd)
+		_update_weapon(cmd, dt, false)
 		return
 
 	wish_dir = cmd.wish_direction()
@@ -1316,24 +1382,160 @@ func body_centre() -> Vector3:
 
 
 ## Dead with no respawn coming: after the freeze cam, watching a living
-## teammate, the next one on a press of fire, from their eyes or from
-## behind them on a press of jump. Only your own side.
-func _observe(cmd: UserCmd) -> void:
+## teammate, the next one on a press of fire and the one before on the
+## right button; jump goes from their eyes to behind them, then, where the
+## match allows it, to flying free, and back to their eyes. Only your own
+## side is watched.
+func _observe(cmd: UserCmd, dt: float) -> void:
 	var now := SimClock.tick_end_usec(cmd.tick)
 	if now < _died_at_usec + int(freeze_cam_seconds * 1_000_000.0):
 		return
-	var watching := observing != null and is_instance_valid(observing) \
-		and observing.alive and observing.team == team
+	if observer_mode == ObserverMode.ROAMING:
+		if cmd.first_press(UserCmd.JUMP) != null or cmd.first_press(UserCmd.ATTACK) != null \
+				or cmd.first_press(UserCmd.ATTACK2) != null or not free_look:
+			# Back to someone's eyes: the one watched before, if they live.
+			observer_mode = ObserverMode.IN_EYE
+			observing = _observed_before if _can_watch(_observed_before) else _next_teammate(null)
+			_observed_before = null
+			return
+		_roam(cmd, dt)
+		return
+	var watching := _can_watch(observing)
+	if watching and cmd.first_press(UserCmd.USE) != null and can_control(observing):
+		take_control(observing)
+		return
+	if cmd.first_press(UserCmd.JUMP) != null:
+		if observer_mode == ObserverMode.IN_EYE and watching:
+			observer_mode = ObserverMode.CHASE
+		elif free_look:
+			_start_roaming(observing if watching else null)
+			return
+		else:
+			observer_mode = ObserverMode.IN_EYE
 	if not watching or cmd.first_press(UserCmd.ATTACK) != null:
 		observing = _next_teammate(observing if watching else null)
-	elif cmd.first_press(UserCmd.JUMP) != null:
-		observing_chase = not observing_chase
+	elif cmd.first_press(UserCmd.ATTACK2) != null:
+		observing = _next_teammate(observing, -1)
 
 
-## The living teammate after this one, round and round; the first when
-## there is none to follow. Only in the player's world: nobody else is in
+## What this player's commands drive and what they see from: the bot they
+## have taken over, or themselves.
+func pawn() -> PlayerSim:
+	return controlling if is_instance_valid(controlling) else self
+
+
+## Whether this player, dead, may take over a bot: one on their side,
+## alive, that nobody else drives, and only one a round. CS2 needs it
+## watched from its eyes or behind it (the spectator bar offers it there),
+## and bots controllable (bot_controllable 1). Inferred from CS:GO's rules,
+## which CS2 kept the fields of (CCSPlayerController's m_bControllingBot,
+## m_bHasControlledBotThisRound, m_bCanControlObservedBot).
+func can_control(bot: PlayerSim) -> bool:
+	return not alive and not respawns and not controlled_bot_this_round \
+		and not is_instance_valid(controlling) and bot != null and is_instance_valid(bot) \
+		and bot.is_bot and bot.alive and bot.team == team and not is_instance_valid(bot.controlled_by) \
+		and observer_mode != ObserverMode.ROAMING
+
+
+## Takes the bot over: from the next tick the world hands it this player's
+## commands instead of its own.
+func take_control(bot: PlayerSim) -> void:
+	controlling = bot
+	bot.controlled_by = self
+	controlled_bot_this_round = true
+	observing = null
+	observer_mode = ObserverMode.IN_EYE
+	bot._on_taken_over()
+	control_changed.emit()
+
+
+## The bot you drove died under you: back to watching, the death camera
+## on its body first, for the freeze cam's time.
+func _lose_control() -> void:
+	var bot := controlling
+	give_back_control()
+	death_cam_of = bot
+	_died_at_usec = SimClock.now_usec()
+
+
+## Gives the bot back to itself (its death, the next round).
+func give_back_control() -> void:
+	var bot := controlling
+	controlling = null
+	if is_instance_valid(bot):
+		bot.controlled_by = null
+		bot._on_given_back()
+	control_changed.emit()
+
+
+## A bot is taken over, or given back: what a bot thinks with lets go
+## (Bot).
+func _on_taken_over() -> void:
+	pass
+
+
+func _on_given_back() -> void:
+	pass
+
+
+## Whether a player is one a dead player can watch: alive, on their side.
+func _can_watch(other: PlayerSim) -> bool:
+	return other != null and is_instance_valid(other) and other.alive and other.team == team
+
+
+## The camera leaves the one watched and flies free from where it was:
+## their eyes, or over your own body with nobody to watch.
+func _start_roaming(watched: PlayerSim) -> void:
+	observer_mode = ObserverMode.ROAMING
+	_observed_before = watched
+	if watched != null:
+		observer_position = watched.global_position + Vector3.UP * watched.eye_height()
+	else:
+		observer_position = body_centre() + Vector3.UP * 64.0
+	previous_observer_position = observer_position
+	observer_velocity = Vector3.ZERO
+	observing = null
+
+
+## Flies the free camera one tick: toward where you look with the move
+## keys, pitch and all, through anything in the way.
+func _roam(cmd: UserCmd, dt: float) -> void:
+	previous_observer_position = observer_position
+	var top := SPEC_SPEED * (0.5 if cmd.held(UserCmd.WALK) else 1.0)
+	var pitch := deg_to_rad(cmd.pitch_degrees)
+	var yaw := deg_to_rad(cmd.yaw_degrees)
+	var forward := Vector3(-sin(yaw) * cos(pitch), sin(pitch), -cos(yaw) * cos(pitch))
+	var right := Vector3(cos(yaw), 0.0, -sin(yaw))
+	var keys := cmd.move.limit_length(1.0)
+	var wish := forward * keys.y + right * keys.x
+	observer_velocity = observer_step(observer_velocity, wish, top, dt)
+	observer_position += observer_velocity * dt
+
+
+## One tick of the free camera's speed (FullObserverMove's shape): wish is
+## the way the keys ask for, as long as how much of top they ask.
+static func observer_step(velocity_now: Vector3, wish: Vector3, top: float, dt: float) -> Vector3:
+	var out := velocity_now
+	var speed := out.length()
+	if speed < 1.0:
+		out = Vector3.ZERO
+	else:
+		var drop := maxf(speed, top / 4.0) * SPEC_FRICTION * dt
+		out *= maxf(speed - drop, 0.0) / speed
+	var wish_speed := minf(wish.length(), 1.0) * top
+	if wish_speed <= 0.0:
+		return out
+	var wish_dir := wish.normalized()
+	var add := wish_speed - out.dot(wish_dir)
+	if add > 0.0:
+		out += wish_dir * minf(SPEC_ACCELERATE * dt * wish_speed, add)
+	return out
+
+
+## The living teammate after this one (step 1) or before it (step -1),
+## round and round; the first when there is none to follow. Only in the player's world: nobody else is in
 ## the game.
-func _next_teammate(after: PlayerSim) -> PlayerSim:
+func _next_teammate(after: PlayerSim, step: int = 1) -> PlayerSim:
 	if not is_instance_valid(world):
 		return null
 	var living: Array[PlayerSim] = []
@@ -1342,7 +1544,10 @@ func _next_teammate(after: PlayerSim) -> PlayerSim:
 			living.append(other)
 	if living.is_empty():
 		return null
-	return living[(living.find(after) + 1) % living.size()]
+	var at := living.find(after)
+	if at < 0:
+		return living[0]
+	return living[posmod(at + step, living.size())]
 
 
 ## Up again: whole, solid, able to be shot, watching nobody.
@@ -1356,7 +1561,12 @@ func _revive() -> void:
 	collision_layer = PLAYER_LAYER
 	PhysicsQueries.sync_object(self, false)
 	observing = null
-	observing_chase = false
+	observer_mode = ObserverMode.IN_EYE
+	_observed_before = null
+	death_cam_of = null
+	controlled_bot_this_round = false
+	if is_instance_valid(controlling):
+		give_back_control()
 
 
 ## Back where the map put the player, whole, armoured as they started, with

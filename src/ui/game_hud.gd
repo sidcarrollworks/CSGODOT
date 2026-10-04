@@ -83,6 +83,7 @@ var dead_bar: HudAlert
 ## CS2's scoreboard, while Tab is held, over the rest.
 var scoreboard: Scoreboard
 var damage_indicator: DamageIndicator
+var _damage_pawn: PlayerSim
 var _where: Label
 var _frames := FrameMeter.new()
 var _notice_left: float = 0.0
@@ -153,8 +154,8 @@ func _ready() -> void:
 	damage_indicator.player = player
 	add_child(damage_indicator)
 	if player != null:
-		player.hurt.connect(func(_amount: float, _zone: StringName, from: Vector3) -> void:
-			damage_indicator.hit_from(from))
+		player.control_changed.connect(_follow_damage_pawn)
+		_follow_damage_pawn()
 	if economy != null:
 		# Under the rest of the HUD, as CS2 has it: the team counter and your
 		# money stay over the menu; what else the HUD shows goes while it is
@@ -184,7 +185,7 @@ func _ready() -> void:
 	kill_feed = KillFeed.new()
 	add_child(kill_feed)
 	if game != null:
-		kill_feed.watch(game, userid)
+		kill_feed.watch(game, player.pawn().userid if player != null else userid)
 	alert = HudAlert.new()
 	add_child(alert)
 	hint = HudAlert.new()
@@ -207,6 +208,20 @@ func _ready() -> void:
 	add_child(_where)
 
 
+func _follow_damage_pawn() -> void:
+	if is_instance_valid(_damage_pawn) and _damage_pawn.hurt.is_connected(_on_hurt):
+		_damage_pawn.hurt.disconnect(_on_hurt)
+	_damage_pawn = player.pawn()
+	_damage_pawn.hurt.connect(_on_hurt)
+	damage_indicator.clear()
+	if kill_feed != null:
+		kill_feed.you = _damage_pawn.userid
+
+
+func _on_hurt(_amount: float, _zone: StringName, from: Vector3) -> void:
+	damage_indicator.hit_from(from)
+
+
 func _unhandled_key_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	if key != null and key.pressed and not key.echo and key.keycode == KEY_F3:
@@ -215,15 +230,24 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 func _physics_process(_delta: float) -> void:
 	_pickup_item = ""
-	if game != null and player != null and player.alive and (buy_menu == null or not buy_menu.is_open()):
-		_pickup_item = str(game.query(&"use_pickup_item", [userid], ""))
+	var you := player.pawn() if player != null else null
+	if game != null and you != null and you.alive and (buy_menu == null or not buy_menu.is_open()):
+		_pickup_item = str(game.query(&"use_pickup_item", [you.userid], ""))
 
 
 func _process(delta: float) -> void:
 	_frames.frame(Time.get_ticks_usec())
 	var team := player.team if player != null else "T"
+	# Driving a bot, the HUD is the bot's: its health, its gun, its money
+	# (PlayerSim.pawn).
+	var you := player.pawn() if player != null else null
+	var you_id := you.userid if you != null and you.userid != GameEvents.NOBODY else userid
+	if buy_menu != null:
+		buy_menu.userid = you_id
+	scope.player = you
+	iron_sight.player = you
 	if economy != null:
-		_show_money(team, delta)
+		_show_money(team, delta, you_id)
 	if player == null:
 		use_prompt.say("")
 		return
@@ -232,27 +256,27 @@ func _process(delta: float) -> void:
 		# The sides swapped: your agent is the other side's now.
 		buy_menu.build_agent(player.team)
 		_agent_team = player.team
-	health_ammo.visible = player.alive and not buying
-	if player.alive and not buying:
-		weapon_selection.show_inventory(team, WeaponSelection.rows_for(player.inventory), player.in_hand_class())
+	health_ammo.visible = you.alive and not buying
+	if you.alive and not buying:
+		weapon_selection.show_inventory(team, WeaponSelection.rows_for(you.inventory), you.in_hand_class())
 	elif weapon_selection.is_showing():
 		weapon_selection.hide_now()
 	alert.visible = not buying
 	hint.visible = not buying
 	dead_bar.visible = not buying
-	if player.alive and player.hit_target != null:
-		var gun := player.weapon
+	if you.alive and you.hit_target != null:
+		var gun := you.weapon
 		var has_ammo := gun != null and gun.data.magazine_size > 0
-		health_ammo.show_values(team, player_colour(match_state, player), roundi(player.hit_target.health),
-			roundi(player.hit_target.armor), player.hit_target.helmet, gun.data.item_class if gun != null else "",
+		health_ammo.show_values(team, player_colour(match_state, you), roundi(you.hit_target.health),
+			roundi(you.hit_target.armor), you.hit_target.helmet, gun.data.item_class if gun != null else "",
 			has_ammo, gun.ammo if has_ammo else 0, gun.data.magazine_size if has_ammo else 1,
 			gun.reserve if has_ammo else 0, gun.data.reserve_as_clips if has_ammo else true,
 			has_ammo and gun.is_reloading(SimClock.now_usec()))
-	_crosshair.visible = shows_crosshair(player) and not buying
-	dead_bar.say("" if player.alive else dead_line(player), "", HudStyle.team_colour(team))
+	_crosshair.visible = shows_crosshair(you) and not buying
+	dead_bar.say("" if you.alive else dead_line(player), "", HudStyle.team_colour(team))
 	if match_state != null:
-		team_counter.show_match(match_state, player, economy, SimClock.now_usec(), bomb, round_report)
-		scoreboard.show_match(match_state, match_stats, economy, player, SimClock.now_usec(),
+		team_counter.show_match(match_state, you, economy, SimClock.now_usec(), bomb, round_report)
+		scoreboard.show_match(match_state, match_stats, economy, you, SimClock.now_usec(),
 			bomb.carrier if bomb != null and bomb.state == C4.State.CARRIED else C4.NOBODY)
 		_show_win_panel(team)
 		win_panel.visible = not buying
@@ -261,7 +285,7 @@ func _process(delta: float) -> void:
 		alert.say(line[0], "" if hint.is_showing() else line[1], HudStyle.team_colour(team))
 	var carrier: PlayerSim = null
 	if bomb != null:
-		var picked := bomb_hint(_bomb_was, _carrier_was, bomb, userid)
+		var picked := bomb_hint(_bomb_was, _carrier_was, bomb, you_id)
 		if not picked.is_empty():
 			hint.say(picked, "", HudStyle.team_colour("T"))
 			_notice_left = NOTICE_SECONDS
@@ -271,11 +295,11 @@ func _process(delta: float) -> void:
 			for sim in match_state.players:
 				if sim.userid == bomb.carrier:
 					carrier = sim
-	var use_line := "" if buying else UsePrompt.line_for(player, bomb, carrier, _pickup_item,
+	var use_line := "" if buying else UsePrompt.line_for(you, bomb, carrier, _pickup_item,
 		game.now_usec() if game != null else SimClock.now_usec())
 	use_prompt.say(use_line, UsePrompt.TAKE_BOMB_COLOUR if use_line == UsePrompt.TAKE_BOMB else Color.WHITE)
 	if _where.visible:
-		_where.text = where_line(player.global_position, player.input.yaw_degrees, player.input.pitch_degrees) \
+		_where.text = where_line(you.global_position, player.input.yaw_degrees, player.input.pitch_degrees) \
 			+ "\n" + _frames.line()
 
 
@@ -332,9 +356,9 @@ static func shows_crosshair(who: PlayerSim) -> bool:
 
 ## Your money, with the cart while you may buy; and a refusal, for a
 ## moment.
-func _show_money(team: String, delta: float) -> void:
-	var may_buy := economy.shop_refusal(userid) == Economy.OK
-	money.show_values(team, economy.money(userid), may_buy and not buy_menu.is_open())
+func _show_money(team: String, delta: float, whose: int) -> void:
+	var may_buy := economy.shop_refusal(whose) == Economy.OK
+	money.show_values(team, economy.money(whose), may_buy and not buy_menu.is_open())
 	_notice_left = maxf(_notice_left - delta, 0.0)
 	if _notice_left == 0.0:
 		hint.say("")
@@ -382,17 +406,23 @@ func _on_buy_refused(why: StringName) -> void:
 
 
 ## What the line across the middle says while you are dead: when you are
-## back, or, with no respawn coming, whose eyes you are in and how to move
-## on.
+## back, or, with no respawn coming, how you are watching and the keys CS2's
+## spectator bar names (PANOHUD_Spectate_Navigation_*): fire the next
+## player, the right button the one before, jump the camera, and E to take
+## over the bot watched where you may.
 static func dead_line(dead: PlayerSim) -> String:
 	if dead.respawns:
 		return "You died. Back in %d" % ceili(dead.seconds_to_respawn())
+	if dead.observer_mode == PlayerSim.ObserverMode.ROAMING:
+		return "Free Look    fire: watch a teammate    jump: camera"
 	var watched := dead.observing
 	if watched == null or not is_instance_valid(watched):
-		return "You died"
-	return "Watching %s    fire: next    jump: %s" % [
-		watched.name, "their eyes" if dead.observing_chase else "from behind",
-	]
+		return "You died    jump: free look" if dead.free_look else "You died"
+	var mode := "Chase Camera" if dead.observing_chase else "First Person"
+	var line := "Watching %s (%s)    fire: next    right: previous    jump: camera" % [watched.name, mode]
+	if dead.can_control(watched):
+		line += "    E: control bot"
+	return line
 
 
 ## A clock the way CS2 draws it: minutes and seconds, the seconds rounded up
