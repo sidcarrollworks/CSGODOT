@@ -76,6 +76,7 @@ func _run() -> void:
 	_test_the_cap()
 	_test_buy_zone_and_buy_time()
 	_test_what_may_be_bought()
+	_test_practice_buying()
 	_test_armour_prices()
 	_test_a_purchase()
 	_test_a_buy_from_before_the_round()
@@ -105,6 +106,8 @@ func _test_the_economy_reads_only_the_simulation() -> void:
 
 func _test_the_rules_are_cs2s() -> void:
 	var rules := MoneyRules.new()
+	_check(not rules.unlimited_money and not rules.unlimited_grenade_purchases,
+		"competitive defaults retain money and grenade purchase limits")
 	_check(rules.start_money == 800 and rules.max_money == 16000 and rules.overtime_start_money == 10000,
 		"$800 to start, $16,000 at most, $10,000 an overtime half")
 	_check(rules.win_elimination == 3250 and rules.win_time == 3250
@@ -348,6 +351,37 @@ func _test_what_may_be_bought() -> void:
 		_buy(ct, "weapon_taser")
 		_game.inventory(ct).remove("weapon_taser")
 	_check_equal(_economy.refusal(ct, "weapon_taser"), Economy.TYPE_LIMIT, "five Zeus a round, and no sixth")
+
+
+func _test_practice_buying() -> void:
+	_new_game(1)
+	_economy.rules.unlimited_money = true
+	_economy.rules.unlimited_grenade_purchases = true
+	_send(&"begin_new_match")
+	_send(&"round_start")
+	var userid := _ts[0]
+	var inv := _game.inventory(userid)
+	_economy.set_money(userid, 0)
+	var every_purchase := true
+	for i in 100:
+		_buy(userid, GrenadeRules.SMOKE)
+		every_purchase = every_purchase and inv.has(GrenadeRules.SMOKE)
+		inv.remove(GrenadeRules.SMOKE)
+	_check(every_purchase, "practice can rebuy 100 smokes, beyond the round cap and a finite $16,000 account")
+	_check_equal(_economy.money(userid), 16000, "practice purchases keep the full balance even after setting the account to zero")
+	_check_equal(_economy.throw_refusal(userid, GrenadeRules.SMOKE), Economy.OK,
+		"practice also allows grenade buy-and-throw past the round purchase cap")
+	_buy(userid, GrenadeRules.SMOKE)
+	_check_equal(_economy.refusal(userid, GrenadeRules.SMOKE), Economy.CANNOT_CARRY,
+		"practice keeps the normal smoke carrying limit")
+	_undo(userid, GrenadeRules.SMOKE)
+	_check(not inv.has(GrenadeRules.SMOKE) and _economy.money(userid) == 16000,
+		"practice sellback removes the grenade and retains the full balance")
+	for i in 5:
+		_buy(userid, "weapon_taser")
+		inv.remove("weapon_taser")
+	_check_equal(_economy.refusal(userid, "weapon_taser"), Economy.TYPE_LIMIT,
+		"the grenade purchase override does not change the Zeus cap")
 
 
 func _test_armour_prices() -> void:

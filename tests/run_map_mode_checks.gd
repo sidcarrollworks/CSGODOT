@@ -488,6 +488,8 @@ func _test_practice_on_a_small_map() -> void:
 	_check(mode.bots.is_empty() and not world.players.any(func(sim: PlayerSim) -> bool: return sim is Bot), "and no bot on either side")
 	_check(mode.match_state != null and mode.economy != null and mode.bomb_system != null and mode.grenade_system != null,
 		"with the match, money and buying, the bomb and grenades")
+	_check(mode.economy.rules.unlimited_money and mode.economy.rules.unlimited_grenade_purchases,
+		"Practice enables unlimited money and grenade rebuys in the running economy")
 	_check(mode.notes.has(Competitive.PRACTICE_NOTE), "and says what Practice is in the top left (%s)" % [mode.notes])
 	var userid := (mode.player as PlayerSim).userid
 	for i in 40:
@@ -502,6 +504,8 @@ func _test_practice_on_a_small_map() -> void:
 		await physics_frame
 	_check_equal(mode.match_state.round_number, 1, "F5 (end_warmup_on_next_tick) starts round 1")
 	_check(mode.bots.is_empty(), "still alone")
+	_check_equal(mode.economy.money(userid), mode.economy.rules.max_money,
+		"Practice retains unlimited money after F5 starts the rounds")
 	(played[0] as Node).queue_free()
 	await process_frame
 

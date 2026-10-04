@@ -9,8 +9,7 @@ extends Resource
 ## gamemode_competitive.cfg, or from the convar's own default where that
 ## file leaves it alone (SteamDatabase's GameTracking-CS2, checked
 ## 2026-09-23; reference/systems/economy.md lists each one). Each is named
-## after its convar. A test or the test range changes them; nothing else
-## should.
+## after its convar. Practice and the test range override them for testing.
 
 @export_group("Accounts")
 ## What every account holds at the start of a match and of each half
@@ -25,6 +24,8 @@ extends Resource
 ## account (reference/research/round-economy.md 2.7); in no file, E2
 ## measures it.
 @export var warmup_money: int = 16000
+## Practice keeps a full account and purchases never exhaust it.
+@export var unlimited_money: bool = false
 
 @export_group("Rounds")
 ## Each player on the side that won by killing the other side, on a map
@@ -101,6 +102,8 @@ extends Resource
 ## -1 for no limit.
 @export var type_purchases: int = 5
 @export var zeus_purchases: int = 5
+## Practice allows repeated grenade purchases after each throw.
+@export var unlimited_grenade_purchases: bool = false
 ## The helmet alone, bought over full kevlar. No file has it: it is the
 ## figure the community gives (E2 to measure).
 @export var helmet_price: int = 350

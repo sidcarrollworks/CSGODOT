@@ -164,7 +164,8 @@ work and CS2 capture limits.
 ### Match, bots, HUD and audio
 
 - Competitive is five a side with warmup, freeze, rounds, side swap and
-  overtime; Practice has no bots and unlimited warmup until F5. Any
+  overtime; Practice has no bots, unlimited money and grenade rebuys,
+  and unlimited warmup until F5. Any
   extracted defusal map uses the shared mode.
 - Economy, buy zones/time, purchases/refunds, Ctrl-click buy-and-throw,
   inventories, the bomb and six grenades are wired into the match.

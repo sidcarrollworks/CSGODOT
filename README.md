@@ -11,7 +11,8 @@ feel the same as CS2's. Everything else is arranged so that "the same" is
 something the tests can measure, not a matter of opinion.
 
 It plays today as a single player competitive match against bots, or as
-Practice with no bots and an unlimited warmup. Dust2 and Mirage have been
+Practice with no bots, unlimited money and grenade rebuys, and an unlimited
+warmup. Dust2 and Mirage have been
 extracted and loaded locally; other extracted CS2 defusal maps use the same
 mode and map loader.
 
