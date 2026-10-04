@@ -1229,6 +1229,21 @@ list, split into Local and Remote items, with the measurements.
     is a match with bots you choose. **Local:** play `de_dust2.tscn` in
     exclusive fullscreen, choose each mode, and say whether Practice has
     what testing needs. Roadmap 26's main menu replaces the picker.
+24d. **The side chosen at start, as CS2's team select asks it.** *(Remote
+    done 2026-10-01; Local below; Sid's playtest of 2026-09-30)* After the
+    mode, `TeamPicker` (`src/modes/team_picker.gd`) shows CS2's screen as
+    Sid's screenshot has it: Terrorists left and Counter-Terrorists right,
+    each with "0 Players - N Bots", a countdown ring, and Auto Select bottom
+    right, which also picks when the countdown runs out (15 s, CS2's
+    `mp_force_pick_time` default as CS:GO had it; inferred, not read from
+    CS2's files). Mouse on either half, or 1, 2 and 3. `spawn_team` on the
+    play scene takes Ask (the default; T where nothing can be asked, so the
+    profilers and checks are unchanged), and `--team t|ct|auto` wins over
+    it. **Left:** CS2's Spectate button (it needs a mode with no body of
+    your own, which free spectating will bring), the agents standing in the
+    two halves, and M (`teammenu`) opening the screen mid-match to change
+    side. **Local:** choose each side and Auto Select in fullscreen, and
+    let the countdown run out once.
 
 25. **Netcode.** *(Remote; Local playtests across machines)* CS2's model: the
     server decides, clients send input with sub-tick times and predict their
