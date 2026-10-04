@@ -185,7 +185,7 @@ func _ready() -> void:
 	kill_feed = KillFeed.new()
 	add_child(kill_feed)
 	if game != null:
-		kill_feed.watch(game, userid)
+		kill_feed.watch(game, player.pawn().userid if player != null else userid)
 	alert = HudAlert.new()
 	add_child(alert)
 	hint = HudAlert.new()
@@ -214,6 +214,8 @@ func _follow_damage_pawn() -> void:
 	_damage_pawn = player.pawn()
 	_damage_pawn.hurt.connect(_on_hurt)
 	damage_indicator.clear()
+	if kill_feed != null:
+		kill_feed.you = _damage_pawn.userid
 
 
 func _on_hurt(_amount: float, _zone: StringName, from: Vector3) -> void:
@@ -273,8 +275,8 @@ func _process(delta: float) -> void:
 	_crosshair.visible = shows_crosshair(you) and not buying
 	dead_bar.say("" if you.alive else dead_line(player), "", HudStyle.team_colour(team))
 	if match_state != null:
-		team_counter.show_match(match_state, player, economy, SimClock.now_usec(), bomb, round_report)
-		scoreboard.show_match(match_state, match_stats, economy, player, SimClock.now_usec(),
+		team_counter.show_match(match_state, you, economy, SimClock.now_usec(), bomb, round_report)
+		scoreboard.show_match(match_state, match_stats, economy, you, SimClock.now_usec(),
 			bomb.carrier if bomb != null and bomb.state == C4.State.CARRIED else C4.NOBODY)
 		_show_win_panel(team)
 		win_panel.visible = not buying
