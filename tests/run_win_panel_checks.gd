@@ -246,11 +246,17 @@ func _test_fun_facts() -> void:
 	_start()
 	for i in 138:
 		_game.events.send(&"weapon_fire", {"userid": _id("T%d" % (i % 5 + 1)), "weapon": "weapon_glock"}, 20 * SECOND)
+	# A knife's swing and a grenade's throw send weapon_fire too; they are
+	# not shots.
+	for weapon in ["weapon_knife", "weapon_knife_t", "weapon_hegrenade"]:
+		_game.events.send(&"weapon_fire", {"userid": _id("T1"), "weapon": weapon}, 20 * SECOND)
 	_game.events.flush()
 	_kill("C1", "T1", 30 * SECOND)
 	_end("CT", "TargetSaved", 130 * SECOND)
 	_check(_holds("CT", "TargetSaved", 130 * SECOND, ["funfact_shots_fired", GameEvents.NOBODY, 138]),
-		"every shot of the round is counted, both sides'")
+		"every shot of the round is counted, both sides', and no knife swing or grenade throw")
+	_check(RoundReport.is_shot("weapon_taser") and not RoundReport.is_shot("weapon_knife"),
+		"the Zeus fires a shot; a knife does not")
 	_check_equal(WinPanel.fun_fact_text("#funfact_shots_fired", "", 138), "138 shots were fired that round.",
 		"and told as CS2 tells it")
 	var holding := _report.fun_facts_holding("CT", "TargetSaved", 130 * SECOND)

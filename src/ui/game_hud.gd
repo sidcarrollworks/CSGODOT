@@ -19,8 +19,9 @@ extends CanvasLayer
 ## watching; "You picked up the bomb" as you walk over it, the bomb's C4
 ## on its carrier's card for your team; and CS2's buy menu on B, over the
 ## rest; in the top right, CS2's kill feed, a row per death read from the
-## game's player_death events (KillFeed). The rest of a round's HUD (the
-## radar, the scoreboard) is roadmap item 15.
+## game's player_death events (KillFeed); and while Tab is held, CS2's
+## scoreboard over the middle (Scoreboard). The rest of a round's HUD (the
+## radar) is roadmap item 15.
 ##
 ## Each piece is a HudElement: it draws itself with HudStyle's colours, font
 ## and icons and redraws only when what it shows changes, so a frame where
@@ -49,6 +50,11 @@ var bomb: C4
 ## The game whose deaths the kill feed shows, where there is one; only its
 ## events are read.
 var game: GameSystems
+## Each player's numbers for the scoreboard, where there is a match; only
+## read.
+var match_stats: MatchStats
+## The map's name (de_dust2), for the scoreboard's first line.
+var map_name: String = ""
 
 var _crosshair: Crosshair
 ## A sniper's scope, over the view while scoped in.
@@ -74,7 +80,10 @@ var use_prompt: UsePrompt
 var _pickup_item: String = ""
 ## Across the middle while dead.
 var dead_bar: HudAlert
+## CS2's scoreboard, while Tab is held, over the rest.
+var scoreboard: Scoreboard
 var damage_indicator: DamageIndicator
+var _damage_pawn: PlayerSim
 var _where: Label
 var _frames := FrameMeter.new()
 var _notice_left: float = 0.0
@@ -105,7 +114,9 @@ const IMAGES: Array[String] = [
 	"hud/teamcounter/teamcounter_botavatar",
 	"icons/person",
 	"icons/ui/alert",
+	"icons/ui/bot",
 	"icons/ui/buyzone",
+	"icons/ui/competitive_teams",
 	"icons/ui/ct_logo_1c",
 	"icons/ui/elimination",
 	"icons/ui/t_logo_1c",
@@ -118,6 +129,7 @@ static func images_to_read() -> Array:
 	var images: Array = IMAGES.duplicate()
 	images.append_array(KillFeed.ICONS.values())
 	images.append_array(TeamCounter.KILLTYPE_ICONS.values())
+	images.append_array(Scoreboard.images())
 	images.append(HealthAmmoCenter.reserve_icon(""))
 	for gun: String in HealthAmmoCenter.RESERVE_ICONS:
 		images.append(HealthAmmoCenter.reserve_icon(gun))
@@ -142,8 +154,8 @@ func _ready() -> void:
 	damage_indicator.player = player
 	add_child(damage_indicator)
 	if player != null:
-		player.hurt.connect(func(_amount: float, _zone: StringName, from: Vector3) -> void:
-			damage_indicator.hit_from(from))
+		player.control_changed.connect(_follow_damage_pawn)
+		_follow_damage_pawn()
 	if economy != null:
 		# Under the rest of the HUD, as CS2 has it: the team counter and your
 		# money stay over the menu; what else the HUD shows goes while it is
@@ -185,12 +197,27 @@ func _ready() -> void:
 	dead_bar.kind = HudAlert.Kind.NOTE
 	dead_bar.top = DEAD_BAR_TOP
 	add_child(dead_bar)
+	scoreboard = Scoreboard.new()
+	scoreboard.map_name = map_name
+	add_child(scoreboard)
 	_where = Label.new()
 	_where.position = Vector2(12, 8)
 	_where.add_theme_font_size_override("font_size", 16)
 	_where.add_theme_color_override("font_outline_color", Color(0, 0, 0))
 	_where.add_theme_constant_override("outline_size", 4)
 	add_child(_where)
+
+
+func _follow_damage_pawn() -> void:
+	if is_instance_valid(_damage_pawn) and _damage_pawn.hurt.is_connected(_on_hurt):
+		_damage_pawn.hurt.disconnect(_on_hurt)
+	_damage_pawn = player.pawn()
+	_damage_pawn.hurt.connect(_on_hurt)
+	damage_indicator.clear()
+
+
+func _on_hurt(_amount: float, _zone: StringName, from: Vector3) -> void:
+	damage_indicator.hit_from(from)
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
@@ -247,6 +274,8 @@ func _process(delta: float) -> void:
 	dead_bar.say("" if you.alive else dead_line(player), "", HudStyle.team_colour(team))
 	if match_state != null:
 		team_counter.show_match(match_state, player, economy, SimClock.now_usec(), bomb, round_report)
+		scoreboard.show_match(match_state, match_stats, economy, player, SimClock.now_usec(),
+			bomb.carrier if bomb != null and bomb.state == C4.State.CARRIED else C4.NOBODY)
 		_show_win_panel(team)
 		win_panel.visible = not buying
 		var line := alert_line(match_state)

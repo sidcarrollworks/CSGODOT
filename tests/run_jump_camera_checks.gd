@@ -127,6 +127,7 @@ func _test_player_view() -> void:
 	player.camera.add_child(arms)
 	player.view.viewmodel = arms
 	player.view._read_for_team = player.team
+	_test_eye_interpolation(player)
 	player.view._process(1.0 / 224.0)
 	var usual_eyes := player.camera.global_position
 	var usual_basis := player.camera.global_basis
@@ -151,6 +152,9 @@ func _test_player_view() -> void:
 		and player.input.yaw_degrees == 37.0 and player.input.pitch_degrees == -20.0,
 		"camera motion changes no player position, velocity or look input")
 	player.duck_progress = 0.5
+	# This fixture changes the state directly, without running movement.
+	# Both completed tick endpoints are already at this crouched height.
+	player.previous_eye_height = player.eye_height()
 	player.view._process(1.0 / 224.0)
 	_check(absf(player.camera.global_position.y - (20.0 + player.eye_height() + player.view.camera_motion.height)) < 0.0001, "the same dip is relative to the crouched eyes")
 	player.on_ground = true
@@ -224,12 +228,36 @@ func _test_view_of_a_bot_taken_over() -> void:
 	bot.previous_position = bot.global_position
 	bot.yaw_degrees = 75.0
 	bot.pitch_degrees = 5.0
+	player.userid = 1
+	bot.userid = 2
+	var mode := Competitive.new()
+	mode.player = player
+	var sounds := HitSounds.new()
+	var flash := FlashOverlay.new()
+	mode._follow_recipient(sounds, &"listener_id")
+	mode._follow_recipient(flash, &"viewer_id")
+	var shots := ShotEffects.new()
+	shots.you = player
+	shots.listener_id = player.userid
+	var hud := GameHud.new()
+	hud.player = player
+	hud.damage_indicator = DamageIndicator.new()
+	player.control_changed.connect(hud._follow_damage_pawn)
+	hud._follow_damage_pawn()
 
 	player.alive = false
 	player.respawns = false
 	player.view._on_killed(&"head")
 	_check(player.can_control(bot), "dead, a bot on your side may be taken over")
 	player.take_control(bot)
+	_check(shots._in_first_person(bot.userid) and not shots._in_first_person(player.userid),
+		"taken over, the bot's muzzle is first person even though the controller is dead")
+	_check(sounds.listener_id == bot.userid and flash.viewer_id == bot.userid,
+		"hit audio and flash overlays follow the controlled bot's recipient")
+	bot.hurt.emit(10.0, &"chest", Vector3(500, 0, 450))
+	player.hurt.emit(10.0, &"chest", Vector3.ZERO)
+	_check(hud.damage_indicator.showing() == 1,
+		"damage directions listen to the bot, without also listening to the old body")
 	player._on_control_changed()
 	player.view._on_control_changed()
 	_check(player.view._in_hand_due and player.view._in_hand_entry == bot.inventory.in_hand(), "its hand to be shown")
@@ -242,6 +270,9 @@ func _test_view_of_a_bot_taken_over() -> void:
 
 	bot.alive = false
 	player._lose_control()
+	_check(sounds.listener_id == player.userid and flash.viewer_id == player.userid
+		and not shots._in_first_person(bot.userid) and hud.damage_indicator.showing() == 0,
+		"given back, the recipient returns to the controller and clears the former pawn's damage arcs")
 	player.view._on_control_changed()
 	player.view._process(1.0)
 	var centre := bot.body_centre()
@@ -255,3 +286,59 @@ func _test_view_of_a_bot_taken_over() -> void:
 	GameWorld.current = null
 	world.free()
 	DrawClock._tick_clock_usec = old_tick_clock
+	hud.damage_indicator.free()
+	hud.free()
+	shots.free()
+	flash.free()
+	sounds.free()
+	mode.free()
+
+
+func _test_eye_interpolation(player: PlayerController) -> void:
+	var position_before := player.global_position
+	player.previous_position = Vector3(10.0, 12.0, 30.0)
+	player.global_position = Vector3(30.0, 20.0, 40.0)
+	player.previous_eye_height = 64.0
+	player.duck_progress = 1.0
+	_check_near(player.interpolated_eye_height(0.0), 64.0, "the previous tick's standing eye remains the interpolation start")
+	_check_near(player.interpolated_eye_height(0.5), 55.0, "a halfway frame blends standing and crouched simulation eyes")
+	_check_near(player.interpolated_eye_height(1.0), 46.0, "the current tick's crouched eye is the interpolation end")
+	_check_near(player.interpolated_eye_height(-1.0), 64.0, "an early sample holds the previous simulation eyes")
+	_check_near(player.interpolated_eye_height(2.0), 46.0, "a late sample holds the latest simulation eyes")
+	for wanted: float in [0.0, 0.5, 1.0]:
+		# Endpoints are clamped; the midpoint uses the real draw clock. Bound
+		# its sample by the fractions just before and after camera placement,
+		# so scheduler time does not turn this into a frame-duration test.
+		var clock_offset := int(SimClock.tick_usec() * wanted)
+		if wanted == 0.0:
+			clock_offset = -1000000
+		elif wanted == 1.0:
+			clock_offset = 1000000
+		DrawClock._tick_clock_usec = Time.get_ticks_usec() - clock_offset
+		var before := DrawClock.fraction()
+		player.view._process(1.0 / 224.0)
+		var after := DrawClock.fraction()
+		var from := player.previous_position.lerp(player.global_position, before) + Vector3.UP * player.interpolated_eye_height(before)
+		var to := player.previous_position.lerp(player.global_position, after) + Vector3.UP * player.interpolated_eye_height(after)
+		var drawn := player.camera.global_position
+		var low := from.min(to) - Vector3.ONE * 0.001
+		var high := from.max(to) + Vector3.ONE * 0.001
+		_check(drawn.x >= low.x and drawn.x <= high.x and drawn.y >= low.y and drawn.y <= high.y
+			and drawn.z >= low.z and drawn.z <= high.z,
+			"the camera samples feet and eye height at the same draw fraction (%.1f)" % wanted)
+		player.view._spectate(player)
+		var spectator_fraction := DrawClock.fraction()
+		var spectator_to := player.previous_position.lerp(player.global_position, spectator_fraction) \
+			+ Vector3.UP * player.interpolated_eye_height(spectator_fraction)
+		low = to.min(spectator_to) - Vector3.ONE * 0.001
+		high = to.max(spectator_to) + Vector3.ONE * 0.001
+		drawn = player.camera.global_position
+		_check(drawn.x >= low.x and drawn.x <= high.x and drawn.y >= low.y and drawn.y <= high.y
+			and drawn.z >= low.z and drawn.z <= high.z,
+			"the spectator camera uses the same interpolated simulation eyes (%.1f)" % wanted)
+	player.view._watch(null)
+	player.global_position = position_before
+	player.previous_position = position_before
+	player.duck_progress = 0.0
+	player.previous_eye_height = player.eye_height()
+	DrawClock._tick_clock_usec = Time.get_ticks_usec() - 1000000

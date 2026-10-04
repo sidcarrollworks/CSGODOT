@@ -33,11 +33,11 @@ Updated 2026-09-24 later: game modes apart from maps (item 24a, `reference/syste
 Updated 2026-09-25: Sid's dust2 playtest, 22 issues with plans ("Playtest of 2026-09-25", `reference/playtest-2026-09-25.md`).
 Updated 2026-09-30: grenade flight and lineups recorded for later (item 20a, Sid).
 
-## Current status, 2026-10-02
+## Current status, 2026-10-03
 
-Checked against merged `main` through PR #172. The October playtest PRs
-are all merged; completion here means the described implementation exists,
-while measurements and remaining parity work stay listed below.
+Checked against merged `main` at `22b6f93`, through PR #187. Completion
+means the described implementation exists; measurements and remaining
+parity work stay listed below. Three follow-up playtest PRs remain open.
 
 | PR | Merged change |
 |---|---|
@@ -56,6 +56,31 @@ while measurements and remaining parity work stay listed below.
 | #171 | Avoid repeated skeleton fitting for bodies that do not need it |
 | #172 | Extracted current hit effects, contact-point mist, wounds, hit sounds and additive flinches |
 | #173 | README gameplay/setup refresh |
+| #174 | Documentation synchronized with the merged gameplay changes |
+| #175 | Tab scoreboard with player statistics and round history |
+| #176 | Current-build shooting audit and follow-up; formula/mode ports remain open |
+| #180 | Current-build grenade throw, flight and fuse audit |
+| #181 | Grenade collision audit, full sweep result and repeated-bounce time budget |
+| #182 | Frame-consistency/performance audit and corrected profiling fixtures |
+| #183 | Audited grenade strength/release, launch box, flight substeps and activation port |
+| #184 | Exact jump-snapshot boundary, ordinary CS2 jump, sky collision classification, practice trails and crouch acceleration |
+| #185 | Mirage extraction/import fixes and accepted Dust2 sky/world exposure calibration |
+| #186 | README, documentation and roadmap synchronized with merged gameplay and remaining audits |
+| #187 | Shared terrain-aware simulation eyes for cameras, weapon origins and grenade snapshots |
+
+Pending review and local playtest, not part of merged `main`:
+
+| PR | Follow-up |
+|---|---|
+| [#177](https://github.com/sidcarrollworks/CSGODOT/pull/177) | Free spectating, bot takeover and firing/throwing in noclip |
+| [#178](https://github.com/sidcarrollworks/CSGODOT/pull/178) | Startup team selection |
+| [#179](https://github.com/sidcarrollworks/CSGODOT/pull/179) | Feet planted while walking on slopes and stairs |
+
+Shared terrain-aware simulation eyes are merged; their local landmark
+playtest remains. This follow-up ports ordinary combined horizontal
+friction/acceleration and deferred collision velocity in both movement
+backends. The movement section below records the remaining command/crouch
+work and CS2 capture limits.
 
 ## Part 1: what exists
 
@@ -63,7 +88,14 @@ while measurements and remaining parity work stay listed below.
 
 - Source movement in inches at 64 Hz: acceleration, air strafing,
   collide-and-slide, step-up, crouch jumps and bunny hops. Crouch speed
-  stays at the held item's crouched top while turning.
+  stays at the held item's crouched top while turning. PR #184 adds the
+  audited ordinary CS2 jump and crouch acceleration scale, including
+  partially crouched commands; full movement parity remains open.
+- Shared terrain-aware eyes finish each movement segment before grenade
+  capture. Cached support squares and world-owner flags supply one value
+  for simulation consumers and interpolated cameras. Settled mid-door and
+  B-doors camera heights match paired CS2 values within 0.04 units; full
+  duck/root timing, additional CS2 captures and landmark playtest remain.
 - Sub-tick button edges and aim angles travel in `UserCmd`; `GameWorld`
   gathers all commands first, lets bots think on worker threads, runs the
   players, match and shared systems, then delivers schema-checked events.
@@ -82,6 +114,14 @@ while measurements and remaining parity work stay listed below.
 - AK/M4A1-S patterns are measured; 15 more use community patterns. Guns
   without a pattern retain provisional view kick, not a measured bullet
   path. Spray scale, random-recoil paths and the R8 delay remain open.
+- [The October 2 shooting audit](research/shooting-audit-2026-10-02.md)
+  completes installed-build research for seeded recoil/RNG, shotgun
+  patterns, burst/R8 timing and core recovery formulas. Implementation
+  remains open: whole-index recovery and decay timing first, then shared
+  RNG/recoil/spread and weapon modes. The
+  [follow-up](research/shooting-followup-2026-10-02.md) traces silencer
+  completion/holstering, zoom mode/floor recovery, fall-speed landing
+  penalties and camera composition; their boundary/visual captures stay open.
 - Sniper zoom, speed/accuracy and overlays work. AUG/SG 553 use raised
   sights with a clear lens, black lowered lens and a blurred outside scene;
   exact CS2 focus/dirt and inaccuracy display still need work.
@@ -96,10 +136,14 @@ while measurements and remaining parity work stay listed below.
 
 ### Map, players and combat
 
-- dust2 and other extracted defusal maps supply their own collision,
+- Dust2 and Mirage have been extracted and loaded locally. Extracted
+  defusal maps supply their own collision,
   entities, nav mesh, buy/bomb volumes, baked lighting, probes, reflections,
   grade, visibility and skybox. Nearby skybox fragments are clipped; the
-  separate lower-mid occlusion flicker remains open.
+  separate lower-mid occlusion flicker remains open. Mirage's wall paint
+  and sky extraction are fixed (#185). Dust2's measured world exposure
+  and compensated sky are accepted at the paired T-spawn view; full-map
+  colour/exposure parity remains open.
 - Extracted agents, first-person arms and every carried item use CS2's
   clips. Body variations follow the held weapon; feet, hands and twist
   bones are fitted, the visible local torso folds away, and its full twin
@@ -132,7 +176,8 @@ while measurements and remaining parity work stay listed below.
   weapon selection, damage arcs, kill feed/icons, spectators and round-end
   reports are implemented. Round banners use fixed text plus a slowly
   growing clipped copy, with translucent blurred panels fading at the sides.
-  Radar, scoreboard, chat and the remaining HUD details are still open.
+  The Tab scoreboard is built (#175), with player statistics and round
+  history. Radar, chat and additional scoreboard/HUD details remain open.
 - Weapon shots/reloads, dry-fire and low-ammo clicks, surface footsteps,
   impacts, grenade/C4 sounds, flash ring/muffle, announcer and music cues
   play. HitSounds selects attacker/victim/onlooker body/head/armour events
@@ -144,9 +189,12 @@ while measurements and remaining parity work stay listed below.
   dependencies and sheet reconstruction, small impact models and additive
   flinch clips. Valve assets remain ignored; generated tables are committed.
 - `scripts/run_tests.sh` discovers each `tests/run_*.gd`, checks native/script
-  equivalence and fails on script errors/timeouts. The October 2 local run
-  passed 7,060 checks in 75 files; asset/GPU checks also ran separately.
-  CI without assets and headless rendering skips are reported explicitly.
+  equivalence and fails on script errors/timeouts. The October 3 local run
+  through #185 passed 7,752 checks across 80 files, with extracted assets
+  and current native movement. Three drawing checks were skipped in
+  headless mode; four AWP drop-settling checks remain known open.
+  PR #185's asset-free CI passed 7,051 checks across 80 files. These counts
+  do not claim that the skipped comparisons ran.
 - Render/frame/tick and hit-effects profilers record costs. The 6 ms maximum
   frame-time target remains open; merged work is not a blanket performance
   or exact-CS2-parity claim.
@@ -179,7 +227,7 @@ issue done here and on the page in the same pull request.
 | 7 | The xbox tarp far too dark (its lightmap read from the wrong UV set) | *(done: `LightmapMaterials.OWN_UV2_SHADERS`, `uv2_at_origin`, `carry_model_tint`, `prop_colorize`)* The UV set for `csgo_environment`, and its tint | `extract_assets.sh layers`; an xbox shot in CS2 | After 12 |
 | 8 | Wrists wrung on the knife (the forearm twist bones are never posed) | **Done:** CS2's tilt-twist constraints from the agents' `.vmdl` on the drawn arms and bodies (`TwistModifier`), the maths in `reference/research/twist-constraints.md` | `scripts/run_tests.sh twist` with the agents and knife extracted; the knife and AK beside CS2, both teams; the cost in `profile_dust2.gd` | 6 |
 | 9 | A see-through seam in a wall (Godot's vertex compression) | *(done: `write_import_settings.gd`, `MapImporter.GLTF_FLAGS`)* The map imported without it | **Done:** reimported, the seam gone from Sid's spot, no measurable GPU cost at 4K | After 12 |
-| 10 | Too saturated and contrasty against CS2 | *Done:* CS2's grade (its Hable curve and the map's post-processing file), the default since 2026-09-26 (`--grade aces` for the old) | *Done:* extracted, calibrated at long doors (sun and bounce in CS2's units, exposure x1.2); B site waits for a CS2 shot | R0 |
+| 10 | Too saturated and contrasty against CS2 | *Done:* CS2's grade (its Hable curve and the map's post-processing file), the default since 2026-09-26 (`--grade aces` for the old) | *Done:* extracted, calibrated at long doors; Dust2's world exposure recalibrated to x1.5 from the paired T-spawn reference on 2026-10-03, with inverse compensation preserving the approved sky. Other maps retain x1.2; B site waits for a CS2 shot | R0 |
 | 11 | Geometry flickering (the sky's brushes used as occluders) | The sky's brushes out of the occluders (`MapOccluders.NOT_DRAWN`, 2026-09-26): top of mid fixed, **lower mid still flickers**; F11 rendering comparisons added in #167, which also fixes the separate beige skybox plane at the crates; next is Sid's call: shrink the occluders or turn Godot's occlusion culling off | `profile_render.gd`'s `no_occlusion` to decide; walk R3's spots with F11; `run_tests.sh dust2` | R3 |
 | 12 | Zigzag stripes on the kasbah towers (Godot's mesh LODs break the third UV set's lightmap) | *(done: `LightmapMaterials.drop_lods`)* No LODs, or LODs that keep that UV set, on those props | Look, profile | |
 | 13 | White eyes | CS2's eye shader on the character shader *(done, 2026-09-26: `CharacterEyes`, the eye path in `character.gdshader`)* | Extract the eye textures (`character-masks`), `run_tests.sh model`; the Phoenix face and the SAS lenses beside CS2 | R7 |
@@ -223,12 +271,22 @@ while noclipping: Remote done 2026-10-02, with the air's inaccuracy.
 take over a bot and play it (arms, sounds, buying, its death); in CS2,
 whether a noclip shot standing still in the air is as wide as a jump's.
 
+**October 3 slope playtest:** crouched starts still accelerated from the
+standing weapon speed. PR #184 now uses the binary-derived ordinary land
+crouch acceleration scale (250 * 0.34), independently of the speed target.
+138 real-command checks cover flat/uphill/downhill floors and crouch
+entry/exit; existing crouch turning/accuracy and grenade lineups pass.
+**Local:** retest the acceleration feel on Dust2. Terrain eyes are now
+implemented, and this follow-up ports ordinary deferred movement integration;
+full crouch transitions and command/scoped acceleration setup remain open in the
+[movement audit](research/movement-ghidra-2026-10-03.md).
+
 **Box3D is the game's physics (2026-09-28, Sid).** Sid chose to take the
-trial below forward. CI and the cloud threads take its Linux libraries rebuilt
-against glibc 2.35 from this repo's release once it is attached, and until
-then build the debug library from the pinned release's source
-(`scripts/install_box3d.sh`), since the release's need glibc 2.43 and Ubuntu
-24.04 has 2.39, and the AWP's four settling checks
+trial below forward. The October 2 grenade port builds debug and release
+libraries from pinned source plus the opt-in projectile-query patch
+(`scripts/install_box3d.sh`, `.ps1`); it requires Git, Python and a C/C++
+compiler and caches compilation under `.godot/`. This also avoids the
+upstream Linux release's glibc requirement. The AWP's four settling checks
 are known open (`_check_known_open`: reported every run, not failing it).
 Every query goes through `PhysicsQueries` (`reference/godot/physics.md`); E's
 sight test (#126), written straight on Godot's space, was ported with #125's
@@ -342,6 +400,22 @@ asks for; Godot's renderer on a thread of its own measured
 drawn, not shipped on (Godot marks it experimental).
 Measurements and the list:
 [box3d-walking-hitch-2026-09-28.md](research/box3d-walking-hitch-2026-09-28.md).
+**Where the slow frames come from (2026-10-02, Sid's "audit what is
+necessary for performance and consistency").** Sid's play at 1080p, split
+by what happened in each second: quiet play holds about 4.6 ms a frame,
+ticks or not, and the slow frames come with events. A second with shots
+averages 6.06 ms, one with a death 6.75, and seconds with spawns or buys
+hold ticks of 5.2 to 5.5 ms. Scripts are the largest excess in 55% of slow
+frames, and the tick in 37%; these percentages count frames, rather than
+shares of the summed excess time. The list, ranked, is in
+[frame-consistency-audit-2026-10-02.md](research/frame-consistency-audit-2026-10-02.md).
+It runs: the hit particles culled and then made native; decal fades and
+the MultiMeshes' bounds; respawns and new items posed off the tick; a
+trace's hitbox sets; then the frames everywhere. The priorities follow
+the measured event-related costs; frames without a tick can also exceed
+6 ms. `scripts/profile_worst_ticks.gd` now makes the
+bodies players die into before each tick, as the game does on frames; it
+had built each death's ragdoll on the tick, 2.0 ms where the game pays 0.6.
 
 **Box3D physics trial (2026-09-26, Sid).** The branch
 `codex/box3d-dropped-guns` started with dropped-gun jitter and now follows
@@ -837,7 +911,7 @@ list, split into Local and Remote items, with the measurements.
     panels as Panorama does. Local: checked on Sid's machine against
     `In_game_ui.webp` at 1080p and 4K, where it matches to the pixel but
     for the player's portrait and colour. Still to do: the
-    radar, scoreboard, the bomb's icon on the clock, the
+    radar, the bomb's icon on the clock, the
     kill marks over the health and the low health and ammo glow. The buy
     menu rebuilt 2026-09-25 to Sid's screenshots of CS2's: its columns in
     CS2's order, CS2's word on each item, the countdown in warmup and freeze
@@ -883,6 +957,25 @@ list, split into Local and Remote items, with the measurements.
     happens by CS2's rules; revenge and domination stay off, as CS2's
     `sv_nonemesis` leaves them. Local: a round's kills beside CS2's at
     1080p with its icons.)*
+    *(Scoreboard done 2026-09-30, to Sid's CS2 screenshot of that day:
+    CS2's classic competitive scoreboard while Tab is held (`+showscores`),
+    from its scoreboard layout, styles and script (`Scoreboard`): the mode,
+    map and time; each team's score, name and players alive; a row a
+    player in competitive's order (the most damage first) with the status
+    skull, C4 or kit, the bot's mark, the portrait in the player's colour,
+    Money (your team's only), Kills, Deaths, Assists, HS% and DMG, your row
+    lit; the timeline of the period's rounds with how each was won, each
+    half's score, the trophy on the clinching round and the loss bonus's
+    dashes. The numbers are the server's (`MatchStats` in `src/match/`,
+    from the game's events; a team kill or suicide takes a kill away, a
+    guess from CS:GO), the rounds `MatchState.history`. Its new icons
+    (bot, bomb_c4, bomb, timer, trophy, competitive_teams) come with
+    `extract_assets.sh hud`. Left: the second set of numbers (MVPs, utility
+    damage, enemies flashed, K/D, ADR) and the mouse that cycles to it, the
+    flair and rank, the music kit line, the survivors under each round,
+    overtime's score column, the spectators, and the ping (bots show their
+    mark; a player shows 0 until there is a network). Local: the board
+    beside CS2's at 1080p, after `hud`.)*
 
 ### Phase 5: the bomb
 
@@ -908,7 +1001,7 @@ list, split into Local and Remote items, with the measurements.
     throw on letting go; on dust2 too since 2026-09-23, bought from the
     menu, the map cleared of them at each round's start; Local measures, G1)*
     Three throw strengths, your velocity added, bounces off the hull. The
-    grenade clip is still left out of the hull on import
+    grenade clip is retained separately on layer 32 since 2026-10-02
     (`reference/systems/grenades.md`, item 6).
 18. **HE, flashbang, decoy.** *(done on the range, the grenades PR; Local
     measures G2, G3, G5 and extracts the particles)*
@@ -920,33 +1013,73 @@ list, split into Local and Remote items, with the measurements.
     the map, HE and bullets opening holes, blocking sight for players and
     bots. Bots' sight asks it once `bot.gd` does
     (`reference/systems/grenades.md`, item 4).
-20a. **Grenade flight and lineups.** *(Sid, 2026-09-30; not started, no new
-    research yet. Remote for the code and headless checks, Local for
-    anything measured in CS2)* In play, grenades are floaty and
+20a. **Grenade flight and lineups.** *(Sid, 2026-09-30; static research done
+    2026-10-02, core throw/flight/activation port done; lineup comparisons
+    and additional entity/water/spin behavior open. Remote for the
+    code and headless checks, Local for anything measured in CS2)* In play, grenades are floaty and
     inconsistent in the air, and the map may be part of it. Running and
     jumping should change how far a grenade goes. The goal is to recreate
     CS2's lineups: the same spot, aim and throw lands where it does in CS2.
     Start from what the repo has:
     - The grenade systems from the grenades PR (#53): the flight in
       `src/grenades/grenade_flight.gd`, the throw's numbers in
-      `src/grenades/grenade_rules.gd` (CS:GO's 750 × 0.9 throw, strength
-      0.3 to 1, 1.25 of your velocity, gravity 0.4 of 800, elasticity
-      0.45, a radius-2 sphere), and `reference/systems/grenades.md`.
-    - The research: `reference/research/round-bomb-grenades.md` section 2,
-      above all 2.3 "The throw" (CS2 stashes the throw's angles, position
-      and velocity at a jump for jump-throws, which the code does not do
-      yet; no CS2 source found for the throw speeds or the velocity share;
-      `sv_grenade_collision_sphere` off by default, so CS2 does not fly a
-      radius-2 sphere; the default spin), and its summary in
-      `reference/research/round.md` (items 11 and 12, and the throw-speeds row).
-      `reference/research/smokes.md` covers where a smoke settles, not the
-      flight.
-    - The map: the grenade clips are left out of the hull on import
-      (`hull_skip_hints` in `src/map/map_importer.gd`;
-      `reference/systems/grenades.md`, item 6), so grenades on dust2 do not
-      meet what CS2's meet.
-    - **Local:** G1 in `reference/cs2-systems.md` (the throw's speeds and
-      gravity, standing, running and jumping), and a set of dust2 lineups
+      `src/grenades/grenade_rules.gd`, the hand timer/jump snapshot in
+      `grenade_throw_state.gd`, and `reference/systems/grenades.md`.
+    - The current-build research:
+      [October 2 Ghidra grenade audit](research/grenade-audit-2026-10-02.md)
+      verifies the velocity formula, gradual strength and middle snap,
+      0.1 s release scheduling, jump snapshots, center-to-eye launch box,
+      default box collision and two 1/128 s flight steps per 64 Hz tick.
+      It also recovers bounce/settle rules, spawn-based fuses and smoke/
+      decoy activation. The [core port](research/grenade-port-2026-10-02.md)
+      implements these corrections, including a separate one-time enemy
+      body hit and fire fuse extension; the audit supersedes older guesses in
+      `reference/research/round-bomb-grenades.md` and its `round.md` summary.
+    - **Collision foundation audited and narrow fixes done 2026-10-02:**
+      [the follow-up](research/collision-foundation-2026-10-02.md) traces
+      the engine push/filter/result callers, tests grenade-sized boxes
+      and spheres against solid and triangle floors, and fixes repeated
+      bounces reusing the full step's time. Grenade contact now comes from
+      one complete sweep result. The subsequent core port adds
+      `ProjectileTrace`, per-query tolerance, blocked starts and departure
+      from touching planes. Player and rigid-body settings remain unchanged;
+      a general physics rewrite is not a prerequisite established by the audit.
+    - **Map import done:** grenade clips are retained on layer 32 and
+      excluded from camera occluders; players retain their separate clips.
+      [Sky clipping corrected](research/grenade-sky-clipping-2026-10-02.md):
+      conditional sky brushes use layer 64, outside ordinary gameplay masks,
+      rather than making invisible walls above mid. Fresh Dust2 collision
+      matches the existing extraction; the bug was interaction classification.
+      Synthetic layer checks and the extracted Dust2 run validate the import.
+    - **Jump timer corrected:** [Xbox lineup follow-up](research/grenade-jump-lineup-2026-10-02.md)
+      fixes the interval sign recovered from the instructions. The screenshot's
+      T-spawn fixture now bounces onto Xbox across nine jump/release combinations;
+      exact recorded CS2 trajectories and input-window comparisons remain open.
+      The [mid-door reference](research/grenade-sky-clipping-2026-10-02.md#mid-door-landing-reference)
+      reached the open door top with the previous quarter-tick movement,
+      while other jump phases could fall off it.
+      The [October 3 Ghidra audit](research/grenade-subtick-snapshot-2026-10-03.md)
+      recovered the exact movement boundary and ordinary jump gravity adjustment.
+      Both are merged in #184. Snapshot state is consistent
+      across jump phases. Sid's subsequent CS2 console aim resolves the local
+      mid-door miss with unchanged physics; the screenshot-derived aim was
+      about 0.8 degrees lower. The preset now uses the supplied exact CS2
+      pawn origin. Recorded trajectory comparison
+      and general jump validation remain open. Sid still reports needing to
+      aim higher at matching landmarks. The
+      [camera-height follow-up](research/camera-height-2026-10-03.md) confirms
+      64/46 base eye heights and a missing terrain eye adjustment used by
+      CS2's grenade snapshots. Paired console coordinates now measure an
+      effective 60.75-unit eye height there and 63.9375 at the new B-doors
+      reference. The [shared terrain-eye port](research/terrain-eyes-2026-10-03.md)
+      is merged in #187; additional landmark and trajectory captures remain.
+      This follow-up ports [ordinary horizontal integration](research/horizontal-integration-2026-10-03.md).
+      The [movement audit](research/movement-ghidra-2026-10-03.md) still leaves
+      command/scoped acceleration setup, crouch and modern landing/press-window
+      gaps; matching native/script output is not evidence of CS2 parity.
+    - **Local:** G1 in `reference/cs2-systems.md` now compares the recovered
+      rules against CS2 (standing, running, crouching, jumping, button
+      changes and close-wall releases), and a set of dust2 lineups
       recorded in CS2 to compare against (spot, angles, button, movement,
       and where it lands), which N2's lineups for the bots can share.
 
@@ -1107,19 +1240,56 @@ list, split into Local and Remote items, with the measurements.
 
 ### Movement: what is still open
 
-These do not block anything above; they are feel checks.
+The [October 3 movement audit](research/movement-ghidra-2026-10-03.md)
+identifies simulation differences that also affect grenade launch inputs
+and visual aiming. PR #184 merged the ordinary jump and targeted crouch
+acceleration corrections; it did not complete movement parity.
+
+The next work, in order (Remote implementation and checks; Local binary
+audit, CS2 captures and performance measurements):
+
+1. **Shared terrain-aware eye state — merged in #187.**
+   The recovered sampler and ordinary topology transitions now run in
+   simulation before snapshot capture. Support flags match in script/native
+   movement; cached queries are counted in the trace budget. Synthetic
+   flat/sloped/ledge, takeoff/landing and support-owner cases pass. Absolute
+   camera heights match paired mid-door/B-doors CS2 values within 0.04 units,
+   retaining the 64/46 bases without lineup-specific offsets. See the
+   [terrain-eye report](research/terrain-eyes-2026-10-03.md) for measured cost.
+   **Local remaining:** rendered landmark/transition playtest and additional
+   CS2 captures. Full duck/root adjustments belong to step 3.
+2. **Combined horizontal integration — ordinary movement implemented in this follow-up.**
+   Combined friction/acceleration and deferred collision state now match
+   between script/native movement; gravity shares that state. Independent
+   displacement/contact oracles, slopes and running jump snapshots cover
+   behavior beyond final speed. See the
+   [integration report](research/horizontal-integration-2026-10-03.md) for
+   trace budgets, measured tick cost and boundaries. **Local remaining:**
+   counter-strafing, wall/slopes and run/jump throw captures. **Implementation
+   remaining:** ordinary walk taper/scoped scales, friction stashing and
+   movement-speed-cap setup alongside the next command/state work.
+3. **Crouch and modern jump transitions.** Complete duck state/rates,
+   repeated-input gates and landing/bhop press windows with boundary
+   checks and CS2 captures. Keep them separately reviewable from grenade
+   flight changes.
+
+Mirage now provides another extracted map for paired throw references.
+The B-doors standing jump throw is accepted in play; the mid-door visual
+aim discrepancy and recorded trajectory parity remain open (item 20a/G1).
+PR #179's foot planting is a presentation follow-up, pending review and
+playtest separately from these simulation changes.
 
 - **Measurements in CS2 (Sid):** *(Local)* standing jump height, crouch-jump reach, and
   whether the dead-strafe zone feels right. The movement fixes that change
   them have landed, so they can be measured now.
 - **Per-surface friction.** *(Local done 2026-09-23: the table is extracted,
-  `SurfaceProperties.player_friction`; Remote: feed it in)* `MovementSolver`
-  takes a surface friction and is always handed 1.0 on the ground. Source
-  gives a player the surface's physics friction times 1.25, at most 1
-  (`CGameMovement::CategorizeGroundSurface`), and scales ground friction and
-  acceleration by it. On dust2 that is all of it everywhere but glass (0.625)
-  and pottery (0.5); the part under the player's feet is what `Footsteps`
-  already finds, and `Penetration.surface_for` names its surface.
+  `SurfaceProperties.player_friction`; Local audit then Remote port)* The
+  current ordinary pawn multiplier defaults to 1.0. The older Source SDK's
+  `CGameMovement::CategorizeGroundSurface` uses surface physics friction
+  times 1.25, capped at one; the extracted table would give glass 0.625 and
+  pottery 0.5 under that rule. Recover current CS2 material multiplier setup
+  before applying it. `Footsteps` already finds the part under the player's
+  feet, and `Penetration.surface_for` names its surface.
 - **Surf ramp ends** (parked by Sid). *(Remote)* The course cannot reproduce the
   complaint yet because its ramps have no end to launch off.
 
@@ -1194,12 +1364,19 @@ measurements are listed beside each item rather than keeping their
 implementation tasks open.
 
 The remaining work includes gun modes/revolver/random-recoil fidelity,
-Zeus attacks, grenade effects/lineups and omitted map grenade clips,
+Zeus attacks, grenade effects/lineups and additional entity physics,
 HUD details, tactical/objective bots, networking and full menus. The
 networking work still needs authoritative tick hitbox poses, history and
 replay; it must not depend on drawn animation. Rendering and simulation
 optimization continue against measured captures, including the dense
 hit-effects cost and the still-open 6 ms maximum target.
+
+Shared terrain-aware eyes are merged, and this follow-up implements ordinary
+combined movement integration. Next finish command/crouch and modern jump
+transitions as listed above, while rechecking the recorded Dust2 throws and
+collecting Mirage pairs.
+The open #177–179 playtest PRs can be reviewed and tested separately; their
+features are not counted as merged here.
 
 Use each phase's remaining items, the weapon TODO and the current status
 in `reference/systemization.md` to choose work. The dated playtest and

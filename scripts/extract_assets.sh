@@ -630,6 +630,8 @@ extract_skybox() {
 
 ## The sky, as the HDR panorama the map's sky material is made of. Which
 ## material that is comes from the entity lump (env_sky), so that runs first.
+## Read material DATA directly: decompiling the material also decodes its
+## shader, which can be newer than Source 2 Viewer's supported VCS versions.
 extract_sky() {
 	require_file "$PAK_VPK"
 	local entities
@@ -648,7 +650,19 @@ extract_sky() {
 	fi
 	echo "Extracting $sky"
 	echo "        -> $MAP_DEST"
-	"$S2V_BIN" -i "$PAK_VPK" -f "$sky" -o "$MAP_DEST" -d \
+	local material="$MAP_DEST/${sky%_c}"
+	mkdir -p "$(dirname "$material")"
+	"$S2V_BIN" -i "$PAK_VPK" -f "$sky" -b DATA \
+		| tr -d '\r' | sed -n '/^<!-- kv3 encoding:/,$p' > "$material"
+	if [[ ! -s "$material" ]]; then
+		echo "No material DATA for $sky; the sky panorama was not extracted." >&2
+		return 1
+	fi
+	local textures
+	textures="$(grep -oE 'resource:"[^"]+\.vtex"' "$material" \
+		| sed -E 's/^resource:"//; s/"$//; s/\.vtex$/.vtex_c/' | sort -u | paste -sd, - || true)"
+	require_filter "$textures" "the sky material's textures"
+	"$S2V_BIN" -i "$PAK_VPK" -f "$textures" -o "$MAP_DEST" -d \
 		| grep -vE '^(Preloading|Added folder|--- \[)' || true
 }
 
@@ -895,7 +909,7 @@ extract_equipment() {
 ## beside its input whatever -o says, so it is given a copy here, never the
 ## game's own. src/ui/hud_style.gd reads it all from assets/hud/ and draws its
 ## own stand-ins where something is not there.
-HUD_UI_ICONS="ct_logo_1c t_logo_1c buyzone elimination kill defuser_white alert"
+HUD_UI_ICONS="ct_logo_1c t_logo_1c buyzone elimination kill defuser_white alert bot bomb_c4 bomb timer trophy competitive_teams"
 HUD_MASKS="score-time-mask.vsvg_c playercount-mask.vsvg_c top-bottom-fade-4_png.vtex_c"
 extract_hud() {
 	require_file "$PAK_VPK"

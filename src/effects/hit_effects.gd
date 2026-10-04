@@ -196,8 +196,11 @@ func drawn_models(userid: int) -> Array[PlayerModel]:
 	var body := game.roster.player(userid) if game != null else null
 	if body is PlayerSim and is_instance_valid(body.model):
 		out.append(body.model)
-	if body is PlayerController and is_instance_valid(body.view):
-		for model: PlayerModel in [body.view.body_model, body.view.body_shadow]:
+	var viewer := body as PlayerController
+	if viewer == null and body is PlayerSim:
+		viewer = body.controlled_by as PlayerController
+	if is_instance_valid(viewer) and is_instance_valid(viewer.view) and viewer.pawn() == body:
+		for model: PlayerModel in [viewer.view.body_model, viewer.view.body_shadow]:
 			if is_instance_valid(model) and not out.has(model):
 				out.append(model)
 	return out

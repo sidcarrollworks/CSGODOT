@@ -6,6 +6,10 @@ guns, multiplayer netcode "and so on". This is that map. The order the work
 goes in is in the project roadmap; this file is the detail behind it, for
 the cloud threads and for Sid's local agent alike.
 
+Implementation status checked on 2026-10-03 through merged PR #185.
+The roadmap separates merged features, open #177–179 playtest PRs, and
+remaining CS2 comparisons; an audited rule is not automatically a port.
+
 Each system says what CS2 does (with its numbers), what is built already, and
 the work, split the way `reference/weapons/TODO.md` splits it:
 
@@ -376,6 +380,16 @@ says when the plant completes, which is still C1's to measure.
 
 ## 7. Grenades
 
+**Current-build source:** [October 2 Ghidra grenade audit](research/grenade-audit-2026-10-02.md),
+patch 1.41.8.8. Its ledger distinguishes recovered server rules from the
+implementation and from remaining local captures (20a / G1–G5).
+The [collision follow-up](research/collision-foundation-2026-10-02.md)
+records the engine trace caller contract, backend small-hull tolerances,
+and the corrected remaining-time budget. The [grenade port](research/grenade-port-2026-10-02.md)
+implements the core throw/flight/activation rules with a separate projectile
+query; native rigid-body solver settings do not control this flight.
+Recorded lineups and additional entity/water/spin branches remain open.
+
 **Shared (WV and CV):** every grenade costs its price above, is thrown at 750
 (the base speed; left click, right click and both give three strengths),
 takes 1 s to draw, holds you to 245 u/s, and pays $300 for a kill. The
@@ -383,43 +397,80 @@ throw adds a share of your own velocity, which is what makes running and
 jump throws work. There is no trajectory preview in matchmaking; CS2 has a
 lineup crosshair that appears after holding the pin 2 s
 (`cl_grenadecrosshair_*`). Grenades collide with the hull and with
-`physics_csgo_grenadeclip`, which the importer already keeps apart, bounce
+`physics_csgo_grenadeclip`, retained on layer 32 by our importer, bounce
 losing speed each time, and stop on floors.
 
-The throw speeds per button, the share of your velocity, the gravity and the
-bounce are CS:GO behaviour the community has documented and CS2 is thought
-to keep. They go in as **measure** (G1) until checked.
+**Verified in the binary:** authored speed × 0.9 × (0.7 × strength + 0.3),
+plus 1.25 of pawn velocity; settled left/both/right give 675/438.75/202.5 u/s.
+Strength changes gradually and snaps near 0.5. Release schedules a 0.1 s
+timer and can use a delayed jump snapshot. Default launch traces a ±2.02
+box from pawn center to lowered eyes + forward16. Flight normally uses a
+±2 box, two 1/128 s steps per 64 Hz tick, gravity 0.4 × sv_gravity and
+elasticity 0.45, with additional bounce/rest rules. These core rules are
+ported, including the separate one-time enemy body hit; G1 still needs
+local CS2 comparison.
+
+The [October 3 subtick audit](research/grenade-subtick-snapshot-2026-10-03.md)
+verifies an explicit movement boundary at takeoff +0.1 s. The port now uses
+that boundary and the recovered ordinary jump adjustment, merged in #184.
+It removes phase variation. The earlier mid-door miss used
+Godot screenshot aim; Sid's subsequent CS2 console aim lands on the door
+without changing flight physics. The local preset now uses Sid's paired
+`getpos_exact` pawn coordinates. Recorded trajectory
+comparison and general jump feel remain open after #184's merge.
+Sid still needs to aim higher at matching landmarks. The
+[camera-height audit](research/camera-height-2026-10-03.md) verifies the
+64/46 base eye heights and a missing terrain-dependent eye adjustment,
+which CS2 also uses for grenade snapshots. The effective reference eye
+height is now measured at 60.75 units; the shared adjustment remains
+unported. The [movement audit](research/movement-ghidra-2026-10-03.md)
+also finds horizontal integration, crouch and modern landing/press-window
+differences. The B-doors reference measures 63.9375 units and is available
+in the watcher with `--lineup=b-doors`. Sid accepted that standing jump
+throw's landing in play. Shared terrain-aware simulation eyes are next,
+then combined horizontal integration and full crouch/modern jump transitions.
 
 **HE (WV):** 99 damage at the centre, 350 units radius, falling off smoothly
-to nothing at the edge (the curve: **measure**, G2), cut by walls between;
+with Gaussian falloff sigma=radius/3 (binary verified; target points and
+wall attenuation still G2), cut by walls between;
 armour ratio 1.2, so kevlar takes a share but a helmet adds nothing. Goes
-off 1.5 s after the throw (**measure**, G1).
+off on a deadline 1.5 s after projectile spawn, checked by a 0.2 s think
+schedule; release delay and think ordering affect observed timing (G1).
 
 **Flashbang:** blinds anyone who can see it, teammates too, for longer the
 closer you are and the more directly you face it, less through a partial
-line of sight, not at all behind a wall. Goes off 1.5 s after the throw. A
+line of sight; a blocked direct ray can still blind via alternate routes.
+Its default deadline is 1.5 s after projectile spawn. A
 kill on a player flashed past 70% counts as a blind kill
-(`sv_flashed_amount_for_blind_kill 0.7`). Durations by distance and angle:
-**measure**, G3 (community figure: up to about 5 s fully white).
+(`sv_flashed_amount_for_blind_kill 0.7`). The binary uses base
+3 × (1-distance/3000), facing bins at 0.6/0.3/-0.2, visibility-weighted
+hold/fade inputs, network duration fade/1.4 and overlapping-flash maxima.
+The audit lists the exact multipliers. Client white-out/ringing and partial
+cover still need G3 captures; our current curve is an approximation.
 
 **Smoke:** CS2's smokes are a volume of voxels the server fills out from
 where it lands, flowing around walls and through doors, with a random seed
-(`m_nRandomSeed`) so everyone sees the same cloud. It pops once it stops
-moving. An HE blows a hole in it that refills in a few seconds; bullets cut
+(`m_nRandomSeed`) so everyone sees the same cloud. Its normal activation
+requires 3D speed <= 0.1 u/s and age >= 1.188 s. An HE blows a hole in it
+that refills in a few seconds; bullets cut
 thin tunnels that close almost at once. It puts out fire it lands on, and a
 molotov into a smoke fizzles. Bots see through at most 200 units of it
 (`bot_max_visible_smoke_length`). Duration (18 or 20 s) and size:
 **measure**, G4.
 
 **Molotov (T) and incendiary (CT), CV:** go off on touching ground no steeper
-than about 30 degrees, or in the air after 2 s (`molotov_throw_detonate_time`).
+than 30 degrees, or on a spawn-based 2 s deadline (`molotov_throw_detonate_time`).
+A one-time enemy body hit extends that deadline by 4 s. An airburst tests
+ground from position +10 up to position -128 down, failing without a hit.
 Up to 16 flames 42 units apart spread over the ground; the molotov reaches
 150 units and burns about 7 s, the incendiary 110 units and 5.5 s, spreading
 ten times faster. 40 damage a second in 0.2 s steps, ramping up, and armour
 does not stop fire. Team damage from it is the thrower's for 6 s.
 
-**Decoy:** once it stops, plays its thrower's primary weapon firing in
-bursts for about 15 s, then pops for a few points of damage; no team damage
+**Decoy:** first thinks 2 s after spawn, then polls every 0.2 s until
+3D speed <= 0.2 u/s activates it. Plays its thrower's weapon firing
+in authored weapon-dependent bursts with a deadline 15 s after activation,
+then pops for a few points of damage; no team damage
 from the pop (`ff_damage_decoy_explosion false`). Timing and burst lengths:
 **measure**, G5.
 
@@ -428,7 +479,7 @@ timings in `reference/weapons/equipment.md`. All six are server-side
 systems on the shared contracts (`src/grenades/`), thrown on the range
 from your eyes; `reference/systems/grenades.md` says what each does, which
 numbers are guesses, and what the player, the bots and the importer need
-to wire them in. The importer still leaves the map's grenade clips out.
+to wire them in. The importer retains the map's grenade clips on layer 32.
 Throws, HE damage, flashes, fire, voxel smoke and decoys are wired into
 the shared world and presentation. CS2 visual parity and measured
 timing/trajectory remain open.
@@ -436,13 +487,12 @@ timing/trajectory remain open.
 **Implemented core systems; remaining comparisons below**
 
 The following gameplay systems are built. Remaining work is measured CS2
-parity, richer effects, map grenade clips and the lineup crosshair; the
+parity, richer effects and the lineup crosshair; the
 inventory HUD row is already built.
 
 - The throw (three strengths, your velocity added, the release point) and a
   projectile on its own fixed-step physics with bounce and rest, colliding
-  with the hull and player hulls. Its query includes the reserved grenade
-  clip layer; actual map grenade-clip import remains open.
+  with the hull, player hulls and imported grenade clips.
 - HE: damage with falloff and walls, into `HitTarget` with the blast's
   armour rule.
 - Flash: the blind amount per viewer, a white screen that fades, the flashed
@@ -461,12 +511,20 @@ inventory HUD row is already built.
 - Grenade HUD: the slot row is built; the lineup crosshair remains open.
 
 **Local**
-- **G1.** Measure the throw: left, right and both, standing and running, into
-  the range's wall and floor, to fix speeds and gravity; and the fuse times.
-- **G2.** HE damage at 50, 100, 200 and 300 units, with and without kevlar.
-- **G3.** Flash: blind time at a few distances facing it, side-on and away.
+- **G1.** *(Static throw/flight/fuse audit and core port done 2026-10-02; captures
+  and additional entity/water/spin branches open.)* Compare left/right/both, button changes, standing/running/crouching/
+  jumping, close walls, bounce/settle and fuses; record dust2 lineups including
+  grenade clips. [Conditional sky clipping](research/grenade-sky-clipping-2026-10-02.md)
+  is corrected: authored sky brushes remain outside ordinary gameplay masks.
+  The 0.2 s snapshot-age predicate is not a measured input window.
+- **G2.** *(Gaussian recovered; comparisons open.)* HE damage at 50, 100,
+  200 and 300 units, airborne and on ground, with walls and kevlar.
+- **G3.** *(Server distance/facing/timing/overlap rules recovered; port and
+  captures open.)* White-out and ringing at several distances/facing angles,
+  partial cover and repeated flashes.
 - **G4.** Smoke: duration, and the cloud's size in open ground.
-- **G5.** Decoy: how long, how its bursts go, the pop's damage.
+- **G5.** *(Activation and 15 s deadline recovered.)* Recover weapon burst
+  tables and compare burst cadence, total lifetime and pop damage.
 - **G6.** *(done but for the textures, 2026-09-23: `scripts/extract_assets.sh
   equipment` and `sounds`; the sounds are each grenade's folder, so a bounce
   per surface, if the game has one, is not among them)* Extract all six
@@ -532,11 +590,13 @@ with its settings.
 **Built:** crosshair; health, armour/helmet and ammo around the emblem;
 rolling money; damage direction arcs; weapon/grenade selection; buy menu;
 team cards, scores and timer; carrier icons; kill feed; ground-item use
-prompts; death countdown; round-end and MVP panel. The round banner uses
+prompts; death countdown; round-end and MVP panel; the Tab scoreboard with
+player statistics and round history (#175). Additional scoreboard columns
+and visual details remain under roadmap item 15. The round banner uses
 fixed foreground text and a slower growing copy clipped behind it, with
 a translucent, side-fading panel and its existing blur (PR #166).
 
-**Remote:** radar, scoreboard, chat, planted-bomb/defuse HUD details and
+**Remote:** radar, additional scoreboard details, chat, planted-bomb/defuse HUD details and
 remaining health/ammo embellishments (roadmap item 15). The radar data
 is already extracted (`MapOverview`, B3).
 

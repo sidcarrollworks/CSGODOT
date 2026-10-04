@@ -65,14 +65,15 @@ func data(weapon_class: String) -> WeaponData:
 ## are: the throw a command asks for, at a strength from
 ## GrenadeRules.strength_for. It takes the grenade out of their inventory,
 ## and is refused (null) when they carry none. Returns the grenade, now in
-## the world; its first flight is on the next tick.
+## the world. The command path spawns before this tick's entities run.
 func throw(userid: int, weapon_class: String, strength: float, space: PhysicsDirectSpaceState3D) -> GrenadeEntity:
 	var player := game.roster.player(userid) as PlayerSim
 	var inventory := game.inventory(userid) if userid >= 0 else null
 	if player == null or inventory == null or not inventory.take_one(weapon_class):
 		return null
-	var eye := player.global_position + Vector3.UP * player.eye_height()
-	return throw_from(userid, weapon_class, eye, player.yaw_degrees, player.pitch_degrees, player.velocity, strength, space)
+	var parameters := player.grenade_parameters(game.now_usec())
+	return throw_from(userid, weapon_class, parameters.eye, parameters.yaw, parameters.pitch,
+		parameters.velocity, strength, space, parameters.center)
 
 
 ## The throw command: a grenade by class name, at a strength (1 if not
@@ -93,7 +94,7 @@ func _on_throw_command(userid: int, args: PackedStringArray, t: SimTick) -> bool
 ## inventory; the checks set grenades off with it.
 func throw_from(
 	userid: int, weapon_class: String, eye: Vector3, yaw: float, pitch: float,
-	velocity: Vector3, strength: float, space: PhysicsDirectSpaceState3D
+	velocity: Vector3, strength: float, space: PhysicsDirectSpaceState3D, center := Vector3.INF
 ) -> GrenadeEntity:
 	assert(GrenadeRules.is_grenade(weapon_class), "%s is not a grenade" % weapon_class)
 	var grenade := GrenadeEntity.new()
@@ -102,7 +103,7 @@ func throw_from(
 	grenade.owner_id = userid
 	grenade.team = game.roster.team_of(userid) if userid >= 0 else ""
 	grenade.thrown_usec = game.now_usec()
-	grenade.flight = GrenadeFlight.throw_from(space, weapon_class, eye, yaw, pitch, velocity, strength, exclude_for(userid))
+	grenade.flight = GrenadeFlight.throw_from(space, weapon_class, eye, yaw, pitch, velocity, strength, exclude_for(userid), center)
 	grenade.position = grenade.flight.position
 	grenade.previous_position = grenade.position
 	grenade.decoy_weapon = _primary_of(userid)

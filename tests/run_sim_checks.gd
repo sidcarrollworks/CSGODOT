@@ -76,15 +76,18 @@ class Mortal extends PlayerSim:
 class Commanded extends PlayerSim:
 	var held := 0
 	var tap := 0
+	var tap_fraction := 0.0
 	var select := UserCmd.SELECT_NONE
 	var cycle := 0
 	var walks := false
+	var movement := Vector2.ZERO
 
 	func command_for(tick: int, dt: float) -> UserCmd:
 		var cmd := super.command_for(tick, dt)
 		cmd.buttons = held
+		cmd.move = movement
 		if tap != 0:
-			cmd.steps.append(UserCmd.SubtickStep.new(tap, true, 0.0, yaw_degrees, pitch_degrees))
+			cmd.steps.append(UserCmd.SubtickStep.new(tap, true, tap_fraction, yaw_degrees, pitch_degrees))
 			tap = 0
 		cmd.weapon_select = select
 		select = UserCmd.SELECT_NONE
@@ -134,6 +137,10 @@ func _run() -> void:
 	await _test_a_semi_automatic_fires_once_a_click()
 	await _test_the_hand()
 	await _test_noclip_fires_and_throws()
+	for fraction in [0.0, 0.001, 0.25, 0.6, 0.75, 0.999]:
+		await _test_a_jump_throw(fraction)
+	for fraction in [0.0, 0.25, 0.75]:
+		await _test_a_jump_throw(fraction, true)
 	_test_shots_are_heard_from_the_events()
 	await _test_a_running_tap_misses()
 	await _test_a_crouch_walks_at_a_third()
@@ -782,14 +789,96 @@ func _test_a_semi_automatic_fires_once_a_click() -> void:
 	await physics_frame
 
 
-## What a player carries and holds, through commands on a world's ticks: a
-## spawn's loadout, drawn on the world's clock; each gun its own, keeping its
-## rounds through a switch; asking for what is in hand leaving it as it is,
-## as Source does (no draw, not a full magazine); anything else drawn, and
-## firing only once the draw is over; a switch stopping a reload; the knife;
-## a grenade thrown from the hand; a gun dropped and picked up again with
-## its rounds; and the bomb holding the player still. Every round is the
-## game's: weapon_fire, and the hurt it does is the shooter's.
+## The real movement/hand/command path, with a subtick jump and a later
+## mouse turn before its deferred grenade release.
+func _test_a_jump_throw(fraction: float, running: bool = false) -> void:
+	var player := Commanded.new()
+	_new_player(Vector3(-1024.0, 0.0, 1024.0), "T", player)
+	player.respawn()
+	var world := GameWorld.new()
+	_world.add_child(world)
+	world.set_physics_process(false)
+	world.game.add_system(GrenadeSystem.new())
+	world.add_player(player)
+	var launch_velocities: Array[Vector3] = []
+	world.game.events.listen_all(func(event: GameEvent) -> void:
+		if event.name == &"grenade_thrown":
+			var thrown := world.game.entities.of_class("hegrenade_projectile")
+			if not thrown.is_empty():
+				launch_velocities.append((thrown[0] as GrenadeEntity).flight.velocity)
+	)
+	player.inventory.add(GrenadeRules.HE)
+	player.select = 4
+	player.held = UserCmd.ATTACK
+	await physics_frame
+	for frame in SimClock.ticks_in(1.25):
+		world.step()
+	_check(player._pin_pulled and player.on_ground, "jump fixture holds a drawn HE on the floor")
+	if running:
+		player.movement = Vector2.RIGHT
+		for frame in 16:
+			world.step()
+		_check(player.velocity.x > 150.0, "run-jump fixture accelerates through real commands before takeoff")
+		player.movement = Vector2.ZERO
+	var takeoff_height := player.global_position.y
+	player.held = 0
+	player.tap = UserCmd.JUMP
+	player.tap_fraction = fraction
+	world.step()
+	var run_speed := player.velocity.x
+	var jumped_tick := world.tick
+	var release_usec := SimClock.tick_end_usec(jumped_tick)
+	_check(player.velocity.y > 0.0 and player.grenade_throw.stash_usec == SimClock.usec_at(jumped_tick, fraction) + 100_000,
+		"an actual subtick jump schedules its snapshot 100 ms after takeoff")
+	var expected_side := 0.0
+	for frame in 10:
+		if running and player.grenade_throw.snapshot.is_empty():
+			var next_start := SimClock.tick_start_usec(world.tick + 1)
+			var remaining := player.grenade_throw.stash_usec - next_start
+			if remaining > 0 and remaining <= SimClock.tick_usec():
+				# Start perpendicular input only in the capture command. Earlier
+				# input reaches the air cap and hides a missing deferred restore.
+				player.movement = Vector2(0.0, 1.0)
+				expected_side = -minf(30.0, player.config.max_speed * 12.0 * float(remaining) / 1_000_000.0)
+		world.step()
+		if running and not player.grenade_throw.snapshot.is_empty():
+			player.movement = Vector2.ZERO
+	_check(not player.grenade_throw.snapshot.is_empty() and player.grenade_throw.jump_throw
+		and world.game.entities.of_class("hegrenade_projectile").is_empty(),
+		"movement captures the airborne snapshot while the first jump release is deferred")
+	var saved_eye: Vector3 = player.grenade_throw.snapshot.get("eye", Vector3.INF)
+	var saved_velocity: Vector3 = player.grenade_throw.snapshot.get("velocity", Vector3.INF)
+	if running:
+		_check_near(saved_velocity.x, run_speed, "the 100-ms snapshot retains the run velocity")
+		_check(expected_side < 0.0 and absf(saved_velocity.z - expected_side) < 0.002,
+			"the snapshot captures restored air acceleration at fraction %.2f (expected %.6f, got %.6f)" % [fraction, expected_side, saved_velocity.z])
+	_check_near(saved_velocity.y, 218.868, "the snapshot captures CS2's adjusted impulse after exactly 100 ms of gravity")
+	_check_near(saved_eye.y - player.eye_height() - takeoff_height, 25.8868,
+		"the snapshot's eye follows the same 100-ms arc at jump fraction %.3f" % fraction)
+	player.yaw_degrees = 180.0
+	player.pitch_degrees = -25.0
+	for frame in 5:
+		world.step()
+	var grenades := world.game.entities.of_class("hegrenade_projectile")
+	_check(grenades.size() == 1 and not player.inventory.has(GrenadeRules.HE), "the deferred jump release spawns once and consumes its grenade")
+	if grenades.size() == 1:
+		var grenade := grenades[0] as GrenadeEntity
+		_check(grenade.thrown_usec > release_usec + 200_000 and grenade.flight.velocity.z < -600.0,
+			"jump launch keeps the saved aim after the player turns around before release")
+		_check(saved_eye.is_finite() and saved_eye.y < player.global_position.y + player.eye_height(),
+			"jump launch uses the earlier airborne eye position")
+		if running:
+			# Original aim is straight down -Z, so launch X isolates inherited
+			# running velocity. Capture at spawn, before flight integration.
+			_check(launch_velocities.size() == 1 and absf(launch_velocities[0].x - run_speed * 1.25) < 0.002,
+				"the actual grenade inherits the restored run snapshot at 1.25x")
+		grenade.remove()
+	player.queue_free()
+	world.queue_free()
+	await physics_frame
+
+
+## Inventory, draw/reload/switch, hand release, drops and the bomb's hold.
 func _test_the_hand() -> void:
 	var player := Commanded.new()
 	player.starting_gun = WeaponLibrary.ak47()
@@ -985,11 +1074,17 @@ func _test_the_hand() -> void:
 	events.clear()
 	player.held = 0
 	steps.call(DT)
+	_check(released.size() == 1 and released[0] and inventory.has(GrenadeRules.HE)
+		and _named(events, &"grenade_thrown").is_empty(),
+		"release starts the underhand clip and keeps the grenade until its simulation timer expires")
+	steps.call(0.09)
+	_check(_named(events, &"grenade_thrown").is_empty(), "the grenade has not spawned before the 0.1-second release deadline")
+	steps.call(DT)
 	var thrown := _named(events, &"grenade_thrown")
 	_check(
 		released.size() == 1 and released[0] and thrown.size() == 1 and int(thrown[0].fields["userid"]) == player.userid
 			and not inventory.has(GrenadeRules.HE) and world.game.entities.of_class("hegrenade_projectile").size() == 1,
-		"let go, the right button alone throws it underhand, from the hand: grenade_thrown, the HE in the world and out of the inventory"
+		"after the release timer, the underhand HE spawns once and leaves the inventory"
 	)
 	# Not to go off at the thrower's feet.
 	for grenade in world.game.entities.of_class("hegrenade_projectile"):
@@ -1128,6 +1223,8 @@ func _test_noclip_fires_and_throws() -> void:
 	steps.call(0.2)
 	player.held = 0
 	steps.call(DT)
+	_check_equal(_named(events, &"grenade_thrown").size(), 0, "noclip preserves the grenade's hand-release delay")
+	steps.call(float(GrenadeRules.RELEASE_DELAY_USEC) / 1_000_000.0 + DT)
 	_check_equal(_named(events, &"grenade_thrown").size(), 1, "and a grenade throws")
 	for grenade in world.game.entities.of_class("hegrenade_projectile"):
 		grenade.remove()

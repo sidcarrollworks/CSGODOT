@@ -19,6 +19,41 @@ current hit-event dependencies, including the five burn-damage variants.
 PR #172 merged this pipeline and its consumers. The observations below
 retain the dates and source versions at which they were measured.
 
+## Mirage import, 2026-10-03
+
+`scripts/extract_assets.sh map de_mirage` was run against the installed CS2
+1.41.8.8 with Source 2 Viewer 20.0. The runtime loaded 3,486 visible meshes
+and 133,133 collision triangles from the separate hull: 33 world shapes,
+six player-clip shapes, one grenade-clip shape and one sky shape. Sky remains
+on layer 64 for explicit queries; grenade flight includes layer 32 and
+passes through sky as on Dust2. There were no missing map components:
+17 T and 16 CT spawns, both bomb sites and buy zones, the radar, 2,544 nav
+areas, the sky and 3D skybox, lightmaps, probes and visibility were extracted.
+Eleven blend materials cover 360 surfaces; the paint preparation fix below
+keeps Mirage's railing colours without losing the wall paint.
+The sky step reads the material's DATA and exports its referenced HDR
+texture directly. This avoids the VCS 72 shader dependency that prevents
+Source 2 Viewer 20.0 from decompiling the current sky material. The saved
+material text is original DATA, which `MapLoader.sky_file` can read as well
+as the older decompiled VMAT text.
+
+`MapSky` also reads the sky material's brightness and render-only exposure
+biases from either format, with the active `env_sky`'s brightness and tint.
+Dust2's +0.765-stop adjustment reaches the renderer through a documented
+0.75 backdrop fit; Mirage's zero bias stays neutral. The fit comes from a
+paired render, not decompiled code. Lighting, reflections and fog retain
+their previous panorama capture. Dust2's later world-exposure increase
+is countered in the visible sky pass so the approved sky brightness is
+preserved. The
+[sky audit](research/sky-brightness-2026-10-03.md) records the extracted values,
+current-client Ghidra confirmation and corrected HDR screenshot comparison.
+
+For local lineup testing, run `--map de_mirage --mode practice` with the
+existing game or grenade watcher. Practice enables the actual grenade
+trails and bounce markers. This import supplies another map for comparison;
+it does not establish CS2 trajectory parity or resolve the Dust2 mid-door
+landmark/camera mismatch recorded in the movement audit.
+
 ## Tool
 
 [Source 2 Viewer / ValveResourceFormat](https://github.com/ValveResourceFormat/ValveResourceFormat),
@@ -38,8 +73,8 @@ dust2's paths are the ones they always were. `map <name>` is the one step
 that runs all of a map's steps (and the shared surfaces tables, which cost
 seconds). `paths <name>` prints where a map's files land, without CS2;
 `MapPaths` (`src/map/map_paths.gd`) derives the same, which
-`tests/run_map_mode_checks.gd` holds it to. The map rows below are dust2's,
-the one map measured so far.
+`tests/run_map_mode_checks.gd` holds it to. The map rows below are Dust2's;
+Mirage's import counts are recorded above.
 
 Shared content has separate steps: `effects` for muzzle flashes/tracers,
 `impacts` for current blood/helmet/world feedback, `character-animations`
@@ -125,11 +160,17 @@ What dust2 turned out to be:
   footsteps, penetration and grenades will want. Player clips do survive, so
   no hand-authored clip layer is needed; but they must stop players only.
   The importer puts `playerclip` and `passbullets` parts in a body of their
-  own on collision layer 4 (`MapImporter.PLAYER_CLIP_LAYER`), which the
+  own on collision layer 8 (`MapImporter.PLAYER_CLIP_LAYER`), which the
   players' movement collides with and rounds, bots' sight and footstep
   traces do not. In with the rest they stopped rounds on thin air: 10 units
   in front of B site's back wall, 2.5 in front of its stacked blocks, with
-  the bullet holes printed on nothing. Grenade clips are left out entirely.
+  the bullet holes printed on nothing. Grenade clips are retained separately
+  on layer 32. `physics_sky` is retained on layer 64 for explicit sky queries;
+  its conditional `sky` interaction is not ordinary world solidity. Grenades
+  pass through it, as the installed game's collision mask requires. Both
+  already come from `world_physics.vmdl_c`; no separate grenade skybox export
+  is needed. [The clipping audit](research/grenade-sky-clipping-2026-10-02.md)
+  records the archive comparison and recovered interaction bits.
 - **Tool and effect geometry comes along** in the visible world: light
   blockers spanning the whole map, light shafts, steam cards. Every material
   carries its vmat path and shader flags as glTF extras, and the importer hides
@@ -170,6 +211,11 @@ What dust2 turned out to be:
     conversion. The first component is the weight; the other three are equal
     to each other, differ from the first on 13% of vertices, and are not used
     by this shader.
+    Mirage's export also has six `metalrail011a` primitives with both paint
+    and existing vertex colour. The prepare step preserves those primitives
+    and renames the paint on the other 349, rather than skipping the entire
+    world. It edits only attribute text, preserving integer accessors and
+    the original colour on the railings.
   - `src/map/blend_material.gdshader` follows Source 2 Viewer's implementation
     of the same shader (`complex.frag.slang`, `ApplyBlendModulation`): weight
     from the paint's first component, mask from the blend texture's green,

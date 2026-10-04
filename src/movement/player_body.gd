@@ -72,11 +72,14 @@ class TraceResult:
 	var normal: Vector3
 	## Positional depenetration belongs in travel, but consumes no move time.
 	var recovery: Vector3
+	## The actual supporting entity, not a world-only probe beside it.
+	var is_world: bool
 
-	func _init(p_travel: Vector3, p_normal: Vector3, p_recovery: Vector3 = Vector3.ZERO) -> void:
+	func _init(p_travel: Vector3, p_normal: Vector3, p_recovery: Vector3 = Vector3.ZERO, p_is_world: bool = false) -> void:
 		travel = p_travel
 		normal = p_normal
 		recovery = p_recovery
+		is_world = p_is_world
 
 	func get_travel() -> Vector3:
 		return travel
@@ -108,8 +111,9 @@ const STEP_FUNCTIONS: Array[StringName] = [
 	&"_simulate_step", &"_ground_known", &"_update_duck", &"_duck_height_delta", &"_finish_duck",
 	&"_finish_unduck", &"_can_unduck", &"_try_jump", &"_walk_move", &"_stay_on_ground",
 	&"_stay_on_native_ground", &"_air_move", &"_step_move", &"_horizontal_distance", &"_trace_move",
-	&"_try_player_move", &"_categorize_position", &"_trace", &"_cast_from", &"_cast_hull",
+	&"_try_player_move", &"_try_step", &"_categorize_position", &"_trace", &"_cast_from", &"_cast_hull",
 	&"_recovery_blocked_by_player", &"_recover_trace_start", &"_ground_normal_in_quadrants",
+	&"_apply_ground_friction", &"_defer_acceleration", &"_stop_movement",
 ]
 
 ## Whether the step is run in native code where it can be: the library
@@ -134,6 +138,9 @@ static var _own_functions: Dictionary = {}
 
 var on_ground: bool = false
 var ground_normal: Vector3 = Vector3.UP
+## CS2 enables topology eyes on world support, never another player or a
+## moving platform. Taken from the existing grounding trace, with no probe.
+var ground_is_world: bool = false
 
 ## True once the hull has actually shrunk, which is not the same as holding the
 ## duck key: on the ground the hull only changes after duck_time has elapsed.
@@ -151,13 +158,18 @@ var noclip: bool = false
 ## horizontal; with noclip on it carries the full 3D fly direction.
 var wish_dir: Vector3 = Vector3.ZERO
 var wish_speed: float = 0.0
-## The speed ground acceleration works from when it is above wish_speed:
-## the held item's, where a crouch keeps wish_speed to a third of it
-## (MovementSolver.accelerate). At a crouched rifle's 73, below
-## sv_stopspeed's 80, friction takes 6.5 u/s a tick and acceleration from
-## 73 adds only 6.3, so the player ground to a stop. Nothing below
-## wish_speed changes anything.
+## Explicit ground acceleration scale, independent of the speed target.
+## PlayerSim supplies CS2's 250 * 0.34 crouch scale: slower than a standing
+## burst, but large enough to overcome stop friction for a crouched rifle.
+## Zero lets plain bodies accelerate from wish_speed.
 var acceleration_speed: float = 0.0
+## Per movement segment: CS2's combined acceleration (+0x108), the velocity
+## restored after collision (+0x114), and friction overshoot (+0x128).
+## Ordinary contact clips only velocity; a hard stop clears velocity,
+## acceleration and deferred velocity (overshoot is reset next segment).
+var _move_acceleration := Vector3.ZERO
+var _deferred_velocity := Vector3.ZERO
+var _friction_overshoot: float = 0.0
 var wants_jump: bool = false
 var wants_duck: bool = false
 
@@ -166,9 +178,19 @@ var wants_duck: bool = false
 ## MovementConfig.subtick_jump.
 var jump_fraction: float = -1.0
 
+## An additional movement boundary this tick, or -1. A grenade snapshot
+## uses it to finish a real collision step exactly at its deadline.
+var movement_fraction: float = -1.0
+
 ## Previous tick's position, so the camera can interpolate between physics
 ## ticks instead of stuttering at the 64 Hz tick boundary.
 var previous_position: Vector3 = Vector3.ZERO
+
+## Eye/root adjustment belongs to movement, so snapshots and every view
+## read the same completed state. GroundEyes queries only during movement;
+## eye_height() is a pure read, including when bots think on worker threads.
+var ground_eyes := GroundEyes.new()
+var previous_eye_height: float = 64.0
 
 ## How many times the hull has been traced: most of what a tick costs, at
 ## tens of microseconds a trace on dust2, counted so the checks can hold the
@@ -216,6 +238,10 @@ var _native: Box3DDrops
 var _floor_at := Vector3.INF
 var _floor_with := 0.0
 var _floor_normal := Vector3.UP
+var _floor_is_world := false
+## The quadrant fallback shares its helper with native movement. Its owner
+## flag travels beside the normal without repeating those four rays.
+var _quadrant_is_world := false
 ## The native code's mover, made the first time a step can be run by it.
 var _mover: Object
 ## Has the native code step this body though its script has its own of the
@@ -323,6 +349,7 @@ func _ready() -> void:
 		_collision_shape.shape = _collision_shape.shape.duplicate()
 	_set_hull(config.stand_height)
 	previous_position = global_position
+	reset_eye_state()
 	# We run our own gravity in Source units, and our own collide-and-slide.
 	motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
 	# Player clips stop bodies, not rounds: they are on a layer of their own.
@@ -338,19 +365,16 @@ func _find_collision_shape() -> CollisionShape3D:
 
 ## Advances one simulation tick.
 ##
-## The order below is Source's FullWalkMove, and the order matters:
+## Ordinary CS2 movement uses a shared deferred half-step:
 ##
-##   1. half gravity      (StartGravity)
-##   2. jump check        (CheckJumpButton)
-##   3. zero vertical speed and apply friction, if still on the ground
-##   4. walk move or air move
-##   5. re-categorise ground
-##   6. half gravity      (FinishGravity)
+##   1. jump check
+##   2. ground friction/acceleration, or split air acceleration and gravity
+##   3. transfer half continuous acceleration to deferred velocity
+##   4. collision movement and deferred restoration
+##   5. re-categorise ground and clear grounded vertical state
 ##
-## Splitting gravity into two halves around the move is velocity Verlet, and
-## it is the reason a jump peaks at the same height no matter what the tick
-## rate is. Applying it all at once would make jump height drift with tick
-## rate, which would quietly change how every ledge in the game plays.
+## Gravity shares the collision state, rather than applying another
+## independent half afterward. A hard stop can clear its deferred half.
 ##
 ## A jump pressed part-way through the tick splits the tick in two and runs
 ## both halves, so the impulse lands at the instant it was pressed. CS2 does
@@ -358,14 +382,18 @@ func _find_collision_shape() -> CollisionShape3D:
 ## when you pressed them rather than up to a tick later.
 func simulate(dt: float) -> void:
 	previous_position = global_position
+	previous_eye_height = eye_height()
 	# This is only a hint between sweeps of one tick, not replay state.
 	_native_recovery_direction = Vector3.UP
 
 	if noclip:
+		reset_eye_state()
 		velocity = wish_dir * config.noclip_speed
 		global_position += velocity * dt
 		on_ground = false
+		ground_is_world = false
 		jump_fraction = -1.0
+		movement_fraction = -1.0
 		height_above_ground = INF
 		if _native_physics() != null:
 			_native.queries.sync_object(self, false)
@@ -395,20 +423,41 @@ func simulate(dt: float) -> void:
 		# down, so the impulse happens at the fraction it was pressed at.
 		var pressed := wants_jump
 		wants_jump = false
-		_step(mover, dt * jump_fraction)
+		_movement_interval(mover, dt, 0.0, jump_fraction)
 		wants_jump = pressed
-		_step(mover, dt * (1.0 - jump_fraction))
+		_movement_interval(mover, dt, jump_fraction, 1.0)
 	else:
-		_step(mover, dt)
+		_movement_interval(mover, dt, 0.0, 1.0)
 
 	_jump_held_last_tick = wants_jump
 	jump_fraction = -1.0
+	movement_fraction = -1.0
 	_update_air(was_on_ground)
 	if _adapter != null:
 		_adapter.queries.end_scope()
 		# Later players and shots in this same tick see the completed movement.
 		_adapter.queries.sync_object(self, false)
 	_adapter = null
+
+
+func _movement_interval(mover: Object, dt: float, start: float, end: float) -> void:
+	if movement_fraction > start and movement_fraction < end:
+		var boundary := movement_fraction
+		_step(mover, dt * (boundary - start))
+		ground_eyes.update(self, dt * (boundary - start))
+		_movement_finished(start, boundary)
+		_step(mover, dt * (end - boundary))
+		ground_eyes.update(self, dt * (end - boundary))
+		_movement_finished(boundary, end)
+	else:
+		_step(mover, dt * (end - start))
+		ground_eyes.update(self, dt * (end - start))
+		_movement_finished(start, end)
+
+
+## Called outside _step: native/script comparison must not save state twice.
+func _movement_finished(_start: float, _end: float) -> void:
+	pass
 
 
 ## The native code's mover when this tick's steps can be run by it, else
@@ -503,10 +552,14 @@ func _native_step(mover: Object, dt: float) -> void:
 func _step_state() -> Dictionary:
 	return {
 		"position": global_position, "velocity": velocity, "on_ground": on_ground,
-		"ground_normal": ground_normal, "is_ducked": is_ducked, "duck_progress": duck_progress,
+		"move_acceleration": _move_acceleration, "deferred_velocity": _deferred_velocity,
+		"friction_overshoot": _friction_overshoot,
+		"ground_normal": ground_normal, "ground_is_world": ground_is_world,
+		"is_ducked": is_ducked, "duck_progress": duck_progress,
 		"jumped": _jumped, "looked_from": _looked_from, "looked_with": _looked_with,
 		"hull_height": _hull_height, "floor_at": _floor_at, "floor_with": _floor_with,
-		"floor_normal": _floor_normal, "recovery_direction": _native_recovery_direction,
+		"floor_normal": _floor_normal, "floor_is_world": _floor_is_world,
+		"quadrant_is_world": _quadrant_is_world, "recovery_direction": _native_recovery_direction,
 		"last_recovery": _last_native_trace_recovery, "traces": traces,
 	}
 
@@ -516,8 +569,12 @@ func _restore_step_state(state: Dictionary) -> void:
 		_set_hull(state["hull_height"])
 	global_position = state["position"]
 	velocity = state["velocity"]
+	_move_acceleration = state["move_acceleration"]
+	_deferred_velocity = state["deferred_velocity"]
+	_friction_overshoot = state["friction_overshoot"]
 	on_ground = state["on_ground"]
 	ground_normal = state["ground_normal"]
+	ground_is_world = state["ground_is_world"]
 	is_ducked = state["is_ducked"]
 	duck_progress = state["duck_progress"]
 	_jumped = state["jumped"]
@@ -526,6 +583,8 @@ func _restore_step_state(state: Dictionary) -> void:
 	_floor_at = state["floor_at"]
 	_floor_with = state["floor_with"]
 	_floor_normal = state["floor_normal"]
+	_floor_is_world = state["floor_is_world"]
+	_quadrant_is_world = state["quadrant_is_world"]
 	_native_recovery_direction = state["recovery_direction"]
 	_last_native_trace_recovery = state["last_recovery"]
 	traces = state["traces"]
@@ -605,6 +664,9 @@ func _update_air(was_on_ground: bool) -> void:
 
 ## One (possibly partial) simulation step. This is Source's FullWalkMove.
 func _simulate_step(dt: float) -> void:
+	_move_acceleration = Vector3.ZERO
+	_deferred_velocity = Vector3.ZERO
+	_friction_overshoot = 0.0
 	if not _ground_known():
 		_categorize_position()
 	_update_duck(dt)
@@ -615,16 +677,11 @@ func _simulate_step(dt: float) -> void:
 
 	velocity = MovementSolver.check_velocity(velocity, config)
 
-	# StartGravity.
-	velocity.y -= config.gravity * 0.5 * dt
-
 	_try_jump(dt)
 
 	if on_ground:
 		velocity.y = 0.0
-		velocity = MovementSolver.apply_friction(
-			velocity, true, surface_friction, config, dt
-		)
+		_apply_ground_friction(surface_friction, dt)
 
 	if on_ground:
 		_walk_move(surface_friction, dt)
@@ -633,12 +690,47 @@ func _simulate_step(dt: float) -> void:
 
 	_categorize_position()
 
-	# FinishGravity.
-	velocity.y -= config.gravity * 0.5 * dt
 	if on_ground:
 		velocity.y = 0.0
+		_move_acceleration.y = 0.0
+		_deferred_velocity.y = 0.0
 
 	velocity = MovementSolver.check_velocity(velocity, config)
+
+
+func _apply_ground_friction(surface_friction: float, dt: float) -> void:
+	var speed := velocity.length()
+	var rate := MovementSolver.friction_rate(speed, surface_friction, config)
+	if speed <= 0.0 or dt <= 0.0 or rate <= 0.0:
+		return
+	var drop := rate * dt
+	_friction_overshoot = maxf(drop - speed, 0.0)
+	_move_acceleration -= (velocity / speed) * minf(rate, speed / dt)
+	velocity *= maxf(speed - drop, 0.0) / speed
+
+
+## Move at the half-step velocity, then restore this same state after
+## collision. Gravity uses this vector too; there is no second finish-gravity.
+func _defer_acceleration(dt: float) -> void:
+	var half := _move_acceleration * dt * 0.5
+	velocity -= half
+	_deferred_velocity += half
+
+
+func _stop_movement() -> void:
+	velocity = Vector3.ZERO
+	_move_acceleration = Vector3.ZERO
+	_deferred_velocity = Vector3.ZERO
+
+
+## An unsupported completed move stopped by collision. Under positive
+## gravity, normal flight (including a zero-velocity apex) retains gravity
+## in acceleration/deferred state; only a hard stop clears all three.
+## Bot recovery can sample this state without another collision query.
+func blocked_air_move() -> bool:
+	return not on_ground and not noclip and config.gravity > 0.0 \
+		and _ground_known() and velocity == Vector3.ZERO \
+		and _move_acceleration == Vector3.ZERO and _deferred_velocity == Vector3.ZERO
 
 
 ## Whether the ground the last move found is still what is under the body,
@@ -735,17 +827,31 @@ func _set_hull(height: float) -> void:
 	PhysicsQueries.sync_object(self)
 
 
-## The eye offset above the feet for the current duck state.
+## The simulation eye offset above the feet, including the terrain/root
+## adjustment already updated at the movement segment's end.
 ##
 ## Splined rather than linear, because Source runs duck_progress through
 ## SimpleSpline before SetDuckedEyeOffset (gamemovement.cpp:4421). Ducking is
 ## constant in CS, so an ease is a visible difference from a slide.
 func eye_height() -> float:
-	return lerpf(
+	return ground_eyes.height(lerpf(
 		config.stand_eye_height,
 		config.duck_eye_height,
 		MovementSolver.simple_spline(duck_progress)
-	)
+	))
+
+
+## The same temporal sample as previous_position.lerp(global_position).
+## Interpolating only the feet would leave terrain/crouch eyes a tick ahead.
+func interpolated_eye_height(fraction: float) -> float:
+	return lerpf(previous_eye_height, eye_height(), clampf(fraction, 0.0, 1.0))
+
+
+## A spawn or teleport must not carry the previous floor's residual or
+## sample cache, nor interpolate from the old location's eye adjustment.
+func reset_eye_state() -> void:
+	ground_eyes.reset()
+	previous_eye_height = eye_height()
 
 
 ## Jumping requires a fresh press unless auto bunnyhop is on, which is the CS2
@@ -759,11 +865,16 @@ func _try_jump(dt: float) -> void:
 	velocity = MovementSolver.clamp_bunnyhop(velocity, config)
 	velocity.y = config.jump_impulse
 	_jumped = true
-	if config.tick_rate_independent_jump:
-		# Put back the leading half-step of gravity that the impulse just
-		# overwrote. See MovementConfig.tick_rate_independent_jump.
-		velocity.y -= config.gravity * 0.5 * dt
+	if config.cs2_jump:
+		# CS2 sets impulse - gravity * 0.5 * (1/128), then applies full
+		# gravity through the same deferred state as horizontal acceleration.
+		velocity.y -= config.gravity * 0.5 / 128.0
+	elif not config.tick_rate_independent_jump:
+		# Compatibility: Source 1 overwrote StartGravity with its impulse,
+		# so its first move travelled at the full impulse.
+		velocity.y += config.gravity * 0.5 * dt
 	on_ground = false
+	ground_is_world = false
 
 
 func _walk_move(surface_friction: float, dt: float) -> void:
@@ -776,27 +887,43 @@ func _walk_move(surface_friction: float, dt: float) -> void:
 		if dir.length_squared() > 0.0:
 			dir = dir.normalized()
 
-	# Faster crouch acceleration must not turn sideways momentum into
-	# extra speed. Keep any speed left after friction when crouching from
+	# Crouch acceleration must not turn sideways momentum into extra speed.
+	# Keep any speed left after friction when crouching from
 	# a run, so the crouch still slows gradually rather than snapping down.
 	var speed_limit := INF
-	if acceleration_speed > wish_speed:
+	if acceleration_speed > wish_speed or (acceleration_speed > 0.0 and duck_progress > 0.0):
 		speed_limit = maxf(wish_speed, velocity.length())
-	velocity = MovementSolver.accelerate(
-		velocity, dir, wish_speed, config.accelerate, surface_friction, dt, acceleration_speed
+	var rate := MovementSolver.ground_acceleration_rate(
+		velocity, dir, wish_speed, config.accelerate, surface_friction, dt,
+		acceleration_speed, _friction_overshoot
 	)
+	_move_acceleration += dir * rate
+	velocity += dir * (rate * dt)
 	velocity.y = 0.0
+	_move_acceleration.y = 0.0
+	_deferred_velocity.y = 0.0
 	var speed := velocity.length()
 	if speed > speed_limit:
+		var before_cap := velocity
 		velocity *= speed_limit / speed
-		speed = velocity.length()
-	# Source's WalkMove stops anyone slower than a unit a second dead where
-	# they stand (gamemovement.cpp, WalkMove: spd < 1.0f), and traces nothing
-	# for them: a player standing still costs no trace here.
-	if speed < 1.0:
-		velocity = Vector3.ZERO
+		if dt > 0.0:
+			_move_acceleration += (velocity - before_cap) / dt
+	_defer_acceleration(dt)
+	# CS2 predicts toward its fixed 64-Hz interval for the <1 u/s stop;
+	# for a whole tick this is the final speed, for a subtick it is not.
+	var predicted := velocity + _move_acceleration * (1.0 / 64.0 - dt * 0.5)
+	if predicted.length() < 1.0:
+		_stop_movement()
 		return
-	_step_move(dt)
+	var start := global_position
+	var midpoint := velocity
+	if not _step_move(dt):
+		var midpoint_speed := midpoint.length()
+		if midpoint_speed > 0.0 and midpoint_speed < config.step_move_velocity_min and wish_dir != Vector3.ZERO:
+			# WalkMove retries only the raised path, using the saved midpoint
+			# start. Cleared acceleration/deferred state stays cleared.
+			_try_step(dt, start, midpoint * (config.step_move_velocity_min / midpoint_speed))
+	velocity += _deferred_velocity
 	_stay_on_ground()
 
 
@@ -872,6 +999,7 @@ func _stay_on_native_ground() -> void:
 		# Nothing to stand on within a step.
 		return
 	var normal: Vector3 = hit["normal"]
+	var world_ground := _is_world_ground(hit.get("collider"))
 	var landing: Vector3
 	if normal.is_zero_approx():
 		# Something over its head where it would start: from where it
@@ -881,6 +1009,7 @@ func _stay_on_native_ground() -> void:
 			global_position = start + _last_native_trace_recovery
 			return
 		normal = collision.get_normal()
+		world_ground = collision.is_world
 		landing = start + collision.get_travel()
 	elif not MovementSolver.is_walkable(normal, config):
 		return
@@ -890,21 +1019,33 @@ func _stay_on_native_ground() -> void:
 	_floor_at = global_position
 	_floor_with = _hull_height
 	_floor_normal = normal
+	_floor_is_world = world_ground
 
 
 func _air_move(surface_friction: float, dt: float) -> void:
-	velocity = MovementSolver.air_accelerate(
-		velocity, wish_dir, wish_speed, config.air_accelerate,
-		surface_friction, config, dt
-	)
+	var available := minf(wish_speed, config.air_max_wishspeed) - velocity.dot(wish_dir)
+	if available > 0.0 and dt > 0.0:
+		# The cap applies separately to the two halves, not to a full
+		# addition that is then averaged (server 180ab07c0).
+		var half := wish_speed * config.air_accelerate * surface_friction * dt * 0.5
+		var before := minf(available, half)
+		var after := minf(available - before, half)
+		velocity += wish_dir * before
+		_deferred_velocity += wish_dir * after
+	# AddGravity (180ab0670), followed by the same half-step transfer used
+	# on the ground. Collision can clear its deferred half on a hard stop.
+	velocity.y -= config.gravity * dt
+	_move_acceleration.y -= config.gravity
+	_defer_acceleration(dt)
 	_try_player_move(dt)
+	velocity += _deferred_velocity
 
 
 ## Source's StepMove. Run the move flat, then run it again stepping up and back
 ## down, and keep whichever covered more ground horizontally. This is what
 ## walks you up stairs without a ramp under them, and it is why the result is
 ## compared rather than the step always being preferred.
-func _step_move(dt: float) -> void:
+func _step_move(dt: float) -> bool:
 	var start_position := global_position
 	var start_velocity := velocity
 
@@ -912,7 +1053,13 @@ func _step_move(dt: float) -> void:
 	# takes it before ever trying the step: the stepped one could go no
 	# further, so it is only tried against something in the way.
 	if not _try_player_move(dt):
-		return
+		return true
+	return _try_step(dt, start_position, start_velocity)
+
+
+## The raised candidate only. CS2 calls it a second time after a failed
+## low-speed step; repeating the flat move would clip state twice.
+func _try_step(dt: float, start_position: Vector3, start_velocity: Vector3) -> bool:
 	var flat_position := global_position
 	var flat_velocity := velocity
 
@@ -935,7 +1082,8 @@ func _step_move(dt: float) -> void:
 	# otherwise we would happily "step" onto a surf ramp. What it landed on
 	# is what the trace down met, as Source reads it (StepMove: the down
 	# trace's plane normal), not a trace of its own.
-	var landed_walkable := landing != null and MovementSolver.is_walkable(landing.get_normal(), config)
+	var landed_walkable := landing != null and (landing.travel - landing.recovery).dot(Vector3.DOWN) > 0.0 \
+		and MovementSolver.is_walkable(landing.get_normal(), config)
 
 	if step_distance > flat_distance and landed_walkable:
 		# Source takes the stepped path but keeps the FLAT move's vertical
@@ -948,9 +1096,12 @@ func _step_move(dt: float) -> void:
 			_floor_at = global_position
 			_floor_with = _hull_height
 			_floor_normal = landing.get_normal()
-		return
+			_floor_is_world = landing.is_world
+		return true
 	global_position = flat_position
 	velocity = flat_velocity
+	# A valid landing suppresses the retry even when the flat path wins.
+	return landed_walkable
 
 
 func _horizontal_distance(a: Vector3, b: Vector3) -> float:
@@ -1008,7 +1159,7 @@ func _try_player_move(dt: float) -> bool:
 		time_left -= time_left * fraction
 
 		if planes.size() >= MAX_CLIP_PLANES:
-			velocity = Vector3.ZERO
+			_stop_movement()
 			break
 
 		var normal := collision.get_normal()
@@ -1045,12 +1196,12 @@ func _try_player_move(dt: float) -> bool:
 
 			if not resolved:
 				if planes.size() != 2:
-					velocity = Vector3.ZERO
+					_stop_movement()
 					break
 				# Two planes forming a crease: slide along their intersection.
 				var crease := planes[0].cross(planes[1])
 				if crease.length_squared() == 0.0:
-					velocity = Vector3.ZERO
+					_stop_movement()
 					break
 				crease = crease.normalized()
 				velocity = crease * crease.dot(velocity)
@@ -1058,11 +1209,13 @@ func _try_player_move(dt: float) -> bool:
 			# If clipping reversed us relative to where we wanted to go, stop
 			# rather than getting shot backwards out of a corner.
 			if velocity.dot(primal_velocity) <= 0.0:
-				velocity = Vector3.ZERO
+				_stop_movement()
 				break
 
-	if all_fraction == 0.0:
-		velocity = Vector3.ZERO
+	# A stationary half-step can still have velocity waiting to be restored
+	# (notably the exact jump apex). Only a blocked move clears that state.
+	if all_fraction == 0.0 and met_something:
+		_stop_movement()
 	return met_something
 
 
@@ -1073,6 +1226,7 @@ func _categorize_position() -> void:
 	# what bounds the dead-strafe friction zone.
 	if velocity.y > config.non_jump_velocity:
 		on_ground = false
+		ground_is_world = false
 		ground_normal = Vector3.UP
 		_looked_from = Vector3.INF
 		_floor_at = Vector3.INF
@@ -1082,6 +1236,7 @@ func _categorize_position() -> void:
 		# own, which is the sweep this would make.
 		on_ground = true
 		ground_normal = _floor_normal
+		ground_is_world = _floor_is_world
 		_looked_from = global_position
 		_looked_with = _hull_height
 		_floor_at = Vector3.INF
@@ -1092,6 +1247,7 @@ func _categorize_position() -> void:
 		Vector3.DOWN * GROUND_TRACE_DISTANCE, true
 	)
 	var normal := Vector3.ZERO
+	var world_ground := collision != null and collision.is_world
 	# Where the trace stopped, which is where moving down would stop.
 	var travel := Vector3.ZERO
 	if collision != null:
@@ -1103,8 +1259,10 @@ func _categorize_position() -> void:
 		# four sub-boxes of the hull before giving up, so that standing with
 		# most of yourself off a crate edge keeps you on the crate.
 		normal = _ground_normal_in_quadrants()
+		world_ground = _quadrant_is_world
 		if normal == Vector3.ZERO:
 			on_ground = false
+			ground_is_world = false
 			ground_normal = Vector3.UP
 			_looked_from = global_position
 			_looked_with = _hull_height
@@ -1112,6 +1270,7 @@ func _categorize_position() -> void:
 
 	on_ground = true
 	ground_normal = normal
+	ground_is_world = world_ground
 	# Snap down onto the surface so we do not hover a fraction above it: by
 	# the trace's own travel when the centre met something, rather than
 	# tracing the same move again; moved when only a corner found the ground.
@@ -1134,7 +1293,8 @@ func _trace(motion: Vector3, test_only: bool = false) -> TraceResult:
 	if adapter == null:
 		traces += 1
 		var collision := move_and_collide(motion, test_only)
-		return TraceResult.new(collision.get_travel(), collision.get_normal()) if collision != null else null
+		return TraceResult.new(collision.get_travel(), collision.get_normal(), Vector3.ZERO,
+			_is_world_ground(collision.get_collider())) if collision != null else null
 	if _collision_shape == null or _collision_shape.shape == null:
 		if not test_only:
 			global_position += motion
@@ -1183,7 +1343,13 @@ func _trace(motion: Vector3, test_only: bool = false) -> TraceResult:
 		global_position += travel
 		# The next query that can hit this body refreshes its proxy. Our own
 		# next sweep excludes it; simulate publishes the final pose once.
-	return TraceResult.new(travel, hit["normal"], recovery) if not hit.is_empty() else null
+	return TraceResult.new(travel, hit["normal"], recovery, _is_world_ground(hit.get("collider"))) if not hit.is_empty() else null
+
+
+## The map importer and bare fixtures author fixed world geometry as
+## StaticBody3D. AnimatableBody3D inherits it, but is a moving entity.
+static func _is_world_ground(collider: Object) -> bool:
+	return collider is StaticBody3D and not collider is AnimatableBody3D
 
 
 ## What every sweep of the hull asks alike: its shape, its margin, what it
@@ -1313,6 +1479,7 @@ func _ground_normal_in_quadrants() -> Vector3:
 ## The same for a body standing at `at`: the native step asks from where it
 ## has the body, which the node is told when the step is over.
 func _ground_normal_in_quadrants_at(at: Vector3) -> Vector3:
+	_quadrant_is_world = false
 	var space := get_world_3d().direct_space_state
 	if space == null:
 		return Vector3.ZERO
@@ -1336,5 +1503,6 @@ func _ground_normal_in_quadrants_at(at: Vector3) -> Vector3:
 			continue
 		var normal: Vector3 = hit["normal"]
 		if MovementSolver.is_walkable(normal, config):
+			_quadrant_is_world = _is_world_ground(hit.get("collider"))
 			return normal
 	return Vector3.ZERO

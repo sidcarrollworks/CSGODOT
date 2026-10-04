@@ -27,6 +27,7 @@ const ACTIONS := {
 	&"lastinv": [KEY_Q],
 	&"drop": [KEY_G],
 	&"use": [KEY_E],
+	&"showscores": [KEY_TAB],
 	&"export_spray": [KEY_P],
 	&"reset_range": [KEY_O],
 }

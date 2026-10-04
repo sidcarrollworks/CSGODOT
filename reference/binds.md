@@ -57,16 +57,19 @@ console on a fresh config (Local, below).
 PAGE DOWN and the keypad; MOUSE5. (F12 is Steam's screenshot key, so
 leave it.) Test and debug actions go only on these.
 
-## Current implementation status, 2026-10-02
+## Current implementation status, 2026-10-03
 
 The shared input map is built. Mouse 1 fires, slashes, throws or plants;
 Mouse 2 scopes, stabs or lobs. E defuses, takes/swaps eligible ground guns
 and grenades, picks up the dropped bomb or takes it from a teammate bot.
 The HUD uses the same selection for pickup/swap prompts (PR #163).
+Holding Tab shows the competitive scoreboard (`+showscores`, #175).
 Wheel-down cycles inventory and wheel-up jumps. F11 on competitive or
 practice maps cycles rendering comparisons. The README and
 [test-map guide](test-maps.md) list the current gameplay and debug keys.
 The bindings/settings UI remains open.
+Startup team selection and expanded spectator controls remain in open
+PRs #178 and #177; the historical migration plan below is not their merge status.
 
 ## Historical key audit and migration plan, 2026-09-24
 
@@ -123,10 +126,9 @@ The table takes those over as it takes the rest.
 
 Still to adopt from CS2's list as the systems arrive (3, Q `lastinv` and
 G `drop` came with the inventory, MWHEELDOWN `invnext` with playtest issue
-15): 6 to 0 and X
-(each grenade and the Zeus), F `+lookatweapon`, TAB (item 15's
-scoreboard), `,` `.` DEL F4 (buying's extras), `` ` `` (the console,
-`systemization.md` step 4).
+15, TAB `+showscores` with item 15's scoreboard): 6 to 0 and X
+(each grenade and the Zeus), F `+lookatweapon`, `,` `.` DEL F4 (buying's
+extras), `` ` `` (the console, `systemization.md` step 4).
 Radio, chat, pings and graffiti are under "Later" in the roadmap.
 
 ## The system

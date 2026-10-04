@@ -1,9 +1,40 @@
 # What everything costs, and what going online will
 
+The [3 October horizontal-integration follow-up](research/horizontal-integration-2026-10-03.md#validation-and-performance)
+records the ordinary movement port's paired ten-player Dust2 comparison:
+**2.661 vs 2.5505 ms per tick**, an increase of **0.1105 ms (4.3%)** with
+terrain sampling active in both builds. Mean hull traces rise from 45.47
+to 46.35; the report records changed paths, bounded stair retries and the
+limits of attributing aggregate cost. This is headless simulation cost;
+rendered-frame acceptance and the 6-ms maximum target remain open.
+
+The [3 October terrain-eye measurements](research/terrain-eyes-2026-10-03.md#performance)
+record the new shared simulation sampler: the paired ten-player Dust2
+fixture adds **0.693 ms per tick** on average (2.6155 vs 1.9225 ms with the
+sampler disabled). Stationary cached positions issue no additional casts;
+moving near failed sample cells retries them. `scripts/profile_ground_eyes.gd`
+repeats the comparison. This is headless simulation cost; rendered-frame
+acceptance and the 6-ms maximum target remain open.
+
+The [2 October grenade-port measurements](research/grenade-port-2026-10-02.md#performance)
+record the added box substep and body check: about 0.051 ms per moving
+grenade in a ten-grenade Dust2 fixture. The moving-round comparison showed
+no regression in its measured window; combat, rendering and CS2 lineup
+comparison remain separate checks.
+
 The [2 October hit-effects measurements](research/hit-effects-performance-2026-10-02.md)
 record the current blood/impact renderer at 1080p and 4K: sustained close-up
 hits add measurable CPU particle-evaluation cost, with the remaining stress
 limit and the repeatable `scripts/profile_hits.gd` fixture documented there.
+
+[Where the slow frames come from](research/frame-consistency-audit-2026-10-02.md)
+(2026-10-02, merged in #182): Sid's play split by what happened in each
+second. The capture averaged 5.17 ms after subtracting watcher overhead;
+quiet seconds averaged 4.88 ms, seconds with shots 6.06 ms and seconds
+with deaths 6.75 ms. These describe the recorded capture, not a new run
+after #184–185. The page ranks measured and estimated improvements;
+#182 corrects the audit and profiling fixtures rather than completing
+the proposed runtime optimizations. The 6 ms maximum target remains open.
 
 For the tick as it is on Box3D, see [the walking hitch, and the tick after
 it](research/box3d-walking-hitch-2026-09-28.md) (2026-09-28: ten players

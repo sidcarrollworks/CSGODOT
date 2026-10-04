@@ -1,5 +1,9 @@
 # Box3D physics trial
 
+**Current installation (2026-10-02):** both libraries are built from pinned
+source with the projectile patch; see Setup below. The trial results and
+September installation discussion below are historical.
+
 **Status (2026-09-28).** Sid chose Box3D as the game's physics going forward;
 this page keeps the trial's record. Two choices came with it:
 
@@ -61,33 +65,19 @@ which requires Godot 4.7. From the trial checkout, run:
 powershell -ExecutionPolicy Bypass -File scripts/install_box3d.ps1
 ```
 
-The installer downloads the release's `box3d-addon-v0.4.3.zip`, verifies
-its pinned SHA-256, and installs `addons/box3d/`. Restart Godot after
-installation. Binary libraries are ignored by Git; the installer makes
-the dependency reproducible. The release includes Windows x86-64 debug
-and release DLLs, Linux, Android and web libraries; macOS needs a source
-build.
+The current installer builds the pinned source with our opt-in projectile
+query patch, for both debug and release. It needs Git, Python 3 and a C/C++
+compiler (VS C++ Build Tools on Windows). Windows/Linux x86-64 are locally
+supported; macOS builds are available but untested here. The checksum-verified
+release zip supplies resources only. Compilation is cached under `.godot/`;
+binaries remain ignored. Restart Godot after installation.
 
-The release's Linux libraries need glibc 2.43 (libm) and 2.38 (libc), so
-they don't load on Ubuntu 24.04 (glibc 2.39): CI and the cloud threads.
-On Linux, run `scripts/install_box3d.sh`. It installs the same upstream zip
-and keeps its libraries where glibc is 2.43 or newer. With glibc 2.34 to
-2.42 it lays over them the tag's Linux libraries (debug and release)
-rebuilt against Ubuntu 22.04's glibc 2.35 (highest symbol needed:
-GLIBC_2.34), hosted on this repo's release `box3d-v0.4.3-linux-glibc2.35`
-as `box3d-linux-v0.4.3-glibc2.35.zip`, which must hold them under
-`addons/box3d/bin/`. `scripts/build_box3d_linux.sh` rebuilt those in
-Docker (gcc 11.4, about 6.5 minutes per target on 4 cores); built
-2026-09-28, they loaded headless in Godot 4.7.2 and passed the same checks
-as the Windows build, including the four AWP settling failures. Both
-archives are checked against a pinned SHA-256 before anything is unpacked.
-The release does not exist yet (2026-09-28), and the zip with SHA-256
-`564efa7f…562a2b` stayed in the cloud session that built it; a rebuilt zip
-will have another checksum, so attaching one goes with a change to
-`LINUX_SHA256` in the script. Where the release cannot be fetched, or glibc
-is older than 2.34, the script builds the debug library, the one the Godot
-editor binary loads, from the tag's pinned source instead, as the status
-above says; the release library stays the upstream one there.
+The upstream Linux v0.4.3 library requires glibc 2.43 and did not load on
+Ubuntu 24.04. Earlier installers attempted compatible binaries or a debug-only
+source fallback; the current source build supersedes those paths. See the
+[October 2 grenade port](research/grenade-port-2026-10-02.md) for exact pins,
+projectile tolerances and validation.
+
 
 Upstream describes the binding as experimental and says its
 cross-compiled Windows binaries were untested by the author.

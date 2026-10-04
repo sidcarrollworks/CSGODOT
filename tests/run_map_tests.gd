@@ -174,6 +174,10 @@ func _write_export_fixture() -> bool:
 		to_metres, "physics_npcclip_playerclip", Vector3(16.0, 128.0, 256.0),
 		Vector3(200.0, 64.0, 0.0), "", hull
 	)
+	_add_mesh(
+		to_metres, "physics_sky", Vector3(256.0, 16.0, 256.0),
+		Vector3(0.0, 160.0, 0.0), "", hull
+	)
 
 	# Something that sorts ahead of world.gltf and must not be mistaken for it.
 	var decoy := Node3D.new()
@@ -324,11 +328,19 @@ func _test_export_shaped_import() -> void:
 
 	_check_equal(stats.get("collision_from", ""), "the collision hull", "collision comes from the hull")
 	_check_equal(
-		stats.get("collision_bodies", 0), 2,
-		"the hull's grenade clip is left out and the world adds nothing"
+		stats.get("collision_bodies", 0), 4,
+		"the hull retains world, player clips, grenade clips and sky in separate bodies"
 	)
 	var world_body := importer.get_node_or_null("Collision") as StaticBody3D
 	var clip_body := importer.get_node_or_null("PlayerClip") as StaticBody3D
+	var grenade_body := importer.get_node_or_null("GrenadeClip") as StaticBody3D
+	var sky_body := importer.get_node_or_null("SkyClip") as StaticBody3D
+	_check(sky_body != null and sky_body.collision_layer == MapImporter.SKY_LAYER
+		and sky_body.get_child_count() == 1 and sky_body.collision_layer & GrenadeRules.COLLIDE_MASK == 0,
+		"sky brushes retain their geometry without becoming ordinary world or grenade collision")
+	_check(grenade_body != null and grenade_body.collision_layer == GrenadeRules.GRENADE_CLIP_LAYER
+		and grenade_body.get_child_count() == 1,
+		"the imported grenade clip is on the projectile-only layer")
 	_check(
 		world_body != null and clip_body != null
 			and world_body.collision_layer == Hitscan.WORLD_LAYER and clip_body.collision_layer == MapImporter.PLAYER_CLIP_LAYER
@@ -1142,6 +1154,20 @@ func _test_paint_channel() -> void:
 		"a primitive with paint and a vertex colour of its own is refused"
 	)
 	_check_equal(FileAccess.get_file_as_string(both), clash, "and its file is left as it was")
+
+	var mixed := dir.path_join("mixed.gltf")
+	var mixed_text := '{"meshes":[{"primitives":['
+	mixed_text += '{"attributes":{"POSITION":0,"_TEXCOORD_4":1}},'
+	mixed_text += '{"attributes":{"COLOR_0" : 2,"_TEXCOORD_4":3}},'
+	mixed_text += '{"attributes":{"POSITION":4,"_TEXCOORD_4":5}}]}],"accessors":[{"count":26639}]}'
+	_write_text(mixed, mixed_text)
+	_check_equal(ExportPaintChannel.fix_file(mixed), 2, "a conflicting railing does not skip unrelated walls' paint")
+	var mixed_after := FileAccess.get_file_as_string(mixed)
+	_check_equal(mixed_after, mixed_text.replace('"_TEXCOORD_4":1', '"COLOR_0":1').replace('"_TEXCOORD_4":5', '"COLOR_0":5'),
+		"only the two safe attributes change; original vertex colour, paint and integer text survive")
+	_check(JSON.parse_string(mixed_after) is Dictionary, "mixed colour and paint remains valid JSON")
+	_check_equal(ExportPaintChannel.fix_file(mixed), -1, "a second run only finds the preserved conflict")
+	_check_equal(FileAccess.get_file_as_string(mixed), mixed_after, "the mixed export is unchanged on a second run")
 
 
 ## The second layer comes from the material's own description plus textures

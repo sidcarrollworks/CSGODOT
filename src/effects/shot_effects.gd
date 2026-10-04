@@ -177,7 +177,10 @@ func _start(fired_round: Dictionary, eye: Transform3D, narrowing: float) -> void
 ## Whether userid's rounds are seen from your own eyes: yours, while you
 ## are alive.
 func _in_first_person(userid: int) -> bool:
-	return userid == listener_id and you != null and is_instance_valid(you) and you.alive
+	if not is_instance_valid(you):
+		return false
+	var pawn := you.pawn()
+	return pawn.alive and pawn.userid == userid
 
 
 ## The drawn gun a player's rounds come from: in first person the arms',

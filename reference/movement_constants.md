@@ -3,9 +3,13 @@
 Every number in `src/movement/movement_config.gd`, where it came from, and
 whether it has actually been checked against CS2.
 
-**Nothing here has been measured in-game yet.** These are published defaults
-and code-derived values, which is a starting point and not the finish line.
-As each one gets measured, record the measurement and the method below.
+Most motion values still lack controlled in-game measurements. Published
+defaults and binary-derived values are evidence for parameters, not proof
+that our movement integration matches CS2. The
+[October 3 Ghidra audit](research/movement-ghidra-2026-10-03.md) records
+confirmed algorithm differences. Paired CS2 console coordinates measure
+an effective eye height of **60.75** at the mid-door setup and **63.9375**
+at the B-doors setup; the base 64/46 eye values remain unchanged.
 
 ## Status
 
@@ -17,32 +21,36 @@ As each one gets measured, record the measurement and the method below.
 | `sv_stopspeed` | 80 | Source/CS:GO default | No |
 | `sv_air_max_wishspeed` | 30 | [deadstrafe writeup](https://gist.github.com/zer0k-z/808bc8bfc494e0bbb5a423c2b1ca6685) | No |
 | `sv_maxspeed` | 250 | Same; base speed with a knife | No |
-| `duck_time` | 0.4 s | Source's TIME_TO_DUCK. CS:GO ducks faster than this. | No, and it is probably wrong |
+| `duck_time` | 0.4 s | The port's Source-style interpolation duration. CS2's separately audited `sv_timebetweenducks = 0.4` is a repeated-input gate, not proof of this duration. | Full duck/root/view transitions remain unported |
 | `sv_gravity` | 800 | Source/CS:GO default | No |
 | `sv_jump_impulse` | 301.993 | Source/CS:GO default | No |
 | walk modifier | 0.52 | CS:GO | No |
-| duck modifier | 0.34 | CS:GO; the Counter-Strike wiki's Movement page (Speed Stats), Sid's source on 2026-09-30, gives crouched speed as 34% of the held item's speed in CS2 (the page itself is blocked from the cloud). Eased in and out with the duck, on the ground only (`PlayerSim._max_speed`), and the ground's acceleration works from the item's speed rather than the crouched third (`PlayerBody.acceleration_speed`): with sv_friction 5.2 and sv_stopspeed 80, acceleration from 73 cannot hold a crouched rifle at 73. Both are inferred, the second from `sv_accelerate_use_weapon_speed` (reference/research/movement.md, section 1); the run from rest crouched in that page's Local table checks them | No |
+| duck modifier | 0.34 | Crouched speed is 34% of the held item's speed. Current server `180ab00d0` also scales ordinary land crouch acceleration by 0.34 after a 250-unit wish-speed floor; constants `1818ca884` and `1818ca8ac`. The port now uses that independent acceleration scale, including duck transitions. The speed target still uses the existing duck interpolation. See the October 3 audit below. | Binary verified; complete movement timing still requires CS2 captures |
 | hull 32 x 32 x 72 | | Source player hull | No |
 | duck height 54 | | CS:GO | No |
 | step height 18 | | Source | No |
+| `sv_step_move_vel_min` | 64 u/s | Current server registration `1800cac40`; failed raised-step retry in `180ae3950`. | Binary verified; backend edge clearance still differs |
 | max ground angle 45.57° | | Source uses a 0.7 normal threshold; acos(0.7) = 45.573° | Derived, exact |
 | `NON_JUMP_VELOCITY` | 140 | `gamemovement.cpp:3830` | Read from the SDK, exact |
 | `sv_maxvelocity` | 3500 | `movevars_shared.cpp:93` | Read from the SDK, exact |
 
 ## Crouch turning (Sid's PR #164 feedback, 2026-10-01)
 
-The faster ground acceleration above held a straight crouch at 0.34 of the
+The earlier standing-speed acceleration held a straight crouch at 0.34 of the
 weapon's speed, but turning kept adding sideways velocity beyond that top.
 The actual-body check reproduced an AK-47 rising from 73.1 to 79.0 u/s;
 its movement cone widened from the crouched 0.310 to 4.878 degrees. A pure
 solver run turning 5 degrees every tick reached 100.6 u/s.
 
-When ground acceleration works from a speed above the crouched top,
-`PlayerBody._walk_move` now limits the resulting horizontal speed to the
+For crouched commands, and when acceleration uses a speed above the target,
+`PlayerBody._walk_move` limits the resulting horizontal speed to the
 greater of the top and the speed left after friction. This lets residual
 running speed decay gradually while preventing a turn from adding more.
-The native step has the same arithmetic. Ordinary ground acceleration and
-air acceleration keep their existing behavior; no traces are added.
+The native step has the same arithmetic. The original crouch-turn fix left
+ordinary ground and air integration unchanged and added no traces. The
+[October 3 integration port](research/horizontal-integration-2026-10-03.md)
+now changes their displacement and deferred collision state while retaining
+this local speed-cap correction.
 This correction follows Sid's playtest feedback, rather than a verified
 CS2 implementation: [Source SDK 2013's WalkMove](https://github.com/ValveSoftware/source-sdk-2013/blob/master/src/game/shared/gamemovement.cpp#L1758)
 caps the wish-direction projection and has no total-speed clamp.
@@ -54,6 +62,35 @@ that rounding; actual running, jumping and residual excess speed still
 affect accuracy. `tests/run_sim_checks.gd` covers AK-47 and AWP turns with
 and without Walk, turning on the spot, and real run/jump penalties alongside
 the existing crouch transition checks.
+
+## Crouch acceleration (Sid's slope playtest, 2026-10-03)
+
+The previous correction kept the crouched speed limit, but acceleration
+still used the uncrouched weapon speed. Current CS2's ordinary land branch
+uses `max(250, wish_speed) * 0.34`, or 85 for ordinary crouched speeds.
+That floor exceeds the AK's 73.1-unit target, so it overcomes stop friction
+without the knife's old 250-unit acceleration burst.
+
+`PlayerSim._ground_acceleration_speed` now supplies the crouched scale.
+`MovementSolver.ground_acceleration_rate` and native `HullMover::ground_acceleration_rate` treat a
+positive supplied scale independently of the speed target. This matters
+during duck entry, when the target has not yet reached crouched speed.
+The existing total-speed/accuracy guard remains active during crouching.
+
+At 64 Hz with accelerate 5.5, the knife's first fully crouched step changes
+from **21.484375** to **7.3046875 u/s**; after four steps it is **9.71875**
+instead of **66.4375**. Holding movement still reaches 85 with the knife,
+73.1 with the AK and 68 with the unscoped AWP. Crouching with Walk uses the
+same acceleration as crouching without it.
+
+The original real-command fixture passed **138 checks** on flat and +/-5/20-degree
+Box3D floors, with **6,636 native/script steps** matching bit for bit.
+The simulation, movement course, native movement and three grenade-lineup
+suites also pass. No collision queries were added. Duck-rate/hull/view
+transitions remain a separate audit gap. The
+[horizontal integration follow-up](research/horizontal-integration-2026-10-03.md)
+now carries friction overshoot and combined acceleration through collision,
+so the pure legacy solver's velocity check alone is not a displacement oracle.
 
 ## How to measure each kind
 
@@ -79,9 +116,13 @@ Ducking in the air shrinks the hull and moves the body up by the difference, so
 your head stays put and your feet come up 18 units. That is what a crouch jump
 is, and it is the only way to reach a ledge a standing jump cannot.
 
-Measured in our build at 64 Hz: a standing jump peaks at 59.37 units and a
-crouch jump at 77.37, the difference being exactly the 18 unit hull delta
+Historical legacy-mode measurements (September 23) at 64 Hz: a standing
+jump peaks at 59.37 units and a crouch jump at 77.37, the difference being
+exactly the 18 unit hull delta
 (58.19 and 76.19 at 128 Hz, the tick until 2026-09-23).
+These are not the current default standing arc: #184's ordinary CS2 jump
+peaks at 55.825516 units in the Box3D regression at 64 Hz. Complete CS2
+crouch-jump reach and transition timing still need paired captures.
 
 **76 may well be too generous.** The feet-raise is faithful to Source's
 `FinishDuck`, but CS:GO and CS2 also gate how fast you can duck in the air, and
@@ -147,9 +188,19 @@ We keep it on by default because the goal is CS2, not a better CS2. Anyone who
 plays a lot of CS will feel the difference either way, so this should be an
 explicit choice rather than an accident.
 
-### Jump height is tick-rate dependent in Source
+### Current jump height and the legacy Source comparison
 
-`MovementConfig.tick_rate_independent_jump`, default **off** (Source-faithful).
+**October 3 default, merged in #184:** `MovementConfig.cs2_jump` is **on**,
+using the [Ghidra-audited ordinary jump](research/grenade-subtick-snapshot-2026-10-03.md).
+At gravity 800 its fixed adjustment subtracts 3.125 u/s from the 301.993
+impulse, and interval gravity then integrates independently of jump phase.
+The current Box3D test samples a standing peak of **55.825516 units** at
+64 Hz and requires a grounded landing. This measures our port, not a
+captured CS2 trajectory.
+The following Source-height comparison describes the legacy mode selected
+with `cs2_jump = false`; it remains available to the course's comparison tests.
+
+`MovementConfig.tick_rate_independent_jump`, default **off**, applies to that legacy mode.
 
 Source splits gravity into two halves around the move, which normally makes
 jump height independent of tick rate. But the jump impulse is applied *after*
@@ -162,13 +213,10 @@ and the jump ends up higher than the physics alone would give:
 | Source ordering at 128 Hz | 58.18 units |
 | Source ordering at 64 Hz | 59.36 units |
 
-**This project now simulates at 64 Hz, as CS2 moves** (2026-09-23; it was 128,
-which left its jumps about 1.2 units short of CS2's). Faithful to Source, a
-jump peaks at 59.36, which is CS2's if CS2 kept Source's order of gravity and
-impulse; a real CS2 jump against the jump gauges will say. If it did not,
-`tick_rate_independent_jump` and `sv_jump_impulse` can be set to the measured
-height at any tick rate. The test suite pins both behaviours so the choice
-cannot drift by accident.
+The project switched from 128 to 64 Hz on September 23. The older assumption
+that CS2 kept Source's impulse/gravity order is superseded by the October 3
+binary audit and #184. The legacy comparison remains selectable and tested;
+controlled CS2 jump/landing captures still need to validate the default port.
 
 ## What the tick rate does to the movement (2026-09-23)
 

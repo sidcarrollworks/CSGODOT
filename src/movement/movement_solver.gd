@@ -8,7 +8,10 @@ extends RefCounted
 ## collision half of movement lives in player_body.gd, which is the part that
 ## needs a physics world.
 ##
-## These are ports of Source's CGameMovement. The odd-looking details are
+## The full-addition functions retain the Source velocity math for pure
+## checks. PlayerBody carries CS2's acceleration/deferred state through
+## collision, using friction_rate and ground_acceleration_rate below.
+## The odd-looking details are
 ## deliberate and load-bearing:
 ##
 ##   - air_accelerate clamps addspeed by the CLAMPED wish speed but scales
@@ -39,11 +42,51 @@ static func apply_friction(
 	return velocity * (new_speed / speed)
 
 
-## Ground acceleration toward wish_dir, up to wish_speed. Each tick adds
-## accel of the larger of wish_speed and accel_from a second
-## (PlayerBody.acceleration_speed): the speed that is added comes from the
-## held item's, not from a crouch's third of it, which friction below
-## sv_stopspeed would outrun.
+## Drag before the interval's stop clamp. Keeping the nominal rate lets
+## ground acceleration consume friction's overshoot instead of accelerating
+## afresh from zero after an overlarge stop. The body records the actual
+## clamped drag separately in its combined acceleration vector.
+static func friction_rate(speed: float, surface_friction: float, cfg: MovementConfig) -> float:
+	var control_speed := quantized_speed(speed)
+	if control_speed < 0.1:
+		return 0.0
+	return maxf(control_speed, cfg.stop_speed) * cfg.friction * surface_friction
+
+
+## CSMovementVelocityQuantizer_t: 20 bits over [-16384, 16384], with an
+## exact-zero encoding. Its grid is offset; rounding speed to 1/32 is not
+## equivalent. Shift/input and decoded result narrow to engine float32;
+## the encoder's multiplier and decoder's range arithmetic are doubles.
+static func quantized_speed(speed: float) -> float:
+	if speed == 0.0:
+		return 0.0
+	var value := clampf(speed, -16384.0, 16384.0)
+	var shifted := Vector3(value + 16384.0, 0.0, 0.0).x
+	var code := int(shifted * (1048575.0 / 32768.0) + 0.5)
+	return Vector3(code * (1.0 / 1048575.0) * 32768.0 - 16384.0, 0.0, 0.0).x
+
+
+## CS2's ground accelerator accumulates a rate as well as updating velocity.
+## Friction that would have crossed zero consumes this interval's acceleration
+## first (server 180ab00d0, movement +0x128).
+static func ground_acceleration_rate(
+	velocity: Vector3, wish_dir: Vector3, wish_speed: float, accel: float,
+	surface_friction: float, dt: float, accel_from: float, friction_overshoot: float
+) -> float:
+	if dt <= 0.0:
+		return 0.0
+	var available := wish_speed - velocity.dot(wish_dir)
+	if available <= 0.0:
+		return 0.0
+	var scale := accel_from if accel_from > 0.0 else wish_speed
+	return minf(maxf(scale * accel * surface_friction - friction_overshoot / dt, 0.0), available / dt)
+
+
+## Ground acceleration toward wish_dir, up to wish_speed. accel_from is an
+## explicit acceleration scale (PlayerBody.acceleration_speed), independent
+## of the target speed. CS2 reduces that scale during crouch transitions too;
+## taking max(wish_speed, accel_from) would erase the reduced entry scale.
+## Zero leaves callers without an override using their wish speed.
 static func accelerate(
 	velocity: Vector3,
 	wish_dir: Vector3,
@@ -57,7 +100,8 @@ static func accelerate(
 	var add_speed := wish_speed - current_speed
 	if add_speed <= 0.0:
 		return velocity
-	var accel_speed := accel * dt * maxf(wish_speed, accel_from) * surface_friction
+	var scale := accel_from if accel_from > 0.0 else wish_speed
+	var accel_speed := accel * dt * scale * surface_friction
 	if accel_speed > add_speed:
 		accel_speed = add_speed
 	return velocity + wish_dir * accel_speed

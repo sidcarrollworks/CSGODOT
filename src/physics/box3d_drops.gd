@@ -42,7 +42,8 @@ var _last_tick: int = -1
 
 static func available() -> bool:
 	return ClassDB.class_exists(&"Box3DWorld") and ClassDB.class_exists(&"Box3DBody") \
-		and ClassDB.class_exists(&"Box3DContactRules")
+		and ClassDB.class_exists(&"Box3DContactRules") \
+		and ClassDB.class_has_method(&"Box3DWorld", &"shape_cast_projectile_box")
 
 
 ## Explicit setup for scenes and headless checks, after static collision
@@ -51,7 +52,7 @@ func initialize(p_game: GameSystems, geometry_root: Node, p_full_world: bool = f
 	if initialized:
 		return game == p_game
 	if not is_inside_tree() or geometry_root == null or not available():
-		push_error("Box3D physics requires the installed v0.4.3 addon and an initialized scene. Run scripts/install_box3d.ps1.")
+		push_error("Box3D physics requires v0.4.3 with the projectile patch and an initialized scene. Run scripts/install_box3d.ps1 (Windows) or scripts/install_box3d.sh.")
 		return false
 	if not is_equal_approx(float(ProjectSettings.get_setting("physics/box3d/length_units_per_meter", 1.0)), 1.0):
 		push_error("Box3D physics uses a metre bridge; physics/box3d/length_units_per_meter must be 1.")
