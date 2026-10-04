@@ -801,6 +801,8 @@ func _run(cmd: UserCmd, dt: float) -> void:
 	wish_dir = Vector3.ZERO
 	wish_speed = 0.0
 	acceleration_speed = 0.0
+	movement_speed_limit = INF
+	walk_acceleration_limit = 0.0
 
 	if cmd.toggle_noclip:
 		noclip = not noclip
@@ -904,9 +906,12 @@ func _run(cmd: UserCmd, dt: float) -> void:
 		return
 
 	wish_dir = cmd.wish_direction()
+	movement_speed_limit = _max_speed(cmd)
 	if wish_dir.length_squared() > 0.0:
-		wish_speed = _max_speed(cmd)
+		wish_speed = movement_speed_limit
 		acceleration_speed = _ground_acceleration_speed(cmd)
+		if cmd.held(UserCmd.WALK) and not _duck_movement(cmd):
+			walk_acceleration_limit = maxf(250.0, wish_speed) * minf(_weapon_movement_speed() / 250.0, 1.0) * config.walk_modifier
 
 	simulate(dt)
 	_finish_grenade_movement(cmd)
@@ -1215,32 +1220,49 @@ func _max_speed(cmd: UserCmd) -> float:
 	return minf(speed, top)
 
 
-## CS2's ordinary land crouch accelerates from max(250, wish_speed) * 0.34,
-## not the standing weapon speed. The 250 floor keeps rifles moving against
-## stop friction; using the full standing speed instead creates a fast burst.
-## The duck key/transition applies this during entry and exit too. AirMove
-## ignores this ground-only scale and keeps its existing wish-speed rules.
-## Binary: 180ab00d0, constants 1818ca884/1818ca8ac.
+## 180ab00d0 selects acceleration independently of the command speed cap.
+## Ordinary walk/duck use the 250 floor; slow scoped snipers retain the
+## weapon ratio even in those modes. The tag affects the cap, not this ratio.
 func _ground_acceleration_speed(cmd: UserCmd) -> float:
-	if cmd.held(UserCmd.DUCK) or is_ducked or duck_progress > 0.0:
-		return maxf(250.0, wish_speed) * config.duck_modifier
-	return _uncrouched_speed(cmd)
+	var ducking := _duck_movement(cmd)
+	var walking := cmd.held(UserCmd.WALK) and not ducking
+	var weapon_speed := _weapon_movement_speed()
+	var ratio := minf(weapon_speed / 250.0, 1.0)
+	var slow_scope := weapon != null and weapon.zoom_level > 0 \
+		and weapon.data.zoom_levels() > 1 and weapon_speed * config.walk_modifier < 110.0
+	var scale := ratio if (not ducking and not walking) or slow_scope else 1.0
+	if ducking:
+		scale = minf(scale, config.duck_modifier)
+	elif walking and not slow_scope:
+		scale *= config.walk_modifier
+	return maxf(250.0, wish_speed) * scale
 
 
-## The top without the duck: what the held item and a tag allow, walking
-## if the walk key is held.
+func _duck_movement(cmd: UserCmd) -> bool:
+	return cmd.held(UserCmd.DUCK) or is_ducked or duck_progress > 0.0
+
+
+func _weapon_movement_speed() -> float:
+	return minf(260.0, weapon.max_speed() if weapon != null else config.max_speed)
+
+
+## Command cap before the duck amount: weapon, walk-entry gate and ground tag.
 func _uncrouched_speed(cmd: UserCmd) -> float:
-	var speed := _top_speed()
-	if cmd.held(UserCmd.WALK):
-		speed *= config.walk_modifier
+	var speed := _weapon_movement_speed()
+	# 180ab6310: keep the running cap during the fast part of a walk entry.
+	# Duck input/transition suppresses walking entirely, rather than stacking it.
+	if cmd.held(UserCmd.WALK) and not _duck_movement(cmd):
+		var walk_speed := speed * config.walk_modifier
+		if velocity.length() < walk_speed + 25.0:
+			speed = walk_speed
+	if on_ground:
+		speed *= velocity_modifier
 	return speed
 
 
-## What the held item lets the player run at, less a tag's share.
+## Running cap before the duck amount, with tagging applied only on the ground.
 func _top_speed() -> float:
-	# Scoped, the gun's scoped speed (the AWP's 100 against 200).
-	var top := weapon.max_speed() if weapon != null and weapon.zoom_level > 0 else config.max_speed
-	return top * velocity_modifier
+	return _weapon_movement_speed() * (velocity_modifier if on_ground else 1.0)
 
 
 ## A round, or anything else, did damage: the tag is set to land shortly and

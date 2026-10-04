@@ -147,6 +147,8 @@ private:
 	Vector3 wish_dir;
 	double wish_speed = 0.0;
 	double acceleration_speed = 0.0;
+	double movement_speed_limit = 0.0;
+	double walk_acceleration_limit = 0.0;
 	bool wants_jump = false;
 	bool wants_duck = false;
 	bool jump_held_last_tick = false;

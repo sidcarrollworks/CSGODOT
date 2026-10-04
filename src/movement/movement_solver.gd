@@ -66,6 +66,17 @@ static func quantized_speed(speed: float) -> float:
 	return Vector3(code * (1.0 / 1048575.0) * 32768.0 - 16384.0, 0.0, 0.0).x
 
 
+## CS2's walk accelerator eases off as projected velocity approaches its goal.
+static func walk_acceleration_fraction(projected_speed: float, goal: float) -> float:
+	# 180ab00d0: taper is evaluated after friction, along the wish direction.
+	# Reverse and perpendicular inputs retain full acceleration.
+	var threshold := goal - 5.0
+	var positive_speed := maxf(projected_speed, 0.0)
+	if positive_speed <= threshold:
+		return 1.0
+	return clampf(1.0 - (positive_speed - threshold) / (goal - threshold), 0.0, 1.0)
+
+
 ## CS2's ground accelerator accumulates a rate as well as updating velocity.
 ## Friction that would have crossed zero consumes this interval's acceleration
 ## first (server 180ab00d0, movement +0x128).

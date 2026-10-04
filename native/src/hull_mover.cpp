@@ -163,6 +163,8 @@ const StringName &duck_progress() { static const StringName n("duck_progress"); 
 const StringName &wish_dir() { static const StringName n("wish_dir"); return n; }
 const StringName &wish_speed() { static const StringName n("wish_speed"); return n; }
 const StringName &acceleration_speed() { static const StringName n("acceleration_speed"); return n; }
+const StringName &movement_speed_limit() { static const StringName n("movement_speed_limit"); return n; }
+const StringName &walk_acceleration_limit() { static const StringName n("walk_acceleration_limit"); return n; }
 const StringName &wants_jump() { static const StringName n("wants_jump"); return n; }
 const StringName &wants_duck() { static const StringName n("wants_duck"); return n; }
 const StringName &jump_held() { static const StringName n("_jump_held_last_tick"); return n; }
@@ -202,6 +204,8 @@ void HullMover::read_body() {
 	wish_dir = body->get(names::wish_dir());
 	wish_speed = body->get(names::wish_speed());
 	acceleration_speed = body->get(names::acceleration_speed());
+	movement_speed_limit = body->get(names::movement_speed_limit());
+	walk_acceleration_limit = body->get(names::walk_acceleration_limit());
 	wants_jump = body->get(names::wants_jump());
 	wants_duck = body->get(names::wants_duck());
 	jump_held_last_tick = body->get(names::jump_held());
@@ -577,22 +581,24 @@ void HullMover::walk_move(double surface_friction, double dt) {
 		}
 	}
 
-	// PlayerBody's crouch acceleration cannot add speed beyond
-	// the top, or beyond residual speed left after this tick's friction.
-	double speed_limit = std::numeric_limits<double>::infinity();
-	if (acceleration_speed > wish_speed || (acceleration_speed > 0.0 && duck_progress > 0.0)) {
-		speed_limit = maxf(wish_speed, (double)velocity.length());
+	double accel = cfg.accelerate;
+	if (walk_acceleration_limit > 0.0) {
+		const double threshold = walk_acceleration_limit - 5.0;
+		const double positive_speed = maxf(velocity.dot(dir), 0.0);
+		if (positive_speed > threshold) {
+			accel *= minf(maxf(1.0 - (positive_speed - threshold) / (walk_acceleration_limit - threshold), 0.0), 1.0);
+		}
 	}
-	const double rate = ground_acceleration_rate(velocity, dir, wish_speed, cfg.accelerate, surface_friction, dt, acceleration_speed, friction_overshoot);
+	const double rate = ground_acceleration_rate(velocity, dir, wish_speed, accel, surface_friction, dt, acceleration_speed, friction_overshoot);
 	move_acceleration += times(dir, rate);
 	velocity += times(dir, rate * dt);
 	velocity.y = 0.0;
 	move_acceleration.y = 0.0;
 	deferred_velocity.y = 0.0;
 	const double speed = velocity.length();
-	if (speed > speed_limit) {
+	if (speed > movement_speed_limit) {
 		const Vector3 before_cap = velocity;
-		velocity = times(velocity, speed_limit / speed);
+		velocity = times(velocity, movement_speed_limit / speed);
 		if (dt > 0.0) {
 			move_acceleration += over(velocity - before_cap, dt);
 		}
