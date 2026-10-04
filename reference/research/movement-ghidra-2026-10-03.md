@@ -11,8 +11,10 @@ The ordinary jump/snapshot and targeted crouch acceleration changes are
 merged in #184. Its final CI passed 7,021 checks across 80 files, with
 asset-dependent comparisons skipped. The
 [terrain-eye follow-up](terrain-eyes-2026-10-03.md) ports shared terrain
-state and ordinary topology transitions. Combined horizontal integration
-and complete crouch/modern jump transitions remain unported, in that order.
+state and ordinary topology transitions. Ordinary combined horizontal
+integration is now ported in the
+[integration follow-up](horizontal-integration-2026-10-03.md); complete
+command/walk/scoped branches and crouch/modern jump state remain open.
 
 ## Evidence and scope
 
@@ -21,9 +23,11 @@ Installed CS2 build **2000924**, patch **1.41.8.8**, SourceRevision
 
 `098d4ddd57e2fbe9a73623a2bf68ebaff86f7b6342ddb3d5a0f69cd6335b31cc`
 
-Ghidra 12.1.4 processed the existing server project read-only. The accumulated
-server audit now covers **97 distinct function spans**, all matching the
-installed module byte for byte. Current PE constants and assembly were
+Ghidra 12.1.4 processed the existing server project read-only. The original
+accumulated server pass covered **97 distinct function spans**, all matching
+the installed module byte for byte. The terrain-eye and horizontal integration
+follow-ups export additional helpers and record their checks separately.
+Current PE constants and assembly were
 checked alongside pseudocode, including floating-point arguments omitted
 by the decompiler. Binaries, decompiler output and diagnostic helpers remain
 uncommitted. No Valve DLL was executed or debugger attached to CS2.
@@ -37,8 +41,8 @@ quantization and all jump/landing branches require further work.
 | Area | Installed CS2 | Our current implementation | Consequence |
 |---|---|---|---|
 | Ground-dependent eyes | Topology/root adjustment assembled during movement finish, before grenade capture | Shared cached terrain state and ordinary topology transitions now finish before capture; full duck/root timing remains open | Paired settled Dust2 cameras match within 0.04 units; further CS2 transition and trajectory captures remain |
-| Air acceleration | Applies part before collision movement and defers the remainder until after it | Applies the full capped addition before moving | Matching final speed can still produce different displacement and contacts |
-| Ground acceleration/friction | Tracks acceleration and a deferred velocity contribution; collision movement uses an intermediate velocity | Friction and acceleration update velocity fully before movement | Starts, stops and running throws can sample different positions |
+| Air acceleration | Applies part before collision movement and defers the remainder until after it | Ordinary split/deferred additions now ported in both backends | Numeric displacement/contact oracles pass; recorded CS2 paths still required |
+| Ground acceleration/friction | Tracks acceleration and a deferred velocity contribution; collision movement uses an intermediate velocity | Ordinary combined state, friction overshoot and control-speed quantizer ported; walk/scoped scale and speed-cap setup remain | Starts/stops now use intermediate movement velocity; remaining command branches still affect parity |
 | Crouch acceleration | Applies the 0.34 scale after a 250-unit wish-speed floor in the ordinary land branch | Now uses that independent scale; previously used standing weapon speed | Removes the fast crouched start without starving rifle movement against stop friction |
 | Crouch | Separate duck amount, duck speed, root and view state; repeated-duck gate | A fixed 0.4-second progress and immediate airborne hull/eye changes | Crouch-jump geometry and camera transitions differ |
 | Jump/landing | Modern press/landing time state and a bhop window; ordinary impulse already recovered | Ordinary impulse and grenade deadline splits are implemented; no complete modern landing/press-window port | An ordinary stationary jump passing does not validate chained hops or landing slowdown |
@@ -138,8 +142,9 @@ the close mid-door landmark much more than the working B reference.
 These rays use the locally extracted collision, not a captured CS2
 crosshair hit. They give concrete support for a visual-origin/aim mismatch
 in the recorded throws; they do not establish complete CS2 flight parity
-or the exact terrain sampler result. The next implementation target is
-the shared terrain-aware eye state and its transitions. Do not compensate
+or the exact terrain sampler result. The subsequent
+[shared terrain-eye port](terrain-eyes-2026-10-03.md) implements that state
+and its ordinary transitions; local landmark captures remain. Do not compensate
 with a per-lineup pitch correction or a universal eye-height reduction.
 
 ## B-doors standing jump reference
@@ -181,6 +186,11 @@ practice's grenade trails show the actual contacts.
 
 ## Horizontal integration evidence
 
+The [horizontal integration follow-up](horizontal-integration-2026-10-03.md)
+now ports the ordinary combined state described below. It records the
+quantized friction control, overshoot and blocked-motion handling, validation,
+performance and remaining command/walk/scoped branches.
+
 `180adc620` calls air accelerator `180ab07c0`, gravity helper `180ab0670`,
 the collision mover `180adffc0`, then restore helper `180ad8040`.
 The accelerator computes the same projected wish-speed cap as Source, but
@@ -200,7 +210,8 @@ half-gravity correction when porting horizontal integration.
 
 For an unobstructed perpendicular air input at wish speed 250, acceleration
 12, friction 1 and a 1/64-second segment, both paths add **30 u/s** in total.
-CS2 moves with **23.4375 u/s** of that addition; ours moves with all 30.
+CS2 moves with **23.4375 u/s** of that addition; the previous solver moved
+with all 30. The follow-up now uses the split addition.
 The displacement from the addition is **0.3662109375** versus **0.46875**
 units. This worked example isolates the equations, without claiming a full
 collision or quantization replay.
@@ -264,15 +275,16 @@ running momentum. No trace or collision operation was added.
 
 After correction the knife's first/fourth speeds are **7.3046875 / 9.71875**.
 It still reaches 85, the AK reaches 73.1, and the unscoped AWP reaches 68.
-`tests/run_crouch_movement_checks.gd` covers those items with/without Walk
+The original crouch-port validation used `tests/run_crouch_movement_checks.gd`
+to cover those items with/without Walk
 on flat, uphill and downhill 5/20-degree floors, plus entry/exit from a
-partial crouch. It passes **138 checks**, with **6,636 bit-identical
-native/script steps**. Existing suites pass **243 simulation**, **80
+partial crouch. It passed **138 checks**, with **6,636 bit-identical
+native/script steps**. Existing suites passed **243 simulation**, **80
 movement**, **32 native movement** and **201 grenade-lineup checks**.
-The 49,567-step native course also agrees bit for bit. A full suite run
-is not claimed. The tests exercise the port and recovered scale; they do
-not establish full CS2 movement parity. Duck transitions and combined
-deferred acceleration/friction remain unported.
+The 49,567-step native course also agreed bit for bit. That targeted pass
+did not claim a full suite run. The tests exercise the port and recovered scale; they do
+not establish full CS2 movement parity. Duck transitions remain unported;
+ordinary deferred acceleration/friction is now covered by the follow-up.
 
 ## Implementation order and validation
 
@@ -281,9 +293,10 @@ deferred acceleration/friction remain unported.
    support ownership and takeoff/landing are checked; paired Dust2 camera
    heights match within 0.04 units. Local landmark playtest and additional
    CS2 transition captures remain. Full duck/root timing belongs to step 3.
-2. Port the combined horizontal acceleration/friction and deferred velocity
-   state in script and native movement together. Check displacement, blocked
-   movement and run/jump throws, not just terminal speeds.
+2. **Ordinary implementation done:** combined horizontal acceleration/friction
+   and deferred velocity in script/native movement, including displacement,
+   blocked motion and running jump snapshots. See the integration report
+   for cost and remaining command/walk/scoped branches. CS2 captures remain.
 3. Complete modern landing/bhop and crouch behavior with their own boundary
    checks and CS2 captures. Keep these changes separately reviewable from
    grenade-flight tuning.

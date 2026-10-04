@@ -94,6 +94,7 @@ private:
 		double duck_height = 54.0;
 		double duck_time = 0.4;
 		double step_height = 18.0;
+		double step_move_velocity_min = 64.0;
 		bool project_wish_dir_on_ground = false;
 		bool stay_on_ground = true;
 		double trace_epsilon = 0.0;
@@ -135,6 +136,9 @@ private:
 	// Where the node was last told the body is.
 	Vector3 written;
 	Vector3 velocity;
+	Vector3 move_acceleration;
+	Vector3 deferred_velocity;
+	double friction_overshoot = 0.0;
 	bool on_ground = false;
 	bool ground_is_world = false;
 	Vector3 ground_normal = Vector3(0, 1, 0);
@@ -169,6 +173,9 @@ private:
 	void write_body(const Vector3 &p_position_before);
 
 	void simulate_step(double dt);
+	void apply_ground_friction(double surface_friction, double dt);
+	void defer_acceleration(double dt);
+	void stop_movement();
 	bool ground_known() const;
 	void update_duck(double dt);
 	double duck_height_delta() const;
@@ -180,7 +187,8 @@ private:
 	void walk_move(double surface_friction, double dt);
 	void stay_on_native_ground();
 	void air_move(double surface_friction, double dt);
-	void step_move(double dt);
+	bool step_move(double dt);
+	bool try_step(double dt, const Vector3 &start_position, const Vector3 &start_velocity);
 	bool try_player_move(double dt);
 	void categorize_position();
 	Trace trace(const Vector3 &motion, bool test_only = false);
@@ -195,6 +203,9 @@ private:
 	static Vector3 clip_velocity(const Vector3 &velocity, const Vector3 &normal, double overbounce = 1.0);
 	Vector3 check_velocity(const Vector3 &velocity) const;
 	Vector3 apply_friction(const Vector3 &velocity, bool on_ground, double surface_friction, double dt) const;
+	static double quantized_speed(double speed);
+	double friction_rate(double speed, double surface_friction) const;
+	static double ground_acceleration_rate(const Vector3 &velocity, const Vector3 &wish_dir, double wish_speed, double accel, double surface_friction, double dt, double accel_from, double friction_overshoot);
 	static Vector3 accelerate(const Vector3 &velocity, const Vector3 &wish_dir, double wish_speed, double accel, double surface_friction, double dt, double accel_from = 0.0);
 	Vector3 air_accelerate(const Vector3 &velocity, const Vector3 &wish_dir, double wish_speed, double accel, double surface_friction, double dt) const;
 	double surface_friction_for(double vertical_velocity, bool on_ground) const;

@@ -1,5 +1,13 @@
 # What everything costs, and what going online will
 
+The [3 October horizontal-integration follow-up](research/horizontal-integration-2026-10-03.md#validation-and-performance)
+records the ordinary movement port's paired ten-player Dust2 comparison:
+**2.661 vs 2.5505 ms per tick**, an increase of **0.1105 ms (4.3%)** with
+terrain sampling active in both builds. Mean hull traces rise from 45.47
+to 46.35; the report records changed paths, bounded stair retries and the
+limits of attributing aggregate cost. This is headless simulation cost;
+rendered-frame acceptance and the 6-ms maximum target remain open.
+
 The [3 October terrain-eye measurements](research/terrain-eyes-2026-10-03.md#performance)
 record the new shared simulation sampler: the paired ten-player Dust2
 fixture adds **0.693 ms per tick** on average (2.6155 vs 1.9225 ms with the

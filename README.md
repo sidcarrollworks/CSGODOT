@@ -21,7 +21,7 @@ mode and map loader.
 
 | | |
 |---|---|
-| **Movement** | Source-style acceleration, air strafing, collide-and-slide, step-up, crouch jumps and bunny hops, with audited CS2 jump timing and crouch acceleration. Crouch speed and accuracy stay steady while turning. A fixed 64 Hz tick with sub-tick input, so a click is traced from where you were aiming at that instant. Jumping and landing add a subtle camera and weapon dip. |
+| **Movement** | Source-style air strafing, collide-and-slide, step-up, crouch jumps and bunny hops, with audited CS2 jump timing, crouch acceleration and combined friction/acceleration through collision. Crouch speed and accuracy stay steady while turning. A fixed 64 Hz tick with sub-tick input, so a click is traced from where you were aiming at that instant. Jumping and landing add a subtle camera and weapon dip. |
 | **Shooting** | Every CS2 firearm is available, with the game's own weapon data. Spray patterns, tapping and burst-dependent accuracy recovery, wall penetration by surface and thickness, nineteen hitbox capsules per extracted player model, tagging and aim punch, scopes and shotgun pellets. The AUG and SG 553 raise their sights, keeping the lens clear while blurring the scene outside it; the lowered lens is black. The Nova, XM1014 and Sawed-Off reload one shell at a time, and firing interrupts the reload. |
 | **Grenades** | All six, with delayed hand release, gradual throw strength and jump parameters captured at an exact movement boundary. Flight uses the audited CS2 box hull and two physics steps per tick, with grenade clips retained from the map and sky brushes excluded from ordinary collision. Practice and the test range show trajectory trails and bounce markers. The B-doors jump throw was accepted in play; the mid-door visual aim discrepancy, recorded trajectory comparisons and full effect parity remain open. |
 | **Knife** | Left-click slashes and right-click stabs, with 48/32-unit forward reach, backstabs, armour and kill credit. Attacks work in the air, with first- and third-person clips and sounds. Damage and timing still await CS2 measurements. |
@@ -210,9 +210,12 @@ The camera, weapon origins and grenade snapshots read one simulation value,
 with cached support samples updated before snapshot capture. The
 [terrain-eye follow-up](reference/research/terrain-eyes-2026-10-03.md)
 records the recovered rules, query cost and paired Dust2 camera checks.
-Combined horizontal acceleration/friction integration, then complete crouch
-and modern jump transitions remain next. Script/native agreement checks our
-two ports; paired CS2 trajectories are still needed to establish parity.
+The [horizontal integration follow-up](reference/research/horizontal-integration-2026-10-03.md)
+ports combined friction/acceleration and deferred collision velocity in both
+backends, including grenade snapshots after restoration. Complete crouch,
+walk/scoped speed branches and modern jump transitions remain open.
+Script/native agreement checks our two ports; paired CS2 trajectories are
+still needed to establish parity.
 
 Dust2's sky and world exposure were calibrated against paired T-spawn
 captures and accepted in play. The world exposure fit is 1.5, with inverse

@@ -52,8 +52,8 @@ extends Resource
 
 ## Current CS2's ordinary jump applies a fixed half-of-1/128-second gravity
 ## adjustment to sv_jump_impulse, then integrates the full movement interval.
-## Our Verlet step also needs its leading half-gravity restored after setting
-## the impulse. See grenade-subtick-snapshot-2026-10-03.md for binary evidence.
+## Gravity shares the collision move's deferred half-step state with horizontal
+## acceleration. See grenade-subtick-snapshot-2026-10-03.md for binary evidence.
 ## False retains the older Source ordering for comparisons and custom modes.
 @export var cs2_jump: bool = true
 
@@ -120,6 +120,11 @@ extends Resource
 
 ## How high a step the player walks up without jumping.
 @export var step_height: float = 18.0
+
+## sv_step_move_vel_min. A failed step at low speed retries the raised path
+## using this speed, only with movement input. Current CS2 defaults to 64;
+## this also lets a resting half-step cross a collision backend's clearance.
+@export var step_move_velocity_min: float = 64.0
 
 ## A surface steeper than this angle (degrees from horizontal) is not ground,
 ## so you slide down it instead of walking on it. This is what makes surf ramps
