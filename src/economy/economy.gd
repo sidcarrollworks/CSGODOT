@@ -132,6 +132,8 @@ func tick(t: SimTick) -> void:
 # --- What the menu and the HUD read -----------------------------------------
 
 func money(userid: int) -> int:
+	if rules.unlimited_money:
+		return rules.max_money
 	return _accounts.get(userid, rules.start_money)
 
 
@@ -223,10 +225,10 @@ func refusal(userid: int, item_class: String) -> StringName:
 		return ALREADY_HAVE
 	if inv.can_add(item_class) == Inventory.Can.FULL:
 		return CANNOT_CARRY if item.slot == ItemDef.Slot.GRENADE else ALREADY_HAVE
-	var limit := rules.zeus_purchases if item.type == "taser" else rules.type_purchases
+	var limit := _purchase_limit(item)
 	if limit >= 0 and _type_count(userid, item.type) >= limit:
 		return TYPE_LIMIT
-	if money(userid) < price_for(userid, item_class):
+	if not rules.unlimited_money and money(userid) < price_for(userid, item_class):
 		return NO_MONEY
 	return OK
 
@@ -249,10 +251,10 @@ func throw_refusal(userid: int, item_class: String) -> StringName:
 		return WRONG_TEAM
 	if not item.droppable:
 		return CANNOT_THROW
-	var limit := rules.zeus_purchases if item.type == "taser" else rules.type_purchases
+	var limit := _purchase_limit(item)
 	if limit >= 0 and _type_count(userid, item.type) >= limit:
 		return TYPE_LIMIT
-	if money(userid) < item.price:
+	if not rules.unlimited_money and money(userid) < item.price:
 		return NO_MONEY
 	return OK
 
@@ -260,6 +262,12 @@ func throw_refusal(userid: int, item_class: String) -> StringName:
 ## Whether this player could undo a purchase of this item now.
 func can_undo(userid: int, item_class: String) -> bool:
 	return _undo_refusal(userid, item_class) == OK
+
+
+func _purchase_limit(item: ItemDef) -> int:
+	if rules.unlimited_grenade_purchases and item.is_grenade():
+		return -1
+	return rules.zeus_purchases if item.type == "taser" else rules.type_purchases
 
 
 ## Sends a player's buy command for an item; the next tick buys it or
@@ -339,7 +347,8 @@ func _buy(userid: int, item_class: String) -> void:
 	var bought := ItemRegistry.item(item_class)
 	if bought.is_gun and bought.slot in [ItemDef.Slot.PRIMARY, ItemDef.Slot.PISTOL]:
 		inv.select(item_class)
-	_accounts[userid] = money(userid) - price
+	if not rules.unlimited_money:
+		_accounts[userid] = money(userid) - price
 	if not _bought.has(userid):
 		_bought[userid] = []
 	_bought[userid].append(record)
@@ -366,7 +375,8 @@ func _buy_and_throw(userid: int, item_class: String) -> void:
 		return
 	var item := ItemRegistry.item(item_class)
 	var entry := Inventory.Entry.new(item, Weapon.new(ItemRegistry.weapon_data(item_class)) if item.is_gun else null)
-	_accounts[userid] = money(userid) - item.price
+	if not rules.unlimited_money:
+		_accounts[userid] = money(userid) - item.price
 	_type_counts[userid] = _type_counts.get(userid, {})
 	_type_counts[userid][item.type] = _type_count(userid, item.type) + 1
 	var side := _side(userid)

@@ -175,7 +175,7 @@ func _start(hit: Dictionary, eye: Vector3) -> void:
 			outward = -direction
 		particles.spawn(HELMET, at, outward, born, eye)
 	if not effect.is_empty() and effect != HELMET:
-		particles.spawn(effect, at, direction, born, eye, float(hit.get("damage", 30)), bool(hit.get("screen", false)))
+		particles.spawn(effect, at, direction, born, eye, float(hit.get("damage", 30)), bool(hit.get("screen", false)), bool(hit.get("world", false)))
 	if bool(hit.get("world", false)):
 		return
 	var bodies := drawn_models(int(hit.victim))

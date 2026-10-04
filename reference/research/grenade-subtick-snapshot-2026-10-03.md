@@ -1,5 +1,44 @@
 # Grenade snapshot movement boundaries — October 3, 2026
 
+## October 4: fresh-click jump throws
+
+Sid reported that pressing Space and a fresh left click together was less
+forgiving than CS2. The previous landing fixture held the pin before the
+jump, so it did not cover that input sequence.
+
+Two corrections now apply on the local movement playtest branch:
+
+- Replay attack-button transitions in timestamp order. A press and release
+  inside one command now both take effect, and the throw timer starts at
+  the release fraction rather than the command's end. Releasing one mouse
+  button retains the other; draw readiness and strength's once-per-tick
+  update still apply.
+- The release writer's jump eligibility call uses a **0.1-second lookahead**,
+  as the timer consumer does. At `1809cd52a`, `MOVAPS XMM1,XMM6` supplies the
+  0.1 float before `1809cd530 CALL 180acb810`. The decompiled C omitted this
+  argument, causing the original audit and port to use zero. This could
+  unnecessarily defer a release just after takeoff by another 0.1 seconds.
+
+The installed server DLL still hashes to
+`098d4ddd57e2fbe9a73623a2bf68ebaff86f7b6342ddb3d5a0f69cd6335b31cc`.
+Release writer `1809cd2f0` (1,755 bytes), timer consumer `1809c1930`
+(980 bytes), and eligibility helper `180acb810` (114 bytes) match the saved
+Ghidra instruction spans byte for byte.
+
+The extracted Dust2 fixture now also tests fresh clicks at jump fractions
+0, 0.25 and 0.75, with release offsets 0, 8, 11 and 12 ticks. The late
+cases near 180–191 ms previously fell off the mid door when command-end
+rounding let the saved launch parameters expire. These are local landing
+regressions, not measured CS2 input-window or bounce-count equivalence.
+The flight, gravity, collision masks and restitution are unchanged.
+
+`watch_grenades.gd` now records the exact input release time, takeoff time
+derived from the stash deadline, and their difference alongside launch
+and contact telemetry. In the subsequent October 4 practice playtest, Sid
+reported that timing felt good and all supplied lineups hit, including mid
+doors. This accepts their playtest behavior; exact recorded CS2 trajectories
+and bounce counts have not yet been compared.
+
 Following the Xbox and mid-door screenshots, Sid requested a Ghidra audit
 of the remaining jump-throw inconsistency. This report corrects the clock
 interpretation in the [initial lineup follow-up](grenade-jump-lineup-2026-10-02.md).

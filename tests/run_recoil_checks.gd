@@ -30,6 +30,7 @@ func _initialize() -> void:
 	_check_the_scoped_copies_carry_the_pattern()
 	_check_held_sprays_walk_the_pattern()
 	_check_every_gun_kicks()
+	_check_model_follows_aim_recoil()
 	_check_the_provisional_kick_goes_by_magnitude()
 	_check_the_provisional_kick_leans_by_the_seed()
 	_check_the_scope_shrinks_the_kick()
@@ -152,6 +153,45 @@ func _check_every_gun_kicks() -> void:
 			still.append("%s (view %.2f, model %.3f)" % [weapon_class, view, model])
 	_check(still.is_empty(), "every one of the %d guns kicks the view and the weapon model on its first round %s"
 		% [WeaponLibrary.classes().size(), still if not still.is_empty() else ""])
+
+
+## Model aim follows recoil smoothly between shots without advancing bullets.
+func _check_model_follows_aim_recoil() -> void:
+	var data := WeaponLibrary.build("weapon_ak47")
+	data.viewmodel_recoil = 0.0 # Isolate aim following from the cosmetic springs.
+	data.inaccuracy_standing = 0.0
+	data.inaccuracy_per_shot = 0.0
+	data.spread = 0.0
+	var model_weapon := Weapon.new(data)
+	var control := Weapon.new(data)
+	var state := Weapon.ShooterState.new(0.0, true, false)
+	var now := SECOND
+	var cycle := int(round(data.cycle_time * SECOND))
+	for round_index in 8:
+		model_weapon.update(0.0, now)
+		control.update(0.0, now)
+		var followed := model_weapon.fire(now, 0.0, Vector3.ZERO, 0.0, 0.0, state)
+		var original := control.fire(now, 0.0, Vector3.ZERO, 0.0, 0.0, state)
+		_check(followed != null and original != null
+			and followed.direction.is_equal_approx(original.direction),
+			"advancing the presentation recoil leaves round %d's trajectory unchanged" % round_index)
+		var angles := PlayerInput.angles_from_direction(followed.direction)
+		var recoil := Vector2(-angles.x, angles.y)
+		_check(model_weapon.viewmodel_aim_punch.is_equal_approx(recoil * 0.325),
+			"the barrel follows 32.5 percent of round %d's aim recoil, independent of cosmetic kick" % round_index)
+		# Only the presented weapon runs between shots; the control reaches
+		# the next identical ballistic state directly through fire().
+		for tick in 8:
+			model_weapon.update(data.cycle_time / 8.0, now + int((tick + 1) * cycle / 8.0))
+			model_weapon.viewmodel_aim_punch
+		now += cycle
+	var ballistic := model_weapon._recoil.value
+	var before := model_weapon.viewmodel_aim_punch.length()
+	model_weapon.update(1.1, now + 1_100_000)
+	_check(before > 0.1 and model_weapon.viewmodel_aim_punch.is_zero_approx(),
+		"the aim-follow contribution settles after releasing a spray")
+	_check(model_weapon._recoil.value.is_equal_approx(ballistic),
+		"model recovery does not alter the ballistic recoil state")
 
 
 ## A gun with no pattern kicks the AK-47's per-round kick times its recoil

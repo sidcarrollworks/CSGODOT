@@ -152,7 +152,12 @@ work and CS2 capture limits.
   shared `DamageInfo` path. These poses still follow drawn animation;
   authoritative tick poses and history remain multiplayer work.
 - Tracers, muzzle flashes, weighted bullet-hole materials and representative
-  surface impact graphs are implemented. Blood uses current extracted
+  surface impact graphs are implemented, with dust and debris ejection
+  aligned to the surface normal. The October 4
+  [Ghidra follow-up](research/impact-tracer-viewmodel-2026-10-04.md) corrects
+  puff normal/position semantics, samples tracer origins after the rendered
+  weapon pose, and adds the audited 0.325 viewmodel aim-follow contribution.
+  Full camera/animation parity remains open. Blood uses current extracted
   layers, shorter/denser mist at the pellet contact, parent-death ground
   projections, bounded wall marks and bone-following wounds.
 - Surviving hits play independent additive body/head flinches from 42
@@ -164,7 +169,8 @@ work and CS2 capture limits.
 ### Match, bots, HUD and audio
 
 - Competitive is five a side with warmup, freeze, rounds, side swap and
-  overtime; Practice has no bots and unlimited warmup until F5. Any
+  overtime; Practice has no bots, unlimited money and grenade rebuys,
+  and unlimited warmup until F5. Any
   extracted defusal map uses the shared mode.
 - Economy, buy zones/time, purchases/refunds, Ctrl-click buy-and-throw,
   inventories, the bomb and six grenades are wired into the match.

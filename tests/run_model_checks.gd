@@ -1558,17 +1558,21 @@ func _test_player_composes_kick_and_bob() -> void:
 	var now := player.weapon.next_shot_usec()
 	player.weapon.fire(now, 0.5, Vector3.ZERO, 0.0, 0.0, Weapon.ShooterState.new())
 	player.weapon.update(SimClock.tick_seconds(), now + SimClock.tick_usec())
-	var kick := player.weapon.viewmodel_punch()
+	var kick := player.viewmodel_punch()
 	# The same over the last two ticks, so a frame between them, which is
 	# where the view draws the kick, shows it exactly.
 	player.previous_viewmodel_punch = kick
 	player.view._update_viewmodel(1.0 / 60.0)
-	var expected := rest.basis * Basis.from_euler(Vector3(deg_to_rad(kick.y), deg_to_rad(-kick.x), 0.0))
+	var expected := Basis.from_euler(Vector3(deg_to_rad(kick.y), deg_to_rad(-kick.x), 0.0)) * rest.basis
 	_check(
 		kick.length() > 0.01 and player.view_model.transform.basis.is_equal_approx(expected)
 			and player.view_model.transform.origin.is_equal_approx(rest.origin),
 		"standing still, a round's kick reaches the weapon model exactly as the weapon gives it (%.2f, %.2f degrees)" % [kick.x, kick.y]
 	)
+	var barrel_before := (rest.basis * Vector3.BACK).normalized()
+	var barrel_after := (player.view_model.transform.basis * Vector3.BACK).normalized()
+	_check(kick.y > 0.0 and barrel_after.y > barrel_before.y,
+		"upward recoil raises the imported gun barrel in the camera frame instead of pitching it down")
 	player.view.camera_motion.height = -1.0
 	player.view._update_viewmodel(1.0 / 60.0)
 	_check(is_equal_approx(player.view_model.position.y, rest.origin.y - 1.0)
@@ -1578,16 +1582,16 @@ func _test_player_composes_kick_and_bob() -> void:
 
 	# Running: the same kick, on top of the bob's offset.
 	player.velocity = Vector3(0.0, 0.0, -250.0)
-	player.previous_viewmodel_punch = player.weapon.viewmodel_punch()
+	player.previous_viewmodel_punch = player.viewmodel_punch()
 	for frame in 20:
 		player.view._update_viewmodel(1.0 / 60.0)
-	kick = player.weapon.viewmodel_punch()
+	kick = player.viewmodel_punch()
 	var moved := player.view_model.transform
 	var motion_only := player.view.viewmodel_motion.update(0.0, Vector3(0.0, 0.0, -250.0), true, Vector2.ZERO)
 	_check(
 		not moved.origin.is_equal_approx(rest.origin)
 			and moved.basis.is_equal_approx(
-				motion_only.basis * rest.basis * Basis.from_euler(Vector3(deg_to_rad(kick.y), deg_to_rad(-kick.x), 0.0))
+				motion_only.basis * Basis.from_euler(Vector3(deg_to_rad(kick.y), deg_to_rad(-kick.x), 0.0)) * rest.basis
 			),
 		"running, the bob moves the model and the kick still sits inside it"
 	)

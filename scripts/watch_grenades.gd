@@ -96,6 +96,9 @@ func _on_grenade_spawned(entity: SimEntity) -> void:
 			"strength": GrenadeRules.launch_strength(state.strength),
 			"snapshot_used": not state.snapshot.is_empty() and state.jump_eligible(grenade.thrown_usec),
 			"stash_usec": state.stash_usec, "jump_throw": state.jump_throw,
+			"release_usec": state.release_usec,
+			"takeoff_usec": state.stash_usec - GrenadeRules.RELEASE_DELAY_USEC if state.stash_usec >= 0 else null,
+			"release_after_takeoff_usec": state.release_usec - state.stash_usec + GrenadeRules.RELEASE_DELAY_USEC if state.stash_usec >= 0 else null,
 			"eye": _vector(parameters.eye), "center": _vector(parameters.center),
 			"yaw": parameters.yaw, "pitch": parameters.pitch,
 			"thrower_velocity": _vector(parameters.velocity)})

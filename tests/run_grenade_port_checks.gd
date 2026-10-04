@@ -5,6 +5,7 @@ extends "res://tests/check_suite.gd"
 func _initialize() -> void:
 	_hold_and_release()
 	_jump_snapshot()
+	_click_edges()
 	_flight_rules()
 	_fuse_rules()
 	_activation()
@@ -31,6 +32,7 @@ func _hold_and_release() -> void:
 	state.release(GrenadeRules.HE, 2_000_000)
 	state.reset()
 	_check(state.consume(3_000_000).is_empty(), "death/respawn reset cancels a pending throw")
+	_check_equal(state.release_usec, -1, "reset clears the recorded input release time")
 
 
 func _jump_snapshot() -> void:
@@ -49,15 +51,83 @@ func _jump_snapshot() -> void:
 	_check_equal(state.launch(state.stash_usec + 1, live).yaw, 15.0, "ready snapshot with positive age supplies launch aim")
 	_check_equal(state.launch(state.stash_usec + 200_000, live).yaw, 15.0, "the 0.2-second age endpoint includes the snapshot")
 	_check_equal(state.launch(state.stash_usec + 200_001, live).yaw, -45.0, "an expired snapshot falls back to live parameters")
-	state.release(GrenadeRules.HE, 1_010_000)
+	state.release(GrenadeRules.HE, 990_000)
+	_check(not state.jump_throw, "release before takeoff does not immediately mark a jump throw")
 	_check(state.consume(1_110_001).is_empty() and state.jump_throw and state.due_usec == 1_210_001,
 		"a qualifying first timer consume defers a jump throw once by 0.1 seconds")
 	_check_equal(state.consume(1_210_002), GrenadeRules.HE, "the deferred timer releases once")
-	state.release(GrenadeRules.FLASHBANG, 1_220_000)
-	_check(state.jump_throw, "release already inside the snapshot age range marks jump throw immediately")
-	_check_equal(state.consume(1_320_001), GrenadeRules.FLASHBANG, "an already marked jump release is not deferred twice")
+	state.release(GrenadeRules.FLASHBANG, 1_010_000)
+	_check(state.jump_throw, "release looks ahead 0.1 seconds and marks a just-started jump immediately")
+	_check_equal(state.consume(1_110_001), GrenadeRules.FLASHBANG, "an already marked jump release is not deferred twice")
+	state.release(GrenadeRules.HE, 1_200_000)
+	_check(state.jump_throw, "release lookahead includes the 0.2-second snapshot-age endpoint")
+	state.release(GrenadeRules.HE, 1_200_001)
+	_check(not state.jump_throw, "release lookahead excludes an expired snapshot")
 	state.jumped(2_000_000, 15_625)
 	_check(state.snapshot.is_empty(), "another actual jump invalidates the previous snapshot")
+
+
+func _click_edges() -> void:
+	var player := PlayerSim.new()
+	player.inventory.add(GrenadeRules.SMOKE)
+	player.inventory.select_slot(ItemDef.Slot.GRENADE)
+	var releases: Array[bool] = []
+	player.grenade_released.connect(func(underhand: bool) -> void: releases.append(underhand))
+	for fraction in [0.05, 0.5, 0.95]:
+		player.grenade_throw.reset()
+		player._pin_pulled = false
+		player._throwing = false
+		var cmd := UserCmd.new()
+		cmd.tick = 80
+		cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.ATTACK, true, fraction - 0.01, 0.0, 0.0))
+		cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.ATTACK, false, fraction, 0.0, 0.0))
+		player._update_grenade(cmd, false)
+		_check(player._throwing and not player._pin_pulled,
+			"a fresh click wholly within a tick pulls and releases the pin")
+		_check_equal(player.grenade_throw.due_usec, SimClock.usec_at(cmd.tick, fraction) + 100_000,
+			"the fresh-click timer starts at its release edge, regardless of tick phase")
+		_check_equal(player.grenade_throw.release_usec, SimClock.usec_at(cmd.tick, fraction),
+			"playtest telemetry retains the exact release time after the timer is consumed")
+	_check_equal(releases.size(), 3, "each short click releases once")
+
+	player.grenade_throw.reset()
+	player._pin_pulled = false
+	player._throwing = false
+	var both := UserCmd.new()
+	both.tick = 81
+	both.buttons = UserCmd.ATTACK2
+	player._update_grenade(both, false)
+	both.tick += 1
+	both.steps.append(UserCmd.SubtickStep.new(UserCmd.ATTACK, true, 0.2, 0.0, 0.0))
+	both.steps.append(UserCmd.SubtickStep.new(UserCmd.ATTACK, false, 0.8, 0.0, 0.0))
+	player._update_grenade(both, false)
+	_check(player._pin_pulled and not player._throwing,
+		"a left-button click does not throw while the right button remains held")
+	both.steps.clear()
+	both.tick += 1
+	both.buttons = 0
+	both.steps.append(UserCmd.SubtickStep.new(UserCmd.ATTACK2, false, 0.35, 0.0, 0.0))
+	player._update_grenade(both, false)
+	_check_equal(player.grenade_throw.due_usec, SimClock.usec_at(both.tick, 0.35) + 100_000,
+		"releasing the last held button starts the throw at that edge")
+	_check(releases.size() == 4 and releases.back(), "the right-button hold still releases underhand once")
+
+	player.grenade_throw.reset()
+	player._pin_pulled = false
+	player._throwing = false
+	player._drawn_until_usec = SimClock.usec_at(84, 0.6)
+	var drawing := UserCmd.new()
+	drawing.tick = 84
+	drawing.steps.append(UserCmd.SubtickStep.new(UserCmd.ATTACK, true, 0.2, 0.0, 0.0))
+	drawing.steps.append(UserCmd.SubtickStep.new(UserCmd.ATTACK, false, 0.4, 0.0, 0.0))
+	player._update_grenade(drawing, false)
+	_check(not player._pin_pulled and not player._throwing,
+		"a click completed before draw readiness does not pull or throw a grenade")
+	drawing.steps[1].when = 0.8
+	player._update_grenade(drawing, false)
+	_check_equal(player.grenade_throw.due_usec, SimClock.usec_at(84, 0.8) + 100_000,
+		"a click held through draw readiness releases at its actual edge")
+	player.free()
 
 
 func _flight_rules() -> void:

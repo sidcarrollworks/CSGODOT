@@ -323,7 +323,11 @@ static func build(
 	lit.set_shader_parameter("normal_texture", material.normal_texture)
 	lit.set_shader_parameter("has_normal_map", material.normal_enabled and material.normal_texture != null)
 	lit.set_shader_parameter("normal_depth", material.normal_scale)
-	lit.set_shader_parameter("orm_texture", material.roughness_texture)
+	# Some exports omit the ORM texture (dust2's xbox tarp). White would
+	# make the shader all metal, so keep the material's metalness instead.
+	lit.set_shader_parameter(
+		"orm_texture", material.roughness_texture if material.roughness_texture != null else ProbeMaterials.flat_orm(material.metallic)
+	)
 	lit.set_shader_parameter("roughness_factor", material.roughness)
 	if not blended:
 		lit.set_shader_parameter(

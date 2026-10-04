@@ -859,20 +859,21 @@ func _update_viewmodel(delta: float) -> void:
 		_viewmodel_rest = viewmodel.transform
 		_viewmodel_rest_captured = true
 
-	# The bob and sway move the model in the camera's frame, the kick in the
-	# model's own.
+	# Bob, sway and recoil use the camera frame. The imported rest basis
+	# turns the Source2Viewer rig around 180 degrees; applying pitch after
+	# that basis reverses the recoil's vertical direction.
 	var motion := viewmodel_motion.update(
 		delta, pawn.velocity, pawn.on_ground,
 		Vector2(player.input.yaw_degrees, player.input.pitch_degrees), camera_motion.height
 	)
 	var alpha := DrawClock.fraction()
-	var punch := pawn.weapon.viewmodel_punch() if pawn.weapon != null else Vector2.ZERO
+	var punch := pawn.viewmodel_punch()
 	var kick := pawn.previous_viewmodel_punch.lerp(punch, alpha)
 	# Up at the eye, the gun keeps its scope in front of it: no bob or sway
 	# (CS2 holds it nearly still there, m_flIronSightLooseness 0.03).
 	var loose := 1.0 - _arms_raised
 	viewmodel.transform = Transform3D(
-		Basis.IDENTITY.slerp(motion.basis, loose) * _viewmodel_rest.basis
-			* Basis.from_euler(Vector3(deg_to_rad(kick.y), deg_to_rad(-kick.x), 0.0)),
+		Basis.IDENTITY.slerp(motion.basis, loose)
+			* Basis.from_euler(Vector3(deg_to_rad(kick.y), deg_to_rad(-kick.x), 0.0)) * _viewmodel_rest.basis,
 		_viewmodel_rest.origin + motion.origin * loose
 	)

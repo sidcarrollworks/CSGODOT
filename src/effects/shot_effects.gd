@@ -61,6 +61,9 @@ func _ready() -> void:
 	flashes.quads = quads
 	_bake()
 	prepare()
+	# Attachments on the animated weapon are pinned during the deferred
+	# skeleton update. Sample after that and after the camera interpolation.
+	RenderingServer.frame_pre_draw.connect(_draw_frame)
 
 
 ## Reads every texture the tracers and flashes draw with, as the map loads:
@@ -76,6 +79,8 @@ static func prepare() -> void:
 
 
 func _exit_tree() -> void:
+	if RenderingServer.frame_pre_draw.is_connected(_draw_frame):
+		RenderingServer.frame_pre_draw.disconnect(_draw_frame)
 	if game != null:
 		game.events.unlisten(&"fire_bullets", _on_fire_bullets)
 		game.events.unlisten(&"bullet_impact", _on_bullet_impact)
@@ -93,7 +98,7 @@ func _on_bullet_impact(event: GameEvent) -> void:
 		(fired_round["impacts"] as Array).append(Vector3(event.fields["x"], event.fields["y"], event.fields["z"]))
 
 
-func _process(_delta: float) -> void:
+func _draw_frame() -> void:
 	var camera := get_viewport().get_camera_3d() if is_inside_tree() else null
 	if camera == null:
 		_pending.clear()

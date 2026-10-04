@@ -821,13 +821,16 @@ func _test_a_jump_throw(fraction: float, running: bool = false) -> void:
 		_check(player.velocity.x > 150.0, "run-jump fixture accelerates through real commands before takeoff")
 		player.movement = Vector2.ZERO
 	var takeoff_height := player.global_position.y
+	# Release just before takeoff to exercise the timer consumer's
+	# one-time deferral; a release after takeoff is marked immediately.
 	player.held = 0
+	world.step()
+	var release_usec := SimClock.tick_end_usec(world.tick)
 	player.tap = UserCmd.JUMP
 	player.tap_fraction = fraction
 	world.step()
 	var run_speed := player.velocity.x
 	var jumped_tick := world.tick
-	var release_usec := SimClock.tick_end_usec(jumped_tick)
 	_check(player.velocity.y > 0.0 and player.grenade_throw.stash_usec == SimClock.usec_at(jumped_tick, fraction) + 100_000,
 		"an actual subtick jump schedules its snapshot 100 ms after takeoff")
 	var expected_side := 0.0
