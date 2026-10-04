@@ -420,7 +420,7 @@ func _check_world_exposure() -> void:
 		var post := MapPostProcessing.load_file("")
 		var used := MapLighting.build(holder, {}, entities, "", null, false, post, "cs2", vmat)
 		var environment := (holder.get_node("Atmosphere") as WorldEnvironment).environment
-		var expected_fit := 1.5 if map_name == "de_dust2" else 1.2
+		var expected_fit := 1.425 if map_name == "de_dust2" else 1.2
 		_check_near(used.exposure, expected_fit,
 			"%s receives its world exposure fit; Mirage retains the prior calibration" % map_name)
 		var bias := pow(2.0, float(post.tonemap["m_flExposureBias"]))

@@ -34,8 +34,10 @@ The flight, gravity, collision masks and restitution are unchanged.
 
 `watch_grenades.gd` now records the exact input release time, takeoff time
 derived from the stash deadline, and their difference alongside launch
-and contact telemetry. The next human playtest should establish whether
-the timing feel and the remaining mid-door bounce discrepancy are resolved.
+and contact telemetry. In the subsequent October 4 practice playtest, Sid
+reported that timing felt good and all supplied lineups hit, including mid
+doors. This accepts their playtest behavior; exact recorded CS2 trajectories
+and bounce counts have not yet been compared.
 
 Following the Xbox and mid-door screenshots, Sid requested a Ghidra audit
 of the remaining jump-throw inconsistency. This report corrects the clock
