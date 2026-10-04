@@ -314,11 +314,14 @@ func _check_steps_and_jump() -> void:
 	player.wish_dir = Vector3.RIGHT
 	player.wish_speed = player.config.max_speed
 	var highest := player.position.y
-	for tick in 40:
+	# Deferred movement reaches the edge a tick later; the audited failed-
+	# step retry crosses Box3D's larger clearance from rest at 64 u/s.
+	# Allow the approach and re-acceleration, retaining the actual climb test.
+	for tick in 48:
 		player.simulate(DT)
 		highest = maxf(highest, player.position.y)
 	_check(player.position.x > 100.0 and highest > 15.9 and highest < 16.5 and player.on_ground,
-		"the unchanged step solver climbs a sixteen-inch obstacle using native sweeps")
+		"the step solver climbs a sixteen-inch obstacle using native sweeps (x %.3f, highest %.3f, ground %s)" % [player.position.x, highest, player.on_ground])
 	player.wish_dir = Vector3.ZERO
 	player.wish_speed = 0.0
 	player.velocity = Vector3.ZERO
@@ -330,8 +333,10 @@ func _check_steps_and_jump() -> void:
 	for tick in 60:
 		player.simulate(DT)
 		peak = maxf(peak, player.position.y)
-	_check(peak - start_y > 58.0 and peak - start_y < 60.0 and player.on_ground,
-		"native sweeps preserve the Source jump arc and landing")
+	# The audited CS2 take-off and deferred half-gravity give a
+	# 55.8255-inch sampled arc at 64 Hz, rather than the legacy Source arc.
+	_check(absf(peak - start_y - 55.8255) < 0.02 and player.on_ground,
+		"native sweeps preserve the CS2 jump arc and landing (peak %.6f, ground %s)" % [peak - start_y, player.on_ground])
 	_close()
 	await process_frame
 
@@ -442,21 +447,27 @@ func _check_slope_beside() -> void:
 		var slowest_at := -1
 		var grounded := 0
 		var most_traces := 0
+		var most_eye_traces := 0
 		var ticks := 192
 		for tick in ticks:
 			var traces := player.traces
+			var eye_traces := player.ground_eyes.queries
 			player.simulate(DT)
-			most_traces = maxi(most_traces, player.traces - traces)
+			var eye_delta := player.ground_eyes.queries - eye_traces
+			most_eye_traces = maxi(most_eye_traces, eye_delta)
+			most_traces = maxi(most_traces, player.traces - traces - eye_delta)
 			if player.on_ground:
 				grounded += 1
 			var speed := Vector2(player.velocity.x, player.velocity.z).length()
 			if tick >= 32 and speed < slowest:
 				slowest = speed
 				slowest_at = tick
-		_check(slowest > 0.9 * player.config.max_speed and grounded == ticks and most_traces <= 10
+		# Keep the movement budget independent of the new terrain sampler.
+		# Near the slope's edge failed cells can retry, up to the 5x5 grid.
+		_check(slowest > 0.9 * player.config.max_speed and grounded == ticks and most_traces <= 10 and most_eye_traces <= 25
 			and player.position.z < -600.0,
-			"a slope beside the way, met %d degrees off its foot, is walked along at a run: never under %.0f u/s (tick %d), %d traces a tick at most, to x %.1f" % [
-				int(drift), slowest, slowest_at, most_traces, player.position.x])
+			"a slope beside the way, met %d degrees off its foot, is walked along at a run: never under %.0f u/s (tick %d), at most %d movement + %d terrain traces a tick, to x %.1f" % [
+				int(drift), slowest, slowest_at, most_traces, most_eye_traces, player.position.x])
 		_close()
 		await process_frame
 
@@ -487,20 +498,24 @@ func _check_lips() -> void:
 		var slowest := INF
 		var grounded := 0
 		var most_traces := 0
+		var most_eye_traces := 0
 		var ticks := 96
 		for tick in ticks:
 			var traces := player.traces
+			var eye_traces := player.ground_eyes.queries
 			player.simulate(DT)
-			most_traces = maxi(most_traces, player.traces - traces)
+			var eye_delta := player.ground_eyes.queries - eye_traces
+			most_eye_traces = maxi(most_eye_traces, eye_delta)
+			most_traces = maxi(most_traces, player.traces - traces - eye_delta)
 			if player.on_ground:
 				grounded += 1
 			if tick >= 32:
 				slowest = minf(slowest, Vector2(player.velocity.x, player.velocity.z).length())
 		var over := player.position.y - lip
 		_check(slowest > 0.9 * player.config.max_speed and player.position.x > 150.0 and grounded == ticks
-			and most_traces <= budget and over > 0.2 and over < 0.3,
-			"a level floor %.2f higher is walked onto at a run: never under %.0f u/s, on the ground, %.3f over it, %d traces a tick at most" % [
-				lip, slowest, over, most_traces])
+			and most_traces <= budget and most_eye_traces <= 5 and over > 0.2 and over < 0.3,
+			"a level floor %.2f higher is walked onto at a run: never under %.0f u/s, on the ground, %.3f over it, at most %d movement + %d terrain traces a tick" % [
+				lip, slowest, over, most_traces, most_eye_traces])
 		_close()
 		await process_frame
 

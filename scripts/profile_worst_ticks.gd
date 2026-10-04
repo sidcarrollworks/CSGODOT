@@ -84,6 +84,11 @@ func _play(what: int) -> void:
 	var again := PackedFloat64Array()
 	var world_only := PackedFloat64Array()
 	for tick in TICKS:
+		# The bodies players die into are made on frames in the game
+		# (GameWorld._process), which this runs none of: made here, out of
+		# the tick's time, or every death would build its ragdoll on the
+		# tick (2.0 ms a death where the game pays 0.6; 2026-10-02).
+		world.make_bodies_now()
 		events.clear()
 		var t0 := Time.get_ticks_usec()
 		world.begin_tick()

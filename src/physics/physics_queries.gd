@@ -73,6 +73,28 @@ static func shape_cast(space: PhysicsDirectSpaceState3D, query: PhysicsShapeQuer
 	return hit
 
 
+## A projectile's geometric fraction and normal offset are independent.
+## Player movement and the generic sweep retain their existing contracts.
+static func projectile_trace(space: PhysicsDirectSpaceState3D, query: PhysicsShapeQueryParameters3D) -> Dictionary:
+	var native := for_space(space)
+	if native != null:
+		native_queries += 1
+	else:
+		legacy_queries += 1
+	return ProjectileTrace.cast(space, query, native)
+
+
+## A zero-height square for the tick-owned ground topology sampler.
+## This has no player or grenade clearance offset in its returned end.
+static func terrain_square(space: PhysicsDirectSpaceState3D, query: PhysicsShapeQueryParameters3D, width: float = 7.98) -> Dictionary:
+	var native := for_space(space)
+	if native != null:
+		native_queries += 1
+	else:
+		legacy_queries += 1
+	return TerrainTrace.cast(space, query, width, native)
+
+
 static func cast_motion(space: PhysicsDirectSpaceState3D, query: PhysicsShapeQueryParameters3D) -> PackedFloat32Array:
 	var native := for_space(space)
 	if native == null:

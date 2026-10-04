@@ -1,6 +1,7 @@
-# Local shooting audit tools
+# Local weapon and grenade audit tools
 
-Read-only helpers for the [October 2 shooting audit](../../reference/research/shooting-audit-2026-10-02.md).
+Read-only helpers for the [October 2 shooting audit](../../reference/research/shooting-audit-2026-10-02.md)
+and [grenade audit](../../reference/research/grenade-audit-2026-10-02.md).
 They fingerprint binaries, compare fresh weapon data, and export selected
 Ghidra references/functions. They do not load/execute Valve DLLs, attach to
 CS2, or modify game files. These are research tools, not runtime dependencies.
@@ -41,9 +42,11 @@ python scripts/shooting_audit/compare_vdata.py "$auditOut\raw\weapons.vdata.txt"
   --out "$auditOut\raw"
 ```
 
-The PE helper exports metadata/SHA-256, ASCII shooting strings with RVA/VA,
+The PE helper exports metadata/SHA-256, selected ASCII strings with RVA/VA,
 and `*-targets.tsv` for `AuditIndex.java`. It handles PE32+ binaries, not
 arbitrary executable formats.
+Use `--pattern` to select another case-insensitive regex; omitting it keeps
+the original shooting anchors.
 
 The data helper resolves `_base` inheritance and reads scalar/one-line-array
 fields in the CLI's text format, like `scripts/weapon_tables.gd`. Its report
@@ -144,7 +147,99 @@ measure wall-clock lockouts or visible recoil interpolation.
 python -m unittest discover -s scripts/shooting_audit -p 'test_*.py'
 ```
 
-Fixtures cover inheritance, nested-field exclusion, cycles, array/enum
-normalization and the changed/new/missing distinction. The October 2 pass
+Seven fixtures cover inheritance, nested-field exclusion, cycles, array/enum
+normalization, the changed/new/missing distinction, PE identity/address mapping,
+custom string filtering and non-PE rejection. The October 2 pass
 also ran the helpers against all three installed binaries and fresh vdata,
 and compiled/executed both Java scripts in Ghidra.
+
+## Grenades and throws
+
+Use the same hash-matched server/client projects; the directory name
+`shooting_audit` is historical. The grenade pass adds custom string selection
+without changing the default shooting scan:
+
+```powershell
+$auditOut = '.godot\grenade-audit'
+New-Item -ItemType Directory -Force "$auditOut\raw" | Out-Null
+python scripts/shooting_audit/pe_strings.py --out "$auditOut\raw" `
+  --pattern 'grenade|throwstrength|throwtime|pinpull|nextHold|stash|flash|molotov|decoy|smoke' `
+  "$cs2Game\csgo\bin\win64\server.dll" "$cs2Game\csgo\bin\win64\client.dll"
+& $ghidraHeadless $auditProjects CS2_Shooting_Server -process server.dll -noanalysis `
+  -scriptPath scripts/shooting_audit `
+  -postScript AuditIndex.java "$auditOut\raw\server-targets.tsv" "$auditOut\server"
+& $ghidraHeadless $auditProjects CS2_Shooting_Client -process client.dll -noanalysis `
+  -scriptPath scripts/shooting_audit `
+  -postScript AuditIndex.java "$auditOut\raw\client-targets.tsv" "$auditOut\client"
+
+& $ghidraHeadless $auditProjects CS2_Shooting_Server -process server.dll -noanalysis `
+  -scriptPath scripts/shooting_audit `
+  -postScript AuditDecompile.java "$auditOut\server\decompiled" `
+    1809acd00 1809c1d20 1809cd2f0 1809c1930 1809ce100 1809adab0 1809adc00 `
+    180ab57f0 180adf830 180abe000 180add6f0 180abf740 180acb810 `
+    1809cc3a0 1809c5670 180e87c80 180e89790 1809c7ad0 180e88270 `
+    1809ae940 1809af090 18039dc30 18039cd80 1803a1380 18039ced0 `
+    1809c9ca0 1809b0f50 1809b0b70 1809cdd00 1809cde80 1809ad2c0 `
+    1809afd80 1809cda40 1809b9d00 1809b02a0 1809ad010 1809b0fe0 1809cf4b0 `
+    18039e840 180de95d0 18094ebf0 18091fe90 `
+    18039dea0 1803a0830 1803a02c0 18039d870 1801c08f0 18021ab10 `
+    1800b4920 1800b49d0 1800b3490 1800b51d0
+& $ghidraHeadless $auditProjects CS2_Shooting_Client -process client.dll -noanalysis `
+  -scriptPath scripts/shooting_audit `
+  -postScript AuditDecompile.java "$auditOut\client\decompiled" `
+    1807c6b30 1807d70b0 1807d6de0
+
+$grenadeGraphs = 'decoy','flash','he','incendiary','molotov','smoke' |
+  ForEach-Object { "animation/graphs/viewmodel/viewmodel_grenade.vnmgraph+$_.vnmgraph_c" }
+& $source2Cli -i "$cs2Game\csgo\pak01_dir.vpk" -f ($grenadeGraphs -join ',') -b DATA `
+  > "$auditOut\raw\grenade-graphs.txt"
+& $source2Cli -i "$cs2Game\csgo\pak01_dir.vpk" `
+  -f 'animation/anims/viewmodel/grenade/' -e vnmclip_c -b DATA `
+  > "$auditOut\raw\grenade-clips.txt"
+```
+
+Never use an empty VPK filter to dump the whole installation. The nonempty
+clip prefix includes draw/idle/charge clips; associate each graph's underhand/
+overhand data slot with its specific resource rather than assuming one folder.
+Compare fresh weapon vdata as above as well.
+
+Start from `CBaseCSGrenade`, `CBaseCSGrenadeProjectile`, each concrete grenade,
+`CCSPlayerPawn` and `CCSGameRules` RTTI/vtables. Follow virtual call slots and
+writers/readers of throw, stash, detonation and flash fields; indirect callers
+need not appear in a direct-call export. Verify short thunks/leaf helpers in
+the Listing and follow their jumps even when the exporter says `NO FUNCTION`.
+In this build `CCSGameRules +0x1f8` points at `18094fbb0`, which jumps to
+`18094ebf0`. Do not copy offsets, vtable entries or addresses onto an updated
+binary without rediscovering them. The grenade report records the equations,
+constants and unresolved paths; local lineup/flash/smoke captures remain separate.
+
+## Collision callers before the grenade port
+
+The [collision foundation audit](../../reference/research/collision-foundation-2026-10-02.md)
+follows the entity push, collision dispatch, trace filtering and result
+conversion in the same hash-matched server project. Additional exports:
+
+```powershell
+$collisionAuditOut = '.godot\collision-audit'
+& $ghidraHeadless $auditProjects CS2_Shooting_Server -process server.dll -noanalysis `
+  -scriptPath scripts/shooting_audit `
+  -postScript AuditDecompile.java "$collisionAuditOut\server" `
+    180e88aa0 180e86890 180e8c720 180e87e10 180c27940 180c28520 `
+    180be76a0 180e887a0 180bd6d50 1814a0920 1814a0b90
+```
+
+The gameplay trace's end and fraction are copied from one engine result;
+solid-state flags and a missing normal are separate concepts. Inspect the
+imported collision-interface calls as well as the server wrappers before
+claiming the engine's inner sweep tolerances. This audit's addon comparison
+uses the pinned v0.4.3 source and local box/triangle fixtures, not an inferred
+match between Box3D and CS2's engine solver.
+
+The [Dust2 sky clipping follow-up](../../reference/research/grenade-sky-clipping-2026-10-02.md)
+compares a fresh `world_physics.vmdl_c` export and its PHYS attributes with
+the installed collision masks. Server targets `1809cc3a0`, `180d08410`,
+`180bd6d50`, `180e88aa0`, `180c27940` and `180934c70` are byte-matched to
+build 2000924. A fresh `vphysics2.dll` project supplies `180296fa0`, the
+common interaction registration: `sky` is bit 3 and grenade clip is bit 33.
+The grenade mask `0x200003001` excludes sky. Verify these addresses again
+after updates; the report records both DLL hashes and the Listing checks.

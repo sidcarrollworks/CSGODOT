@@ -1,8 +1,11 @@
 # Every gun: the todo list
 
-Status checked against merged `main` on **2026-10-02**, through PR #172.
+Status checked against merged `main` on **2026-10-03**, through PR #185.
 Completed implementation is checked below; direct CS2 measurements and
 remaining visual comparisons stay open even where the feature is playable.
+The shooting audit and follow-up are merged in #176. They establish the
+formulas for the open recoil/RNG, recovery, shotgun-pattern and weapon-mode
+work below; the audit's completion does not mark those ports done.
 
 Sid, 2026-09-22: build all the other guns, with every number from the CS2
 weapon sheet (`cs2_weapon_sheet.csv`, explained in `README.md` beside this

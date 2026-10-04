@@ -672,7 +672,10 @@ func _goal_taken(goal: Vector3) -> bool:
 ## STUCK_JUMP_SECONDS, unless a teammate is against it.
 func _unstick(cmd: UserCmd, way: Vector3, friend_against: bool) -> Vector3:
 	var tick := cmd.tick
-	if on_ground and tick >= _next_sample_tick:
+	# A hull wedged between steep surfaces can be stopped without standing
+	# on either. Sample that completed hard stop too; ordinary flight and
+	# the jump apex retain gravity state and never enter this recovery gate.
+	if (on_ground or blocked_air_move()) and tick >= _next_sample_tick:
 		if _speeds.size() != STUCK_SAMPLES:
 			_speeds.resize(STUCK_SAMPLES)
 		_speeds[_speeds_in % STUCK_SAMPLES] = Vector2(velocity.x, velocity.z).length()

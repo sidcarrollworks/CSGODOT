@@ -1,11 +1,13 @@
 #include "hull_mover.h"
 
 #include <godot_cpp/classes/box_shape3d.hpp>
+#include <godot_cpp/classes/animatable_body3d.hpp>
 #include <godot_cpp/classes/character_body3d.hpp>
 #include <godot_cpp/classes/collision_object3d.hpp>
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/script.hpp>
 #include <godot_cpp/classes/shape3d.hpp>
+#include <godot_cpp/classes/static_body3d.hpp>
 #include <godot_cpp/core/object.hpp>
 #include <godot_cpp/variant/basis.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
@@ -75,6 +77,13 @@ bool is_player_body(Object *p_object) {
 	return false;
 }
 
+// PlayerBody._is_world_ground: fixed authoring geometry is world; the
+// AnimatableBody3D subclass represents a moving entity instead.
+bool is_world_ground(Object *p_object) {
+	return Object::cast_to<StaticBody3D>(p_object) != nullptr &&
+		Object::cast_to<AnimatableBody3D>(p_object) == nullptr;
+}
+
 } // namespace
 
 // The stamp comes from the build as a bare word (native/SConstruct), an "s"
@@ -101,12 +110,12 @@ void HullMover::_bind_methods() {
 void HullMover::read_config(Object *p_config) {
 	static const StringName gravity("gravity"), accelerate("accelerate"), air_accelerate("air_accelerate"),
 			friction("friction"), stop_speed("stop_speed"), air_max_wishspeed("air_max_wishspeed"),
-			max_speed("max_speed"), jump_impulse("jump_impulse"),
+			max_speed("max_speed"), jump_impulse("jump_impulse"), cs2_jump("cs2_jump"),
 			tick_rate_independent_jump("tick_rate_independent_jump"), non_jump_velocity("non_jump_velocity"),
 			max_velocity("max_velocity"), auto_bunnyhop("auto_bunnyhop"),
 			enable_bunnyhopping("enable_bunnyhopping"), bunnyhop_speed_cap("bunnyhop_speed_cap"),
 			hull_width("hull_width"), stand_height("stand_height"), duck_height("duck_height"),
-			duck_time("duck_time"), step_height("step_height"),
+			duck_time("duck_time"), step_height("step_height"), step_move_velocity_min("step_move_velocity_min"),
 			project_wish_dir_on_ground("project_wish_dir_on_ground"), stay_on_ground("stay_on_ground"),
 			trace_epsilon("trace_epsilon"), source_deadstrafe("source_deadstrafe"),
 			deadstrafe_friction("deadstrafe_friction"),
@@ -119,6 +128,7 @@ void HullMover::read_config(Object *p_config) {
 	cfg.air_max_wishspeed = p_config->get(air_max_wishspeed);
 	cfg.max_speed = p_config->get(max_speed);
 	cfg.jump_impulse = p_config->get(jump_impulse);
+	cfg.cs2_jump = p_config->get(cs2_jump);
 	cfg.tick_rate_independent_jump = p_config->get(tick_rate_independent_jump);
 	cfg.non_jump_velocity = p_config->get(non_jump_velocity);
 	cfg.max_velocity = p_config->get(max_velocity);
@@ -130,6 +140,7 @@ void HullMover::read_config(Object *p_config) {
 	cfg.duck_height = p_config->get(duck_height);
 	cfg.duck_time = p_config->get(duck_time);
 	cfg.step_height = p_config->get(step_height);
+	cfg.step_move_velocity_min = p_config->get(step_move_velocity_min);
 	cfg.project_wish_dir_on_ground = p_config->get(project_wish_dir_on_ground);
 	cfg.stay_on_ground = p_config->get(stay_on_ground);
 	cfg.trace_epsilon = p_config->get(trace_epsilon);
@@ -141,8 +152,12 @@ void HullMover::read_config(Object *p_config) {
 namespace names {
 const StringName &global_position() { static const StringName n("global_position"); return n; }
 const StringName &velocity() { static const StringName n("velocity"); return n; }
+const StringName &move_acceleration() { static const StringName n("_move_acceleration"); return n; }
+const StringName &deferred_velocity() { static const StringName n("_deferred_velocity"); return n; }
+const StringName &friction_overshoot() { static const StringName n("_friction_overshoot"); return n; }
 const StringName &on_ground() { static const StringName n("on_ground"); return n; }
 const StringName &ground_normal() { static const StringName n("ground_normal"); return n; }
+const StringName &ground_is_world() { static const StringName n("ground_is_world"); return n; }
 const StringName &is_ducked() { static const StringName n("is_ducked"); return n; }
 const StringName &duck_progress() { static const StringName n("duck_progress"); return n; }
 const StringName &wish_dir() { static const StringName n("wish_dir"); return n; }
@@ -158,6 +173,8 @@ const StringName &hull_height() { static const StringName n("_hull_height"); ret
 const StringName &floor_at() { static const StringName n("_floor_at"); return n; }
 const StringName &floor_with() { static const StringName n("_floor_with"); return n; }
 const StringName &floor_normal() { static const StringName n("_floor_normal"); return n; }
+const StringName &floor_is_world() { static const StringName n("_floor_is_world"); return n; }
+const StringName &quadrant_is_world() { static const StringName n("_quadrant_is_world"); return n; }
 const StringName &recovery_direction() { static const StringName n("_native_recovery_direction"); return n; }
 const StringName &last_recovery() { static const StringName n("_last_native_trace_recovery"); return n; }
 const StringName &collision_mask() { static const StringName n("collision_mask"); return n; }
@@ -174,8 +191,12 @@ const StringName &source_shape() { static const StringName n("source_shape"); re
 void HullMover::read_body() {
 	position = body->get(names::global_position());
 	velocity = body->get(names::velocity());
+	move_acceleration = body->get(names::move_acceleration());
+	deferred_velocity = body->get(names::deferred_velocity());
+	friction_overshoot = body->get(names::friction_overshoot());
 	on_ground = body->get(names::on_ground());
 	ground_normal = body->get(names::ground_normal());
+	ground_is_world = body->get(names::ground_is_world());
 	is_ducked = body->get(names::is_ducked());
 	duck_progress = body->get(names::duck_progress());
 	wish_dir = body->get(names::wish_dir());
@@ -191,6 +212,8 @@ void HullMover::read_body() {
 	floor_at = body->get(names::floor_at());
 	floor_with = body->get(names::floor_with());
 	floor_normal = body->get(names::floor_normal());
+	floor_is_world = body->get(names::floor_is_world());
+	quadrant_is_world = body->get(names::quadrant_is_world());
 	recovery_direction = body->get(names::recovery_direction());
 	last_trace_recovery = body->get(names::last_recovery());
 	collision_mask = body->get(names::collision_mask());
@@ -205,8 +228,12 @@ void HullMover::write_body(const Vector3 &p_position_before) {
 		body->set(names::global_position(), position);
 	}
 	body->set(names::velocity(), velocity);
+	body->set(names::move_acceleration(), move_acceleration);
+	body->set(names::deferred_velocity(), deferred_velocity);
+	body->set(names::friction_overshoot(), friction_overshoot);
 	body->set(names::on_ground(), on_ground);
 	body->set(names::ground_normal(), ground_normal);
+	body->set(names::ground_is_world(), ground_is_world);
 	body->set(names::is_ducked(), is_ducked);
 	body->set(names::duck_progress(), duck_progress);
 	body->set(names::jumped(), jumped);
@@ -215,6 +242,8 @@ void HullMover::write_body(const Vector3 &p_position_before) {
 	body->set(names::floor_at(), floor_at);
 	body->set(names::floor_with(), floor_with);
 	body->set(names::floor_normal(), floor_normal);
+	body->set(names::floor_is_world(), floor_is_world);
+	body->set(names::quadrant_is_world(), quadrant_is_world);
 	body->set(names::recovery_direction(), recovery_direction);
 	body->set(names::last_recovery(), last_trace_recovery);
 	if (casts != 0) {
@@ -298,6 +327,38 @@ Vector3 HullMover::apply_friction(const Vector3 &p_velocity, bool p_on_ground, d
 	return times(p_velocity, new_speed / speed);
 }
 
+// MovementSolver.quantized_speed: this encoder's grid is offset, with an
+// exact-zero encoding, rather than an ordinary 1/32-unit rounding.
+double HullMover::quantized_speed(double speed) {
+	if (speed == 0.0) {
+		return 0.0;
+	}
+	const double value = clampf(speed, -16384.0, 16384.0);
+	const double shifted = (real_t)(value + 16384.0);
+	const int64_t code = (int64_t)(shifted * (1048575.0 / 32768.0) + 0.5);
+	return (real_t)(code * (1.0 / 1048575.0) * 32768.0 - 16384.0);
+}
+
+double HullMover::friction_rate(double speed, double surface_friction) const {
+	const double control_speed = quantized_speed(speed);
+	if (control_speed < 0.1) {
+		return 0.0;
+	}
+	return maxf(control_speed, cfg.stop_speed) * cfg.friction * surface_friction;
+}
+
+double HullMover::ground_acceleration_rate(const Vector3 &p_velocity, const Vector3 &p_wish_dir, double p_wish_speed, double accel, double surface_friction, double dt, double accel_from, double p_friction_overshoot) {
+	if (dt <= 0.0) {
+		return 0.0;
+	}
+	const double available = p_wish_speed - p_velocity.dot(p_wish_dir);
+	if (available <= 0.0) {
+		return 0.0;
+	}
+	const double scale = accel_from > 0.0 ? accel_from : p_wish_speed;
+	return minf(maxf(scale * accel * surface_friction - p_friction_overshoot / dt, 0.0), available / dt);
+}
+
 // MovementSolver.accelerate: accel_from is PlayerBody.acceleration_speed.
 Vector3 HullMover::accelerate(const Vector3 &p_velocity, const Vector3 &p_wish_dir, double p_wish_speed, double accel, double surface_friction, double dt, double accel_from) {
 	const double current_speed = p_velocity.dot(p_wish_dir);
@@ -305,7 +366,8 @@ Vector3 HullMover::accelerate(const Vector3 &p_velocity, const Vector3 &p_wish_d
 	if (add_speed <= 0.0) {
 		return p_velocity;
 	}
-	double accel_speed = accel * dt * maxf(p_wish_speed, accel_from) * surface_friction;
+	const double scale = accel_from > 0.0 ? accel_from : p_wish_speed;
+	double accel_speed = accel * dt * scale * surface_friction;
 	if (accel_speed > add_speed) {
 		accel_speed = add_speed;
 	}
@@ -353,6 +415,9 @@ Vector3 HullMover::clamp_bunnyhop(const Vector3 &p_velocity) const {
 // --- PlayerBody -------------------------------------------------------------
 
 void HullMover::simulate_step(double dt) {
+	move_acceleration = ZERO;
+	deferred_velocity = ZERO;
+	friction_overshoot = 0.0;
 	if (!ground_known()) {
 		categorize_position();
 	}
@@ -362,14 +427,11 @@ void HullMover::simulate_step(double dt) {
 
 	velocity = check_velocity(velocity);
 
-	// StartGravity.
-	velocity.y = (real_t)((double)velocity.y - cfg.gravity * 0.5 * dt);
-
 	try_jump(dt);
 
 	if (on_ground) {
 		velocity.y = 0.0;
-		velocity = apply_friction(velocity, true, surface_friction, dt);
+		apply_ground_friction(surface_friction, dt);
 	}
 
 	if (on_ground) {
@@ -380,13 +442,37 @@ void HullMover::simulate_step(double dt) {
 
 	categorize_position();
 
-	// FinishGravity.
-	velocity.y = (real_t)((double)velocity.y - cfg.gravity * 0.5 * dt);
 	if (on_ground) {
 		velocity.y = 0.0;
+		move_acceleration.y = 0.0;
+		deferred_velocity.y = 0.0;
 	}
 
 	velocity = check_velocity(velocity);
+}
+
+void HullMover::apply_ground_friction(double surface_friction, double dt) {
+	const double speed = velocity.length();
+	const double rate = friction_rate(speed, surface_friction);
+	if (speed <= 0.0 || dt <= 0.0 || rate <= 0.0) {
+		return;
+	}
+	const double drop = rate * dt;
+	friction_overshoot = maxf(drop - speed, 0.0);
+	move_acceleration -= times(over(velocity, speed), minf(rate, speed / dt));
+	velocity = times(velocity, maxf(speed - drop, 0.0) / speed);
+}
+
+void HullMover::defer_acceleration(double dt) {
+	const Vector3 half = times(times(move_acceleration, dt), 0.5);
+	velocity -= half;
+	deferred_velocity += half;
+}
+
+void HullMover::stop_movement() {
+	velocity = ZERO;
+	move_acceleration = ZERO;
+	deferred_velocity = ZERO;
 }
 
 bool HullMover::ground_known() const {
@@ -472,10 +558,14 @@ void HullMover::try_jump(double dt) {
 	velocity = clamp_bunnyhop(velocity);
 	velocity.y = (real_t)cfg.jump_impulse;
 	jumped = true;
-	if (cfg.tick_rate_independent_jump) {
-		velocity.y = (real_t)((double)velocity.y - cfg.gravity * 0.5 * dt);
+	if (cfg.cs2_jump) {
+		velocity.y = (real_t)((double)velocity.y - cfg.gravity * 0.5 / 128.0);
+	} else if (!cfg.tick_rate_independent_jump) {
+		// Source 1 compatibility: the jump overwrote its leading gravity.
+		velocity.y = (real_t)((double)velocity.y + cfg.gravity * 0.5 * dt);
 	}
 	on_ground = false;
+	ground_is_world = false;
 }
 
 void HullMover::walk_move(double surface_friction, double dt) {
@@ -487,29 +577,47 @@ void HullMover::walk_move(double surface_friction, double dt) {
 		}
 	}
 
-	// PlayerBody's faster crouch acceleration cannot add speed beyond
+	// PlayerBody's crouch acceleration cannot add speed beyond
 	// the top, or beyond residual speed left after this tick's friction.
 	double speed_limit = std::numeric_limits<double>::infinity();
-	if (acceleration_speed > wish_speed) {
+	if (acceleration_speed > wish_speed || (acceleration_speed > 0.0 && duck_progress > 0.0)) {
 		speed_limit = maxf(wish_speed, (double)velocity.length());
 	}
-	velocity = accelerate(velocity, dir, wish_speed, cfg.accelerate, surface_friction, dt, acceleration_speed);
+	const double rate = ground_acceleration_rate(velocity, dir, wish_speed, cfg.accelerate, surface_friction, dt, acceleration_speed, friction_overshoot);
+	move_acceleration += times(dir, rate);
+	velocity += times(dir, rate * dt);
 	velocity.y = 0.0;
-	double speed = velocity.length();
+	move_acceleration.y = 0.0;
+	deferred_velocity.y = 0.0;
+	const double speed = velocity.length();
 	if (speed > speed_limit) {
+		const Vector3 before_cap = velocity;
 		velocity = times(velocity, speed_limit / speed);
-		speed = velocity.length();
+		if (dt > 0.0) {
+			move_acceleration += over(velocity - before_cap, dt);
+		}
 	}
-	if (speed < 1.0) {
-		velocity = ZERO;
+	defer_acceleration(dt);
+	const Vector3 predicted = velocity + times(move_acceleration, 1.0 / 64.0 - dt * 0.5);
+	if (predicted.length() < 1.0) {
+		stop_movement();
 		return;
 	}
-	step_move(dt);
+	const Vector3 start = position;
+	const Vector3 midpoint = velocity;
+	if (!step_move(dt)) {
+		const double midpoint_speed = midpoint.length();
+		if (midpoint_speed > 0.0 && midpoint_speed < cfg.step_move_velocity_min && wish_dir != ZERO) {
+			// The retry repeats only the raised path. Any hard-stop clearing
+			// of acceleration and deferred velocity remains in effect.
+			try_step(dt, start, times(midpoint, cfg.step_move_velocity_min / midpoint_speed));
+		}
+	}
+	velocity += deferred_velocity;
 	// PlayerBody._stay_on_ground, over native collision.
-	if (!cfg.stay_on_ground) {
-		return;
+	if (cfg.stay_on_ground) {
+		stay_on_native_ground();
 	}
-	stay_on_native_ground();
 }
 
 void HullMover::stay_on_native_ground() {
@@ -525,6 +633,7 @@ void HullMover::stay_on_native_ground() {
 		return;
 	}
 	Vector3 normal = hit.normal;
+	bool world_ground = is_world_ground(hit.collider);
 	Vector3 landing;
 	if (normal.is_zero_approx()) {
 		// Something over its head where it would start: from where it
@@ -535,6 +644,7 @@ void HullMover::stay_on_native_ground() {
 			return;
 		}
 		normal = collision.normal;
+		world_ground = collision.is_world;
 		landing = start + collision.travel;
 	} else if (!is_walkable(normal)) {
 		return;
@@ -545,20 +655,36 @@ void HullMover::stay_on_native_ground() {
 	floor_at = position;
 	floor_with = hull_height;
 	floor_normal = normal;
+	floor_is_world = world_ground;
 }
 
 void HullMover::air_move(double surface_friction, double dt) {
-	velocity = air_accelerate(velocity, wish_dir, wish_speed, cfg.air_accelerate, surface_friction, dt);
+	const double available = minf(wish_speed, cfg.air_max_wishspeed) - velocity.dot(wish_dir);
+	if (available > 0.0 && dt > 0.0) {
+		const double half = wish_speed * cfg.air_accelerate * surface_friction * dt * 0.5;
+		const double before = minf(available, half);
+		const double after = minf(available - before, half);
+		velocity += times(wish_dir, before);
+		deferred_velocity += times(wish_dir, after);
+	}
+	velocity.y = (real_t)((double)velocity.y - cfg.gravity * dt);
+	move_acceleration.y = (real_t)((double)move_acceleration.y - cfg.gravity);
+	defer_acceleration(dt);
 	try_player_move(dt);
+	velocity += deferred_velocity;
 }
 
-void HullMover::step_move(double dt) {
+bool HullMover::step_move(double dt) {
 	const Vector3 start_position = position;
 	const Vector3 start_velocity = velocity;
 
 	if (!try_player_move(dt)) {
-		return;
+		return true;
 	}
+	return try_step(dt, start_position, start_velocity);
+}
+
+bool HullMover::try_step(double dt, const Vector3 &start_position, const Vector3 &start_velocity) {
 	const Vector3 flat_position = position;
 	const Vector3 flat_velocity = velocity;
 
@@ -582,7 +708,7 @@ void HullMover::step_move(double dt) {
 
 	const double step_distance = horizontal_distance(start_position, position);
 
-	const bool landed_walkable = landing.met && is_walkable(landing.normal);
+	const bool landed_walkable = landing.met && (landing.travel - landing.recovery).dot(DOWN) > 0.0 && is_walkable(landing.normal);
 
 	if (step_distance > flat_distance && landed_walkable) {
 		velocity.y = flat_velocity.y;
@@ -590,10 +716,14 @@ void HullMover::step_move(double dt) {
 		floor_at = position;
 		floor_with = hull_height;
 		floor_normal = landing.normal;
-		return;
+		floor_is_world = landing.is_world;
+		return true;
 	}
 	position = flat_position;
 	velocity = flat_velocity;
+	// Source suppresses another retry after a valid landing even when the
+	// flat candidate covered more horizontal ground.
+	return landed_walkable;
 }
 
 bool HullMover::try_player_move(double dt) {
@@ -637,7 +767,7 @@ bool HullMover::try_player_move(double dt) {
 		time_left -= time_left * fraction;
 
 		if (plane_count >= MAX_CLIP_PLANES) {
-			velocity = ZERO;
+			stop_movement();
 			break;
 		}
 
@@ -673,12 +803,12 @@ bool HullMover::try_player_move(double dt) {
 
 			if (!resolved) {
 				if (plane_count != 2) {
-					velocity = ZERO;
+					stop_movement();
 					break;
 				}
 				Vector3 crease = planes[0].cross(planes[1]);
 				if (crease.length_squared() == 0.0) {
-					velocity = ZERO;
+					stop_movement();
 					break;
 				}
 				crease = crease.normalized();
@@ -686,14 +816,14 @@ bool HullMover::try_player_move(double dt) {
 			}
 
 			if ((double)velocity.dot(primal_velocity) <= 0.0) {
-				velocity = ZERO;
+				stop_movement();
 				break;
 			}
 		}
 	}
 
-	if (all_fraction == 0.0) {
-		velocity = ZERO;
+	if (all_fraction == 0.0 && met_something) {
+		stop_movement();
 	}
 	return met_something;
 }
@@ -701,6 +831,7 @@ bool HullMover::try_player_move(double dt) {
 void HullMover::categorize_position() {
 	if ((double)velocity.y > cfg.non_jump_velocity) {
 		on_ground = false;
+		ground_is_world = false;
 		ground_normal = UP;
 		looked_from = inf3();
 		floor_at = inf3();
@@ -709,6 +840,7 @@ void HullMover::categorize_position() {
 	if (floor_at == position && floor_with == hull_height) {
 		on_ground = true;
 		ground_normal = floor_normal;
+		ground_is_world = floor_is_world;
 		looked_from = position;
 		looked_with = hull_height;
 		floor_at = inf3();
@@ -718,6 +850,7 @@ void HullMover::categorize_position() {
 
 	const Trace collision = trace(times(DOWN, GROUND_TRACE_DISTANCE), true);
 	Vector3 normal = ZERO;
+	bool world_ground = collision.met && collision.is_world;
 	Vector3 travel = ZERO;
 	if (collision.met) {
 		normal = collision.normal;
@@ -726,8 +859,10 @@ void HullMover::categorize_position() {
 
 	if (normal == ZERO || !is_walkable(normal)) {
 		normal = ground_normal_in_quadrants();
+		world_ground = quadrant_is_world;
 		if (normal == ZERO) {
 			on_ground = false;
+			ground_is_world = false;
 			ground_normal = UP;
 			looked_from = position;
 			looked_with = hull_height;
@@ -737,6 +872,7 @@ void HullMover::categorize_position() {
 
 	on_ground = true;
 	ground_normal = normal;
+	ground_is_world = world_ground;
 	if (collision.met) {
 		position += travel;
 	} else {
@@ -792,6 +928,7 @@ HullMover::Trace HullMover::trace(const Vector3 &motion, bool test_only) {
 	result.travel = travel;
 	result.normal = hit.normal;
 	result.recovery = recovery;
+	result.is_world = is_world_ground(hit.collider);
 	return result;
 }
 
@@ -979,7 +1116,9 @@ Vector3 HullMover::recover_trace_start() {
 Vector3 HullMover::ground_normal_in_quadrants() {
 	// Four rays through the bridge, as the script asks them: from where the
 	// body stands now.
-	return body->call(names::quadrants(), position);
+	const Vector3 normal = body->call(names::quadrants(), position);
+	quadrant_is_world = body->get(names::quadrant_is_world());
+	return normal;
 }
 
 } // namespace godot

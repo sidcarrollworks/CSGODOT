@@ -382,7 +382,9 @@ func _check_visibility() -> void:
 ## the sky brushes stand on buildings whose roofs and walls rightly occlude.
 func _check_sky_not_occluding() -> void:
 	var sky := {}
-	var collision := _importer.find_child("Collision", true, false)
+	var collision := _importer.find_child("SkyClip", true, false) as StaticBody3D
+	_check(collision != null and collision.collision_layer == MapImporter.SKY_LAYER,
+		"the extracted sky brushes retain their own conditional collision layer")
 	for shape in (collision.get_children() if collision != null else []):
 		if String(shape.name).begins_with("physics_sky") and shape is CollisionShape3D:
 			var faces := ((shape as CollisionShape3D).shape as ConcavePolygonShape3D).get_faces()

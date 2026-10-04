@@ -176,9 +176,15 @@ Mostly secondary sources; CS2's own notes say nothing about the grade.
   warm table. With hdr_2d, Godot reads the table through an sRGB view, so
   the table holds sRGB and comes out linear.
 - The switch: `--grade cs2` on the command line, or
-  `csgodot/rendering/colour_grade` in `project.godot` ("aces" until Sid
-  judges it); `RenderVariants`' `other_grade` swaps one for the other on a
-  running map.
+  `csgodot/rendering/colour_grade` in `project.godot` ("cs2" since Sid
+  approved it on 2026-09-26); `RenderVariants`' `other_grade` swaps one for
+  the other on a running map.
+- The October 3 paired T-spawn capture recalibrates Dust2's world exposure
+  fit from 1.2 to 1.5, retaining the curve, LUT and physical lighting values.
+  Other maps retain 1.2. Inverse exposure compensation preserves the approved
+  sky, including reversible grade comparisons. This is a measured renderer
+  fit, not an extracted Valve value; patch measurements and limits are in
+  [the sky/world audit](sky-brightness-2026-10-03.md).
 - Not built: auto exposure, local contrast, vignette, the tone map's
   shadow and highlight fields, blending between volumes, the skybox's bloom
   strength.

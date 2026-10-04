@@ -1,6 +1,7 @@
 #!/bin/sh
-# Builds box3d-godot v0.4.3's Linux libraries against Ubuntu 22.04's glibc (2.35),
-# which scripts/install_box3d.sh installs from this repo's release. Needs Docker:
+# Historical upstream-only glibc build; these binaries lack our projectile
+# query and cannot run current gameplay. Use scripts/install_box3d.sh for
+# the patched build. Kept to reproduce the September physics trial. Needs Docker:
 #   scripts/build_box3d_linux.sh [out_dir]
 # Produces libbox3d_godot.linux.template_{debug,release}.x86_64.so in out_dir.
 set -eu

@@ -72,7 +72,7 @@ Doc: `classes/class_physicsdirectspacestate3d.rst`, `classes/class_physicsshapeq
   - `unsafe` is "the minimum fraction of the distance that must be moved for a collision".
   - No collision gives `[1.0, 1.0]`.
   - Shapes the query shape **already overlaps at the start are ignored**. Use `collide_shape()` to find those.
-  - It returns no normal or collider. To learn what was hit, place the shape at `from + motion * unsafe` with `motion = ZERO` and call `get_rest_info` (the grenade sweep does exactly this).
+  - It returns no normal or collider. To learn what was hit, place the shape at `from + motion * unsafe` with `motion = ZERO` and call `get_rest_info`. Prefer the project's `PhysicsQueries.shape_cast` when a caller needs the fractions and contact together: on Box3D they come from the same cast; its legacy implementation performs the rest lookup internally. The grenade sweep uses this complete result (2026-10-02).
 - `get_rest_info(parameters) -> Dictionary`: the nearest intersecting shape, as keys `collider_id`, `linear_velocity` (`(0,0,0)` for an Area3D), `normal`, `point`, `rid`, `shape`.
   - There is **no `collider` key**. Use `instance_from_id(rest["collider_id"])`.
   - `normal` is "of the query shape at the intersection point, pointing away from the intersecting object".
@@ -132,6 +132,7 @@ Doc: `tutorials/physics/physics_introduction.rst`, `classes/class_collisionobjec
 | 4 | 8 | player clip `MapImporter.PLAYER_CLIP_LAYER` |
 | 5 | 16 | ragdoll bodies `Ragdoll.LAYER` (they mask it too: a body's parts collide) |
 | 6 | 32 | grenade clip `GrenadeRules.GRENADE_CLIP_LAYER` |
+| 7 | 64 | conditional sky brushes `MapImporter.SKY_LAYER`; ordinary gameplay masks exclude them |
 | 20 | 1<<19 | `PlayerSim.UNSEEN_LAYER` |
 
 ## Body types
@@ -400,7 +401,7 @@ See the ragdoll section. `set_param(Param, float)`/`get_param`, and `set_flag(Fl
   - `trace()` runs rays on `WORLD_LAYER | Hitbox.LAYER` with `collide_with_areas=true`.
   - `_find_exit()` finds a wall's far side by casting back from depth with `hit_back_faces=false` and `hit_from_inside=false`.
   - `_surface_name()` maps a shape index back to the node name.
-- `src/grenades/grenade_flight.gd:120-160`: `_sweep()` runs `cast_motion` on a sphere and then `get_rest_info` at `from + motion * unsafe`, and reads `collider_id` through `instance_from_id`.
+- `src/grenades/grenade_flight.gd`: `_sweep()` asks `PhysicsQueries.shape_cast` for the sphere's fractions, normal and original collider together; legacy results resolve `collider_id` through `instance_from_id`. The [collision audit](../research/collision-foundation-2026-10-02.md) records the backend contact tolerances that still need handling before the CS2 box-flight port.
 - `src/game/dropped_item.gd`: a dropped item's convex hull (`ItemPhysics`) swept with `cast_motion` then `get_rest_info`, its contacts from `collide_shape` with a margin, answered with impulses in script, never a `RigidBody3D`.
 - `src/map/map_importer.gd:524-560`: builds world collision as `ConcavePolygonShape3D`s (faces baked with the mesh transform, no scale) under one `StaticBody3D` per layer, with `collision_mask=0`.
 - `src/map/brush_volume.gd`: convex pieces for Area3D volumes. `contains()` tests `Plane.distance_to` in script.
