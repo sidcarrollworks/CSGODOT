@@ -8,11 +8,17 @@ extends SkeletonModifier3D
 ## The hull stands on the first thing its bottom meets, which on a ramp is
 ## its uphill edge, so a body drawn at the hull's origin hangs over the
 ## floor by up to 7 units at T spawn. Each fit of the skeleton casts one
-## ray under each ankle (GroundProbe, the world only), lowers the pelvis by
-## the larger of the two gaps, and bends each leg with two-bone IK so that
-## each foot comes down by its own gap, keeping whatever lift the clip gives
-## it; the foot is then tipped toward the slope. It eases in over EASE on the
-## ground and out in the air, and follows a changing floor over the same.
+## ray under each ankle (GroundProbe, the world only) from a step's height
+## above the origin, lowers the pelvis by the larger of the two gaps, and
+## bends each leg with two-bone IK so that each foot comes down by its own
+## gap, or up onto a stair above the origin, keeping whatever lift the clip
+## gives it; the foot is then tipped toward the slope. It eases in over EASE
+## on the ground and out in the air, and follows a changing floor over the
+## same. What eases is only the floor's jump where a foot's ray finds
+## another (a stair's edge): along one floor the foot follows its plane
+## exactly, in the world, so a body walking up a ramp or stairs keeps each
+## foot on them rather than a tenth of a second behind the rising body
+## (Sid, 2026-09-30).
 ##
 ## It runs in the skeleton's own update after the clips, so it moves only
 ## what the skeleton shows: whatever reads the pose there (SkinnedHitboxes,
@@ -34,6 +40,18 @@ const GUN_BONES: Array[String] = ["wpn", "wpnHand_L", "wpnHand_R", "wpnTip", "wp
 ## The furthest the pelvis is lowered, in units: a foot over a deeper gap
 ## than this is left where the clip has it, as over a ledge.
 const MOST_DROP := 12.0
+## The furthest a foot is raised onto a floor above the origin, in units:
+## the step height (sv_stepsize), the most a stair can rise above the step
+## the hull stands on. A foot ahead of the hull on the next stair up stood
+## in it.
+const MOST_RISE := 18.0
+## A surface steeper than this under a foot is no floor to put it on (the
+## movement's walkable slope, a normal's up of 0.7).
+const FLOOR_UP := 0.7
+## A foot that has gone further than this since its last ray was put
+## somewhere else without snap(): it eases from the floor it was last shown
+## on, not from its old floor's plane carried this far.
+const FAR := 16.0
 ## How far off the floor a standing hull rests, which the fit leaves be:
 ## under Box3D a hull stops 0.257 inches off it (its casts stop 0.197 short
 ## of a surface, with 0.06 more clearance; measured on a flat Box3D floor,
@@ -60,7 +78,14 @@ var _drop := 0.0
 var _at_once := false
 var _gaps := PackedFloat32Array([0.0, 0.0])
 var _cast_at: Array[Vector3] = [Vector3.INF, Vector3.INF]
-var _cast_gap := PackedFloat32Array([0.0, 0.0])
+## Where each foot's last ray met a floor, in the world, and INF where it
+## met none to put the foot on; the floor's plane is that point's and
+## _cast_normal's.
+var _cast_hit: Array[Vector3] = [Vector3.INF, Vector3.INF]
+## How far the floor shown under each foot is above its plane's, easing
+## to nothing, and the height it was last shown at (NAN before any).
+var _lag := PackedFloat32Array([0.0, 0.0])
+var _shown := PackedFloat32Array([NAN, NAN])
 var _cast_normal: Array[Vector3] = [Vector3.UP, Vector3.UP]
 var _normals: Array[Vector3] = [Vector3.UP, Vector3.UP]
 
@@ -78,6 +103,7 @@ func drop() -> float:
 ## should be over a third of a second.
 func snap() -> void:
 	_cast_at = [Vector3.INF, Vector3.INF]
+	_shown = PackedFloat32Array([NAN, NAN])
 	_at_once = true
 
 
@@ -85,10 +111,13 @@ func _process_modification_with_delta(delta: float) -> void:
 	var skeleton := get_skeleton()
 	if skeleton == null or not skeleton.is_inside_tree():
 		return
-	var at_once := _at_once or delta <= 0.0
+	# Planting again from nothing (after the air or a death) takes the
+	# floor where it is: the weight eases the fit in.
+	var told := _at_once or delta <= 0.0
 	_at_once = false
+	var at_once := told or _weight <= 0.0
 	var follow := 1.0 if at_once else 1.0 - exp(-delta / EASE)
-	_weight = move_toward(_weight, 1.0 if planting else 0.0, 1.0 if at_once else delta / EASE)
+	_weight = move_toward(_weight, 1.0 if planting else 0.0, 1.0 if told else delta / EASE)
 	if planting:
 		var space := skeleton.get_world_3d().direct_space_state
 		var floor_y := skeleton.global_position.y
@@ -98,12 +127,19 @@ func _process_modification_with_delta(delta: float) -> void:
 				return
 			var at := skeleton.global_transform * skeleton.get_bone_global_pose(ankle).origin
 			at.y = floor_y
-			_cast(space, leg, at)
-			_gaps[leg] = lerpf(_gaps[leg], _cast_gap[leg], follow)
+			var far := not _cast_at[leg].is_finite() \
+					or Vector2(at.x - _cast_at[leg].x, at.z - _cast_at[leg].z).length() > FAR
+			var before := _shown[leg] if far else _floor_under(leg, at, floor_y) + _lag[leg]
+			if _cast(space, leg, at) and not is_nan(before):
+				# Another floor: ease from where the last one had the foot.
+				_lag[leg] = before - _floor_under(leg, at, floor_y)
+			_lag[leg] = 0.0 if at_once else _lag[leg] * (1.0 - follow)
+			_shown[leg] = _floor_under(leg, at, floor_y) + _lag[leg]
+			_gaps[leg] = gap(floor_y, _shown[leg])
 			_normals[leg] = eased_normal(_normals[leg], _cast_normal[leg], follow)
-		_drop = lerpf(_drop, maxf(_cast_gap[0], _cast_gap[1]), follow)
+		_drop = maxf(0.0, maxf(_gaps[0], _gaps[1]))
 	# Flat ground, or eased away: the clip's pose stands.
-	if _weight <= 0.0 or maxf(_drop, maxf(_gaps[0], _gaps[1])) * _weight < 0.01:
+	if _weight <= 0.0 or maxf(_drop, maxf(absf(_gaps[0]), absf(_gaps[1]))) * _weight < 0.01:
 		return
 	fit(skeleton, _drop * _weight, [_gaps[0] * _weight, _gaps[1] * _weight], _normals, _weight)
 
@@ -118,20 +154,45 @@ static func eased_normal(from: Vector3, to: Vector3, follow: float) -> Vector3:
 	return eased.normalized() if eased.length_squared() > 0.000001 else to
 
 
-## The gap under a foot at point, cast again only once it has moved RECAST.
-func _cast(space: PhysicsDirectSpaceState3D, leg: int, point: Vector3) -> void:
+## How far a foot comes down to reach a floor at floor_height from a body
+## whose origin is at origin_y: less the rest clearance the hull stands
+## off it by, none within that, and below nothing (a foot to raise onto a
+## floor above the origin, which no clearance keeps it from).
+static func gap(origin_y: float, floor_height: float) -> float:
+	var below := origin_y - floor_height
+	return below - REST_CLEARANCE if below >= REST_CLEARANCE else minf(below, 0.0)
+
+
+## The height of a leg's floor under point, on the plane its last ray
+## found; with none, the origin's own (origin_y), which the clip already
+## stands on, less the rest clearance.
+func _floor_under(leg: int, point: Vector3, origin_y: float) -> float:
+	var hit := _cast_hit[leg]
+	if not hit.is_finite():
+		return origin_y - REST_CLEARANCE
+	var normal := _cast_normal[leg]
+	return hit.y - (normal.x * (point.x - hit.x) + normal.z * (point.z - hit.z)) / normal.y
+
+
+## The floor under a foot at point (the origin's height), cast again only
+## once it has moved RECAST: from MOST_RISE above it to MOST_DROP below.
+## True when it cast.
+func _cast(space: PhysicsDirectSpaceState3D, leg: int, point: Vector3) -> bool:
 	var moved := Vector2(point.x - _cast_at[leg].x, point.z - _cast_at[leg].z)
 	if _cast_at[leg].is_finite() and moved.length_squared() < RECAST * RECAST and absf(point.y - _cast_at[leg].y) < RECAST:
-		return
+		return false
 	_cast_at[leg] = point
 	rays += 1
-	var ground := GroundProbe.ground_below(space, point, MOST_DROP + GroundProbe.LIFT)
-	if ground.is_empty() or float(ground["height"]) > MOST_DROP:
-		_cast_gap[leg] = 0.0
+	var top := point + Vector3.UP * MOST_RISE
+	var ground := GroundProbe.ground_below(space, top, MOST_RISE + MOST_DROP + GroundProbe.LIFT)
+	if ground.is_empty() or float(ground["height"]) > MOST_RISE + MOST_DROP \
+			or (ground["normal"] as Vector3).y < FLOOR_UP:
+		_cast_hit[leg] = Vector3.INF
 		_cast_normal[leg] = Vector3.UP
 	else:
-		_cast_gap[leg] = maxf(0.0, float(ground["height"]) - REST_CLEARANCE)
+		_cast_hit[leg] = Vector3(point.x, top.y - float(ground["height"]), point.z)
 		_cast_normal[leg] = ground["normal"]
+	return true
 
 
 ## Lowers skeleton's pelvis by drop_units and brings each foot down by its
