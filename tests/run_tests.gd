@@ -933,8 +933,8 @@ func _test_creep_stops() -> void:
 	_step()
 	var moved := Vector2(_player.global_position.x - start.x, _player.global_position.z - start.z).length()
 	_check(
-		absf(_player.velocity.x - 2.75) < 1e-4 and absf(moved - 2.75 * DT) < 1e-5,
-		"and one left at 2.75 u/s moves on (%.2f u/s, moved %.4f)" % [_player.velocity.length(), moved]
+		absf(_player.velocity.x - 2.75) < 1e-4 and absf(moved - (2.75 + drop * 0.5) * DT) < 1e-5,
+		"and one left at 2.75 u/s moves at the friction midpoint (%.2f u/s, moved %.4f)" % [_player.velocity.length(), moved]
 	)
 	_player.velocity = Vector3.ZERO
 

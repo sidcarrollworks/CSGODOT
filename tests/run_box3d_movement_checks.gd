@@ -314,11 +314,14 @@ func _check_steps_and_jump() -> void:
 	player.wish_dir = Vector3.RIGHT
 	player.wish_speed = player.config.max_speed
 	var highest := player.position.y
-	for tick in 40:
+	# Deferred movement reaches the edge a tick later; the audited failed-
+	# step retry crosses Box3D's larger clearance from rest at 64 u/s.
+	# Allow the approach and re-acceleration, retaining the actual climb test.
+	for tick in 48:
 		player.simulate(DT)
 		highest = maxf(highest, player.position.y)
 	_check(player.position.x > 100.0 and highest > 15.9 and highest < 16.5 and player.on_ground,
-		"the unchanged step solver climbs a sixteen-inch obstacle using native sweeps")
+		"the step solver climbs a sixteen-inch obstacle using native sweeps (x %.3f, highest %.3f, ground %s)" % [player.position.x, highest, player.on_ground])
 	player.wish_dir = Vector3.ZERO
 	player.wish_speed = 0.0
 	player.velocity = Vector3.ZERO
@@ -330,7 +333,7 @@ func _check_steps_and_jump() -> void:
 	for tick in 60:
 		player.simulate(DT)
 		peak = maxf(peak, player.position.y)
-	# The audited CS2 take-off and restored leading half-gravity give a
+	# The audited CS2 take-off and deferred half-gravity give a
 	# 55.8255-inch sampled arc at 64 Hz, rather than the legacy Source arc.
 	_check(absf(peak - start_y - 55.8255) < 0.02 and player.on_ground,
 		"native sweeps preserve the CS2 jump arc and landing (peak %.6f, ground %s)" % [peak - start_y, player.on_ground])

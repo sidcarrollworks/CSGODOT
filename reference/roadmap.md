@@ -35,7 +35,7 @@ Updated 2026-09-30: grenade flight and lineups recorded for later (item 20a, Sid
 
 ## Current status, 2026-10-03
 
-Checked against merged `main` at `9ab763f`, through PR #186. Completion
+Checked against merged `main` at `22b6f93`, through PR #187. Completion
 means the described implementation exists; measurements and remaining
 parity work stay listed below. Three follow-up playtest PRs remain open.
 
@@ -66,6 +66,7 @@ parity work stay listed below. Three follow-up playtest PRs remain open.
 | #184 | Exact jump-snapshot boundary, ordinary CS2 jump, sky collision classification, practice trails and crouch acceleration |
 | #185 | Mirage extraction/import fixes and accepted Dust2 sky/world exposure calibration |
 | #186 | README, documentation and roadmap synchronized with merged gameplay and remaining audits |
+| #187 | Shared terrain-aware simulation eyes for cameras, weapon origins and grenade snapshots |
 
 Pending review and local playtest, not part of merged `main`:
 
@@ -75,10 +76,11 @@ Pending review and local playtest, not part of merged `main`:
 | [#178](https://github.com/sidcarrollworks/CSGODOT/pull/178) | Startup team selection |
 | [#179](https://github.com/sidcarrollworks/CSGODOT/pull/179) | Feet planted while walking on slopes and stairs |
 
-This follow-up implements shared terrain-aware simulation eye state,
-used by the camera, weapon origins and grenade snapshots. Its local
-landmark playtest remains. Combined horizontal integration is the next
-implementation; the movement section below records the sequence and limits.
+Shared terrain-aware simulation eyes are merged; their local landmark
+playtest remains. This follow-up ports ordinary combined horizontal
+friction/acceleration and deferred collision velocity in both movement
+backends. The movement section below records the remaining command/crouch
+work and CS2 capture limits.
 
 ## Part 1: what exists
 
@@ -258,8 +260,8 @@ crouch acceleration scale (250 * 0.34), independently of the speed target.
 138 real-command checks cover flat/uphill/downhill floors and crouch
 entry/exit; existing crouch turning/accuracy and grenade lineups pass.
 **Local:** retest the acceleration feel on Dust2. Terrain eyes are now
-implemented; full crouch transitions and deferred movement integration
-remain open in the
+implemented, and this follow-up ports ordinary deferred movement integration;
+full crouch transitions and command/scoped acceleration setup remain open in the
 [movement audit](research/movement-ghidra-2026-10-03.md).
 
 **Box3D is the game's physics (2026-09-28, Sid).** Sid chose to take the
@@ -1052,9 +1054,11 @@ list, split into Local and Remote items, with the measurements.
       64/46 base eye heights and a missing terrain eye adjustment used by
       CS2's grenade snapshots. Paired console coordinates now measure an
       effective 60.75-unit eye height there and 63.9375 at the new B-doors
-      reference. Implement and validate the shared simulation offset before
-      claiming parity. The [movement audit](research/movement-ghidra-2026-10-03.md)
-      also confirms horizontal integration, crouch and modern landing/press-window
+      reference. The [shared terrain-eye port](research/terrain-eyes-2026-10-03.md)
+      is merged in #187; additional landmark and trajectory captures remain.
+      This follow-up ports [ordinary horizontal integration](research/horizontal-integration-2026-10-03.md).
+      The [movement audit](research/movement-ghidra-2026-10-03.md) still leaves
+      command/scoped acceleration setup, crouch and modern landing/press-window
       gaps; matching native/script output is not evidence of CS2 parity.
     - **Local:** G1 in `reference/cs2-systems.md` now compares the recovered
       rules against CS2 (standing, running, crouching, jumping, button
@@ -1227,7 +1231,7 @@ acceleration corrections; it did not complete movement parity.
 The next work, in order (Remote implementation and checks; Local binary
 audit, CS2 captures and performance measurements):
 
-1. **Shared terrain-aware eye state — implementation done in this follow-up.**
+1. **Shared terrain-aware eye state — merged in #187.**
    The recovered sampler and ordinary topology transitions now run in
    simulation before snapshot capture. Support flags match in script/native
    movement; cached queries are counted in the trace budget. Synthetic
@@ -1237,10 +1241,16 @@ audit, CS2 captures and performance measurements):
    [terrain-eye report](research/terrain-eyes-2026-10-03.md) for measured cost.
    **Local remaining:** rendered landmark/transition playtest and additional
    CS2 captures. Full duck/root adjustments belong to step 3.
-2. **Combined horizontal integration.** Port acceleration/friction and
-   deferred velocity together in script and native movement. Test
-   displacement, blocked motion, slopes and run/jump throws, not just
-   final speed. Compare trace budgets and tick cost with the current build.
+2. **Combined horizontal integration — ordinary movement implemented in this follow-up.**
+   Combined friction/acceleration and deferred collision state now match
+   between script/native movement; gravity shares that state. Independent
+   displacement/contact oracles, slopes and running jump snapshots cover
+   behavior beyond final speed. See the
+   [integration report](research/horizontal-integration-2026-10-03.md) for
+   trace budgets, measured tick cost and boundaries. **Local remaining:**
+   counter-strafing, wall/slopes and run/jump throw captures. **Implementation
+   remaining:** ordinary walk taper/scoped scales, friction stashing and
+   movement-speed-cap setup alongside the next command/state work.
 3. **Crouch and modern jump transitions.** Complete duck state/rates,
    repeated-input gates and landing/bhop press windows with boundary
    checks and CS2 captures. Keep them separately reviewable from grenade
@@ -1256,13 +1266,13 @@ playtest separately from these simulation changes.
   whether the dead-strafe zone feels right. The movement fixes that change
   them have landed, so they can be measured now.
 - **Per-surface friction.** *(Local done 2026-09-23: the table is extracted,
-  `SurfaceProperties.player_friction`; Remote: feed it in)* `MovementSolver`
-  takes a surface friction and is always handed 1.0 on the ground. Source
-  gives a player the surface's physics friction times 1.25, at most 1
-  (`CGameMovement::CategorizeGroundSurface`), and scales ground friction and
-  acceleration by it. On dust2 that is all of it everywhere but glass (0.625)
-  and pottery (0.5); the part under the player's feet is what `Footsteps`
-  already finds, and `Penetration.surface_for` names its surface.
+  `SurfaceProperties.player_friction`; Local audit then Remote port)* The
+  current ordinary pawn multiplier defaults to 1.0. The older Source SDK's
+  `CGameMovement::CategorizeGroundSurface` uses surface physics friction
+  times 1.25, capped at one; the extracted table would give glass 0.625 and
+  pottery 0.5 under that rule. Recover current CS2 material multiplier setup
+  before applying it. `Footsteps` already finds the part under the player's
+  feet, and `Penetration.surface_for` names its surface.
 - **Surf ramp ends** (parked by Sid). *(Remote)* The course cannot reproduce the
   complaint yet because its ramps have no end to launch off.
 
@@ -1344,9 +1354,10 @@ replay; it must not depend on drawn animation. Rendering and simulation
 optimization continue against measured captures, including the dense
 hit-effects cost and the still-open 6 ms maximum target.
 
-Before further grenade tuning, finish shared terrain-aware eye state,
-then combined movement integration and crouch/modern jump transitions as
-listed above. Recheck the recorded Dust2 throws and collect Mirage pairs.
+Shared terrain-aware eyes are merged, and this follow-up implements ordinary
+combined movement integration. Next finish command/crouch and modern jump
+transitions as listed above, while rechecking the recorded Dust2 throws and
+collecting Mirage pairs.
 The open #177–179 playtest PRs can be reviewed and tested separately; their
 features are not counted as merged here.
 

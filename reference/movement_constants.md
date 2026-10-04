@@ -29,6 +29,7 @@ at the B-doors setup; the base 64/46 eye values remain unchanged.
 | hull 32 x 32 x 72 | | Source player hull | No |
 | duck height 54 | | CS:GO | No |
 | step height 18 | | Source | No |
+| `sv_step_move_vel_min` | 64 u/s | Current server registration `1800cac40`; failed raised-step retry in `180ae3950`. | Binary verified; backend edge clearance still differs |
 | max ground angle 45.57° | | Source uses a 0.7 normal threshold; acos(0.7) = 45.573° | Derived, exact |
 | `NON_JUMP_VELOCITY` | 140 | `gamemovement.cpp:3830` | Read from the SDK, exact |
 | `sv_maxvelocity` | 3500 | `movevars_shared.cpp:93` | Read from the SDK, exact |
@@ -45,8 +46,11 @@ For crouched commands, and when acceleration uses a speed above the target,
 `PlayerBody._walk_move` limits the resulting horizontal speed to the
 greater of the top and the speed left after friction. This lets residual
 running speed decay gradually while preventing a turn from adding more.
-The native step has the same arithmetic. Ordinary ground acceleration and
-air acceleration keep their existing behavior; no traces are added.
+The native step has the same arithmetic. The original crouch-turn fix left
+ordinary ground and air integration unchanged and added no traces. The
+[October 3 integration port](research/horizontal-integration-2026-10-03.md)
+now changes their displacement and deferred collision state while retaining
+this local speed-cap correction.
 This correction follows Sid's playtest feedback, rather than a verified
 CS2 implementation: [Source SDK 2013's WalkMove](https://github.com/ValveSoftware/source-sdk-2013/blob/master/src/game/shared/gamemovement.cpp#L1758)
 caps the wish-direction projection and has no total-speed clamp.
@@ -68,7 +72,7 @@ That floor exceeds the AK's 73.1-unit target, so it overcomes stop friction
 without the knife's old 250-unit acceleration burst.
 
 `PlayerSim._ground_acceleration_speed` now supplies the crouched scale.
-`MovementSolver.accelerate` and native `HullMover::accelerate` treat a
+`MovementSolver.ground_acceleration_rate` and native `HullMover::ground_acceleration_rate` treat a
 positive supplied scale independently of the speed target. This matters
 during duck entry, when the target has not yet reached crouched speed.
 The existing total-speed/accuracy guard remains active during crouching.
@@ -79,11 +83,14 @@ instead of **66.4375**. Holding movement still reaches 85 with the knife,
 73.1 with the AK and 68 with the unscoped AWP. Crouching with Walk uses the
 same acceleration as crouching without it.
 
-The new real-command fixture passes **138 checks** on flat and +/-5/20-degree
+The original real-command fixture passed **138 checks** on flat and +/-5/20-degree
 Box3D floors, with **6,636 native/script steps** matching bit for bit.
 The simulation, movement course, native movement and three grenade-lineup
 suites also pass. No collision queries were added. Duck-rate/hull/view
-transitions and deferred movement integration remain separate audit gaps.
+transitions remain a separate audit gap. The
+[horizontal integration follow-up](research/horizontal-integration-2026-10-03.md)
+now carries friction overshoot and combined acceleration through collision,
+so the pure legacy solver's velocity check alone is not a displacement oracle.
 
 ## How to measure each kind
 
