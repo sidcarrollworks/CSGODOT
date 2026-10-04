@@ -120,9 +120,12 @@ static func build(
 	var sky := Sky.new()
 	var sky_colour := _colour(sun_entity.get("skycolor", ""), Color(0.83, 0.89, 0.97))
 	var panorama := load(sky_path) as Texture2D if not sky_path.is_empty() and ResourceLoader.exists(sky_path) else null
-	var sky_values := MapSky.settings(MapSky.entity(entities), sky_vmat)
+	var sky_values := MapSky.settings(MapSky.entity(entities), sky_vmat, mode)
 	if panorama != null:
-		sky.sky_material = MapSky.material(panorama, sky_values)
+		# Changing the backdrop must not re-light accepted map materials or
+		# alter cubemap fog. Keep the previous panorama capture's energy.
+		var lighting_energy := float(sun_entity.get("skyintensity", "1.0"))
+		sky.sky_material = MapSky.material(panorama, sky_values, lighting_energy)
 	else:
 		var material := ProceduralSkyMaterial.new()
 		material.sky_top_color = sky_colour.darkened(0.3)

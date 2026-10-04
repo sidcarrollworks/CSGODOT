@@ -195,6 +195,13 @@ func _test_sky_brightness() -> void:
 	var dust2 := MapSky.settings({}, '"g_flBrightnessExposureBias" "0.765"\n"g_flRenderOnlyExposureBias" "0"')
 	_check(absf(dust2.energy - 1.6993708) < 0.00001,
 		"Dust2's authored 0.765-stop exposure brightens the sky in linear light")
+	var fitted := MapSky.settings({"skyname": 'resource_name:"materials/skybox/sky_de_dust2.vmat"'},
+		'"g_flBrightnessExposureBias" "0.765"')
+	_check(absf(fitted.authored_energy - 1.6993708) < 0.00001
+		and absf(fitted.energy - 1.2745281) < 0.00001,
+		"Dust2's paired-render fit is separate from the recovered material exposure")
+	_check_equal(MapSky.settings({"skyname": "materials/skybox/sky_de_dust2.vmat"}, "", "aces").display_fit, 1.0,
+		"the fit measured under the CS2 grade is not applied to the ACES comparison")
 	var data := 'm_floatParams = [{m_name = "g_flBrightnessExposureBias"\n m_flValue = 7.65e-1},'
 	data += '{m_name = "g_flRenderOnlyExposureBias"\n m_flValue = -.25}]'
 	var raw := MapSky.settings({"brightnessscale": "2", "tint_color": "[128, 255, 64]"}, data)
@@ -205,18 +212,20 @@ func _test_sky_brightness() -> void:
 		"the entity's byte tint is converted from sRGB to linear before multiplying the HDR sky")
 	var mirage := MapSky.settings({}, 'm_name = "g_flBrightnessExposureBias"\nm_flValue = 0.0')
 	_check_equal(mirage.energy, 1.0, "Mirage's zero-bias sky keeps its own authored brightness")
+	_check_equal(MapSky.settings({"skyname": "materials/skybox/sky_mirage.vmat"}, "").display_fit, 1.0,
+		"Dust2's display fit does not darken another map's sky")
 	_check_equal(MapSky.settings({"brightnessscale": "0"}, "").energy, 1.0,
 		"a non-positive entity brightness follows C_EnvSky's neutral fallback")
 	_check_equal(MapSky.settings({}, "").tint, Color.WHITE, "missing sky settings are neutral")
 	var image := Image.create(1, 1, false, Image.FORMAT_RGBF)
 	image.fill(Color.WHITE)
 	var texture := ImageTexture.create_from_image(image)
-	var material := MapSky.material(texture, raw)
+	var material := MapSky.material(texture, raw, 0.960784)
 	_check(material.shader.get_mode() == Shader.MODE_SKY
 		and material.get_shader_parameter(&"panorama") == texture
 		and is_equal_approx(material.get_shader_parameter(&"energy"), raw.energy)
-		and is_equal_approx(material.get_shader_parameter(&"lighting_energy"), raw.lighting_energy),
-		"the panorama shader receives the authored render and lighting gains")
+		and is_equal_approx(material.get_shader_parameter(&"lighting_energy"), 0.960784),
+		"the authored backdrop gain leaves the previous world lighting capture unchanged")
 
 
 func _write(path: String, text: String) -> void:

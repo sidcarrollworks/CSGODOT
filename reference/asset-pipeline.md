@@ -39,9 +39,12 @@ as the older decompiled VMAT text.
 
 `MapSky` also reads the sky material's brightness and render-only exposure
 biases from either format, with the active `env_sky`'s brightness and tint.
-Dust2's +0.765-stop adjustment now reaches the renderer; Mirage's zero bias
-stays neutral. The [sky audit](research/sky-brightness-2026-10-03.md) records
-the extracted values and current-client Ghidra confirmation.
+Dust2's +0.765-stop adjustment reaches the renderer through a documented
+0.75 backdrop fit; Mirage's zero bias stays neutral. The fit comes from a
+paired render, not decompiled code. Lighting, reflections and fog retain
+their previous panorama capture. The
+[sky audit](research/sky-brightness-2026-10-03.md) records the extracted values,
+current-client Ghidra confirmation and corrected HDR screenshot comparison.
 
 For local lineup testing, run `--map de_mirage --mode practice` with the
 existing game or grenade watcher. Practice enables the actual grenade

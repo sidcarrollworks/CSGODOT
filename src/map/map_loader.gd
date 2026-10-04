@@ -89,8 +89,9 @@ func _ready() -> void:
 	print("--- grade: %s; post-processing: %s" % [lighting["grade"], lighting["post_processing"]])
 	if not sky.is_empty():
 		var values: Dictionary = lighting.sky_settings
-		print("--- sky: exposure %.3f + render-only %.3f stops, brightness %.3f, energy %.3f, linear tint %s" % [
-			values.exposure_bias, values.render_only_bias, values.brightness_scale, values.energy, values.tint,
+		print("--- sky: exposure %.3f + render-only %.3f stops, brightness %.3f, energy %.3f (authored %.3f, display fit %.3f), linear tint %s" % [
+			values.exposure_bias, values.render_only_bias, values.brightness_scale, values.energy,
+			values.authored_energy, values.display_fit, values.tint,
 		])
 	_build_skybox()
 	_read_contents(entities_path)

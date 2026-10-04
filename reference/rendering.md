@@ -27,8 +27,12 @@ original suspects below explain the audit's starting point; resolved items
 are marked in the plan.
 
 The sky now uses its material's exposure stops and `env_sky`'s brightness
-and linear tint. Dust2's previously omitted +0.765-stop bias gives a 1.699
-gain; Mirage retains its authored unit gain. The
+and linear tint. Dust2's +0.765-stop bias gives an authored 1.699 gain;
+a separate 0.75 backdrop fit reduces it to 1.275 after a paired T-spawn
+comparison showed that the full gain overshoots in our renderer. Mirage
+retains its authored unit gain. The existing panorama capture used by
+lighting, reflections and fog keeps its previous brightness and white tint.
+The
 [sky brightness audit](research/sky-brightness-2026-10-03.md) records the
 extracted values, current-client Ghidra findings and before/after renders.
 Full sky colour and exposure matching remains open.
@@ -63,7 +67,7 @@ Forward+, Vulkan (Godot's default; `project.godot` names no renderer).
 | Anti-aliasing | MSAA 4x (`msaa_3d=2` is the enum `MSAA_4X`, not a sample count) | `project.godot` |
 | Screen-space occlusion | off. It drew nothing when it was measured, since the map's materials brought their bounce light in through `light()` then (Measured); they hand it to Godot as its ambient light now (R5), which SSAO would darken, so turning it on is a look to judge beside CS2 | `MapLighting.build` |
 | Bloom, fog, colour adjustment | on: CS2's own filmic curve and colour table (`ColourGrade`, R8) by default, glow 0.4; the older ACES comparison is `--grade aces` | `MapLighting.build` |
-| Sky panorama | Extracted HDR texture with material exposure and the active sky entity's brightness and linear tint; render-only bias excluded from Godot's sky lighting capture | `MapSky`, `MapLighting.build` |
+| Sky panorama | Extracted HDR texture with material exposure and the active sky entity's brightness and linear tint; Dust2 has a separate backdrop fit, while the lighting/reflection/fog capture keeps its previous panorama settings | `MapSky`, `MapLighting.build` |
 | Bounce light | CS2's own baked lightmaps (irradiance and direction), read in every world material's shader and handed to Godot as its ambient light (`IRRADIANCE`), which keeps its reflections (R5) | `lightmap.gdshaderinc`, `baked_light.gdshaderinc`, `LightmapMaterials` |
 | Props without lightmap UVs, players, arms | CS2's light probes, read at one point for each body or prop (an ambient cube; a player's 40 units above the feet) and handed to Godot as its ambient light, as the lightmaps are | `probe_lit.gdshader`, `ProbeMaterials` |
 | Direct light | a custom `light()` on every map material, Godot's own Burley and GGX written out, so the sun's light takes its baked shadow (R4) | `baked_light.gdshaderinc` |

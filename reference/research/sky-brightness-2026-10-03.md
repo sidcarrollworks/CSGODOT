@@ -2,23 +2,32 @@
 
 The Dust2 reference images (`reference/cs2 _screenshots/dust2_t_spawn_1.webp`,
 `dust2_tspawn_2.webp` and `dust2_cat.webp`) show a brighter sky than our
-panorama render. The missing material exposure is one concrete cause.
-This fixes that input; it does not establish complete colour-grade parity.
+panorama render. The material exposure was omitted, but applying its full
+gain overshoots under our current grade. A paired T-spawn comparison now
+supplies a separate backdrop fit. Complete colour-grade parity remains open.
 
 ## Extracted values and current executable
 
 Dust2's `materials/skybox/sky_de_dust2.vmat` specifies
 `g_flBrightnessExposureBias = 0.765` and `g_flRenderOnlyExposureBias = 0`.
 Its active `env_sky` has `brightnessscale = 1` and white `tint_color`.
-The correct visible gain is therefore `2^0.765 = 1.6993708` before grading.
+The authored visible gain is therefore `2^0.765 = 1.6993708` before grading.
 Previously `MapLighting` used the sun entity's `skyintensity = 0.960784`
 and ignored both material biases and the sky entity's brightness/tint.
-The change from the previous gain is about 77% in linear light.
+The uncalibrated change from the previous gain is about 77% in linear light.
+`MapSky.DUST2_DISPLAY_FIT = 0.75` reduces the gain to 1.2745281 for this
+material under the CS2 grade only, about 33% above the old gain. This is a
+measured renderer calibration, not a recovered Valve constant. Other
+materials and the ACES comparison keep a fit of 1.
 
 Mirage's material DATA sets both biases to zero, with a white, unit-brightness
 sky entity. It keeps a gain of 1; Dust2's adjustment is not applied to it.
 Both EXR imports have `process/hdr_as_srgb = false`, so an extra gamma
 conversion of the extracted HDR image is not appropriate.
+Re-exporting the currently installed Dust2 texture produced an EXR with the
+same SHA-256 as our September 21 export:
+`68113bcff514f94e938114147b62656fe3c0b60a0f3085c4028f44d22fa71622`.
+The current material DATA also retains the same 0.765-stop bias.
 
 Ghidra was run against the installed October 2 CS2 client, version 1.41.8.8,
 build 2000924. Its SHA-256 is
@@ -48,24 +57,46 @@ including signed/scientific float notation. The same active sky entity
 selects the texture and supplies brightness/tint. Disabled sky entities
 are skipped. All settings are read once while loading the map.
 
-The shader samples the existing panorama once. Its cubemap pass excludes
-the render-only bias from Godot's sky lighting/reflection capture. That is
-our mapping of the parameter's render-only role; a separate authored
-`sky_lightingonly_name` and its tint are not implemented. Both tested maps
-have zero render-only bias, so this distinction does not alter their result.
-The existing baked lightmaps, probes, sun energy and global exposure fit
-are retained.
+The shader samples the existing panorama once. Its visible pass uses the
+authored gain, linear tint and separate backdrop fit. Its cubemap pass keeps
+the previous panorama's `light_environment.skyintensity` and white tint,
+so changing the backdrop does not replace the lighting/reflection/fog
+capture. A separate authored `sky_lightingonly_name` and its tint remain
+unimplemented. The existing baked lightmaps, probes, sun energy, grade and
+global exposure fit are retained.
 
-Before/after Dust2 renders used the same mid-door camera at 1920×1080.
-The sky patch (x 1300–1749, y 50–199) changed from mean display RGB
-`(0.2079, 0.4199, 0.6198)` to `(0.3934, 0.7355, 0.9976)`.
-A sunlit wall patch (x 1550–1699, y 450–549) stayed within 0.002 per display
-channel. These are our own render measurements, not a measured match to
-CS2. Some sky colours still differ from the references; exposure adaptation,
-grade differences and sky orientation remain candidates for a paired audit.
-There are no Mirage reference images in this folder for a visual match.
+The earlier mid-door previews incorrectly saved linear HDR viewport pixels
+directly to PNG. Their quoted RGB values were linear, despite being labelled
+display RGB, and the previews looked too dark. They are not visual-match
+evidence. The corrected capture reads the viewport's RGB half-float pixels
+and applies the sRGB transfer curve before PNG quantization, as the display
+does. The imported scene-linear sky texture itself is not gamma-adjusted.
+
+The paired October 3 captures use the user's T-spawn feet
+`(-1163.7, 77.8, -299.7)`, yaw 270.2, pitch 11.8, at 3840×2160.
+The player settles to y 77.79156. The upper sky patch covers normalized
+x 0.56–0.70, y 0.09–0.20, avoiding the CS2 reference's grid and HUD.
+Mean display RGB, on a 0–255 scale:
+
+| Patch | Previous renderer | Full authored gain | Fitted backdrop | CS2 reference |
+|---|---|---|---|---|
+| Upper blue sky | 107.34, 156.76, 196.60 | 143.85, 202.65, 247.97 | 124.10, 178.50, 221.77 | 120.45, 178.71, 222.73 |
+| Central sky (x 0.56–0.70, y 0.28–0.35) | 149.11, 173.80, 193.26 | 195.49, 222.89, 244.25 | 171.30, 197.04, 218.10 | 164.84, 195.69, 219.60 |
+
+Relative to the previous renderer, the fitted backdrop changes mean display
+channels by at most 0.28/255 in a shaded wall patch (x 0.15–0.24,
+y 0.55–0.60), 0.16/255 in sunlit plaster (x 0.61–0.65, y 0.54–0.60)
+and 1.03/255 in shaded ground (x 0.85–0.90, y 0.89–0.94). These bound
+the observed change at this view; they do not prove all materials and views
+are identical. Sky bloom can still spill onto nearby screen pixels.
+
+The right-hand clouds are still too bright/blue relative to this reference.
+Existing world colour differences also remain; they were not corrected by
+changing global exposure. There are no Mirage reference images in this
+folder for a visual match, so Dust2's fit is not applied to Mirage.
 
 The map-mode checks cover both material formats, disabled-sky selection,
-the two maps' gains, tint conversion, neutral defaults and shader inputs.
+the two maps' authored gains, Dust2-only display fitting, tint conversion,
+neutral defaults and preservation of the lighting capture's gain.
 Map and grade suites exercise the existing environment setup. Graphical
 captures verified that the sky shader compiles and draws with Vulkan.

@@ -8,6 +8,8 @@ uniform float energy = 1.0;
 uniform float lighting_energy = 1.0;
 
 void sky() {
-	float multiplier = AT_CUBEMAP_PASS ? lighting_energy : energy;
-	COLOR = texture(panorama, SKY_COORDS).rgb * tint * multiplier;
+	vec3 texel = texture(panorama, SKY_COORDS).rgb;
+	// Keep the old panorama's radiance for the world's lighting and fog;
+	// the visible sky's authored brightness and tint only affect the backdrop.
+	COLOR = AT_CUBEMAP_PASS ? texel * lighting_energy : texel * tint * energy;
 }
