@@ -801,25 +801,31 @@ func _test_player_lands() -> void:
 ## Stepping up a stair, four: the move that met the riser, the step up, the
 ## move, and the step down, which is the floor found (on Godot's own seven,
 ## with StayOnGround's two and the check).
+## These are movement-only limits. Terrain-eye sweeps are counted in the
+## public total too, and checked separately against their bounded grid.
 func _test_traces_a_tick() -> void:
 	var native := PhysicsQueries.adapter_for_node(_player) != null
 	_place(Vector3(0.0, 8.0, 256.0))
 	for i in SETTLE_TICKS:
 		_step()
 	var before := _player.traces
+	var eyes_before := _player.ground_eyes.queries
 	_step()
-	var standing := _player.traces - before
+	var standing_eyes := _player.ground_eyes.queries - eyes_before
+	var standing := _player.traces - before - standing_eyes
 	var forward := Vector3(0.0, 0.0, -1.0)
 	for i in 2:
 		_step(forward)
 	before = _player.traces
+	eyes_before = _player.ground_eyes.queries
 	_step(forward)
 	_step(forward)
-	var running := _player.traces - before
+	var running_eyes := _player.ground_eyes.queries - eyes_before
+	var running := _player.traces - before - running_eyes
 	_check(
-		standing == 1 and running == (4 if native else 8) and _player.on_ground,
-		"a tick traces the hull once standing still and %s running in the open (%d, then %d in two)" % [
-			"twice" if native else "four times", standing, running]
+		standing == 1 and standing_eyes == 0 and running == (4 if native else 8) and running_eyes <= 10 and _player.on_ground,
+		"movement traces once standing still and %s running in the open (%d, then %d in two); terrain adds %d idle / %d running" % [
+			"twice" if native else "four times", standing, running, standing_eyes, running_eyes]
 	)
 	# Up the eight-step flight, a tick that steps up traces the hull no more
 	# than the flat move that met the riser, the step up, the move and the
@@ -830,17 +836,21 @@ func _test_traces_a_tick() -> void:
 		_step()
 	var steps := 0
 	var most := 0
+	var most_eyes := 0
 	for i in SimClock.ticks_in(1.5):
 		var was := _player.global_position.y
 		before = _player.traces
+		eyes_before = _player.ground_eyes.queries
 		_step(forward)
+		var eye_delta := _player.ground_eyes.queries - eyes_before
+		most_eyes = maxi(most_eyes, eye_delta)
 		if _player.global_position.y > was + 8.0:
 			steps += 1
-			most = maxi(most, _player.traces - before)
+			most = maxi(most, _player.traces - before - eye_delta)
 	_check(
-		steps == 8 and most == (4 if native else 7),
-		"running up the flight steps up each of its eight steps, tracing the hull at most %s times a tick (%d steps, %d traces)" % [
-			"four" if native else "seven", steps, most]
+		steps == 8 and most == (4 if native else 7) and most_eyes <= 25,
+		"running up all eight stairs keeps the %s movement-trace limit (%d steps, %d movement + %d terrain at most)" % [
+			"four" if native else "seven", steps, most, most_eyes]
 	)
 	_place(Vector3(0.0, 8.0, 256.0))
 

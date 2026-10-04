@@ -12,9 +12,11 @@ const PITCH := 11.8
 const MID_DOOR_FEET := Vector3(-660.031250, 89.614380, -344.012573)
 const MID_DOOR_YAW := 272.602875
 const MID_DOOR_PITCH := 14.960024
+const MID_DOOR_CAMERA_Y := 150.364380
 const B_DOORS_FEET := Vector3(-256.021118, 128.077347, -1667.957031)
 const B_DOORS_YAW := 262.148254
 const B_DOORS_PITCH := 14.713711
+const B_DOORS_CAMERA_Y := 192.014847
 enum Lineup { XBOX, MID_DOOR, B_DOORS }
 var _host: Node3D
 var _world: GameWorld
@@ -150,6 +152,13 @@ func _throw(fraction: float, release_offset: int, feet := FEET, yaw := YAW, pitc
 	for i in 80:
 		_world.step()
 	_check(player._pin_pulled and player.on_ground, "lineup fixture starts with a held smoke on the T-spawn floor")
+	if lineup != Lineup.XBOX:
+		# Compare absolute camera height, not a hardcoded offset: Box3D's
+		# resting hull clearance also changes the settled feet coordinate.
+		var expected_y := MID_DOOR_CAMERA_Y if lineup == Lineup.MID_DOOR else B_DOORS_CAMERA_Y
+		var camera_y := player.global_position.y + player.eye_height()
+		_check(absf(camera_y - expected_y) < 0.08,
+			"settled %s camera matches paired CS2 getpos within 0.08 units: %.6f vs %.6f" % [Lineup.keys()[lineup], camera_y, expected_y])
 	player.jump_at = _world.tick + 1
 	player.release_at = player.jump_at + release_offset
 	var grenade: GrenadeEntity
@@ -200,6 +209,11 @@ func _throw(fraction: float, release_offset: int, feet := FEET, yaw := YAW, pitc
 				"lineup": Lineup.keys()[lineup],
 				"snapshot_velocity": str(player.grenade_throw.snapshot.get("velocity")),
 				"rest": str(rest), "flight_seconds": grenade.age(_world.game.now_usec())}))
+			var snapshot := player.grenade_throw.snapshot
+			var snapshot_eye: Vector3 = snapshot["eye"]
+			var snapshot_center: Vector3 = snapshot["center"]
+			_check(absf(snapshot_eye.y - snapshot_center.y + player.config.stand_height * 0.5 - 64.0) < 0.001,
+				"jump snapshot uses the shared airborne eye after the terrain offset clears")
 			grenade.remove()
 			break
 	_check(rest.is_finite(), "lineup smoke spawns and settles within the bounded flight")

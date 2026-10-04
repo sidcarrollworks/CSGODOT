@@ -18,7 +18,11 @@ effects, water, spin and additional entity filters remain open. The core
 port is merged in #183; #184 adds the exact movement snapshot boundary,
 ordinary CS2 jump correction, sky-brush classification and practice trails.
 B-doors' standing jump throw was accepted in play. The mid-door visual aim
-discrepancy remains open; shared terrain-aware simulation eye state is next.
+discrepancy awaits another playtest. Shared terrain-aware simulation eyes
+now finish before snapshots, with the settled mid-door and B-doors camera
+heights checked against the paired CS2 console values. The
+[terrain-eye port](../research/terrain-eyes-2026-10-03.md) records its cost
+and limits; captured CS2 trajectories remain open.
 
 ## What is built
 
@@ -32,6 +36,7 @@ In `src/grenades/` and `src/physics/projectile_trace.gd`, checked by
 | `grenade_flight.gd` | Pawn-center launch with a ±2.02 box, 16 units ahead; ±2 flight box, two 1/128 s steps at 64 Hz, midpoint gravity, clip-push/restitution and floor rest |
 | `grenade_throw_state.gd` | Gradual held strength, middle snap, 0.1 s release scheduling, one jump deferral and movement-finish snapshot with a 0.2 s age limit |
 | `../physics/projectile_trace.gd` | Original collider/RID/shape, geometric flight fraction, separate 0.01-inch normal clearance and conservative blocked starts |
+| `../movement/ground_eyes.gd`, `../physics/terrain_trace.gd` | Shared movement-finish eye adjustment from cached zero-height support squares; grenade snapshots read it without another query |
 | `smoke_voxels.gd` | The smoke's cloud: 16-unit cubes filled from where it stopped, round walls and through doors, over a 1 s bloom; holes from HE, tunnels from rounds; how much of a line is in smoke |
 | `fire_spread.gd` | A molotov's or incendiary's flames spreading over the ground, up to 16, 42 apart, within 150 (110) units, never through walls or into smoke |
 | `flash_blind.gd` | How a flash blinds one player (by distance and facing, not through walls) and how it wears off |

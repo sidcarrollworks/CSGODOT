@@ -9,9 +9,10 @@ without changing the runtime solver. Sid's subsequent slope playtest led
 to the crouch acceleration fix documented below; other gaps remain open.
 The ordinary jump/snapshot and targeted crouch acceleration changes are
 merged in #184. Its final CI passed 7,021 checks across 80 files, with
-asset-dependent comparisons skipped. Shared terrain-aware eye state,
-combined horizontal integration and complete crouch/modern jump transitions
-remain unported, in the order recorded at the end of this audit.
+asset-dependent comparisons skipped. The
+[terrain-eye follow-up](terrain-eyes-2026-10-03.md) ports shared terrain
+state and ordinary topology transitions. Combined horizontal integration
+and complete crouch/modern jump transitions remain unported, in that order.
 
 ## Evidence and scope
 
@@ -35,7 +36,7 @@ quantization and all jump/landing branches require further work.
 
 | Area | Installed CS2 | Our current implementation | Consequence |
 |---|---|---|---|
-| Ground-dependent eyes | Topology/root adjustment assembled during movement finish, before grenade capture | Base 64/46 eye heights with a duck spline | Landmark aim and standing/crouched launch eyes can differ on slopes and edges |
+| Ground-dependent eyes | Topology/root adjustment assembled during movement finish, before grenade capture | Shared cached terrain state and ordinary topology transitions now finish before capture; full duck/root timing remains open | Paired settled Dust2 cameras match within 0.04 units; further CS2 transition and trajectory captures remain |
 | Air acceleration | Applies part before collision movement and defers the remainder until after it | Applies the full capped addition before moving | Matching final speed can still produce different displacement and contacts |
 | Ground acceleration/friction | Tracks acceleration and a deferred velocity contribution; collision movement uses an intermediate velocity | Friction and acceleration update velocity fully before movement | Starts, stops and running throws can sample different positions |
 | Crouch acceleration | Applies the 0.34 scale after a 250-unit wish-speed floor in the ordinary land branch | Now uses that independent scale; previously used standing weapon speed | Removes the fast crouched start without starving rifle movement against stop friction |
@@ -275,9 +276,11 @@ deferred acceleration/friction remain unported.
 
 ## Implementation order and validation
 
-1. Port shared simulation eye state and the actual terrain sampler, with
-   bounded cached queries. Check flat ground, slopes, thin edges, takeoff,
-   landing and duck transitions against paired console measurements.
+1. **Implementation done:** shared simulation eye state and the recovered
+   terrain sampler, with bounded cached queries. Synthetic planes/edges,
+   support ownership and takeoff/landing are checked; paired Dust2 camera
+   heights match within 0.04 units. Local landmark playtest and additional
+   CS2 transition captures remain. Full duck/root timing belongs to step 3.
 2. Port the combined horizontal acceleration/friction and deferred velocity
    state in script and native movement together. Check displacement, blocked
    movement and run/jump throws, not just terminal speeds.
@@ -285,10 +288,11 @@ deferred acceleration/friction remain unported.
    checks and CS2 captures. Keep these changes separately reviewable from
    grenade-flight tuning.
 
-The Xbox, exact-coordinate mid-door and B-doors regression passes **201
+The Xbox, exact-coordinate mid-door and B-doors regression passes **246
 checks**, with **12,339 native/script steps** compared bit for bit. Each
 fixture covers three jump phases crossed with three eligible release times.
 The door throws reach the local door-top region; all nine B-doors throws
 reach the gate roof with the concrete/wood/concrete contact sequence and
-rest within 0.1 units of each other. These are local regressions; Sid's
-remaining visual/trajectory discrepancy and G1 stay open.
+rest within 0.1 units of each other. Paired settled camera heights and shared
+airborne snapshot eyes are now included. These are local regressions;
+Sid's remaining visual/trajectory comparison and G1 stay open.

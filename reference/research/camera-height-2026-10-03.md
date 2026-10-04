@@ -4,7 +4,9 @@ Sid reports that matching a CS2 landmark still requires aiming higher in
 our game. The corrected console aim in the [subtick audit](grenade-subtick-snapshot-2026-10-03.md#cs2-console-setup)
 fixes the local door fixture, but does not establish visual or trajectory
 parity. This follow-up checks the current camera and grenade eye paths.
-It changes no runtime height or throw parameters.
+The initial audit changed no runtime height or throw parameters. The
+[terrain-eye follow-up](terrain-eyes-2026-10-03.md) now ports the recovered
+sampler and shared simulation state, including ordinary topology transitions.
 
 ## Findings
 
@@ -19,18 +21,21 @@ offsets and the pawn's final view offset during movement finish, before
 capturing the jump-throw snapshot. This is simulation state that can
 change a grenade's launch position, not just the drawn feet.
 
-**Verified in our code:** `PlayerBody.eye_height()` only blends the base
-64/46 values. Neither that method nor grenade launch parameters apply a
-ground-topology adjustment. The local rendered camera also adds its
+**At the initial audit:** `PlayerBody.eye_height()` only blended the base
+64/46 values, and grenade launch parameters had no topology adjustment.
+The follow-up now applies one shared movement-finish terrain value to both
+paths. The local rendered camera also adds its
 procedural jump/landing dip and interpolates position; grenade snapshots
 use simulation position and eye height. These paths must be compared
 separately when reproducing a reference.
 
 **Measured:** Sid's paired `getpos`/`getpos_exact` at this starting point
 give an effective eye height of **60.75 units**, 3.25 below the base height.
-The fixture now uses the supplied pawn coordinates. The missing terrain
-adjustment is a plausible contributor, but its exact sampled value and
-the remaining trajectory discrepancy are still unresolved. The
+The fixture now uses the supplied pawn coordinates. At the initial audit,
+the sampled terrain adjustment and remaining trajectory difference were
+unresolved. The terrain-eye follow-up now checks settled absolute cameras
+within 0.04 units of both supplied Dust2 references; the remaining trajectory
+and full-transition comparisons stay open. The
 [movement follow-up](movement-ghidra-2026-10-03.md) compares the current
 walk/air, crouch, ground and takeoff paths. A successful synthetic door
 landing is not evidence that CS2 parity is established.
@@ -126,7 +131,8 @@ with hull overlap and height weighting, rather than a single ground normal.
 quantized, invalid samples are rejected, and additional sample-selection
 logic handles nearby height discontinuities. The final downward height
 difference is clamped to **0–24 units**. The complete selection/filtering
-logic is not yet ported.
+logic is recovered and ported in the follow-up. Its fixed-world layer mapping
+and collision-backend tolerance remain explicitly qualified there.
 
 `180ae23e0` uses that result to update these movement-service fields:
 
@@ -186,9 +192,7 @@ Retain the exact aim, throw strength/button combination and jump/run
 sequence, then record the trajectory and first contact as well as the
 landing. Include a flat-ground reference and a sloped/edge reference.
 
-The implementation target is a shared simulation eye offset derived from
-the recovered root/topology and duck rules, used by rendering and grenade
-snapshot capture, with render interpolation handled separately. First
-validate its value at the recorded starting positions; then compare launch
-states and contact sequences. Until then, G1 and exact CS2 lineup parity
-remain open.
+The follow-up now implements a shared topology eye offset with separate
+render interpolation and validates the recorded starting camera heights.
+Full duck/root timing remains a later movement stage. Launch-state and
+contact-sequence comparisons, G1 and exact CS2 trajectory parity stay open.

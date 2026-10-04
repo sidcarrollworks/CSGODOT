@@ -109,6 +109,7 @@ private:
 		Vector3 travel;
 		Vector3 normal;
 		Vector3 recovery;
+		bool is_world = false;
 	};
 
 	// What the bridge hands back for a sweep: its dictionary's parts.
@@ -135,6 +136,7 @@ private:
 	Vector3 written;
 	Vector3 velocity;
 	bool on_ground = false;
+	bool ground_is_world = false;
 	Vector3 ground_normal = Vector3(0, 1, 0);
 	bool is_ducked = false;
 	double duck_progress = 0.0;
@@ -151,6 +153,8 @@ private:
 	Vector3 floor_at;
 	double floor_with = 0.0;
 	Vector3 floor_normal = Vector3(0, 1, 0);
+	bool floor_is_world = false;
+	bool quadrant_is_world = false;
 	Vector3 recovery_direction = Vector3(0, 1, 0);
 	Vector3 last_trace_recovery;
 	int64_t collision_mask = 0;
