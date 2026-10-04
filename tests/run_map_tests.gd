@@ -1279,14 +1279,19 @@ func _test_lightmap_materials() -> void:
 	wall.normal_enabled = true
 	wall.normal_texture = PlaceholderTexture2D.new()
 	wall.normal_scale = 0.6
+	wall.roughness_texture = PlaceholderTexture2D.new()
+	wall.roughness = 0.375
 	wall.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 	wall.alpha_scissor_threshold = 0.4
 	var sign := StandardMaterial3D.new()
 	sign.set_meta("extras", {"vmat": {"ShaderName": "csgo_static_overlay.vfx"}})
 	sign.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	sign.render_priority = 3
+	sign.roughness = 0.45
 	var plank := StandardMaterial3D.new()
 	plank.set_meta("extras", {"vmat": {"ShaderName": "csgo_vertexlitgeneric.vfx"}})
+	plank.metallic = 0.25
+	plank.roughness = 0.6
 	var leaf := StandardMaterial3D.new()
 	leaf.set_meta("extras", {"vmat": {"ShaderName": "csgo_foliage.vfx"}})
 	leaf.cull_mode = BaseMaterial3D.CULL_DISABLED
@@ -1389,6 +1394,11 @@ func _test_lightmap_materials() -> void:
 	)
 	if lit != null:
 		_check(
+			lit.get_shader_parameter("orm_texture") == wall.roughness_texture
+				and is_equal_approx(lit.get_shader_parameter("roughness_factor"), wall.roughness),
+			"a lightmapped material keeps its authored ORM texture and roughness factor"
+		)
+		_check(
 			lit.get_shader_parameter("albedo_texture") == wall.albedo_texture
 				and (lit.get_shader_parameter("albedo_color") as Color).is_equal_approx(wall.albedo_color)
 				and lit.get_shader_parameter("has_normal_map") == true
@@ -1407,6 +1417,21 @@ func _test_lightmap_materials() -> void:
 			LightmapMaterials.is_lightmapped(BlendMaterials.vmat(lit)) and overlay.render_priority == 3,
 			"the vmat stays readable and the overlay keeps its draw order"
 		)
+	var plank_lit := instance.get_surface_override_material(2) as ShaderMaterial
+	var plank_orm := plank_lit.get_shader_parameter("orm_texture") as ImageTexture if plank_lit != null else null
+	_check(
+		plank_orm != null and plank_orm == ProbeMaterials.flat_orm(plank.metallic)
+			and plank_orm.get_image().get_pixel(0, 0).is_equal_approx(Color(1.0, 1.0, 64.0 / 255.0))
+			and is_equal_approx(plank_lit.get_shader_parameter("roughness_factor"), plank.roughness),
+		"an opaque lightmapped material without ORM keeps its metalness and roughness instead of becoming all metal"
+	)
+	var overlay_orm := overlay.get_shader_parameter("orm_texture") as ImageTexture if overlay != null else null
+	_check(
+		overlay_orm != null and overlay_orm == ProbeMaterials.flat_orm(0.0)
+			and overlay_orm.get_image().get_pixel(0, 0).is_equal_approx(Color(1.0, 1.0, 0.0))
+			and is_equal_approx(overlay.get_shader_parameter("roughness_factor"), sign.roughness),
+		"a blended lightmapped overlay without ORM stays nonmetallic and keeps its roughness"
+	)
 	instance.free()
 
 	# The average: measured over the texels that hold light, and read back.
@@ -1693,6 +1718,11 @@ func _test_environment_props() -> void:
 	)
 	if tarp_lit != null:
 		var amount: float = tarp_lit.get_shader_parameter("colorize_amount")
+		var tarp_orm := tarp_lit.get_shader_parameter("orm_texture") as ImageTexture
+		_check(
+			tarp_orm != null and tarp_orm.get_image().get_pixel(0, 0).is_equal_approx(Color(1.0, 1.0, 0.0)),
+			"a csgo_environment tarp whose export omits ORM remains nonmetallic"
+		)
 		_check(
 			is_equal_approx(amount, 1.0 - 0.144)
 				and (tarp_lit.get_shader_parameter("colorize_tint") as Color).is_equal_approx(tint)
