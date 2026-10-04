@@ -275,8 +275,10 @@ piece is a `HudElement` that draws with `HudStyle`'s colours, font and icons
 and redraws only when what it shows changes or an animation runs. The
 kill feed, weapon selection, ground-item use prompts and round-end/MVP
 panel are built. The round banner has fixed text over a slowly growing
-copy clipped to its translucent, side-fading panel. Radar, scoreboard,
-chat and the remaining HUD details are roadmap item 15. On the range and
+copy clipped to its translucent, side-fading panel. Hold Tab for the
+competitive scoreboard (`Scoreboard`, #175), showing player statistics
+and round history. Radar, chat and further scoreboard/HUD details are
+roadmap item 15. On the range and
 in warmup, three seconds dead puts you back at your spawn with a full
 magazine. In the top left the
 HUD says where you stand and look,
@@ -317,6 +319,24 @@ tolerance leaves the player and rigid-body solver settings unchanged.
 `GrenadeThrowState` holds gradual strength, delayed release and movement-finish
 jump parameters, all on simulation time. The [port record](research/grenade-port-2026-10-02.md)
 lists the recovered rules and remaining lineup comparisons.
+
+PR #184 splits movement at takeoff +0.1 s so a grenade snapshot uses the
+moved pawn state at that boundary. Script and native movement share the
+audited ordinary jump and crouch acceleration corrections. Base eyes
+remain 64 standing / 46 crouched; the terrain/root adjustment recovered
+from CS2 remains unported. The next change is one simulation eye state
+for rendering and grenade snapshots, followed by combined horizontal
+integration and complete crouch/modern jump transitions
+([movement audit](research/movement-ghidra-2026-10-03.md)).
+
+Practice and the range draw the actual flight as a green trail with orange
+contact markers; `--grenade-trails` / `--no-grenade-trails` override it.
+Sky brushes use a separate layer outside ordinary gameplay collision,
+while grenade clips remain part of flight queries. The exact-coordinate
+Dust2 lineup regressions cover Xbox, mid-door and B-doors. Sid accepted
+B-doors' standing jump landing; the mid-door visual aim discrepancy and
+recorded CS2 trajectory parity remain open. Mirage's extraction/import
+fixes (#185) provide another locally loaded map for these comparisons.
 
 ## The round's systems
 
@@ -379,6 +399,15 @@ the static world; live sun shadows cover moving bodies, and lamps retain
 live world casters. `MapShadows` selects the live fallback where the bake
 is missing. The 3D skybox uses its own baked shading and clips nearby
 terrain at the skybox camera's near plane (PR #167).
+
+The visible sky uses its material's exposure and the sky entity's linear
+tint/brightness. Dust2 has measured renderer fits: 0.75 for the backdrop
+and 1.5 for world exposure, with inverse 0.8 sky compensation preserving
+the accepted backdrop brightness. The panorama's lighting/reflection/fog
+capture retains its previous energy and white tint; other maps retain
+their previous world exposure fit. The paired T-spawn result was accepted
+in #185; full-map colour/exposure parity remains open
+([lighting audit](research/sky-brightness-2026-10-03.md)).
 The bounce light is the game's own too: CS2 bakes it into lightmaps, and the
 walls, ground and most props read those (`src/map/lightmap_materials.gd`,
 the `lightmapped*.gdshader`s) in place of Godot's flat sky ambient, so the

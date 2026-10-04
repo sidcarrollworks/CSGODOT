@@ -1,13 +1,14 @@
 # Dust2 sky and grenade clipping — October 2, 2026
 
 Follow-up to the [jump timer correction](grenade-jump-lineup-2026-10-02.md),
-in PR #184. Sid's second screenshot shows Godot feet
+merged in PR #184. Sid's second screenshot shows Godot feet
 `(-660.3, 89.8, -343.9)`, yaw `272.6`, pitch `14.1`. A stationary left-click
 jump throw reproduced the reported backward bounce above mid. Sid then
 supplied a CS2 landing inset and an updated Godot screenshot: feet
 `(-660.3, 89.8, -344.0)`, yaw `272.6`, pitch `14.2`. The intended landing
 is the top of the open wooden door leaf entering mid, below its lintel.
-Exact CS2 throw input and trajectory coordinates have not been recorded.
+This initial pass preceded the paired CS2 console inputs recorded below;
+an exact CS2 trajectory time series remains unrecorded.
 
 ## Extraction check
 

@@ -5,7 +5,7 @@ of the remaining jump-throw inconsistency. This report corrects the clock
 interpretation in the [initial lineup follow-up](grenade-jump-lineup-2026-10-02.md).
 The implementation was initially saved separately because it missed the
 mid-door reference. Sid subsequently requested applying it for playtesting.
-The branch now runs these movement changes. The subsequent
+These movement changes are merged in #184. The subsequent
 [CS2 console setup](#cs2-console-setup) resolves the local door miss with
 unchanged physics: the earlier Godot screenshot aim was about 0.8 degrees
 lower. Surface and landing checks remain strict. Sid subsequently supplied
@@ -19,6 +19,9 @@ eye height is 60.75; the exact sampler result and its contribution to the
 remaining trajectory discrepancy stay open. The
 [movement audit](movement-ghidra-2026-10-03.md) also finds horizontal
 integration, crouch and modern landing/press-window differences.
+The B-doors standing jump landing was accepted in play. Shared terrain-aware
+simulation eyes are the next implementation; the earlier experiments and
+targeted measurements below retain their original scope.
 
 ## Binary identity and method
 

@@ -6,6 +6,10 @@ guns, multiplayer netcode "and so on". This is that map. The order the work
 goes in is in the project roadmap; this file is the detail behind it, for
 the cloud threads and for Sid's local agent alike.
 
+Implementation status checked on 2026-10-03 through merged PR #185.
+The roadmap separates merged features, open #177–179 playtest PRs, and
+remaining CS2 comparisons; an audited rule is not automatically a port.
+
 Each system says what CS2 does (with its numbers), what is built already, and
 the work, split the way `reference/weapons/TODO.md` splits it:
 
@@ -402,12 +406,12 @@ local CS2 comparison.
 
 The [October 3 subtick audit](research/grenade-subtick-snapshot-2026-10-03.md)
 verifies an explicit movement boundary at takeoff +0.1 s. The port now uses
-that boundary and the recovered ordinary jump adjustment, at Sid's request
-for playtest. It removes phase variation. The earlier mid-door miss used
+that boundary and the recovered ordinary jump adjustment, merged in #184.
+It removes phase variation. The earlier mid-door miss used
 Godot screenshot aim; Sid's subsequent CS2 console aim lands on the door
 without changing flight physics. The local preset now uses Sid's paired
 `getpos_exact` pawn coordinates. Recorded trajectory
-comparison and general jump feel still need validation before merge.
+comparison and general jump feel remain open after #184's merge.
 Sid still needs to aim higher at matching landmarks. The
 [camera-height audit](research/camera-height-2026-10-03.md) verifies the
 64/46 base eye heights and a missing terrain-dependent eye adjustment,
@@ -416,7 +420,9 @@ height is now measured at 60.75 units; the shared adjustment remains
 unported. The [movement audit](research/movement-ghidra-2026-10-03.md)
 also finds horizontal integration, crouch and modern landing/press-window
 differences. The B-doors reference measures 63.9375 units and is available
-in the watcher with `--lineup=b-doors`.
+in the watcher with `--lineup=b-doors`. Sid accepted that standing jump
+throw's landing in play. Shared terrain-aware simulation eyes are next,
+then combined horizontal integration and full crouch/modern jump transitions.
 
 **HE (WV):** 99 damage at the centre, 350 units radius, falling off smoothly
 with Gaussian falloff sigma=radius/3 (binary verified; target points and
@@ -578,11 +584,13 @@ with its settings.
 **Built:** crosshair; health, armour/helmet and ammo around the emblem;
 rolling money; damage direction arcs; weapon/grenade selection; buy menu;
 team cards, scores and timer; carrier icons; kill feed; ground-item use
-prompts; death countdown; round-end and MVP panel. The round banner uses
+prompts; death countdown; round-end and MVP panel; the Tab scoreboard with
+player statistics and round history (#175). Additional scoreboard columns
+and visual details remain under roadmap item 15. The round banner uses
 fixed foreground text and a slower growing copy clipped behind it, with
 a translucent, side-fading panel and its existing blur (PR #166).
 
-**Remote:** radar, scoreboard, chat, planted-bomb/defuse HUD details and
+**Remote:** radar, additional scoreboard details, chat, planted-bomb/defuse HUD details and
 remaining health/ammo embellishments (roadmap item 15). The radar data
 is already extracted (`MapOverview`, B3).
 

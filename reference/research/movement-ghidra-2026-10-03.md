@@ -7,6 +7,11 @@ does not establish CS2 parity. This pass examines the ordinary walk/air,
 ground, crouch and jump paths. The initial audit recorded differences
 without changing the runtime solver. Sid's subsequent slope playtest led
 to the crouch acceleration fix documented below; other gaps remain open.
+The ordinary jump/snapshot and targeted crouch acceleration changes are
+merged in #184. Its final CI passed 7,021 checks across 80 files, with
+asset-dependent comparisons skipped. Shared terrain-aware eye state,
+combined horizontal integration and complete crouch/modern jump transitions
+remain unported, in the order recorded at the end of this audit.
 
 ## Evidence and scope
 

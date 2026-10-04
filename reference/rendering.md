@@ -41,6 +41,8 @@ extracted values, current-client Ghidra findings and before/after renders.
 The sampled shaded wall is within 1% of CS2's luminance and the sunlit
 plaster within 4%. These are paired T-spawn measurements, not all-view parity.
 Full sky colour and exposure matching remains open.
+PR #185 is merged; Sid accepted the compensated sky and raised world
+exposure at the paired T-spawn view.
 
 AUG/SG scope blur and the new hit effects are included in
 [scope research](research/scopes.md) and the
