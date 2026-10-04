@@ -17,8 +17,8 @@ extends RefCounted
 ## for the same numbers, and needs the accessors restructured rather than a key
 ## renamed.
 ##
-## The rename is done on the text, not by parsing and rewriting: GDScript's
-## JSON turns every integer into a float on the way through, which Godot
+## The rename edits each primitive's attribute text. Parsing and rewriting
+## through GDScript's JSON turns every integer into a float, which Godot
 ## tolerates and other glTF readers do not. The quoted key with its colon can
 ## only be an attribute name; the leading underscore is reserved by the glTF
 ## spec for exactly this kind of application-specific attribute.
@@ -30,6 +30,7 @@ const TO := "\"COLOR_0\":"
 ## Renames the paint attribute throughout one glTF. Returns how many
 ## primitives were changed: 0 if there was nothing to do or it had been done
 ## already, -1 if the file was left alone for a reason, having said why.
+## Primitives with an existing COLOR_0 are always kept as they were.
 static func fix_file(gltf_path: String) -> int:
 	var text := FileAccess.get_file_as_string(gltf_path)
 	var count := text.count(FROM)
@@ -41,26 +42,39 @@ static func fix_file(gltf_path: String) -> int:
 			return -1
 		return 0
 
-	# A primitive with a vertex colour of its own as well would end up with the
-	# key twice. dust2 has none; say so rather than produce a broken file.
+	# A primitive with vertex colour as well must keep it. Mirage's railings
+	# have both; they must not prevent unrelated walls from carrying their paint.
 	var parsed: Variant = JSON.parse_string(text)
 	if not parsed is Dictionary:
 		push_warning("Could not read %s as JSON; its blend paint was left alone." % gltf_path)
 		return -1
-	for mesh: Dictionary in (parsed as Dictionary).get("meshes", []):
-		for primitive: Dictionary in mesh.get("primitives", []):
-			var attributes: Dictionary = primitive.get("attributes", {})
-			if attributes.has("_TEXCOORD_4") and attributes.has("COLOR_0"):
-				push_warning(
-					"%s has a primitive with both blend paint and vertex colour; left alone."
-					% gltf_path
-				)
-				return -1
+	var parts := PackedStringArray()
+	var cursor := 0
+	var renamed := 0
+	var conflicts := 0
+	var attributes_pattern := RegEx.create_from_string('"attributes"\\s*:\\s*\\{[^{}]*\\}')
+	var colour_pattern := RegEx.create_from_string('"COLOR_0"\\s*:')
+	for match: RegExMatch in attributes_pattern.search_all(text):
+		parts.append(text.substr(cursor, match.get_start() - cursor))
+		var attributes_text := match.get_string()
+		if attributes_text.contains(FROM):
+			if colour_pattern.search(attributes_text) != null:
+				conflicts += 1
+			else:
+				attributes_text = attributes_text.replace(FROM, TO)
+				renamed += 1
+		parts.append(attributes_text)
+		cursor = match.get_end()
+	parts.append(text.substr(cursor))
+	if conflicts > 0:
+		push_warning("%s: kept vertex colour on %d primitives with blend paint too." % [gltf_path, conflicts])
+	if renamed == 0:
+		return -1 if conflicts > 0 else 0
 
 	var file := FileAccess.open(gltf_path, FileAccess.WRITE)
 	if file == null:
 		push_warning("Could not write %s." % gltf_path)
 		return -1
-	file.store_string(text.replace(FROM, TO))
+	file.store_string("".join(parts))
 	file.close()
-	return count
+	return renamed

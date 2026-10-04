@@ -630,6 +630,8 @@ extract_skybox() {
 
 ## The sky, as the HDR panorama the map's sky material is made of. Which
 ## material that is comes from the entity lump (env_sky), so that runs first.
+## Read material DATA directly: decompiling the material also decodes its
+## shader, which can be newer than Source 2 Viewer's supported VCS versions.
 extract_sky() {
 	require_file "$PAK_VPK"
 	local entities
@@ -648,7 +650,19 @@ extract_sky() {
 	fi
 	echo "Extracting $sky"
 	echo "        -> $MAP_DEST"
-	"$S2V_BIN" -i "$PAK_VPK" -f "$sky" -o "$MAP_DEST" -d \
+	local material="$MAP_DEST/${sky%_c}"
+	mkdir -p "$(dirname "$material")"
+	"$S2V_BIN" -i "$PAK_VPK" -f "$sky" -b DATA \
+		| tr -d '\r' | sed -n '/^<!-- kv3 encoding:/,$p' > "$material"
+	if [[ ! -s "$material" ]]; then
+		echo "No material DATA for $sky; the sky panorama was not extracted." >&2
+		return 1
+	fi
+	local textures
+	textures="$(grep -oE 'resource:"[^"]+\.vtex"' "$material" \
+		| sed -E 's/^resource:"//; s/"$//; s/\.vtex$/.vtex_c/' | sort -u | paste -sd, - || true)"
+	require_filter "$textures" "the sky material's textures"
+	"$S2V_BIN" -i "$PAK_VPK" -f "$textures" -o "$MAP_DEST" -d \
 		| grep -vE '^(Preloading|Added folder|--- \[)' || true
 }
 
