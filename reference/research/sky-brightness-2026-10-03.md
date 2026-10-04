@@ -1,5 +1,15 @@
 # Sky brightness audit, 2026-10-03
 
+## October 4 playtest refinement
+
+Sid accepted the sky and grenade lineups, but found Dust2's sunlit buildings
+slightly too bright during practice. The world exposure fit is now **1.425**,
+a **5% reduction** from 1.5 (about −0.074 stops). The existing inverse sky
+compensation preserves the accepted backdrop brightness. This is a small
+display calibration based on playtest feedback; the baked lighting, sun
+energy, tone curve and other maps' exposure fits are unchanged. The grade
+checks retain the sky invariance and grade-switch round-trip assertions.
+
 The Dust2 reference images (`reference/cs2 _screenshots/dust2_t_spawn_1.webp`,
 `dust2_tspawn_2.webp` and `dust2_cat.webp`) show a brighter sky than our
 panorama render. The material exposure was omitted, but applying its full

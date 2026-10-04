@@ -4,7 +4,8 @@ extends RefCounted
 ## A bounded draw-time interpreter for the extracted impact layers.
 ## Random initial values are sampled once; motion is evaluated analytically
 ## from the event timestamp, so frame rate never changes a particle's path.
-## Source local +X follows the impact axis; Source +Z gravity is world up.
+## Blood local +X follows the impact axis; world-impact local +Z follows
+## the surface normal. Source +Z gravity remains world up in both cases.
 ## Unsupported shader/CP operators remain listed in the generated table.
 
 const LIMIT := 512
@@ -55,10 +56,10 @@ func prepare(name: String, source: Dictionary) -> void:
 	_layers[name] = layer
 
 
-func spawn(effect: String, at: Vector3, direction: Vector3, born: int, eye: Vector3, damage: float = 30.0, screen: bool = false) -> void:
+func spawn(effect: String, at: Vector3, direction: Vector3, born: int, eye: Vector3, damage: float = 30.0, screen: bool = false, world: bool = false) -> void:
 	_rng.seed = hash([effect, at, born, damage])
 	var context := {"at": at, "basis": impact_basis(direction), "born": born,
-		"distance": eye.distance_to(at), "damage": damage, "screen": screen,
+		"distance": eye.distance_to(at), "damage": damage, "screen": screen, "world": world,
 		"cps": {1: Vector3(damage, 0, 0)}, "distance_ops": []}
 	_open(effect, context, 0)
 
@@ -101,6 +102,10 @@ func _emit(name: String, layer: Dictionary, context: Dictionary) -> void:
 	var body_mist := name.begins_with("blood_") and name.contains("mist") and not bool(context.get("screen", false)) and not name.contains("local")
 	var count_scale := MIST_COUNT_SCALE if body_mist else 1.0
 	var count := mini(roundi(value(layer.get("count", [1, 1, 1, 1]), context, 0, true) * count_scale), roundi(float(layer.get("count_cap", 64)) * count_scale))
+	var basis: Basis = context.basis
+	# The authored wall dust/burst layers emit along local +Z, whereas
+	# blood spray emits along local +X. Children inherit the event frame.
+	var local_frame := Basis(-basis.z, basis.y, basis.x) if bool(context.get("world", false)) else basis
 	for index in count:
 		if live.size() >= LIMIT:
 			break
@@ -120,11 +125,16 @@ func _emit(name: String, layer: Dictionary, context: Dictionary) -> void:
 		velocity += sphere * value(layer.get("sphere_speed", [0, 0]), context, index)
 		var noise := vector_range(layer.get("noise_velocity_min", [0, 0, 0]), layer.get("noise_velocity_max", [0, 0, 0]))
 		var c := vector_range(layer.get("color_min", [255, 255, 255]), layer.get("color_max", [255, 255, 255])) / 255.0
-		var basis: Basis = context.basis
-		var world_offset := basis * offset
+		var world_offset := local_frame * offset
+		var particle_normal := basis.x
 		if layer.has("normal_offset"):
 			var normal_offset := vector_range(layer.normal_offset, layer.get("normal_offset_max", layer.normal_offset))
-			world_offset += normal_offset_world(normal_offset, basis)
+			# C_INIT_NormalOffset writes NORMAL (field 21), not POSITION.
+			# Applying its ten-unit puff normal as a translation detached the
+			# mesh from the hit, especially when viewed across the wall.
+			particle_normal += normal_offset_world(normal_offset, basis) if bool(layer.get("normal_local", false)) else Vector3(normal_offset.x, normal_offset.z, -normal_offset.y)
+			if bool(layer.get("normal_normalize", false)):
+				particle_normal = particle_normal.normalized()
 		if body_mist:
 			# Sid's hit-location tuning: mist starts at the pellet's surface
 			# contact, with at most one inch of variation, then spreads.
@@ -145,7 +155,8 @@ func _emit(name: String, layer: Dictionary, context: Dictionary) -> void:
 		var fade_out := value(layer.get("fade_out", [0.1,0.1]), context, index)
 		var drag := clampf(float(layer.get("drag", 0.0)), 0.0, 0.9999)
 		live.append({"name": name, "layer": layer, "context": context, "born": context.born,
-			"origin": context.at + world_offset, "velocity": basis * velocity + noise_velocity(layer, noise, basis),
+			"normal": particle_normal,
+			"origin": context.at + world_offset, "velocity": local_frame * velocity + noise_velocity(layer, noise, local_frame),
 			"gravity": source_world(layer.get("gravity", [0, 0, 0])), "life": life,
 			"drag_k": -log(1.0 - drag) / DRAG_STEP if drag > 0.0 else 0.0,
 			"half": radius, "alpha": value(layer.get("alpha", [1, 1]), context, index),
@@ -232,7 +243,8 @@ func draw(quads: Node, models: Node, eye: Transform3D, now: int, fov: float = 90
 			var xform: Transform3D
 			if kind == "model":
 				var scale := half * 39.3700787 # glTF metre coordinates -> Source inches.
-				xform = Transform3D(model_basis(p.context.basis, bool(renderer.get("orient_z", false)), roll).scaled(Vector3.ONE * scale), centre)
+				var frame_basis: Basis = impact_basis(p.normal) if bool(renderer.get("orient_z", false)) else p.context.basis
+				xform = Transform3D(model_basis(frame_basis, bool(renderer.get("orient_z", false)), roll).scaled(Vector3.ONE * scale), centre)
 				models.card(renderer, xform, int(p.seq), shade)
 				continue
 			if kind == "trail":

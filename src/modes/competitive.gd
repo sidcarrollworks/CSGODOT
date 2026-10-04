@@ -43,9 +43,7 @@ extends Node3D
 @export var warmup_paused: bool = false
 ## Real grenade trajectories, for practice lineups only by default.
 var grenade_trails := false
-
-## The line Practice shows in the top left.
-const PRACTICE_NOTE := "Practice: no bots; warmup does not end; F5 starts the rounds."
+var _practice_buying := false
 
 ## How far round a side's spawn points the stand-in buy zone reaches, where
 ## the map's own zones have not been extracted.
@@ -88,14 +86,13 @@ func practice() -> void:
 	with_bots = false
 	warmup_paused = true
 	grenade_trails = true
+	_practice_buying = true
 
 
 ## Sets the game up on a map, in a world, once this node is in the scene.
 func start(game_world: GameWorld, map_contents: MapContents) -> void:
 	world = game_world
 	map = map_contents
-	if not with_bots and warmup_paused:
-		notes.append(PRACTICE_NOTE)
 	_place_player()
 	_place_bots()
 	_prepare_holding()
@@ -329,6 +326,8 @@ func _route_bots_again() -> void:
 ## match starts so they hear its first events.
 func _add_systems() -> void:
 	economy = Economy.new(MoneyRules.new(), _buy_zones())
+	economy.rules.unlimited_money = _practice_buying
+	economy.rules.unlimited_grenade_purchases = _practice_buying
 	economy.match_rules = match_state.rules
 	world.game.add_system(economy)
 	if not map.bomb_sites.is_empty():

@@ -32,11 +32,12 @@ const CS2_SUN_ENERGY_PER_BRIGHTNESS := 1.0
 ## and ground came to 1.01 of the game's and the shaded ground to 0.99.
 const CS2_EXPOSURE_FIT := 1.2
 
-## Dust2's paired T-spawn reference, 2026-10-03: at 1.5 the shaded wall
-## is within 1% of CS2's luminance and the sunlit plaster within 4%.
+## Dust2's paired T-spawn reference, 2026-10-03, selected 1.5. Sid's
+## October 4 playtest requested a slight reduction on sunlit buildings;
+## 1.425 lowers the world exposure by 5%, with the sky compensated below.
 ## This is a renderer calibration, not a value extracted from CS2. Other
 ## maps keep the prior fit until they have paired world-lighting references.
-const DUST2_EXPOSURE_FIT := 1.5
+const DUST2_EXPOSURE_FIT := 1.425
 
 
 ## The sun's energy for a light_environment brightness of 1 under the grade
@@ -128,7 +129,7 @@ static func build(
 	var sky_colour := _colour(sun_entity.get("skycolor", ""), Color(0.83, 0.89, 0.97))
 	var panorama := load(sky_path) as Texture2D if not sky_path.is_empty() and ResourceLoader.exists(sky_path) else null
 	var sky_values := MapSky.settings(MapSky.entity(entities), sky_vmat, mode)
-	# Preserve the approved backdrop's exposed input when increasing world
+	# Preserve the approved backdrop's exposed input when adjusting world
 	# exposure. This affects the visible pass only, never the radiance capture.
 	var sky_compensation := CS2_EXPOSURE_FIT / exposure_fit
 	var cs2_sky_energy := float(sky_values.energy) if mode == "cs2" else float(MapSky.settings(MapSky.entity(entities), sky_vmat, "cs2").energy)

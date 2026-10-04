@@ -178,6 +178,14 @@ local-screen reactions, visible spray and ground/persistent decals keep
 their own timings. The generated authored table remains unchanged by that
 runtime override.
 
+The October 4 wall-impact correction aligns the authored local +Z ejection
+of dust, bursts and debris with the contact normal. World-event children
+inherit that frame for local velocity, offsets and explicitly transformed
+noise; gravity and untransformed noise retain their Source world axes.
+Blood keeps its separate local +X spray frame. This corrects dust rising
+along a wall instead of ejecting from it. Exact game-side CP orientation
+and ricochet frames remain inferred, rather than decompiled equivalence.
+
 Explicit approximations, not measured current-CS2 equivalence:
 
 - Damage/root precedence, CP assignments and local-view positioning.
@@ -219,6 +227,13 @@ head/body layers; [body flinches](body-flinches.md) records timings and
 remaining inferred direction/damage-handler behavior.
 
 ## Reproduction and remaining checks
+
+The October 4 [impact/tracer audit](impact-tracer-viewmodel-2026-10-04.md)
+verifies `C_INIT_NormalOffset` writes the particle normal, not its position.
+The puff now starts at the bullet contact and uses the authored local
+normal vector for orientation. Generated impact tables were refreshed
+against client/server 2000924; the build above records the original
+extraction, rather than claiming all runtime operators are exact.
 
 Run `scripts/extract_assets.sh impacts` with CS2, Source 2 Viewer and Godot.
 It decodes definitions/material DATA under ignored

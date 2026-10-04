@@ -24,6 +24,16 @@ adds; CS2's menu undoes through its own UI). `Economy.buy` and `undo` send
 them. The menu is a client, and would stay one over a network. A gun a
 purchase replaces falls at the buyer's feet as a `DroppedItem`.
 
+## Practice overrides
+
+Practice enables `MoneyRules.unlimited_money` and
+`unlimited_grenade_purchases`. The account stays at the displayed $16,000
+and buying never exhausts it; grenades can be bought repeatedly after
+throwing them without a per-round purchase cap, including buy-and-throw.
+The normal inventory carrying limits, team restrictions and buy-zone/time
+checks still apply. These overrides remain enabled after F5 starts rounds.
+Competitive keeps both flags disabled.
+
 ## CS2's numbers
 
 From SteamDatabase's GameTracking-CS2, checked 2026-09-23:

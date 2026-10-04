@@ -76,7 +76,7 @@ var pitch_degrees: float = 0.0
 
 ## How the tick before the last left the player, beside PlayerBody's
 ## previous_position: where they looked, and how far their view was kicked
-## (view_punch()) and their gun (Weapon.viewmodel_punch()). A frame falls
+## (view_punch()) and their gun (viewmodel_punch()). A frame falls
 ## between two ticks, and whatever draws the player draws it that far
 ## between the two, as CS2 draws everyone: at 64 ticks a second the last
 ## tick alone would step the view and the bodies on a faster screen.
@@ -676,7 +676,7 @@ func run_command(cmd: UserCmd, dt: float) -> void:
 	previous_yaw_degrees = yaw_degrees
 	previous_pitch_degrees = pitch_degrees
 	previous_view_punch = view_punch()
-	previous_viewmodel_punch = weapon.viewmodel_punch() if weapon != null else Vector2.ZERO
+	previous_viewmodel_punch = viewmodel_punch()
 	_run(cmd, dt)
 	if alive and model != null:
 		model.update_motion(velocity, yaw_degrees, duck_progress, on_ground, air_action, air_action_usec, height_above_ground)
@@ -686,6 +686,12 @@ func run_command(cmd: UserCmd, dt: float) -> void:
 ## (right, up): the recoil's punch and a hit's.
 func view_punch() -> Vector2:
 	return (weapon.aim_punch if weapon != null else Vector2.ZERO) + hit_punch.value
+
+
+## Additional model rotation: firing-animation springs plus aim following.
+## Capture both together for interpolation between simulation ticks.
+func viewmodel_punch() -> Vector2:
+	return weapon.viewmodel_punch() + weapon.viewmodel_aim_punch if weapon != null else Vector2.ZERO
 
 
 ## Pawn collision center, including the actual standing/crouched hull.
@@ -998,25 +1004,50 @@ func _update_grenade(cmd: UserCmd, still: bool) -> void:
 		_pin_pulled = false
 		grenade_throw.cancel_hold()
 		return
-	var left := cmd.held(UserCmd.ATTACK) or cmd.pressed_during(UserCmd.ATTACK)
-	var right := cmd.held(UserCmd.ATTACK2) or cmd.pressed_during(UserCmd.ATTACK2)
+	# Replay both mouse buttons: a fresh click may start and end inside
+	# one command, and releasing one button must retain the other.
+	var edges: Array[UserCmd.SubtickStep] = []
+	var buttons := cmd.buttons & (UserCmd.ATTACK | UserCmd.ATTACK2)
+	for step in cmd.steps:
+		if step.button in [UserCmd.ATTACK, UserCmd.ATTACK2]:
+			edges.append(step)
+	edges.sort_custom(func(a: UserCmd.SubtickStep, b: UserCmd.SubtickStep) -> bool: return a.when < b.when)
+	for i in range(edges.size() - 1, -1, -1):
+		var step := edges[i]
+		buttons = buttons & ~step.button if step.pressed else buttons | step.button
+	if not edges.is_empty():
+		_grenade_buttons(buttons, cmd.tick, SimClock.tick_start_usec(cmd.tick), entry.item.item_class)
+	for step in edges:
+		var at := SimClock.usec_at(cmd.tick, step.when)
+		# A held button can finish drawing between input edges.
+		_grenade_buttons(buttons, cmd.tick, at, entry.item.item_class)
+		buttons = buttons | step.button if step.pressed else buttons & ~step.button
+		_grenade_buttons(buttons, cmd.tick, at, entry.item.item_class)
+	_grenade_buttons(buttons, cmd.tick, SimClock.tick_end_usec(cmd.tick), entry.item.item_class)
+
+
+func _grenade_buttons(buttons: int, tick: int, now_usec: int, item_class: String) -> void:
+	if _throwing:
+		return
+	var left := buttons & UserCmd.ATTACK != 0
+	var right := buttons & UserCmd.ATTACK2 != 0
 	if not _pin_pulled:
-		if (left or right) and SimClock.tick_end_usec(cmd.tick) >= _drawn_until_usec:
+		if (left or right) and now_usec >= _drawn_until_usec:
 			_pin_pulled = true
-			grenade_throw.hold(left, right, cmd.tick)
+			grenade_throw.hold(left, right, tick)
 			pin_pulled.emit()
 		return
-	if cmd.held(UserCmd.ATTACK) or cmd.held(UserCmd.ATTACK2):
-		grenade_throw.hold(cmd.held(UserCmd.ATTACK), cmd.held(UserCmd.ATTACK2), cmd.tick)
+	if left or right:
+		grenade_throw.hold(left, right, tick)
 		return
 	_pin_pulled = false
 	var underhand := GrenadeRules.launch_strength(grenade_throw.strength) <= 0.33
 	_throwing = true
-	_throwing_until_usec = SimClock.tick_end_usec(cmd.tick) + int(roundf(
+	_throwing_until_usec = now_usec + int(roundf(
 		(THROW_UNDERHAND_SECONDS if underhand else THROW_OVERHAND_SECONDS) * 1_000_000.0
 	))
 	grenade_released.emit(underhand)
-	grenade_throw.release(entry.item.item_class, SimClock.tick_end_usec(cmd.tick))
+	grenade_throw.release(item_class, now_usec)
 
 
 ## The knife in hand: each press of either button swings at its own

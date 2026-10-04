@@ -758,7 +758,7 @@ func _test_viewmodel_follows_the_view() -> void:
 	data.viewmodel_recoil = 0.0
 	_check(
 		weapon.viewmodel_punch() == Vector2.ZERO,
-		"and holds still when viewmodel_recoil is zero"
+		"and the cosmetic spring component holds still when viewmodel_recoil is zero"
 	)
 
 
@@ -956,7 +956,7 @@ func _test_the_model_moves_less_than_the_view() -> void:
 
 		_check(
 			worst_extra.length() < worst_view * 0.5,
-			"%s weapon model adds well under half of what the view kick moves (%.2f against %.2f degrees)"
+			"%s cosmetic model springs add well under half of what the view kick moves (%.2f against %.2f degrees)"
 				% [data.display_name, worst_extra.length(), worst_view]
 		)
 		_check(
@@ -1507,7 +1507,7 @@ func _test_the_weapon_model_falls_between_rounds() -> void:
 
 		_check(
 			swing > peak * 0.5,
-			"%s weapon model swings %.2f degrees a round against a %.2f degree height, so most of each round's kick is gone before the next lands"
+			"%s cosmetic model springs swing %.2f degrees a round against a %.2f degree height, so most of each round's kick is gone before the next lands"
 				% [data.display_name, swing, peak]
 		)
 		_check(

@@ -15,6 +15,13 @@ extends "res://tests/check_suite.gd"
 
 const SECOND := 1_000_000
 
+class MuzzleEffects extends ShotEffects:
+	var fixture_gun: ViewModel
+	func _in_first_person(_userid: int) -> bool:
+		return true
+	func _gun(_userid: int, _first_person: bool) -> Node3D:
+		return fixture_gun
+
 
 func _initialize() -> void:
 	_run()
@@ -30,6 +37,7 @@ func _run() -> void:
 	_test_the_drawn_muzzle()
 	_test_which_flash_each_gun_plays()
 	await _test_a_round_and_its_impacts()
+	await _test_current_frame_muzzle()
 	await _test_a_flash_s_particles()
 	if SpriteSheet.named(Tracers.CORE_TEXTURE) != null:
 		await _test_with_the_game_files()
@@ -292,7 +300,7 @@ func _test_a_round_and_its_impacts() -> void:
 	)
 	# The frame, run here: waiting for one lets the clock run past a
 	# tracer that lives 29 ms.
-	effects._process(0.0)
+	effects._draw_frame()
 	var kinds := effects._trails.map(func(trail: Tracers.Trail) -> StringName: return trail.kind)
 	var own := effects._trails.filter(func(trail: Tracers.Trail) -> bool: return trail.kind == &"assrifle")
 	_check(
@@ -304,7 +312,7 @@ func _test_a_round_and_its_impacts() -> void:
 	game.events.send(&"fire_bullets", {"userid": 2, "weapon": "weapon_ak47", "x": 0.0, "y": 64.0, "z": 0.0, "pitch": 0.0, "yaw": 0.0})
 	game.events.flush()
 	effects._trails.clear()
-	effects._process(0.0)
+	effects._draw_frame()
 	var into_nothing := effects._trails.filter(func(trail: Tracers.Trail) -> bool: return trail.kind == &"assrifle")
 	_check(
 		not into_nothing.is_empty() and is_equal_approx((into_nothing[0] as Tracers.Trail).end.z, -WeaponVData.number("weapon_ak47", "m_flRange")),
@@ -317,9 +325,47 @@ func _test_a_round_and_its_impacts() -> void:
 		game.events.send(&"bullet_impact", {"userid": 2, "x": -pellet * 20.0, "y": 64.0, "z": -600.0})
 	game.events.flush()
 	effects._trails.clear()
-	effects._process(0.0)
+	effects._draw_frame()
 	var ends := effects._trails.map(func(trail: Tracers.Trail) -> String: return "%s %.0f" % [trail.kind, trail.end.x])
 	_check(ends == ["shot 0", "shot -20", "shot -40"], "a shotgun's pellets draw a tracer each, to its own end (%s)" % [ends])
+	effects.queue_free()
+	camera.queue_free()
+	await process_frame
+
+
+func _test_current_frame_muzzle() -> void:
+	var game := GameSystems.new()
+	var camera := Camera3D.new()
+	root.add_child(camera)
+	camera.current = true
+	var gun := ViewModel.new()
+	camera.add_child(gun)
+	gun.weapon_rig = Skeleton3D.new()
+	gun.add_child(gun.weapon_rig)
+	gun.weapon_rig.add_bone("weapon_offset")
+	var effects := MuzzleEffects.new()
+	effects.fixture_gun = gun
+	root.add_child(effects)
+	effects.watch(game, 1)
+	_check(RenderingServer.frame_pre_draw.is_connected(effects._draw_frame), "shots sample animated attachments at frame_pre_draw")
+	var at := DrawClock.usec()
+	game.events.send(&"fire_bullets", {"userid":1,"weapon":"weapon_mp9","x":0.0,"y":0.0,"z":0.0,"pitch":0.0,"yaw":0.0}, at)
+	game.events.send(&"bullet_impact", {"userid":1,"x":0.0,"y":0.0,"z":-1000.0}, at)
+	game.events.flush()
+	_check(effects._ropes.is_empty(), "event delivery waits for the final drawn muzzle")
+	# The interpolated camera and animated attachment move after delivery.
+	camera.position = Vector3(12,0,0)
+	gun.weapon_rig.set_bone_pose_position(0, Vector3(2,0,0))
+	var muzzle: Transform3D = Muzzles.in_view(gun, "weapon_mp9")
+	var drawn_muzzle := Muzzles.as_drawn(camera.global_transform, muzzle.origin, ViewModelProjection.narrowing_under(camera))
+	effects._draw_frame()
+	_check_equal(effects._ropes.size(), 1, "the queued shot creates one muzzle-to-hit beam")
+	if not effects._ropes.is_empty():
+		var rope := effects._ropes[0]
+		_check(rope.start.is_equal_approx(drawn_muzzle), "strafing and a late bone pose use this frame's projected barrel position")
+		_check(rope.end.is_equal_approx(Vector3(0,0,-1000)), "muzzle correction preserves the authoritative bullet impact")
+		camera.position.x += 20.0
+		_check(rope.start.is_equal_approx(drawn_muzzle), "an already launched tracer stays in world space as the shooter moves")
 	effects.queue_free()
 	camera.queue_free()
 	await process_frame

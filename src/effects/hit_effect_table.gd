@@ -9,15 +9,15 @@ extends RefCounted
 ## Shader features and game-side root selection are not proved by this table.
 
 const SOURCE := {
-	"ClientVersion": "2000922",
-	"ServerVersion": "2000922",
+	"ClientVersion": "2000924",
+	"ServerVersion": "2000924",
 	"PatchVersion": "1.41.8.8",
 	"ProductName": "cs2",
 	"appID": "730",
 	"ServerAppID": "2347773",
-	"SourceRevision": "11064488",
-	"VersionDate": "Sep 30 2026",
-	"VersionTime": "16:29:50"
+	"SourceRevision": "11076591",
+	"VersionDate": "Oct 02 2026",
+	"VersionTime": "14:45:21"
 }
 
 const ROOTS := {
@@ -10849,6 +10849,8 @@ const LAYERS := {
 			0.0,
 			10.0
 		],
+		"normal_local": true,
+		"normal_normalize": true,
 		"spin": 1.0,
 		"frame_curve": {
 			"type": "PF_TYPE_PARTICLE_AGE_NORMALIZED",
@@ -11087,6 +11089,8 @@ const LAYERS := {
 			0.0,
 			10.0
 		],
+		"normal_local": true,
+		"normal_normalize": true,
 		"bias": {
 			"alpha": {
 				"type": "PF_BIAS_TYPE_STANDARD",
@@ -14235,6 +14239,8 @@ const LAYERS := {
 			5.0,
 			5.0
 		],
+		"normal_local": false,
+		"normal_normalize": true,
 		"offset_min": [
 			0.0,
 			0.0,
@@ -16589,6 +16595,8 @@ const LAYERS := {
 			5.0,
 			5.0
 		],
+		"normal_local": false,
+		"normal_normalize": true,
 		"fade_out": [
 			0.25,
 			0.25

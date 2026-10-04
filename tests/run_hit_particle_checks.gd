@@ -7,8 +7,10 @@ class Cards extends Node:
 
 class Models extends Node:
 	var drawn := 0
-	func card(_renderer: Dictionary, _xform: Transform3D, _sequence: int, _color: Color) -> void:
+	var transforms: Array[Transform3D] = []
+	func card(_renderer: Dictionary, xform: Transform3D, _sequence: int, _color: Color) -> void:
 		drawn += 1
+		transforms.append(xform)
 
 
 func _initialize() -> void:
@@ -18,6 +20,8 @@ func _initialize() -> void:
 	_test_mist_tuning()
 	_test_actual_renderers()
 	_test_velocity_and_model_axes()
+	_test_world_ejection()
+	_test_puff_contact_origin()
 	_test_hit_mist_origins()
 	_test_authored_child_choice()
 	_test_prepared_evaluation()
@@ -193,6 +197,59 @@ func _test_velocity_and_model_axes() -> void:
 	_check(fleck.x.is_equal_approx(impact.y) and fleck.y.is_equal_approx(impact.z) and fleck.z.is_equal_approx(impact.x), "unoriented models reverse the verified Source-to-glTF axis permutation")
 	_check(HitParticles.normal_offset_world(Vector3(0,0,10), impact).is_equal_approx(normal * 10), "normal-offset +Z displaces puff outward along the surface normal")
 	_check(absf(HitParticles.normal_offset_world(Vector3(1,1,0), impact).dot(normal)) < 1e-6, "normal-offset X/Y remain in the surface plane")
+
+
+func _test_world_ejection() -> void:
+	var runner := HitParticles.new()
+	var normals := [Vector3.RIGHT, Vector3.BACK, Vector3.UP, Vector3.DOWN, Vector3(0.3,0.4,0.5).normalized()]
+	# Exercise the shipped layers, including CP1 dirt and transformed metal
+	# noise, rather than only checking a hand-built frame helper.
+	for effect: String in ["impact_concrete_child_base", "impact_concrete_child_smoke", "impact_plaster_base", "impact_tile_child_base", "impact_dirt_child_burst", "impact_metal_child_base", "impact_wood_child_base", "ricochet_sparks_dir"]:
+		for normal: Vector3 in normals:
+			runner.live.clear()
+			runner.spawn(effect, Vector3.ZERO, normal, 1000000, normal * 128.0, 30.0, false, true)
+			_check(not runner.live.is_empty(), "%s emits on %s" % [effect,normal])
+			for p in runner.live:
+				if p.name != effect:
+					continue
+				_check(p.velocity.dot(normal) > 0.0, "%s ejects outward on %s" % [effect,normal])
+				var expected_gravity := HitParticles.source_world(p.layer.get("gravity", [0,0,0]))
+				_check(p.gravity.is_equal_approx(expected_gravity), "%s gravity stays in world space on %s" % [effect,normal])
+				if effect.ends_with("_base"):
+					_check(p.velocity.normalized().is_equal_approx(normal), "%s axial dust follows the normal on %s" % [effect,normal])
+	# Selecting the world frame must not change the authored blood +X frame.
+	for normal: Vector3 in normals:
+		runner.live.clear()
+		runner.spawn("blood_impact_low_forw_spray", Vector3.ZERO, normal, 1000000, normal * 128.0)
+		_check(not runner.live.is_empty(), "body spray still emits on %s" % normal)
+		for p in runner.live:
+			_check(p.velocity.dot(normal) >= 150.0, "body spray retains its authored +X speed on %s" % normal)
+
+
+func _test_puff_contact_origin() -> void:
+	var runner := HitParticles.new()
+	var models := Models.new()
+	var quads := Cards.new()
+	var at := Vector3(100,64,-300)
+	for normal: Vector3 in [Vector3.RIGHT, Vector3.BACK, Vector3.UP, Vector3(0.3,0.4,0.5).normalized()]:
+		runner.live.clear()
+		models.transforms.clear()
+		runner.spawn("impact_fx_hit_darken_model", at, normal, 1000000, at + Vector3(128,0,64), 30.0, false, true)
+		_check(not runner.live.is_empty(), "puff emits at the contact on %s" % normal)
+		for p in runner.live:
+			_check(p.origin.is_equal_approx(at), "NormalOffset does not move the puff ten inches off %s" % normal)
+			_check(p.normal.is_equal_approx(normal), "local normal offset orients the puff along %s" % normal)
+			# Freeze ejection to separate mesh placement from intended motion.
+			p.velocity = Vector3.ZERO
+		for eye_offset: Vector3 in [normal * 128.0, Vector3(128,0,64), Vector3(-128,64,32)]:
+			models.transforms.clear()
+			runner.draw(quads, models, Transform3D(Basis.IDENTITY, at + eye_offset), 1050000)
+			_check(not models.transforms.is_empty(), "puff draws from the oblique eye %s" % eye_offset)
+			for xform in models.transforms:
+				_check(xform.origin.is_equal_approx(at), "changing viewing angle keeps the mesh rooted at the impact")
+				_check(xform.basis.y.normalized().is_equal_approx(normal), "puff extrusion remains normal to the surface")
+	models.free()
+	quads.free()
 
 
 func _test_hit_mist_origins() -> void:
