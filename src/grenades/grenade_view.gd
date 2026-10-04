@@ -37,6 +37,10 @@ const SMOKE_FADE_SECONDS := 2.0
 const BLAST_SECONDS := 0.3
 
 var game: GameSystems
+## Practice-only overlay of actual trajectories. Ordinary match views omit it.
+var trails_enabled := false
+const MAX_TRAILS := 8
+var _trails := {}
 
 ## By entity id: the grenade drawn, and the entities themselves.
 var _grenades := {}
@@ -89,6 +93,7 @@ func watch(p_game: GameSystems) -> void:
 	game.events.listen(&"flashbang_detonate", _on_flash)
 	game.events.listen(&"decoy_firing", _on_decoy_shot)
 	game.events.listen(&"decoy_detonate", _on_blast)
+	game.events.listen(&"round_prestart", _clear_trails)
 
 
 func _on_spawned(entity: SimEntity) -> void:
@@ -96,17 +101,43 @@ func _on_spawned(entity: SimEntity) -> void:
 		var grenade := entity as GrenadeEntity
 		_entities[entity.id] = entity
 		_grenades[entity.id] = _grenade_model(grenade.weapon_class)
+		if trails_enabled:
+			_add_trail(grenade)
 	elif entity is InfernoEntity:
 		_entities[entity.id] = entity
 		_fires[entity.id] = _multimesh(_flame_mesh, GrenadeRules.FIRE_MOST_FLAMES)
 
 
 func _on_removed(entity: SimEntity) -> void:
+	if is_instance_valid(_trails.get(entity.id)):
+		(_trails[entity.id] as GrenadeTrail).finish_flight()
 	_entities.erase(entity.id)
 	for drawn: Dictionary in [_grenades, _clouds, _fires]:
 		if drawn.has(entity.id):
 			(drawn[entity.id] as Node).queue_free()
 			drawn.erase(entity.id)
+
+
+func _add_trail(grenade: GrenadeEntity) -> void:
+	for id in _trails.keys():
+		if not is_instance_valid(_trails[id]):
+			_trails.erase(id)
+	while _trails.size() >= MAX_TRAILS:
+		var oldest: int = _trails.keys()[0]
+		(_trails[oldest] as Node).queue_free()
+		_trails.erase(oldest)
+	var trail := GrenadeTrail.new()
+	trail.name = "Trail%d" % grenade.id
+	add_child(trail)
+	trail.watch(grenade)
+	_trails[grenade.id] = trail
+
+
+func _clear_trails(_event: GameEvent) -> void:
+	for trail in _trails.values():
+		if is_instance_valid(trail):
+			(trail as Node).queue_free()
+	_trails.clear()
 
 
 func _process(_delta: float) -> void:

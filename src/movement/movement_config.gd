@@ -50,6 +50,13 @@ extends Resource
 ## sv_jump_impulse. Upward velocity set on jump.
 @export var jump_impulse: float = 301.993
 
+## Current CS2's ordinary jump applies a fixed half-of-1/128-second gravity
+## adjustment to sv_jump_impulse, then integrates the full movement interval.
+## Gravity shares the collision move's deferred half-step state with horizontal
+## acceleration. See grenade-subtick-snapshot-2026-10-03.md for binary evidence.
+## False retains the older Source ordering for comparisons and custom modes.
+@export var cs2_jump: bool = true
+
 ## Source applies the jump impulse AFTER the leading half-step of gravity, so
 ## the first tick of a jump travels at the full impulse. That makes jump height
 ## depend on tick rate: about 58.2 units at 128 Hz and about 59.4 at 64 Hz,
@@ -58,9 +65,7 @@ extends Resource
 ## Leave this false to match Source exactly. Set it true to take the half-step
 ## off the impulse, which makes jump height 57.0 at any tick rate.
 ##
-## We simulate at 64 Hz, as CS2 moves, so faithful-to-Source gives CS2's 59.4
-## if CS2 kept Source's order; at 128 Hz, as this did until 2026-09-23, jumps
-## came out about a unit short. Measure a real CS2 jump to confirm it.
+## Applies only when cs2_jump is false. Current CS2 uses the adjustment above.
 @export var tick_rate_independent_jump: bool = false
 
 ## Source's NON_JUMP_VELOCITY (gamemovement.cpp:3830). Rising faster than this
@@ -115,6 +120,11 @@ extends Resource
 
 ## How high a step the player walks up without jumping.
 @export var step_height: float = 18.0
+
+## sv_step_move_vel_min. A failed step at low speed retries the raised path
+## using this speed, only with movement input. Current CS2 defaults to 64;
+## this also lets a resting half-step cross a collision backend's clearance.
+@export var step_move_velocity_min: float = 64.0
 
 ## A surface steeper than this angle (degrees from horizontal) is not ground,
 ## so you slide down it instead of walking on it. This is what makes surf ramps

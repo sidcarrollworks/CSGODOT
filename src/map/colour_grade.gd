@@ -283,6 +283,13 @@ static func bloom_settings(post: MapPostProcessing, _exposure: float) -> Diction
 ## and exposure for CS2's, whose table is built the first time and kept.
 static func use(environment: Environment, grade: String) -> void:
 	apply(environment, values(environment, grade))
+	# F11's grade comparison must restore the appropriate backdrop gain,
+	# including the inverse world-exposure adjustment under the CS2 grade.
+	if environment.has_meta(&"grade_sky_energy") and environment.sky != null:
+		var sky_material := environment.sky.sky_material as ShaderMaterial
+		if sky_material != null:
+			var sky_energy: Dictionary = environment.get_meta(&"grade_sky_energy")
+			sky_material.set_shader_parameter(&"energy", sky_energy.get(grade, 1.0))
 	environment.set_meta(&"grade", grade)
 
 

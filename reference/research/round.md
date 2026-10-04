@@ -32,6 +32,12 @@ effects and map grenade clips, radar/scoreboard/chat, tactical/objective
 bots and networking. Use the [roadmap](../roadmap.md) for completion
 markers; the findings below are evidence rather than a new work queue.
 
+The [October 2 grenade audit](grenade-audit-2026-10-02.md) now supplies
+current-build binary evidence for launch velocity, release/jump timing,
+default box collision, flight substeps, bounce/settle and fuses, plus HE/
+flash rules. It supersedes the September grenade guesses below. Roadmap
+20a's research phase is done; the gameplay port and local captures remain open.
+
 ## Sources, and how far to trust them
 
 - **GT** is SteamDatabase's GameTracking-CS2, dumps of CS2's own files, at
@@ -188,7 +194,7 @@ evidence are in the detail file.
 | Smoke 18 s, its size (grenades.md) | Disputed 18 or 20 s; G4 |
 | Flash figures (grenades.md) | 4.87 s straight on and the hold-then-fade shape supported; the curve is G3's |
 | Grenades' 85% team damage (grenades.md) | Settled for HE and flash; whether fire counts as a grenade (0.85) or "other" (0.4) is open |
-| Throw speeds and velocity share (grenades.md) | Nothing CS2-specific found; G1 |
+| Throw speeds and velocity share (grenades.md) | October 2 binary confirms 750×0.9 strength scaling and 1.25 velocity share; release, launch geometry, collision and jump snapshots still need port/capture G1 |
 | Decoy (grenades.md) | 15 or about 18 s disputed; G5 |
 
 The detail files' closing sections hold the full tables, with the evidence

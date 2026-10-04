@@ -46,6 +46,7 @@ func build(p_range: Node3D) -> void:
 	game.add_system(system)
 	view = GrenadeView.new()
 	view.name = "GrenadeView"
+	view.trails_enabled = not OS.get_cmdline_user_args().has("--no-grenade-trails")
 	add_child(view)
 	view.watch(game)
 	sounds = GrenadeSounds.new()

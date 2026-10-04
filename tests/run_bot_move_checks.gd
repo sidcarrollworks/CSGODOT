@@ -65,6 +65,7 @@ func _run() -> void:
 	await _test_round_a_teammate_standing()
 	await _test_an_enemy_is_not_made_way_for()
 	await _test_stuck_on_a_wall_it_wiggles_then_jumps()
+	await _test_airborne_hard_stop_recovers()
 	_test_site_goals_are_spread()
 	_finish("bot_movement")
 
@@ -343,6 +344,94 @@ func _test_stuck_on_a_wall_it_wiggles_then_jumps() -> void:
 		first_wiggle > 0 and first_jump > first_wiggle,
 		"held up by a wall, it wiggles first (tick %d) and jumps only after (tick %d)" % [first_wiggle, first_jump]
 	)
+
+
+## An actual unsupported hard stop, not merely a stationary airborne body:
+## ordinary gravity and the apex retain acceleration/deferred state. Feed
+## completed moves to the bot's existing speed window and wiggle mechanism.
+func _test_airborne_hard_stop_recovers() -> void:
+	if not Box3DDrops.available():
+		print("The airborne hard-stop fixture needs the Box3D addon.")
+		return
+	var host := Node3D.new()
+	root.add_child(host)
+	var world := GameWorld.new()
+	host.add_child(world)
+	world.set_physics_process(false)
+	var bot := _scene.instantiate() as Bot
+	bot.holds_fire = true
+	bot.position = Vector3(0.0, 1024.0, 0.0)
+	host.add_child(bot)
+	world.add_player(bot)
+	var blocker := PlayerBody.new()
+	blocker.position = Vector3(0.0, 256.0, 0.0)
+	blocker.collision_layer = 2
+	blocker.collision_mask = 1 | 2
+	var hull := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(32.0, 72.0, 32.0)
+	hull.shape = box
+	hull.position.y = 36.0
+	blocker.add_child(hull)
+	host.add_child(blocker)
+	world.initialize_drop_physics(host, "box3d")
+	await physics_frame
+	var dt := SimClock.tick_seconds()
+	_check(not bot.blocked_air_move(), "an unsimulated airborne bot does not enter recovery")
+
+	# A complete move whose published velocity is exactly zero at the apex
+	# still has continuous gravity and its deferred half. Then really fall
+	# for a full speed-sample window, far above any floor.
+	bot.config.source_deadstrafe = false
+	bot.velocity = Vector3.UP * (800.0 * dt)
+	bot.simulate(dt)
+	_check(bot.velocity == Vector3.ZERO and not bot.blocked_air_move(),
+		"a zero-velocity apex with gravity state is not a blocked bot")
+	var queried_by_recovery := 0
+	for tick in SimClock.ticks_in(1.0):
+		world.tick += 1
+		var cmd := UserCmd.new()
+		cmd.tick = world.tick
+		var queries := PhysicsQueries.native_queries + PhysicsQueries.legacy_queries
+		bot._unstick(cmd, Vector3.FORWARD, false)
+		queried_by_recovery += PhysicsQueries.native_queries + PhysicsQueries.legacy_queries - queries
+		bot.simulate(dt)
+	_check(not bot.on_ground and int(bot.get("_speeds_in")) == 0 and int(bot.get("_stuck_since")) == -1,
+		"ordinary apex and falling moves never fill the bot's stuck-speed window")
+
+	bot.place(blocker.position, 0.0)
+	bot.velocity = Vector3.RIGHT * 250.0
+	bot.wish_dir = Vector3.FORWARD
+	bot.wish_speed = 250.0
+	bot.simulate(dt)
+	_check(bot.blocked_air_move() and bot.velocity == Vector3.ZERO,
+		"an actual overlapping Box3D hull produces a complete airborne hard stop")
+	var started := world.tick
+	var first_wiggle := -1
+	for tick in SimClock.ticks_in(3.0):
+		world.tick += 1
+		var cmd := UserCmd.new()
+		cmd.tick = world.tick
+		var queries := PhysicsQueries.native_queries + PhysicsQueries.legacy_queries
+		var way := bot._unstick(cmd, Vector3.FORWARD, false)
+		queried_by_recovery += PhysicsQueries.native_queries + PhysicsQueries.legacy_queries - queries
+		bot.wish_dir = way
+		bot.simulate(dt)
+		if int(bot.get("_wiggle_until")) > cmd.tick:
+			first_wiggle = world.tick - started
+			break
+	_check(first_wiggle > 0 and first_wiggle < SimClock.ticks_in(3.0),
+		"a complete airborne hard stop starts the existing wiggle within three seconds (%d ticks)" % first_wiggle)
+	_check(int(bot.get("_speeds_in")) >= Bot.STUCK_SAMPLES,
+		"airborne recovery waits for the same complete stuck-speed sample window")
+	_check_equal(queried_by_recovery, 0, "airborne recovery classification and sampling add no collision queries")
+	blocker.position.x += 128.0
+	PhysicsQueries.sync_object(blocker)
+	bot.simulate(dt)
+	_check(not bot.blocked_air_move() and bot.velocity.length_squared() > 0.0,
+		"clearing the real blocker clears the completed hard-stop classification")
+	host.free()
+	await physics_frame
 
 
 # --- Site goals -------------------------------------------------------------

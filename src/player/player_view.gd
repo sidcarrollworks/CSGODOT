@@ -386,7 +386,7 @@ func _spectate(watched: PlayerSim) -> void:
 			camera.look_at(centre, Vector3.UP)
 		return
 	_watch(watched)
-	camera.global_position = at + Vector3.UP * watched.eye_height()
+	camera.global_position = at + Vector3.UP * watched.interpolated_eye_height(alpha)
 	camera.global_rotation = Vector3(
 		deg_to_rad(lerpf(watched.previous_pitch_degrees, watched.pitch_degrees, alpha)),
 		lerp_angle(deg_to_rad(watched.previous_yaw_degrees), deg_to_rad(watched.yaw_degrees), alpha),
@@ -610,7 +610,7 @@ func _process(delta: float) -> void:
 	else:
 		var drawn_usec := SimClock.now_usec() - SimClock.tick_usec() + int(alpha * SimClock.tick_usec())
 		dip = camera_motion.update_at(drawn_usec, player.air_action, player.air_action_usec)
-	camera.global_position = interpolated + Vector3.UP * (player.eye_height() + dip)
+	camera.global_position = interpolated + Vector3.UP * (player.interpolated_eye_height(alpha) + dip)
 	var yaw := deg_to_rad(player.input.yaw_degrees)
 	for body in [body_model, body_shadow]:
 		if body != null:

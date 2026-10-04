@@ -66,6 +66,8 @@ const SLOT_ACTIONS: Array[StringName] = [&"slot1", &"slot2", &"slot3", &"slot4",
 const GAME_KEYS := {
 	&"slot3": KEY_3, &"slot4": KEY_4, &"slot5": KEY_5,
 	&"lastinv": KEY_Q, &"drop": KEY_G, &"use": KEY_E,
+	# The client's own: CS2's TAB +showscores, the scoreboard while held.
+	&"showscores": KEY_TAB,
 }
 ## The same for the mouse's buttons: CS2's MWHEELDOWN invnext
 ## (user_keys_default.vcfg). The wheel going up stays Sid's jump.

@@ -4,6 +4,12 @@ Research for CSGODOT, 2026-09-24. It adds to `reference/cs2-systems.md` sections
 `reference/systems/bomb.md`, `reference/systems/grenades.md` and the drop table in
 `reference/systems/contracts.md`, and does not repeat what they already settle.
 
+**October 2 follow-up:** [the Ghidra grenade audit](grenade-audit-2026-10-02.md)
+supersedes this page's September throw/collision/fuse assumptions and parts
+of its HE/flash findings. The earlier readings below retain their original
+date; use the new binary ledger for implementation and the roadmap for
+what has actually been ported.
+
 ## How this was researched, and what could not be reached
 
 - **The game's own files** come from SteamDatabase's GameTracking-CS2 at commit d45f52d
@@ -437,6 +443,13 @@ damage: the repo already has armour not softening fire (**From memory**). The C4
 
 ### 2.3 The throw
 
+**Current-build correction, 2026-10-02:** the linked audit verifies the
+750×0.9 strength formula and 1.25 velocity share, gradual strength, delayed
+release and the jump snapshot lifecycle. Default collision is a ±2 box,
+with a ±2.02 launch sweep from pawn center and 1/128 s flight steps. The
+"no CS2 source" and own-physics-shape inferences below describe the earlier
+research, not the current evidence.
+
 - **The game stashes the throw at a jump.** `CCSPlayerPawn` has `m_grenadeParameterStashTime`,
   `m_bGrenadeParametersStashed`, `m_angStashedShootAngles`, `m_vecStashedGrenadeThrowPosition`,
   `m_vecStashedGrenadeThrowPawnCenter` and `m_vecStashedVelocity`, and `CBaseCSGrenade` has
@@ -692,7 +705,7 @@ All from GT convars.txt and the competitive cfg.
 
 | Guess | Finding | Status |
 |---|---|---|
-| Molotov air-burst drop (up to 128 below) | Nothing found. Jan 2026: a molotov bouncing off an enemy gets a one-time fuse extension | **Still measure (G1)**; add the fuse extension |
+| Molotov air-burst drop (up to 128 below) | October 2 binary: trace from position +10 up to position -128 down; one-time enemy body hit adds 4 s | **Verified statically**; port/capture G1 |
 | Fire spread interval for the molotov (0.2 s) | Convars: first fire every 0.02 s, children +0.1 each up to 0.5 s, 3 s per flame, depth 4, 45°, molotov ×1, incendiary ×10 | **Contradicted**: build from the convars (their meaning is Inferred) |
 | The fire's 30-unit reach | Not in any file (`m_extent` exists) | **Still measure** |
 | The fire's ramp (half to full over 1 s) | A ramp exists (`m_damageRampTimer`); its length is unknown | **Partly settled**; measure its length |
@@ -701,12 +714,12 @@ All from GT convars.txt and the competitive cfg.
 | HE's smoke hole (128 u, 3 s) | Community: about 2 to 3 s | **Roughly supported**; radius still to measure (G4) |
 | The round's tunnel (0.25 s) | Community: "less than a second" | **Consistent**; measure |
 | Smoke size, shape, 18 s | Disputed 18 vs 20 s; the shape convars are visual only | **Still measure (G4)** |
-| Every flash figure | 4.87 s max straight on (matches); about 1 s behind; the hold-and-fade model confirmed by server.dll; three ring strengths | **Partly supported**; curve still G3 |
-| Flash fuse 1.5 s | CS:GO measured 1.40 s from visible grenade to white | **Consistent** if timed from the throw command; measure (G1) |
-| Decoy bursts and pop | 15 s vs about 18 s disputed; pop up to 5 damage in a small radius, no team damage | **Still measure (G5)** |
+| Every flash figure | October 2 binary: base 3×(1-distance/3000), four facing bins, visibility-weighted hold/fade; replicated duration fade/1.4 | **Server rules recovered**; client display and cover comparisons G3 |
+| Flash fuse 1.5 s | October 2 binary: constructor default 1.5 s, deadline set at projectile spawn, after delayed release | **Verified statically**; observed timing G1 |
+| Decoy bursts and pop | October 2 binary: speed <=0.2 activation, activation+15 s deadline; bursts use weapon data | **Partial audit**; burst tables and pop G5 |
 | Grenades' 85% team damage | Competitive cfg: 0.85 (default convar 0.25). Whether fire counts as a grenade or as "other" (0.4) is open | **Settled for HE and flash**; fire open |
-| Sphere radius 2 | The sphere is **off** by default (`sv_grenade_collision_sphere false`) | **Contradicted** as the default; keep it only as a simplification |
-| Throw (750 × 0.9, strength, 1.25 of velocity, lift, offsets) | Nothing CS2-specific found; CS2 adds the stashed jump-throw | **Still measure (G1)**; add the jump stash |
+| Sphere radius 2 | October 2 binary: sphere off by default, ±2 box; ±2.02 center-to-eye launch sweep | **Default contradicted**; port box flight |
+| Throw (750 × 0.9, strength, 1.25 of velocity, lift, offsets) | October 2 binary confirms velocity/lift/drop, but launch uses forward16 from lowered eye with pawn-center sweep; gradual strength, delayed release and jump stash | **Research done for 20a**; port/capture G1 |
 
 ### `reference/cs2-systems.md` measure items
 
@@ -714,11 +727,11 @@ All from GT convars.txt and the competitive cfg.
 |---|---|---|
 | **C1** (plant time, beep cadence, blast at spots with and without armour) | Beep shape (CS:GO fit, fraction-based in CS2); the blast formula from the baked file; the bomb credits nobody | The plant time (3.0 vs 3.2); a few beep intervals; damage at 3 to 5 spots per site standing, crouched and facing away, with and without armour, to confirm "ignores armour" and the correction |
 | **C2** (decode the baked damage) | **Settled in format:** 7 floats per site, int16 xyz per point, 4 bytes per (site, point): Phase u16, Yaw u8, Pitch u8; sites expanded by 32 | Check the decoder against C1's spots |
-| **G1** (throw speeds, gravity, fuses) | Jump-throw stash; spin; sphere off by default; flash fuse about 1.4 s visible | The speeds per button, velocity share, gravity, bounce, the HE and flash fuse from the throw, the molotov air-burst drop |
-| **G2** (HE damage at 50 to 300 u) | Nothing new beyond the Jan 2026 mid-air fix | All of it |
-| **G3** (flash by distance and angle) | Hold-and-fade model; 4.87 s max; three ring tiers | The curve |
+| **G1** (throw speeds, gravity, fuses) | October 2 audit: strength/launch/release/jump snapshots, box/substeps/bounce/settle, spawn-based deadlines and fire placement | Port and captures of throws, collisions, jump input timing and lineups |
+| **G2** (HE damage at 50 to 300 u) | October 2 audit confirms Gaussian sigma=radius/3; engine visibility/target-point paths identified | Damage with cover/armour, airborne/grounded and team scaling |
+| **G3** (flash by distance and angle) | October 2 audit recovers distance/facing, hold/fade/network clocks and overlap | Client white-out/ringing and partial-cover comparisons |
 | **G4** (smoke duration and size) | Disputed 18 vs 20 s; HE hole 2 to 3 s; the one-third extinguish rule; the C4 blast clears smoke | Duration, size, hole radius |
-| **G5** (decoy) | Disputed 15 vs 18 s; pop up to 5 | Burst pattern, duration, pop |
+| **G5** (decoy) | October 2 audit: speed <=0.2 activation and 15 s firing deadline | Weapon burst tables, total observed lifetime and pop |
 
 ### `reference/systems/contracts.md` "In no file (measure)"
 

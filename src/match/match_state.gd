@@ -114,6 +114,11 @@ var last_winner: String = ""
 var last_reason: Reason = Reason.NONE
 ## Who won the match once it is over: a side, or "" for a draw.
 var winner: String = ""
+## Every round played this match, in order, as the scoreboard's timeline
+## draws it: {"team": the side the winners started the match on, "side":
+## the side they won it on, "reason": round_end's name for why}. Warmup's
+## are not kept.
+var history: Array[Dictionary] = []
 
 ## Rounds won, by the side each team started the match on, since the score
 ## stays with the team and not with the side.
@@ -210,6 +215,7 @@ func start(now_usec: int = SimClock.now_usec()) -> void:
 	rounds_played = 0
 	round_number = 0
 	winner = ""
+	history.clear()
 	if rules.warmup_seconds <= 0.0:
 		_send(&"begin_new_match", {}, now_usec)
 		_start_round(now_usec, true)
@@ -280,6 +286,7 @@ func end_round(side: String, reason: Reason, now_usec: int = SimClock.now_usec()
 	rounds_played += 1
 	last_winner = side
 	last_reason = reason
+	history.append({"team": _started_as(side), "side": side, "reason": GameEvents.round_end_reason(reason)})
 	round_ended.emit(side, reason)
 	_send(&"round_end", {
 		"winner": side, "reason": GameEvents.round_end_reason(reason),
@@ -322,6 +329,12 @@ static func winner_of(reason: Reason) -> String:
 ## Rounds won by the team on this side now.
 func score(side: String) -> int:
 	return _score[_started_as(side)]
+
+
+## The side the team on `side` now started the match on: how the score
+## and the history name a team.
+func started_as(side: String) -> String:
+	return _started_as(side)
 
 
 ## Players on a side still alive.
@@ -387,6 +400,7 @@ func _start_round(now_usec: int, fresh: bool) -> void:
 		# Warmup counted for nothing.
 		_score = {"T": 0, "CT": 0}
 		rounds_played = 0
+		history.clear()
 	if _swap_next:
 		_swap_sides()
 		_swap_next = false
