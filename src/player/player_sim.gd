@@ -76,7 +76,7 @@ var pitch_degrees: float = 0.0
 
 ## How the tick before the last left the player, beside PlayerBody's
 ## previous_position: where they looked, and how far their view was kicked
-## (view_punch()) and their gun (Weapon.viewmodel_punch()). A frame falls
+## (view_punch()) and their gun (viewmodel_punch()). A frame falls
 ## between two ticks, and whatever draws the player draws it that far
 ## between the two, as CS2 draws everyone: at 64 ticks a second the last
 ## tick alone would step the view and the bodies on a faster screen.
@@ -676,7 +676,7 @@ func run_command(cmd: UserCmd, dt: float) -> void:
 	previous_yaw_degrees = yaw_degrees
 	previous_pitch_degrees = pitch_degrees
 	previous_view_punch = view_punch()
-	previous_viewmodel_punch = weapon.viewmodel_punch() if weapon != null else Vector2.ZERO
+	previous_viewmodel_punch = viewmodel_punch()
 	_run(cmd, dt)
 	if alive and model != null:
 		model.update_motion(velocity, yaw_degrees, duck_progress, on_ground, air_action, air_action_usec, height_above_ground)
@@ -686,6 +686,12 @@ func run_command(cmd: UserCmd, dt: float) -> void:
 ## (right, up): the recoil's punch and a hit's.
 func view_punch() -> Vector2:
 	return (weapon.aim_punch if weapon != null else Vector2.ZERO) + hit_punch.value
+
+
+## Additional model rotation: firing-animation springs plus aim following.
+## Capture both together for interpolation between simulation ticks.
+func viewmodel_punch() -> Vector2:
+	return weapon.viewmodel_punch() + weapon.viewmodel_aim_punch if weapon != null else Vector2.ZERO
 
 
 ## Pawn collision center, including the actual standing/crouched hull.

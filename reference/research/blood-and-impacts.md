@@ -228,6 +228,13 @@ remaining inferred direction/damage-handler behavior.
 
 ## Reproduction and remaining checks
 
+The October 4 [impact/tracer audit](impact-tracer-viewmodel-2026-10-04.md)
+verifies `C_INIT_NormalOffset` writes the particle normal, not its position.
+The puff now starts at the bullet contact and uses the authored local
+normal vector for orientation. Generated impact tables were refreshed
+against client/server 2000924; the build above records the original
+extraction, rather than claiming all runtime operators are exact.
+
 Run `scripts/extract_assets.sh impacts` with CS2, Source 2 Viewer and Godot.
 It decodes definitions/material DATA under ignored
 `assets/effects/impacts/raw/`, resolves dependencies, assembles whole sheets

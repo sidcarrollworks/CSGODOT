@@ -1,6 +1,10 @@
 class_name Weapon
 extends RefCounted
 
+## CS2 client 2000924's viewmodel-angle aim-punch contribution. This follows
+## recoil, not the random spread of each bullet; camera springs stay separate.
+const VIEWMODEL_AIM_PUNCH_SCALE := 0.325
+
 ## Firing state for one weapon: rate of fire, recoil, inaccuracy and ammo.
 ##
 ## Deliberately a plain object rather than a node, so the whole firing model
@@ -190,6 +194,9 @@ var _recoil_index: float = 0.0
 var _clock_usec: int = 0
 ## Where the recoil has carried the bullets, and the pushes the rounds give it.
 var _recoil := RecoilState.new()
+## Presentation copy advanced between shots. The ballistic state is advanced
+## only by fire(), so drawing or recovering the model must never advance it.
+var _model_aim_recoil := RecoilState.new()
 var _impulses := PackedVector2Array()
 var _inaccuracy: float = 0.0
 var _was_on_ground: bool = true
@@ -440,6 +447,8 @@ func update(dt: float, now_usec: int, state: ShooterState = null) -> void:
 	_was_firing = firing
 
 	_decay_punch(dt, firing)
+	if _model_aim_recoil.value != Vector2.ZERO or _model_aim_recoil.velocity != Vector2.ZERO:
+		_model_aim_recoil.advance(dt)
 
 	var ducked := state != null and state.ducked
 	if state != null:
@@ -547,6 +556,12 @@ func is_accuracy_reset() -> bool:
 ## CS2's firing clip does by being replayed from the start.
 var model_punch: Vector2:
 	get: return _model_snap.value + _model_hold.value
+
+
+## The audited aim-follow contribution, distinct from the firing-animation
+## springs below. Its presentation copy recovers without altering shot aim.
+var viewmodel_aim_punch: Vector2:
+	get: return _model_aim_recoil.value * VIEWMODEL_AIM_PUNCH_SCALE
 
 
 ## Where the weapon model should be pushed to, in degrees, over and above the
@@ -727,6 +742,8 @@ func fire(
 	_inaccuracy += per_shot
 	if not _impulses.is_empty():
 		_recoil.velocity += _impulses[mini(round_index, _impulses.size() - 1)]
+	_model_aim_recoil.value = _recoil.value
+	_model_aim_recoil.velocity = _recoil.velocity
 	_recoil_index = index + 1.0
 	_last_shot_usec = now_usec
 	_clock_usec = maxi(_clock_usec, now_usec)

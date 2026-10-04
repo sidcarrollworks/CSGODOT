@@ -153,7 +153,11 @@ work and CS2 capture limits.
   authoritative tick poses and history remain multiplayer work.
 - Tracers, muzzle flashes, weighted bullet-hole materials and representative
   surface impact graphs are implemented, with dust and debris ejection
-  aligned to the surface normal. Blood uses current extracted
+  aligned to the surface normal. The October 4
+  [Ghidra follow-up](research/impact-tracer-viewmodel-2026-10-04.md) corrects
+  puff normal/position semantics, samples tracer origins after the rendered
+  weapon pose, and adds the audited 0.325 viewmodel aim-follow contribution.
+  Full camera/animation parity remains open. Blood uses current extracted
   layers, shorter/denser mist at the pellet contact, parent-death ground
   projections, bounded wall marks and bone-following wounds.
 - Surviving hits play independent additive body/head flinches from 42

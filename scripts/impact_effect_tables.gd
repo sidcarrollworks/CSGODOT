@@ -358,6 +358,8 @@ static func _normalize_init(layer: Dictionary, op: Dictionary) -> void:
 		"C_INIT_NormalOffset":
 			layer["normal_offset"] = vector_input(op.get("m_OffsetMin", [0.0, 0.0, 0.0]))
 			layer["normal_offset_max"] = vector_input(op.get("m_OffsetMax", op.get("m_OffsetMin", [0.0, 0.0, 0.0])))
+			layer["normal_local"] = op.get("m_bLocalCoords", false)
+			layer["normal_normalize"] = op.get("m_bNormalize", false)
 		"C_INIT_PositionOffset":
 			layer["offset_min"] = vector_input(op.get("m_OffsetMin", [0.0, 0.0, 0.0]))
 			layer["offset_max"] = vector_input(op.get("m_OffsetMax", [0.0, 0.0, 0.0]))

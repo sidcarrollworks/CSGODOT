@@ -7,8 +7,10 @@ class Cards extends Node:
 
 class Models extends Node:
 	var drawn := 0
-	func card(_renderer: Dictionary, _xform: Transform3D, _sequence: int, _color: Color) -> void:
+	var transforms: Array[Transform3D] = []
+	func card(_renderer: Dictionary, xform: Transform3D, _sequence: int, _color: Color) -> void:
 		drawn += 1
+		transforms.append(xform)
 
 
 func _initialize() -> void:
@@ -19,6 +21,7 @@ func _initialize() -> void:
 	_test_actual_renderers()
 	_test_velocity_and_model_axes()
 	_test_world_ejection()
+	_test_puff_contact_origin()
 	_test_hit_mist_origins()
 	_test_authored_child_choice()
 	_test_prepared_evaluation()
@@ -221,6 +224,32 @@ func _test_world_ejection() -> void:
 		_check(not runner.live.is_empty(), "body spray still emits on %s" % normal)
 		for p in runner.live:
 			_check(p.velocity.dot(normal) >= 150.0, "body spray retains its authored +X speed on %s" % normal)
+
+
+func _test_puff_contact_origin() -> void:
+	var runner := HitParticles.new()
+	var models := Models.new()
+	var quads := Cards.new()
+	var at := Vector3(100,64,-300)
+	for normal: Vector3 in [Vector3.RIGHT, Vector3.BACK, Vector3.UP, Vector3(0.3,0.4,0.5).normalized()]:
+		runner.live.clear()
+		models.transforms.clear()
+		runner.spawn("impact_fx_hit_darken_model", at, normal, 1000000, at + Vector3(128,0,64), 30.0, false, true)
+		_check(not runner.live.is_empty(), "puff emits at the contact on %s" % normal)
+		for p in runner.live:
+			_check(p.origin.is_equal_approx(at), "NormalOffset does not move the puff ten inches off %s" % normal)
+			_check(p.normal.is_equal_approx(normal), "local normal offset orients the puff along %s" % normal)
+			# Freeze ejection to separate mesh placement from intended motion.
+			p.velocity = Vector3.ZERO
+		for eye_offset: Vector3 in [normal * 128.0, Vector3(128,0,64), Vector3(-128,64,32)]:
+			models.transforms.clear()
+			runner.draw(quads, models, Transform3D(Basis.IDENTITY, at + eye_offset), 1050000)
+			_check(not models.transforms.is_empty(), "puff draws from the oblique eye %s" % eye_offset)
+			for xform in models.transforms:
+				_check(xform.origin.is_equal_approx(at), "changing viewing angle keeps the mesh rooted at the impact")
+				_check(xform.basis.y.normalized().is_equal_approx(normal), "puff extrusion remains normal to the surface")
+	models.free()
+	quads.free()
 
 
 func _test_hit_mist_origins() -> void:

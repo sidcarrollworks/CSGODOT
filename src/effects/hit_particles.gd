@@ -126,9 +126,15 @@ func _emit(name: String, layer: Dictionary, context: Dictionary) -> void:
 		var noise := vector_range(layer.get("noise_velocity_min", [0, 0, 0]), layer.get("noise_velocity_max", [0, 0, 0]))
 		var c := vector_range(layer.get("color_min", [255, 255, 255]), layer.get("color_max", [255, 255, 255])) / 255.0
 		var world_offset := local_frame * offset
+		var particle_normal := basis.x
 		if layer.has("normal_offset"):
 			var normal_offset := vector_range(layer.normal_offset, layer.get("normal_offset_max", layer.normal_offset))
-			world_offset += normal_offset_world(normal_offset, basis)
+			# C_INIT_NormalOffset writes NORMAL (field 21), not POSITION.
+			# Applying its ten-unit puff normal as a translation detached the
+			# mesh from the hit, especially when viewed across the wall.
+			particle_normal += normal_offset_world(normal_offset, basis) if bool(layer.get("normal_local", false)) else Vector3(normal_offset.x, normal_offset.z, -normal_offset.y)
+			if bool(layer.get("normal_normalize", false)):
+				particle_normal = particle_normal.normalized()
 		if body_mist:
 			# Sid's hit-location tuning: mist starts at the pellet's surface
 			# contact, with at most one inch of variation, then spreads.
@@ -149,6 +155,7 @@ func _emit(name: String, layer: Dictionary, context: Dictionary) -> void:
 		var fade_out := value(layer.get("fade_out", [0.1,0.1]), context, index)
 		var drag := clampf(float(layer.get("drag", 0.0)), 0.0, 0.9999)
 		live.append({"name": name, "layer": layer, "context": context, "born": context.born,
+			"normal": particle_normal,
 			"origin": context.at + world_offset, "velocity": local_frame * velocity + noise_velocity(layer, noise, local_frame),
 			"gravity": source_world(layer.get("gravity", [0, 0, 0])), "life": life,
 			"drag_k": -log(1.0 - drag) / DRAG_STEP if drag > 0.0 else 0.0,
@@ -236,7 +243,8 @@ func draw(quads: Node, models: Node, eye: Transform3D, now: int, fov: float = 90
 			var xform: Transform3D
 			if kind == "model":
 				var scale := half * 39.3700787 # glTF metre coordinates -> Source inches.
-				xform = Transform3D(model_basis(p.context.basis, bool(renderer.get("orient_z", false)), roll).scaled(Vector3.ONE * scale), centre)
+				var frame_basis: Basis = impact_basis(p.normal) if bool(renderer.get("orient_z", false)) else p.context.basis
+				xform = Transform3D(model_basis(frame_basis, bool(renderer.get("orient_z", false)), roll).scaled(Vector3.ONE * scale), centre)
 				models.card(renderer, xform, int(p.seq), shade)
 				continue
 			if kind == "trail":
