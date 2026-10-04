@@ -33,11 +33,11 @@ Updated 2026-09-24 later: game modes apart from maps (item 24a, `reference/syste
 Updated 2026-09-25: Sid's dust2 playtest, 22 issues with plans ("Playtest of 2026-09-25", `reference/playtest-2026-09-25.md`).
 Updated 2026-09-30: grenade flight and lineups recorded for later (item 20a, Sid).
 
-## Current status, 2026-10-03
+## Current status, 2026-10-04
 
-Checked against merged `main` at `22b6f93`, through PR #187. Completion
+Checked against merged `main` at `55b2e12`, through PR #188. Completion
 means the described implementation exists; measurements and remaining
-parity work stay listed below. Three follow-up playtest PRs remain open.
+parity work stay listed below. Four follow-up playtest PRs remain open.
 
 | PR | Merged change |
 |---|---|
@@ -67,6 +67,7 @@ parity work stay listed below. Three follow-up playtest PRs remain open.
 | #185 | Mirage extraction/import fixes and accepted Dust2 sky/world exposure calibration |
 | #186 | README, documentation and roadmap synchronized with merged gameplay and remaining audits |
 | #187 | Shared terrain-aware simulation eyes for cameras, weapon origins and grenade snapshots |
+| #188 | Ordinary horizontal friction/acceleration and deferred collision velocity in both movement backends |
 
 Pending review and local playtest, not part of merged `main`:
 
@@ -75,12 +76,15 @@ Pending review and local playtest, not part of merged `main`:
 | [#177](https://github.com/sidcarrollworks/CSGODOT/pull/177) | Free spectating, bot takeover and firing/throwing in noclip |
 | [#178](https://github.com/sidcarrollworks/CSGODOT/pull/178) | Startup team selection |
 | [#179](https://github.com/sidcarrollworks/CSGODOT/pull/179) | Feet planted while walking on slopes and stairs |
+| [#189](https://github.com/sidcarrollworks/CSGODOT/pull/189) | Accepted material, grenade input, practice economy, exposure and shooting-effects playtest fixes |
 
-Shared terrain-aware simulation eyes are merged; their local landmark
-playtest remains. This follow-up ports ordinary combined horizontal
-friction/acceleration and deferred collision velocity in both movement
-backends. The movement section below records the remaining command/crouch
-work and CS2 capture limits.
+Shared terrain-aware simulation eyes and ordinary combined horizontal
+integration are merged. The movement section below records the remaining
+command/crouch work and CS2 capture limits. PR #189 preserves the accepted
+local playtest changes; #177 is reconciled on top of it because both edit
+viewmodel recoil and tracer drawing. Merge #189 before #177. Team selection
+and foot placement remain separate PRs against main. All four require fresh
+CI; the three feature PRs still need their local gameplay checks.
 
 ## Part 1: what exists
 
