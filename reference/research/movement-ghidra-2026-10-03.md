@@ -15,8 +15,10 @@ state and ordinary topology transitions. Ordinary combined horizontal
 integration is now ported in the
 [integration follow-up](horizontal-integration-2026-10-03.md);
 ordinary walk/scoped command branches are ported in the
-[October 4 command follow-up](movement-commands-2026-10-04.md). Cached
-subtick friction and crouch/modern jump state remain open.
+[October 4 command follow-up](movement-commands-2026-10-04.md). Saved subtick
+friction and movement event segmentation are ported in the
+[subtick follow-up](subtick-friction-2026-10-04.md). Full crouch and modern
+landing/bhop state remain open.
 
 ## Evidence and scope
 
@@ -44,7 +46,7 @@ quantization and all jump/landing branches require further work.
 |---|---|---|---|
 | Ground-dependent eyes | Topology/root adjustment assembled during movement finish, before grenade capture | Shared cached terrain state and ordinary topology transitions now finish before capture; full duck/root timing remains open | Paired settled Dust2 cameras match within 0.04 units; further CS2 transition and trajectory captures remain |
 | Air acceleration | Applies part before collision movement and defers the remainder until after it | Ordinary split/deferred additions now ported in both backends | Numeric displacement/contact oracles pass; recorded CS2 paths still required |
-| Ground acceleration/friction | Tracks acceleration and a deferred velocity contribution; collision movement uses an intermediate velocity | Ordinary combined state, friction overshoot, control-speed quantizer and walk/scoped command scales/caps ported | Starts/stops use intermediate velocity; cached subtick friction and other movement modes remain |
+| Ground acceleration/friction | Tracks acceleration and a deferred velocity contribution; collision movement uses an intermediate velocity | Ordinary combined state, friction overshoot, saved control speed/phase, command event segments and walk/scoped scales/caps ported | Starts/stops use intermediate velocity; other movement modes and paired CS2 captures remain |
 | Crouch acceleration | Applies the 0.34 scale after a 250-unit wish-speed floor in the ordinary land branch | Now uses that independent scale; previously used standing weapon speed | Removes the fast crouched start without starving rifle movement against stop friction |
 | Crouch | Separate duck amount, duck speed, root and view state; repeated-duck gate | A fixed 0.4-second progress and immediate airborne hull/eye changes | Crouch-jump geometry and camera transitions differ |
 | Jump/landing | Modern press/landing time state and a bhop window; ordinary impulse already recovered | Ordinary impulse and grenade deadline splits are implemented; no complete modern landing/press-window port | An ordinary stationary jump passing does not validate chained hops or landing slowdown |
@@ -301,7 +303,8 @@ ordinary deferred acceleration/friction is now covered by the follow-up.
    and deferred velocity in script/native movement, including displacement,
    blocked motion and running jump snapshots. See the integration report
    for cost. The command follow-up ports ordinary walking/scoped scales,
-   taper and total ground caps; cached subtick friction remains. CS2 captures remain.
+   taper and total ground caps. The subtick follow-up adds saved friction
+   speed/phase and command event segments. CS2 captures remain.
 3. Complete modern landing/bhop and crouch behavior with their own boundary
    checks and CS2 captures. Keep these changes separately reviewable from
    grenade-flight tuning.

@@ -87,6 +87,7 @@ class Commanded extends PlayerSim:
 		cmd.buttons = held
 		cmd.move = movement
 		if tap != 0:
+			cmd.buttons |= tap & UserCmd.MOVEMENT_BUTTONS
 			cmd.steps.append(UserCmd.SubtickStep.new(tap, true, tap_fraction, yaw_degrees, pitch_degrees))
 			tap = 0
 		cmd.weapon_select = select
@@ -515,6 +516,7 @@ func _script(seconds: float) -> Array[UserCmd]:
 		cmd.pitch_degrees = -2.0
 		cmd.move = Vector2(0.0, 1.0) if i < run_up else Vector2(1.0 if floori(float(i) / strafe) % 2 == 0 else -1.0, 0.0)
 		if i == jump:
+			cmd.buttons |= UserCmd.JUMP
 			cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.JUMP, true, 0.37, cmd.yaw_degrees, -2.0))
 		if i >= spray_from and i < spray_to:
 			cmd.buttons |= UserCmd.ATTACK

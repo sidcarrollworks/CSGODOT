@@ -138,10 +138,10 @@ This is the ordinary supported land path. Use/hostage constraints, water,
 ladders, moving platforms, repeated-duck gates, complete duck/root/view
 timing and modern landing/bhop windows remain outside this port.
 
-Friction's input/time cache at movement services `+0x690..+0x698` remains
-separate work with command event segmentation. The current port computes
-control speed afresh each segment; this follow-up does not claim the cached
-subtick behavior or complete CS2 velocity quantization. Scalar configuration
+Friction's input/time cache at movement services `+0x690..+0x698` was left
+for separate work in this command-setup PR. The subsequent
+[subtick follow-up](subtick-friction-2026-10-04.md) ports that cache and
+movement event segmentation. Neither completes CS2 velocity quantization. Scalar configuration
 arithmetic uses the game's existing precision; native/script agreement and
 these numeric checks do not prove complete CS2 trajectory parity.
 

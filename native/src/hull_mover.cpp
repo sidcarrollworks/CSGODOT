@@ -155,6 +155,13 @@ const StringName &velocity() { static const StringName n("velocity"); return n; 
 const StringName &move_acceleration() { static const StringName n("_move_acceleration"); return n; }
 const StringName &deferred_velocity() { static const StringName n("_deferred_velocity"); return n; }
 const StringName &friction_overshoot() { static const StringName n("_friction_overshoot"); return n; }
+const StringName &friction_cached() { static const StringName n("_friction_cached"); return n; }
+const StringName &friction_refreshed() { static const StringName n("_friction_refreshed"); return n; }
+const StringName &friction_until() { static const StringName n("_friction_until"); return n; }
+const StringName &friction_speed() { static const StringName n("_friction_speed"); return n; }
+const StringName &interval_start() { static const StringName n("_interval_start"); return n; }
+const StringName &movement_impulse() { static const StringName n("movement_impulse"); return n; }
+const StringName &last_movement_impulse() { static const StringName n("_last_movement_impulse"); return n; }
 const StringName &on_ground() { static const StringName n("on_ground"); return n; }
 const StringName &ground_normal() { static const StringName n("ground_normal"); return n; }
 const StringName &ground_is_world() { static const StringName n("ground_is_world"); return n; }
@@ -196,6 +203,13 @@ void HullMover::read_body() {
 	move_acceleration = body->get(names::move_acceleration());
 	deferred_velocity = body->get(names::deferred_velocity());
 	friction_overshoot = body->get(names::friction_overshoot());
+	friction_cached = body->get(names::friction_cached());
+	friction_refreshed = body->get(names::friction_refreshed());
+	friction_until = body->get(names::friction_until());
+	friction_speed = body->get(names::friction_speed());
+	interval_start = body->get(names::interval_start());
+	movement_impulse = body->get(names::movement_impulse());
+	last_movement_impulse = body->get(names::last_movement_impulse());
 	on_ground = body->get(names::on_ground());
 	ground_normal = body->get(names::ground_normal());
 	ground_is_world = body->get(names::ground_is_world());
@@ -235,6 +249,10 @@ void HullMover::write_body(const Vector3 &p_position_before) {
 	body->set(names::move_acceleration(), move_acceleration);
 	body->set(names::deferred_velocity(), deferred_velocity);
 	body->set(names::friction_overshoot(), friction_overshoot);
+	body->set(names::friction_cached(), friction_cached);
+	body->set(names::friction_refreshed(), friction_refreshed);
+	body->set(names::friction_until(), friction_until);
+	body->set(names::friction_speed(), friction_speed);
 	body->set(names::on_ground(), on_ground);
 	body->set(names::ground_normal(), ground_normal);
 	body->set(names::ground_is_world(), ground_is_world);
@@ -435,6 +453,7 @@ void HullMover::simulate_step(double dt) {
 
 	if (on_ground) {
 		velocity.y = 0.0;
+		update_friction_cache();
 		apply_ground_friction(surface_friction, dt);
 	}
 
@@ -457,14 +476,33 @@ void HullMover::simulate_step(double dt) {
 
 void HullMover::apply_ground_friction(double surface_friction, double dt) {
 	const double speed = velocity.length();
-	const double rate = friction_rate(speed, surface_friction);
-	if (speed <= 0.0 || dt <= 0.0 || rate <= 0.0) {
+	const double control = friction_cached ? friction_speed : quantized_speed(speed);
+	const double rate = control < 0.1 ? 0.0 : maxf(control, cfg.stop_speed) * cfg.friction * surface_friction;
+	if (dt <= 0.0 || rate <= 0.0) {
 		return;
 	}
 	const double drop = rate * dt;
 	friction_overshoot = maxf(drop - speed, 0.0);
-	move_acceleration -= times(over(velocity, speed), minf(rate, speed / dt));
-	velocity = times(velocity, maxf(speed - drop, 0.0) / speed);
+	if (speed > 0.0) {
+		move_acceleration -= times(over(velocity, speed), minf(rate, speed / dt));
+		velocity = times(velocity, maxf(speed - drop, 0.0) / speed);
+	}
+}
+
+void HullMover::update_friction_cache() {
+	const bool at_boundary = friction_cached && friction_until == interval_start;
+	if (friction_cached && !at_boundary) {
+		return;
+	}
+	friction_cached = false;
+	const double speed = quantized_speed(Vector2(velocity.x, velocity.z).length());
+	const Vector3 impulse = movement_impulse.is_finite() ? movement_impulse : times(wish_dir, wish_speed);
+	if ((at_boundary && speed != friction_speed) || impulse != last_movement_impulse) {
+		friction_cached = true;
+		friction_until = interval_start;
+		friction_speed = speed;
+		friction_refreshed = true;
+	}
 }
 
 void HullMover::defer_acceleration(double dt) {

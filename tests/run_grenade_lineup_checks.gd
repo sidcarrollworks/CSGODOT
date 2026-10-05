@@ -48,6 +48,7 @@ class _Pawn extends PlayerSim:
 			var released := minf(fraction + 0.02, 1.0) if release_at == jump_at else 0.25
 			cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.ATTACK, false, released, aim_yaw, aim_pitch))
 		if tick == jump_at:
+			cmd.buttons |= UserCmd.JUMP
 			cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.JUMP, true, fraction, aim_yaw, aim_pitch))
 		return cmd
 

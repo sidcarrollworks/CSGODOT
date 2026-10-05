@@ -139,6 +139,13 @@ private:
 	Vector3 move_acceleration;
 	Vector3 deferred_velocity;
 	double friction_overshoot = 0.0;
+	bool friction_cached = false;
+	bool friction_refreshed = false;
+	double friction_until = 0.0;
+	double friction_speed = 0.0;
+	double interval_start = 0.0;
+	Vector3 movement_impulse;
+	Vector3 last_movement_impulse;
 	bool on_ground = false;
 	bool ground_is_world = false;
 	Vector3 ground_normal = Vector3(0, 1, 0);
@@ -176,6 +183,7 @@ private:
 
 	void simulate_step(double dt);
 	void apply_ground_friction(double surface_friction, double dt);
+	void update_friction_cache();
 	void defer_acceleration(double dt);
 	void stop_movement();
 	bool ground_known() const;

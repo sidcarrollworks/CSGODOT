@@ -52,6 +52,10 @@ const BUTTONS := {
 	&"duck": UserCmd.DUCK,
 	&"walk": UserCmd.WALK,
 	&"reload": UserCmd.RELOAD,
+	&"move_forward": UserCmd.FORWARD,
+	&"move_back": UserCmd.BACK,
+	&"move_left": UserCmd.LEFT,
+	&"move_right": UserCmd.RIGHT,
 }
 ## The mouse's buttons, which count only while the game has the mouse.
 const MOUSE_BUTTONS: Array[StringName] = [&"attack", &"attack2"]
@@ -264,7 +268,7 @@ func build_command(tick: int, now_usec: int = -1) -> UserCmd:
 	for event in take_events():
 		cmd.steps.append(UserCmd.SubtickStep.new(
 			BUTTONS[event.action], event.pressed,
-			tick_fraction(event.timestamp_usec, _last_sample_usec, window),
+			UserCmd.movement_phase(tick_fraction(event.timestamp_usec, _last_sample_usec, window)),
 			event.yaw_degrees, event.pitch_degrees
 		))
 	cmd.weapon_select = _weapon_select
