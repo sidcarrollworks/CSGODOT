@@ -595,6 +595,7 @@ func _path_way(cmd: UserCmd) -> Vector3:
 		var near_take_off := Vector2(take_off.x - global_position.x, take_off.z - global_position.z).length() < TAKE_OFF_REACH
 		var at_take_off := near_take_off and absf(global_position.y - take_off.y) < STEP_UP_OR_DOWN
 		if on_ground and at_take_off:
+			cmd.buttons |= UserCmd.JUMP
 			cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.JUMP, true, 0.0, yaw_degrees, pitch_degrees))
 		elif not on_ground:
 			cmd.buttons |= UserCmd.DUCK
@@ -702,6 +703,7 @@ func _unstick(cmd: UserCmd, way: Vector3, friend_against: bool) -> Vector3:
 	_forget_speeds()
 	if friend_against:
 		return way
+	cmd.buttons |= UserCmd.JUMP
 	cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.JUMP, true, 0.0, yaw_degrees, pitch_degrees))
 	_path = null
 	_no_way_to = -1

@@ -114,6 +114,7 @@ const STEP_FUNCTIONS: Array[StringName] = [
 	&"_try_player_move", &"_try_step", &"_categorize_position", &"_trace", &"_cast_from", &"_cast_hull",
 	&"_recovery_blocked_by_player", &"_recover_trace_start", &"_ground_normal_in_quadrants",
 	&"_apply_ground_friction", &"_defer_acceleration", &"_stop_movement",
+	&"_update_friction_cache",
 ]
 
 ## Whether the step is run in native code where it can be: the library
@@ -175,6 +176,16 @@ var walk_acceleration_limit: float = 0.0
 var _move_acceleration := Vector3.ZERO
 var _deferred_velocity := Vector3.ZERO
 var _friction_overshoot: float = 0.0
+## CS2 WalkMove keeps a quantized control speed until its saved tick phase.
+## SetupMove clears only the command's refresh flag; FinishMove publishes it.
+var _friction_cached := false
+var _friction_until := 0.0
+var _friction_speed := 0.0
+var _friction_refreshed := false
+var _last_movement_impulse := Vector3.ZERO
+var movement_impulse := Vector3.INF
+var movement_boundaries := PackedFloat64Array()
+var _interval_start := 0.0
 var wants_jump: bool = false
 var wants_duck: bool = false
 
@@ -390,6 +401,7 @@ func simulate(dt: float) -> void:
 	previous_eye_height = eye_height()
 	# This is only a hint between sweeps of one tick, not replay state.
 	_native_recovery_direction = Vector3.UP
+	_friction_refreshed = false
 
 	if noclip:
 		reset_eye_state()
@@ -399,6 +411,10 @@ func simulate(dt: float) -> void:
 		ground_is_world = false
 		jump_fraction = -1.0
 		movement_fraction = -1.0
+		movement_boundaries.clear()
+		movement_impulse = Vector3.INF
+		_friction_cached = false
+		_last_movement_impulse = Vector3.ZERO
 		height_above_ground = INF
 		if _native_physics() != null:
 			_native.queries.sync_object(self, false)
@@ -418,25 +434,37 @@ func simulate(dt: float) -> void:
 			_adapter.queries.sync_dynamic(_motion_query.collision_mask, _motion_query.exclude)
 
 	var mover := _native_mover()
-	if (
-		config.subtick_jump
-		and wants_jump
-		and jump_fraction > 0.0
-		and jump_fraction < 1.0
-	):
-		# Run up to the press with the key still up, then the rest with it
-		# down, so the impulse happens at the fraction it was pressed at.
-		var pressed := wants_jump
-		wants_jump = false
-		_movement_interval(mover, dt, 0.0, jump_fraction)
-		wants_jump = pressed
-		_movement_interval(mover, dt, jump_fraction, 1.0)
-	else:
+	var split_jump := config.subtick_jump and wants_jump and jump_fraction > 0.0 and jump_fraction < 1.0
+	var split_snapshot := movement_fraction > 0.0 and movement_fraction < 1.0
+	var split_friction := _friction_cached and _friction_until > 0.0 and _friction_until < 1.0
+	if movement_boundaries.is_empty() and not split_jump and not split_snapshot and not split_friction:
 		_movement_interval(mover, dt, 0.0, 1.0)
+	else:
+		var boundaries := movement_boundaries.duplicate()
+		if split_jump:
+			boundaries.append(jump_fraction)
+		if split_snapshot:
+			boundaries.append(movement_fraction)
+		if split_friction:
+			boundaries.append(_friction_until)
+		boundaries.append(1.0)
+		boundaries.sort()
+		var start := 0.0
+		for end: float in boundaries:
+			if end <= start or end > 1.0:
+				continue
+			if split_jump:
+				wants_jump = start >= jump_fraction
+			_movement_interval(mover, dt, start, end)
+			start = end
 
 	_jump_held_last_tick = wants_jump
+	_friction_cached = _friction_refreshed
 	jump_fraction = -1.0
 	movement_fraction = -1.0
+	movement_boundaries.clear()
+	movement_impulse = Vector3.INF
+	_interval_start = 0.0
 	_update_air(was_on_ground)
 	if _adapter != null:
 		_adapter.queries.end_scope()
@@ -446,18 +474,18 @@ func simulate(dt: float) -> void:
 
 
 func _movement_interval(mover: Object, dt: float, start: float, end: float) -> void:
-	if movement_fraction > start and movement_fraction < end:
-		var boundary := movement_fraction
-		_step(mover, dt * (boundary - start))
-		ground_eyes.update(self, dt * (boundary - start))
-		_movement_finished(start, boundary)
-		_step(mover, dt * (end - boundary))
-		ground_eyes.update(self, dt * (end - boundary))
-		_movement_finished(boundary, end)
-	else:
-		_step(mover, dt * (end - start))
-		ground_eyes.update(self, dt * (end - start))
-		_movement_finished(start, end)
+	_interval_start = start
+	_movement_inputs(start, end)
+	_step(mover, dt * (end - start))
+	_last_movement_impulse = movement_impulse if movement_impulse.is_finite() else wish_dir * wish_speed
+	_jump_held_last_tick = wants_jump
+	ground_eyes.update(self, dt * (end - start))
+	_movement_finished(start, end)
+
+
+## Command input changes at boundaries, before the next collision interval.
+func _movement_inputs(_start: float, _end: float) -> void:
+	pass
 
 
 ## Called outside _step: native/script comparison must not save state twice.
@@ -559,6 +587,8 @@ func _step_state() -> Dictionary:
 		"position": global_position, "velocity": velocity, "on_ground": on_ground,
 		"move_acceleration": _move_acceleration, "deferred_velocity": _deferred_velocity,
 		"friction_overshoot": _friction_overshoot,
+		"friction_cached": _friction_cached, "friction_until": _friction_until,
+		"friction_speed": _friction_speed, "friction_refreshed": _friction_refreshed,
 		"ground_normal": ground_normal, "ground_is_world": ground_is_world,
 		"is_ducked": is_ducked, "duck_progress": duck_progress,
 		"jumped": _jumped, "looked_from": _looked_from, "looked_with": _looked_with,
@@ -577,6 +607,10 @@ func _restore_step_state(state: Dictionary) -> void:
 	_move_acceleration = state["move_acceleration"]
 	_deferred_velocity = state["deferred_velocity"]
 	_friction_overshoot = state["friction_overshoot"]
+	_friction_cached = state["friction_cached"]
+	_friction_until = state["friction_until"]
+	_friction_speed = state["friction_speed"]
+	_friction_refreshed = state["friction_refreshed"]
 	on_ground = state["on_ground"]
 	ground_normal = state["ground_normal"]
 	ground_is_world = state["ground_is_world"]
@@ -686,6 +720,7 @@ func _simulate_step(dt: float) -> void:
 
 	if on_ground:
 		velocity.y = 0.0
+		_update_friction_cache()
 		_apply_ground_friction(surface_friction, dt)
 
 	if on_ground:
@@ -705,13 +740,29 @@ func _simulate_step(dt: float) -> void:
 
 func _apply_ground_friction(surface_friction: float, dt: float) -> void:
 	var speed := velocity.length()
-	var rate := MovementSolver.friction_rate(speed, surface_friction, config)
-	if speed <= 0.0 or dt <= 0.0 or rate <= 0.0:
+	var control := _friction_speed if _friction_cached else MovementSolver.quantized_speed(speed)
+	var rate := 0.0 if control < 0.1 else maxf(control, config.stop_speed) * config.friction * surface_friction
+	if dt <= 0.0 or rate <= 0.0:
 		return
 	var drop := rate * dt
 	_friction_overshoot = maxf(drop - speed, 0.0)
-	_move_acceleration -= (velocity / speed) * minf(rate, speed / dt)
-	velocity *= maxf(speed - drop, 0.0) / speed
+	if speed > 0.0:
+		_move_acceleration -= (velocity / speed) * minf(rate, speed / dt)
+		velocity *= maxf(speed - drop, 0.0) / speed
+
+
+func _update_friction_cache() -> void:
+	var at_boundary := _friction_cached and _friction_until == _interval_start
+	if _friction_cached and not at_boundary:
+		return
+	_friction_cached = false
+	var speed := MovementSolver.quantized_speed(Vector2(velocity.x, velocity.z).length())
+	var impulse := movement_impulse if movement_impulse.is_finite() else wish_dir * wish_speed
+	if (at_boundary and speed != _friction_speed) or impulse != _last_movement_impulse:
+		_friction_cached = true
+		_friction_until = _interval_start
+		_friction_speed = speed
+		_friction_refreshed = true
 
 
 ## Move at the half-step velocity, then restore this same state after

@@ -693,6 +693,9 @@ func place(spawn_position: Vector3, yaw: float) -> void:
 	global_position = spawn_position
 	previous_position = spawn_position
 	reset_eye_state()
+	_friction_cached = false
+	_last_movement_impulse = Vector3.ZERO
+	_movement_jump_pending = false
 	yaw_degrees = yaw
 	pitch_degrees = 0.0
 	previous_yaw_degrees = yaw
@@ -789,6 +792,12 @@ func _finish_grenade_movement(cmd: UserCmd) -> void:
 		world.game.command(userid, "throw %s %s" % [item_class, GrenadeRules.launch_strength(grenade_throw.strength)])
 
 
+var _movement_command: UserCmd
+var _movement_has_events := false
+var _movement_jump_held := false
+var _movement_jump_pending := false
+
+
 func _run(cmd: UserCmd, dt: float) -> void:
 	last_command = cmd
 	_grenade_jump_recorded = false
@@ -803,6 +812,10 @@ func _run(cmd: UserCmd, dt: float) -> void:
 	acceleration_speed = 0.0
 	movement_speed_limit = INF
 	walk_acceleration_limit = 0.0
+	movement_impulse = Vector3.INF
+	movement_boundaries.clear()
+	_movement_command = null
+	_movement_has_events = false
 
 	if cmd.toggle_noclip:
 		noclip = not noclip
@@ -810,6 +823,7 @@ func _run(cmd: UserCmd, dt: float) -> void:
 		reset_eye_state()
 
 	if not alive:
+		_movement_jump_pending = false
 		if is_instance_valid(controlling):
 			# The bot runs your commands (GameWorld.commands_for); you only
 			# notice it die.
@@ -887,6 +901,7 @@ func _run(cmd: UserCmd, dt: float) -> void:
 	wants_duck = cmd.held(UserCmd.DUCK) or _crouched_by_the_game()
 
 	if still:
+		_movement_jump_pending = false
 		# Still, but falling if there is anywhere to fall, and the weapon
 		# still reloads.
 		simulate(dt)
@@ -895,6 +910,7 @@ func _run(cmd: UserCmd, dt: float) -> void:
 		return
 
 	if noclip:
+		_movement_jump_pending = false
 		# Flying, the gun still fires and a grenade still throws, as CS2's
 		# noclip lets you (Sid, playtest 2026-09-30). Off the ground, so a
 		# round takes the air's inaccuracy and the speed's, as CS2's
@@ -905,17 +921,61 @@ func _run(cmd: UserCmd, dt: float) -> void:
 		_update_weapon(cmd, dt, false)
 		return
 
-	wish_dir = cmd.wish_direction()
-	movement_speed_limit = _max_speed(cmd)
-	if wish_dir.length_squared() > 0.0:
-		wish_speed = movement_speed_limit
-		acceleration_speed = _ground_acceleration_speed(cmd)
-		if cmd.held(UserCmd.WALK) and not _duck_movement(cmd):
-			walk_acceleration_limit = maxf(250.0, wish_speed) * minf(_weapon_movement_speed() / 250.0, 1.0) * config.walk_modifier
-
+	_movement_command = cmd
+	var mask := UserCmd.MOVEMENT_BUTTONS if config.subtick_jump else UserCmd.MOVEMENT_BUTTONS & ~UserCmd.JUMP
+	for step in cmd.steps:
+		if step.button & mask != 0:
+			_movement_has_events = true
+			if step.when > 0.0 and step.when < 1.0:
+				movement_boundaries.append(step.when)
+	# Command events also carry jump releases; the legacy body's single
+	# jump boundary is for direct drivers without a UserCmd.
+	jump_fraction = -1.0
 	simulate(dt)
+	_movement_command = null
+	_jump_held_last_tick = _movement_jump_held
+	_movement_jump_pending = false
+	if config.subtick_jump:
+		for step in cmd.steps:
+			if step.button == UserCmd.JUMP and step.pressed and step.when == 1.0:
+				_movement_jump_pending = true
+	yaw_degrees = cmd.yaw_degrees
+	pitch_degrees = cmd.pitch_degrees
 	_finish_grenade_movement(cmd)
 	_update_weapon(cmd, dt, false)
+
+
+func _movement_inputs(start: float, end: float) -> void:
+	if _movement_command == null:
+		return
+	var cmd := _movement_command
+	if _movement_has_events:
+		cmd = cmd.movement_at(start, end, config.subtick_jump)
+	yaw_degrees = cmd.yaw_degrees
+	pitch_degrees = cmd.pitch_degrees
+	wants_jump = cmd.held(UserCmd.JUMP)
+	_movement_jump_held = wants_jump
+	if config.subtick_jump:
+		if start == 0.0 and _movement_jump_pending:
+			wants_jump = true
+			_jump_held_last_tick = false
+			_movement_jump_pending = false
+		for step in _movement_command.steps:
+			if step.button == UserCmd.JUMP and step.pressed and step.when == start:
+				# Wheel jumps can press and release at the same rounded phase.
+				wants_jump = true
+				_jump_held_last_tick = false
+	if not config.subtick_jump and _movement_command.pressed_during(UserCmd.JUMP):
+		wants_jump = true
+	wants_duck = cmd.held(UserCmd.DUCK) or _crouched_by_the_game()
+	movement_speed_limit = _max_speed(cmd)
+	movement_impulse = cmd.movement_impulse() * movement_speed_limit
+	wish_dir = movement_impulse.normalized()
+	wish_speed = minf(movement_impulse.length(), movement_speed_limit)
+	acceleration_speed = _ground_acceleration_speed(cmd) if wish_speed > 0.0 else 0.0
+	walk_acceleration_limit = 0.0
+	if wish_speed > 0.0 and cmd.held(UserCmd.WALK) and not _duck_movement(cmd):
+		walk_acceleration_limit = maxf(250.0, wish_speed) * minf(_weapon_movement_speed() / 250.0, 1.0) * config.walk_modifier
 
 
 ## Whether the game holds the player still: planting or defusing the bomb,
@@ -1579,7 +1639,10 @@ func _revive() -> void:
 	# Every revival clears the old floor's eye/root and sample cache.
 	reset_eye_state()
 	hit_target.reset()
+	_friction_cached = false
+	_last_movement_impulse = Vector3.ZERO
 	hit_target.set_active(true)
+	_movement_jump_pending = false
 	collision_layer = PLAYER_LAYER
 	PhysicsQueries.sync_object(self, false)
 	observing = null

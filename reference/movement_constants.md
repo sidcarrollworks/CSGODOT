@@ -34,6 +34,23 @@ at the B-doors setup; the base 64/46 eye values remain unchanged.
 | `NON_JUMP_VELOCITY` | 140 | `gamemovement.cpp:3830` | Read from the SDK, exact |
 | `sv_maxvelocity` | 3500 | `movevars_shared.cpp:93` | Read from the SDK, exact |
 
+## Subtick ground friction and input phases
+
+The [October 4 friction audit](research/subtick-friction-2026-10-04.md)
+ports the current server's saved quantized control speed. Ground friction
+reuses that speed until its recorded phase of a command, refreshes it there
+when speed/input changed, and retires it when stable. The saved phase forces
+an interval even without a new key event. Friction still clamps against the
+actual velocity and contributes its overshoot to acceleration; a cached
+control must never reverse a nearly stopped pawn.
+
+Live WASD, Walk, duck and jump transitions now split movement at their
+recorded phase. Current CS2 command ingestion rounds live timestamps to
+**1/64 of a tick** (244.140625 microseconds at 64 Hz), with ties to even.
+Explicit simulation commands retain their supplied fractions for tests and
+replays. These are binary-derived algorithm rules; complete movement and
+input transport parity still need paired CS2 captures.
+
 ## Crouch turning (Sid's PR #164 feedback, 2026-10-01)
 
 The earlier standing-speed acceleration held a straight crouch at 0.34 of the

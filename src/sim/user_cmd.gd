@@ -29,6 +29,11 @@ const USE := 32
 ## The right button: a grenade's underhand throw, a scope, a silencer, the
 ## knife's heavy swing.
 const ATTACK2 := 64
+const FORWARD := 128
+const BACK := 256
+const LEFT := 512
+const RIGHT := 1024
+const MOVEMENT_BUTTONS := JUMP | DUCK | WALK | FORWARD | BACK | LEFT | RIGHT
 
 ## What a command can ask to take in hand (`weapon_select`): a slot by its
 ## number key, as CS2 numbers them (1 the primary, 2 the pistol, 3 the knife
@@ -113,16 +118,59 @@ func presses(button: int) -> Array[SubtickStep]:
 ## The flat direction the move keys ask for, in world space, from the yaw at
 ## the end of the tick; zero when no key is down.
 func wish_direction() -> Vector3:
-	var keys := move
-	if keys.length_squared() > 1.0:
-		keys = keys.normalized()
+	return movement_impulse().normalized()
+
+
+## Before the speed clamp: friction compares this world-space input between
+## intervals. A diagonal's magnitude and an analog input must survive here.
+func movement_impulse() -> Vector3:
 	var yaw := deg_to_rad(yaw_degrees)
 	var forward := Vector3(-sin(yaw), 0.0, -cos(yaw))
 	var right := Vector3(cos(yaw), 0.0, -sin(yaw))
-	var dir := right * keys.x + forward * keys.y
-	if dir.length_squared() > 0.0:
-		dir = dir.normalized()
-	return dir
+	return right * move.x + forward * move.y
+
+
+static func movement_delta(button: int) -> Vector2:
+	match button:
+		FORWARD: return Vector2(0.0, 1.0)
+		BACK: return Vector2(0.0, -1.0)
+		LEFT: return Vector2(-1.0, 0.0)
+		RIGHT: return Vector2(1.0, 0.0)
+	return Vector2.ZERO
+
+
+## Current CS2 command ingestion narrows (when + 131072) to float32 and
+## subtracts the bias: 1/64 of a tick, with ties rounded to even. Live input
+## uses that grid; explicit simulation commands may supply finer fractions.
+static func movement_phase(when: float) -> float:
+	return Vector3(clampf(when, 0.0, 1.0) + 131072.0, 0.0, 0.0).x - 131072.0
+
+
+## The input held during [start, end): commands store their final state, so
+## undo later transitions. Same-fraction transitions form one input state.
+## CS2 uses the next event's recorded look for the interval ending there.
+func movement_at(start: float, end: float, subtick_jump: bool = true) -> UserCmd:
+	var interval := UserCmd.new()
+	interval.buttons = buttons
+	interval.move = move
+	interval.yaw_degrees = yaw_degrees
+	interval.pitch_degrees = pitch_degrees
+	var mask := MOVEMENT_BUTTONS if subtick_jump else MOVEMENT_BUTTONS & ~JUMP
+	for i in range(steps.size() - 1, -1, -1):
+		var step := steps[i]
+		if step.button & mask == 0 or step.when <= start:
+			continue
+		if step.pressed:
+			interval.buttons &= ~step.button
+		else:
+			interval.buttons |= step.button
+		interval.move -= movement_delta(step.button) * (1.0 if step.pressed else -1.0)
+	for step in steps:
+		if step.button & mask != 0 and step.when >= end:
+			interval.yaw_degrees = step.yaw_degrees
+			interval.pitch_degrees = step.pitch_degrees
+			break
+	return interval
 
 
 ## The move keys that ask for a world direction, facing a yaw: the inverse of

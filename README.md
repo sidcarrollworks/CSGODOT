@@ -219,8 +219,10 @@ ports combined friction/acceleration and deferred collision velocity in both
 backends, including grenade snapshots after restoration. The
 [command follow-up](reference/research/movement-commands-2026-10-04.md)
 ports ordinary walking/scoped acceleration, walk-entry limits and total
-ground speed caps. Complete crouch, cached subtick friction and modern
-jump transitions remain open.
+ground speed caps. The [subtick follow-up](reference/research/subtick-friction-2026-10-04.md)
+adds CS2's saved friction control speed, its recurring tick-phase boundary,
+and timestamped WASD/Walk/duck/jump movement segments. Complete crouch and
+modern landing/bhop transitions remain open.
 Script/native agreement checks our two ports; paired CS2 trajectories are
 still needed to establish parity.
 

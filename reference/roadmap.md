@@ -299,8 +299,9 @@ entry/exit; existing crouch turning/accuracy and grenade lineups pass.
 implemented, and this follow-up ports ordinary deferred movement integration;
 ordinary walk/scoped setup is now ported in the
 [command follow-up](research/movement-commands-2026-10-04.md). Full crouch
-transitions and cached subtick friction remain open in the
-[movement audit](research/movement-ghidra-2026-10-03.md).
+transitions remain open in the [movement audit](research/movement-ghidra-2026-10-03.md).
+The [subtick follow-up](research/subtick-friction-2026-10-04.md) now ports
+saved friction speed/phase and timestamped WASD/Walk/duck/jump segments.
 
 **Box3D is the game's physics (2026-09-28, Sid).** Sid chose to take the
 trial below forward. The October 2 grenade port builds debug and release
@@ -1096,8 +1097,10 @@ list, split into Local and Remote items, with the measurements.
       is merged in #187; additional landmark and trajectory captures remain.
       This follow-up ports [ordinary horizontal integration](research/horizontal-integration-2026-10-03.md).
       The [movement audit](research/movement-ghidra-2026-10-03.md) still leaves
-      cached subtick friction, full crouch and modern landing/press-window
-      gaps. Ordinary command/scoped setup is ported in the
+      full crouch and modern landing/press-window gaps. Saved subtick friction
+      and movement event segmentation are ported in the
+      [subtick follow-up](research/subtick-friction-2026-10-04.md).
+      Ordinary command/scoped setup is ported in the
       [command follow-up](research/movement-commands-2026-10-04.md);
       matching native/script output is not evidence of CS2 parity.
     - **Local:** G1 in `reference/cs2-systems.md` now compares the recovered
@@ -1303,8 +1306,10 @@ audit, CS2 captures and performance measurements):
    behavior beyond final speed. See the
    [integration report](research/horizontal-integration-2026-10-03.md) for
    trace budgets, measured tick cost and boundaries. **Local remaining:**
-   counter-strafing, wall/slopes and run/jump throw captures. **Implementation
-   remaining:** cached subtick friction and command event segmentation.
+   counter-strafing, wall/slopes and run/jump throw captures. Saved subtick
+   friction and command event segmentation are now implemented in the
+   [subtick follow-up](research/subtick-friction-2026-10-04.md), including
+   recurring phase boundaries and live WASD timestamps.
    The [command follow-up](research/movement-commands-2026-10-04.md) now ports
    ordinary walking/scoped scales, the five-unit taper, walk-entry gate and
    total ground speed caps. Local walk/scoped captures remain.
