@@ -117,6 +117,12 @@ func _process(_delta: float) -> bool:
 		# scripted without a keyboard. This still exercises the real
 		# simulate() path, collision and all.
 		(_course.get("world") as GameWorld).remove_player(_player as PlayerSim)
+		# The direct body driver supplies wish_speed itself. Clear command
+		# inputs left by PlayerSim during settling, so this legacy fixture
+		# measures friction/jump timing without a stale weapon cap.
+		_player.acceleration_speed = 0.0
+		_player.movement_speed_limit = INF
+		_player.walk_acceleration_limit = 0.0
 		_test_creep_stops()
 		_test_traces_a_tick()
 		_test_air_action()

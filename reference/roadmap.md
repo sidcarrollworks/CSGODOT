@@ -253,8 +253,9 @@ issue done here and on the page in the same pull request.
 
 **Crouch speed (Sid's 2026-09-30 playtest, PR #164): Remote done 2026-10-01.**
 Crouch walking holds 0.34 of the held item's speed, easing with the duck.
-Turning cannot add speed beyond that top; residual running speed still
-decays through friction. The AK-47 and AWP retain their crouched accuracy
+Turning cannot add speed beyond that top. The October 4 command follow-up
+replaces the original residual-speed guard with CS2's absolute ground cap.
+The AK-47 and AWP retain their crouched accuracy
 while turning, with or without Walk; script and native movement share the
 same correction. See `reference/movement_constants.md`, "Crouch turning",
 for the reproduction and the small accuracy-threshold rounding tolerance.
@@ -291,7 +292,9 @@ crouch acceleration scale (250 * 0.34), independently of the speed target.
 entry/exit; existing crouch turning/accuracy and grenade lineups pass.
 **Local:** retest the acceleration feel on Dust2. Terrain eyes are now
 implemented, and this follow-up ports ordinary deferred movement integration;
-full crouch transitions and command/scoped acceleration setup remain open in the
+ordinary walk/scoped setup is now ported in the
+[command follow-up](research/movement-commands-2026-10-04.md). Full crouch
+transitions and cached subtick friction remain open in the
 [movement audit](research/movement-ghidra-2026-10-03.md).
 
 **Box3D is the game's physics (2026-09-28, Sid).** Sid chose to take the
@@ -1088,8 +1091,10 @@ list, split into Local and Remote items, with the measurements.
       is merged in #187; additional landmark and trajectory captures remain.
       This follow-up ports [ordinary horizontal integration](research/horizontal-integration-2026-10-03.md).
       The [movement audit](research/movement-ghidra-2026-10-03.md) still leaves
-      command/scoped acceleration setup, crouch and modern landing/press-window
-      gaps; matching native/script output is not evidence of CS2 parity.
+      cached subtick friction, full crouch and modern landing/press-window
+      gaps. Ordinary command/scoped setup is ported in the
+      [command follow-up](research/movement-commands-2026-10-04.md);
+      matching native/script output is not evidence of CS2 parity.
     - **Local:** G1 in `reference/cs2-systems.md` now compares the recovered
       rules against CS2 (standing, running, crouching, jumping, button
       changes and close-wall releases), and a set of dust2 lineups
@@ -1294,8 +1299,10 @@ audit, CS2 captures and performance measurements):
    [integration report](research/horizontal-integration-2026-10-03.md) for
    trace budgets, measured tick cost and boundaries. **Local remaining:**
    counter-strafing, wall/slopes and run/jump throw captures. **Implementation
-   remaining:** ordinary walk taper/scoped scales, friction stashing and
-   movement-speed-cap setup alongside the next command/state work.
+   remaining:** cached subtick friction and command event segmentation.
+   The [command follow-up](research/movement-commands-2026-10-04.md) now ports
+   ordinary walking/scoped scales, the five-unit taper, walk-entry gate and
+   total ground speed caps. Local walk/scoped captures remain.
 3. **Crouch and modern jump transitions.** Complete duck state/rates,
    repeated-input gates and landing/bhop press windows with boundary
    checks and CS2 captures. Keep them separately reviewable from grenade

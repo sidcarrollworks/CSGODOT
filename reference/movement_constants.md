@@ -24,7 +24,7 @@ at the B-doors setup; the base 64/46 eye values remain unchanged.
 | `duck_time` | 0.4 s | The port's Source-style interpolation duration. CS2's separately audited `sv_timebetweenducks = 0.4` is a repeated-input gate, not proof of this duration. | Full duck/root/view transitions remain unported |
 | `sv_gravity` | 800 | Source/CS:GO default | No |
 | `sv_jump_impulse` | 301.993 | Source/CS:GO default | No |
-| walk modifier | 0.52 | CS:GO | No |
+| walk modifier | 0.52 | Current server `180ab6310` selects the command cap; `180ab00d0` selects the independent acceleration scale and five-unit taper. See the [command audit](research/movement-commands-2026-10-04.md). | Binary verified; local walk/scoped captures remain |
 | duck modifier | 0.34 | Crouched speed is 34% of the held item's speed. Current server `180ab00d0` also scales ordinary land crouch acceleration by 0.34 after a 250-unit wish-speed floor; constants `1818ca884` and `1818ca8ac`. The port now uses that independent acceleration scale, including duck transitions. The speed target still uses the existing duck interpolation. See the October 3 audit below. | Binary verified; complete movement timing still requires CS2 captures |
 | hull 32 x 32 x 72 | | Source player hull | No |
 | duck height 54 | | CS:GO | No |
@@ -42,18 +42,15 @@ The actual-body check reproduced an AK-47 rising from 73.1 to 79.0 u/s;
 its movement cone widened from the crouched 0.310 to 4.878 degrees. A pure
 solver run turning 5 degrees every tick reached 100.6 u/s.
 
-For crouched commands, and when acceleration uses a speed above the target,
-`PlayerBody._walk_move` limits the resulting horizontal speed to the
-greater of the top and the speed left after friction. This lets residual
-running speed decay gradually while preventing a turn from adding more.
-The native step has the same arithmetic. The original crouch-turn fix left
-ordinary ground and air integration unchanged and added no traces. The
-[October 3 integration port](research/horizontal-integration-2026-10-03.md)
-now changes their displacement and deferred collision state while retaining
-this local speed-cap correction.
-This correction follows Sid's playtest feedback, rather than a verified
-CS2 implementation: [Source SDK 2013's WalkMove](https://github.com/ValveSoftware/source-sdk-2013/blob/master/src/game/shared/gamemovement.cpp#L1758)
-caps the wish-direction projection and has no total-speed clamp.
+The original fix limited crouched turns to the greater of the target and
+speed left after friction. The [October 4 command audit](research/movement-commands-2026-10-04.md)
+supersedes that local guard: current CS2 `180ae3950` clamps total ground
+velocity directly to the command-selected cap, including while coasting
+and after switching to a slower weapon. Script and native movement now
+apply that absolute cap. Its correction joins continuous acceleration
+before collision deferral, preserving the
+[October 3 integration port](research/horizontal-integration-2026-10-03.md)'s
+midpoint displacement. No collision queries were added.
 
 `Weapon.MOVING_SPEED_EPSILON` is 0.0001 u/s at the 34% movement-accuracy
 threshold. Float32 velocity can round a few millionths above that threshold,
@@ -75,7 +72,7 @@ without the knife's old 250-unit acceleration burst.
 `MovementSolver.ground_acceleration_rate` and native `HullMover::ground_acceleration_rate` treat a
 positive supplied scale independently of the speed target. This matters
 during duck entry, when the target has not yet reached crouched speed.
-The existing total-speed/accuracy guard remains active during crouching.
+The command-selected total ground cap keeps crouched turning accurate.
 
 At 64 Hz with accelerate 5.5, the knife's first fully crouched step changes
 from **21.484375** to **7.3046875 u/s**; after four steps it is **9.71875**

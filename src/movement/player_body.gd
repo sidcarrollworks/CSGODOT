@@ -159,10 +159,15 @@ var noclip: bool = false
 var wish_dir: Vector3 = Vector3.ZERO
 var wish_speed: float = 0.0
 ## Explicit ground acceleration scale, independent of the speed target.
-## PlayerSim supplies CS2's 250 * 0.34 crouch scale: slower than a standing
-## burst, but large enough to overcome stop friction for a crouched rifle.
+## PlayerSim supplies CS2's weapon/run/walk/duck acceleration scales.
 ## Zero lets plain bodies accelerate from wish_speed.
 var acceleration_speed: float = 0.0
+## Command-selected total ground speed cap, independent of acceleration.
+## Plain bodies have no command cap until their driver supplies one.
+var movement_speed_limit: float = INF
+## Walking tapers acceleration over the last five u/s of this goal.
+## Zero disables the taper, including while crouched and in AirMove.
+var walk_acceleration_limit: float = 0.0
 ## Per movement segment: CS2's combined acceleration (+0x108), the velocity
 ## restored after collision (+0x114), and friction overshoot (+0x128).
 ## Ordinary contact clips only velocity; a hard stop clears velocity,
@@ -887,14 +892,11 @@ func _walk_move(surface_friction: float, dt: float) -> void:
 		if dir.length_squared() > 0.0:
 			dir = dir.normalized()
 
-	# Crouch acceleration must not turn sideways momentum into extra speed.
-	# Keep any speed left after friction when crouching from
-	# a run, so the crouch still slows gradually rather than snapping down.
-	var speed_limit := INF
-	if acceleration_speed > wish_speed or (acceleration_speed > 0.0 and duck_progress > 0.0):
-		speed_limit = maxf(wish_speed, velocity.length())
+	var accelerate := config.accelerate
+	if walk_acceleration_limit > 0.0:
+		accelerate *= MovementSolver.walk_acceleration_fraction(velocity.dot(dir), walk_acceleration_limit)
 	var rate := MovementSolver.ground_acceleration_rate(
-		velocity, dir, wish_speed, config.accelerate, surface_friction, dt,
+		velocity, dir, wish_speed, accelerate, surface_friction, dt,
 		acceleration_speed, _friction_overshoot
 	)
 	_move_acceleration += dir * rate
@@ -903,9 +905,9 @@ func _walk_move(surface_friction: float, dt: float) -> void:
 	_move_acceleration.y = 0.0
 	_deferred_velocity.y = 0.0
 	var speed := velocity.length()
-	if speed > speed_limit:
+	if speed > movement_speed_limit:
 		var before_cap := velocity
-		velocity *= speed_limit / speed
+		velocity *= movement_speed_limit / speed
 		if dt > 0.0:
 			_move_acceleration += (velocity - before_cap) / dt
 	_defer_acceleration(dt)

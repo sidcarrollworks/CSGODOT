@@ -216,8 +216,11 @@ with cached support samples updated before snapshot capture. The
 records the recovered rules, query cost and paired Dust2 camera checks.
 The [horizontal integration follow-up](reference/research/horizontal-integration-2026-10-03.md)
 ports combined friction/acceleration and deferred collision velocity in both
-backends, including grenade snapshots after restoration. Complete crouch,
-walk/scoped speed branches and modern jump transitions remain open.
+backends, including grenade snapshots after restoration. The
+[command follow-up](reference/research/movement-commands-2026-10-04.md)
+ports ordinary walking/scoped acceleration, walk-entry limits and total
+ground speed caps. Complete crouch, cached subtick friction and modern
+jump transitions remain open.
 Script/native agreement checks our two ports; paired CS2 trajectories are
 still needed to establish parity.
 

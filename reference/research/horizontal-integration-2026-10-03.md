@@ -228,10 +228,10 @@ and workload summary along with its timing lines.
 
 ## Remaining boundaries
 
-- The command path retains existing acceleration scales and the gradual
-  crouch residual-speed cap. CS2's ordinary walk scale (130), five-unit goal
-  taper, special scoped weapon branches, friction stashing and absolute
-  movement-speed-cap setup still need their command/state port.
+- The [October 4 command follow-up](movement-commands-2026-10-04.md) ports
+  ordinary walk scale/taper, scoped acceleration and absolute ground caps,
+  replacing the earlier gradual crouch residual-speed guard. Friction's
+  input/time cache and command event segmentation remain open.
 - Full duck/root/view transitions, repeated-input gates and modern landing/
   bhop windows remain the next movement stage. The modern air-landing special
   movement branch is not included here.

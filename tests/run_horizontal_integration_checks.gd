@@ -109,6 +109,7 @@ func _test_ground_cap() -> void:
 	player.wish_dir = Vector3.FORWARD
 	player.wish_speed = 85.0
 	player.acceleration_speed = 250.0
+	player.movement_speed_limit = 85.0
 	var origin := player.position
 	# Turning at an 85-unit cap: first accelerate by 21.484375, then shorten
 	# the whole vector to 85. The cap's correction is continuous acceleration
@@ -118,7 +119,7 @@ func _test_ground_cap() -> void:
 	var acceleration := (expected - player.velocity) / DT
 	var midpoint := (player.velocity + expected) * 0.5
 	player.simulate(DT)
-	_vector_near(player.velocity, expected, "the residual speed cap limits the whole turn")
+	_vector_near(player.velocity, expected, "the command speed cap limits the whole turn")
 	_vector_near(player._move_acceleration, acceleration, "cap correction joins actual acceleration", 0.002)
 	_vector_near(player._deferred_velocity, acceleration * DT * 0.5, "cap correction is half deferred")
 	_vector_near(Vector3(player.position.x - origin.x, 0.0, player.position.z - origin.z), midpoint * DT,

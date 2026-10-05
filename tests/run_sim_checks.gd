@@ -1468,9 +1468,8 @@ func _test_turning_while_crouched_keeps_the_cone() -> void:
 			"%s still loses accuracy on a crouch jump" % data.display_name)
 		player.queue_free()
 		await physics_frame
-	# A faster item's crouch can leave momentum above a slower gun's cap.
-	# Turning after taking the AWP must let friction slow that momentum,
-	# rather than snapping it straight to the accurate 68 u/s crouch.
+	# 180ae3950 caps total velocity at the selected command limit, even when
+	# a faster item's crouch leaves perpendicular momentum above that limit.
 	var player := _new_player(Vector3(-2048.0, 0.0, -2048.0), "T")
 	player.inventory.add("weapon_knife")
 	player.inventory.select("weapon_knife")
@@ -1489,9 +1488,9 @@ func _test_turning_while_crouched_keeps_the_cone() -> void:
 	var awp_speed := awp.max_player_speed * player.config.duck_modifier
 	var inherited := player.shooter_state.speed
 	_check(absf(knife_speed - 85.0) < 0.01 and player.shooter_state.ducked
-		and player.shooter_state.on_ground and inherited > awp_speed and inherited < knife_speed
-		and player.weapon.current_inaccuracy(player.shooter_state) > awp.inaccuracy_crouching + 0.1,
-		"taking the AWP from a moving crouch with the knife then turning 90 degrees slows gradually and still costs accuracy (%.5f to %.5f u/s, cap %.2f)"
+		and player.shooter_state.on_ground and absf(inherited - awp_speed) < 0.01
+		and absf(player.weapon.current_inaccuracy(player.shooter_state) - awp.inaccuracy_crouching) < 0.00001,
+		"taking the AWP from a moving crouch with the knife then turning 90 degrees applies its command cap (%.5f to %.5f u/s, cap %.2f)"
 			% [knife_speed, inherited, awp_speed])
 	_run_holding(player, 2 * second, UserCmd.DUCK)
 	_check(absf(player.shooter_state.speed - awp_speed) < 0.01
