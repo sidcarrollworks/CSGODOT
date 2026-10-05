@@ -1,0 +1,94 @@
+{
+  "date": "2026-10-04",
+  "client_version": 2000924,
+  "source_revision": 11076591,
+  "vpk_directory_sha256": "a391c450b7b93389aa2b0a1ba1a0a70e2da6eedf9570e90a3b1bdfe062aad1eb",
+  "extractor": "Source2Viewer-CLI 20.0.0.0",
+  "counts": {
+    "stylesheets": 240,
+    "scripts": 231,
+    "layouts": 287
+  },
+  "audited_files": [
+    {
+      "path": "panorama/layout/mainmenu.xml",
+      "sha256": "4e57b4e3e89c9d594173d2c788b256bbe35f9cf8da56c870392fa0771c628cd8",
+      "bytes": 16163
+    },
+    {
+      "path": "panorama/layout/hud/hud.xml",
+      "sha256": "07c760e8fbecd84fd865878db9f78372f02e0a023b04af48f1bf4c4a561309a5",
+      "bytes": 6433
+    },
+    {
+      "path": "panorama/layout/teamselectmenu.xml",
+      "sha256": "189ae6562ad3751c6c9001fce057ce7a46287212d379a1dce30926380743c2fd",
+      "bytes": 4379
+    },
+    {
+      "path": "panorama/layout/buymenu.xml",
+      "sha256": "56985ddac7e15029009c4e7a212d2986da623b5afa6e2c14662e4c027a704c49",
+      "bytes": 7002
+    },
+    {
+      "path": "panorama/layout/scoreboard.xml",
+      "sha256": "3e2dc03180145f9d5ae707debd727e9947c4c6538aafeb813713e5d280d5cc90",
+      "bytes": 39874
+    },
+    {
+      "path": "panorama/styles/csgostyles.css",
+      "sha256": "8c3b4548fefa082090e8942afd6b7d44c8229b67dbadc8466e70d4364e0e24d3",
+      "bytes": 79426
+    },
+    {
+      "path": "panorama/styles/mainmenu.css",
+      "sha256": "3e5b323629bd26755a118340d9d3e9877793cb5ffce86597126f431db2ab6dd7",
+      "bytes": 35080
+    },
+    {
+      "path": "panorama/styles/hud/hud.css",
+      "sha256": "4f98bdafcee8cdba9798ff83eec50a3d308964d53ae96a74b7a4776f0e6cfb55",
+      "bytes": 3243
+    },
+    {
+      "path": "panorama/styles/teamselectmenu.css",
+      "sha256": "896699fa6ac0c6408d981a43686371171c3aedc8213f9dd778db3910e20b1776",
+      "bytes": 6757
+    },
+    {
+      "path": "panorama/styles/buymenu.css",
+      "sha256": "cc09e3d7e609c71d54c85652c53dcfe56613c32fc855c44a8a9cd9293e9adf54",
+      "bytes": 19861
+    },
+    {
+      "path": "panorama/styles/scoreboard.css",
+      "sha256": "3baef1896cfa77faa49ebaa35256761e0dad6257b1b84ffb382ccf0c71a6c7ef",
+      "bytes": 31005
+    },
+    {
+      "path": "panorama/scripts/mainmenu.js",
+      "sha256": "748166c263f2db3f72dc6c08466fb9873c80dec4d5e14eee73445858aa1b138c",
+      "bytes": 183412
+    },
+    {
+      "path": "panorama/scripts/teamselectmenu.js",
+      "sha256": "5629e49c9068175d91a136debb7187ff09000b8e033c745f8d1886fa297bd999",
+      "bytes": 20927
+    },
+    {
+      "path": "panorama/scripts/hud/hudwinpanel.js",
+      "sha256": "3e82e1e56c62c79f9182442c927cca030c62dbbb3c73ea9e314e9e9e9056fc3c",
+      "bytes": 49019
+    },
+    {
+      "path": "panorama/scripts/common/scheduler.js",
+      "sha256": "59862b478eea110361dc8dd0e39bed2bceca558d3b3151685250660ea01e1703",
+      "bytes": 2616
+    },
+    {
+      "path": "panorama/scripts/popups/popup_accept_match.js",
+      "sha256": "91b5d74991d729cf5fd551d63e8da925a4ce735480ac706ce85da77e25f2abd7",
+      "bytes": 25851
+    }
+  ]
+}

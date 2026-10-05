@@ -133,7 +133,7 @@ var agent: BuyMenuAgent
 
 var _picked_column: int = -1
 var _hovered: String = ""
-var _mouse_before: Input.MouseMode = Input.MOUSE_MODE_CAPTURED
+var _input_scope: UiInputScope
 ## Each item's card this frame: item class to its rectangle.
 var _cards := {}
 ## What each card shows this frame: item class to [refusal, price, owned,
@@ -207,9 +207,9 @@ func open() -> void:
 	_failure_left = 0.0
 	visible = true
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	mouse_force_pass_scroll_events = false
 	set_process(true)
-	_mouse_before = Input.get_mouse_mode()
-	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	_input_scope = UiInputScope.acquire(self)
 	if agent != null:
 		agent.draw_while(true)
 		agent.show_item(_in_hand())
@@ -222,13 +222,15 @@ func close() -> void:
 	visible = false
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_process(false)
-	Input.set_mouse_mode(_mouse_before)
+	_release_input()
 	if agent != null:
 		agent.draw_while(false)
 	redraw()
 
 
 func _input(event: InputEvent) -> void:
+	if not UiInputScope.available_to(self):
+		return
 	if event.is_action_pressed(&"buy_menu"):
 		if visible:
 			close()
@@ -256,6 +258,8 @@ func _input(event: InputEvent) -> void:
 
 
 func _gui_input(event: InputEvent) -> void:
+	if _input_scope == null or not _input_scope.is_top():
+		return
 	var motion := event as InputEventMouseMotion
 	if motion != null:
 		var over := item_under(motion.position)
@@ -276,6 +280,16 @@ func _gui_input(event: InputEvent) -> void:
 	elif click.button_index == MOUSE_BUTTON_RIGHT:
 		economy.undo(userid, item)
 	accept_event()
+
+
+func _exit_tree() -> void:
+	_release_input()
+
+
+func _release_input() -> void:
+	if _input_scope != null:
+		_input_scope.release()
+		_input_scope = null
 
 
 ## The item whose card is at `point`, or none.
