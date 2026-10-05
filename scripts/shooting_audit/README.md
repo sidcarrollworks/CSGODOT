@@ -243,3 +243,27 @@ build 2000924. A fresh `vphysics2.dll` project supplies `180296fa0`, the
 common interaction registration: `sky` is bit 3 and grenade clip is bit 33.
 The grenade mask `0x200003001` excludes sky. Verify these addresses again
 after updates; the report records both DLL hashes and the Listing checks.
+
+## Query batches for the tick audit
+
+The [tick audit](../../reference/research/tick-audit-cs2-2026-10-05.md)
+read the server frame, command processing, movement, traces, shots, bots,
+animation and events with `TickQuery.java`, a batch of read-only queries
+over the analyzed `CS2_Shooting_Server` project. Each command line in a
+batch file writes one output file. The commands are listed at the top of
+the script; `vtables` finds a class's vtables from MSVC RTTI when the
+analysis left them unlabelled, and `disasm` shows referenced data as f32
+and f64 so float constants can be checked.
+
+```powershell
+$batch = "$auditOut\tick\b01.txt"   # e.g. "vtables CCSPlayerPawn 120" and "decompile 180dd3dd0"
+& $ghidraHeadless $auditProjects CS2_Shooting_Server -process server.dll -noanalysis -readOnly `
+  -scriptPath scripts/shooting_audit `
+  -postScript TickQuery.java $batch "$auditOut\tick\b01"
+```
+
+A batch takes 25 to 90 seconds, most of it opening the project, so put
+many commands in one. Two headless runs must never open the same project:
+for parallel readers, copy the project directory once per reader (the
+audit used seven copies). The addresses in the audit hold only for the
+`server.dll` hash it records.
