@@ -62,14 +62,57 @@ The update also computes `min(1, 0.2 + 0.8 * remaining_fraction)` for a sound
 parameter. Its parameter identity has not been confirmed; it is not the
 interval and was not ported as an assumed volume control.
 
-## Remaining round behavior
+## Basic round planner follow-up
 
 Sid also reported that bots loop one route, never use Long, and do not hunt
-or defuse. Their navigation/combat primitives exist but they have no round
-planner. A separate follow-up will choose objectives, preserve sight memory,
-assign lanes and issue normal plant/use commands through the simulation.
-That planner will be an explicit implementation choice based on the existing
-bot research, not a claim to have recovered CS2's complete tactical AI.
+or defuse. `BotRoundPlan` now chooses one-way goals above their existing
+navigation/combat. It is an explicit implementation choice based on
+`round-hud-bots.md` B4/B8 and its item-24 recommendations, not a claim to
+have recovered CS2's complete tactical AI.
+
+- `BotRoundMap` prepares named callout floors once. Dust2's openings use Long,
+  Short and tunnels/B doors; other maps fall back to site goals and callout
+  searches. Both teams have physically passed through Long in the Dust2 replay.
+- Broad site callouts are **not** planting volumes: Dust2's A/B callout centers
+  are outside `func_bomb_target`. Plant goals are projected onto a nav floor
+  inside the actual volume, checking `BombSite.contains`; no guessed goal is
+  returned if it cannot find one. A carrier follows an opening lane to its
+  selected site and plants through held Attack/Duck with the C4 equipped.
+- A sight memory stores the enemy's position when visible, never continually
+  reading a hidden opponent's position. After ten seconds it expires; arrivals
+  lead to searches of other named areas, staggered by bot/round. CTs initially
+  hold their opening position for eight seconds. These are chosen policies.
+- Post-plant, one autonomous CT receives the defuse goal, preserving a current
+  human/bot defuser. Assignment prefers a kit within a 200-unit distance penalty,
+  uses distance and a stable userid tie-break, and excludes controlled bots.
+  Other CTs move to spots around the bomb; Ts guard. Defusing holds Use and aims
+  at the bomb through `BombSystem`, including its reach, ground and angle checks.
+  Losing the defuser allows another living bot to take the task.
+- Human T item/goal deference remains; a controlled bot counts as human-directed
+  to the planner. A bot can recover and plant after the human dies. Cover,
+  acoustic investigation, coordinated rotations, escape when no defuse is
+  possible, grenade tactics and complete CS2 AI parity remain open.
+
+Planning stays in `prepare_to_think` on the tick thread, reviewed every half
+second and immediately when bomb state/carrier/defuser changes. It neither
+reads disk nor adds unbudgeted AStar searches. `Bot._find_way` retains the
+world's existing search budget. Worker thinking reads the goal and writes only
+that bot's command/sight memory. Navigation fixtures/range bots retain their
+route loops when no competitive planner is attached.
+
+Focused checks completed real plants and kit defuses both sequentially and on
+workers. Dust2's 50-second fight remained identical at every tick across both
+thinking modes. The extracted-map quiet-round replay completed a plant and
+defuse and verified Long traversal; its committed check also verifies a CT
+round win. Sid's live match replay remains necessary for tactical quality.
+
+Full bot follow-up validation: **8,878 checks in 86 files, all passed** with
+extracted maps/assets, Box3D and current native libraries. The quiet Dust2
+check planted at 31.19 s and completed the kit defuse at 43.98 s (321 Use
+ticks). Planning alone, for nine bots post-plant over seven 10,000-tick
+trials, measured 0.01116 ms/tick median (0.01110–0.01213 ms); this excludes
+navigation searches, combat and the rest of the match. The normal interactive
+competitive launch without `--team` showed the team picker before starting.
 
 ## Validation
 

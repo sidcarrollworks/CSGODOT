@@ -20,8 +20,8 @@ extends Node3D
 @export_enum("T", "CT") var spawn_team: String = "T"
 
 ## Players on each side, you among them; bots fill every other place. Over
-## the map's nav mesh each walks from a spawn point to a bomb site and back,
-## A and B in turn; without it, round its side's spawn points, the one part
+## the map's nav mesh each follows round goals: opening lanes, searches,
+## plants and post-plant retakes/defuses. Without it, round its side's spawn points, the one part
 ## of the map it can be sure of. Each shoots whoever of the other side it sees.
 @export var team_size: int = 5
 
@@ -460,6 +460,21 @@ func _prepare_match() -> void:
 	world.match_state = match_state
 	match_state.sides_swapped.connect(_route_bots_again)
 	_add_systems()
+	_prepare_round_plans()
+	match_state.start()
+
+
+## One planner per bot, sharing map goals prepared before any tick. The
+## navigation fixtures retain their route loops, and a map without nav
+## floors/sites retains its safe spawn routes.
+func _prepare_round_plans() -> void:
+	if bomb_system == null or _sites.is_empty():
+		return
+	var data := BotRoundMap.prepare(map, _sites)
+	var counts := {"T": 0, "CT": 0}
+	for bot in bots:
+		bot.round_plan = BotRoundPlan.new(bomb_system, data, counts[bot.team])
+		counts[bot.team] += 1
 
 
 func _route_bots_again() -> void:
@@ -467,6 +482,8 @@ func _route_bots_again() -> void:
 	for sim in match_state.players:
 		if sim is Bot:
 			(sim as Bot).route = bot_route(map.spawns, sim.team, counts[sim.team], _sites, map.nav_mesh)
+			if (sim as Bot).round_plan != null:
+				(sim as Bot).round_plan.slot = counts[sim.team]
 			counts[sim.team] += 1
 
 

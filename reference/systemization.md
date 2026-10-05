@@ -27,22 +27,22 @@ should those systems be built so the roadmap's next items (inventory,
 economy, buying, the round HUD, the bomb, grenades, bots that play CS,
 netcode) land on them instead of adding to the repetition.
 
-## Current status, 2026-10-03
+## Current status, 2026-10-04
 
-Checked against merged `main` through PR #185; the dated findings below
+Checked against merged `main` at `ec22162`, including #177–179 and #189; the dated findings below
 remain historical evidence.
 
 | Step | Status in merged code | Remaining work |
 |---|---|---|
-| 0: tests and CI | Built; shared check suite and runner; October 3 local run through #185 passed 7,752 checks across 80 files with assets and native movement | Asset-free CI and headless drawing skips are explicit; four AWP settling checks remain known open |
-| 1: world, items, damage, events | Built, including match events, inventory, bomb, economy and audited grenade flight/throw timing (#183–184) | Continue using the shared contracts for new systems; add shared simulation eye state before further lineup tuning |
+| 0: tests and CI | Built; shared check suite and runner; October 4 combined run passed 8,702 checks across 82 files with assets/native movement; final HUD correction passed targeted checks and all reconciled PRs passed fresh CI | Asset-free CI and headless drawing skips are explicit; four AWP settling checks remain known open |
+| 1: world, items, damage, events | Built, including match events, inventory, bomb, economy, audited grenade flight/throw timing, shared terrain eyes (#187) and horizontal integration (#188) | Continue using shared contracts; command/crouch and modern jump transitions remain on the movement audit |
 | 2: surfaces | Shared `SurfaceProperties` lookup and Box3D surface queries are built | Preserve material identity when refining hulls and blended-surface handling |
 | 3.1: world entities | Built through `GameSystems` and the shared tick | Additional systems as they arrive |
-| 3.2: third-person presenter | `PlayerModel` is built; redundant unchanged-pose fits are skipped (#171) | Further measured animation/render cost reductions |
+| 3.2: third-person presenter | `PlayerModel` is built; redundant unchanged-pose fits are skipped (#171); foot planting follows slope/stair planes (#179) | Local stair/ramp checks and further measured animation/render cost reductions |
 | 3.3: hitbox history | Drawn skinned capsules are built | Independent authoritative tick poses and rewind history for networking |
 | 3.4: bot command source | Repeatable commands, seeded choices and parallel thinking are built | `Bot` still extends `PlayerSim`; separate the brain and improve tactical senses |
 | 3.5: saved state | Entity contracts and several system snapshots are built | Complete player/world replay and avoid repeated presentation during prediction |
-| 4: modes and settings | Competitive and Practice modes, startup mode picker and command-line options are built; Mirage uses the shared loader | Team selection is pending in #178; range/server modes, convar registry and console remain open |
+| 4: modes and settings | Competitive and unlimited-money Practice modes, startup mode/team pickers and command-line options are built; Mirage uses the shared loader; free spectating and bot takeover are merged (#177–178) | Local team/spectator/takeover checks; range/server modes, convar registry and console remain open |
 | 5: readers | Shared text `KV3` reader and `MapPaths` are built; sky extraction accepts material DATA when shader decompilation fails (#185) | Remaining parser consolidation and binary KV3 nav analysis |
 
 The findings below retain their original dated evidence and line numbers;

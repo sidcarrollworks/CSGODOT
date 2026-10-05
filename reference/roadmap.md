@@ -35,9 +35,11 @@ Updated 2026-09-30: grenade flight and lineups recorded for later (item 20a, Sid
 
 ## Current status, 2026-10-04
 
-Checked against merged `main` at `55b2e12`, through PR #188. Completion
+Checked against merged `main` at `ec22162`, including PRs #177–179 and #189. Completion
 means the described implementation exists; measurements and remaining
-parity work stay listed below. Four follow-up playtest PRs remain open.
+parity work stay listed below. The reconciled playtest PRs are all merged;
+team selection, spectating/bot takeover and foot placement still need their
+local gameplay checks.
 
 | PR | Merged change |
 |---|---|
@@ -59,6 +61,9 @@ parity work stay listed below. Four follow-up playtest PRs remain open.
 | #174 | Documentation synchronized with the merged gameplay changes |
 | #175 | Tab scoreboard with player statistics and round history |
 | #176 | Current-build shooting audit and follow-up; formula/mode ports remain open |
+| #177 | Free spectating, bot takeover, controlled-pawn HUD/effects and firing/throwing in noclip |
+| #178 | Startup team selection |
+| #179 | Feet planted while walking on slopes and stairs |
 | #180 | Current-build grenade throw, flight and fuse audit |
 | #181 | Grenade collision audit, full sweep result and repeated-bounce time budget |
 | #182 | Frame-consistency/performance audit and corrected profiling fixtures |
@@ -68,24 +73,13 @@ parity work stay listed below. Four follow-up playtest PRs remain open.
 | #186 | README, documentation and roadmap synchronized with merged gameplay and remaining audits |
 | #187 | Shared terrain-aware simulation eyes for cameras, weapon origins and grenade snapshots |
 | #188 | Ordinary horizontal friction/acceleration and deferred collision velocity in both movement backends |
-
-Pending review and local playtest, not part of merged `main`:
-
-| PR | Follow-up |
-|---|---|
-| [#177](https://github.com/sidcarrollworks/CSGODOT/pull/177) | Free spectating, bot takeover and firing/throwing in noclip |
-| [#178](https://github.com/sidcarrollworks/CSGODOT/pull/178) | Startup team selection |
-| [#179](https://github.com/sidcarrollworks/CSGODOT/pull/179) | Feet planted while walking on slopes and stairs |
-| [#189](https://github.com/sidcarrollworks/CSGODOT/pull/189) | Accepted material, grenade input, practice economy, exposure and shooting-effects playtest fixes |
+| #189 | Accepted material, grenade input, practice economy, exposure and shooting-effects playtest fixes |
 
 Shared terrain-aware simulation eyes and ordinary combined horizontal
 integration are merged. The movement section below records the remaining
 command/crouch work and CS2 capture limits. PR #189 preserves the accepted
-local playtest changes; #177 includes it because both edit viewmodel recoil
-and tracer drawing. Both target main; merge #189 before #177 so its remaining
-diff is the spectator feature. Team selection and foot placement remain
-separate PRs against main. All four require fresh
-CI; the three feature PRs still need their local gameplay checks.
+local playtest changes. All four reconciled PRs passed fresh CI; merged
+main has the same file contents as the tested combined branch.
 
 ## Part 1: what exists
 
@@ -200,12 +194,13 @@ CI; the three feature PRs still need their local gameplay checks.
   dependencies and sheet reconstruction, small impact models and additive
   flinch clips. Valve assets remain ignored; generated tables are committed.
 - `scripts/run_tests.sh` discovers each `tests/run_*.gd`, checks native/script
-  equivalence and fails on script errors/timeouts. The October 3 local run
-  through #185 passed 7,752 checks across 80 files, with extracted assets
-  and current native movement. Three drawing checks were skipped in
-  headless mode; four AWP drop-settling checks remain known open.
-  PR #185's asset-free CI passed 7,051 checks across 80 files. These counts
-  do not claim that the skipped comparisons ran.
+  equivalence and fails on script errors/timeouts. The October 4 combined
+  run passed 8,702 checks across 82 files with extracted assets and native
+  movement. The final HUD correction passed its targeted checks, including
+  463 checks on the updated combined branch. Three drawing-only suites
+  skipped in headless mode; four AWP drop-settling checks remain known open.
+  Fresh CI passed #177–179 and #189. These counts do not claim that the
+  skipped comparisons ran.
 - Render/frame/tick and hit-effects profilers record costs. The 6 ms maximum
   frame-time target remains open; merged work is not a blanket performance
   or exact-CS2-parity claim.
@@ -1152,6 +1147,16 @@ list, split into Local and Remote items, with the measurements.
     2026-09-24: `Bot.can_see`, `Bot.is_blind`.)* *(CS2's stock buying done 2026-09-23: `BotBuying`, from its
     convars and `botprofile.db`, `reference/systems/economy.md`. A team's
     plan (full buy, force, save) is still to do, beyond CS2's own bots.)*
+    *(Basic round goals implemented 2026-10-04: `BotRoundPlan`, `BotRoundMap`.
+    Dust2 opening lanes include Long for both sides; a bot pursues an enemy's
+    last-seen position then searches named areas. A carrier plants at a nav
+    floor inside the actual bomb-target volume, respecting human deference;
+    after a plant one CT is assigned to defuse, others retake, and Ts guard.
+    Plant/use remain normal player commands. Timings, assignments and lanes
+    are documented implementation choices. Headless Dust2 objective replay
+    and worker/sequential checks cover the integration. Local live-round
+    behavior still needs Sid's replay; cover/hearing, coordinated rotations,
+    grenade plans, danger avoidance and tactical AI parity remain open.)*
 
 ### Phase 9: multiplayer
 
@@ -1353,10 +1358,11 @@ audit, CS2 captures and performance measurements):
    flight changes.
 
 Mirage now provides another extracted map for paired throw references.
-The B-doors standing jump throw is accepted in play; the mid-door visual
-aim discrepancy and recorded trajectory parity remain open (item 20a/G1).
-PR #179's foot planting is a presentation follow-up, pending review and
-playtest separately from these simulation changes.
+The supplied Dust2 lineups, including B doors and mid doors, were accepted
+in the October 4 playtest after the fresh-click timing correction (#189).
+Recorded trajectory parity remains open (item 20a/G1). PR #179's foot
+planting is merged as a presentation follow-up; its local gameplay check
+remains separate from these simulation changes.
 
 - **Measurements in CS2 (Sid):** *(Local)* standing jump height, crouch-jump reach, and
   whether the dead-strafe zone feels right. The movement fixes that change
@@ -1450,12 +1456,11 @@ replay; it must not depend on drawn animation. Rendering and simulation
 optimization continue against measured captures, including the dense
 hit-effects cost and the still-open 6 ms maximum target.
 
-Shared terrain-aware eyes are merged, and this follow-up implements ordinary
-combined movement integration. Next finish command/crouch and modern jump
-transitions as listed above, while rechecking the recorded Dust2 throws and
-collecting Mirage pairs.
-The open #177–179 playtest PRs can be reviewed and tested separately; their
-features are not counted as merged here.
+Shared terrain-aware eyes, ordinary combined movement integration and the
+reconciled playtest features are merged. First check startup team selection,
+spectating/bot takeover and feet on slopes/stairs together. Then finish
+command/crouch and modern jump transitions as listed above, while
+rechecking the recorded Dust2 throws and collecting Mirage pairs.
 
 Use each phase's remaining items, the weapon TODO and the current status
 in `reference/systemization.md` to choose work. The dated playtest and

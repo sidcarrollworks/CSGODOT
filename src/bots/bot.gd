@@ -27,7 +27,8 @@ extends PlayerSim
 ## bot sees through, and a flash blinds it by the same rules it blinds you:
 ## blinded, it sees nobody, fires where it last saw the one it was engaging,
 ## and otherwise backs off until it can see again. It does not flinch, take
-## cover or think.
+## cover. Competitive gives it round goals through BotRoundPlan; without
+## one (the range and navigation fixtures), it keeps its route loop.
 ##
 ## The point of it being the same simulation is that it moves and shoots
 ## like a player. A bot that walked on rails and fired by its own rules
@@ -44,6 +45,13 @@ extends PlayerSim
 ## The floor it finds its way over (SourceNavMesh.walk_path), shared by
 ## every bot on the map; null walks the route in straight lines.
 var nav_mesh: SourceNavMesh
+
+## Competitive's objectives. Reviewed on the tick thread; the worker only
+## reads the resulting goal and writes this bot's command/sight memory.
+var round_plan: BotRoundPlan
+var round_goal_reached := false
+var last_enemy_position := Vector3.ZERO
+var last_enemy_tick := -1_000_000
 
 ## Close enough to a point to head for the next, in units.
 @export var arrive_distance: float = 24.0
@@ -307,6 +315,8 @@ func prepare_to_think(tick: int) -> void:
 		return
 	if not buy_template.is_empty():
 		_shop(tick)
+	if round_plan != null:
+		round_plan.update(self, tick)
 	if _walked_on():
 		_find_way()
 
@@ -374,6 +384,11 @@ func _think(tick: int, delta: float) -> UserCmd:
 		cmd.pitch_degrees = pitch
 		_sent_error = Vector2.ZERO
 		return cmd
+	cmd.yaw_degrees = yaw
+	cmd.pitch_degrees = pitch
+	if round_plan != null and round_plan.objective_command(self, cmd):
+		_sent_error = Vector2.ZERO
+		return cmd
 
 	if not buy_template.is_empty():
 		_take_best_gun(cmd)
@@ -392,6 +407,8 @@ func _think(tick: int, delta: float) -> UserCmd:
 		# Nothing to shoot with, nothing to stop for: an unarmed bot just walks.
 		target = _look_for_target() if weapon != null and not holds_fire else null
 	if target != null:
+		last_enemy_position = target.global_position
+		last_enemy_tick = tick
 		_seen_for += delta
 	else:
 		_seen_for = 0.0
@@ -447,6 +464,10 @@ func _think(tick: int, delta: float) -> UserCmd:
 			yaw = rad_to_deg(rotate_toward(deg_to_rad(yaw), deg_to_rad(wanted), deg_to_rad(turn_rate) * delta))
 		if way.length_squared() > 0.0:
 			cmd.move = UserCmd.move_toward(way, yaw)
+		elif round_plan != null and round_plan.active and round_goal_reached:
+			var wanted := PlayerInput.angles_from_direction(round_plan.look_at - global_position)
+			yaw = rad_to_deg(rotate_toward(deg_to_rad(yaw), deg_to_rad(wanted.x), deg_to_rad(turn_rate) * delta))
+			pitch = 0.0
 
 	cmd.yaw_degrees = yaw + error.x
 	cmd.pitch_degrees = pitch + error.y
@@ -552,6 +573,8 @@ func _way_on(cmd: UserCmd, _delta: float) -> Vector3:
 ## The way on along its path (or straight at the goal with no mesh), before
 ## it makes way for anyone: the crouch and the ledge's jump set on `cmd`.
 func _path_way(cmd: UserCmd) -> Vector3:
+	if round_plan != null and round_plan.active and round_goal_reached:
+		return Vector3.ZERO
 	var goal := route[_next]
 	if nav_mesh != null and _path == null and _no_way_to != _next:
 		# Its way is found before it thinks (_find_way), when the world has
@@ -608,6 +631,8 @@ func _path_way(cmd: UserCmd) -> Vector3:
 ## none yet and the world has a search left this tick: before it thinks,
 ## for the tick it would have looked in.
 func _find_way() -> void:
+	if round_plan != null and round_plan.active and round_goal_reached:
+		return
 	if route.is_empty() or frozen or nav_mesh == null or _path != null or _no_way_to == _next:
 		return
 	if is_instance_valid(world) and not world.may_search_path():
@@ -623,11 +648,29 @@ func _find_way() -> void:
 
 ## On to the next point of the route, to find the way there afresh.
 func _arrive() -> void:
-	_next = (_next + 1) % route.size()
+	if round_plan != null and round_plan.active and _next == route.size() - 1:
+		round_goal_reached = true
+	else:
+		_next = (_next + 1) % route.size()
 	_path = null
 	_no_way_to = -1
 	_forget_speeds()
 	_steer_memory.reset()
+
+
+## One-way round route, changed only by the planner on the tick thread.
+func set_round_route(points: PackedVector3Array) -> void:
+	route = points.duplicate()
+	_next = 0
+	_path = null
+	_no_way_to = -1
+	round_goal_reached = false
+	_forget_speeds()
+	_steer_memory.reset()
+
+
+func round_path_failed() -> bool:
+	return _no_way_to >= 0
 
 
 ## Its own side's living players but itself, as BotSteering reads them:
@@ -927,6 +970,10 @@ func respawn() -> void:
 ## after the one nearest, and forgets whoever it was facing.
 func spawn_at(spawn_position: Vector3, yaw: float, fresh: bool = false) -> void:
 	super.spawn_at(spawn_position, yaw, fresh)
+	if round_plan != null:
+		round_plan.reset()
+	round_goal_reached = false
+	last_enemy_tick = -1_000_000
 	_sent_error = Vector2.ZERO
 	_seen_for = 0.0
 	target = null
