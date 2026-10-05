@@ -15,6 +15,7 @@ const SCRATCH := "user://character_checks"
 func _initialize() -> void:
 	_test_routing()
 	_test_carry()
+	_test_surface_constants()
 	_test_shader_code()
 	_test_models_off_the_probes()
 	_test_mask_alpha()
@@ -22,6 +23,8 @@ func _initialize() -> void:
 	_test_iris_split()
 	_test_eye_aim()
 	await _test_eyes_on_the_rig()
+	_test_extracted_lenses()
+	await _test_lens_render()
 	_finish("character")
 
 
@@ -142,6 +145,100 @@ func _flag(lit: ShaderMaterial, name: String) -> bool:
 	return value == true
 
 
+## CS2's SAS lenses have constant metalness 1 and roughness 32/255. Their
+## exported ORM instead carries metalness 0 and roughness 1. Restore only
+## the scalar source inputs; keep the imported textures, AO and cache.
+func _test_surface_constants() -> void:
+	var lens := _constant_lens()
+	var lit := ProbeMaterials.build(lens)
+	_check(
+		lit.shader == CharacterMaterials.SHADER and ProbeMaterials.build(lens) == lit
+			and is_equal_approx(lit.get_shader_parameter("source_metalness"), 1.0)
+			and is_equal_approx(lit.get_shader_parameter("source_roughness"), 0.12549),
+		"constant character surface inputs come from the material even when the exported ORM lost them, on the cached character shader"
+	)
+	_check(
+		lit.get_shader_parameter("orm_texture") == lens.roughness_texture
+			and lit.get_shader_parameter("albedo_texture") == lens.albedo_texture
+			and not _flag(lit, "eyes"),
+		"the lens keeps its imported textures and baked AO, and has no eyeball shader"
+	)
+	var cloth := ProbeMaterials.build(_character())
+	var nonuniform := ProbeMaterials.build(_character({
+		"vectors": {"TextureMetalness": [1, 0, 1, 0]},
+		"textures": {"g_tMetalness": "materials/test/agent_vmat_g_tmetalness_1234abcd.vtex"},
+	}))
+	_check(
+		_no_surface_constant(cloth, "source_metalness") and _no_surface_constant(cloth, "source_roughness")
+			and _no_surface_constant(nonuniform, "source_metalness"),
+		"textured clothing and nonuniform input vectors keep their exported ORM channels"
+	)
+	var zero := ProbeMaterials.build(_character({
+		"vectors": {"TextureMetalness": [0, 0, 0, 0]},
+		"textures": {"g_tMetalness": "materials/test/agent_vmat_g_tmetalness_1234abcd.vtex"},
+	}))
+	_check(
+		zero.get_shader_parameter("source_metalness") != null
+			and is_zero_approx(zero.get_shader_parameter("source_metalness")),
+		"an explicitly nonmetallic source input is retained too"
+	)
+	var stale := _constant_lens()
+	var stale_description := BlendMaterials.vmat(stale)
+	stale_description["TextureParams"] = {
+		"g_tMetalness": "materials/test/fabric_cloth_psd_1234abcd.vtex",
+		"g_tNormal": "materials/test/fabric_normal_psd_1234abcd.vtex",
+	}
+	var varying := Image.create(2, 2, false, Image.FORMAT_RGB8)
+	varying.fill(Color(0.75, 0.2, 0.0))
+	varying.set_pixel(1, 1, Color(0.75, 0.6, 0.8))
+	stale.roughness_texture = ImageTexture.create_from_image(varying)
+	var textured := ProbeMaterials.build(stale)
+	_check(
+		_no_surface_constant(textured, "source_metalness") and _no_surface_constant(textured, "source_roughness")
+			and textured.get_shader_parameter("orm_texture") == stale.roughness_texture,
+		"a varying bound artist texture keeps its ORM channels despite stale uniform authoring vectors"
+	)
+	var unbound := ProbeMaterials.build(_character({"vectors": {
+		"TextureMetalness": [1.0, 1.0, 1.0, 0.0], "TextureRoughness": [0.12549, 0.12549, 0.12549, 1.0],
+	}}))
+	_check(
+		_no_surface_constant(unbound, "source_metalness") and _no_surface_constant(unbound, "source_roughness"),
+		"authoring vectors without generated texture bindings leave the imported channels in use"
+	)
+	for invalid: float in [NAN, INF, -INF]:
+		var broken := _constant_lens()
+		var vectors: Dictionary = BlendMaterials.vmat(broken)["VectorParams"]
+		vectors["TextureMetalness"] = [invalid, invalid, invalid, 0.0]
+		vectors["TextureRoughness"] = [invalid, invalid, invalid, 1.0]
+		var rejected := ProbeMaterials.build(broken)
+		_check(
+			_no_surface_constant(rejected, "source_metalness") and _no_surface_constant(rejected, "source_roughness"),
+			"nonfinite source constants never reach the material (%s)" % invalid
+		)
+
+
+func _no_surface_constant(material: ShaderMaterial, parameter: String) -> bool:
+	var value: Variant = material.get_shader_parameter(parameter)
+	return value == null or is_equal_approx(float(value), -1.0)
+
+
+## A lens fixture with the same lost channels as the local SAS export.
+func _constant_lens() -> StandardMaterial3D:
+	var lens := _character({"vectors": {
+		"TextureMetalness": [1.0, 1.0, 1.0, 0.0],
+		"TextureRoughness": [0.12549, 0.12549, 0.12549, 1.0],
+	}, "textures": {
+		"g_tMetalness": "materials/test/lens_vmat_g_tmetalness_1234abcd.vtex",
+		"g_tNormal": "materials/test/lens_vmat_g_tnormal_1234abcd.vtex",
+	}})
+	var orm := Image.create(2, 2, false, Image.FORMAT_RGB8)
+	orm.fill(Color(0.75, 1.0, 0.0))
+	lens.roughness_texture = ImageTexture.create_from_image(orm)
+	lens.albedo_color = Color(0.5, 0.478431, 0.478431)
+	lens.normal_enabled = false
+	return lens
+
+
 func _test_shader_code() -> void:
 	# Read as ProbeMaterials.shader_for reads it: a checkout on Windows has
 	# the shader's lines end in CRLF.
@@ -155,6 +252,13 @@ func _test_shader_code() -> void:
 		code.contains("render_mode blend_mix, depth_draw_opaque, cull_back;")
 			and code.contains("\tif (alpha_scissor >= 0.0) {\n\t\tALPHA = albedo.a;\n\t\tALPHA_SCISSOR_THRESHOLD = alpha_scissor;\n\t}\n"),
 		"it has what ProbeMaterials makes its variants from: the culling, and the cut as the probe shader writes it"
+	)
+	_check(
+		code.contains("source_roughness >= 0.0 ? source_roughness : orm.g * roughness_factor")
+			and code.contains("source_metalness >= 0.0 ? source_metalness : orm.b")
+			and code.contains("ROUGHNESS = max(material_roughness, geometric_roughness)")
+			and code.contains("cloth = mask.y * (1.0 - mask.x)") and code.contains("AO = orm.r;"),
+		"the constant inputs replace only their channels before specular anti-aliasing, and true metal has no cloth sheen"
 	)
 	# Godot numbers a shader's instance uniforms in the order they are
 	# declared and reads a mesh's by that number, so on a mesh with surfaces
@@ -225,6 +329,121 @@ func _test_models_off_the_probes() -> void:
 	)
 	model.free()
 	holder.free()
+
+
+## Check the actual imported lens surface when the local CS2 agents are
+## available. The same source is used in the map and the buy-menu world.
+func _test_extracted_lenses() -> void:
+	var path := "res://assets/characters/agents/models/ctm_sas/ctm_sas.gltf"
+	if not ResourceLoader.exists(path):
+		print("no extracted SAS agent; its lens surfaces not checked")
+		return
+	var scene := RigModel.instantiate(path)
+	var lenses := 0
+	for node in scene.find_children("*", "MeshInstance3D", true, false):
+		var mesh := node as MeshInstance3D
+		for surface in mesh.mesh.get_surface_count():
+			var source := mesh.get_active_material(surface) as BaseMaterial3D
+			if source == null or source.resource_name != "ctm_sas_lenses":
+				continue
+			lenses += 1
+			var description := BlendMaterials.vmat(source)
+			var lit := ProbeMaterials.build(source)
+			_check(
+				CharacterMaterials.is_character(description) and not CharacterMaterials.wants_eyes(description)
+					and lit.shader == CharacterMaterials.SHADER and not _flag(lit, "eyes")
+					and is_equal_approx(lit.get_shader_parameter("source_metalness"), 1.0)
+					and is_equal_approx(lit.get_shader_parameter("source_roughness"), 0.12549)
+					and lit.get_shader_parameter("cloth_mask") is Texture2D,
+				"the imported SAS gas-mask lenses retain CS2's polished metal inputs and source mask, without painted eyeballs"
+			)
+			CharacterMaterials.use_environment(mesh)
+			_check(
+				mesh.get_active_material(surface) == lit
+					and is_zero_approx(mesh.get_instance_shader_parameter(CharacterMaterials.AMBIENT_FROM_PROBES)),
+				"the buy-menu world's SAS lenses use the same cached material with its own ambient light"
+			)
+			CharacterMaterials.use_probes(mesh)
+			_check(
+				mesh.get_active_material(surface) == lit
+					and is_equal_approx(mesh.get_instance_shader_parameter(CharacterMaterials.AMBIENT_FROM_PROBES), 1.0),
+				"returning to map probes preserves the lens material and its constants"
+			)
+	_check(lenses > 0, "the extracted SAS agent includes its gas-mask lens surface")
+	scene.free()
+
+
+## A GPU check of the original failure: under direct warm light an ORM
+## with metalness 0 paints tan. Restoring the source inputs makes the metal
+## reflect its environment, whose blue is tested separately. Headless CI
+## still runs the binding/asset checks above; it cannot compile a shader.
+func _test_lens_render() -> void:
+	if DisplayServer.get_name() == "headless":
+		print("headless; the lens render check needs a GPU")
+		return
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(64, 64)
+	viewport.own_world_3d = true
+	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	root.add_child(viewport)
+	var world := WorldEnvironment.new()
+	world.environment = Environment.new()
+	world.environment.background_mode = Environment.BG_COLOR
+	world.environment.background_color = Color.BLACK
+	world.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	world.environment.ambient_light_energy = 0.0
+	world.environment.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
+	viewport.add_child(world)
+	var camera := Camera3D.new()
+	camera.position = Vector3(0.0, 0.0, 2.0)
+	camera.current = true
+	camera.near = 0.01
+	viewport.add_child(camera)
+	var sun := DirectionalLight3D.new()
+	sun.rotation_degrees = Vector3(-35.0, -40.0, 0.0)
+	sun.light_color = Color(1.0, 0.8, 0.6)
+	sun.light_energy = 2.0
+	viewport.add_child(sun)
+	var mesh := MeshInstance3D.new()
+	mesh.mesh = QuadMesh.new()
+	viewport.add_child(mesh)
+	var restored := ProbeMaterials.build(_constant_lens()).duplicate() as ShaderMaterial
+	mesh.material_override = restored
+	mesh.set_instance_shader_parameter(CharacterMaterials.AMBIENT_FROM_PROBES, 0.0)
+	var metal := await _lens_pixel(viewport)
+	var exported := restored.duplicate() as ShaderMaterial
+	exported.set_shader_parameter("source_metalness", -1.0)
+	exported.set_shader_parameter("source_roughness", -1.0)
+	mesh.material_override = exported
+	var tan := await _lens_pixel(viewport)
+	_check(
+		tan.r > 0.15 and metal.r < tan.r * 0.1,
+		"the polished lens no longer receives the warm diffuse light of the broken ORM (metal %s, exported %s)" % [metal, tan]
+	)
+	# A uniform blue panorama removes scene/sky orientation from this check.
+	var panorama := Image.create(8, 4, false, Image.FORMAT_RGBF)
+	panorama.fill(Color(0.04, 0.2, 0.8))
+	var sky_material := PanoramaSkyMaterial.new()
+	sky_material.panorama = ImageTexture.create_from_image(panorama)
+	var sky := Sky.new()
+	sky.sky_material = sky_material
+	world.environment.sky = sky
+	world.environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
+	mesh.material_override = restored
+	sun.visible = false
+	var reflection := await _lens_pixel(viewport)
+	_check(
+		reflection.b > 0.1 and reflection.b > reflection.r * 2.0,
+		"the restored metal reflects the blue environment instead of the tan base colour (%s)" % reflection
+	)
+	viewport.free()
+
+
+func _lens_pixel(viewport: SubViewport) -> Color:
+	for frame in 8:
+		await process_frame
+	await RenderingServer.frame_post_draw
+	return viewport.get_texture().get_image().get_pixel(32, 32)
 
 
 ## The masks' alpha dropped before the import, which would paint over the

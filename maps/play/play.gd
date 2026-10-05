@@ -23,7 +23,8 @@ extends Node3D
 ## and the side, after the mode, as CS2's team select asks it:
 ##
 ##   - spawn_team, in the inspector: Ask (the default) shows TeamPicker
-##     under the same rule as the mode's picker; otherwise you play T;
+##     over the loaded map under the same rule as the mode's picker;
+##     otherwise you play T;
 ##   - --team t, --team ct or --team auto (either, at random), which wins
 ##     over spawn_team:
 ##       godot --path . maps/de_dust2/de_dust2.tscn -- --mode practice --team ct
@@ -79,22 +80,26 @@ func _ready() -> void:
 		else:
 			mode_name = "Competitive"
 	var side := team_from_args(OS.get_cmdline_user_args(), team_from_args(OS.get_cmdline_args(), spawn_team))
-	if side == "Ask":
-		if _can_ask():
-			# A frame between the pickers, so the key that chose the mode is
-			# not also read as a side.
-			await get_tree().process_frame
-			team_picker = TeamPicker.new()
-			team_picker.name = "TeamPicker"
-			team_picker.bots_per_side = 0 if mode_name == "Practice" else team_size
-			add_child(team_picker)
-			side = await team_picker.chosen
-			team_picker = null
-		else:
-			side = "T"
+	var ask_team := side == "Ask" and _can_ask()
+	if side == "Ask" and not ask_team:
+		side = "T"
 	elif side == "Auto":
 		side = TeamPicker.auto_side()
-	_play(mode_name, side)
+	# Map loading, physics, both possible local players and the match's
+	# presenters are ready before any side can be clicked.
+	_play(mode_name, side, ask_team)
+	if side == "Ask":
+		# Present the prepared map and separate the pickers' key events.
+		# The world is held, so none of this time consumes warmup or freeze.
+		await get_tree().process_frame
+		team_picker = TeamPicker.new()
+		team_picker.name = "TeamPicker"
+		team_picker.bots_per_side = 0 if mode_name == "Practice" else team_size
+		add_child(team_picker)
+		side = await team_picker.chosen
+		team_picker = null
+		mode.join_team(side)
+	_show_notes()
 
 
 ## Whether to show the pickers: only when this is the scene being played,
@@ -105,9 +110,11 @@ func _can_ask() -> bool:
 
 
 ## The world, the map, and the mode on it, you on the side given.
-func _play(mode_name: String, side: String) -> void:
+func _play(mode_name: String, side: String, ask_team: bool = false) -> void:
 	world = GameWorld.new()
 	world.name = "World"
+	if ask_team:
+		world.set_physics_process(false)
 	add_child(world)
 
 	map = MapLoader.new()
@@ -121,13 +128,20 @@ func _play(mode_name: String, side: String) -> void:
 	mode.name = mode_name
 	if mode_name == "Practice":
 		mode.practice()
-	mode.spawn_team = side
+	mode.spawn_team = "T" if ask_team else side
 	mode.team_size = team_size
 	mode.warmup_seconds = warmup_seconds
 	mode.bots_walk_to_sites = bots_walk_to_sites
 	add_child(mode)
-	mode.start(world, map.contents)
+	if ask_team:
+		mode.prepare_for_team_select(world, map.contents)
+		world.initialize_drop_physics(self)
+		world.make_bodies_now()
+	else:
+		mode.start(world, map.contents)
 
+
+func _show_notes() -> void:
 	var notes := PackedStringArray(map.contents.missing)
 	notes.append_array(mode.notes)
 	for i in notes.size():

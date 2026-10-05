@@ -13,6 +13,7 @@ func _initialize() -> void:
 	_test_falls()
 	_test_clocks_and_resets()
 	_test_drawing_rates()
+	_test_viewmodel_jump_strength()
 	await process_frame
 	_test_player_view()
 	_test_view_of_a_bot_taken_over()
@@ -26,6 +27,7 @@ func _test_dip_and_recovery() -> void:
 	_check(is_zero_approx(motion.update_at(1000000, PlayerBody.AIR_JUMP, 1000000)), "takeoff starts continuously, without changing camera height at once")
 	var deepest := motion.update_at(1050000, PlayerBody.AIR_JUMP, 1000000)
 	_check(deepest < -0.5 and deepest > -1.5, "takeoff adds a small visible vertical dip")
+	_check_near(deepest, -55.0 * 0.05 * exp(-20.0 * 0.05), "halving the viewmodel jump movement keeps the accepted camera takeoff strength")
 	var recovering := motion.update_at(1150000, PlayerBody.AIR_JUMP, 1000000)
 	_check(recovering > deepest and recovering < 0.0, "the eyes rise smoothly from the takeoff dip")
 	_check(absf(motion.update_at(1400000, PlayerBody.AIR_JUMP, 1000000)) < 0.01, "the takeoff dip settles during flight, without being retriggered each frame")
@@ -53,7 +55,9 @@ func _test_falls() -> void:
 	falling.update_at(1000000, PlayerBody.AIR_START_FALL, 1000000)
 	_check(is_zero_approx(falling.update_at(1250000, PlayerBody.AIR_START_FALL, 1000000)), "falling follows the physical height without an extra airborne wave")
 	falling.update_at(1450000, PlayerBody.AIR_LAND, 1450000)
-	_check(falling.update_at(1500000, PlayerBody.AIR_LAND, 1450000) < -1.4, "a longer fall gets a landing dip too")
+	var land_dip := falling.update_at(1500000, PlayerBody.AIR_LAND, 1450000)
+	_check(land_dip < -1.4, "a longer fall gets a landing dip too")
+	_check_near(land_dip, -88.0 * 0.05 * exp(-20.0 * 0.05), "halving the viewmodel jump movement keeps the accepted camera landing strength")
 	var before_jump := falling.update_at(1500000, PlayerBody.AIR_LAND, 1450000)
 	_check(absf(falling.update_at(1500000, PlayerBody.AIR_JUMP, 1500000) - before_jump) < 0.0001, "jumping during recovery preserves the height instead of snapping it to zero")
 
@@ -100,6 +104,30 @@ func _test_drawing_rates() -> void:
 		_check(absf(_at_rate(rate) - reference) < 0.00001, "jump/landing/repeated-jump motion has the same height at %d and 240 FPS" % rate)
 
 
+func _test_viewmodel_jump_strength() -> void:
+	var camera_motion := JumpCameraMotion.new()
+	camera_motion.update_at(0, PlayerBody.NO_AIR_ACTION, 0)
+	var with_jump := ViewModelMotion.new()
+	var without_jump := ViewModelMotion.new()
+	var previous := 0
+	for now: int in [1000000, 1050000, 1150000, 1400000, 1800000, 1850000, 1950000, 2500000]:
+		var on_ground := now >= 1800000
+		var action := PlayerBody.AIR_LAND if on_ground else PlayerBody.AIR_JUMP
+		var action_usec := 1800000 if on_ground else 1000000
+		var dip := camera_motion.update_at(now, action, action_usec)
+		var delta := float(now - previous) / 1000000.0
+		var velocity := Vector3(0.0, 0.0, -250.0)
+		var look := Vector2(37.0, -20.0)
+		var drawn := with_jump.update(delta, velocity, on_ground, look, dip)
+		var base := without_jump.update(delta, velocity, on_ground, look)
+		# The previous model scale was 1.0: assert the new strength against
+		# that baseline through takeoff, flight, landing and both recoveries.
+		_check_near(drawn.origin.y - base.origin.y, dip * 0.5, "the current viewmodel jump movement is exactly half strength at %d usec" % now)
+		_check(is_equal_approx(drawn.origin.x, base.origin.x) and is_equal_approx(drawn.origin.z, base.origin.z)
+			and drawn.basis.is_equal_approx(base.basis), "halving the jump dip preserves the running bob, settle and sway at %d usec" % now)
+		previous = now
+
+
 func _test_player_view() -> void:
 	# A controller without models, audio or a live world. Exercise the real
 	# PlayerView placement while the draw fraction is held at the tick's end.
@@ -142,8 +170,8 @@ func _test_player_view() -> void:
 	player.view._process(1.0 / 224.0)
 	var shifted := player.camera.global_position
 	_check(shifted.y < usual_eyes.y - 0.5 and shifted.y > usual_eyes.y - 1.5, "PlayerView applies the takeoff dip to the camera, not just the weapon")
-	_check(arms.position.y < arms_rest.origin.y - 0.5 and arms.position.y > arms_rest.origin.y - 1.5,
-		"the arms also dip visibly relative to the camera on takeoff")
+	_check_near(arms.position.y - arms_rest.origin.y, (shifted.y - usual_eyes.y) * 0.5,
+		"the arms takeoff movement relative to the camera is half its previous strength")
 	_check(is_equal_approx(arms.position.x, arms_rest.origin.x) and is_equal_approx(arms.position.z, arms_rest.origin.z)
 		and arms.basis.is_equal_approx(arms_rest.basis), "jump motion keeps the model's scale, rotation and sideways/forward placement")
 	_check(is_equal_approx(shifted.x, usual_eyes.x) and is_equal_approx(shifted.z, usual_eyes.z)
@@ -164,8 +192,8 @@ func _test_player_view() -> void:
 	player.view._process(1.0 / 224.0)
 	world.tick = 116
 	player.view._process(1.0 / 224.0)
-	_check(arms.position.y < arms_rest.origin.y - 1.4 and arms.position.y > arms_rest.origin.y - 1.9,
-		"landing dips the arms further relative to the camera, including while crouched")
+	_check_near(arms.position.y - arms_rest.origin.y, player.view.camera_motion.height * 0.5,
+		"landing dips the arms at half their previous strength, including while crouched")
 	world.tick = 157
 	player.view._process(1.0 / 224.0)
 	_check(arms.transform.is_equal_approx(arms_rest), "the arms return fully to their clip placement after landing")

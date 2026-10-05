@@ -129,6 +129,12 @@ not alter a volume accidentally. See [SpinBox](https://docs.godotengine.org/en/4
 ## Where the code already does this
 
 - Shared menu foundation (`src/ui/ui_style.gd`, `ui_screen.gd`, `ui_input_scope.gd`): a cached native Theme, scene/container layout and explicit nested cursor/input cleanup. `UiChoiceCard`/`UiDialog` are reusable scenes; the mode picker uses them. The [UI guide](../ui.md) describes authoring. In headless mode `Input.set_mouse_mode(CAPTURED)` reports VISIBLE, so restoration checks compare the actual initial mode; graphical checks verify real capture too.
+- Settings reuse `UiWorldBackdrop` for the blurred world and `UiSettings*`
+  Theme variations for native rows, sliders, values and the SpinBox editor.
+  The full-screen backdrop deliberately copies the whole visible page;
+  the HUD still uses its smaller bounded copies. Hiding/freeing the page
+  removes that compositing work. The host hides only the pause view while
+  settings are open, keeping its shell and input ownership alive.
 - GUI checks can use `Viewport.push_input(event, in_local_coords=true)` to deliver an event in logical viewport coordinates through `_input`, GUI and unhandled input. Do not call `_gui_input` directly when testing hit-test propagation. [Viewport method reference](https://docs.godotengine.org/en/latest/classes/class_viewport.html#class-viewport-method-push-input), verified in 4.7.2 here.
 - UI transitions use `view.create_tween()`, bound to the view. A freed bound node kills its Tween; completed Tweens are not reused. No permanent `_process` loop is needed for a short reveal. [Tween reference](https://docs.godotengine.org/en/latest/classes/class_tween.html), verified in 4.7.2 here. Simulation decisions/timers still use the world's tick.
 

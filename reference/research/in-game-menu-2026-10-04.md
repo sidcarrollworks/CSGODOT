@@ -17,8 +17,9 @@ checkout. Reproduce with the command in the foundation audit. No Valve source
 or assets are redistributed by this change. The
 [existing manifest](panorama-ui-2026-10-04.json) records `layout/mainmenu.xml`,
 `scripts/mainmenu.js`, `styles/mainmenu.css` and `styles/csgostyles.css`.
-The [additional manifest](in-game-menu-2026-10-04.json) records the six settings
-and vote files read for this pass. Paths below are relative to `panorama/`.
+The [additional manifest](in-game-menu-2026-10-04.json) records the settings
+and vote files read for this pass, including the two settings styles read
+for the October 5 screenshot follow-up. Paths below are relative to `panorama/`.
 
 ## Confirmed shipped structure and behavior
 
@@ -88,8 +89,8 @@ Our Escape menu offers **Resume**, **Settings** and **Quit to desktop** in a
 source-informed horizontal action bar over a translucent world backdrop.
 Quit uses the reusable confirmation dialog. It is a supported project action,
 not a claim that CS2's in-match Disconnect button quits the application.
-Full background blur, backbuffer capture and native-menu visual parity are not
-claimed. The shared theme, layout, input scope and dialog handle presentation
+Native-menu visual parity and exact native blur kernels are not claimed.
+The shared theme, layout, input scope and dialog handle presentation
 and lifetime consistently with the foundation.
 
 The match keeps running while this menu is open. That is our explicit policy,
@@ -115,14 +116,66 @@ video settings, full key rebinding, additional audio controls and other-mode
 music profiles remain future work. No inactive placeholder buttons promise
 those features in this menu.
 
+## October 5 playtest follow-up
+
+Sid supplied current CS2 main-menu, Play, settings, loading and team-select
+screenshots, plus our SAS bot's opaque tan lens issue. The implemented subset
+uses these as visual references without claiming the unbuilt menu pages.
+
+`styles/settings/settings.css` defines 48px control rows and a 946px content
+background. `settings_slider.css` uses a 25.5% slider, a 10px gap and an 80px
+value field with a subtle border. Our native row/value/slider Theme variations
+follow these proportions; the host hides pause navigation while settings are
+open. `UiWorldBackdrop` reuses the HUD's explicit screen copy and shader,
+with the content shell's 75% black tint. Mipmap level 5 is a visual fit for
+our blur, rather than a decompiled CS2 kernel. It runs only on the open page.
+
+The startup selector now appears after the map, collision and both local
+player/presenter choices are prepared. Simulation stays at tick zero until
+joining, and warmup begins then. The chosen controller, body, arms, HUD,
+buy-menu agent and recipient-specific presenters retain their identity;
+unused staged players/bots leave the roster. World grenade/C4 presenters are
+shared. Explicit team/headless startup keeps its single-player preparation path.
+An extracted Dust2 graphical run joined CT in 21,872 microseconds; this is
+one local observation, not a timing guarantee or CI threshold.
+
+The SAS lenses already use `csgo_character.vfx`, with no `F_EYEBALLS`.
+The installed material resource
+`characters/models/ctm_sas/materials/ctm_sas_lenses.vmat_c` contains uniform
+`TextureMetalness=1` and `TextureRoughness=0.12549`. Its 4,368-byte compiled
+resource has SHA-256
+`fe69ff5789dcb00acbea3fda86dc7fcac5c991b9bdbe968eddec16e6ee6895f2`.
+Reproduce the DATA dump with Source2Viewer-CLI:
+
+```powershell
+Source2Viewer-CLI -i <CS2>/game/csgo/pak01_dir.vpk `
+  -f characters/models/ctm_sas/materials/ctm_sas_lenses.vmat_c -b DATA
+```
+
+The imported ORM instead has roughness 1 and metalness 0, producing diffuse
+tan lenses under warm direct light. Runtime binding restores the authored
+uniform inputs only for generated texture bindings, while retaining artist
+texture channels, AO and cache. Missing, nonuniform or nonfinite values keep
+the imported channels. A local Forward+ before/after render reproduced the failure and the restored dark glossy
+reflection; a separate blue-environment render verifies that reflection
+uses its environment. Character checks cover fallback channels and the actual
+imported SAS surface. The same cached material is used in the map and menu.
+
+The relative viewmodel jump dip is halved from scale 1 to 0.5 at Sid's request;
+camera impulses, spring timing and simulation are unchanged. This is playtest
+tuning, not an extracted CS2 motion value. See [jump camera](jump-camera.md).
+
 ## Validation
 
-The graphical renderer passed 154 checks across `run_game_menu_checks.gd` (56),
+The graphical renderer passed 156 checks across `run_game_menu_checks.gd` (58),
 `run_menu_input_checks.gd` (54) and `run_ui_foundation_checks.gd` (44). These cover
 menu/settings navigation, native field entry, confirmation cancellation, cursor
 and focus restoration, draft Apply/Cancel and persistence, blocked local commands
 with held-control release, bot handoff, continued world/bomb ticks, HUD visibility
-and preserved buy-menu movement.
+and preserved buy-menu movement. The current character suite also passed
+46 Forward+ checks, including lens diffuse/reflection behavior and imported
+SAS material binding. The startup suite passed 131 checks; the jump suite
+passed 135.
 
 Reviewed menu and settings captures at 1920x1080 and 3840x2160 under
 `.godot/menu-audit/`; the Dust2 capture uses the supplied T-spawn position
@@ -131,6 +184,11 @@ smoke run on extracted Dust2 clicked the actual Settings, Apply, Quit, Cancel
 and Resume controls and checked active values and isolated-file persistence.
 The existing simulation suite passed 283 checks, including 7,178 movement
 steps compared between native/script implementations and ten hitbox rays.
-The full `scripts/run_tests.sh` run passed 8,986 checks across 87 files with
-the extracted assets and native addons available. Render-only cases retained
-their normal headless skips; the graphical UI checks above ran separately.
+The October 5 full `scripts/run_tests.sh` run completed 9,151 checks across
+88 files with extracted assets and native addons available. All suites passed
+except two model assertions that still expected the previous full-strength
+jump dip. After correcting those expectations, all 313 local-asset model checks
+passed in a focused rerun. The full run printed no script errors. Three
+render-only cases retained their normal headless skips; graphical checks ran
+separately as described above. The original October 4 implementation had passed
+8,986 checks across 87 files.

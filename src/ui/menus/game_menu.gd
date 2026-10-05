@@ -8,18 +8,27 @@ signal settings_requested
 signal quit_requested
 
 var context_text := ""
+var _view: Control
 const VIEW := preload("res://src/ui/menus/game_menu_view.tscn")
 
 
 func _ready() -> void:
 	super._ready()
 	var view := mount(VIEW)
+	_view = view
 	var context := view.get_node("%Context") as Label
 	context.text = context_text
 	context.visible = not context_text.is_empty()
 	view.get_node("%Resume").pressed.connect(resume)
 	view.get_node("%Settings").pressed.connect(_request_settings)
 	view.get_node("%Quit").pressed.connect(_request_quit)
+
+
+## Settings draw their own blurred world surface, as Panorama's content
+## page hides the pause navbar. Keep this shell/input owner for returning.
+func show_content(show_view: bool = true) -> void:
+	if is_instance_valid(_view):
+		_view.visible = show_view
 
 
 func resume() -> void:

@@ -5,6 +5,11 @@ extends RefCounted
 ## material that the glTF export leaves out, handed to character.gdshader:
 ## where the material is cloth and how its sheen is coloured, and how far
 ## its occlusion darkens the direct light.
+## Authored constant metalness and roughness are carried where their packed
+## texture binding names a material-generated texture: the SAS mask lenses'
+## exported ORM is rough and nonmetallic despite their material asking for
+## metalness 1 and roughness 0.12549. Artist texture bindings keep their ORM
+## channels even where their metadata retains an old authoring vector.
 ##
 ## ProbeMaterials puts every material CS2 draws with that shader on
 ## character.gdshader, lit by the map's light probes, so the players, the
@@ -56,6 +61,19 @@ const EYE_PARAMS := {
 ## (g_flEyeBallWalleyeL1 and ...R1), kept on the material for CharacterEyes,
 ## which aims them: left, right.
 const WALLEYE := &"eye_walleye"
+## Uniform inputs recorded by CS2 alongside its generated packed textures.
+## Some Source 2 Viewer exports lose these when constructing the glTF's ORM.
+## -1 leaves the imported channel in use, so textured clothing is unchanged.
+const SURFACE_CONSTANTS := {
+	"TextureMetalness": "source_metalness",
+	"TextureRoughness": "source_roughness",
+}
+## Only generated textures identify baked constant inputs. Artist textures
+## can retain old authoring vectors alongside their varying packed channels.
+const SURFACE_TEXTURES := {
+	"TextureMetalness": "g_tMetalness",
+	"TextureRoughness": "g_tNormal",
+}
 
 ## The masks found missing, each said once.
 static var _missing := {}
@@ -96,9 +114,11 @@ static func sheen_tint(description: Dictionary) -> Color:
 
 
 ## Hands a material on character.gdshader what its description asks of it:
-## the occlusion on the direct light, and, where it asks for cloth shading,
-## the mask from textures_dir with the sheen's scale and tint.
+## constants baked into generated texture bindings, occlusion on the direct
+## light, and, where it asks for cloth shading, the mask from textures_dir
+## with the sheen's scale and tint.
 static func carry(lit: ShaderMaterial, description: Dictionary, textures_dir: String = TEXTURES_DIR) -> void:
+	_carry_surface_constants(lit, description)
 	var floats: Dictionary = description.get("FloatParams", {})
 	lit.set_shader_parameter("direct_diffuse_occlusion", float(floats.get("g_flAmbientOcclusionDirectDiffuse", 1.0)))
 	lit.set_shader_parameter("direct_specular_occlusion", float(floats.get("g_flAmbientOcclusionDirectSpecular", 1.0)))
@@ -122,6 +142,34 @@ static func carry(lit: ShaderMaterial, description: Dictionary, textures_dir: St
 	lit.set_shader_parameter("sheen_scale", float(floats.get("g_flSheenScale", SHEEN_SCALE)))
 	var tint := sheen_tint(description)
 	lit.set_shader_parameter("sheen_tint", Vector3(tint.r, tint.g, tint.b))
+
+
+## A scalar authoring input has the same value in its three colour lanes.
+## It is data, not a colour: no sRGB conversion. Restore it only where CS2
+## generated its packed texture from material inputs. Artist textures keep
+## their exported channels even if an old constant vector is still present.
+## Missing, nonfinite or nonuniform vectors leave the texture in use too.
+static func _carry_surface_constants(lit: ShaderMaterial, description: Dictionary) -> void:
+	var vectors: Dictionary = description.get("VectorParams", {})
+	var textures: Dictionary = description.get("TextureParams", {})
+	for param: String in SURFACE_CONSTANTS:
+		var vtex: Variant = textures.get(SURFACE_TEXTURES[param])
+		if not vtex is String or not (vtex as String).get_file().to_lower().contains(
+			"_vmat_" + String(SURFACE_TEXTURES[param]).to_lower() + "_"
+		):
+			continue
+		var value: Variant = vectors.get(param)
+		if not value is Array or (value as Array).size() < 3:
+			continue
+		var lanes := value as Array
+		if not (lanes[0] is float or lanes[0] is int) \
+				or not (lanes[1] is float or lanes[1] is int) or not (lanes[2] is float or lanes[2] is int):
+			continue
+		var scalar := float(lanes[0])
+		if not is_finite(scalar) or not is_finite(float(lanes[1])) or not is_finite(float(lanes[2])):
+			continue
+		if is_equal_approx(scalar, float(lanes[1])) and is_equal_approx(scalar, float(lanes[2])):
+			lit.set_shader_parameter(SURFACE_CONSTANTS[param], clampf(scalar, 0.0, 1.0))
 
 
 ## Where a material's eye texture (EYE_ALBEDO or EYE_MASK) is decompiled to

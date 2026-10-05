@@ -319,7 +319,17 @@ The HUD keeps updating behind the menu and resumes with current match state.
 settings view edits a draft; Apply validates and saves sensitivity and music
 volumes, preserving the `AudioSettings` instance shared by `RoundSounds`.
 Cancel/Escape discards the draft. No settings I/O occurs from a simulation tick.
+Settings hide the underlying pause navigation and share `UiWorldBackdrop`
+with native settings row styles; their screen-copy blur scales with resolution.
 See the [in-game menu audit](research/in-game-menu-2026-10-04.md).
+
+At startup, `PlayScene` loads the map and collision before team selection.
+`Competitive.prepare_for_team_select` holds the world at tick zero and prepares
+both local players, first-person models, HUDs and recipient-specific audio.
+`join_team` keeps the selected controller/presenters and final bot roster,
+removes the unused choices, and starts warmup. Shared world grenade/C4 views
+are created once; local presenters retain world coordinates under an identity
+top-level holder. Explicit team arguments and headless checks use direct startup.
 
 Competitive mode on dust2 or another extracted defusal map runs a match
 the way CS2's server runs one (`src/match/`), with

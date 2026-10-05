@@ -140,6 +140,8 @@ func _open_settings() -> void:
 	var screen := ClientSettingsScreen.new()
 	screen.preferences = preferences
 	screen.applied.connect(_apply_preferences)
+	game_menu.show_content(false)
+	screen.tree_exited.connect(game_menu.show_content)
 	game_menu.add_child(screen)
 
 

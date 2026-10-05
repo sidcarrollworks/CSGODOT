@@ -45,6 +45,26 @@
       "path": "panorama/scripts/settingsmenu_shared.js",
       "sha256": "0401625bafb24e59dcffa2214aebb723b810b214f2ba5864c052ba5370b61a4e",
       "bytes": 14354
+    },
+    {
+      "path": "panorama/styles/settings/settings.css",
+      "sha256": "6c9b6ced9a3f95326ee16ea62682f9205b7979daa9f9412813c4358d7b57f85e",
+      "bytes": 8456
+    },
+    {
+      "path": "panorama/styles/settings/settings_slider.css",
+      "sha256": "c01eb15f3efaffc8cb199867cf8db1532a09f452494a673f34be8d084fe2059a",
+      "bytes": 1722
     }
-  ]
+  ],
+  "follow_up_date": "2026-10-05",
+  "follow_up_resources": [
+    {
+      "path": "characters/models/ctm_sas/materials/ctm_sas_lenses.vmat_c",
+      "sha256": "fe69ff5789dcb00acbea3fda86dc7fcac5c991b9bdbe968eddec16e6ee6895f2",
+      "bytes": 4368,
+      "kind": "compiled material DATA inspected with Source2Viewer-CLI"
+    }
+  ],
+  "follow_up_extractor_product_version": "20.0.6980+a06886f7d06049052d32a7381ec05523064a2ca0"
 }

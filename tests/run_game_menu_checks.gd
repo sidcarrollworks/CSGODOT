@@ -126,6 +126,7 @@ func _test_controller() -> void:
 	controller._open_settings()
 	var settings := menu.get_child(menu.get_child_count() - 1) as ClientSettingsScreen
 	_check(settings != null and settings.input_scope.is_top(), "Settings opens above the menu")
+	_check(not menu._view.visible, "settings hides the underlying pause surface before blurring the world")
 	settings.draft.sensitivity = 2.75
 	settings.draft.audio.mvp = 0.5
 	settings.apply()
@@ -134,6 +135,7 @@ func _test_controller() -> void:
 	_check_equal(ClientPreferences.read_file(controller.preferences_file).sensitivity, 2.75, "host persists accepted settings")
 	_check(menu.input_scope.is_top() and UiInputScope.blocks_gameplay(), "settings handoff keeps underlying menu blocking")
 	await process_frame
+	_check(menu._view.visible, "closing settings restores the pause navigation")
 	controller._confirm_quit()
 	var dialog := menu.get_child(menu.get_child_count() - 1) as UiDialog
 	root.push_input(_escape(), true)

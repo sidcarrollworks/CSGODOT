@@ -33,7 +33,7 @@ mode and map loader.
 | **HUD** | Health, armour and ammo, money, team cards and the round clock, weapon selection and use prompts, damage directions, a kill feed with assists and kill-type icons, and round win panels with the MVP and a fun fact. Hold Tab for the competitive scoreboard, with player statistics and round history. Round results have fixed foreground text and a slower-growing copy clipped behind it, on a translucent strip that fades at the sides. Dead players can spectate teammates. |
 | **Sound** | Weapon shots, reloads, near-empty and dry-fire clicks, body/head/armour hit feedback for attackers, victims and onlookers, footsteps by surface, grenade and bomb sounds, flash ringing and muffling, the announcer, round countdowns and music cues. |
 | **UI foundation** | Panorama-informed shared menu styles, reusable choice cards and confirmation dialogs, scene-based flow layouts and nested input/cursor ownership. Mode selection uses the shared components; a standalone gallery previews them without loading a map. [UI authoring guide](reference/ui.md). |
-| **In-game menu** | Escape opens Resume, Settings and confirmed Quit to desktop. Mouse sensitivity and music volumes persist after Apply; Cancel discards the draft. The match keeps running while local gameplay input is blocked, including while controlling a bot. |
+| **In-game menu** | Escape opens Resume, Settings and confirmed Quit to desktop. Mouse sensitivity and music volumes persist after Apply; Cancel discards the draft. Settings use a translucent blurred-world surface and consistent control rows. The match keeps running while local gameplay input is blocked, including while controlling a bot. |
 
 **Not yet:** Zeus attacks, burst-mode and silencer switching,
 full grenade effects and CS2-matched grenade lineups, radar and the remaining
@@ -96,7 +96,8 @@ Open the project in Godot, then choose a scene:
   asks for the mode first: Competitive (5 v 5 with bots) or Practice (no
   bots, and warmup lasts until F5 starts the rounds). `--mode competitive`
   or `--mode practice` on the command line skips the question. Then it asks
-  for your side, as CS2's team select does: Terrorists, Counter-Terrorists,
+  for your side over the loaded map, with the players and match prepared
+  so choosing a side joins immediately: Terrorists, Counter-Terrorists,
   or Auto Select, which also picks when its 15 s run out. `--team t`,
   `--team ct` or `--team auto` skips that.
   [`reference/extracting.md`](reference/extracting.md) covers each step,

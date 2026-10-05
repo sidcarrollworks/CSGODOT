@@ -1252,6 +1252,11 @@ list, split into Local and Remote items, with the measurements.
     two halves, and M (`teammenu`) opening the screen mid-match to change
     side. **Local:** choose each side and Auto Select in fullscreen, and
     let the countdown run out once.
+    **October 5 follow-up implemented:** load the map, collision, both local
+    player choices and presenters before showing the selector. Selection
+    retains the prepared side and final roster; warmup starts on joining.
+    The loaded world shows through the selector. Extracted Dust2 graphical
+    startup and T/CT/practice/Auto/headless checks passed; Sid's replay pending.
 
 24e. **October 4 competitive playtest HUD/audio and takeover follow-up.**
     *(Remote implemented; Local replay pending)* The planted-C4 icon replaces
@@ -1287,6 +1292,10 @@ list, split into Local and Remote items, with the measurements.
     music controls persist after Apply; Cancel discards the draft. Blocking
     screens neutralize local commands, including bot takeover, while the match
     and bomb timer keep running. Buy-menu movement retains its existing policy.
+    **October 5 playtest follow-up:** settings share a blurred-world backdrop,
+    48px row surfaces, compact sliders and boxed values informed by Sid's
+    CS2 screenshots and the shipped settings styles. The pause navigation
+    hides while settings are open and returns on closing.
     See the [Escape-menu audit](research/in-game-menu-2026-10-04.md).
     **Screens/settings remain:** main, host/join, full team select, crosshair,
     viewmodel, rebinding the keys of item 12a's table, additional audio and video.

@@ -28,6 +28,7 @@ func _ready() -> void:
 	draft = (preferences if preferences != null else ClientPreferences.new()).copy()
 	var view := mount(VIEW)
 	_sensitivity = view.get_node("%Sensitivity") as SpinBox
+	_sensitivity.get_line_edit().theme_type_variation = &"UiSettingsInput"
 	_sensitivity.set_value_no_signal(draft.sensitivity)
 	_sensitivity.value_changed.connect(_set_sensitivity)
 	for control_name: String in MUSIC_FIELDS:

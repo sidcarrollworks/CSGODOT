@@ -81,6 +81,15 @@ stops a polled action.
 The in-game `GameMenu` emits Resume, Settings and Quit requests. Its controller
 owns the actions and opens `ClientSettingsScreen` or the shared `UiDialog`.
 Views never pause the world or write player simulation state.
+The host hides the pause view while settings draw their own backdrop, and
+restores it when the nested screen leaves the tree; input ownership remains
+with the shell throughout.
+
+Startup team selection is separate from this running-match policy. `PlayScene`
+loads the map and prepares both local player/presenter choices at tick zero
+before mounting `TeamPicker`. Joining retains the selected objects, removes
+the unused staged roster entries and starts warmup. Explicit `--team` and
+headless startup prepare only the selected side.
 
 `ClientPreferences` caches sensitivity and the existing `AudioSettings` values
 from `user://client_settings.cfg` at startup. Settings edits an independent
@@ -110,6 +119,13 @@ An aspect/UI-scale change is a separate feature, with its own visual checks.
   `bind(title, description, selected, enabled)`. Its native Button handles
   pointer hit testing while decorative children ignore the mouse. Binding
   before mounting preserves the configured selection/disabled state.
+- Settings use `UiSettingsSurface`, `UiSettingsRow`, `UiSettingsSlider`,
+  `UiSettingsValue` and `UiSettingsInput`: native panel/container rows with a
+  bottom rule, compact controls and consistent value boxes. Use
+  `UiWorldBackdrop` for a full-screen blurred-world menu surface; it reuses
+  the HUD's explicit screen copy and resolution-aware shader, and costs no
+  layout or polling loop. It copies/composites the screen while visible, so
+  keep it out of gameplay views that do not need a blurred surface.
 - Share resources, but duplicate an instance's changed StyleBox. Never alter
   the shared Theme or its StyleBoxes to select one card.
 - Labels show plain text. Supply translated strings with `tr()` when a

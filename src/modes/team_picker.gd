@@ -13,9 +13,9 @@ extends UiScreen
 ## mode that plays with no body of your own (free spectating, a thread of
 ## its own).
 ##
-## PlayScene shows it after the mode is chosen and before the map loads, so
-## the countdown is not held up by the load. It runs on the frame, before
-## any simulation: what it decides is only which side the mode places you on.
+## PlayScene shows it over the loaded map after both possible players and
+## the match are prepared. It runs on the frame while simulation is held:
+## choosing a side joins its ready player without loading the level or models.
 
 ## The side chosen: "T" or "CT". Auto Select says which side it chose.
 signal chosen(side: String)
@@ -143,7 +143,7 @@ class _Screen:
 			picker.choose(_choice_at(button.position))
 
 	func _draw() -> void:
-		draw_rect(Rect2(Vector2.ZERO, size), Color(0.02, 0.02, 0.03, 1.0))
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.02, 0.02, 0.03, 0.4))
 		for side: String in MatchState.SIDES:
 			_draw_side(side)
 		# The countdown: a ring that empties, the seconds inside.

@@ -273,6 +273,15 @@ What dust2 turned out to be:
   paint the iris's colour, so the prepare step moves the alpha into a
   greyscale `<name>_iris.png` beside the colour
   (`src/player/export_character_masks.gd`).
+- **Gas-mask lenses can lose authored surface constants.** The SAS lenses
+  use `csgo_character.vfx`, rather than the eyeball feature. Their source
+  material sets `TextureMetalness=1` and `TextureRoughness=0.12549`, but the
+  local exported ORM contains metalness 0 and roughness 1. `CharacterMaterials`
+  restores uniform scalar inputs recorded for generated texture bindings;
+  artist textures and absent, nonuniform or nonfinite vectors keep the
+  imported channels. AO and texture maps stay
+  intact. This restores dark polished lenses rather than diffuse tan circles,
+  using the same cached shader in the match and menu worlds.
 - **A Source 2 Viewer older than CS2's shaders exports the wrong channels.**
   The glTF export asks the game's compiled shaders which channels of a
   texture feed what; CS2's update of September 2026 moved them to version 72,
