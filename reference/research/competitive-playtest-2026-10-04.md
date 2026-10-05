@@ -78,3 +78,6 @@ repeat takeover, beep intervals and actual layered playback. A rendered 1080
 HUD fixture with extracted fonts/icons verifies spectator text, reserve ammo,
 the planted icon and inventory gutters. Local match playtesting is still
 needed for the corrected beeps and damage feedback.
+
+`scripts/run_tests.sh` passed **8,832 checks across 84 files** locally with
+extracted assets, Box3D and the current debug/release native libraries.
