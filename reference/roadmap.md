@@ -1152,6 +1152,16 @@ list, split into Local and Remote items, with the measurements.
     2026-09-24: `Bot.can_see`, `Bot.is_blind`.)* *(CS2's stock buying done 2026-09-23: `BotBuying`, from its
     convars and `botprofile.db`, `reference/systems/economy.md`. A team's
     plan (full buy, force, save) is still to do, beyond CS2's own bots.)*
+    *(Basic round goals implemented 2026-10-04: `BotRoundPlan`, `BotRoundMap`.
+    Dust2 opening lanes include Long for both sides; a bot pursues an enemy's
+    last-seen position then searches named areas. A carrier plants at a nav
+    floor inside the actual bomb-target volume, respecting human deference;
+    after a plant one CT is assigned to defuse, others retake, and Ts guard.
+    Plant/use remain normal player commands. Timings, assignments and lanes
+    are documented implementation choices. Headless Dust2 objective replay
+    and worker/sequential checks cover the integration. Local live-round
+    behavior still needs Sid's replay; cover/hearing, coordinated rotations,
+    grenade plans, danger avoidance and tactical AI parity remain open.)*
 
 ### Phase 9: multiplayer
 
