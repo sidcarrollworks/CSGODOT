@@ -41,8 +41,7 @@ extends Resource
 ## playtest-2026-09-25.md issue 18).
 @export var bot_defer_to_human_items: bool = true
 ## The same for the round's goals: with a human on the team, the bots leave
-## the plant to them. Bots have no bomb goals yet (roadmap 24 is to read
-## this when they plant).
+## the plant to them. BotRoundPlan reads it before choosing a plant goal.
 @export var bot_defer_to_human_goals: bool = true
 
 ## How close a terrorist's feet have to come to a dropped bomb to pick it
