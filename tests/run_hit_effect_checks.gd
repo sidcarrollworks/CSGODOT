@@ -126,6 +126,11 @@ func _test_events() -> void:
 	_check(not wall_dust.is_empty(), "queued wall impacts dispatch their authored dust child")
 	for p in wall_dust:
 		_check(p.velocity.normalized().is_equal_approx(Vector3.RIGHT), "world-event dispatch passes the surface-normal frame through to children")
+	view.particles.live.clear()
+	_hit(game, 9, 27, 0, 73, DamageInfo.HITGROUP_CHEST, 1000003)
+	game.events.flush()
+	view._start(view.pending_hits()[-1], Vector3.ZERO)
+	_check(view.particles.live.is_empty(), "own damage does not place a blood sprite across the local camera")
 	for i in 200:
 		view.queue_world("concrete", Vector3.ZERO, Vector3.UP, Vector3.DOWN, i)
 	_check_equal(view.pending_hits().size(), HitEffects.LIMIT_PENDING, "event flood is bounded")

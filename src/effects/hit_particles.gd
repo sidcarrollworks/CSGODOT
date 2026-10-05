@@ -208,6 +208,10 @@ func draw(quads: Node, models: Node, eye: Transform3D, now: int, fov: float = 90
 			continue
 		var layer: Dictionary = p.layer
 		var context: Dictionary = p.context
+		# Local screen CPs require the client attachment frame. Do not draw
+		# them with guessed world units in front of the camera.
+		if bool(context.get("screen", false)):
+			continue
 		if int(context.get("distance_at_usec", -1)) != now or context.get("distance_eye", Vector3.INF) != eye.origin:
 			update_distance(context, eye.origin.distance_to(context.at))
 			context.distance_at_usec = now
@@ -257,13 +261,6 @@ func draw(quads: Node, models: Node, eye: Transform3D, now: int, fov: float = 90
 				xform = EffectQuads.streak(tail, centre, half, eye.origin)
 			else:
 				xform = EffectQuads.sprite(centre, half, roll, eye)
-			if bool(p.context.screen):
-				# CP positions for local screen particles are client code. Put
-				# their extracted glow/alpha on a small camera-facing plane;
-				# keep them clear of the centre and never alter aim/camera.
-				var offset: Vector3 = p.origin - p.context.at
-				var screen_at: Vector3 = eye.origin - eye.basis.z * 8.0 + eye.basis.x * offset.x * 0.035 + eye.basis.y * offset.y * 0.035
-				xform = EffectQuads.sprite(screen_at, clampf(half * 0.025, 0.1, 1.5), roll, eye)
 			var threshold := render_value(renderer, "alpha_threshold", p, renderer_index, age, 0.0)
 			var rate := render_value(renderer, "frame_rate", p, renderer_index, age, 0.1)
 			quads.card(renderer, xform, int(p.seq), animation_frame(renderer, p, frame, age, rate), shade, threshold)

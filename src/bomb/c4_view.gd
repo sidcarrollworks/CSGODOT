@@ -15,7 +15,8 @@ extends Node3D
 ## Every sound is CS2's own sound event (SoundEvents;
 ## reference/research/audio-gameplay.md 5): the beep is C4.PlantSound on
 ## site A and the lower C4.PlantSoundB on B, their _10sec versions in the
-## last ten seconds, all silent past 1300 units; the plant starting
+## warning layered over them from eleven seconds left, all silent past
+## 1300 units; the plant starting
 ## (c4.initiate, to 1100) and done (c4.plant, to 4100), the defuse starting
 ## and done (c4.disarmstart and c4.disarmfinish, to 2000), the pickup
 ## (Player.PickupC4), and the blast (c4.explode, with the shockwave's
@@ -23,9 +24,9 @@ extends Node3D
 ## when (watch()), heard on the next frame from where the bomb is.
 
 const MODEL_PATH := "res://assets/weapons/weapons/models/c4/weapon_c4.gltf"
-## The beeps switch to their last-ten-seconds sounds (the client's
-## m_bTenSecWarning, reference/research/round-bomb-grenades.md 1.3).
-const TEN_SECONDS := 10.0
+## The current client layers the warning stem over the regular beep from
+## eleven seconds left; its authored delay is kept by SoundEvents.
+const WARNING_SECONDS := 11.0
 ## What each of the bomb's events sounds like.
 const EVENT_SOUNDS := {
 	&"bomb_beginplant": ["c4.initiate"],
@@ -141,12 +142,15 @@ static func all_sounds() -> PackedStringArray:
 	return names
 
 
-## A beep's sound event, by the site the bomb is on and the seconds left:
-## A's, or B's, lower in pitch so a CT can tell the site by ear, and each
-## one's own in the last ten seconds.
-static func beep_event(site: String, seconds_left: float) -> String:
+## Every layer of a beep: the site's regular sound always remains audible.
+## Current CS2's planted-C4 update additionally starts its warning stem,
+## rather than replacing the regular beep (competitive-playtest ledger).
+static func beep_events(site: String, seconds_left: float) -> PackedStringArray:
 	var event := "C4.PlantSoundB" if site == "B" else "C4.PlantSound"
-	return event + "_10sec" if seconds_left <= TEN_SECONDS else event
+	var layers := PackedStringArray([event])
+	if seconds_left <= WARNING_SECONDS:
+		layers.append(event + "_10sec")
+	return layers
 
 
 ## The bomb's events heard since the last frame and not played, as a copy.
@@ -213,7 +217,8 @@ func _process(_delta: float) -> void:
 ## A beep at this moment, with this many seconds left on the timer.
 func _beep(at_seconds: float, seconds_left: float) -> void:
 	_lit_at = at_seconds
-	sounds.start(beep_event(bomb.site, seconds_left), bomb.position, SOURCE)
+	for event in beep_events(bomb.site, seconds_left):
+		sounds.start(event, bomb.position, SOURCE)
 
 
 func _build_body() -> Node3D:

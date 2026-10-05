@@ -163,11 +163,14 @@ func _test_the_blast() -> void:
 
 
 func _test_the_beeps() -> void:
-	# Gritter's fit to CS:GO's beeps (round-bomb-grenades.md 1.3).
-	_check(absf(C4.beep_interval(40.0, 40.0) - 0.954) < 0.002, "1.05 beeps a second when it is planted (%.3f s)" % C4.beep_interval(40.0, 40.0))
-	_check(absf(C4.beep_interval(20.0, 40.0) - 0.543) < 0.002, "1.84 a second half way (%.3f s)" % C4.beep_interval(20.0, 40.0))
-	_check(absf(C4.beep_interval(10.0, 40.0) - 0.294) < 0.002, "3.40 a second at ten seconds left (%.3f s)" % C4.beep_interval(10.0, 40.0))
-	_check(absf(C4.beep_interval(0.0, 40.0) - 0.128) < 0.002, "7.8 a second at the end (%.3f s)" % C4.beep_interval(0.0, 40.0))
+	# Current client's linear schedule and minimum, independently sampled.
+	_check_near(C4.beep_interval(40.0, 40.0), 1.0, "one second at the plant")
+	_check_near(C4.beep_interval(20.0, 40.0), 0.55, "0.55 seconds halfway through")
+	_check_near(C4.beep_interval(10.0, 40.0), 0.325, "0.325 seconds with ten left")
+	_check_near(C4.beep_interval(0.0, 40.0), 0.15, "0.15-second floor")
+	_check_near(C4.beep_interval(-1.0, 40.0), 0.15, "past expiry still bounded")
+	_check_near(C4.beep_interval(50.0, 40.0), 1.0, "remaining fraction capped at one")
+	_check_near(C4.beep_interval(10.0, 20.0), 0.55, "cadence scales with the timer")
 	_check(C4.beep_interval(10.0, 40.0) < C4.beep_interval(30.0, 40.0), "the beeps close in as it runs down")
 
 

@@ -1507,13 +1507,14 @@ func pawn() -> PlayerSim:
 
 
 ## Whether this player, dead, may take over a bot: one on their side,
-## alive, that nobody else drives, and only one a round. CS2 needs it
-## watched from its eyes or behind it (the spectator bar offers it there),
+## alive, that nobody else drives. Sid's competitive playtest allows
+## another surviving bot after the previous one dies. The player must be
+## watching it from its eyes or behind it (the spectator bar offers it there),
 ## and bots controllable (bot_controllable 1). Inferred from CS:GO's rules,
 ## which CS2 kept the fields of (CCSPlayerController's m_bControllingBot,
 ## m_bHasControlledBotThisRound, m_bCanControlObservedBot).
 func can_control(bot: PlayerSim) -> bool:
-	return not alive and not respawns and not controlled_bot_this_round \
+	return not alive and not respawns \
 		and not is_instance_valid(controlling) and bot != null and is_instance_valid(bot) \
 		and bot.is_bot and bot.alive and bot.team == team and not is_instance_valid(bot.controlled_by) \
 		and observer_mode != ObserverMode.ROAMING

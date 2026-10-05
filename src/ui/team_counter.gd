@@ -181,6 +181,9 @@ class Card:
 
 var clock: String = ""
 var clock_red: bool = false
+var bomb_planted: bool = false
+var bomb_defused: bool = false
+var bomb_light := 1.0
 var scores := {"T": 0, "CT": 0}
 var alive := {"T": 0, "CT": 0}
 ## Cards by side, nearest the block first.
@@ -211,8 +214,18 @@ func show_match(state: MatchState, you: PlayerSim, economy: Economy, now_usec: i
 	var live := state.phase == MatchState.Phase.LIVE
 	clock = "" if state.phase == MatchState.Phase.OVER or is_inf(seconds) else GameHud.clock_text(seconds)
 	clock_red = live and seconds <= RED_SECONDS
+	bomb_planted = bomb != null and bomb.state in [C4.State.PLANTED, C4.State.DEFUSED, C4.State.EXPLODED] \
+		and state.phase in [MatchState.Phase.LIVE, MatchState.Phase.ROUND_END]
+	bomb_defused = bomb_planted and bomb.state == C4.State.DEFUSED
+	bomb_light = 1.0
+	if bomb_planted:
+		clock = ""
+		clock_red = false
+		if bomb.state == C4.State.PLANTED:
+			var interval := C4.beep_interval(bomb.seconds_left(now_usec), bomb.rules.timer_seconds)
+			bomb_light = snappedf(0.45 + 0.55 * absf(cos(bomb.seconds_planted(now_usec) * PI / interval)), 1.0 / 32.0)
 	show_equipment = not live or (you != null and not you.alive)
-	var signature: Array = [clock, clock_red, show_equipment, mine]
+	var signature: Array = [clock, clock_red, bomb_planted, bomb_defused, bomb_light, show_equipment, mine]
 	var carrier := bomb.carrier if bomb != null and bomb.state == C4.State.CARRIED else C4.NOBODY
 	var reporting := damage != null and you != null and state.phase == MatchState.Phase.ROUND_END
 	var reports := 0
@@ -330,6 +343,15 @@ func _draw() -> void:
 	if not clock.is_empty():
 		HudStyle.draw_text(self, Vector2(middle, CLOCK_BASELINE), clock, CLOCK_SIZE,
 			CLOCK_RED if clock_red else Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+	if bomb_planted:
+		var icon := HudStyle.icon("hud/teamcounter/teamcounter_bomb-planted-defused" if bomb_defused \
+			else "hud/teamcounter/teamcounter_bomb-planted")
+		var wash := Color(0.35, 1.0, 0.45) if bomb_defused else Color(1.0, 0.1, 0.08, bomb_light)
+		if icon != null:
+			HudStyle.draw_fitted(self, icon, Rect2(middle - 19.0, TOP, 38.0, CLOCK_BOTTOM), wash)
+		else:
+			HudStyle.draw_text(self, Vector2(middle, CLOCK_BASELINE), "C4", CLOCK_SIZE, wash,
+				HORIZONTAL_ALIGNMENT_CENTER)
 	var dark_left := middle - DARK_WIDTH * 0.5
 	for i in 2:
 		var side := "CT" if i == 0 else "T"

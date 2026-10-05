@@ -264,10 +264,10 @@ func _test_the_bomb_ten_seconds() -> void:
 
 
 func _test_the_bombs_own_sounds() -> void:
-	_check_equal(C4View.beep_event("A", 30.0), "C4.PlantSound", "on A the beep is C4.PlantSound (c4_beep2)")
-	_check_equal(C4View.beep_event("B", 30.0), "C4.PlantSoundB", "on B, C4.PlantSoundB (c4_beep3)")
-	_check_equal(C4View.beep_event("A", 10.0), "C4.PlantSound_10sec", "A's in the last ten seconds")
-	_check_equal(C4View.beep_event("B", 4.0), "C4.PlantSoundB_10sec", "B's too")
+	_check_equal(C4View.beep_events("A", 30.0), PackedStringArray(["C4.PlantSound"]), "A's regular beep")
+	_check_equal(C4View.beep_events("B", 11.01), PackedStringArray(["C4.PlantSoundB"]), "B's regular beep before the warning")
+	_check_equal(C4View.beep_events("A", 11.0), PackedStringArray(["C4.PlantSound", "C4.PlantSound_10sec"]), "warning joins the regular beep at eleven seconds")
+	_check_equal(C4View.beep_events("B", 4.0), PackedStringArray(["C4.PlantSoundB", "C4.PlantSoundB_10sec"]), "B keeps both layers too")
 	var b := SoundEvents.find("C4.PlantSoundB")
 	_check(is_equal_approx(b.pitch, 0.9) and is_equal_approx(b.volume, 0.5), "B's is lower and quieter (pitch 0.9, volume 0.5)")
 	for name in ["C4.PlantSound", "C4.PlantSoundB", "C4.PlantSound_10sec", "C4.PlantSoundB_10sec"]:
@@ -292,5 +292,8 @@ func _test_the_bombs_own_sounds() -> void:
 	_check(names.has("c4.plant") and names.has("c4.disarmstart"), "then the plant and the defuse's start are heard (%s)" % [names])
 	var at: Array = view.sounds.voices().filter(func(v: Dictionary) -> bool: return v["event"] == "c4.plant")
 	_check(at.size() == 1 and (at[0]["position"] as Vector3).is_equal_approx(bomb.position), "from where the bomb is")
+	view._beep(0.0, 5.0)
+	var layers := view.sounds.voices().map(func(v: Dictionary) -> String: return v["event"])
+	_check(layers.has("C4.PlantSound") and layers.has("C4.PlantSound_10sec"), "the view actually plays both beep layers")
 	view.queue_free()
 	await process_frame
