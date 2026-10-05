@@ -127,6 +127,13 @@ The schemas that decide the rules:
 
 ### 1.3 The timer, the beeps and the last ten seconds
 
+**Superseded cadence finding, 2026-10-04:** the current client was decompiled
+and byte-verified. Its interval is `max(0.15, 0.1 + 0.9 * remaining_fraction)`;
+it layers the warning event over the regular beep from 11 seconds left.
+`C4.beep_interval` and `C4View` now use that behavior. The historical CS:GO fit
+below is retained as research history, not the game's implementation. See the
+[current audit](competitive-playtest-2026-10-04.md#current-cs2-bomb-beep-audit).
+
 - 40 s from arming (`mp_c4timer`: "how long from when the C4 is armed until it blows").
 - **Beep cadence.** The client schedules beeps from the fraction of the timer done: client.dll
   holds the debug line "C4 Sounds: Playing sound %s at %f bomb detonation in %fs at %f;
@@ -148,7 +155,7 @@ The schemas that decide the rules:
 
   (Corrected 2026-09-28, playtest issue 21: the rows at 30, 20, 10 and 5 s had left
   out the 1.04865 factor; these are the formula's own values, which `C4.beep_interval`
-  uses.)
+  used before the October 4 audit.)
 
   The fit is CS:GO's. The client string suggests CS2 kept the fraction-based schedule
   (**Inferred**). One search summary says "every 1.33 s at 40 s left"

@@ -29,6 +29,7 @@ func _initialize() -> void:
 	await _test_the_blur()
 	await _test_the_team_counter()
 	await _test_the_bomb_carrier()
+	await _test_planted_clock()
 	await _test_the_pickup_prompt()
 	await _test_the_alert_lines()
 	await _test_the_buy_menu_agent()
@@ -455,6 +456,46 @@ func _test_the_pickup_prompt() -> void:
 	_check_equal(hud.use_prompt.text, "", "no selected ground item clears the prompt")
 	hud.free()
 	you.free()
+	await process_frame
+
+
+func _test_planted_clock() -> void:
+	var state := MatchState.new()
+	root.add_child(state)
+	state.phase = MatchState.Phase.LIVE
+	state.phase_ends_usec = 120_000_000
+	var counter := TeamCounter.new()
+	root.add_child(counter)
+	var bomb := C4.new()
+	counter.show_match(state, null, null, 20_000_000, bomb)
+	_check_equal(counter.clock, "1:40", "an unplanted live round shows its round clock")
+	bomb.state = C4.State.PLANTED
+	bomb.planted_usec = 20_000_000
+	counter.show_match(state, null, null, 21_000_000, bomb)
+	_check(counter.clock.is_empty() and counter.bomb_planted and not counter.bomb_defused,
+		"planting replaces the remaining round time with the planted bomb indicator")
+	bomb.state = C4.State.DEFUSED
+	state.phase = MatchState.Phase.ROUND_END
+	counter.show_match(state, null, null, 22_000_000, bomb)
+	_check(counter.clock.is_empty() and counter.bomb_defused, "a defuse replaces the bomb indicator during the round result")
+	bomb.state = C4.State.CARRIED
+	state.phase = MatchState.Phase.FREEZE
+	counter.show_match(state, null, null, 23_000_000, bomb)
+	_check(not counter.bomb_planted and not counter.clock.is_empty(), "the next round restores the round clock")
+	_check(HealthAmmoCenter.RESERVE_ICON.position.x > HealthAmmoCenter.RESERVE_RIGHT,
+		"reserve magazine icon leaves clear space after the number")
+	var watching := PlayerSim.new()
+	var watched := PlayerSim.new()
+	watching.respawns = false
+	watching.alive = false
+	watching.observing = watched
+	watched.name = "Bot2"
+	_check(not GameHud.dead_line(watching).contains("fire:") and GameHud.dead_controls_line(watching).contains("fire:"),
+		"spectator status and controls occupy separate lines")
+	watching.free()
+	watched.free()
+	counter.free()
+	state.free()
 	await process_frame
 
 

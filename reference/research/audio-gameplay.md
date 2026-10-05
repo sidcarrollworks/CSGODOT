@@ -662,6 +662,12 @@ Notes.
 - The planted bomb carries `m_nSourceSoundscapeHash` (*Read*, SCH
   `CPlantedC4.h` 6): its sounds take the room acoustics of where it lies.
 
+The [October 4 bomb audit](competitive-playtest-2026-10-04.md#current-cs2-bomb-beep-audit)
+confirms the current client's cadence and that the warning stems layer over
+the regular site beep from 11 seconds left. This replaces the older cadence
+estimate; the extracted sound-event definitions above remain the source for
+their files, pitch, delays and distance curves.
+
 ## 6. Movement and the world, besides footsteps
 
 Footsteps, landings, ladders, wading and the suit's gear rustle are in

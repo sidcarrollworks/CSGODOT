@@ -59,11 +59,11 @@ const HEALTH_BAR := Rect2(SIDE - INSET - 2.0 - 64.0, HEIGHT - 10.0 - 7.0, 63.0, 
 ## The magazine's: 65 by 4, 14 off the bottom, centred under its number
 ## (#AmmoClipBar); the 63 by 2 inside shows.
 const CLIP_BAR := Rect2(SIDE + RING + INSET + (TEXT_WIDTH - 63.0) * 0.5, HEIGHT - 14.0 - 3.0, 63.0, 2.0)
-## The reserve's number ends where CS2's screenshot has it (its right 738 px
-## into the row), and the icon is an 18 px square after it, 1 px high
+## The reserve number is right-aligned, with a 6 px gap before its 18 px
+## icon so a single reserve digit does not touch it; the icon sits 1 px high
 ## (.hud-WPN-ammo-reserve__icon).
 const RESERVE_RIGHT := 740.0
-const RESERVE_ICON := Rect2(737.0, HEIGHT * 0.5 - 1.0 - 9.0, 18.0, 18.0)
+const RESERVE_ICON := Rect2(RESERVE_RIGHT + 6.0, HEIGHT * 0.5 - 1.0 - 9.0, 18.0, 18.0)
 ## The strokes: half of each side, 1 px, brightest at the ring
 ## (.hud-HA__stroke.left and .right).
 const STROKE := SIDE * 0.5

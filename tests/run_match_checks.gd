@@ -684,7 +684,8 @@ func _test_free_look() -> void:
 
 ## Dead, watching a bot on your side, E takes it over: the world hands it
 ## your commands, it stays the bot (its userid, its health), and it is
-## yours until it dies, when the camera goes to its body; one a round, never
+## yours until it dies, when the camera goes to its body; another surviving
+## bot may then be taken over, never
 ## the other side's or a person's, and the next round gives it back.
 func _test_taking_over_a_bot() -> void:
 	var dead := _new_player(Vector3(-3000.0, 0.0, 4000.0), "T", Walker.new())
@@ -738,11 +739,18 @@ func _test_taking_over_a_bot() -> void:
 	_check(dead.controlling == null and bot.controlled_by == null and dead.pawn() == dead and changed[0] == 2,
 		"it dies: given back")
 	_check(dead.death_cam_of == bot and dead.observing == null, "and the camera is on its body for the freeze cam")
-	_check(not dead.can_control(person), "one a round")
+	_check(not dead.can_control(person), "a living human cannot be taken over after the bot dies")
 	tick[0] += SimClock.ticks_in(2.0)
 	press.call(0)
 	_check(dead.observing == person, "then on to the living teammate")
+	person.is_bot = true
+	_check(dead.can_control(person), "a second surviving bot may be taken over in the same round")
+	press.call(UserCmd.USE)
+	_check(dead.controlling == person and person.controlled_by == dead and changed[0] == 3,
+		"E transfers commands to the second bot after the first bot died")
 	dead.spawn_at(Vector3(-3000.0, 0.0, 4000.0), 0.0)
+	_check(person.controlled_by == null and dead.controlling == null,
+		"the next round releases the second bot too")
 	_check(dead.alive and not dead.controlled_bot_this_round and dead.death_cam_of == null,
 		"the next round, you may take one again")
 	await _clear([dead, bot, person, enemy])

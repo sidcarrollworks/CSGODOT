@@ -169,12 +169,16 @@ func _start(hit: Dictionary, eye: Vector3) -> void:
 	var born := int(hit.born)
 	var at: Vector3 = hit.at
 	var direction: Vector3 = hit.direction
-	if bool(hit.get("helmet", false)) or effect == HELMET:
+	var local_hit := bool(hit.get("screen", false))
+	# The local CP placement is not recovered. The former camera-plane
+	# approximation put an opaque red sprite over the crosshair. Local
+	# damage is shown by DamageIndicator; other players retain their blood.
+	if not local_hit and (bool(hit.get("helmet", false)) or effect == HELMET):
 		var outward: Vector3 = hit.get("normal", Vector3.ZERO)
 		if outward.length_squared() < 1e-8:
 			outward = -direction
 		particles.spawn(HELMET, at, outward, born, eye)
-	if not effect.is_empty() and effect != HELMET:
+	if not local_hit and not effect.is_empty() and effect != HELMET:
 		particles.spawn(effect, at, direction, born, eye, float(hit.get("damage", 30)), bool(hit.get("screen", false)), bool(hit.get("world", false)))
 	if bool(hit.get("world", false)):
 		return

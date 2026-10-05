@@ -112,6 +112,8 @@ const IMAGES: Array[String] = [
 	"hud/teamcounter/armor_helmet",
 	"hud/teamcounter/damage-report-frame",
 	"hud/teamcounter/teamcounter_botavatar",
+	"hud/teamcounter/teamcounter_bomb-planted",
+	"hud/teamcounter/teamcounter_bomb-planted-defused",
 	"icons/person",
 	"icons/ui/alert",
 	"icons/ui/bot",
@@ -273,7 +275,8 @@ func _process(delta: float) -> void:
 			gun.reserve if has_ammo else 0, gun.data.reserve_as_clips if has_ammo else true,
 			has_ammo and gun.is_reloading(SimClock.now_usec()))
 	_crosshair.visible = shows_crosshair(you) and not buying
-	dead_bar.say("" if you.alive else dead_line(player), "", HudStyle.team_colour(team))
+	dead_bar.say("" if you.alive else dead_line(player),
+		"" if you.alive else dead_controls_line(player), HudStyle.team_colour(team))
 	if match_state != null:
 		team_counter.show_match(match_state, you, economy, SimClock.now_usec(), bomb, round_report)
 		scoreboard.show_match(match_state, match_stats, economy, you, SimClock.now_usec(),
@@ -414,12 +417,25 @@ static func dead_line(dead: PlayerSim) -> String:
 	if dead.respawns:
 		return "You died. Back in %d" % ceili(dead.seconds_to_respawn())
 	if dead.observer_mode == PlayerSim.ObserverMode.ROAMING:
-		return "Free Look    fire: watch a teammate    jump: camera"
+		return "Free Look"
 	var watched := dead.observing
 	if watched == null or not is_instance_valid(watched):
 		return "You died    jump: free look" if dead.free_look else "You died"
 	var mode := "Chase Camera" if dead.observing_chase else "First Person"
-	var line := "Watching %s (%s)    fire: next    right: previous    jump: camera" % [watched.name, mode]
+	return "Watching %s (%s)" % [watched.name, mode]
+
+
+## Controls belong on the smaller line below the status, rather than
+## overflowing the alert's border through the middle of the same text.
+static func dead_controls_line(dead: PlayerSim) -> String:
+	if dead.respawns:
+		return ""
+	if dead.observer_mode == PlayerSim.ObserverMode.ROAMING:
+		return "fire: watch a teammate    jump: camera"
+	var watched := dead.observing
+	if watched == null or not is_instance_valid(watched):
+		return ""
+	var line := "fire: next    right: previous    jump: camera"
 	if dead.can_control(watched):
 		line += "    E: control bot"
 	return line

@@ -1248,6 +1248,16 @@ list, split into Local and Remote items, with the measurements.
     side. **Local:** choose each side and Auto Select in fullscreen, and
     let the countdown run out once.
 
+24e. **October 4 competitive playtest HUD/audio and takeover follow-up.**
+    *(Remote implemented; Local replay pending)* The planted-C4 icon replaces
+    the stale round clock, spectator controls have their own line, reserve
+    ammo's icon has a gap, local hits retain damage arcs without the oversized
+    guessed screen-blood sprite, and a human can take another teammate bot
+    after dying in one. Current-client Ghidra evidence replaces the CS:GO beep
+    fit and layers the warning stem over the regular beep. Team selection was
+    bypassed by our launcher: omit `--team` when asking Sid to choose.
+    [Evidence and outstanding bot work](research/competitive-playtest-2026-10-04.md).
+
 25. **Netcode.** *(Remote; Local playtests across machines)* CS2's model: the
     server decides, clients send input with sub-tick times and predict their
     own player, everyone else is drawn between snapshots, and a shot is
