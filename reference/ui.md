@@ -63,11 +63,34 @@ Other legacy `_input` readers must consult `available_to(self)` too: that
 phase runs before GUI controls can consume the event. `Scoreboard` gates new
 Tab presses this way and always accepts release to avoid a latched board.
 
-Event ownership does not pause the simulation or suppress Godot's global
-`Input` polling. `PlayerInput` deliberately polls movement while buying.
-A future in-match pause/settings host must explicitly choose whether gameplay
-commands continue or are neutralized; add checks for that policy. Do not assume
-`set_input_as_handled()` stops a polled action.
+Event ownership alone does not suppress Godot's global `Input` polling.
+`UiScreen.block_gameplay` defaults to true: `PlayerController` reconciles the
+scope before forwarding events, dispatching queued commands and polling held
+actions. `PlayerInput` discards pending requests and produces neutral commands
+while blocked. A generation counter catches a screen opened and closed between
+ticks. Held controls must be released before acting after dismissal. The match
+keeps running; previously accepted simulation actions continue under ordinary
+rules. `GameHud` keeps reading state but hides its layer beneath blocking screens.
+`UiInputScope.acquire(owner)` defaults to cursor ownership only, so buying still
+allows movement and displays the HUD. Use `acquire(owner, true)` only when a
+custom screen deliberately blocks gameplay. Do not assume consuming an event
+stops a polled action.
+
+## Settings and host actions
+
+The in-game `GameMenu` emits Resume, Settings and Quit requests. Its controller
+owns the actions and opens `ClientSettingsScreen` or the shared `UiDialog`.
+Views never pause the world or write player simulation state.
+
+`ClientPreferences` caches sensitivity and the existing `AudioSettings` values
+from `user://client_settings.cfg` at startup. Settings edits an independent
+`copy()`. Apply commits the native SpinBox's pending text, emits the draft and
+lets the host validate, apply and save once. Cancel/Escape discards it. Keep the
+active audio resource identity so presenters hear changed volumes; avoid disk
+reads or saves on a frame/tick. New preference fields need defaults, validation,
+copy/apply/persistence coverage and an actual consumer before adding a control.
+The [Escape-menu audit](research/in-game-menu-2026-10-04.md) distinguishes the
+shipping CS2 source from our explicit Apply/Cancel and running-match policies.
 
 ## Layout and styles
 
@@ -81,7 +104,7 @@ An aspect/UI-scale change is a separate feature, with its own visual checks.
 - Use VBox/HBox containers with `UiStyle.GAP`, and margins from `UiStyle.INSET`.
   A Container owns child positions; use minimum sizes and size flags.
 - Set `theme_type_variation` to `UiTitle`, `UiHeading`, `UiBody`, `UiMuted`,
-  `UiButton`, `UiCard` or `UiSurface`. The Theme uses HudStyle's font cache.
+  `UiButton`, `UiMenuBarButton`, `UiCard` or `UiSurface`. The Theme uses HudStyle's font cache.
 - Use `UiChoiceCard` for a heading/description choice. Instantiate
   `src/ui/components/choice_card.tscn`, connect `activated` and call
   `bind(title, description, selected, enabled)`. Its native Button handles
@@ -111,6 +134,8 @@ godot --path . --script scripts/preview_ui.gd -- --screen mode --size 1920x1080 
   --capture res://.godot/mode-preview.png
 godot --path . --script scripts/preview_ui.gd -- --screen gallery --popup `
   --size 3840x2160 --capture res://.godot/dialog-preview.png
+godot --path . --script scripts/preview_ui.gd -- --screen settings `
+  --size 3840x2160 --capture res://.godot/settings-preview.png
 ```
 
 The preview defaults to a 1080p window and needs a graphical renderer for
@@ -118,7 +143,7 @@ captures. Captures convert linear HDR 2D to sRGB without first quantizing it.
 Save generated images under ignored `.godot/`.
 
 Add behavior/layout checks alongside the component. Run
-`scripts/run_tests.sh ui_foundation map_mode economy hud`, then the full suite
+`scripts/run_tests.sh ui_foundation game_menu menu_input map_mode economy hud`, then the full suite
 before opening a PR. Review screenshots at 1080p and 4K, long labels, selected
 and disabled states, pointer activation and nested popup closure. A static
 screen should have no new `_process` polling loop after its transition ends.

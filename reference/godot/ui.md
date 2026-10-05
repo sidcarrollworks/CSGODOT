@@ -104,6 +104,18 @@ Source: godot-docs branch 4.7 @9adca4c (2026-09-21). Read when: building or chan
 
 **Container** family: see above. `Container.queue_sort()`, `fit_child_in_rect()`.
 
+**Numeric settings fields** (verified in Godot 4.7.2): `SpinBox.get_line_edit()`
+returns its required internal editor; do not free it. `SpinBox.apply()` commits
+pending text as Enter would, so call it before emitting a settings draft.
+Leave `update_on_text_changed` false for partial decimal expressions. Precision
+comes from `Range.step`; SpinBox has no `format` property. Focused Enter submits
+the field through the GUI phase, rather than confirming the whole form.
+Use `Range.set_value_no_signal()` for initial binding. Set
+`HSlider.scrollable = false` inside a scrollable form so wheel navigation does
+not alter a volume accidentally. See [SpinBox](https://docs.godotengine.org/en/4.7/classes/class_spinbox.html),
+[Range](https://docs.godotengine.org/en/4.7/classes/class_range.html) and
+[Slider](https://docs.godotengine.org/en/4.7/classes/class_slider.html).
+
 **Theme** (`classes/class_theme.rst`)
 - `default_font`, `default_font_size = -1` (unset), `default_base_scale = 0.0` (use global), `set_color(name, theme_type, color)`, `set_constant`, `set_font`, `set_font_size`, `set_stylebox(name, theme_type, stylebox)`, `set_icon`, `set_type_variation(theme_type, base_type)`.
 

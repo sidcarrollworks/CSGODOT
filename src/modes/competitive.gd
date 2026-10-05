@@ -130,6 +130,7 @@ func start(game_world: GameWorld, map_contents: MapContents) -> void:
 func _place_player() -> void:
 	player = (load("res://src/player/player.tscn") as PackedScene).instantiate()
 	(player as PlayerController).team = spawn_team
+	(player as PlayerController).menu_context = "%s · %s" % [map.name, "Competitive" if with_bots else "Practice"]
 	add_child(player)
 	world.add_player(player as PlayerSim)
 
@@ -407,6 +408,7 @@ func _add_views() -> void:
 	# The round's announcer, music and countdown, for this player's ears.
 	var round_sounds := RoundSounds.new()
 	round_sounds.name = "RoundSounds"
+	round_sounds.settings = (player as PlayerController).preferences.audio
 	add_child(round_sounds)
 	round_sounds.watch(world.game, (player as PlayerSim).userid, bomb_system.bomb if bomb_system != null else null)
 	_follow_recipient(round_sounds, &"listener_id")

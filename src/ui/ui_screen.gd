@@ -5,6 +5,9 @@ extends CanvasLayer
 ## supply actions; it never writes simulation state. Popups use MODAL_LAYER.
 ## Each nested shell gets a higher layer, including during a scene handoff.
 var input_scope: UiInputScope
+## A menu stops the local player's commands; the match keeps running.
+## Cursor-only surfaces such as the buy menu keep their existing policy.
+var block_gameplay: bool = true
 var _closing := false
 static var _screens: Array[WeakRef] = []
 
@@ -17,7 +20,7 @@ func _ready() -> void:
 			next_layer = maxi(next_layer, screen.layer + 1)
 	layer = maxi(layer, next_layer)
 	_screens.append(weakref(self))
-	input_scope = UiInputScope.acquire(self)
+	input_scope = UiInputScope.acquire(self, block_gameplay)
 
 
 func mount(scene: PackedScene) -> Control:

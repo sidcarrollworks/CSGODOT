@@ -309,6 +309,18 @@ the authoring contract and gallery/preview commands. This follows the
 [current Panorama audit](research/panorama-ui-2026-10-04.md); the compact HUD
 continues to cache custom draw commands rather than doing menu layout each tick.
 
+Escape opens `GameMenu` on the local controller, with Resume, Settings and
+confirmed Quit to desktop. The world keeps ticking. Blocking scopes suppress
+local command sampling and discard queued requests before dispatch; held
+controls must be released after dismissal. Bot takeover receives that same
+neutral command. Buying keeps its cursor-only scope and polled movement.
+The HUD keeps updating behind the menu and resumes with current match state.
+`ClientPreferences` reads `user://client_settings.cfg` once at startup. The
+settings view edits a draft; Apply validates and saves sensitivity and music
+volumes, preserving the `AudioSettings` instance shared by `RoundSounds`.
+Cancel/Escape discards the draft. No settings I/O occurs from a simulation tick.
+See the [in-game menu audit](research/in-game-menu-2026-10-04.md).
+
 Competitive mode on dust2 or another extracted defusal map runs a match
 the way CS2's server runs one (`src/match/`), with
 CS2's competitive numbers (`MatchRules`): two minutes of warmup, where you
@@ -392,7 +404,8 @@ does, on the bus of its mixgroup (`default_bus_layout.tres`). New sounds
 are built on it; the ones above still carry levels set by ear. The round's
 sounds are on it (`src/audio/round_sounds.gd`): the announcer, the music
 kit's cues giving way to each other by their priorities
-(`src/audio/music_rules.gd`) at CS2's default music volumes
+(`src/audio/music_rules.gd`) at the saved music volumes, initially CS2's
+competitive defaults
 (`src/audio/audio_settings.gd`), the freeze countdown's beeps, and the
 bomb's beeps, plant and defuse (`C4View`). So are the grenades'
 (`src/audio/grenade_sounds.gd`): throws, bounces, the burning bottle in

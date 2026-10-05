@@ -1,7 +1,8 @@
 extends SceneTree
 
 ## No map required. Run with --windowed --resolution 1920x1080 --script
-## scripts/preview_ui.gd -- --screen gallery|mode|team [--popup] [--size 3840x2160]
+## scripts/preview_ui.gd -- --screen gallery|mode|team|menu|settings
+## [--popup] [--size 3840x2160]
 ## [--capture res://.godot/ui-preview.png]. Captures convert linear HDR 2D
 ## to sRGB in float, and quit. Without --capture this stays interactive.
 func _initialize() -> void:
@@ -36,6 +37,14 @@ func _preview() -> void:
 			view = picker
 		"team":
 			view = TeamPicker.new()
+		"menu":
+			var menu := GameMenu.new()
+			menu.context_text = "Dust II · Practice"
+			view = menu
+		"settings":
+			var settings := ClientSettingsScreen.new()
+			settings.preferences = ClientPreferences.new()
+			view = settings
 		"gallery":
 			view = (load("res://maps/ui_gallery/ui_gallery.tscn") as PackedScene).instantiate() as UiScreen
 		_:

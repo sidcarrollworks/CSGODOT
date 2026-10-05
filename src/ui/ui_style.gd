@@ -53,6 +53,15 @@ static func menu() -> Theme:
 		box.content_margin_top = 18
 		box.content_margin_bottom = 18
 		_menu.set_stylebox(state, &"UiButton", box)
+	_menu.set_type_variation(&"UiMenuBarButton", &"UiButton")
+	_menu.set_font_size(&"font_size", &"UiMenuBarButton", 24)
+	for state: String in ["normal", "hover", "pressed", "disabled", "focus"]:
+		var bar_box := _menu.get_stylebox(state, &"UiButton").duplicate() as StyleBoxFlat
+		bar_box.content_margin_left = 18
+		bar_box.content_margin_right = 18
+		bar_box.content_margin_top = 12
+		bar_box.content_margin_bottom = 12
+		_menu.set_stylebox(state, &"UiMenuBarButton", bar_box)
 	_menu.set_constant(&"separation", &"VBoxContainer", GAP)
 	_menu.set_constant(&"separation", &"HBoxContainer", GAP)
 	return _menu

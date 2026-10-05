@@ -86,7 +86,7 @@ change.
 | MWHEELUP | jump | player | `invprev` | stays: Sid's choice |
 | MWHEELDOWN | the next thing carried | player | `invnext` | stays: CS2's own (Sid, 2026-09-25; playtest issue 15). `UserCmd.weapon_cycle` counts the notches, `Inventory.select_next` steps |
 | V | noclip | player | `+radialradio2` | stays: Sid's choice, bound to the `noclip` command (a cheat command in CS2 too) |
-| ESCAPE | frees or captures the mouse; closes the buy menu | player, buy menu | `cancelselect` | stays until item 26's pause menu |
+| ESCAPE | closes the current menu/dialog; otherwise opens the in-game menu | player, menus | `cancelselect` | implemented for item 26; Settings returns to the menu, Escape there resumes |
 | B | buy menu | range, dust2 | `buymenu` | stays |
 | 1 to 5 in the buy menu | column, then item | buy menu | the same in CS2's menu | stays; an open menu takes keys first, as in CS2 |
 | 1 to 3 at start | the mode (1 Competitive, 2 Practice), then the side (1 T, 2 CT, 3 Auto Select) | mode picker, team select | the screens' own; CS2's are clicked | stays; an open menu takes keys first, as in CS2 |
