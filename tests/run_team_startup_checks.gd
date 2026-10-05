@@ -24,6 +24,7 @@ func _run() -> void:
 	await _test_auto_select()
 	await _test_five_player_colours()
 	await _test_team_camera_view()
+	await _test_direct_start()
 	await _test_headless_bypass()
 	_finish("team-startup")
 
@@ -130,7 +131,9 @@ func _test_prepared_join(side: String, practice_mode: bool) -> void:
 					"%s %s: held bot %s and its shadow stay at the spawn" % [side, practice_mode, bot.name])
 	_check_equal(world.tick, 0, "%s %s: world waits for the chooser" % [side, practice_mode])
 	_check_equal(mode.match_state.phase_ends_usec, 0, "%s %s: no match countdown starts behind the chooser" % [side, practice_mode])
+	_check_equal(_warmup_announcements(world), 0, "%s %s: preparation sends no warmup announcement" % [side, practice_mode])
 	mode.join_team(side)
+	_check_equal(_warmup_announcements(world), 1, "%s %s: joining announces warmup exactly once" % [side, practice_mode])
 	_check(mode.team_camera == null and not preview_camera.is_inside_tree()
 		and controller.get_viewport().get_camera_3d() == controller.camera,
 		"%s %s: joining removes the preview camera and selects the ready player camera" % [side, practice_mode])
@@ -176,6 +179,7 @@ func _test_prepared_join(side: String, practice_mode: bool) -> void:
 	_check_equal(mode.match_state.phase_ends_usec, 1000000, "%s %s: full warmup starts at the join" % [side, practice_mode])
 	mode.join_team(MatchState.other(side))
 	_check(mode.player == controller, "%s %s: repeated selections do not join twice" % [side, practice_mode])
+	_check_equal(_warmup_announcements(world), 1, "%s %s: repeated selections do not restart warmup" % [side, practice_mode])
 	for i in 4:
 		await physics_frame
 	_check(world.tick > 0, "%s %s: simulation runs after joining" % [side, practice_mode])
@@ -199,6 +203,34 @@ func _test_auto_select() -> void:
 	_check((prepared[1] as GameWorld).players.size() == 4, "Auto Select keeps the intended final roster")
 	fixture.queue_free()
 	await process_frame
+
+
+func _warmup_announcements(world: GameWorld) -> int:
+	var count := 0
+	for event in world.game.events.pending():
+		if event.name == &"round_announce_warmup":
+			count += 1
+	return count
+
+
+func _test_direct_start() -> void:
+	for practice_mode in [false, true]:
+		for side in MatchState.SIDES:
+			var fixture := Node3D.new()
+			root.add_child(fixture)
+			var world := GameWorld.new()
+			world.set_physics_process(false)
+			fixture.add_child(world)
+			var mode := Competitive.new()
+			mode.spawn_team = side
+			mode.team_size = 2
+			if practice_mode:
+				mode.practice()
+			fixture.add_child(mode)
+			mode.start(world, _small_map())
+			_check_equal(_warmup_announcements(world), 1, "%s %s: direct startup announces warmup exactly once" % [side, practice_mode])
+			fixture.queue_free()
+			await process_frame
 
 
 func _test_headless_bypass() -> void:

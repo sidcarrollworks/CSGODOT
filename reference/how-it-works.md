@@ -332,7 +332,9 @@ spawn view. Bot placement initializes both interpolation samples, so their
 models and shadows stay at the spawn while simulation is held.
 `join_team` keeps the selected controller/presenters and final bot roster,
 switches to its camera, removes the preview and unused choices, and starts
-warmup. Shared world grenade/C4 views
+warmup once. Match systems and bot round planners are prepared before this
+start; surviving bots' planner slots are reassigned to the final roster.
+Direct startup also starts the match once, after preparation. Shared world grenade/C4 views
 are created once; local presenters retain world coordinates under an identity
 top-level holder. Explicit team arguments and headless checks use direct startup.
 

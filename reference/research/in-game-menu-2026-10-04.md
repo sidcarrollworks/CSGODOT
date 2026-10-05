@@ -184,6 +184,20 @@ The relative viewmodel jump dip is halved from scale 1 to 0.5 at Sid's request;
 camera impulses, spring timing and simulation are unchanged. This is playtest
 tuning, not an extracted CS2 motion value. See [jump camera](jump-camera.md).
 
+## October 5 integration check
+
+Merging the bot-goal work restored a match start inside `_prepare_match`,
+starting warmup before team choice and again in direct startup or `join_team`.
+CI caught this in all four T/CT competitive/practice startup cases. Preparation
+now creates the match systems and bot planners without starting warmup; direct
+startup or joining starts it exactly once. The merged bot-goal preparation
+and survivor slot reassignment remain in place. Startup checks count the
+warmup announcement before/after joining and on direct startup, including
+repeated choices, alongside the existing held-clock and roster assertions.
+Local integration checks passed: 228 startup, 129 map/mode, 42 bot-round and
+4 extracted Dust2 objective checks. The latter exercises Long routes, a real
+plant and a completed defuse.
+
 ## Validation
 
 The graphical renderer passed 156 checks across `run_game_menu_checks.gd` (58),

@@ -442,9 +442,9 @@ static func _floor_under(nav_mesh: SourceNavMesh, origin: Vector3, below: float)
 	return Vector3(on.x, area.floor_at(on), on.z)
 
 
-## The match: everyone in it, spawned for warmup, which counts down to the
-## first round, and the game's systems it plays with. After a side swap each
-## bot takes a route of its new side.
+## Prepares the roster, systems and bot planners without starting the
+## match. Direct startup or joining a prepared team starts warmup once.
+## After a side swap each bot takes a route of its new side.
 func _prepare_match() -> void:
 	if not map.has_both_sides():
 		notes.append("No match: the map needs spawn points for both sides.")
@@ -461,7 +461,6 @@ func _prepare_match() -> void:
 	match_state.sides_swapped.connect(_route_bots_again)
 	_add_systems()
 	_prepare_round_plans()
-	match_state.start()
 
 
 ## One planner per bot, sharing map goals prepared before any tick. The

@@ -1259,7 +1259,9 @@ list, split into Local and Remote items, with the measurements.
     let the countdown run out once.
     **October 5 follow-up implemented:** load the map, collision, both local
     player choices and presenters before showing the selector. Selection
-    retains the prepared side and final roster; warmup starts on joining.
+    retains the prepared side and final roster; warmup starts once on joining,
+    after systems and bot round planners are prepared. Direct startup also
+    starts once; announcement-count checks guard both paths after integration.
     The loaded world shows through the selector, using a separate camera at
     Sid's measured Dust2 Tabac/Kasbah view. Bots initialize both draw samples
     at their spawn, preventing shadow flicker while the world is held.
