@@ -73,6 +73,10 @@ uniform sampler2D normal_texture : hint_normal, filter_linear_mipmap_anisotropic
 uniform float normal_depth = 1.0;
 uniform sampler2D orm_texture : hint_default_white, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float roughness_factor = 1.0;
+// CS2's authored constant inputs, when the glTF's ORM lost them (SAS
+// lenses). Negative keeps the imported channel; AO always stays its own.
+uniform float source_roughness = -1.0;
+uniform float source_metalness = -1.0;
 uniform float alpha_scissor = -1.0;
 uniform bool has_normal_map = true;
 
@@ -218,8 +222,9 @@ void fragment() {
 	vec3 across = dFdx(geometric_normal);
 	vec3 down = dFdy(geometric_normal);
 	float geometric_roughness = pow(clamp(max(dot(across, across), dot(down, down)), 0.0, 1.0), 1.0 / 3.0);
-	ROUGHNESS = max(orm.g * roughness_factor, geometric_roughness);
-	METALLIC = orm.b;
+	float material_roughness = source_roughness >= 0.0 ? source_roughness : orm.g * roughness_factor;
+	ROUGHNESS = max(material_roughness, geometric_roughness);
+	METALLIC = source_metalness >= 0.0 ? source_metalness : orm.b;
 	AO = orm.r;
 	if (alpha_scissor >= 0.0) {
 		ALPHA = albedo.a;

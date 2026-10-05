@@ -1,0 +1,482 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/ui/ui_world_backdrop.gd" id="1_backdrop"]
+
+[node name="ClientSettingsView" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_force_pass_scroll_events = false
+
+[node name="Backdrop" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_backdrop")
+
+[node name="Center" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Surface" type="PanelContainer" parent="Center"]
+custom_minimum_size = Vector2(1000, 900)
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"UiSettingsSurface"
+
+[node name="Content" type="VBoxContainer" parent="Center/Surface"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Title" type="Label" parent="Center/Surface/Content"]
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"UiSettingsTitle"
+text = "Settings"
+autowrap_mode = 2
+
+[node name="Hint" type="Label" parent="Center/Surface/Content"]
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"UiMuted"
+text = "Apply saves your changes. Cancel keeps your current settings."
+autowrap_mode = 2
+
+[node name="FormScroll" type="ScrollContainer" parent="Center/Surface/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+mouse_force_pass_scroll_events = false
+horizontal_scroll_mode = 0
+
+[node name="FormInset" type="MarginContainer" parent="Center/Surface/Content/FormScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_constants/margin_right = 28
+
+[node name="Form" type="VBoxContainer" parent="Center/Surface/Content/FormScroll/FormInset"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="SensitivityRow" type="PanelContainer" parent="Center/Surface/Content/FormScroll/FormInset/Form"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"UiSettingsRow"
+
+[node name="Fields" type="HBoxContainer" parent="Center/Surface/Content/FormScroll/FormInset/Form/SensitivityRow"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="Label" type="Label" parent="Center/Surface/Content/FormScroll/FormInset/Form/SensitivityRow/Fields"]
+custom_minimum_size = Vector2(380, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_type_variation = &"UiBody"
+text = "Mouse sensitivity"
+autowrap_mode = 2
+
+[node name="Sensitivity" type="SpinBox" parent="Center/Surface/Content/FormScroll/FormInset/Form/SensitivityRow/Fields"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 40)
+layout_mode = 2
+mouse_force_pass_scroll_events = false
+min_value = 0.1
+max_value = 8.0
+step = 0.01
+value = 2.0
+select_all_on_focus = true
+
+[node name="MusicHeading" type="Label" parent="Center/Surface/Content/FormScroll/FormInset/Form"]
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"UiSettingsHeading"
+text = "Music"
+autowrap_mode = 2
+
+[node name="MusicHint" type="Label" parent="Center/Surface/Content/FormScroll/FormInset/Form"]
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"UiMuted"
+text = "Music volumes do not change bomb beeps, footsteps or weapon sounds."
+autowrap_mode = 2
+
+[node name="MusicVolumeRow" type="PanelContainer" parent="Center/Surface/Content/FormScroll/FormInset/Form"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"UiSettingsRow"
+
+[node name="Fields" type="HBoxContainer" parent="Center/Surface/Content/FormScroll/FormInset/Form/MusicVolumeRow"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="Label" type="Label" parent="Center/Surface/Content/FormScroll/FormInset/Form/MusicVolumeRow/Fields"]
+custom_minimum_size = Vector2(380, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_type_variation = &"UiBody"
+text = "Master music volume"
+autowrap_mode = 2
+
+[node name="MusicVolume" type="HSlider" parent="Center/Surface/Content/FormScroll/FormInset/Form/MusicVolumeRow/Fields"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 40)
+layout_mode = 2
+theme_type_variation = &"UiSettingsSlider"
+value = 100.0
+scrollable = false
+
+[node name="MusicVolumeValue" type="Label" parent="Center/Surface/Content/FormScroll/FormInset/Form/MusicVolumeRow/Fields"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_type_variation = &"UiSettingsValue"
+text = "100%"
+horizontal_alignment = 1
+
+[node name="RoundStartRow" type="PanelContainer" parent="Center/Surface/Content/FormScroll/FormInset/Form"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"UiSettingsRow"
+
+[node name="Fields" type="HBoxContainer" parent="Center/Surface/Content/FormScroll/FormInset/Form/RoundStartRow"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="Label" type="Label" parent="Center/Surface/Content/FormScroll/FormInset/Form/RoundStartRow/Fields"]
+custom_minimum_size = Vector2(380, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_type_variation = &"UiBody"
+text = "Round start music"
+autowrap_mode = 2
+
+[node name="RoundStart" type="HSlider" parent="Center/Surface/Content/FormScroll/FormInset/Form/RoundStartRow/Fields"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 40)
+layout_mode = 2
+theme_type_variation = &"UiSettingsSlider"
+value = 0.0
+scrollable = false
+
+[node name="RoundStartValue" type="Label" parent="Center/Surface/Content/FormScroll/FormInset/Form/RoundStartRow/Fields"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_type_variation = &"UiSettingsValue"
+text = "0%"
+horizontal_alignment = 1
+
+[node name="RoundActionRow" type="PanelContainer" parent="Center/Surface/Content/FormScroll/FormInset/Form"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"UiSettingsRow"
+
+[node name="Fields" type="HBoxContainer" parent="Center/Surface/Content/FormScroll/FormInset/Form/RoundActionRow"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="Label" type="Label" parent="Center/Surface/Content/FormScroll/FormInset/Form/RoundActionRow/Fields"]
+custom_minimum_size = Vector2(380, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_type_variation = &"UiBody"
+text = "Round action music"
+autowrap_mode = 2
+
+[node name="RoundAction" type="HSlider" parent="Center/Surface/Content/FormScroll/FormInset/Form/RoundActionRow/Fields"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 40)
+layout_mode = 2
+theme_type_variation = &"UiSettingsSlider"
+value = 0.0
+scrollable = false
+
+[node name="RoundActionValue" type="Label" parent="Center/Surface/Content/FormScroll/FormInset/Form/RoundActionRow/Fields"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_type_variation = &"UiSettingsValue"
+text = "0%"
+horizontal_alignment = 1
+
+[node name="RoundEndRow" type="PanelContainer" parent="Center/Surface/Content/FormScroll/FormInset/Form"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"UiSettingsRow"
+
+[node name="Fields" type="HBoxContainer" parent="Center/Surface/Content/FormScroll/FormInset/Form/RoundEndRow"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="Label" type="Label" parent="Center/Surface/Content/FormScroll/FormInset/Form/RoundEndRow/Fields"]
+custom_minimum_size = Vector2(380, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_type_variation = &"UiBody"
+text = "Round end music"
+autowrap_mode = 2
+
+[node name="RoundEnd" type="HSlider" parent="Center/Surface/Content/FormScroll/FormInset/Form/RoundEndRow/Fields"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 40)
+layout_mode = 2
+theme_type_variation = &"UiSettingsSlider"
+value = 16.0
+scrollable = false
+
+[node name="RoundEndValue" type="Label" parent="Center/Surface/Content/FormScroll/FormInset/Form/RoundEndRow/Fields"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_type_variation = &"UiSettingsValue"
+text = "16%"
+horizontal_alignment = 1
+
+[node name="MvpRow" type="PanelContainer" parent="Center/Surface/Content/FormScroll/FormInset/Form"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"UiSettingsRow"
+
+[node name="Fields" type="HBoxContainer" parent="Center/Surface/Content/FormScroll/FormInset/Form/MvpRow"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="Label" type="Label" parent="Center/Surface/Content/FormScroll/FormInset/Form/MvpRow/Fields"]
+custom_minimum_size = Vector2(380, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_type_variation = &"UiBody"
+text = "MVP music"
+autowrap_mode = 2
+
+[node name="Mvp" type="HSlider" parent="Center/Surface/Content/FormScroll/FormInset/Form/MvpRow/Fields"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 40)
+layout_mode = 2
+theme_type_variation = &"UiSettingsSlider"
+value = 16.0
+scrollable = false
+
+[node name="MvpValue" type="Label" parent="Center/Surface/Content/FormScroll/FormInset/Form/MvpRow/Fields"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_type_variation = &"UiSettingsValue"
+text = "16%"
+horizontal_alignment = 1
+
+[node name="MapObjectiveRow" type="PanelContainer" parent="Center/Surface/Content/FormScroll/FormInset/Form"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"UiSettingsRow"
+
+[node name="Fields" type="HBoxContainer" parent="Center/Surface/Content/FormScroll/FormInset/Form/MapObjectiveRow"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="Label" type="Label" parent="Center/Surface/Content/FormScroll/FormInset/Form/MapObjectiveRow/Fields"]
+custom_minimum_size = Vector2(380, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_type_variation = &"UiBody"
+text = "Bomb / hostage music"
+autowrap_mode = 2
+
+[node name="MapObjective" type="HSlider" parent="Center/Surface/Content/FormScroll/FormInset/Form/MapObjectiveRow/Fields"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 40)
+layout_mode = 2
+theme_type_variation = &"UiSettingsSlider"
+value = 4.0
+scrollable = false
+
+[node name="MapObjectiveValue" type="Label" parent="Center/Surface/Content/FormScroll/FormInset/Form/MapObjectiveRow/Fields"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_type_variation = &"UiSettingsValue"
+text = "4%"
+horizontal_alignment = 1
+
+[node name="TenSecondWarningRow" type="PanelContainer" parent="Center/Surface/Content/FormScroll/FormInset/Form"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"UiSettingsRow"
+
+[node name="Fields" type="HBoxContainer" parent="Center/Surface/Content/FormScroll/FormInset/Form/TenSecondWarningRow"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="Label" type="Label" parent="Center/Surface/Content/FormScroll/FormInset/Form/TenSecondWarningRow/Fields"]
+custom_minimum_size = Vector2(380, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_type_variation = &"UiBody"
+text = "Ten second warning music"
+autowrap_mode = 2
+
+[node name="TenSecondWarning" type="HSlider" parent="Center/Surface/Content/FormScroll/FormInset/Form/TenSecondWarningRow/Fields"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 40)
+layout_mode = 2
+theme_type_variation = &"UiSettingsSlider"
+value = 4.0
+scrollable = false
+
+[node name="TenSecondWarningValue" type="Label" parent="Center/Surface/Content/FormScroll/FormInset/Form/TenSecondWarningRow/Fields"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_type_variation = &"UiSettingsValue"
+text = "4%"
+horizontal_alignment = 1
+
+[node name="DeathCameraRow" type="PanelContainer" parent="Center/Surface/Content/FormScroll/FormInset/Form"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"UiSettingsRow"
+
+[node name="Fields" type="HBoxContainer" parent="Center/Surface/Content/FormScroll/FormInset/Form/DeathCameraRow"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="Label" type="Label" parent="Center/Surface/Content/FormScroll/FormInset/Form/DeathCameraRow/Fields"]
+custom_minimum_size = Vector2(380, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_type_variation = &"UiBody"
+text = "Death camera music"
+autowrap_mode = 2
+
+[node name="DeathCamera" type="HSlider" parent="Center/Surface/Content/FormScroll/FormInset/Form/DeathCameraRow/Fields"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 40)
+layout_mode = 2
+theme_type_variation = &"UiSettingsSlider"
+value = 16.0
+scrollable = false
+
+[node name="DeathCameraValue" type="Label" parent="Center/Surface/Content/FormScroll/FormInset/Form/DeathCameraRow/Fields"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_type_variation = &"UiSettingsValue"
+text = "16%"
+horizontal_alignment = 1
+
+[node name="MenuMusicRow" type="PanelContainer" parent="Center/Surface/Content/FormScroll/FormInset/Form"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"UiSettingsRow"
+
+[node name="Fields" type="HBoxContainer" parent="Center/Surface/Content/FormScroll/FormInset/Form/MenuMusicRow"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="Label" type="Label" parent="Center/Surface/Content/FormScroll/FormInset/Form/MenuMusicRow/Fields"]
+custom_minimum_size = Vector2(380, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_type_variation = &"UiBody"
+text = "Main menu music"
+autowrap_mode = 2
+
+[node name="MenuMusic" type="HSlider" parent="Center/Surface/Content/FormScroll/FormInset/Form/MenuMusicRow/Fields"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 40)
+layout_mode = 2
+theme_type_variation = &"UiSettingsSlider"
+value = 4.0
+scrollable = false
+
+[node name="MenuMusicValue" type="Label" parent="Center/Surface/Content/FormScroll/FormInset/Form/MenuMusicRow/Fields"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_type_variation = &"UiSettingsValue"
+text = "4%"
+horizontal_alignment = 1
+
+[node name="Actions" type="HBoxContainer" parent="Center/Surface/Content"]
+layout_mode = 2
+mouse_filter = 2
+alignment = 2
+
+[node name="Cancel" type="Button" parent="Center/Surface/Content/Actions"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 0
+mouse_force_pass_scroll_events = false
+theme_type_variation = &"UiMenuBarButton"
+text = "Cancel"
+
+[node name="Apply" type="Button" parent="Center/Surface/Content/Actions"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 0
+mouse_force_pass_scroll_events = false
+theme_type_variation = &"UiMenuBarButton"
+text = "Apply"

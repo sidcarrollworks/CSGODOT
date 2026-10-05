@@ -76,6 +76,13 @@ var notes: PackedStringArray = []
 ## The bomb sites' floors the bots walk to, A then B; empty when they walk
 ## their side's spawn points instead.
 var _sites := PackedVector3Array()
+## Ready local players and their presenters while the team selector is open.
+## Joining retains one pair; no player body or view model is built on the click.
+var _team_choices := {}
+var _spare_t_bot: Bot
+var waiting_for_team: bool = false
+## The chooser's view is independent of both ready spawn cameras.
+var team_camera: TeamSelectCamera
 
 
 ## Practice, a departure from CS2 (whose offline practice is a match with
@@ -91,12 +98,68 @@ func practice() -> void:
 
 ## Sets the game up on a map, in a world, once this node is in the scene.
 func start(game_world: GameWorld, map_contents: MapContents) -> void:
+	_prepare(game_world, map_contents)
+	if match_state != null:
+		match_state.start()
+
+
+## Loads both possible local players before the chooser appears. The world
+## is held at tick zero, and the match has no running clock until join_team.
+func prepare_for_team_select(game_world: GameWorld, map_contents: MapContents) -> void:
+	waiting_for_team = true
+	game_world.set_physics_process(false)
+	spawn_team = "T"
+	_prepare(game_world, map_contents, true)
+
+
+func _prepare(game_world: GameWorld, map_contents: MapContents, choosing_team: bool = false) -> void:
 	world = game_world
 	map = map_contents
 	_place_player()
 	_place_bots()
+	var first_player := player as PlayerController
+	if choosing_team:
+		var other := _make_player("CT")
+		other.name = "PlayerCT"
+		# Register during preparation so its HUD and audio already have the
+		# final userid. Neither staged player runs before the team is chosen.
+		world.add_player(other)
+		if with_bots and not map.spawns["T"].is_empty():
+			_spare_t_bot = _make_bot("T", team_size - 1, bots.size() + 1)
+			world.add_player(_spare_t_bot)
+			bots.append(_spare_t_bot)
+		_team_choices["CT"] = {"player": other}
 	_prepare_holding()
-	_start_match()
+	_prepare_match()
+	_add_world_views()
+	if choosing_team:
+		var t_views := _hold_local_presentation()
+		_team_choices["T"] = {"player": first_player, "hud": hud, "views": t_views}
+		player = _team_choices["CT"]["player"]
+		_team_choices["CT"]["views"] = _hold_local_presentation()
+		_team_choices["CT"]["hud"] = hud
+		player = first_player
+		hud = _team_choices["T"]["hud"]
+		team_camera = TeamSelectCamera.new()
+		team_camera.name = "TeamCamera"
+		add_child(team_camera)
+		team_camera.frame_map(map, first_player.camera, first_player.config.stand_eye_height)
+	else:
+		_add_local_presentation(self)
+	# F11 steps through the culling and the skybox (RenderDebug).
+	var render_debug := RenderDebug.new()
+	render_debug.name = "RenderDebug"
+	add_child(render_debug)
+	var impacts := BulletImpacts.new()
+	impacts.name = "BulletImpacts"
+	add_child(impacts)
+	var dropped := DroppedItemView.new()
+	dropped.name = "Dropped"
+	add_child(dropped)
+	dropped.watch(world.game)
+
+
+func _add_local_presentation(parent: Node) -> void:
 	hud = GameHud.new()
 	hud.name = "Hud"
 	hud.player = player as PlayerController
@@ -108,41 +171,121 @@ func start(game_world: GameWorld, map_contents: MapContents) -> void:
 	hud.bomb = bomb_system.bomb if bomb_system != null else null
 	hud.userid = (player as PlayerSim).userid
 	hud.game = world.game
-	add_child(hud)
-	# F11 steps through the culling and the skybox, to find what draws a
-	# wrong picture (RenderDebug).
-	var render_debug := RenderDebug.new()
-	render_debug.name = "RenderDebug"
-	add_child(render_debug)
-	_add_views()
-	var impacts := BulletImpacts.new()
-	impacts.name = "BulletImpacts"
-	add_child(impacts)
-	# The guns dropped (G) and left by the dead, on the ground.
-	var dropped := DroppedItemView.new()
-	dropped.name = "Dropped"
-	add_child(dropped)
-	dropped.watch(world.game)
+	parent.add_child(hud)
+	_add_views(parent)
+
+
+## Presenters stay under their prepared controller, so choosing one needs
+## no rebinding of the HUD, view effects, audio or takeover recipients.
+func _hold_local_presentation() -> Node3D:
+	var controller := player as PlayerController
+	var views := Node3D.new()
+	views.name = "Presentation"
+	# Effect meshes store world coordinates. Keep their frame independent
+	# of the controller that owns their lifetime and recipient callbacks.
+	views.top_level = true
+	views.transform = Transform3D.IDENTITY
+	views.process_mode = Node.PROCESS_MODE_DISABLED
+	controller.add_child(views)
+	_add_local_presentation(views)
+	controller.view.catch_up()
+	controller.view._follow_hand()
+	controller.camera.global_position = controller.global_position + Vector3.UP * controller.eye_height()
+	controller.camera.global_rotation = Vector3(0.0, deg_to_rad(controller.input.yaw_degrees), 0.0)
+	for child in views.get_children():
+		if child is CanvasLayer:
+			(child as CanvasLayer).hide()
+	controller.process_mode = Node.PROCESS_MODE_DISABLED
+	controller.hide()
+	return views
+
+
+## Keeps the already prepared player and presenters, with the bots filling
+## the remaining places. All loading and instantiation preceded the chooser.
+func join_team(side: String) -> void:
+	if not waiting_for_team or not side in MatchState.SIDES:
+		return
+	waiting_for_team = false
+	spawn_team = side
+	var unused_side := MatchState.other(side)
+	var unused := _team_choices[unused_side]["player"] as PlayerController
+	remove_child(unused)
+	unused.queue_free()
+	if side == "T":
+		if is_instance_valid(_spare_t_bot):
+			_remove_prepared_bot(_spare_t_bot)
+	else:
+		for bot in bots.duplicate():
+			if bot.team == "CT":
+				_remove_prepared_bot(bot)
+				break
+	player = _team_choices[side]["player"]
+	hud = _team_choices[side]["hud"]
+	var controller := player as PlayerController
+	controller.name = "Player"
+	var views := _team_choices[side]["views"] as Node3D
+	controller.process_mode = Node.PROCESS_MODE_INHERIT
+	controller.show()
+	views.process_mode = Node.PROCESS_MODE_INHERIT
+	for child in views.get_children():
+		if child is CanvasLayer:
+			(child as CanvasLayer).show()
+	controller.camera.make_current()
+	remove_child(team_camera)
+	team_camera.queue_free()
+	team_camera = null
+	# Local input remains first, as in the direct/headless startup path.
+	world.players.erase(controller)
+	world.players.push_front(controller)
+	if match_state != null:
+		match_state.players.erase(controller)
+		match_state.players.push_front(controller)
+		# The reserve actors were sixth on their staged sides. With five
+		# colours they may have shared one; draw from the final roster now.
+		if side == "CT":
+			match_state._draw_colour(controller)
+			if is_instance_valid(_spare_t_bot):
+				match_state._draw_colour(_spare_t_bot)
+		_route_bots_again()
+		match_state.start()
+	_team_choices.clear()
+	_spare_t_bot = null
+	world.set_physics_process(true)
+	if UiInputScope.available_to(controller):
+		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+
+
+func _remove_prepared_bot(bot: Bot) -> void:
+	bots.erase(bot)
+	remove_child(bot)
+	bot.queue_free()
 
 
 ## You, at one of your side's spawn points the game would fill first, or
 ## where the map says to drop in without them.
 func _place_player() -> void:
-	player = (load("res://src/player/player.tscn") as PackedScene).instantiate()
-	(player as PlayerController).team = spawn_team
-	add_child(player)
+	player = _make_player(spawn_team)
 	world.add_player(player as PlayerSim)
 
-	var spawns: Array = map.spawns[spawn_team]
+
+func _make_player(side: String) -> PlayerController:
+	var controller := (load("res://src/player/player.tscn") as PackedScene).instantiate() as PlayerController
+	controller.team = side
+	controller.menu_context = "%s · %s" % [map.name, "Competitive" if with_bots else "Practice"]
+	if waiting_for_team:
+		controller.process_mode = Node.PROCESS_MODE_DISABLED
+	add_child(controller)
+	var spawns: Array = map.spawns[side]
 	if spawns.is_empty():
-		player.global_position = map.drop_position
-		return
+		controller.place(map.drop_position, 0.0)
+		return controller
 	# They sit a little above the floor, as they do in the game, and the
 	# player drops onto it.
 	var first_choice := spawns.filter(func(candidate: Dictionary) -> bool:
 		return candidate["priority"] == spawns[0]["priority"])
 	var spawn: Dictionary = first_choice.pick_random()
-	(player as PlayerController).place(spawn["position"], spawn["yaw"])
+	controller.place(spawn["position"], spawn["yaw"])
+	return controller
 
 
 ## Bots in every place you do not take, on both sides, each walking its
@@ -155,7 +298,6 @@ func _place_bots() -> void:
 		_sites = site_floors(map.nav_mesh, map.places, map.bomb_sites)
 		if _sites.is_empty():
 			notes.append("Bots walk round their spawn points: the bomb sites are not on the nav mesh.")
-	var scene := load("res://src/bots/bot.tscn") as PackedScene
 	var number := 0
 	for team: String in MatchState.SIDES:
 		var spawns: Array = map.spawns[team]
@@ -163,20 +305,27 @@ func _place_bots() -> void:
 			continue
 		for i in team_size - (1 if team == spawn_team else 0):
 			number += 1
-			var bot := scene.instantiate() as Bot
-			bot.name = "Bot%d" % number
-			bot.team = team
-			# It spawns with the knife and its side's pistol, as you do, and
-			# buys the rest in freeze time, by a profile's preferences.
-			bot.buy_template = BotBuying.template_for(bot.name)
-			bot.nav_mesh = map.nav_mesh
-			bot.route = bot_route(map.spawns, team, i, _sites, map.nav_mesh)
-			add_child(bot)
+			var bot := _make_bot(team, i, number)
 			world.add_player(bot)
-			bot.global_position = spawns[i % spawns.size()]["position"]
 			bots.append(bot)
 	if not bots.is_empty() and map.nav_mesh == null:
 		notes.append("Bots walk straight lines between their spawn points: the map has no nav mesh.")
+
+
+func _make_bot(side: String, nth: int, number: int) -> Bot:
+	var bot := (load("res://src/bots/bot.tscn") as PackedScene).instantiate() as Bot
+	bot.name = "Bot%d" % number
+	bot.team = side
+	bot.buy_template = BotBuying.template_for(bot.name)
+	bot.nav_mesh = map.nav_mesh
+	bot.route = bot_route(map.spawns, side, nth, _sites, map.nav_mesh)
+	add_child(bot)
+	var spawns: Array = map.spawns[side]
+	var spawn: Dictionary = spawns[nth % spawns.size()]
+	# No tick runs behind team select. Snap both draw samples now, rather
+	# than interpolating the body (and its shadow) from the origin each frame.
+	bot.place(spawn["position"], spawn["yaw"])
+	return bot
 
 
 ## What anyone may take in hand, read now rather than when it is bought,
@@ -293,10 +442,10 @@ static func _floor_under(nav_mesh: SourceNavMesh, origin: Vector3, below: float)
 	return Vector3(on.x, area.floor_at(on), on.z)
 
 
-## The match: everyone in it, spawned for warmup, which counts down to the
-## first round, and the game's systems it plays with. After a side swap each
-## bot takes a route of its new side.
-func _start_match() -> void:
+## Prepares the roster, systems and bot planners without starting the
+## match. Direct startup or joining a prepared team starts warmup once.
+## After a side swap each bot takes a route of its new side.
+func _prepare_match() -> void:
 	if not map.has_both_sides():
 		notes.append("No match: the map needs spawn points for both sides.")
 		return
@@ -312,7 +461,6 @@ func _start_match() -> void:
 	match_state.sides_swapped.connect(_route_bots_again)
 	_add_systems()
 	_prepare_round_plans()
-	match_state.start()
 
 
 ## One planner per bot, sharing map goals prepared before any tick. The
@@ -388,7 +536,7 @@ static func stand_in_buy_zones(spawns: Dictionary) -> BuyZones:
 ## HUD, as CS2's covers it, the hits and deaths others hear, the round's
 ## announcer and music, and the rounds' tracers and the guns' muzzle
 ## flashes.
-func _add_views() -> void:
+func _add_world_views() -> void:
 	if grenade_system != null:
 		var grenade_view := GrenadeView.new()
 		grenade_view.name = "Grenades"
@@ -400,9 +548,19 @@ func _add_views() -> void:
 			grenade_view.trails_enabled = false
 		add_child(grenade_view)
 		grenade_view.watch(world.game)
+	if bomb_system != null:
+		var bomb_view := C4View.new()
+		bomb_view.name = "Bomb"
+		bomb_view.bomb = bomb_system.bomb
+		add_child(bomb_view)
+		bomb_view.watch(world.game)
+
+
+func _add_views(parent: Node) -> void:
+	if grenade_system != null:
 		var canvas := CanvasLayer.new()
 		canvas.layer = 2
-		add_child(canvas)
+		parent.add_child(canvas)
 		var overlay := FlashOverlay.new()
 		overlay.game = world.game
 		overlay.viewer_id = (player as PlayerSim).userid
@@ -411,37 +569,32 @@ func _add_views() -> void:
 		# What this player hears of them, the flash in their ears included.
 		var grenade_sounds := GrenadeSounds.new()
 		grenade_sounds.name = "GrenadeSounds"
-		add_child(grenade_sounds)
+		parent.add_child(grenade_sounds)
 		grenade_sounds.watch(world.game, (player as PlayerSim).userid)
 		_follow_recipient(grenade_sounds, &"listener_id")
-	if bomb_system != null:
-		var bomb_view := C4View.new()
-		bomb_view.name = "Bomb"
-		bomb_view.bomb = bomb_system.bomb
-		add_child(bomb_view)
-		bomb_view.watch(world.game)
 	# The round's announcer, music and countdown, for this player's ears.
 	var round_sounds := RoundSounds.new()
 	round_sounds.name = "RoundSounds"
-	add_child(round_sounds)
+	round_sounds.settings = (player as PlayerController).preferences.audio
+	parent.add_child(round_sounds)
 	round_sounds.watch(world.game, (player as PlayerSim).userid, bomb_system.bomb if bomb_system != null else null)
 	_follow_recipient(round_sounds, &"listener_id")
 	# What the one hit and those near hear of a hit, and the death groan.
 	var hit_sounds := HitSounds.new()
 	hit_sounds.name = "HitSounds"
-	add_child(hit_sounds)
+	parent.add_child(hit_sounds)
 	hit_sounds.watch(world.game, (player as PlayerSim).userid)
 	_follow_recipient(hit_sounds, &"listener_id")
 	# The rounds' tracers and the guns' muzzle flashes.
 	var shot_effects := ShotEffects.new()
 	shot_effects.name = "ShotEffects"
-	add_child(shot_effects)
+	parent.add_child(shot_effects)
 	shot_effects.watch(world.game, (player as PlayerSim).userid, player as PlayerController)
 	_follow_recipient(shot_effects, &"listener_id")
 	# The blood of a hit and a helmet's sparks.
 	var hit_effects := HitEffects.new()
 	hit_effects.name = "HitEffects"
-	add_child(hit_effects)
+	parent.add_child(hit_effects)
 	hit_effects.watch(world.game, (player as PlayerSim).userid)
 	_follow_recipient(hit_effects, &"listener_id")
 
@@ -459,5 +612,5 @@ func _follow_recipient(view: Node, property: StringName) -> void:
 ## F5 ends warmup, as mp_warmup_end does, on the world's next tick.
 func _unhandled_key_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
-	if key != null and key.pressed and not key.echo and key.keycode == KEY_F5 and match_state != null:
+	if key != null and key.pressed and not key.echo and key.keycode == KEY_F5 and match_state != null and not waiting_for_team:
 		match_state.end_warmup_on_next_tick()

@@ -6,12 +6,17 @@ extends RefCounted
 ## releases in _exit_tree as well as on a normal close. No autoload needed.
 static var _stack: Array[UiInputScope] = []
 static var _mouse_before := Input.MOUSE_MODE_VISIBLE
+## Acquisitions, rather than only the current state: a screen may open and
+## close between two simulation commands and still invalidate queued input.
+static var gameplay_generation: int = 0
+static var _gameplay_blockers: int = 0
 
 var _owner: WeakRef
 var _focus_before: WeakRef
+var _blocks_gameplay: bool = false
 
 
-static func acquire(owner: Node) -> UiInputScope:
+static func acquire(owner: Node, block_gameplay: bool = false) -> UiInputScope:
 	_prune()
 	for scope in _stack:
 		if scope._owner.get_ref() == owner:
@@ -20,6 +25,10 @@ static func acquire(owner: Node) -> UiInputScope:
 		_mouse_before = Input.get_mouse_mode()
 	var scope := UiInputScope.new()
 	scope._owner = weakref(owner)
+	scope._blocks_gameplay = block_gameplay
+	if block_gameplay:
+		_gameplay_blockers += 1
+		gameplay_generation += 1
 	var focus := owner.get_viewport().gui_get_focus_owner()
 	if focus != null:
 		scope._focus_before = weakref(focus)
@@ -27,6 +36,14 @@ static func acquire(owner: Node) -> UiInputScope:
 	_stack.append(scope)
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	return scope
+
+
+static func blocks_gameplay() -> bool:
+	# Normal gameplay has no blocking owners and needs no stack traversal.
+	if _gameplay_blockers == 0:
+		return false
+	_prune()
+	return _gameplay_blockers > 0
 
 
 func is_top() -> bool:
@@ -44,6 +61,8 @@ func release() -> void:
 		return
 	var was_top: bool = not _stack.is_empty() and _stack.back() == self
 	_stack.erase(self)
+	if _blocks_gameplay:
+		_gameplay_blockers -= 1
 	_prune()
 	if _stack.is_empty():
 		Input.set_mouse_mode(_mouse_before)
@@ -59,6 +78,8 @@ static func _prune() -> void:
 	var had_owners := not _stack.is_empty()
 	for i in range(_stack.size() - 1, -1, -1):
 		if not is_instance_valid(_stack[i]._owner.get_ref()):
+			if _stack[i]._blocks_gameplay:
+				_gameplay_blockers -= 1
 			_stack.remove_at(i)
 	if had_owners and _stack.is_empty():
 		Input.set_mouse_mode(_mouse_before)

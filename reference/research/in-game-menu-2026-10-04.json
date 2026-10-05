@@ -1,0 +1,70 @@
+{
+  "date": "2026-10-04",
+  "client_version": 2000924,
+  "server_version": 2000924,
+  "patch_version": "1.41.8.8",
+  "source_revision": 11076591,
+  "version_date": "Oct 02 2026",
+  "version_time": "14:45:21",
+  "vpk_directory_sha256": "a391c450b7b93389aa2b0a1ba1a0a70e2da6eedf9570e90a3b1bdfe062aad1eb",
+  "extractor": "Source2Viewer-CLI 20.0.0.0",
+  "existing_source_manifest": "panorama-ui-2026-10-04.json",
+  "existing_manifest_files_used": [
+    "panorama/layout/mainmenu.xml",
+    "panorama/scripts/mainmenu.js",
+    "panorama/styles/mainmenu.css",
+    "panorama/styles/csgostyles.css"
+  ],
+  "audited_files": [
+    {
+      "path": "panorama/layout/settings/settings.xml",
+      "sha256": "661c53dc96900f8f2643e39cee5c6207be3f4911a79dd14ac065f614ea8c53a5",
+      "bytes": 2974
+    },
+    {
+      "path": "panorama/scripts/settingsmenu.js",
+      "sha256": "36e7a5b309a93e721fd8a7c263efbb90a23da55153479d73c7cf09d5939c0b88",
+      "bytes": 16659
+    },
+    {
+      "path": "panorama/scripts/context_menus/context_menu_vote.js",
+      "sha256": "6792fd353b2dac1e88b8ca7987e2bb1446739c223189cf34519238874c5a9be4",
+      "bytes": 9198
+    },
+    {
+      "path": "panorama/layout/settings/settings_audio.xml",
+      "sha256": "96e08177199d854bc1c773c29a22180b9a4161caa13ca5eb8c5902c6c9f48219",
+      "bytes": 30592
+    },
+    {
+      "path": "panorama/layout/settings/settings_kbmouse.xml",
+      "sha256": "d979411d55e543a53843edb2a7021e023de7bfd92ace422a403287b4257924ba",
+      "bytes": 20708
+    },
+    {
+      "path": "panorama/scripts/settingsmenu_shared.js",
+      "sha256": "0401625bafb24e59dcffa2214aebb723b810b214f2ba5864c052ba5370b61a4e",
+      "bytes": 14354
+    },
+    {
+      "path": "panorama/styles/settings/settings.css",
+      "sha256": "6c9b6ced9a3f95326ee16ea62682f9205b7979daa9f9412813c4358d7b57f85e",
+      "bytes": 8456
+    },
+    {
+      "path": "panorama/styles/settings/settings_slider.css",
+      "sha256": "c01eb15f3efaffc8cb199867cf8db1532a09f452494a673f34be8d084fe2059a",
+      "bytes": 1722
+    }
+  ],
+  "follow_up_date": "2026-10-05",
+  "follow_up_resources": [
+    {
+      "path": "characters/models/ctm_sas/materials/ctm_sas_lenses.vmat_c",
+      "sha256": "fe69ff5789dcb00acbea3fda86dc7fcac5c991b9bdbe968eddec16e6ee6895f2",
+      "bytes": 4368,
+      "kind": "compiled material DATA inspected with Source2Viewer-CLI"
+    }
+  ],
+  "follow_up_extractor_product_version": "20.0.6980+a06886f7d06049052d32a7381ec05523064a2ca0"
+}

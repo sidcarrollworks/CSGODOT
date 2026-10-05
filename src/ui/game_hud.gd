@@ -238,6 +238,11 @@ func _physics_process(_delta: float) -> void:
 
 
 func _process(delta: float) -> void:
+	# Keep updating the HUD while the match runs, but do not draw it through
+	# a blocking menu's controls. Buy scopes remain nonblocking.
+	var show_hud := not UiInputScope.blocks_gameplay()
+	if visible != show_hud:
+		visible = show_hud
 	_frames.frame(Time.get_ticks_usec())
 	var team := player.team if player != null else "T"
 	# Driving a bot, the HUD is the bot's: its health, its gun, its money

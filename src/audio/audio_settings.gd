@@ -6,8 +6,8 @@ extends Resource
 ## volume_convar (reference/research/audio-round.md 1.1). Every default is
 ## competitive's, from the game's convar dump (build 2000915): round-start
 ## and action music are off, and the bomb and ten-second cues are low.
-## Ready for the settings menu (roadmap item 26) to show and change; until
-## it lands, a player turns the music up here.
+## ClientPreferences persists these values; the in-game settings screen
+## edits a draft and the host applies it to this same live resource.
 
 ## Master Music Volume (snd_musicvolume): every music cue is also scaled by
 ## it (inferred from the kit's default convar and use_mode_music_volume).

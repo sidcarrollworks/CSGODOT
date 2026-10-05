@@ -96,6 +96,12 @@ var _commands := PackedStringArray()
 ## When the last command was sampled, on the wall clock: the start of the
 ## stretch the next one covers.
 var _last_sample_usec: int = -1
+## Set by the controller at the command/event boundary, never by the
+## simulation. The local menu does not pause the world or change a pawn.
+var gameplay_blocked: bool = false
+## Keys held in a menu must come up before polling can drive gameplay.
+## A genuine newly forwarded press can also clear its own suppression.
+var _ignored_actions: Dictionary = {}
 
 ## Look angles accumulate at render rate, not tick rate. Mouse movement must
 ## never be quantised to the simulation tick or aiming feels heavy.
@@ -145,6 +151,8 @@ static func ensure_actions() -> void:
 
 
 func handle_event(event: InputEvent) -> void:
+	if gameplay_blocked:
+		return
 	if event is InputEventMouseMotion:
 		var motion := event as InputEventMouseMotion
 		# The mouse's own movement on the screen: relative is scaled with the
@@ -157,8 +165,15 @@ func handle_event(event: InputEvent) -> void:
 
 	for action: StringName in BUTTONS:
 		if event.is_action_pressed(action, false):
+			# Godot updates held state before callbacks. If this callback first
+			# notices a menu generation, its fresh gameplay press still counts.
+			_ignored_actions.erase(action)
 			_pending.append(_event(action, true))
 		elif event.is_action_released(action):
+			if _ignored_actions.erase(action):
+				# No accepted press preceded this release. Replaying it would
+				# reconstruct a held button before the release inside the tick.
+				continue
 			_pending.append(_event(action, false))
 
 	for i in SLOT_ACTIONS.size():
@@ -174,6 +189,46 @@ func handle_event(event: InputEvent) -> void:
 		_commands.append("drop")
 	elif event.is_action_pressed(&"noclip"):
 		_toggle_noclip = not _toggle_noclip
+
+
+## discard_pending also covers a screen that opened and closed between
+## samples: the controller compares UiInputScope.gameplay_generation first.
+func set_gameplay_blocked(blocked: bool, discard_pending: bool = false) -> void:
+	if gameplay_blocked == blocked and not discard_pending:
+		return
+	gameplay_blocked = blocked
+	_discard_pending()
+	_remember_held_actions()
+
+
+func _discard_pending() -> void:
+	_pending.clear()
+	_commands = PackedStringArray()
+	_weapon_select = UserCmd.SELECT_NONE
+	_weapon_cycle = 0
+	_toggle_noclip = false
+
+
+func _remember_held_actions() -> void:
+	for action: StringName in BUTTONS:
+		if Input.is_action_pressed(action):
+			_ignored_actions[action] = true
+		else:
+			_ignored_actions.erase(action)
+
+
+func _forget_released_actions() -> void:
+	for action: StringName in _ignored_actions.keys():
+		if not Input.is_action_pressed(action):
+			_ignored_actions.erase(action)
+
+
+func _axis(negative: StringName, positive: StringName) -> float:
+	if _ignored_actions.is_empty():
+		return Input.get_axis(negative, positive)
+	var left := 0.0 if _ignored_actions.has(negative) else Input.get_action_strength(negative)
+	var right := 0.0 if _ignored_actions.has(positive) else Input.get_action_strength(positive)
+	return right - left
 
 
 ## The console commands asked for since the last call, in order.
@@ -252,19 +307,27 @@ func build_command(tick: int, now_usec: int = -1) -> UserCmd:
 
 	var cmd := UserCmd.new()
 	cmd.tick = tick
+	cmd.yaw_degrees = yaw_degrees
+	cmd.pitch_degrees = pitch_degrees
+	if gameplay_blocked:
+		_discard_pending()
+		_remember_held_actions()
+		_last_sample_usec = now_usec
+		return cmd
+	if not _ignored_actions.is_empty():
+		_forget_released_actions()
 	# The mouse's buttons count only while the game has the mouse, as the
 	# look does: a click in a menu (the buy menu, Escape's free cursor) is
 	# not a shot.
 	var has_mouse := Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED
 	for action: StringName in BUTTONS:
-		if Input.is_action_pressed(action) and (has_mouse or action not in MOUSE_BUTTONS):
+		if Input.is_action_pressed(action) and not _ignored_actions.has(action) \
+				and (has_mouse or action not in MOUSE_BUTTONS):
 			cmd.buttons |= BUTTONS[action]
 	cmd.move = Vector2(
-		Input.get_axis(&"move_left", &"move_right"),
-		Input.get_axis(&"move_back", &"move_forward")
+		_axis(&"move_left", &"move_right"),
+		_axis(&"move_back", &"move_forward")
 	)
-	cmd.yaw_degrees = yaw_degrees
-	cmd.pitch_degrees = pitch_degrees
 	for event in take_events():
 		cmd.steps.append(UserCmd.SubtickStep.new(
 			BUTTONS[event.action], event.pressed,

@@ -53,6 +53,61 @@ static func menu() -> Theme:
 		box.content_margin_top = 18
 		box.content_margin_bottom = 18
 		_menu.set_stylebox(state, &"UiButton", box)
+	_menu.set_type_variation(&"UiMenuBarButton", &"UiButton")
+	_menu.set_font_size(&"font_size", &"UiMenuBarButton", 24)
+	for state: String in ["normal", "hover", "pressed", "disabled", "focus"]:
+		var bar_box := _menu.get_stylebox(state, &"UiButton").duplicate() as StyleBoxFlat
+		bar_box.content_margin_left = 18
+		bar_box.content_margin_right = 18
+		bar_box.content_margin_top = 12
+		bar_box.content_margin_bottom = 12
+		_menu.set_stylebox(state, &"UiMenuBarButton", bar_box)
+	# Settings reuse Panorama's 48px rows, compact right-aligned sliders and
+	# 80px value boxes rather than stretching every control across the page.
+	_menu.set_type_variation(&"UiSettingsSurface", &"PanelContainer")
+	var settings_surface := StyleBoxEmpty.new()
+	settings_surface.set_content_margin_all(INSET)
+	_menu.set_stylebox(&"panel", &"UiSettingsSurface", settings_surface)
+	_menu.set_type_variation(&"UiSettingsRow", &"PanelContainer")
+	var row := StyleBoxFlat.new()
+	row.bg_color = Color.TRANSPARENT
+	row.border_color = Color(1, 1, 1, 0.08)
+	row.border_width_bottom = 1
+	row.content_margin_top = 4
+	row.content_margin_bottom = 4
+	_menu.set_stylebox(&"panel", &"UiSettingsRow", row)
+	_menu.set_type_variation(&"UiSettingsTitle", &"UiTitle")
+	_menu.set_font_size(&"font_size", &"UiSettingsTitle", 32)
+	_menu.set_type_variation(&"UiSettingsHeading", &"UiHeading")
+	_menu.set_font_size(&"font_size", &"UiSettingsHeading", 28)
+	_menu.set_type_variation(&"UiSettingsValue", &"UiBody")
+	_menu.set_font_size(&"font_size", &"UiSettingsValue", 20)
+	var value_box := StyleBoxFlat.new()
+	value_box.bg_color = Color(1, 1, 1, 0.015)
+	value_box.border_color = Color(0.8, 0.8, 0.8, 0.08)
+	value_box.set_border_width_all(2)
+	value_box.set_content_margin_all(5)
+	_menu.set_stylebox(&"normal", &"UiSettingsValue", value_box)
+	_menu.set_type_variation(&"UiSettingsInput", &"LineEdit")
+	_menu.set_stylebox(&"normal", &"UiSettingsInput", value_box)
+	var focused_box := value_box.duplicate() as StyleBoxFlat
+	focused_box.border_color = Color(0.51, 0.85, 1, 0.6)
+	_menu.set_stylebox(&"focus", &"UiSettingsInput", focused_box)
+	_menu.set_color(&"font_color", &"UiSettingsInput", TEXT)
+	_menu.set_type_variation(&"UiSettingsSlider", &"HSlider")
+	for part: String in ["slider", "grabber_area", "grabber_area_highlight"]:
+		var track := StyleBoxFlat.new()
+		track.bg_color = Color(0.8, 0.8, 0.8, 0.2 if part == "slider" else 0.75)
+		track.content_margin_top = 4
+		track.content_margin_bottom = 4
+		_menu.set_stylebox(part, &"UiSettingsSlider", track)
+	var thumb := GradientTexture2D.new()
+	thumb.width = 16
+	thumb.height = 12
+	thumb.gradient = Gradient.new()
+	thumb.gradient.colors = PackedColorArray([TEXT, TEXT])
+	_menu.set_icon(&"grabber", &"UiSettingsSlider", thumb)
+	_menu.set_icon(&"grabber_highlight", &"UiSettingsSlider", thumb)
 	_menu.set_constant(&"separation", &"VBoxContainer", GAP)
 	_menu.set_constant(&"separation", &"HBoxContainer", GAP)
 	return _menu

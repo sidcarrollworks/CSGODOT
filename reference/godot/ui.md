@@ -104,6 +104,18 @@ Source: godot-docs branch 4.7 @9adca4c (2026-09-21). Read when: building or chan
 
 **Container** family: see above. `Container.queue_sort()`, `fit_child_in_rect()`.
 
+**Numeric settings fields** (verified in Godot 4.7.2): `SpinBox.get_line_edit()`
+returns its required internal editor; do not free it. `SpinBox.apply()` commits
+pending text as Enter would, so call it before emitting a settings draft.
+Leave `update_on_text_changed` false for partial decimal expressions. Precision
+comes from `Range.step`; SpinBox has no `format` property. Focused Enter submits
+the field through the GUI phase, rather than confirming the whole form.
+Use `Range.set_value_no_signal()` for initial binding. Set
+`HSlider.scrollable = false` inside a scrollable form so wheel navigation does
+not alter a volume accidentally. See [SpinBox](https://docs.godotengine.org/en/4.7/classes/class_spinbox.html),
+[Range](https://docs.godotengine.org/en/4.7/classes/class_range.html) and
+[Slider](https://docs.godotengine.org/en/4.7/classes/class_slider.html).
+
 **Theme** (`classes/class_theme.rst`)
 - `default_font`, `default_font_size = -1` (unset), `default_base_scale = 0.0` (use global), `set_color(name, theme_type, color)`, `set_constant`, `set_font`, `set_font_size`, `set_stylebox(name, theme_type, stylebox)`, `set_icon`, `set_type_variation(theme_type, base_type)`.
 
@@ -117,6 +129,12 @@ Source: godot-docs branch 4.7 @9adca4c (2026-09-21). Read when: building or chan
 ## Where the code already does this
 
 - Shared menu foundation (`src/ui/ui_style.gd`, `ui_screen.gd`, `ui_input_scope.gd`): a cached native Theme, scene/container layout and explicit nested cursor/input cleanup. `UiChoiceCard`/`UiDialog` are reusable scenes; the mode picker uses them. The [UI guide](../ui.md) describes authoring. In headless mode `Input.set_mouse_mode(CAPTURED)` reports VISIBLE, so restoration checks compare the actual initial mode; graphical checks verify real capture too.
+- Settings reuse `UiWorldBackdrop` for the blurred world and `UiSettings*`
+  Theme variations for native rows, sliders, values and the SpinBox editor.
+  The full-screen backdrop deliberately copies the whole visible page;
+  the HUD still uses its smaller bounded copies. Hiding/freeing the page
+  removes that compositing work. The host hides only the pause view while
+  settings are open, keeping its shell and input ownership alive.
 - GUI checks can use `Viewport.push_input(event, in_local_coords=true)` to deliver an event in logical viewport coordinates through `_input`, GUI and unhandled input. Do not call `_gui_input` directly when testing hit-test propagation. [Viewport method reference](https://docs.godotengine.org/en/latest/classes/class_viewport.html#class-viewport-method-push-input), verified in 4.7.2 here.
 - UI transitions use `view.create_tween()`, bound to the view. A freed bound node kills its Tween; completed Tweens are not reused. No permanent `_process` loop is needed for a short reveal. [Tween reference](https://docs.godotengine.org/en/latest/classes/class_tween.html), verified in 4.7.2 here. Simulation decisions/timers still use the world's tick.
 

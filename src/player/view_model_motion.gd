@@ -34,10 +34,11 @@ const BOB_LATERAL := 1.0
 ## How far the weapon settles back and down at full speed, in units.
 const BOB_LOWER := 2.1
 
-## The weapon dips as far relative to the eyes as the eyes dip in world
-## space: about 1 unit on takeoff and 1.6 on landing. By eye, for Sid's
-## PR #160 playtest, not an extracted CS2 value (research/jump-camera.md).
-const JUMP_DIP_SCALE := 1.0
+## Sid's October 5 playtest found the current jump movement too bouncy:
+## halve its previous 1.0 scale, to about 0.5 units on takeoff and 0.8 on
+## landing relative to the camera. The eye spring and its timing stay the
+## same. By eye, not an extracted CS2 value (research/jump-camera.md).
+const JUMP_DIP_SCALE := 0.5
 
 ## Degrees of lag per degree per second of turning, its limit, and how
 ## quickly it follows (per second).

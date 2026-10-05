@@ -1257,6 +1257,16 @@ list, split into Local and Remote items, with the measurements.
     two halves, and M (`teammenu`) opening the screen mid-match to change
     side. **Local:** choose each side and Auto Select in fullscreen, and
     let the countdown run out once.
+    **October 5 follow-up implemented:** load the map, collision, both local
+    player choices and presenters before showing the selector. Selection
+    retains the prepared side and final roster; warmup starts once on joining,
+    after systems and bot round planners are prepared. Direct startup also
+    starts once; announcement-count checks guard both paths after integration.
+    The loaded world shows through the selector, using a separate camera at
+    Sid's measured Dust2 Tabac/Kasbah view. Bots initialize both draw samples
+    at their spawn, preventing shadow flicker while the world is held.
+    Extracted Dust2 graphical
+    startup and T/CT/practice/Auto/headless checks passed; Sid's replay pending.
 
 24e. **October 4 competitive playtest HUD/audio and takeover follow-up.**
     *(Remote implemented; Local replay pending)* The planted-C4 icon replaces
@@ -1287,9 +1297,18 @@ list, split into Local and Remote items, with the measurements.
     dialog now underpin mode selection. Team selection/buying share ownership;
     the component gallery previews 1080p/4K without a map. See the
     [UI guide](ui.md) and [audit](research/panorama-ui-2026-10-04.md).
-    **Screens/settings remain:** main, pause, host/join, full team
-    select, and settings for sensitivity (already in CS2's units), crosshair,
-    viewmodel, rebinding the keys of item 12a's table, audio and video.
+    **In-game menu and initial settings done:** Escape opens Resume, Settings
+    and confirmed Quit to desktop. Sensitivity in CS2's units and the existing
+    music controls persist after Apply; Cancel discards the draft. Blocking
+    screens neutralize local commands, including bot takeover, while the match
+    and bomb timer keep running. Buy-menu movement retains its existing policy.
+    **October 5 playtest follow-up:** settings share a blurred-world backdrop,
+    48px row surfaces, compact sliders and boxed values informed by Sid's
+    CS2 screenshots and the shipped settings styles. The pause navigation
+    hides while settings are open and returns on closing.
+    See the [Escape-menu audit](research/in-game-menu-2026-10-04.md).
+    **Screens/settings remain:** main, host/join, full team select, crosshair,
+    viewmodel, rebinding the keys of item 12a's table, additional audio and video.
     Video includes, from the frame pacing work (performance.md, "Frame
     pacing"): exclusive fullscreen, where G-Sync and FreeSync engage by
     default, and a frame cap just under the refresh for such screens
