@@ -81,6 +81,8 @@ var _sites := PackedVector3Array()
 var _team_choices := {}
 var _spare_t_bot: Bot
 var waiting_for_team: bool = false
+## The chooser's view is independent of both ready spawn cameras.
+var team_camera: TeamSelectCamera
 
 
 ## Practice, a departure from CS2 (whose offline practice is a match with
@@ -138,9 +140,10 @@ func _prepare(game_world: GameWorld, map_contents: MapContents, choosing_team: b
 		_team_choices["CT"]["hud"] = hud
 		player = first_player
 		hud = _team_choices["T"]["hud"]
-		# The prepared camera shows the level behind the selector, without
-		# the first-person weapon or HUD covering it.
-		first_player.camera.make_current()
+		team_camera = TeamSelectCamera.new()
+		team_camera.name = "TeamCamera"
+		add_child(team_camera)
+		team_camera.frame_map(map, first_player.camera, first_player.config.stand_eye_height)
 	else:
 		_add_local_presentation(self)
 	# F11 steps through the culling and the skybox (RenderDebug).
@@ -228,6 +231,9 @@ func join_team(side: String) -> void:
 		if child is CanvasLayer:
 			(child as CanvasLayer).show()
 	controller.camera.make_current()
+	remove_child(team_camera)
+	team_camera.queue_free()
+	team_camera = null
 	# Local input remains first, as in the direct/headless startup path.
 	world.players.erase(controller)
 	world.players.push_front(controller)
@@ -315,7 +321,10 @@ func _make_bot(side: String, nth: int, number: int) -> Bot:
 	bot.route = bot_route(map.spawns, side, nth, _sites, map.nav_mesh)
 	add_child(bot)
 	var spawns: Array = map.spawns[side]
-	bot.global_position = spawns[nth % spawns.size()]["position"]
+	var spawn: Dictionary = spawns[nth % spawns.size()]
+	# No tick runs behind team select. Snap both draw samples now, rather
+	# than interpolating the body (and its shadow) from the origin each frame.
+	bot.place(spawn["position"], spawn["yaw"])
 	return bot
 
 

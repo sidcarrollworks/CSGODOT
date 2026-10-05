@@ -90,6 +90,10 @@ loads the map and prepares both local player/presenter choices at tick zero
 before mounting `TeamPicker`. Joining retains the selected objects, removes
 the unused staged roster entries and starts warmup. Explicit `--team` and
 headless startup prepare only the selected side.
+The independent `TeamSelectCamera` uses measured map views without moving
+the players. Dust2's view comes from Sid's October 5 reference; other maps
+fall back to the prepared spawn camera. Joining makes the selected player
+camera current before removing the preview.
 
 `ClientPreferences` caches sensitivity and the existing `AudioSettings` values
 from `user://client_settings.cfg` at startup. Settings edits an independent

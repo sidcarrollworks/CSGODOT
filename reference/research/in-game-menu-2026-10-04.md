@@ -139,6 +139,25 @@ shared. Explicit team/headless startup keeps its single-player preparation path.
 An extracted Dust2 graphical run joined CT in 21,872 microseconds; this is
 one local observation, not a timing guarantee or CI threshold.
 
+A second October 5 replay supplied the chooser view at game feet position
+`(-573.7, 129.2, -1302.8)`, yaw 220.4, pitch 3.3. `TeamSelectCamera` adds the
+standing eye offset (64 units), copies the prepared camera's projection and
+cull mask, and draws this view without moving either candidate player.
+Unmeasured maps and missing-map fallback keep the prepared spawn view.
+Joining makes the selected player camera current before removing the preview.
+This is a screenshot measurement, not a recovered native camera transform.
+
+The replay also exposed bot shadow flicker while the world was held. Staged
+bot placement had assigned only the current position, leaving the previous
+draw sample at the origin. `DrawClock` continues to track engine frames, so
+`Bot._process` repeatedly interpolated between those different positions.
+In a local Dust2 probe, 720 rendered samples stayed at world tick zero with
+12 prepared roster entries, all alive and no deaths; a bot's model moved
+over roughly 794 by 150 by 820 units. After snapping its position through
+`PlayerSim.place`, the model's measured span was zero. Both staged local
+shadow bodies remained hidden. Placement now snaps both samples and yaw,
+preserving animation while preventing this motion; no respawn policy changed.
+
 The SAS lenses already use `csgo_character.vfx`, with no `F_EYEBALLS`.
 The installed material resource
 `characters/models/ctm_sas/materials/ctm_sas_lenses.vmat_c` contains uniform
@@ -174,8 +193,15 @@ and focus restoration, draft Apply/Cancel and persistence, blocked local command
 with held-control release, bot handoff, continued world/bomb ticks, HUD visibility
 and preserved buy-menu movement. The current character suite also passed
 46 Forward+ checks, including lens diffuse/reflection behavior and imported
-SAS material binding. The startup suite passed 131 checks; the jump suite
+SAS material binding. The startup suite passed 212 checks; the jump suite
 passed 135.
+
+The final graphical chooser probe kept all ten staged bots at one model
+position across 360 frames, with world tick zero and no game events or deaths.
+The camera matched the supplied view; CT selection removed the preview,
+switched to the ready spawn camera and began the ten-player match. Reviewed
+`.godot/team-shadow-reference-ready.png` and
+`.godot/team-shadow-reference-joined.png`.
 
 Reviewed menu and settings captures at 1920x1080 and 3840x2160 under
 `.godot/menu-audit/`; the Dust2 capture uses the supplied T-spawn position
@@ -184,11 +210,9 @@ smoke run on extracted Dust2 clicked the actual Settings, Apply, Quit, Cancel
 and Resume controls and checked active values and isolated-file persistence.
 The existing simulation suite passed 283 checks, including 7,178 movement
 steps compared between native/script implementations and ten hitbox rays.
-The October 5 full `scripts/run_tests.sh` run completed 9,151 checks across
-88 files with extracted assets and native addons available. All suites passed
-except two model assertions that still expected the previous full-strength
-jump dip. After correcting those expectations, all 313 local-asset model checks
-passed in a focused rerun. The full run printed no script errors. Three
+The final October 5 full `scripts/run_tests.sh` run passed 9,232 checks across
+88 files with extracted assets and native addons available, including all
+313 model checks and 212 startup checks. The full run printed no script errors. Three
 render-only cases retained their normal headless skips; graphical checks ran
 separately as described above. The original October 4 implementation had passed
 8,986 checks across 87 files.

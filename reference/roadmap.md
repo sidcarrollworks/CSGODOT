@@ -1255,7 +1255,10 @@ list, split into Local and Remote items, with the measurements.
     **October 5 follow-up implemented:** load the map, collision, both local
     player choices and presenters before showing the selector. Selection
     retains the prepared side and final roster; warmup starts on joining.
-    The loaded world shows through the selector. Extracted Dust2 graphical
+    The loaded world shows through the selector, using a separate camera at
+    Sid's measured Dust2 Tabac/Kasbah view. Bots initialize both draw samples
+    at their spawn, preventing shadow flicker while the world is held.
+    Extracted Dust2 graphical
     startup and T/CT/practice/Auto/headless checks passed; Sid's replay pending.
 
 24e. **October 4 competitive playtest HUD/audio and takeover follow-up.**

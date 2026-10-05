@@ -23,6 +23,7 @@ func _run() -> void:
 			await _test_prepared_join(side, practice_mode)
 	await _test_auto_select()
 	await _test_five_player_colours()
+	await _test_team_camera_view()
 	await _test_headless_bypass()
 	_finish("team-startup")
 
@@ -39,7 +40,7 @@ func _small_map() -> MapContents:
 	return contents
 
 
-func _prepared_fixture(practice_mode: bool = false, team_count: int = 2) -> Array:
+func _prepared_fixture(practice_mode: bool = false, team_count: int = 2, map_name: String = "de_team_startup_fixture") -> Array:
 	var fixture := Node3D.new()
 	root.add_child(fixture)
 	var floor_body := StaticBody3D.new()
@@ -59,7 +60,9 @@ func _prepared_fixture(practice_mode: bool = false, team_count: int = 2) -> Arra
 	if practice_mode:
 		mode.practice()
 	fixture.add_child(mode)
-	mode.prepare_for_team_select(world, _small_map())
+	var contents := _small_map()
+	contents.name = map_name
+	mode.prepare_for_team_select(world, contents)
 	world.initialize_drop_physics(fixture)
 	world.make_bodies_now()
 	return [fixture, world, mode]
@@ -77,8 +80,9 @@ func _test_scene_prepares_before_select() -> void:
 		"the map is loaded before team selection, including missing-map fallback")
 	_check(scene.world != null and not scene.world.drop_physics_backend.is_empty(), "map collision physics is initialized before selection")
 	_check(scene.mode != null and scene.mode.waiting_for_team, "both team choices are prepared before selection")
-	_check(scene.get_viewport().get_camera_3d() == (scene.mode.player as PlayerController).camera,
-		"a camera draws the loaded world behind the chooser")
+	_check(scene.get_viewport().get_camera_3d() == scene.mode.team_camera
+		and scene.mode.team_camera != (scene.mode.player as PlayerController).camera,
+		"a dedicated camera draws the loaded world behind the chooser")
 	var loaded_map := scene.map
 	var loaded_world := scene.world
 	var candidates := scene.mode._team_choices.duplicate()
@@ -108,6 +112,8 @@ func _test_prepared_join(side: String, practice_mode: bool) -> void:
 	var ready_shadow := controller.body_shadow
 	var ready_arms := controller.view._view_models.duplicate()
 	var ready_agent := ready_hud.buy_menu.agent
+	var ready_camera := controller.camera.global_transform
+	var preview_camera := mode.team_camera
 	var other_controller := mode._team_choices[MatchState.other(side)]["player"] as PlayerController
 	var other_id := other_controller.userid
 	var scenes_before := RigModel._scenes.keys()
@@ -115,9 +121,21 @@ func _test_prepared_join(side: String, practice_mode: bool) -> void:
 		"%s %s: match and systems are ready before selection" % [side, practice_mode])
 	for i in 4:
 		await physics_frame
+		await process_frame
+		for bot in mode.bots:
+			_check(bot.alive and bot.previous_position.is_equal_approx(bot.global_position),
+				"%s %s: held bot %s has no respawn or origin-to-spawn interpolation" % [side, practice_mode, bot.name])
+			if bot.model != null:
+				_check(bot.model.global_position.is_equal_approx(bot.global_position),
+					"%s %s: held bot %s and its shadow stay at the spawn" % [side, practice_mode, bot.name])
 	_check_equal(world.tick, 0, "%s %s: world waits for the chooser" % [side, practice_mode])
 	_check_equal(mode.match_state.phase_ends_usec, 0, "%s %s: no match countdown starts behind the chooser" % [side, practice_mode])
 	mode.join_team(side)
+	_check(mode.team_camera == null and not preview_camera.is_inside_tree()
+		and controller.get_viewport().get_camera_3d() == controller.camera,
+		"%s %s: joining removes the preview camera and selects the ready player camera" % [side, practice_mode])
+	_check(controller.camera.global_transform.is_equal_approx(ready_camera),
+		"%s %s: preview framing never changes the player's spawn view" % [side, practice_mode])
 	_check(mode.player == controller and mode.hud == ready_hud, "%s %s: retains the prepared controller and HUD" % [side, practice_mode])
 	_check(controller.model == ready_model and controller.body_model == ready_body and controller.body_shadow == ready_shadow,
 		"%s %s: joining rebuilds no player body or shadow" % [side, practice_mode])
@@ -193,9 +211,31 @@ func _test_headless_bypass() -> void:
 		_check(scene.team_picker == null and not scene.mode.waiting_for_team, "%s: headless startup bypasses team selection" % side)
 		_check(scene.mode._team_choices.is_empty() and scene.world.players.size() == 1,
 			"%s: direct startup builds only its chosen local player" % side)
+		_check(scene.mode.team_camera == null, "%s: direct startup creates no preview camera" % side)
 		_check(scene.mode.spawn_team == ("T" if side == "Ask" else side) if side != "Auto" else scene.mode.spawn_team in MatchState.SIDES,
 			"%s: direct startup preserves side resolution" % side)
 		scene.queue_free()
+		await process_frame
+
+
+func _test_team_camera_view() -> void:
+	for map_name in ["de_dust2", "de_mirage"]:
+		var prepared := _prepared_fixture(true, 2, map_name)
+		var mode := prepared[2] as Competitive
+		var controller := mode.player as PlayerController
+		var camera := mode.team_camera
+		if map_name == "de_dust2":
+			_check(camera.global_position.is_equal_approx(Vector3(-573.7, 193.2, -1302.8)),
+				"Dust2 chooser matches the supplied feet position plus the standing eye height")
+			_check(camera.global_basis.is_equal_approx(Basis.from_euler(Vector3(deg_to_rad(3.3), deg_to_rad(220.4), 0.0))),
+				"Dust2 chooser matches the supplied yaw and pitch")
+		else:
+			_check(camera.global_transform.is_equal_approx(controller.camera.global_transform),
+				"maps without an authored chooser view use the prepared spawn view")
+		_check(camera.cull_mask == controller.camera.cull_mask and camera.fov == controller.camera.fov
+			and camera.near == controller.camera.near and camera.far == controller.camera.far,
+			"%s: preview keeps the world projection and hidden-body cull mask" % map_name)
+		(prepared[0] as Node3D).queue_free()
 		await process_frame
 
 

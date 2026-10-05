@@ -326,8 +326,13 @@ See the [in-game menu audit](research/in-game-menu-2026-10-04.md).
 At startup, `PlayScene` loads the map and collision before team selection.
 `Competitive.prepare_for_team_select` holds the world at tick zero and prepares
 both local players, first-person models, HUDs and recipient-specific audio.
+`TeamSelectCamera` draws the chooser independently of the spawn cameras:
+Dust2 uses Sid's measured Tabac/Kasbah view; other maps retain the prepared
+spawn view. Bot placement initializes both interpolation samples, so their
+models and shadows stay at the spawn while simulation is held.
 `join_team` keeps the selected controller/presenters and final bot roster,
-removes the unused choices, and starts warmup. Shared world grenade/C4 views
+switches to its camera, removes the preview and unused choices, and starts
+warmup. Shared world grenade/C4 views
 are created once; local presenters retain world coordinates under an identity
 top-level holder. Explicit team arguments and headless checks use direct startup.
 
