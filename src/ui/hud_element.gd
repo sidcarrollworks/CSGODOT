@@ -10,7 +10,8 @@ extends Control
 ##   or two under it for its panel), so there is no layout pass, no theme
 ##   lookup and no text shaping except when it redraws. Godot keeps an element's draw commands
 ##   until the next `queue_redraw()` (reference/godot/ui.md, "Drawing your
-##   own"), so a HUD that does not change costs nothing to draw again.
+##   own"), so unchanged HUD state does not rebuild its draw commands. The
+##   GPU still composites those commands each frame; blur still copies/reads.
 ## - The owner hands it its values each frame with `show_state()`, one array
 ##   compared with the last; only a difference redraws it.
 ## - An element that moves on its own (a roll, a flash, a bar opening) calls

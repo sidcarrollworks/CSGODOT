@@ -298,6 +298,17 @@ which is everything needed to put a render where a screenshot was taken,
 and under it the frame rate and the slowest frame of the last second (the
 range and the movement course show the same). F3 hides them.
 
+Menus use the same HudStyle font/color assets through `UiStyle`'s cached native
+Theme. `UiScreen` owns screen input, distinct canvas layers and a short reveal;
+`UiInputScope` restores the cursor/focus when nested menus close or leave the
+tree. PackedScenes replace Panorama layout snippets: `UiChoiceCard` flows and
+wraps its labels, and `UiDialog` emits confirmation/cancellation signals.
+Mode selection uses these cards; team selection and buying share the input
+lifecycle while keeping their current drawing. The [UI guide](ui.md) gives
+the authoring contract and gallery/preview commands. This follows the
+[current Panorama audit](research/panorama-ui-2026-10-04.md); the compact HUD
+continues to cache custom draw commands rather than doing menu layout each tick.
+
 Competitive mode on dust2 or another extracted defusal map runs a match
 the way CS2's server runs one (`src/match/`), with
 CS2's competitive numbers (`MatchRules`): two minutes of warmup, where you

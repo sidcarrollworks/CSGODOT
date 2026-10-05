@@ -1275,7 +1275,14 @@ list, split into Local and Remote items, with the measurements.
 
 ### Phase 10: a game you can hand to someone
 
-26. **Menus and settings.** *(Remote)* Main menu, pause, host and join, team
+26. **Menus and settings.** *(Remote)*
+    **Foundation done 2026-10-04 (Local and Remote):** audited the installed
+    CS2 Panorama layouts/styles/scripts; shared menu Theme, scene components,
+    nested input/cursor ownership and teardown, choice cards and a confirmation
+    dialog now underpin mode selection. Team selection/buying share ownership;
+    the component gallery previews 1080p/4K without a map. See the
+    [UI guide](ui.md) and [audit](research/panorama-ui-2026-10-04.md).
+    **Screens/settings remain:** main, pause, host/join, full team
     select, and settings for sensitivity (already in CS2's units), crosshair,
     viewmodel, rebinding the keys of item 12a's table, audio and video.
     Video includes, from the frame pacing work (performance.md, "Frame

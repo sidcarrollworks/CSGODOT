@@ -1,5 +1,5 @@
 class_name TeamPicker
-extends CanvasLayer
+extends UiScreen
 
 ## The side you play, chosen as a match starts, as CS2's team select asks
 ## it: Terrorists on the left, Counter-Terrorists on the right, each with how
@@ -32,14 +32,11 @@ var seconds_left: float = PICK_SECONDS
 ## The half under the mouse: "T", "CT", "Auto", or "".
 var hovered: String = ""
 
-var _mouse_before := Input.MOUSE_MODE_VISIBLE
 var _screen: _Screen
 
 
 func _ready() -> void:
-	layer = 10
-	_mouse_before = Input.get_mouse_mode()
-	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	super._ready()
 	_screen = _Screen.new()
 	_screen.picker = self
 	_screen.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -65,10 +62,10 @@ func tick_down(seconds: float) -> void:
 ## Takes a side ("T", "CT", or "Auto" for either): gives the mouse back,
 ## says which, and goes.
 func choose(choice: String) -> void:
-	if is_queued_for_deletion() or not choice in ["T", "CT", "Auto"]:
+	if _closing or is_queued_for_deletion() or not choice in ["T", "CT", "Auto"]:
 		return
 	var side := auto_side() if choice == "Auto" else choice
-	Input.set_mouse_mode(_mouse_before)
+	close_screen()
 	chosen.emit(side)
 	queue_free()
 
@@ -82,11 +79,6 @@ static func auto_side() -> String:
 ## What a side's line under its name says: "0 Players - 5 Bots".
 static func side_line(players: int, bots: int) -> String:
 	return "%d %s - %d %s" % [players, "Player" if players == 1 else "Players", bots, "Bot" if bots == 1 else "Bots"]
-
-
-func _input(event: InputEvent) -> void:
-	if handle_key(event):
-		get_viewport().set_input_as_handled()
 
 
 ## 1 T, 2 CT, 3 Auto Select. True where the key was the picker's.
@@ -122,6 +114,7 @@ class _Screen:
 
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_STOP
+		mouse_force_pass_scroll_events = false
 
 	## Where Auto Select sits, bottom right.
 	func auto_button() -> Rect2:

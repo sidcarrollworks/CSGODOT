@@ -46,8 +46,8 @@ remain historical evidence.
 | 5: readers | Shared text `KV3` reader and `MapPaths` are built; sky extraction accepts material DATA when shader decompilation fails (#185) | Remaining parser consolidation and binary KV3 nav analysis |
 
 The findings below retain their original dated evidence and line numbers;
-they describe the audit's starting point. This status table and the roadmap
-are the current implementation checklist.
+they describe the audit's starting point. For changes after this baseline,
+use the follow-up notes and the roadmap.
 
 ## Original summary, 2026-09-23
 
@@ -89,6 +89,13 @@ The three to do first, because items 12 and 13 need them at once:
   is only about what they share.
 
 ## Findings
+
+**October 4 UI follow-up:** the [Panorama audit](research/panorama-ui-2026-10-04.md)
+and [authoring guide](ui.md) now define the UI foundation. `UiStyle` shares
+native menu styles; PackedScenes provide choice cards/dialogs; `UiScreen`
+and `UiInputScope` own input/cursor lifetime. The mode picker uses the shared
+components, and team selection/buying share cleanup. The HUD keeps cached
+custom drawing. Roadmap 26's actual main/pause/settings screens remain open.
 
 ### 1. Nothing owns the simulation's tick
 

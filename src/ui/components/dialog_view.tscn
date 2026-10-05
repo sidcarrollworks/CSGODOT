@@ -1,0 +1,67 @@
+[gd_scene format=3]
+
+[node name="DialogView" type="Control"]
+layout_mode = 3
+
+[node name="Backdrop" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 0.55)
+
+[node name="Center" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Surface" type="PanelContainer" parent="Center"]
+custom_minimum_size = Vector2(720, 0)
+layout_mode = 2
+theme_type_variation = &"UiSurface"
+mouse_filter = 2
+
+[node name="Content" type="VBoxContainer" parent="Center/Surface"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Title" type="Label" parent="Center/Surface/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"UiTitle"
+text = "Confirm"
+autowrap_mode = 2
+
+[node name="Message" type="Label" parent="Center/Surface/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"UiBody"
+autowrap_mode = 2
+
+[node name="Actions" type="HBoxContainer" parent="Center/Surface/Content"]
+layout_mode = 2
+alignment = 2
+mouse_filter = 2
+
+[node name="Cancel" type="Button" parent="Center/Surface/Content/Actions"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 0
+mouse_force_pass_scroll_events = false
+theme_type_variation = &"UiButton"
+text = "Cancel"
+
+[node name="Confirm" type="Button" parent="Center/Surface/Content/Actions"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 0
+mouse_force_pass_scroll_events = false
+theme_type_variation = &"UiButton"
+text = "Confirm"

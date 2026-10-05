@@ -203,7 +203,9 @@ func _ready() -> void:
 
 func _input(event: InputEvent) -> void:
 	if event.is_action(&"showscores") and not event.is_echo():
-		held = event.is_pressed()
+		# Always accept release, so a popup opened while Tab was held cannot
+		# leave the board latched. Only the current input owner may open it.
+		held = event.is_pressed() and UiInputScope.available_to(self)
 
 
 ## Reads the match for `you` and shows the board while Tab is held.
