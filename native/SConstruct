@@ -18,6 +18,8 @@ COPIED_SCRIPTS = [
     "src/movement/movement_solver.gd",
     "src/movement/movement_config.gd",
     "src/physics/box3d_queries.gd",
+    "src/movement/ground_eyes.gd",
+    "src/physics/terrain_trace.gd",
 ]
 
 

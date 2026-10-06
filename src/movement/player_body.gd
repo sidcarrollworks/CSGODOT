@@ -103,6 +103,8 @@ const NATIVE_COPIES: Array[String] = [
 	"src/movement/movement_solver.gd",
 	"src/movement/movement_config.gd",
 	"src/physics/box3d_queries.gd",
+	"src/movement/ground_eyes.gd",
+	"src/physics/terrain_trace.gd",
 ]
 ## The functions the native step stands in for. A body whose script has its
 ## own of any of them (a profile's timed bot, a check's double) is stepped by
@@ -512,7 +514,7 @@ func _movement_interval(mover: Object, dt: float, start: float, end: float) -> v
 		landed_ago += dt * (end - start)
 	_last_movement_impulse = movement_impulse if movement_impulse.is_finite() else wish_dir * wish_speed
 	_jump_held_last_tick = wants_jump
-	ground_eyes.update(self, dt * (end - start))
+	ground_eyes.update(self, dt * (end - start), mover, _adapter.queries if mover != null else null)
 	_movement_finished(start, end)
 
 

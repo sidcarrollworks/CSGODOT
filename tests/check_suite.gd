@@ -34,8 +34,9 @@ var _known_open: int = 0
 ##
 ## And every step of a body's movement that the native code runs is run by
 ## the script first, from the same start, and the two held to the same
-## body to the last bit (PlayerBody.check_steps). Where the native code has
-## not been built the script runs alone and nothing is compared.
+## body to the last bit (PlayerBody.check_steps), and so is every terrain
+## sample of its eyes (GroundEyes.samples_checked). Where the native code
+## has not been built the script runs alone and nothing is compared.
 func _init() -> void:
 	Box3DQueries.check_sets = true
 	Box3DQueries.set_faults = PackedStringArray()
@@ -43,6 +44,8 @@ func _init() -> void:
 	PlayerBody.check_steps = true
 	PlayerBody.step_faults = PackedStringArray()
 	PlayerBody.steps_checked = 0
+	GroundEyes.sample_faults = PackedStringArray()
+	GroundEyes.samples_checked = 0
 
 
 ## Whether a passing check is printed as well as a failing one. Some files
@@ -106,6 +109,13 @@ func _finish(name: String) -> void:
 			PlayerBody.step_faults.size(), PlayerBody.steps_checked, PlayerBody.step_faults[0]])
 	elif PlayerBody.steps_checked > 0:
 		print("%d steps of the movement run by the script and by the native code, the same to the last bit." % PlayerBody.steps_checked)
+	if not GroundEyes.sample_faults.is_empty():
+		_checks += 1
+		_failures += 1
+		printerr("FAIL: %d of %d terrain samples came out differently in native code than by the script; the first: %s" % [
+			GroundEyes.sample_faults.size(), GroundEyes.samples_checked, GroundEyes.sample_faults[0]])
+	elif GroundEyes.samples_checked > 0:
+		print("%d terrain samples worked out by the script and by the native code, the same to the last bit." % GroundEyes.samples_checked)
 	if _failures == 0:
 		print("%d %s checks passed%s." % [_checks, name, "" if _known_open == 0 else ", %d of them known open" % _known_open])
 	else:

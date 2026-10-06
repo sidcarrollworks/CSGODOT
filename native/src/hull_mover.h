@@ -11,6 +11,11 @@
 // It takes the body's state from the body, runs the step on its own copy, and
 // puts the state back: the body's place is written once, where the script
 // writes it at every trace.
+//
+// And the terrain-aware eyes' sample (GroundEyes in
+// src/movement/ground_eyes.gd, with TerrainTrace's cast), held to the
+// script's in the same way: a moving body's 5x5 grid of floor heights and
+// the drop they weigh to.
 
 #ifndef CSGODOT_HULL_MOVER_H
 #define CSGODOT_HULL_MOVER_H
@@ -19,8 +24,10 @@
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
+#include <godot_cpp/variant/rid.hpp>
 #include <godot_cpp/variant/string.hpp>
 #include <godot_cpp/variant/string_name.hpp>
+#include <godot_cpp/variant/vector2i.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 
 namespace godot {
@@ -48,6 +55,13 @@ public:
 	static constexpr double CAST_INSET = 0.125;
 	// Hitbox.LAYER: a hull's sweep meets bodies, not areas.
 	static constexpr int64_t HITBOX_LAYER = 4;
+	// GroundEyes' constants, and TerrainTrace's.
+	static constexpr int GROUND_GRID = 8;
+	static constexpr int GROUND_SIDE = 5;
+	static constexpr double GROUND_SAMPLE_WIDTH = 7.98;
+	static constexpr double GROUND_MAX_DROP = 24.0;
+	static constexpr double GROUND_MIN_NORMAL = 0.7;
+	static constexpr double TERRAIN_LINEAR_SLOP = 0.001;
 
 	// How many hull casts the last step made.
 	int get_casts() const { return casts; }
@@ -68,6 +82,22 @@ public:
 	// use the one value. False, with nothing moved, where the step could not
 	// be run: no body, no config, or a world that has no sweep to ask for.
 	bool step(Object *p_body, Object *p_world, double p_dt, double p_walkable_y);
+
+	// The terrain sample of GroundEyes._script_sample from its grid on:
+	// each of the 5x5 cells from first, GROUND_GRID apart, its height from
+	// `cache` (GroundEyes._cache, written in place) where that is near q's,
+	// else from Box3D's square cast down through it (TerrainTrace.cast) on
+	// `world`, the bridge's Box3DWorld; and the drop compute_drop weighs
+	// them to. `bridge` (the Box3DQueries) is asked to synchronize before the
+	// first cast, as the script's first begin_shape_cast does, for `mask`
+	// and `owner` (the body's RID, left out). NaN where it could not be run:
+	// a world without the cast to ask for, and then nothing was cast.
+	double sample_ground(Object *p_bridge, Object *p_world, Dictionary p_cache, const Vector3 &p_q, const Vector2i &p_first, double p_step, double p_half, int64_t p_mask, const RID &p_owner);
+	// How many cells the last sample cast for.
+	int get_ground_casts() const { return ground_casts; }
+	// GroundEyes.compute_drop: the heights' drop under q, PackedFloat32Array
+	// as the script's are.
+	static double compute_drop(const Vector3 &p_q, const Vector2i &p_first, const float *p_heights, double p_step, double p_half);
 
 protected:
 	static void _bind_methods();
@@ -130,6 +160,9 @@ private:
 	uint64_t world_known = 0;
 	int casts = 0;
 	int hits = 0;
+	// And the one last found to have the terrain's square cast.
+	uint64_t ground_world_known = 0;
+	int ground_casts = 0;
 
 	// The body's state, as the step has it.
 	Vector3 position;

@@ -1,9 +1,12 @@
 # The game's native code
 
 C++ built into a GDExtension of the game's own, for what the script is too
-slow at. So far one thing: the movement's step (`src/hull_mover.cpp`,
-class `HullMover`), which is `PlayerBody._simulate_step` and everything it
-calls, with the hull's sweep as `Box3DQueries` answers it.
+slow at. So far two things, both in class `HullMover` (`src/hull_mover.cpp`):
+- the movement's step, which is `PlayerBody._simulate_step` and everything
+  it calls, with the hull's sweep as `Box3DQueries` answers it;
+- the terrain-aware eyes' sample (2026-10-06), which is
+  `GroundEyes._script_sample` and `compute_drop`, with each cell's cast as
+  `TerrainTrace.cast` and the bridge's `_mapped` answer it.
 
 ## Building it
 
@@ -25,7 +28,8 @@ the script's name builds the library an exported game loads as well.
 
 **Build it again after a change** to anything under `native/`, or to a
 script it copies: `src/movement/player_body.gd`, `movement_solver.gd`,
-`movement_config.gd`, `src/physics/box3d_queries.gd`. The library carries a
+`movement_config.gd`, `ground_eyes.gd`, `src/physics/box3d_queries.gd`,
+`terrain_trace.gd` (`PlayerBody.NATIVE_COPIES`). The library carries a
 stamp of all of them as they were when it was built
 (`HullMover.get_sources`), the game works the same stamp out of what is
 there when it starts (`PlayerBody.native_sources`), and where the two differ
@@ -63,19 +67,25 @@ script's, to the last bit of every part, or it is wrong.
 - Every check file runs each native step by the script first, from the same
   start, and compares the two (`PlayerBody.check_steps`, turned on by
   `tests/check_suite.gd`): a file in which one step differed has failed,
-  with the step's start and the parts that differed.
+  with the step's start and the parts that differed. Each native terrain
+  sample is held to the script's the same way (`GroundEyes.samples_checked`,
+  `sample_faults`): the drop, the casts, and the cache it leaves.
   `tests/run_native_movement_checks.gd` walks a course made to reach the
   branches a match seldom does, with the movement's settings changed under
   it.
-- A change to `PlayerBody`'s step, `MovementSolver`, or the box sweep in
-  `Box3DQueries` (`shape_cast_prepared`, `_native_cast`, `_mapped`) is made
-  in both, in the same pull request. The checks fail until it is.
+- A change to `PlayerBody`'s step, `MovementSolver`, the box sweep in
+  `Box3DQueries` (`shape_cast_prepared`, `_native_cast`, `_mapped`), or the
+  terrain sample (`GroundEyes._script_sample`, `compute_drop`,
+  `TerrainTrace.cast`) is made in both, in the same pull request. The checks
+  fail until it is.
 - Where the native code cannot run a step, the script does:
   `PlayerBody._native_mover` says when (no library, or one built from
   other sources; Godot's own physics; a hull that is no upright box; a body
   under anything moved or turned). `--movement script` after `--`, or the
   project setting `csgodot/simulation/movement`, has the script run every
-  step.
+  step. The eyes are sampled natively exactly where the step is run
+  natively; `--script-eyes` after `--` has the script sample there all the
+  same (`GroundEyes.native_samples`), for an A/B in one build.
 - A script's own function in the step's place is run. A body whose script
   has its own of any function the native step stands in for
   (`PlayerBody.STEP_FUNCTIONS`: a profile's timed bot, a check's double) is
@@ -119,3 +129,15 @@ reads as zero, and a call by name to what is not there answers nothing and
 says nothing. The stamp is what keeps a library from meeting a script it
 was not built from; `step` hands back false, and the script takes over,
 where the physics has no sweep by the name it asks for.
+
+`HullMover.sample_ground(bridge, world, cache, q, first, step, half, mask,
+owner)` is the terrain sample from its grid on: the script works out the
+quantized place, the first cell and whether anything changed, and hands
+over its own cache, a `Dictionary` the C++ reads and writes in place, so
+the script and the native code share one cache whichever samples. Before
+its first cast it asks the bridge to synchronize (`sync_dynamic`), as the
+script's first `begin_shape_cast` does; each cast is
+`world.call("shape_cast_projectile_box", ...)`. It hands back the drop, or
+NaN where the world has no such cast, and then the script samples;
+`get_ground_casts` says how many cells it cast for, which the script
+counts as its own casts would have been.
