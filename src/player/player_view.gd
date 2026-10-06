@@ -263,8 +263,9 @@ func _on_control_changed() -> void:
 			_died_at = camera.global_transform
 
 
-## Something else in hand: its model shown, drawing, and a gun's sounds,
-## from the next frame (catch_up).
+## Something else in hand: its model shown, drawing, and its sounds (a
+## gun's set, or the draw of what is not a gun), from the next frame
+## (catch_up).
 func _on_equipped(entry: Inventory.Entry) -> void:
 	_in_hand_due = true
 	_in_hand_entry = entry
@@ -286,6 +287,8 @@ func catch_up() -> void:
 		_show_in_hand(_in_hand_entry)
 		if _in_hand_entry != null and _in_hand_entry.weapon != null:
 			weapon_sounds.equip(_in_hand_entry.weapon.data)
+		elif _in_hand_entry != null:
+			weapon_sounds.draw(_in_hand_entry.item.item_class)
 		_in_hand_entry = null
 
 

@@ -64,7 +64,7 @@ From SteamDatabase's GameTracking-CS2, checked 2026-09-23:
 | Where | only your side's buy zone | CFG `mp_buy_anywhere 0` |
 | Undoing a purchase | yes, while buying is open | CFG `sv_sellback_enabled 1` |
 | Armour for sale | kevlar and helmet | CV `mp_max_armor 2` |
-| Purchases a round | 5 of each weapon type, 5 Zeus | CV `mp_weapons_allow_typecount 5`, CFG `mp_weapons_allow_zeus 5` |
+| Purchases a round | 5 of any one item (CS2 counts by item, not by weapon type), 5 Zeus; a grenade no more than one carries of it (two flashbangs), four grenades in all, a molotov and an incendiary as one kind; none of these limits in warmup | CV `mp_weapons_allow_typecount 5`, CFG `mp_weapons_allow_zeus 5`, `ammo_grenade_limit_total 4`; server.dll CanAcquire `180ab2a20` (`reference/playtest-2026-10-05.md`, issue 2) |
 | Prices | every weapon's `m_nPrice`; kevlar $650, kevlar and helmet $1,000, kit $400 | WV, IG `in game price` (through `ItemRegistry`) |
 | Who buys what | T only: Glock-18, Tec-9, MAC-10, Sawed-Off, Galil AR, AK-47, SG 553, G3SG1, molotov. CT only: P2000, USP-S, Five-SeveN, MP9, MAG-7, FAMAS, M4A4, M4A1-S, AUG, SCAR-20, incendiary, kit | IG `used_by_classes` (through `ItemRegistry`) |
 

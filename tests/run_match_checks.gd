@@ -78,6 +78,7 @@ func _run() -> void:
 	await _test_free_look()
 	await _test_taking_over_a_bot()
 	await _test_a_bot_spawns_where_it_is_put()
+	_test_each_match_deals_its_own_spawns()
 	_report()
 
 
@@ -756,7 +757,40 @@ func _test_taking_over_a_bot() -> void:
 	await _clear([dead, bot, person, enemy])
 
 
-## A bot the match spawns on its route sets off## A bot the match spawns on its route sets off for the point after it, and
+
+## CS2 picks a seed for the spawn points once a match
+## (m_nSpawnPointsRandomSeed, server.dll 180951990) and shuffles them with
+## it each round: each match deals its own, and one seed deals the same
+## again, as a replay must.
+func _test_each_match_deals_its_own_spawns() -> void:
+	var points := []
+	for i in 15:
+		points.append({"position": Vector3(i * 64.0, 0.0, 0.0), "yaw": 0.0, "priority": 0})
+	var deal := func(seed: int, round: int) -> Array:
+		var state := MatchState.new()
+		state.spawn_seed = seed
+		state.round_number = round
+		state.rounds_played = maxi(round - 1, 0)
+		var order := MatchState._spawn_order(points.duplicate(), state._spawn_rng("T"))
+		state.free()
+		var at := []
+		for point: Dictionary in order:
+			at.append(point["position"])
+		return at
+	_check(deal.call(1, 1) != deal.call(2, 1), "two matches deal the first round's spawns differently")
+	_check(deal.call(1, 1) == deal.call(1, 1), "and one match's seed deals the same again")
+	_check(deal.call(1, 1) != deal.call(1, 2), "a match deals each round anew")
+	var seeds := {}
+	for i in 4:
+		seeds[MatchState.new()] = true
+	var distinct := {}
+	for state: MatchState in seeds:
+		distinct[state.spawn_seed] = true
+		state.free()
+	_check(distinct.size() > 1, "each new match draws its own seed")
+
+
+## A bot the match spawns on its route sets off for the point after it, and
 ## a dead one comes back at the spawn it was given, not its route's start.
 func _test_a_bot_spawns_where_it_is_put() -> void:
 	var bot := (load("res://src/bots/bot.tscn") as PackedScene).instantiate() as Bot

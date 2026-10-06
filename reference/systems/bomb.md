@@ -99,8 +99,11 @@ GameWorld's tick after the players and the match, and:
   lives, bots also leave a dropped bomb for them (seen in CS2 by Sid,
   2026-09-26; playtest-2026-09-25.md issue 18), and a human T takes it
   from a bot who carries it by E, looking at the bot ("[E] Take Bomb",
-  `C4.take_from_bot`, with the prompt under the crosshair). It allows plants from `round_freeze_end` to `round_end`, and
-  clears it on `round_prestart`. With no match (the range) plants are
+  `C4.take_from_bot`, with the prompt under the crosshair). It allows plants from `round_freeze_end` until the next
+  `round_prestart`, the round's end included, as CS2's plant asks
+  nothing of the round (server.dll `180a18640`; the planter is paid $300,
+  the team money being settled as the round ended), and clears it on
+  `round_prestart`. With no match (the range) plants are
   always allowed.
 
 The test range adds one to `test_range.game`. It reads your command as a

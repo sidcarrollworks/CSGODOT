@@ -1,7 +1,8 @@
 extends SceneTree
 
 ## Writes reference/weapons/models.md, sounds.md, timings.md (with
-## timings.csv), vdata.md (with vdata.csv), equipment.md and physics.md
+## timings.csv), vdata.md (with vdata.csv), equipment.md (with
+## equipment_timings.csv) and physics.md
 ## (with physics.csv, scripts/weapon_physics_table.gd) from what
 ## scripts/extract_assets.sh extracted, so the code that picks a gun's model,
 ## clips and sounds, times its draw and reload, and reads what the weapon sheet
@@ -150,6 +151,8 @@ func _initialize() -> void:
 		_gaps.append("the equipment (scripts/extract_assets.sh equipment): %s" % EQUIPMENT_CLIP_DATA)
 	else:
 		_write(OUT_DIR.path_join("equipment.md"), _equipment_page(source, date, vdata, equipment_clips))
+		_write(OUT_DIR.path_join("equipment_timings.csv"), _equipment_timings_csv(equipment_clips))
+		_write(OUT_DIR.path_join("equipment_timings.csv.import"), _keep_import(OUT_DIR.path_join("equipment_timings.csv")))
 	_write_physics(source, date)
 	print("weapon tables: %d guns and %d pieces of equipment, %d gaps, written to %s" % [GUNS.size(), EQUIPMENT.size(), _gaps.size(), OUT_DIR])
 	for gap in _gaps:
@@ -599,16 +602,31 @@ func _timings_page(source: String, date: String, clips: Dictionary) -> String:
 
 
 func _timings_csv(clips: Dictionary) -> String:
+	return _clip_rows(clips, GUNS)
+
+
+## The equipment's first-person clips as timings.csv has the guns': every
+## clip's length and every event in it, the draws' sounds included, for
+## WeaponSounds to play as CS2's sound events.
+func _equipment_timings_csv(clips: Dictionary) -> String:
+	return _clip_rows(clips, EQUIPMENT)
+
+
+## A row for every clip of each item's first-person set (its [3]), then one
+## for each event in it.
+func _clip_rows(clips: Dictionary, items: Array) -> String:
 	var lines := PackedStringArray(["class,clip,duration,kind,event,at,for"])
-	for gun in GUNS:
-		var named := _set_clips(clips, gun[3])
+	for item in items:
+		if String(item[3]).is_empty():
+			continue
+		var named := _set_clips(clips, item[3])
 		var names := named.keys()
 		names.sort()
 		for clip in names:
 			var data: Dictionary = named[clip]
-			lines.append("%s,%s,%.4f,,,," % [gun[0], clip, data["duration"]])
+			lines.append("%s,%s,%.4f,,,," % [item[0], clip, data["duration"]])
 			for event in data["events"]:
-				lines.append("%s,%s,%.4f,%s,%s,%.4f,%.4f" % [gun[0], clip, data["duration"], event["kind"], event["name"], event["at"], event["for"]])
+				lines.append("%s,%s,%.4f,%s,%s,%.4f,%.4f" % [item[0], clip, data["duration"], event["kind"], event["name"], event["at"], event["for"]])
 	return "\n".join(lines) + "\n"
 
 
