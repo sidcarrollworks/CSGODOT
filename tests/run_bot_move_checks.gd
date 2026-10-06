@@ -351,25 +351,25 @@ func _test_stuck_on_a_wall_it_wiggles_then_jumps() -> void:
 ## CS2's CBot::Jump (server.dll 1802ce3c0): a bot presses jump only 0.9 s
 ## after its last, standing on the ground (3 s off it), never while it
 ## crouches, and not within 0.3 s even when it must. So a bot short of a
-## ledge stands and jumps again whole, rather than at once and lowered by
-## CS2's scale for a jump soon after a landing.
+## ledge jumps again no sooner than 0.9 s after the last, when CS2's scale
+## for a jump soon after a landing lowers it far less than at once.
 func _test_jumps_are_spaced_as_cs2s() -> void:
 	var bot := _scene.instantiate() as Bot
 	bot.on_ground = true
-	var pressed := func(tick: int, must: bool) -> bool:
+	var pressed := func(tick: int) -> bool:
 		var cmd := UserCmd.new()
 		cmd.tick = tick
-		bot._press_jump(cmd, must)
+		bot._press_jump(cmd)
 		return cmd.held(UserCmd.JUMP)
-	_check(pressed.call(1000, false), "a bot that has not jumped jumps")
-	_check(not pressed.call(1010, false) and not pressed.call(1020, true),
-		"not again 0.16 s later, nor at 0.31 s when it must")
-	_check(pressed.call(1058, false), "again 0.9 s after, on the ground")
+	_check(pressed.call(1000), "a bot that has not jumped jumps")
+	_check(not pressed.call(1010) and not pressed.call(1020),
+		"not again 0.16 s later, nor 0.31 s, stuck or not")
+	_check(pressed.call(1058), "again 0.9 s after, on the ground")
 	bot.wants_duck = true
-	_check(not pressed.call(1200, false), "never while it crouches")
+	_check(not pressed.call(1200), "never while it crouches")
 	bot.wants_duck = false
 	bot.on_ground = false
-	_check(not pressed.call(1200, false) and pressed.call(1251, false),
+	_check(not pressed.call(1200) and pressed.call(1251),
 		"off the ground only once 3 s have passed since the last (not at 2.2 s, at 3.02)")
 	bot.free()
 

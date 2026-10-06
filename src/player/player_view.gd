@@ -289,6 +289,8 @@ func catch_up() -> void:
 			weapon_sounds.equip(_in_hand_entry.weapon.data)
 		elif _in_hand_entry != null:
 			weapon_sounds.draw(_in_hand_entry.item.item_class)
+		elif weapon_sounds != null:
+			weapon_sounds.holster()
 		_in_hand_entry = null
 
 

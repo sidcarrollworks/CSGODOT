@@ -179,12 +179,18 @@ func _test_player_view() -> void:
 	_check(player.global_position == Vector3(10, 20, 30) and player.velocity == Vector3.ZERO
 		and player.input.yaw_degrees == 37.0 and player.input.pitch_degrees == -20.0,
 		"camera motion changes no player position, velocity or look input")
+	var standing_eyes := player.eye_height()
 	player.duck_progress = 0.5
+	# Half crouched, the duck view offset at half the hulls' difference, as
+	# the eye update would leave it.
+	player.duck_view_offset = -9.0
 	# This fixture changes the state directly, without running movement.
 	# Both completed tick endpoints are already at this crouched height.
 	player.previous_eye_height = player.eye_height()
 	player.view._process(1.0 / 224.0)
-	_check(absf(player.camera.global_position.y - (20.0 + player.eye_height() + player.view.camera_motion.height)) < 0.0001, "the same dip is relative to the crouched eyes")
+	_check(absf(standing_eyes - player.eye_height() - 9.0) < 0.0001
+		and absf(player.camera.global_position.y - (20.0 + player.eye_height() + player.view.camera_motion.height)) < 0.0001,
+		"the same dip is relative to the crouched eyes, 9 below the standing")
 	player.on_ground = true
 	player.air_action = PlayerBody.AIR_LAND
 	player.air_action_usec = SimClock.tick_end_usec(113)

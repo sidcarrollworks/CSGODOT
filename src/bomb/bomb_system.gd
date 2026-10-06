@@ -83,7 +83,10 @@ func tick(t: SimTick) -> void:
 		var actor := C4.Actor.of_player(player, userid)
 		var inventory := t.game.inventory(userid)
 		var asked: Dictionary = input_of.call(userid, player, inventory)
-		actor.plant_held = may_plant and bool(asked.get("plant", false))
+		# A plant is the bomb's attack, and a frozen player does not fire:
+		# none in a round's freeze, nor once the match is over, where no
+		# prestart comes to end the round's liveness.
+		actor.plant_held = may_plant and not player.frozen and bool(asked.get("plant", false))
 		actor.use_held = bool(asked.get("use", false))
 		actor.use_pressed = bool(asked.get("use_pressed", false))
 		actor.drop = _drop_asked.has(userid)

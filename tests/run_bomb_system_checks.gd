@@ -51,6 +51,7 @@ func _run() -> void:
 	_test_handed_out_at_the_round_start(t_id)
 	_test_no_plant_before_the_round_is_live(t_id)
 	_test_a_plant_after_the_round_has_ended(t_id)
+	_test_no_plant_while_frozen(t_id, planter)
 	_test_a_plant_through_the_game(t_id)
 	_test_the_blast_through_the_damage_path(t_id, ct_id, ct)
 	_test_dropped_and_picked_up(t_id, planter)
@@ -229,6 +230,25 @@ func _test_a_plant_after_the_round_has_ended(t_id: int) -> void:
 	_asks[t_id] = {"plant": true}
 	_step(_system.bomb.rules.plant_seconds + 0.3)
 	_check(_system.bomb.planted(), "a plant begun after the round has ended goes down too")
+	_round_event(&"round_prestart")
+	_round_event(&"round_start")
+	# Still held, for the next round's plant.
+
+
+## Frozen, a player does not plant: a plant is the bomb's attack. Once the
+## match is over MatchState freezes everyone and no prestart follows to end
+## the round's liveness, so without it a plant would go down, and pay, on
+## the end screen.
+func _test_no_plant_while_frozen(t_id: int, planter: PlayerSim) -> void:
+	_round_event(&"round_freeze_end")
+	_game.events.send(&"round_end", {"winner": "CT", "reason": "TargetSaved"})
+	_game.events.flush()
+	planter.frozen = true
+	_asks[t_id] = {"plant": true}
+	_step(_system.bomb.rules.plant_seconds + 0.3)
+	_check(_system.live and not _system.bomb.planting() and not _system.bomb.planted(),
+		"frozen, as everyone is once the match is over, a player holding the plant on a site does not plant")
+	planter.frozen = false
 	_round_event(&"round_prestart")
 	_round_event(&"round_start")
 	# Still held, for the next round's plant.

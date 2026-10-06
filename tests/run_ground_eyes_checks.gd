@@ -277,15 +277,17 @@ func _check_physical_planes() -> void:
 		_check(player.ground_eyes.using_topology and player.ground_eyes.offset <= 0.0,
 			"grounded terrain state is completed by the body on the slope")
 		offsets.append(player.ground_eyes.offset)
-		var before := player.ground_eyes.queries
 		var standing := player.eye_height()
-		# Fully crouched: the duck view offset at rest, as the eye update
-		# leaves it.
-		player.duck_progress = 1.0
-		player.duck_view_offset = -18.0
+		# Crouched by the movement, the duck view offset eased to the hulls'
+		# difference by the eye update, on the same slope.
+		player.wants_duck = true
+		for tick in 64:
+			player.simulate(DT)
+		var before := player.ground_eyes.queries
 		var ducked := player.eye_height()
-		_check(absf(standing - ducked - 18.0) < 0.0001 and player.ground_eyes.queries == before,
-			"standing and ducked eye getters read the same sampled slope state without querying")
+		_check(player.is_ducked and absf(player.duck_view_offset + 18.0) < 0.0001
+			and absf(standing - ducked - 18.0) < 0.001 and player.ground_eyes.queries == before,
+			"crouched by the movement on the slope, the eyes come down the hulls' difference, and reading them queries nothing (%.4f)" % (standing - ducked))
 		_close()
 		await process_frame
 	_check(absf(offsets[1] - offsets[2]) < 0.05,

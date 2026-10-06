@@ -127,7 +127,7 @@ most of what makes CS movement feel like CS.
 ### Crouch jump height
 
 Ducking in the air shrinks the hull about its middle: CS2's FinishDuck
-(server.dll 1.41.8.8, `180abdbe0`) lifts the body half the hulls'
+(server.dll build 2000922, `180abdbe0`) lifts the body half the hulls'
 difference, **9 units** (Source lifted all 18), and holds the eyes where
 they were with the duck root offset (`m_flDuckRootOffset`, `+0x418`).
 The eye update (`180ae23e0`) then eases the root back to 0 over 0.1 s

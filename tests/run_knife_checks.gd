@@ -65,6 +65,9 @@ func _check_draws() -> void:
 		if not (draws.get(item_class, []) as Array).is_empty():
 			drawn.append(item_class)
 	_check_equal(drawn.size(), 9, "the knife, the bomb, the Zeus and the six grenades each have their draw clip's sounds")
+	draws["weapon_knife"] = []
+	_check(not (WeaponSounds.draws().get("weapon_knife", []) as Array).is_empty(),
+		"the table handed out is a copy: a change to it leaves the draws heard alone")
 	var availability := SoundBank._available
 	SoundBank._available = 0
 	var host := Node3D.new()
@@ -83,6 +86,11 @@ func _check_draws() -> void:
 		"the bomb drawn next stops what is left of the knife's, and its grab is still to come")
 	await create_timer(0.75).timeout
 	_check(playing.call("c4.draw.beep") == 1 and playing.call("c4.draw.grab") == 1, "its beep and grab come at their times in the clip")
+	sounds.draw("weapon_c4")
+	sounds.holster()
+	await create_timer(0.75).timeout
+	_check(playing.call("c4.draw") == 0 and playing.call("c4.draw.beep") == 0 and playing.call("c4.draw.grab") == 0,
+		"nothing in hand (a death) stops the draw, and what was still to come of it never comes")
 	var bot_sounds := WeaponSounds.new()
 	bot_sounds.spatial = true
 	host.add_child(bot_sounds)

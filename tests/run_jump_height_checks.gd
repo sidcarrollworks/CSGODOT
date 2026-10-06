@@ -1,6 +1,6 @@
 extends "res://tests/check_suite.gd"
 
-## Jump heights against CS2's movement (server.dll 1.41.8.8; Sid's dust2
+## Jump heights against CS2's movement (server.dll build 2000922; Sid's dust2
 ## playtest of 2026-10-05, reference/playtest-2026-10-05.md issue 8):
 ## the standing jump; a duck in the air lifting the feet half the hulls'
 ## difference (FinishDuck 180abdbe0), the eyes held by the duck root offset

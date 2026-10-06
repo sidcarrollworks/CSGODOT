@@ -15,10 +15,18 @@ read with (`scripts/shooting_audit/TickQuery.java`).
 
 ## How it was read
 
-- **The binary.** CS2's `server.dll`, build 1.41.8.8, SHA-256
-  `098d4ddd57e2fbe9a73623a2bf68ebaff86f7b6342ddb3d5a0f69cd6335b31cc`. It is
-  the same file the movement, grenade and shooting ledgers in this
-  directory were read from, so their addresses and these agree.
+- **The binary.** CS2's `server.dll` build 2000922 (patch 1.41.8.8),
+  SHA-256 `3541e46a3193fcf1151e97ce19cd4daf86c5fdb2889033c2bab1d4cc7f555b9c`:
+  the file in the analysed project, as `TickQuery.java`'s `info` prints
+  it, and the one the shooting, grenade and collision ledgers of
+  2 October record. Every address here is that build's. Later ledgers
+  matched what they used against build 2000924 (1.41.8.8, `098d4ddd…`)
+  byte for byte: movement-ghidra its 97 function spans,
+  grenade-subtick-snapshot 28, the sky-clipping follow-up its own. Where
+  this page reuses their addresses, those hold for both builds; the rest
+  were matched against no later build. CS2 updated to build 2000927
+  (1.41.8.9) on 5 October: match an address against the installed file
+  before relying on it there.
 - **The tool.** Ghidra 12.1.4, run headless and read-only on copies of the
   analysed project. `TickQuery.java` runs batches of queries: strings with
   the functions that use them, decompile, disassemble, callers and callees,
@@ -55,11 +63,20 @@ native movement and Box3D, 5 October 2026:
 | The same, terrain-aware eyes off (`profile_ground_eyes.gd --without-terrain`) | 1.83 ms | 2.21 | 4.48 | 27.0 traces; the eyes cost 0.58 ms, 27.7 casts a tick |
 | Worst ticks (`profile_worst_ticks.gd`) | 1.87 ms | 2.79 | 15.1 at the start | kill ticks 3.8 to 4.6 ms |
 
-The live-round tick was 1.75 to 1.83 ms on 2 October. It is 2.45 to
-2.50 now. The growth is all in the bots' run_command, 0.93-1.00 ms to
-1.68:
-- the terrain-aware eyes (#187) add 0.58 to 0.69 ms;
-- the horizontal movement port (#188) adds 0.11.
+The live-round tick is 2.45 to 2.50 ms, the bots' run_command 1.68 of
+it. Most of what the tick grew since 2 October is the two movement ports,
+by their own paired measurements on the seeded ten-player fixture:
+- the terrain-aware eyes (#187), 0.69 ms
+  (`terrain-eyes-2026-10-03.md`), 0.58 in the table above;
+- the horizontal movement port (#188), 0.11 ms
+  (`horizontal-integration-2026-10-03.md`).
+
+The bots have changed since (#189 to #196). On that fixture the tick is
+0.24 ms lower than right after both ports (2.42 against 2.661) while it
+traces 18% more (54.7 against 46.35), so the drift between builds is
+about the size of the smaller port. The playtest's 1080p run has the tick
+in frames at 1.75 ms on 2 October's build and 1.96 on 5 October's
+(`reference/playtest-2026-10-05.md`).
 
 One running bot's tick, from `profile_player_tick.gd -- 5 60`:
 
@@ -146,7 +163,8 @@ Humans run through `CPlayerCommandQueue::RunTickCommands` (`180ece170`):
 - **One command a tick.**
 - **Starved, with nothing queued:** a substitute is made from the last
   command. Its number advances for 3 ticks (`cq_max_starved_substitute_commands`
-  4, `CMOVGE` at `180ece017`), then repeats.
+  4; its `CMOVGE` at `180ece017` is in `180ecdeb0`, the helper
+  `RunTickCommands` calls at `180ece2aa`), then repeats.
 - **Excess commands:** trimmed only on the first tick of a frame, after a
   catch-up phase or a lasting excess. Trimmed commands are held, and up to
   `sv_late_commands_allowed` (5) of them run before the on-time one with
@@ -239,7 +257,8 @@ with collision at the instant it happens. That gives a higher tick rate's
 result where events are, without paying for one everywhere (inferred).
 
 **PlayerMove** (`180ad89b0`):
-- brings every entity's bounds up to date first (`180d117b0`);
+- brings every entity's bounds up to date first (`180d117b0`, 12 bytes
+  that run the full refresh `180d11a40` on the global list);
 - zeroes a per-move trace counter (`services+0x648`);
 - runs `FullWalkMove` (`180ad5c00`): PreMove, Duck, Jump, then WalkMove or
   AirMove, then PostMove;
@@ -301,7 +320,7 @@ traces an interval than we do (about 5 on a clear walk, against our 2.7 a
 player a tick). Instead, each trace is made cheap and every loop is
 bounded. The next section is how.
 
-### 4. Traces: values on the stack, and what moves every tick kept out of the broadphase
+### 4. Traces: values on the stack, and the players kept out of the movement query
 
 Nearly every gameplay trace goes through one function,
 `CGamePhysicsQueryInterface::TraceShape` (`180c28520`, VProf scope and an
@@ -360,8 +379,10 @@ test.
 Why (inferred):
 - Commands run one player at a time, so nothing else moves during an
   interval and a snapshot of the others is exact.
-- Ten box tests cost a few dozen flops each, against keeping ten moving
-  proxies current in a broadphase.
+- Ten box tests cost a few dozen flops each, against a walk of the
+  broadphase and an exact cast for each player it turns up. The pawns
+  stay in the physics world; it is the movement query that leaves them
+  out.
 - The 1/32 skin gives stable, axis-aligned contacts that never start
   inside each other.
 
@@ -397,8 +418,10 @@ and `src/physics/box3d_queries.gd`):
 - a Variant call;
 - a new String-keyed Dictionary for the result;
 - `get_meta` and an ObjectDB lookup to find the body;
-- a layer write on the mover's own proxy to leave it out (`box3d_queries.gd:162-195`);
 - 10 player hulls and 190 hitbox capsules kept as Box3D proxies.
+
+Once a player's tick, not per query, a layer write on the mover's own
+proxy leaves it out of every cast in that scope (`box3d_queries.gd:155-195`).
 
 In script, a hull cast through the bridge is 20 µs, a terrain cast about
 21 µs all-in, and a world ray 12 µs. The first ray of a tick that can
@@ -489,8 +512,8 @@ searches a tick in all.
 4. `FireBullet` (`180a713c0`) for each pellet, given 4 penetrations;
 5. `FinishLagCompensation` (`180ec02f0`).
 
-Every hurt and kill happens while the targets are rewound. The knife and
-the Zeus use the same pair.
+Damage is applied inside that bracket, to whichever targets the filters
+below rewound. The knife and the Zeus use the same pair.
 
 **The history** is recorded at `FrameUpdatePostEntityThink`
 (`180ec0520`), after everyone has run, when `sv_unlag` is on and there are
@@ -509,8 +532,9 @@ position, scale and rotation, 32 bytes each. It holds no bones.
 
 **Which moment is rewound to.** `GetTargetTime` (`180ec49e0`) takes the
 current tick less the latency, and accepts the client's own render time
-only within 200 ms of that. With `sv_csgo_shoot_use_full_interp` on,
-`StartLagCompensation` (`180ed7eb0`) reads the two ticks the client was
+only within 200 ms of that. With `sv_csgo_shoot_use_full_interp` on, the
+rewind (`180ed7eb0`, a virtual: only vtables refer to it; the entry
+`FX_FireBullets` calls is `180ed9ba0`) reads the two ticks the client was
 drawing between and the fraction, and lerps exactly those two records.
 
 **Who is moved: the cheapest tests first.**
@@ -632,10 +656,12 @@ Ours:
 4. **Do not minimise traces; make each one cheap.** Each one is a stack
    filter, a stack result and no allocation, all in C++. The terrain
    sampler shows the cost of the wrong tier: the same algorithm in
-   GDScript grew our tick 24%.
-5. **Keep what moves every tick out of the broadphase, and test it
-   analytically.** Players are swept as cached boxes; hitboxes are SIMD
-   boxes with exact shapes built only for what a ray reaches.
+   GDScript costs 0.58 ms of our 2.42 ms tick, 32% over the tick without
+   it.
+5. **Keep what moves every tick out of the queries, and test it
+   analytically.** Movement traces leave the players out by layer and
+   sweep them as cached boxes; hitboxes are SIMD boxes outside the
+   physics world, with exact shapes built only for what a ray reaches.
 6. **Split the rate by what each part needs.** Control loops run every
    tick; decisions run at human speed, staggered by parity; path searches
    carry a jittered cooldown per bot.
@@ -647,8 +673,8 @@ Ours:
    player who blows the budget.**
 10. **Count the cost you budget.** Valve counts hull traces per move,
     terrain casts apart. Ours folds terrain casts into `PlayerBody.traces`
-    (`ground_eyes.gd:123`), so "51 hull traces a tick" is about half
-    terrain.
+    (`ground_eyes.gd:123`), so the 54.7 "traces" a tick are about half
+    terrain casts (27.7).
 11. **Record history once a tick into pooled records holding what the
     rewind needs.** Then rewind by override, not by re-posing.
 12. **Time is integer ticks and a constant.** CS2 multiplies by a literal
@@ -753,7 +779,8 @@ eyes.
      ticks.
    - **Risk:** high determinism risk. It waits on (1)'s recovery count.
 10. **A CS2-shaped cast in the Box3D patch.** A packed result and ignore
-    ids instead of a Dictionary and layer writes. Estimated 1.5 to 3 µs a
+    ids instead of a Dictionary (the layer write is once a player's tick
+    already, not a cast's). Estimated 1.5 to 3 µs a
     cast. Pairs with 2 and 9.
 11. **Run the match after the entities**, as CS2's rules run after every
     think. No cost. It fixes the grenade-kill round ending a tick late.
@@ -846,7 +873,8 @@ Never open one project from two headless runs at once. For parallel
 readers, copy the project once per reader; this audit used seven copies
 of the analysed server project on D:.
 
-The functions this page relies on, for `server.dll` 1.41.8.8 only:
+The functions this page relies on, for `server.dll` build 2000922
+(SHA-256 `3541e46a…`) only:
 
 | Address | What it is |
 |---|---|

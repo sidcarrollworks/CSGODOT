@@ -435,15 +435,15 @@ bodies players die into before each tick, as the game does on frames; it
 had built each death's ragdoll on the tick, 2.0 ms where the game pays 0.6.
 **The tick against CS2's server (2026-10-05, Sid's "use ghidra to see how
 cs2 does it ... as close to cs2 as can be for the tick and server code").**
-A live round's tick is 2.45 to 2.50 ms headless, up from 1.75 to 1.83 on
-2 October, all in the bots' run_command: the terrain-aware eyes cost
-0.58 ms (27.7 casts a tick), more for a running bot than its movement
-step. CS2's `server.dll` 1.41.8.8 was read in Ghidra by six researchers,
-each claim re-checked in the binary (50 checked, none refuted):
+A live round's tick is 2.45 to 2.50 ms headless, most of it the bots'
+run_command: the terrain-aware eyes cost 0.58 ms (27.7 casts a tick),
+more for a running bot than its movement step. CS2's `server.dll` (build
+2000922) was read in Ghidra by six researchers, and 50 of their claims
+re-checked in the binary: 21 confirmed, 29 corrected, none refuted:
 - the order of a tick;
 - the command budgets;
-- the movement and trace layers: players and hitboxes kept out of the
-  broadphase;
+- the movement and trace layers: players left out of the movement query
+  and swept as boxes, hitboxes outside the physics world;
 - bots aiming every tick and deciding every other;
 - lag compensation as recorded hitbox transforms;
 - animation on the tick with lazy bones, and no server ragdoll.

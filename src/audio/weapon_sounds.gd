@@ -149,6 +149,9 @@ const METRE := 39.37
 var weapon_set: Dictionary = {}
 var _fire: Node
 var _handling: Node
+## A gun's draw, apart from its reload and zoom (_handling): a new draw, or
+## nothing in hand, stops what is left of it and nothing else.
+var _drawing: Node
 ## A player for each feedback layer, at the layer's pitch, by "event:layer";
 ## only the shooter's own (flat) sounds have them.
 var _feedback := {}
@@ -172,7 +175,7 @@ var _swings: Array[Knife.Swing] = []
 ## Every gun's set, by class, read once (sets()).
 static var _sets := {}
 ## Every draw clip's sound events, by class: [[seconds, event], ...], read
-## once (draws()).
+## once (_all_draws()).
 static var _draws := {}
 static var _draws_read := false
 ## The voices of the draw last played, and its count, so a new draw stops
@@ -187,6 +190,7 @@ static var _loaded_all := false
 func _ready() -> void:
 	_fire = _make_player(4)
 	_handling = _make_player(2)
+	_drawing = _make_player(1)
 	events = SoundEvents.new()
 	events.name = "SoundEvents"
 	add_child(events)
@@ -420,7 +424,7 @@ func equip(data: WeaponData) -> void:
 	if files.is_empty():
 		_draw_events(data.item_class)
 	else:
-		_play(_handling, files, HANDLING_DB)
+		_play(_drawing, files, HANDLING_DB)
 
 
 ## Takes up something that is not a gun (the knife, a grenade, the bomb):
@@ -434,12 +438,20 @@ func draw(item_class: String) -> void:
 		_draw_events(item_class)
 
 
+## Nothing in hand (a death empties it as what was carried drops): no gun's
+## set, nothing more of a reload, and what is left of the last draw stopped.
+func holster() -> void:
+	weapon_set = {}
+	_reload_serial += 1
+	_stop_draw()
+
+
 ## The draw clip's sound events, each at its time in the clip, flat in the
 ## ears of whoever draws.
 func _draw_events(item_class: String) -> void:
 	var serial := _draw_serial
 	var owner_id := shooter.userid if is_instance_valid(shooter) else -1
-	for part: Array in draws().get(item_class, []):
+	for part: Array in _all_draws().get(item_class, []):
 		var at: float = part[0]
 		var event_name: String = part[1]
 		if at <= 0.0 or not is_inside_tree():
@@ -455,6 +467,8 @@ func _stop_draw() -> void:
 	for id in _draw_voices:
 		events.stop(id)
 	_draw_voices.clear()
+	if _drawing != null:
+		_drawing.call("stop")
 
 
 ## A round of that gun fired, heard now.
@@ -628,8 +642,14 @@ static func all_stems() -> PackedStringArray:
 
 
 ## Every draw clip's sound events by class, [[seconds, event], ...] in
-## time order, read once from equipment_timings.csv.
+## time order, read once from equipment_timings.csv: a copy, as a cache
+## hands out.
 static func draws() -> Dictionary:
+	return _all_draws().duplicate(true)
+
+
+## The table itself, for what only reads it.
+static func _all_draws() -> Dictionary:
 	if not _draws_read:
 		_draws_read = true
 		_draws = read_draws(FileAccess.get_file_as_string(EQUIPMENT_TIMINGS))
@@ -659,7 +679,7 @@ static func _load_all() -> void:
 	SoundEvents.load_events(PackedStringArray([NEARLY_EMPTY_EVENT, CLIP_EMPTY_PISTOL, CLIP_EMPTY_RIFLE]))
 	SoundEvents.load_events(Knife.all_sound_events())
 	var drawn := PackedStringArray()
-	for parts: Array in draws().values():
+	for parts: Array in _all_draws().values():
 		for part: Array in parts:
 			if not drawn.has(part[1]):
 				drawn.append(part[1])

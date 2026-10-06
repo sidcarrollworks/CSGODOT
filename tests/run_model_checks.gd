@@ -1250,7 +1250,7 @@ func _test_bot_sounds() -> void:
 	own_sounds.equip(WeaponLibrary.ak47())
 	_check(
 		not (_bot.weapon_sounds.weapon_set.get("fire", PackedStringArray()) as PackedStringArray).is_empty()
-			and not (_bot.weapon_sounds.get_child(1) as AudioStreamPlayer3D).playing and (own_sounds.get_child(1) as AudioStreamPlayer).playing,
+			and not (_bot.weapon_sounds._drawing as AudioStreamPlayer3D).playing and (own_sounds._drawing as AudioStreamPlayer).playing,
 		"a bot takes up its gun's sounds without its draw being heard; your own draw is"
 	)
 	own_sounds.free()

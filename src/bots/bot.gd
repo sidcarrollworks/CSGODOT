@@ -191,7 +191,7 @@ var _stuck_spot := Vector3.ZERO
 var _wiggle_side: int = 0
 var _wiggle_until: int = -1
 ## The tick it last pressed jump (CS2's CBot m_jumpTimestamp, bot +0xd8),
-## for _may_jump's gates; far in the past before its first.
+## for _press_jump's gates; far in the past before its first.
 var _jumped_at_tick: int = -1_000_000
 ## How it made way for a teammate last tick (BotSteering's modes), and
 ## the stage it is at in making way.
@@ -613,6 +613,7 @@ func _path_way(cmd: UserCmd) -> Vector3:
 
 	var corner := _path.points[_corner]
 	var way := Vector3(corner.x - global_position.x, 0.0, corner.z - global_position.z)
+	var taking_off := false
 	if _path.jumps_from(_corner - 1):
 		# Heading for a landing up a ledge or across a gap: it jumps from the
 		# take-off, and crouches in the air, which lifts the feet (the crouch
@@ -620,11 +621,14 @@ func _path_way(cmd: UserCmd) -> Vector3:
 		var take_off := _path.points[_corner - 1]
 		var near_take_off := Vector2(take_off.x - global_position.x, take_off.z - global_position.z).length() < TAKE_OFF_REACH
 		var at_take_off := near_take_off and absf(global_position.y - take_off.y) < STEP_UP_OR_DOWN
-		if on_ground and at_take_off:
-			_press_jump(cmd, false)
+		taking_off = on_ground and at_take_off
+		if taking_off:
+			_press_jump(cmd)
 		elif not on_ground:
 			cmd.buttons |= UserCmd.DUCK
-	if _under_low_ceiling():
+	# At a take-off it stands, a low ceiling near or not: it does not jump
+	# while it crouches (_press_jump), and would crouch there for good.
+	if _under_low_ceiling() and not taking_off:
 		cmd.buttons |= UserCmd.DUCK
 	return way.normalized() if way.length_squared() > 0.0 else Vector3.ZERO
 
@@ -748,23 +752,24 @@ func _unstick(cmd: UserCmd, way: Vector3, friend_against: bool) -> Vector3:
 	_forget_speeds()
 	if friend_against:
 		return way
-	_press_jump(cmd, true)
+	_press_jump(cmd)
 	_path = null
 	_no_way_to = -1
 	return way
 
 
 ## Jump pressed in the command, if CS2's CBot::Jump (server.dll 1802ce3c0)
-## would press it: 0.9 s or more since its last jump, standing on the
-## ground (3 s off it), not while it crouches, and never sooner than 0.3 s
-## even when it must. So a bot that falls short of a ledge lands, stands,
-## and jumps again whole, rather than at once and lowered by how soon it
-## is after the landing (PlayerBody.jump_scale).
-func _press_jump(cmd: UserCmd, must: bool) -> void:
+## would press it: 0.9 s or more since its last jump and on the ground (3 s
+## off it), and not while it crouches. CS2 also lets a jump the bot must
+## make skip 0.9 s, though never sooner than 0.3 s; behind the first gate
+## neither ever refuses, there as here, so they are left out. So a bot
+## that falls short of a ledge jumps again no sooner than 0.9 s after the
+## last, when how soon it is after the landing (PlayerBody.jump_scale)
+## lowers it far less than at once: about 0.92 of the speed after a crouch
+## jump that falls back, rather than 0.85.
+func _press_jump(cmd: UserCmd) -> void:
 	var since := float(cmd.tick - _jumped_at_tick) * SimClock.tick_seconds()
 	if not (since > 3.0 or (since >= 0.9 and on_ground)) or wants_duck:
-		return
-	if not (must or since >= 0.9) or since < 0.3:
 		return
 	_jumped_at_tick = cmd.tick
 	cmd.buttons |= UserCmd.JUMP

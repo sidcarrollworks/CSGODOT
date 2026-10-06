@@ -3,19 +3,22 @@
 // with -noanalysis -readOnly: nothing is saved to the project.
 // Usage: -postScript TickQuery.java <commands.txt> <output-dir>
 // One command a line; blank lines and lines starting with # are skipped.
+//   info                       the binary the project holds: its path, image base, MD5 and SHA-256
 //   strings <regex>            defined strings matching, with every function that uses them
 //   symbols <regex>            symbols (with namespaces) matching, at most 400
 //   decompile <VA>             pseudocode of the function at or containing VA, with callers and callees
-//   disasm <VA>                the function's instructions, with referenced data shown as f32 and f64
+//   disasm <VA>                the function's instructions, every memory operand also read as f32 and f64
 //   xrefs <VA>                 references to VA, with the containing function
 //   callers <VA> <depth>       who calls the function, depth levels up
 //   callees <VA> <depth>       what the function calls, depth levels down
 //   vtable <VA> <count>        count pointers read from VA, with the function each points at
-//   vtables <ClassRegex> [n]   MSVC RTTI read by hand: every vtable of the classes whose name
-//                              matches the whole regex, n slots each (default 64)
+//   vtables <ClassRegex> [n]   MSVC RTTI read by hand: every vtable of the classes (or structs)
+//                              whose name matches the whole regex, up to n slots each (default
+//                              64), ending where the next vtable's locator or a non-code slot is
 //   rtti <regex>               vftable symbols, where the analysis labelled any (it often has not)
 //   func <VA>                  size, body and signature of the function at or containing VA
-// A slot the analysis left without a function gets one made for the run.
+// decompile, disasm, callers, callees and func make a function for the run
+// where the analysis left none (never saved); vtable and vtables only say so.
 // Each command writes NNN-<command>.txt in the output directory; index.txt lists them.
 import ghidra.app.script.GhidraScript;
 import ghidra.app.decompiler.*;
@@ -61,6 +64,7 @@ public class TickQuery extends GhidraScript {
             p.println("# " + line);
             try {
                 switch (cmd) {
+                    case "info": info(p); break;
                     case "strings": strings(p, rest); break;
                     case "symbols": symbols(p, rest); break;
                     case "decompile": decompile(p, rest); break;
@@ -107,6 +111,16 @@ public class TickQuery extends GhidraScript {
         return f == null ? "NO FUNCTION" : f.getEntryPoint() + " " + f.getName(true) + " size=" + f.getBody().getNumAddresses();
     }
 
+    // Which binary the addresses belong to: they hold only for this hash.
+    private void info(PrintWriter p) {
+        p.println("program " + currentProgram.getName());
+        p.println("path " + currentProgram.getExecutablePath());
+        p.println("format " + currentProgram.getExecutableFormat());
+        p.println("image base " + currentProgram.getImageBase());
+        p.println("md5 " + currentProgram.getExecutableMD5());
+        p.println("sha256 " + currentProgram.getExecutableSHA256());
+    }
+
     private void strings(PrintWriter p, String regex) {
         Pattern pattern = Pattern.compile(regex);
         int shown = 0;
@@ -133,7 +147,7 @@ public class TickQuery extends GhidraScript {
     private void symbols(PrintWriter p, String regex) {
         Pattern pattern = Pattern.compile(regex);
         int shown = 0;
-        SymbolIterator it = currentProgram.getSymbolTable().getAllSymbols(true);
+        SymbolIterator it = currentProgram.getSymbolTable().getAllSymbols(false);
         while (it.hasNext() && shown < 400) {
             Symbol s = it.next();
             String name = s.getName(true);
@@ -172,14 +186,16 @@ public class TickQuery extends GhidraScript {
                 Address to = r.getToAddress();
                 Data d = getDataAt(to);
                 Function g = getFunctionAt(to);
-                if (g != null) b.append("   -> ").append(g.getName(true));
-                else if (d != null) b.append("   -> data ").append(to).append(" = ").append(d.getDefaultValueRepresentation());
-                else if (to.isMemoryAddress()) {
-                    try {
-                        b.append("   -> ").append(to).append(" f32=").append(Float.intBitsToFloat(getInt(to)))
-                         .append(" f64=").append(Double.longBitsToDouble(getLong(to)));
-                    } catch (Exception e) { b.append("   -> ").append(to); }
-                }
+                if (g != null) { b.append("   -> ").append(g.getName(true)); continue; }
+                if (!to.isMemoryAddress()) continue;
+                // Data the analysis defined (an undefined4, say) shows only its
+                // default form, so every memory operand is read as floats too.
+                b.append("   -> ").append(d != null ? "data " : "").append(to);
+                if (d != null) b.append(" = ").append(d.getDefaultValueRepresentation());
+                try {
+                    b.append(" f32=").append(Float.intBitsToFloat(getInt(to)))
+                     .append(" f64=").append(Double.longBitsToDouble(getLong(to)));
+                } catch (Exception e) { }
             }
             p.println(b);
             count++;
@@ -228,7 +244,7 @@ public class TickQuery extends GhidraScript {
 
     private void rtti(PrintWriter p, String regex) throws Exception {
         Pattern pattern = Pattern.compile(regex);
-        SymbolIterator it = currentProgram.getSymbolTable().getAllSymbols(true);
+        SymbolIterator it = currentProgram.getSymbolTable().getAllSymbols(false);
         int shown = 0;
         while (it.hasNext() && shown < 20) {
             Symbol s = it.next();
@@ -267,6 +283,19 @@ public class TickQuery extends GhidraScript {
         }
     }
 
+    // Whether va is a CompleteObjectLocator: signature 1 and its own RVA at
+    // +20. The word after a vtable's last slot points at the next one's.
+    private boolean isLocator(long va) {
+        long off = va - imageBase;
+        if (off < 0 || off + 24 > imageBytes.length) return false;
+        return i32((int) off) == 1 && i32((int) off + 20) == (int) off;
+    }
+
+    private boolean isCode(Address to) {
+        MemoryBlock b = currentProgram.getMemory().getBlock(to);
+        return b != null && b.isExecute();
+    }
+
     private int i32(int at) {
         return (imageBytes[at] & 0xff) | (imageBytes[at + 1] & 0xff) << 8 | (imageBytes[at + 2] & 0xff) << 16 | (imageBytes[at + 3] & 0xff) << 24;
     }
@@ -286,7 +315,7 @@ public class TickQuery extends GhidraScript {
             Data d = it.next();
             if (!d.hasStringValue() || d.getValue() == null) continue;
             String s = d.getValue().toString();
-            if (!s.startsWith(".?AV") || !s.endsWith("@@")) continue;
+            if (!(s.startsWith(".?AV") || s.startsWith(".?AU")) || !s.endsWith("@@")) continue;
             String cls = s.substring(4, s.length() - 2);
             if (!pattern.matcher(cls).matches()) continue;
             shown++;
@@ -306,9 +335,10 @@ public class TickQuery extends GhidraScript {
                     for (int k = 0; k < count; k++) {
                         int slot = j + 8 + 8 * k;
                         if (slot + 8 > imageBytes.length) break;
+                        if (isLocator(i64(slot))) break;
                         Address to = toAddr(i64(slot));
                         Function f = getFunctionAt(to);
-                        if (f == null && k > 0 && !currentProgram.getMemory().contains(to)) break;
+                        if (f == null && k > 0 && !isCode(to)) break;
                         p.println(String.format("  [%3d] %s", k, f == null ? to + " (not a function)" : describe(f)));
                     }
                 }

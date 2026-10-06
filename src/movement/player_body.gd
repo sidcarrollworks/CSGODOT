@@ -164,15 +164,15 @@ var duck_root_offset: float = 0.0
 var duck_view_offset: float = 0.0
 ## What a jump's vertical speed is multiplied by this movement interval
 ## (CS2 180ab21a0): below 1 for a jump soon after a hard landing. Worked
-## out before each step from the last landing (_jump_scale_at); the step
-## only reads it.
+## out before each step from the last landing (_jump_scale); the step only
+## reads it.
 var jump_scale: float = 1.0
 ## The last landing, as CS2's landing recorder (180ad3840) keeps it: how
 ## long ago the hull reached the ground, counted to the start of the
 ## movement interval under way (seconds; INF for none since a spawn), and
 ## how fast it was coming down (u/s, negative). CS2 keeps the landing's
-## tick and its fraction, to 1/131072 of a tick; the time since it is the
-## same counted interval by interval, and needs no clock.
+## tick and its fraction, to 1/64 of a tick; the time since it is the same
+## counted interval by interval, and needs no clock.
 var landed_ago: float = INF
 var landed_speed: float = 0.0
 
@@ -546,9 +546,9 @@ func _jump_scale(dt: float) -> float:
 ## for the moment t, clamped to the interval; the speed then is v + a t. A
 ## landing it cannot solve (not falling, or rising onto the ground) is at
 ## the interval's end at the speed it began with. The fraction is rounded to
-## 1/131072 of a tick, as CS2 rounds it (+131072, -131072, in single
-## precision); CS2 also quantizes the speed to 20 bits over +-16384, a
-## thirty-second of a unit a second, which is left out.
+## 1/64 of a tick, as CS2 rounds it (+131072, -131072, in single precision,
+## whose step at 131072 is 1/64); CS2 also quantizes the speed to 20 bits
+## over +-16384, a thirty-second of a unit a second, which is left out.
 func _record_landing(start: float, end: float, dt: float, height_before: float, falling_at: float) -> void:
 	var interval := dt * (end - start)
 	var drop := global_position.y - height_before
@@ -877,14 +877,14 @@ func _ground_known() -> bool:
 	)
 
 
-## Ducking, as Source does it.
+## Ducking.
 ##
 ## On the ground the hull shrinks from the top after duck_time, so your feet
-## stay put and your head comes down. In the air it happens instantly and the
-## other way round: the hull shrinks and the whole body moves UP by the
-## difference, so your head stays put and your feet come up. That second case
-## is the crouch jump, and it is the only way to reach a ledge higher than a
-## standing jump clears.
+## stay put and your head comes down. In the air it happens at once and
+## about the hull's middle: CS2 lifts the body half the difference (9; Source
+## lifted all 18, the head staying put), so your feet come up, and the eyes
+## are eased down after (_finish_duck). That is the crouch jump, and it is
+## the only way to reach a ledge higher than a standing jump clears.
 func _update_duck(dt: float) -> void:
 	var rate := 1.0 / maxf(config.duck_time, 0.0001)
 
