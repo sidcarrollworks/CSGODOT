@@ -190,6 +190,9 @@ var _stuck_since: int = -1
 var _stuck_spot := Vector3.ZERO
 var _wiggle_side: int = 0
 var _wiggle_until: int = -1
+## The tick it last pressed jump (CS2's CBot m_jumpTimestamp, bot +0xd8),
+## for _may_jump's gates; far in the past before its first.
+var _jumped_at_tick: int = -1_000_000
 ## How it made way for a teammate last tick (BotSteering's modes), and
 ## the stage it is at in making way.
 var steering: int = BotSteering.CLEAR
@@ -618,8 +621,7 @@ func _path_way(cmd: UserCmd) -> Vector3:
 		var near_take_off := Vector2(take_off.x - global_position.x, take_off.z - global_position.z).length() < TAKE_OFF_REACH
 		var at_take_off := near_take_off and absf(global_position.y - take_off.y) < STEP_UP_OR_DOWN
 		if on_ground and at_take_off:
-			cmd.buttons |= UserCmd.JUMP
-			cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.JUMP, true, 0.0, yaw_degrees, pitch_degrees))
+			_press_jump(cmd, false)
 		elif not on_ground:
 			cmd.buttons |= UserCmd.DUCK
 	if _under_low_ceiling():
@@ -746,11 +748,27 @@ func _unstick(cmd: UserCmd, way: Vector3, friend_against: bool) -> Vector3:
 	_forget_speeds()
 	if friend_against:
 		return way
-	cmd.buttons |= UserCmd.JUMP
-	cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.JUMP, true, 0.0, yaw_degrees, pitch_degrees))
+	_press_jump(cmd, true)
 	_path = null
 	_no_way_to = -1
 	return way
+
+
+## Jump pressed in the command, if CS2's CBot::Jump (server.dll 1802ce3c0)
+## would press it: 0.9 s or more since its last jump, standing on the
+## ground (3 s off it), not while it crouches, and never sooner than 0.3 s
+## even when it must. So a bot that falls short of a ledge lands, stands,
+## and jumps again whole, rather than at once and lowered by how soon it
+## is after the landing (PlayerBody.jump_scale).
+func _press_jump(cmd: UserCmd, must: bool) -> void:
+	var since := float(cmd.tick - _jumped_at_tick) * SimClock.tick_seconds()
+	if not (since > 3.0 or (since >= 0.9 and on_ground)) or wants_duck:
+		return
+	if not (must or since >= 0.9) or since < 0.3:
+		return
+	_jumped_at_tick = cmd.tick
+	cmd.buttons |= UserCmd.JUMP
+	cmd.steps.append(UserCmd.SubtickStep.new(UserCmd.JUMP, true, 0.0, yaw_degrees, pitch_degrees))
 
 
 ## Whether the average of a full window of speed samples is under STUCK_SPEED.

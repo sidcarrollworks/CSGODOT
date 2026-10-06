@@ -1405,6 +1405,22 @@ audit, CS2 captures and performance measurements):
    repeated-input gates and landing/bhop press windows with boundary
    checks and CS2 captures. Keep them separately reviewable from grenade
    flight changes.
+   **Part done (2026-10-06, fix/jump-cs2-2026-10-06; playtest of
+   2026-10-05, issue 8):** the airborne duck and unduck move the body half
+   the hulls' difference (9, not 18) with CS2's duck root and view offsets
+   eased by the eye update; the room to unduck in the air; the whole
+   impulse ducked or ducking; and CS2's scale for a jump soon after a
+   landing, the landing timed within its interval; and the bots' jumps
+   spaced by CS2's CBot::Jump gates (`1802ce3c0`: 0.9 s on the ground, 3 s
+   off it, none while crouching), without which a bot short of a ledge
+   jumped again on landing, lowered, and never made dust2's 60-unit CT
+   ledge. Script and native movement agree to the bit
+   (`tests/run_jump_height_checks.gd`).
+   **Remaining:** the crouch method's own duck amount, speed and
+   transition state (`180abb2c0`), `sv_timebetweenducks`, the bhop press
+   window and jump-spam penalty (`180ab5260`), the forced duck jumping off
+   another player (services `+0x438`), CS2's landing-speed quantizer, and
+   a crouch-jump capture in CS2.
 
 Mirage now provides another extracted map for paired throw references.
 The supplied Dust2 lineups, including B doors and mid doors, were accepted

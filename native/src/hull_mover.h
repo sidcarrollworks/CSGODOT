@@ -151,6 +151,10 @@ private:
 	Vector3 ground_normal = Vector3(0, 1, 0);
 	bool is_ducked = false;
 	double duck_progress = 0.0;
+	// PlayerBody.duck_root_offset, which an airborne duck or unduck moves,
+	// and jump_scale, which a jump is multiplied by (read only).
+	double duck_root_offset = 0.0;
+	double jump_scale = 1.0;
 	Vector3 wish_dir;
 	double wish_speed = 0.0;
 	double acceleration_speed = 0.0;

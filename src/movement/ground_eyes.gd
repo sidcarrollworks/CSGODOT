@@ -53,20 +53,31 @@ func height(base: float) -> float:
 	return float(Vector3(0.0, base + offset + 196608.0, 0.0).y) - 196608.0
 
 
+## CS2's eye update (180ae23e0), at each movement segment's end: the duck
+## root offset eased to 0 at half the hulls' difference over 0.1 s; the
+## ground adjustment; their sum clamped to 32 either way; then the duck
+## view offset eased toward the hulls' difference times the duck amount
+## below the standing eyes, less the root, at the difference over 0.2 s.
 func update(body: PlayerBody, dt: float) -> void:
 	if body.noclip:
 		reset()
+		body.duck_root_offset = 0.0
 		return
+	var difference := body.config.stand_height - body.config.duck_height
+	body.duck_root_offset = move_toward(body.duck_root_offset, 0.0, difference * 0.5 / 0.1 * dt)
+	var root := body.duck_root_offset
 	var enabled := body.on_ground and body.ground_is_world
 	var target := 0.0
 	if enabled:
 		target = -_sample(body)
 	if enabled != using_topology:
-		residual = offset - target
+		residual = offset - (root + target)
 	using_topology = enabled
 	var rate := GROUND_BLEND_SPEED if enabled else maxf(absf(body.velocity.y) * 0.5, body.config.gravity * 0.05)
 	residual = move_toward(residual, 0.0, rate * dt)
-	offset = clampf(target + residual, -32.0, 32.0)
+	offset = clampf(root + target + residual, -32.0, 32.0)
+	body.duck_view_offset = move_toward(body.duck_view_offset, -difference * body.duck_progress - root,
+		difference / 0.2 * dt)
 
 
 static func quantized_position(position: Vector3) -> Vector3:
