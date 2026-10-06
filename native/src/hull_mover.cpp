@@ -167,6 +167,8 @@ const StringName &ground_normal() { static const StringName n("ground_normal"); 
 const StringName &ground_is_world() { static const StringName n("ground_is_world"); return n; }
 const StringName &is_ducked() { static const StringName n("is_ducked"); return n; }
 const StringName &duck_progress() { static const StringName n("duck_progress"); return n; }
+const StringName &duck_root_offset() { static const StringName n("duck_root_offset"); return n; }
+const StringName &jump_scale() { static const StringName n("jump_scale"); return n; }
 const StringName &wish_dir() { static const StringName n("wish_dir"); return n; }
 const StringName &wish_speed() { static const StringName n("wish_speed"); return n; }
 const StringName &acceleration_speed() { static const StringName n("acceleration_speed"); return n; }
@@ -215,6 +217,8 @@ void HullMover::read_body() {
 	ground_is_world = body->get(names::ground_is_world());
 	is_ducked = body->get(names::is_ducked());
 	duck_progress = body->get(names::duck_progress());
+	duck_root_offset = body->get(names::duck_root_offset());
+	jump_scale = body->get(names::jump_scale());
 	wish_dir = body->get(names::wish_dir());
 	wish_speed = body->get(names::wish_speed());
 	acceleration_speed = body->get(names::acceleration_speed());
@@ -258,6 +262,7 @@ void HullMover::write_body(const Vector3 &p_position_before) {
 	body->set(names::ground_is_world(), ground_is_world);
 	body->set(names::is_ducked(), is_ducked);
 	body->set(names::duck_progress(), duck_progress);
+	body->set(names::duck_root_offset(), duck_root_offset);
 	body->set(names::jumped(), jumped);
 	body->set(names::looked_from(), looked_from);
 	body->set(names::looked_with(), looked_with);
@@ -549,13 +554,17 @@ double HullMover::duck_height_delta() const {
 }
 
 void HullMover::finish_duck() {
-	const double delta = duck_height_delta();
 	const bool airborne = !on_ground;
 
 	set_hull(cfg.duck_height);
 
 	if (airborne) {
-		trace(times(UP, delta));
+		// CS2's FinishDuck: lifted half the hulls' difference, the eyes held
+		// by the root offset.
+		const double lift = duck_height_delta() * 0.5;
+		const double from = position.y;
+		trace(times(UP, lift));
+		duck_root_offset -= (double)position.y - from;
 		duck_progress = 1.0;
 	}
 
@@ -563,9 +572,11 @@ void HullMover::finish_duck() {
 }
 
 void HullMover::finish_unduck() {
-	const double delta = duck_height_delta();
 	if (!on_ground) {
-		trace(times(DOWN, delta));
+		// CS2's FinishUnDuck: lowered half the difference.
+		const double from = position.y;
+		trace(times(DOWN, duck_height_delta() * 0.5));
+		duck_root_offset -= (double)position.y - from;
 		duck_progress = 0.0;
 	}
 	set_hull(cfg.stand_height);
@@ -574,8 +585,12 @@ void HullMover::finish_unduck() {
 
 bool HullMover::can_unduck() {
 	const double delta = duck_height_delta();
-	const Vector3 direction = on_ground ? UP : DOWN;
-	return !trace(times(direction, delta), true).met;
+	if (on_ground) {
+		return !trace(times(UP, delta), true).met;
+	}
+	// CS2's room check in the air: the standing hull from where it grows
+	// to half the difference below, as two sweeps of the ducked one.
+	return !trace(times(UP, delta), true).met && !trace(times(DOWN, delta * 0.5), true).met;
 }
 
 void HullMover::set_hull(double height) {
@@ -601,7 +616,12 @@ void HullMover::try_jump(double dt) {
 	velocity.y = (real_t)cfg.jump_impulse;
 	jumped = true;
 	if (cfg.cs2_jump) {
-		velocity.y = (real_t)((double)velocity.y - cfg.gravity * 0.5 / 128.0);
+		// Ducked or ducking, CS2 gives the whole impulse; then the whole is
+		// scaled by how soon after a landing it is.
+		if (!(is_ducked || duck_progress > 0.0)) {
+			velocity.y = (real_t)((double)velocity.y - cfg.gravity * 0.5 / 128.0);
+		}
+		velocity.y = (real_t)((double)velocity.y * jump_scale);
 	} else if (!cfg.tick_rate_independent_jump) {
 		// Source 1 compatibility: the jump overwrote its leading gravity.
 		velocity.y = (real_t)((double)velocity.y + cfg.gravity * 0.5 * dt);

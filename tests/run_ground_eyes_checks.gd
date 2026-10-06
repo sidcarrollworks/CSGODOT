@@ -279,7 +279,10 @@ func _check_physical_planes() -> void:
 		offsets.append(player.ground_eyes.offset)
 		var before := player.ground_eyes.queries
 		var standing := player.eye_height()
+		# Fully crouched: the duck view offset at rest, as the eye update
+		# leaves it.
 		player.duck_progress = 1.0
+		player.duck_view_offset = -18.0
 		var ducked := player.eye_height()
 		_check(absf(standing - ducked - 18.0) < 0.0001 and player.ground_eyes.queries == before,
 			"standing and ducked eye getters read the same sampled slope state without querying")
