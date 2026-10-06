@@ -540,7 +540,7 @@ request.
 | 5, 9 | Guns and dropped grenades silent on the ground | An impact hook, an `ItemSounds` view, impact-speed volume, the item surfaces read | Extract the impact sounds; listen beside CS2 |
 | 6 | No knife pull-out sound | **Done** (same): every item's draw clip's sound events (`weapons/equipment_timings.csv`) | Listen to the draws beside CS2 |
 | 7 | The T spawn soccer ball a physics object | A sphere in the drop world with CS2's pushaway and bullet impulses | Its PHYS mass; how it behaves in CS2 |
-| 8 | The jump a hair off; the landing bounce too much | The crouch jump's 9-unit lift, the full impulse when ducked, the post-landing scale, the landing bounce halved (Sid) | The crouch-jump camera beside CS2 |
+| 8 | The jump a hair off; the landing bounce too much | **Done** (fix/jump-cs2-2026-10-06): the crouch jump's 9-unit lift, CS2's duck root and view offsets, the full impulse when ducked, the post-landing scale with bots' jumps spaced by CS2's gates, the landing bounce halved (Sid) | The crouch-jump camera beside CS2 |
 | 10 | Less performant | `research/tick-audit-cs2-2026-10-05.md`, the terrain sampler native first | Sid's run after each step |
 
 ### Phase 1: make being shot feel like CS2
