@@ -12,6 +12,7 @@
 #include <godot_cpp/variant/basis.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
+#include <godot_cpp/variant/typed_array.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
 #include <cmath>
@@ -103,6 +104,8 @@ void HullMover::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("step", "body", "world", "dt", "walkable_y"), &HullMover::step);
 	ClassDB::bind_method(D_METHOD("get_casts"), &HullMover::get_casts);
 	ClassDB::bind_method(D_METHOD("get_hits"), &HullMover::get_hits);
+	ClassDB::bind_method(D_METHOD("sample_ground", "bridge", "world", "cache", "q", "first", "step", "half", "mask", "owner"), &HullMover::sample_ground);
+	ClassDB::bind_method(D_METHOD("get_ground_casts"), &HullMover::get_ground_casts);
 }
 
 // --- The body, in and out ---------------------------------------------------
@@ -195,6 +198,8 @@ const StringName &traces() { static const StringName n("traces"); return n; }
 const StringName &set_hull() { static const StringName n("_set_hull"); return n; }
 const StringName &quadrants() { static const StringName n("_ground_normal_in_quadrants_at"); return n; }
 const StringName &shape_cast_box() { static const StringName n("shape_cast_box"); return n; }
+const StringName &shape_cast_projectile_box() { static const StringName n("shape_cast_projectile_box"); return n; }
+const StringName &sync_dynamic() { static const StringName n("sync_dynamic"); return n; }
 const StringName &source_id() { static const StringName n("source_id"); return n; }
 const StringName &source_shape() { static const StringName n("source_shape"); return n; }
 } // namespace names
@@ -1183,6 +1188,184 @@ Vector3 HullMover::ground_normal_in_quadrants() {
 	const Vector3 normal = body->call(names::quadrants(), position);
 	quadrant_is_world = body->get(names::quadrant_is_world());
 	return normal;
+}
+
+// --- GroundEyes' terrain sample --------------------------------------------
+
+// GroundEyes._script_sample from the grid on, each cell's cast as
+// TerrainTrace.cast and the bridge's _mapped answer it.
+double HullMover::sample_ground(Object *p_bridge, Object *p_world, Dictionary p_cache, const Vector3 &p_q, const Vector2i &p_first, double p_step, double p_half, int64_t p_mask, const RID &p_owner) {
+	ground_casts = 0;
+	const double not_run = std::numeric_limits<double>::quiet_NaN();
+	if (p_bridge == nullptr || p_world == nullptr) {
+		return not_run;
+	}
+	const uint64_t world_id = p_world->get_instance_id();
+	if (world_id != ground_world_known) {
+		if (!p_world->has_method(names::shape_cast_projectile_box())) {
+			return not_run;
+		}
+		ground_world_known = world_id;
+	}
+	const double inf = std::numeric_limits<double>::infinity();
+	const double q_y = p_q.y;
+	// Box3DQueries._mask for a query that meets bodies and not areas.
+	const int64_t mask = p_mask & ~HITBOX_LAYER;
+	const Vector3 size = times(Vector3((real_t)GROUND_SAMPLE_WIDTH, 0, (real_t)GROUND_SAMPLE_WIDTH), SCALE);
+	const double slop = TERRAIN_LINEAR_SLOP * SCALE;
+	bool synchronized = false;
+	float heights[GROUND_SIDE * GROUND_SIDE];
+	for (float &height : heights) {
+		height = std::numeric_limits<float>::infinity();
+	}
+	// Source X is Godot Z, and Source Y is Godot X: the script's order.
+	for (int iz = 0; iz < GROUND_SIDE; iz++) {
+		for (int ix = 0; ix < GROUND_SIDE; ix++) {
+			const Vector2i cell = p_first + Vector2i(ix, iz) * GROUND_GRID;
+			double h = p_cache.get(cell, inf);
+			if (!(h >= q_y - 2.0 * p_step && h <= q_y + p_step + 1.0)) {
+				const Vector3 from((real_t)cell.x, (real_t)std::floor(q_y + 2.0 * p_step), (real_t)cell.y);
+				const Vector3 motion(0, (real_t)(std::floor(q_y - 2.0 * p_step) - (double)from.y), 0);
+				ground_casts++;
+				if (motion.is_zero_approx()) {
+					continue;
+				}
+				if (!synchronized) {
+					// What each cast's begin_shape_cast does first; nothing
+					// moves between the casts, so once is the same.
+					TypedArray<RID> exclude;
+					exclude.push_back(p_owner);
+					p_bridge->call(names::sync_dynamic(), p_mask, exclude);
+					synchronized = true;
+				}
+				const Variant answer = p_world->call(names::shape_cast_projectile_box(),
+						times(from, SCALE), times(from + motion, SCALE), size, slop, mask, QUERY_LAYER);
+				if (answer.get_type() != Variant::DICTIONARY) {
+					continue;
+				}
+				const Dictionary hit = answer;
+				if (!bool(hit.get("hit", false))) {
+					continue;
+				}
+				// _mapped: the body as the game has it, and a unit normal.
+				const Variant met = hit.get("collider", Variant());
+				Object *native = met.get_type() == Variant::OBJECT ? met.get_validated_object() : nullptr;
+				if (native == nullptr || Object::cast_to<Node3D>(native) == nullptr) {
+					continue;
+				}
+				const int64_t id = native->get_meta(names::source_id(), 0);
+				Object *found = id != 0 ? ObjectDB::get_instance((uint64_t)id) : nullptr;
+				CollisionObject3D *source = Object::cast_to<CollisionObject3D>(found);
+				if (source == nullptr) {
+					continue;
+				}
+				Vector3 normal = hit.get("normal", ZERO);
+				if (!normal.is_zero_approx()) {
+					normal = normal.normalized();
+				}
+				if (bool(hit.get("blocked_start", false)) || !is_world_ground(source) || (double)normal.y <= GROUND_MIN_NORMAL) {
+					continue;
+				}
+				// TerrainTrace.cast's end: the square's middle at contact.
+				const double fraction = clampf((double)hit.get("fraction", 0.0), 0.0, 1.0);
+				const Vector3 end = from + times(motion, fraction);
+				const Vector3 scaled_contact = times(end, 10.0);
+				h = (double)(real_t)(std::floor((double)scaled_contact.y) / 10.0);
+				p_cache[cell] = h;
+			}
+			heights[iz * GROUND_SIDE + ix] = (float)h;
+		}
+	}
+	return compute_drop(p_q, p_first, heights, p_step, p_half);
+}
+
+double HullMover::compute_drop(const Vector3 &p_q, const Vector2i &p_first, const float *p_heights, double p_step, double p_half) {
+	constexpr int COUNT = GROUND_SIDE * GROUND_SIDE;
+	const double inf = std::numeric_limits<double>::infinity();
+	const double q_x = p_q.x;
+	const double q_y = p_q.y;
+	const double q_z = p_q.z;
+	float areas[COUNT] = {};
+	double low = inf;
+	double high = -inf;
+	int nearest = -1;
+	double distance = inf;
+	for (int iz = 0; iz < GROUND_SIDE; iz++) {
+		for (int ix = 0; ix < GROUND_SIDE; ix++) {
+			const int i = iz * GROUND_SIDE + ix;
+			const double height = p_heights[i];
+			if (!std::isfinite(height)) {
+				continue;
+			}
+			const Vector2i cell = p_first + Vector2i(ix, iz) * GROUND_GRID;
+			const double area = maxf(0.0, minf(cell.x + 4.0, q_x + p_half) - maxf(cell.x - 4.0, q_x - p_half)) *
+					maxf(0.0, minf(cell.y + 4.0, q_z + p_half) - maxf(cell.y - 4.0, q_z - p_half));
+			areas[i] = (float)area;
+			if (area <= 0.0) {
+				continue;
+			}
+			low = minf(low, height);
+			high = maxf(high, height);
+			const double d = Vector3((real_t)(cell.x - q_x), (real_t)(height - q_y), (real_t)(cell.y - q_z)).length_squared();
+			if (d < distance) {
+				distance = d;
+				nearest = i;
+			}
+		}
+	}
+	if (nearest < 0 || q_y - high >= p_step) {
+		return 0.0;
+	}
+	float connected[COUNT];
+	for (float &link : connected) {
+		link = -1.0f;
+	}
+	bool connected_any = false;
+	if (high - low >= p_step) {
+		connected[nearest] = (float)maxf((double)areas[nearest] / 64.0, 0.01);
+		// The grid's stored order and first accepted path: later samples can
+		// spread in this same pass; earlier ones wait a pass.
+		static const int deltas[4] = { -1, -GROUND_SIDE, 1, GROUND_SIDE };
+		bool changed = true;
+		while (changed) {
+			changed = false;
+			for (int i = 0; i < COUNT; i++) {
+				if ((double)connected[i] < 0.0) {
+					continue;
+				}
+				for (const int delta : deltas) {
+					const int other = i + delta;
+					if (other < 0 || other >= COUNT || (delta == -1 && i % GROUND_SIDE == 0) || (delta == 1 && other % GROUND_SIDE == 0)) {
+						continue;
+					}
+					if ((double)areas[other] <= 0.0 || (double)connected[other] >= 0.0 || std::fabs((double)p_heights[i] - (double)p_heights[other]) >= p_step) {
+						continue;
+					}
+					connected[other] = (float)minf((double)connected[i], maxf(minf((double)areas[i], (double)areas[other]) / 64.0, 0.01));
+					connected_any = true;
+					changed = true;
+				}
+			}
+		}
+	}
+	double weighted = 0.0;
+	double total = 0.0;
+	for (int i = 0; i < COUNT; i++) {
+		if ((double)areas[i] <= 0.0 || (high - low >= p_step && (double)connected[i] < 0.0)) {
+			continue;
+		}
+		const double h = p_heights[i];
+		const double hi = clampf((q_y + 2.0 * p_step - h) / p_step, 0.0, 1.0);
+		const double lo = clampf((h - (q_y - 2.0 * p_step)) / p_step, 0.0, 1.0);
+		double weight = hi * lo;
+		weight = weight * weight * (double)areas[i];
+		if (connected_any) {
+			weight *= (double)connected[i];
+		}
+		weighted += h * weight;
+		total += weight;
+	}
+	return total > 0.0 ? clampf(q_y - weighted / total, 0.0, GROUND_MAX_DROP) : 0.0;
 }
 
 } // namespace godot

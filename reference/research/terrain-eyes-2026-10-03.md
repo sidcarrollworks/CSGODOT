@@ -285,7 +285,9 @@ cells are retried whenever quantized position changes. There is at most
 one 25-cell sample grid per movement segment, so a subdivided command can
 sample more than once in a tick. Negative-caching failures would change
 the audited behavior and is not introduced here. A native sampler/math
-port is a candidate for a separately measured optimization. Rendered-frame
+port is a candidate for a separately measured optimization (done on
+2026-10-06, `HullMover.sample_ground`: the same fixture's tick 2.58 to
+2.24 ms, `reference/performance.md`). Rendered-frame
 acceptance and the overall 6-ms maximum target remain open.
 
 Collision-only one-body measurements used 256 ticks per route and eight

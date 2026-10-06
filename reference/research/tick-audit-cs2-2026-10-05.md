@@ -705,6 +705,13 @@ eyes.
      `PlayerBody.traces`, comparable with `PlayerMovementTraces`.
 2. **Port the terrain-eye sampler to the native library**, held bit-exact
    to the script as the movement step is. Remote code, Local A/B.
+   **Done (2026-10-06, perf/terrain-eyes-native-2026-10-06):**
+   `HullMover.sample_ground`, called by `GroundEyes` where the step is
+   native, sharing the script's cache. The seeded ten-player match's
+   tick went from 2.58 ms to 2.24, its 95th from 3.29 to 2.79, every run
+   ending in the same place. What the eyes cost fell from 0.65 ms to 0.31.
+   Of what is left, 0.20 ms is Box3D's 27 casts a tick at 7.2 µs each,
+   which item 10 would cut. See `reference/performance.md`.
    - **Where:** `src/movement/ground_eyes.gd:56-197` and `TerrainTrace`
      stay as the reference, added to `PlayerBody.NATIVE_COPIES` and
      `native/SConstruct`. The sampler can run inside `HullMover::step`

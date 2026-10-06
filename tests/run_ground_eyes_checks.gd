@@ -26,7 +26,45 @@ func _initialize() -> void:
 	await _check_cache_and_transitions()
 	await _check_world_support_gate()
 	await _check_neighbor_exclusion()
+	await _check_native_samples()
 	_finish("ground-eyes")
+
+
+## A body walking by its own movement over a ramp, off its top, up a ledge
+## and off it, far enough for the cache to pass its limit and be cleared:
+## where the native code steps it, every sample is worked out by the
+## native code and by the script, and the two held to the same drop, casts
+## and cache (a difference fails the file at _finish).
+func _check_native_samples() -> void:
+	if not PlayerBody.native_built():
+		print("The native terrain sample needs the native library (scripts/build_native.sh, .ps1).")
+		return
+	_setup()
+	_box(Vector3(0, -8, 0), Vector3(2048, 16, 256))
+	_plane(ANGLE, Vector3(-400, 0, 0), 96.0)
+	_box(Vector3(-100, 6, 0), Vector3(200, 12, 256))
+	var player := _body(Vector3(-800, 1, 0))
+	if not _start():
+		_close()
+		return
+	await physics_frame
+	var checked := GroundEyes.samples_checked
+	var casts := player.ground_eyes.queries
+	var cleared := false
+	var cells := 0
+	player.wish_dir = Vector3.RIGHT
+	player.wish_speed = 250.0
+	for tick in 256:
+		player.simulate(DT)
+		if player.ground_eyes.cache_size() < cells:
+			cleared = true
+		cells = player.ground_eyes.cache_size()
+	var compared := GroundEyes.samples_checked - checked
+	_check(player.position.x > 100.0 and player.on_ground and compared > 100 and player.ground_eyes.queries - casts > 200 and cleared,
+		"walking a ramp and a ledge, the native code samples and is held to the script's every time (%d samples, %d casts, at x %.1f, the cache cleared %s)"
+			% [compared, player.ground_eyes.queries - casts, player.position.x, cleared])
+	_close()
+	await process_frame
 
 
 func _filled(height: float) -> PackedFloat32Array:

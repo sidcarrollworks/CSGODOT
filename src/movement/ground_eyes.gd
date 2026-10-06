@@ -4,6 +4,11 @@ extends RefCounted
 ## Shared simulation root/eye adjustment, finished before jump snapshots.
 ## The topology rules are from the installed CS2 movement audit; queries
 ## run only in movement, never from a view or a bot's threaded eye getter.
+##
+## A moving body's terrain sample is the native code's wherever its
+## movement step is (HullMover.sample_ground, native/src/hull_mover.cpp):
+## the same grid, cache and casts, held to _script_sample to the last bit.
+## A change to the sample here is made there too, in the same pull request.
 const GRID := 8
 const SIDE := 5
 const SAMPLE_WIDTH := 7.98
@@ -25,6 +30,15 @@ var _last_half := -1.0
 var _last_mask := 0
 var _cache: Dictionary[Vector2i, float] = {}
 var _query := PhysicsShapeQueryParameters3D.new()
+
+## Whether the native code samples where it steps the body. Off, the script
+## samples alone: --script-eyes after --, a profile's control for the A/B.
+static var native_samples := not "--script-eyes" in OS.get_cmdline_user_args()
+## With PlayerBody.check_steps on (every check), each native sample is
+## worked out by the script first, from the same start, and the two held to
+## the same drop, casts and cache; a difference is a fault.
+static var samples_checked: int = 0
+static var sample_faults: PackedStringArray = PackedStringArray()
 
 
 func _init() -> void:
@@ -58,7 +72,9 @@ func height(base: float) -> float:
 ## ground adjustment; their sum clamped to 32 either way; then the duck
 ## view offset eased toward the hulls' difference times the duck amount
 ## below the standing eyes, less the root, at the difference over 0.2 s.
-func update(body: PlayerBody, dt: float) -> void:
+## mover is the body's native step (HullMover) and bridge its Box3DQueries,
+## in its own tick's scope, where the native code steps it; else null.
+func update(body: PlayerBody, dt: float, mover: Object = null, bridge: Box3DQueries = null) -> void:
 	if body.noclip:
 		reset()
 		body.duck_root_offset = 0.0
@@ -69,7 +85,7 @@ func update(body: PlayerBody, dt: float) -> void:
 	var enabled := body.on_ground and body.ground_is_world
 	var target := 0.0
 	if enabled:
-		target = -_sample(body)
+		target = -_sample(body, mover, bridge)
 	if enabled != using_topology:
 		residual = offset - (root + target)
 	using_topology = enabled
@@ -92,7 +108,7 @@ static func first_cell(q: Vector3, half: float = 16.0) -> Vector2i:
 		int(q.z - fmod(q.z, GRID) - half - 4.0) + (GRID if q.z > 0.0 else 0))
 
 
-func _sample(body: PlayerBody) -> float:
+func _sample(body: PlayerBody, mover: Object = null, bridge: Box3DQueries = null) -> float:
 	var q := quantized_position(body.global_position)
 	var step := body.config.step_height
 	var half := body.config.hull_width * 0.5
@@ -115,6 +131,19 @@ func _sample(body: PlayerBody) -> float:
 	if _cache.size() > CACHE_LIMIT:
 		_cache.clear()
 	var first := first_cell(q, half)
+	if mover != null and bridge != null and native_samples:
+		var by_native := _sample_both_ways(body, mover, bridge, q, first, step, half, mask) if PlayerBody.check_steps \
+			else _native_sample(body, mover, bridge, q, first, step, half, mask)
+		if not is_nan(by_native):
+			drop = by_native
+			return drop
+	drop = _script_sample(body, q, first, step, half, mask)
+	return drop
+
+
+## The grid's heights, from the cache where it has them and cast for where
+## not, and the drop they weigh to: the reference the native code is held to.
+func _script_sample(body: PlayerBody, q: Vector3, first: Vector2i, step: float, half: float, mask: int) -> float:
 	var heights := PackedFloat32Array()
 	heights.resize(SIDE * SIDE)
 	heights.fill(INF)
@@ -139,8 +168,63 @@ func _sample(body: PlayerBody) -> float:
 				h = float(Vector3(0.0, floorf(scaled_contact.y) / 10.0, 0.0).y)
 				_cache[cell] = h
 			heights[iz * SIDE + ix] = h
-	drop = compute_drop(q, first, heights, step, half)
-	return drop
+	return compute_drop(q, first, heights, step, half)
+
+
+## The same by the native code, the cache written in place; NaN where it
+## could not run, and then it cast nothing.
+func _native_sample(body: PlayerBody, mover: Object, bridge: Box3DQueries, q: Vector3, first: Vector2i, step: float, half: float, mask: int) -> float:
+	var by_native: float = mover.call(&"sample_ground", bridge, bridge.native_world, _cache, q, first, step, half, mask, body.get_rid())
+	var casts := int(mover.call(&"get_ground_casts"))
+	queries += casts
+	body.traces += casts
+	PhysicsQueries.native_queries += casts
+	return by_native
+
+
+## Both ways from the same start: the script's first, then the native
+## code's, which is kept, the two held to the same drop, casts and cache.
+func _sample_both_ways(body: PlayerBody, mover: Object, bridge: Box3DQueries, q: Vector3, first: Vector2i, step: float, half: float, mask: int) -> float:
+	var cache_before := _cache.duplicate()
+	var queries_before := queries
+	var traces_before := body.traces
+	var native_queries_before := PhysicsQueries.native_queries
+	var by_script := _script_sample(body, q, first, step, half, mask)
+	var script_cache := _cache.duplicate()
+	var script_casts := queries - queries_before
+	_cache.assign(cache_before)
+	queries = queries_before
+	body.traces = traces_before
+	PhysicsQueries.native_queries = native_queries_before
+	var by_native := _native_sample(body, mover, bridge, q, first, step, half, mask)
+	if is_nan(by_native):
+		return by_native
+	samples_checked += 1
+	var differs := PackedStringArray()
+	if by_script != by_native:
+		differs.append("drop: the script %s, the native code %s" % [var_to_str(by_script), var_to_str(by_native)])
+	if queries - queries_before != script_casts:
+		differs.append("casts: the script %d, the native code %d" % [script_casts, queries - queries_before])
+	var cache_differs := _cache_difference(script_cache, _cache)
+	if not cache_differs.is_empty():
+		differs.append("cache: " + cache_differs)
+	if not differs.is_empty() and sample_faults.size() < 40:
+		sample_faults.append("%s sampled at %s (first cell %s, step %s, half %s, mask %d): %s" % [
+			body.name, var_to_str(q), var_to_str(first), var_to_str(step), var_to_str(half), mask, "; ".join(differs)])
+	return by_native
+
+
+## Where the script's cache and the native code's first differ, or "" where
+## they hold the same cells at the same heights, to the bit.
+static func _cache_difference(by_script: Dictionary, by_native: Dictionary) -> String:
+	if by_script.size() != by_native.size():
+		return "the script %d cells, the native code %d" % [by_script.size(), by_native.size()]
+	for cell: Variant in by_script:
+		if not by_native.has(cell):
+			return "%s the script's alone" % var_to_str(cell)
+		if typeof(by_script[cell]) != typeof(by_native[cell]) or by_script[cell] != by_native[cell]:
+			return "%s the script %s, the native code %s" % [var_to_str(cell), var_to_str(by_script[cell]), var_to_str(by_native[cell])]
+	return ""
 
 
 static func compute_drop(q: Vector3, first: Vector2i, heights: PackedFloat32Array, step: float = 18.0, half: float = 16.0) -> float:
