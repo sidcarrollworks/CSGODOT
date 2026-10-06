@@ -4,8 +4,9 @@ extends "res://tests/check_suite.gd"
 ## handed to a terrorist at a round's start, planted only once the round is
 ## live, its events on the game's queue with the schema's names and keys,
 ## the carrier's inventory and the bomb on the ground kept in step with it,
-## and the blast dealt as DamageInfo, armour and all, credited to the
-## planter.
+## and the blast dealt as DamageInfo, armour and all, credited to nobody;
+## and, run with a match, no blast once the match is over or at half time,
+## and a final scoreboard that stays as the match left it.
 ##
 ##   godot --headless --path . --script tests/run_bomb_system_checks.gd
 ##
@@ -56,6 +57,8 @@ func _run() -> void:
 	_test_dropped_and_picked_up(t_id, planter)
 	_test_who_the_round_hands_it_to()
 	_test_taken_from_a_bot()
+	_test_no_blast_once_the_match_is_over()
+	_test_no_blast_at_half_time()
 	_finish("bomb-system")
 
 
@@ -190,6 +193,141 @@ func _test_taken_from_a_bot() -> void:
 	_check(game.inventory(you_id).has("weapon_ak47"), "and with the bomb yours, the next E takes the gun")
 	for player: Node in [you, bot]:
 		player.queue_free()
+
+
+## A match of one round, with the match, the bomb and the scoreboard's
+## numbers on one game, run as GameWorld.end_tick runs them: the T plants,
+## kills the only CT and so wins the match with the bomb still counting.
+## Since October 2025 CS2's bomb no longer goes off after the match
+## (round-bomb-grenades.md 1.4): nobody on the end screen dies to it, and
+## the final scoreboard stays as the match left it.
+func _test_no_blast_once_the_match_is_over() -> void:
+	var rules := MatchRules.new()
+	rules.max_rounds = 1
+	var played := _plant_and_win_by_elimination(rules)
+	var match_state: MatchState = played["match"]
+	var game: GameSystems = played["game"]
+	var stats: MatchStats = played["stats"]
+	var system: BombSystem = played["system"]
+	var t: PlayerSim = played["t"]
+	var t_id: int = played["t_id"]
+	var ct_id: int = played["ct_id"]
+	_check(played["planted"], "the T plants before the last CT dies")
+	_check_equal(match_state.phase, MatchState.Phase.OVER, "the CT side gone, the match is over with the bomb down")
+	_check(t.frozen, "and the T stands frozen on the end screen")
+	var heard: Array[StringName] = played["heard"]
+	heard.clear()
+	_match_step(game, match_state, system.bomb.rules.timer_seconds + 5.0)
+	_check(not heard.has(&"bomb_exploded") and system.bomb.state != C4.State.EXPLODED,
+		"the bomb's 40 s run out on the end screen: it does not go off")
+	_check(t.alive and not heard.has(&"player_death"), "the frozen T standing on it lives")
+	_check(not system.bomb.planted() and game.entities.of_class("planted_c4").is_empty(),
+		"the bomb is out of play: no ten-second count to start over the match's end music")
+	_check_equal(stats.of(t_id)["deaths"], 0, "the T's deaths on the final scoreboard stay 0")
+	_check_equal(stats.of(t_id)["kills"], 1, "their kill of the last CT, on the deciding tick, counts")
+	_check_equal(stats.of(ct_id)["deaths"], 1, "and so does the CT's death")
+
+	# Whatever else might still hurt someone on the end screen (a fire, a
+	# grenade in the air) does not change the final scoreboard; the last
+	# round's MVP, sent after the match ends, still counts.
+	game.events.send(&"player_hurt", {"userid": t_id, "attacker": ct_id, "dmg_health": 50})
+	game.events.send(&"player_death", {"userid": t_id, "attacker": ct_id})
+	game.events.send(&"round_mvp", {"userid": t_id})
+	game.events.flush()
+	_check(stats.of(t_id)["deaths"] == 0 and stats.of(ct_id)["kills"] == 0 and stats.of(ct_id)["damage"] == 0,
+		"a death or damage after the match is decided is not counted")
+	_check_equal(stats.of(t_id)["mvps"], 1, "the deciding round's MVP is")
+	game.events.send(&"begin_new_match")
+	game.events.send(&"player_death", {"userid": t_id, "attacker": ct_id})
+	game.events.flush()
+	_check_equal(stats.of(t_id)["deaths"], 1, "a new match counts again")
+	_free_match(played)
+
+
+## The same at the end of the first half: CS2's bomb no longer goes off
+## between the halves either. Half time here is long enough for the 40 s
+## to run out inside it.
+func _test_no_blast_at_half_time() -> void:
+	var rules := MatchRules.new()
+	rules.max_rounds = 2
+	rules.halftime_seconds = 60.0
+	var played := _plant_and_win_by_elimination(rules)
+	var match_state: MatchState = played["match"]
+	var game: GameSystems = played["game"]
+	var system: BombSystem = played["system"]
+	var t: PlayerSim = played["t"]
+	var heard: Array[StringName] = played["heard"]
+	_check(played["planted"] and heard.has(&"start_halftime") and match_state.phase == MatchState.Phase.ROUND_END,
+		"the first half's last round won by the T with the bomb down: half time")
+	heard.clear()
+	_match_step(game, match_state, system.bomb.rules.timer_seconds + 5.0)
+	_check(not heard.has(&"bomb_exploded") and t.alive and game.entities.of_class("planted_c4").is_empty(),
+		"the bomb does not go off at half time, and the T standing on it lives")
+	_check_equal(match_state.phase, MatchState.Phase.ROUND_END, "still in half time")
+	_free_match(played)
+
+
+## One T on the site and one CT, in a match of these rules with no warmup or
+## freeze time; the T plants, then kills the CT, which ends the round.
+func _plant_and_win_by_elimination(rules: MatchRules) -> Dictionary:
+	rules.warmup_seconds = 0.0
+	rules.freeze_seconds = 0.0
+	var game := GameSystems.new()
+	var system := BombSystem.new([BombSite.of_box("A", SITE_BOX)])
+	var asks := {}
+	system.input_of = func(userid: int, _player_node: Node3D, _inventory: Inventory) -> Dictionary:
+		return asks.get(userid, {})
+	game.add_system(system)
+	var stats := MatchStats.new()
+	game.add_system(stats)
+	var heard: Array[StringName] = []
+	game.events.listen_all(func(event: GameEvent) -> void: heard.append(event.name))
+	var t := _player(ON_SITE, "T")
+	var t_id := game.add_player(t, t.hit_target)
+	var ct := _player(ON_SITE + Vector3(300.0, 0.0, 0.0), "CT")
+	var ct_id := game.add_player(ct, ct.hit_target)
+	var match_state := MatchState.new()
+	match_state.rules = rules
+	_world.add_child(match_state)
+	match_state.events = game.events
+	match_state.add_player(t)
+	match_state.add_player(ct)
+	_tick += 1
+	match_state.start(SimClock.tick_end_usec(_tick))
+	game.step(_tick)
+	asks[t_id] = {"plant": true}
+	_match_step(game, match_state, system.bomb.rules.plant_seconds + 0.2)
+	asks.erase(t_id)
+	var planted := system.bomb.planted()
+	var shot := DamageInfo.new()
+	shot.attacker = t_id
+	shot.weapon = "weapon_ak47"
+	shot.damage = 1000.0
+	shot.damage_type = DamageInfo.DMG_BULLET
+	shot.at_usec = game.now_usec()
+	DamageInfo.deal(ct.hit_target, shot, game.events)
+	_match_step(game, match_state, 0.1)
+	return {"match": match_state, "game": game, "system": system, "stats": stats, "heard": heard,
+		"t": t, "t_id": t_id, "ct": ct, "ct_id": ct_id, "planted": planted}
+
+
+## Ticks as GameWorld.end_tick does: the match judges the tick, then the
+## game's systems run and its events are handed out.
+func _match_step(game: GameSystems, match_state: MatchState, seconds: float) -> void:
+	for i in SimClock.ticks_in(seconds):
+		for userid in game.roster.ids():
+			var player := game.roster.player(userid) as PlayerSim
+			if player != null:
+				player.wants_duck = bool(game.query(&"crouches", [userid], false))
+		_tick += 1
+		match_state.tick(SimClock.tick_end_usec(_tick))
+		game.step(_tick)
+
+
+func _free_match(played: Dictionary) -> void:
+	(played["match"] as MatchState).events = null
+	for key in ["match", "t", "ct"]:
+		(played[key] as Node).queue_free()
 
 
 func _test_no_plant_before_the_round_is_live(t_id: int) -> void:

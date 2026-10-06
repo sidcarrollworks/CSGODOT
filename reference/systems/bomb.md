@@ -145,6 +145,20 @@ Not done yet, in files this does not edit (`match_state.gd` and
   the next round's start resets it (`bomb.reset()`) and removes its
   entity. A defuse or an explosion after the round is decided changes
   nothing in the score.
+- **After the match and at half time** *(done 2026-10-06)*. Since
+  October 2025 CS2's bomb no longer goes off once the match is over or
+  between the halves (`round-bomb-grenades.md` 1.4,
+  `m_bAbortDetonationBecauseWorldIsFrozen`). The bomb system takes a
+  planted bomb out of play on `cs_win_panel_match` and `start_halftime`
+  (`bomb.reset()`, its entity removed), so it neither kills the frozen
+  players on the end screen nor starts its ten-second music over the
+  match's end. CS2 sets its flag when the world freezes, which at half
+  time may be some seconds after the round ends; the match here has no
+  frozen half time of its own, so it is done as the round ends. Whether
+  CS2's planted bomb stays on screen, silent, is a Local check; here it
+  goes. `MatchStats` also stops counting damage and deaths once the match
+  is decided (anything else still burning on the end screen), which is a
+  guess for the least surprising scoreboard.
 
 ### Money (the "Buying and money" thread)
 

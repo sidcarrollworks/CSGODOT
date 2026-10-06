@@ -19,6 +19,10 @@ extends RefCounted
 ## - HS% is the headshot kills over the kills, rounded down.
 ## - Warmup counts, and everything starts again as the match does
 ##   (begin_new_match), as CS2's scoreboard goes back to nothing then.
+## - Once the match is decided (cs_win_panel_match) no damage or death
+##   counts: whatever still burns or goes off on the end screen does not
+##   change the final scoreboard. The last round's MVP, sent after, still
+##   does. What CS2 does is not known; this is the least surprising.
 ##
 ## It reads the roster and nothing else; it never changes the game.
 
@@ -26,6 +30,8 @@ var game: GameSystems
 
 ## By userid: {"kills", "deaths", "assists", "headshots", "damage", "mvps"}.
 var _stats := {}
+## The match is decided: damage and deaths no longer count.
+var _over := false
 
 const ZERO := {"kills": 0, "deaths": 0, "assists": 0, "headshots": 0, "damage": 0, "mvps": 0}
 
@@ -36,8 +42,9 @@ func attach(p_game: GameSystems) -> void:
 	events.listen(&"player_hurt", _on_hurt)
 	events.listen(&"player_death", _on_death)
 	events.listen(&"round_mvp", _on_mvp)
-	events.listen(&"begin_new_match", func(_e: GameEvent) -> void: _stats.clear())
-	events.listen(&"round_announce_warmup", func(_e: GameEvent) -> void: _stats.clear())
+	events.listen(&"begin_new_match", _start_again)
+	events.listen(&"round_announce_warmup", _start_again)
+	events.listen(&"cs_win_panel_match", func(_e: GameEvent) -> void: _over = true)
 
 
 func tick(_t: SimTick) -> void:
@@ -67,6 +74,11 @@ func _add(userid: int, stat: String, amount: int) -> void:
 	_stats[userid][stat] += amount
 
 
+func _start_again(_event: GameEvent) -> void:
+	_stats.clear()
+	_over = false
+
+
 func _enemies(attacker: int, victim: int) -> bool:
 	if attacker < 0 or attacker == victim:
 		return false
@@ -75,12 +87,16 @@ func _enemies(attacker: int, victim: int) -> bool:
 
 
 func _on_hurt(event: GameEvent) -> void:
+	if _over:
+		return
 	var attacker: int = event.fields["attacker"]
 	if _enemies(attacker, event.fields["userid"]):
 		_add(attacker, "damage", int(event.fields["dmg_health"]))
 
 
 func _on_death(event: GameEvent) -> void:
+	if _over:
+		return
 	var victim: int = event.fields["userid"]
 	var attacker: int = event.fields["attacker"]
 	_add(victim, "deaths", 1)
