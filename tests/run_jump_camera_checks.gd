@@ -35,7 +35,7 @@ func _test_dip_and_recovery() -> void:
 	var landing := motion.update_at(1800000, PlayerBody.AIR_LAND, 1800000)
 	_check(absf(landing - before_land) < 0.0001, "landing also starts without an instantaneous height change")
 	var land_dip := motion.update_at(1850000, PlayerBody.AIR_LAND, 1800000)
-	_check(land_dip < -1.4 and land_dip > -1.9, "a normal jump lands with about 1.6 units of camera dip")
+	_check(land_dip < -0.7 and land_dip > -0.95, "a normal jump lands with about 0.8 units of camera dip, half the 1.6 it was (Sid, 2026-10-06)")
 	var rise := motion.update_at(1950000, PlayerBody.AIR_LAND, 1800000)
 	_check(rise > land_dip and rise <= 0.0, "landing rises toward the usual eyes without overshooting above them")
 	for i in range(1, 51):
@@ -56,8 +56,8 @@ func _test_falls() -> void:
 	_check(is_zero_approx(falling.update_at(1250000, PlayerBody.AIR_START_FALL, 1000000)), "falling follows the physical height without an extra airborne wave")
 	falling.update_at(1450000, PlayerBody.AIR_LAND, 1450000)
 	var land_dip := falling.update_at(1500000, PlayerBody.AIR_LAND, 1450000)
-	_check(land_dip < -1.4, "a longer fall gets a landing dip too")
-	_check_near(land_dip, -88.0 * 0.05 * exp(-20.0 * 0.05), "halving the viewmodel jump movement keeps the accepted camera landing strength")
+	_check(land_dip < -0.7, "a longer fall gets a landing dip too")
+	_check_near(land_dip, -JumpCameraMotion.LAND_PUSH * 0.05 * exp(-20.0 * 0.05), "the landing's dip is its push over the spring")
 	var before_jump := falling.update_at(1500000, PlayerBody.AIR_LAND, 1450000)
 	_check(absf(falling.update_at(1500000, PlayerBody.AIR_JUMP, 1500000) - before_jump) < 0.0001, "jumping during recovery preserves the height instead of snapping it to zero")
 
@@ -179,12 +179,18 @@ func _test_player_view() -> void:
 	_check(player.global_position == Vector3(10, 20, 30) and player.velocity == Vector3.ZERO
 		and player.input.yaw_degrees == 37.0 and player.input.pitch_degrees == -20.0,
 		"camera motion changes no player position, velocity or look input")
+	var standing_eyes := player.eye_height()
 	player.duck_progress = 0.5
+	# Half crouched, the duck view offset at half the hulls' difference, as
+	# the eye update would leave it.
+	player.duck_view_offset = -9.0
 	# This fixture changes the state directly, without running movement.
 	# Both completed tick endpoints are already at this crouched height.
 	player.previous_eye_height = player.eye_height()
 	player.view._process(1.0 / 224.0)
-	_check(absf(player.camera.global_position.y - (20.0 + player.eye_height() + player.view.camera_motion.height)) < 0.0001, "the same dip is relative to the crouched eyes")
+	_check(absf(standing_eyes - player.eye_height() - 9.0) < 0.0001
+		and absf(player.camera.global_position.y - (20.0 + player.eye_height() + player.view.camera_motion.height)) < 0.0001,
+		"the same dip is relative to the crouched eyes, 9 below the standing")
 	player.on_ground = true
 	player.air_action = PlayerBody.AIR_LAND
 	player.air_action_usec = SimClock.tick_end_usec(113)
@@ -352,7 +358,9 @@ func _test_eye_interpolation(player: PlayerController) -> void:
 	player.previous_position = Vector3(10.0, 12.0, 30.0)
 	player.global_position = Vector3(30.0, 20.0, 40.0)
 	player.previous_eye_height = 64.0
+	# Fully crouched, the duck view offset at rest at the hulls' difference.
 	player.duck_progress = 1.0
+	player.duck_view_offset = -18.0
 	_check_near(player.interpolated_eye_height(0.0), 64.0, "the previous tick's standing eye remains the interpolation start")
 	_check_near(player.interpolated_eye_height(0.5), 55.0, "a halfway frame blends standing and crouched simulation eyes")
 	_check_near(player.interpolated_eye_height(1.0), 46.0, "the current tick's crouched eye is the interpolation end")
@@ -393,5 +401,6 @@ func _test_eye_interpolation(player: PlayerController) -> void:
 	player.global_position = position_before
 	player.previous_position = position_before
 	player.duck_progress = 0.0
+	player.duck_view_offset = 0.0
 	player.previous_eye_height = player.eye_height()
 	DrawClock._tick_clock_usec = Time.get_ticks_usec() - 1000000

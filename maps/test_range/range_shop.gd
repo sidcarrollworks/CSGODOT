@@ -7,8 +7,9 @@ extends Node3D
 ## The economy is the game's own (Economy), a system in the range's
 ## GameSystems like any other; the range only sets it up for trying things:
 ## buying never closes (no round is played here, so buy time never starts
-## counting), and O fills the account again. Everything else is the rule as
-## a match has it: the zone, the prices, the sides, what can be carried,
+## counting), a round's limits on purchases are lifted (no round ends to
+## clear them), and O fills the account again. Everything else is the rule
+## as a match has it: the zone, the prices, the sides, what can be carried,
 ## undoing a purchase.
 ##
 ## What you buy goes into your own inventory, the one you carry. A gun you
@@ -38,6 +39,9 @@ func setup(range_game: GameSystems, you: PlayerController) -> void:
 	zones.add_box("T", ZONE)
 	zones.add_box("CT", ZONE)
 	economy = Economy.new(MoneyRules.new(), zones)
+	economy.rules.unlimited_grenade_purchases = true
+	economy.rules.type_purchases = -1
+	economy.rules.zeus_purchases = -1
 	game.add_system(economy)
 	economy.set_money(userid, economy.rules.max_money)
 

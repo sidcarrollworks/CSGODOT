@@ -243,3 +243,33 @@ build 2000924. A fresh `vphysics2.dll` project supplies `180296fa0`, the
 common interaction registration: `sky` is bit 3 and grenade clip is bit 33.
 The grenade mask `0x200003001` excludes sky. Verify these addresses again
 after updates; the report records both DLL hashes and the Listing checks.
+
+## Query batches for the tick audit
+
+The [tick audit](../../reference/research/tick-audit-cs2-2026-10-05.md)
+read the server frame, command processing, movement, traces, shots, bots,
+animation and events with `TickQuery.java`, a batch of read-only queries
+over the analyzed `CS2_Shooting_Server` project. Each command line in a
+batch file writes one output file. The commands are listed at the top of
+the script; `info` prints the hash of the binary the project holds,
+`vtables` finds a class's vtables from MSVC RTTI when the analysis left
+them unlabelled, and `disasm` reads every memory operand as f32 and f64
+so float constants can be checked.
+
+```powershell
+$auditOut = '.godot\tick-audit'
+New-Item -ItemType Directory -Force "$auditOut\tick" | Out-Null
+$batch = "$auditOut\tick\b01.txt"
+Set-Content $batch 'info', 'vtables CCSPlayerPawn 120', 'decompile 180dd3dd0'
+& $ghidraHeadless $auditProjects CS2_Shooting_Server -process server.dll -noanalysis -readOnly `
+  -scriptPath scripts/shooting_audit `
+  -postScript TickQuery.java $batch "$auditOut\tick\b01"
+```
+
+A batch takes 25 to 90 seconds, most of it opening the project, so put
+many commands in one. Two headless runs must never open the same project:
+for parallel readers, copy the project once per reader, both
+`CS2_Shooting_Server.gpr` and its `CS2_Shooting_Server.rep` folder, into a
+folder of the reader's own, and name that folder in its command in place
+of `$auditProjects` (the audit used seven copies). The addresses in the
+audit hold only for the `server.dll` hash `info` prints.

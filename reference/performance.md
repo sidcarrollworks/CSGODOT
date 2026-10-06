@@ -1,5 +1,15 @@
 # What everything costs, and what going online will
 
+[How CS2's server runs a tick, and what ours should take from it](research/tick-audit-cs2-2026-10-05.md)
+(2026-10-05): the tick measured on current main and read against CS2's
+`server.dll` in Ghidra. A live round's tick is 2.45 to 2.50 ms headless,
+most of it the bots' run_command; the terrain-aware eyes are most of what
+it grew since 2 October (0.58 ms, 27.7 casts a tick), and their sampler
+now costs a running bot more than its movement step. The
+page explains CS2's tick order, command budgets, movement and trace
+layers, bots, lag compensation and server animation, and ranks what to
+change. The 6 ms maximum target remains open.
+
 The [3 October horizontal-integration follow-up](research/horizontal-integration-2026-10-03.md#validation-and-performance)
 records the ordinary movement port's paired ten-player Dust2 comparison:
 **2.661 vs 2.5505 ms per tick**, an increase of **0.1105 ms (4.3%)** with

@@ -41,6 +41,7 @@ func _run() -> void:
 	_check_range_and_cone()
 	_check_reaction_each_tick()
 	_check_path_and_teammate_inputs()
+	_check_a_take_off_by_a_low_ceiling()
 	var game := _world.game
 	_stage.free()
 	for system in game.systems():
@@ -184,6 +185,46 @@ func _check_path_and_teammate_inputs() -> void:
 	_check((earlier[0] as PackedVector3Array)[0] == Vector3(0, 0, -30)
 		and (later[0] as PackedVector3Array)[0] == _friend.position,
 		"teammate snapshots are independent and see movement from earlier in the same tick")
+
+
+## A take-off with a low ceiling near: a bot does not jump while it crouches
+## (CS2's CBot::Jump), so at the take-off it stands, and jumps on the next
+## tick; anywhere else near the low ceiling it crouches.
+func _check_a_take_off_by_a_low_ceiling() -> void:
+	var path := SourceNavMesh.WalkPath.new()
+	path.points = PackedVector3Array([Vector3.ZERO, Vector3(48, 60, 0)])
+	path.jumps = PackedByteArray([1, 0])
+	path.areas.assign([_area(Vector3.ZERO, 0), _area(Vector3(-64, 0, 0), SourceNavMesh.FLAG_CROUCH)])
+	var route := _watcher.route
+	_watcher.route = PackedVector3Array([Vector3(48, 60, 0)])
+	_watcher._next = 0
+	_watcher._path = path
+	_watcher._corner = 1
+	_watcher._jumped_at_tick = -1_000_000
+	_watcher.position = Vector3.ZERO
+	_watcher.on_ground = true
+	# Crouched last tick, under the ceiling on its way here.
+	_watcher.wants_duck = true
+	var first := UserCmd.new()
+	first.tick = 5000
+	_watcher._path_way(first)
+	_watcher.wants_duck = first.held(UserCmd.DUCK)
+	var second := UserCmd.new()
+	second.tick = 5001
+	_watcher._path_way(second)
+	_check(not first.held(UserCmd.DUCK) and not first.held(UserCmd.JUMP)
+		and second.held(UserCmd.JUMP) and not second.held(UserCmd.DUCK),
+		"at a take-off by a low ceiling it stands, then jumps, rather than crouch there for good")
+	_watcher.position = Vector3(-20, 0, 40)
+	var away := UserCmd.new()
+	away.tick = 5002
+	_watcher._path_way(away)
+	_check(away.held(UserCmd.DUCK) and not away.held(UserCmd.JUMP), "off the take-off, near the low ceiling, it crouches")
+	_watcher._path = null
+	_watcher._corner = 0
+	_watcher.route = route
+	_watcher.wants_duck = false
+	_watcher.position = Vector3.ZERO
 
 
 func _area(at: Vector3, flags: int) -> SourceNavMesh.Area:

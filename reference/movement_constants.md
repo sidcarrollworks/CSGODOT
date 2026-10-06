@@ -126,23 +126,36 @@ most of what makes CS movement feel like CS.
 
 ### Crouch jump height
 
-Ducking in the air shrinks the hull and moves the body up by the difference, so
-your head stays put and your feet come up 18 units. That is what a crouch jump
-is, and it is the only way to reach a ledge a standing jump cannot.
+Ducking in the air shrinks the hull about its middle: CS2's FinishDuck
+(server.dll build 2000922, `180abdbe0`) lifts the body half the hulls'
+difference, **9 units** (Source lifted all 18), and holds the eyes where
+they were with the duck root offset (`m_flDuckRootOffset`, `+0x418`).
+The eye update (`180ae23e0`) then eases the root back to 0 over 0.1 s
+while the duck view offset (`+0x41c`) comes down to the crouched -18
+over 0.2 s, so the view follows the standing jump's for 0.1 s and is 9
+lower by 0.2 s. FinishUnDuck (`180abe2f0`) is the reverse; the room to
+unduck in the air (`180ab3f50`) is the standing hull swept from where it
+grows to 9 below. Ducked, or ducking, a jump takes the whole impulse
+(`180adf830`) where standing it takes off half a tick of gravity, so a
+fully ducked jump rises 57.00 against 55.83.
 
-Historical legacy-mode measurements (September 23) at 64 Hz: a standing
-jump peaks at 59.37 units and a crouch jump at 77.37, the difference being
-exactly the 18 unit hull delta
-(58.19 and 76.19 at 128 Hz, the tick until 2026-09-23).
-These are not the current default standing arc: #184's ordinary CS2 jump
-peaks at 55.825516 units in the Box3D regression at 64 Hz. Complete CS2
-crouch-jump reach and transition timing still need paired captures.
+Feet over the floor at 64 Hz, sampled per tick (`tests/run_jump_height_checks.gd`):
 
-**76 may well be too generous.** The feet-raise is faithful to Source's
-`FinishDuck`, but CS:GO and CS2 also gate how fast you can duck in the air, and
-`duck_time` here is Source's 0.4 s rather than a measured CS2 value. Both of
-those cap the real thing lower than the theoretical maximum. Measure the
-highest ledge a crouch jump actually clears in CS2 before trusting this number.
+| Jump | Peak |
+|---|---|
+| Standing | 55.8255 |
+| Crouch jump, the duck pressed after takeoff | 64.8255 |
+| Fully ducked on the ground | 56.9974 |
+| Again at once after a flat landing | 41.4370 |
+
+The last is CS2's scale for a jump soon after a landing (`180ab21a0`):
+`min(1, max(0.2, 1 + 0.0005 v) + 0.6 (t + 1/64))`, from the landing's
+vertical speed `v` and the seconds since it `t`, the landing timed within
+its movement interval as CS2's landing recorder (`180ad3840`) solves it.
+Until 2026-10-06 the crouch jump lifted 18, peaking at 73.83 (legacy mode
+at 64 Hz: 59.37 and 77.37). How fast the duck itself runs on the ground
+(CS2's crouch method `180abb2c0`, its duck speed and `sv_timebetweenducks`
+0.4 s) is still ours: `duck_time`, Source's 0.4 s.
 
 ## Known issue: leaving a surf ramp
 

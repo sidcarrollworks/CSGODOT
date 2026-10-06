@@ -13,8 +13,12 @@ extends RefCounted
 
 var bomb: C4
 var sites: Array[BombSite] = []
-## Whether a plant may be made: between round_freeze_end and round_end in a
-## match. With no match (the range) always.
+## Whether a plant may be made: from round_freeze_end to the next round's
+## round_prestart in a match, the round's end included: CS2's plant (the
+## C4's primary attack, server.dll 180a18640) asks only for a bomb site and
+## the ground, never whether the round is over, and pays the planter $300
+## all the same; the round's team money was settled as it ended. With no
+## match (the range) always.
 var live: bool = true
 ## What each player asks of the bomb this tick, as {plant, use,
 ## use_pressed}:
@@ -77,9 +81,7 @@ func give_to(userid: int) -> void:
 func tick(t: SimTick) -> void:
 	_game = t.game
 	var actors: Array[C4.Actor] = []
-	# A round the match ended this tick is over, though round_end is handed
-	# out only at the tick's end: no plant finishes on it.
-	var may_plant := live and not t.events.is_pending(&"round_end")
+	var may_plant := live
 	for userid in t.roster.ids():
 		var player := t.roster.player(userid) as PlayerSim
 		if player == null:
@@ -87,7 +89,10 @@ func tick(t: SimTick) -> void:
 		var actor := C4.Actor.of_player(player, userid)
 		var inventory := t.game.inventory(userid)
 		var asked: Dictionary = input_of.call(userid, player, inventory)
-		actor.plant_held = may_plant and bool(asked.get("plant", false))
+		# A plant is the bomb's attack, and a frozen player does not fire:
+		# none in a round's freeze, nor once the match is over, where no
+		# prestart comes to end the round's liveness.
+		actor.plant_held = may_plant and not player.frozen and bool(asked.get("plant", false))
 		actor.use_held = bool(asked.get("use", false))
 		actor.use_pressed = bool(asked.get("use_pressed", false))
 		actor.drop = _drop_asked.has(userid)

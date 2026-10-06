@@ -31,6 +31,7 @@ func _initialize() -> void:
 	await _test_the_bomb_carrier()
 	await _test_planted_clock()
 	await _test_the_pickup_prompt()
+	_test_the_mouse_passes_through()
 	await _test_the_alert_lines()
 	await _test_the_buy_menu_agent()
 	await _test_the_weapon_selection()
@@ -457,6 +458,49 @@ func _test_the_pickup_prompt() -> void:
 	hud.free()
 	you.free()
 	await process_frame
+
+
+
+## The HUD sits over the buy menu, as CS2's does, so every element of it
+## must let the mouse through to the menu: HudElement's constructor says so,
+## and an element whose own _init forgets super() stops the clicks under it
+## (the use prompt took the buy menu's fourth row; playtest 2026-10-05).
+func _test_the_mouse_passes_through() -> void:
+	var stopping := PackedStringArray()
+	var looked := 0
+	for path in _scripts_under("res://src"):
+		var script := load(path) as Script
+		if script == null or not script.can_instantiate() or not _is_hud_element(script):
+			continue
+		var element := script.new() as Control
+		if element == null:
+			continue
+		looked += 1
+		if element.mouse_filter != Control.MOUSE_FILTER_IGNORE:
+			stopping.append(path.get_file())
+		element.free()
+	_check(looked >= 8 and stopping.is_empty(),
+		"all %d HUD elements let the mouse through to the buy menu under them%s" % [
+			looked, "" if stopping.is_empty() else "; these stop it: %s" % ", ".join(stopping)])
+
+
+func _is_hud_element(script: Script) -> bool:
+	var base := script
+	while base != null:
+		if base.get_global_name() == &"HudElement":
+			return base != script
+		base = base.get_base_script()
+	return false
+
+
+func _scripts_under(folder: String) -> PackedStringArray:
+	var found := PackedStringArray()
+	for file in DirAccess.get_files_at(folder):
+		if file.ends_with(".gd"):
+			found.append(folder.path_join(file))
+	for sub in DirAccess.get_directories_at(folder):
+		found.append_array(_scripts_under(folder.path_join(sub)))
+	return found
 
 
 func _test_planted_clock() -> void:

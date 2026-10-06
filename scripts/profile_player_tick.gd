@@ -166,10 +166,11 @@ class TimedBot:
 		super(surface_friction, dt)
 		leave()
 
-	func _step_move(dt: float) -> void:
+	func _step_move(dt: float) -> bool:
 		enter(STEP_MOVE)
-		super(dt)
+		var moved := super(dt)
 		leave()
+		return moved
 
 	func _try_player_move(dt: float) -> bool:
 		enter(TRY)

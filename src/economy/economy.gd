@@ -33,6 +33,7 @@ const NOT_IN_BUY_ZONE := &"not_in_buy_zone"
 const ALREADY_HAVE := &"already_have"
 const CANNOT_CARRY := &"cannot_carry"
 const TYPE_LIMIT := &"type_limit"
+const GRENADE_LIMIT := &"grenade_limit"
 const NO_MONEY := &"no_money"
 const NOTHING_TO_UNDO := &"nothing_to_undo"
 const CANNOT_THROW := &"cannot_throw"
@@ -48,6 +49,9 @@ const MESSAGES := {
 	ALREADY_HAVE: "You already have that.",
 	CANNOT_CARRY: "You cannot carry any more.",
 	TYPE_LIMIT: "You can't buy any more of those this round.",
+	# CS2's SFUI_BuyMenu_CanOnlyPurchaseTotalXGrenades, its {n} the round's
+	# four (Inventory.MOST_GRENADES).
+	GRENADE_LIMIT: "You can only purchase 4 grenades",
 	NO_MONEY: "You have insufficient funds!",
 	NOTHING_TO_UNDO: "There is nothing to undo.",
 	# Ours: CS2's menu only greys the card (buywheel-cant-donate), and its
@@ -88,9 +92,14 @@ var _buy_ends_usec := -1
 ## exit_buyzone.
 var _in_zone := {}
 ## This round's purchases by userid, for undoing them: [{item, price,
-## armor, helmet}], oldest first; and the purchases of each weapon type.
+## armor, helmet}], oldest first; and how many of each item each has bought,
+## less those undone: {userid: {item_class: count}}. CS2 counts by item, not
+## by weapon type (CanAcquire, server.dll 180ab2a20).
 var _bought := {}
-var _type_counts := {}
+var _purchases := {}
+## Whether warmup runs: from round_announce_warmup to begin_new_match. CS2
+## holds warmup's purchases to none of a round's limits.
+var _warmup := false
 
 
 func _init(money_rules: MoneyRules = null, zones_by_side: BuyZones = null) -> void:
@@ -225,9 +234,9 @@ func refusal(userid: int, item_class: String) -> StringName:
 		return ALREADY_HAVE
 	if inv.can_add(item_class) == Inventory.Can.FULL:
 		return CANNOT_CARRY if item.slot == ItemDef.Slot.GRENADE else ALREADY_HAVE
-	var limit := _purchase_limit(item)
-	if limit >= 0 and _type_count(userid, item.type) >= limit:
-		return TYPE_LIMIT
+	var limited := _purchase_refusal(userid, item)
+	if limited != OK:
+		return limited
 	if not rules.unlimited_money and money(userid) < price_for(userid, item_class):
 		return NO_MONEY
 	return OK
@@ -251,9 +260,9 @@ func throw_refusal(userid: int, item_class: String) -> StringName:
 		return WRONG_TEAM
 	if not item.droppable:
 		return CANNOT_THROW
-	var limit := _purchase_limit(item)
-	if limit >= 0 and _type_count(userid, item.type) >= limit:
-		return TYPE_LIMIT
+	var limited := _purchase_refusal(userid, item)
+	if limited != OK:
+		return limited
 	if not rules.unlimited_money and money(userid) < item.price:
 		return NO_MONEY
 	return OK
@@ -262,6 +271,31 @@ func throw_refusal(userid: int, item_class: String) -> StringName:
 ## Whether this player could undo a purchase of this item now.
 func can_undo(userid: int, item_class: String) -> bool:
 	return _undo_refusal(userid, item_class) == OK
+
+
+## Why a round's limits on purchases refuse this one, or OK, as CS2's
+## CanAcquire (server.dll 180ab2a20) has them:
+## - none in warmup: it skips the grenade limits there, and multiplies the
+##   item limit by 1000 (read; which convar sets the bit it reads is not);
+## - a grenade's own: no more than one can carry (two flashbangs, one of
+##   anything else; its return 3);
+## - four grenades a round in all (ammo_grenade_limit_total, its return
+##   0xf), a molotov and an incendiary counted as one kind;
+## - any one item mp_weapons_allow_typecount times, the Zeus
+##   mp_weapons_allow_zeus times (its return 3), counted by item.
+## Practice buys grenades without limit.
+func _purchase_refusal(userid: int, item: ItemDef) -> StringName:
+	if _warmup:
+		return OK
+	if item.is_grenade() and not rules.unlimited_grenade_purchases:
+		if _purchase_count(userid, item.item_class) >= item.max_carried:
+			return TYPE_LIMIT
+		if _grenades_bought(userid) >= Inventory.MOST_GRENADES:
+			return GRENADE_LIMIT
+	var limit := _purchase_limit(item)
+	if limit >= 0 and _purchase_count(userid, item.item_class) >= limit:
+		return TYPE_LIMIT
+	return OK
 
 
 func _purchase_limit(item: ItemDef) -> int:
@@ -352,9 +386,7 @@ func _buy(userid: int, item_class: String) -> void:
 	if not _bought.has(userid):
 		_bought[userid] = []
 	_bought[userid].append(record)
-	var type := ItemRegistry.item(item_class).type
-	_type_counts[userid] = _type_counts.get(userid, {})
-	_type_counts[userid][type] = _type_count(userid, type) + 1
+	_count_purchase(userid, item_class, 1)
 	var side := _side(userid)
 	game.events.send(&"item_purchase", {
 		"userid": userid, "team": side,
@@ -377,8 +409,7 @@ func _buy_and_throw(userid: int, item_class: String) -> void:
 	var entry := Inventory.Entry.new(item, Weapon.new(ItemRegistry.weapon_data(item_class)) if item.is_gun else null)
 	if not rules.unlimited_money:
 		_accounts[userid] = money(userid) - item.price
-	_type_counts[userid] = _type_counts.get(userid, {})
-	_type_counts[userid][item.type] = _type_count(userid, item.type) + 1
+	_count_purchase(userid, item_class, 1)
 	var side := _side(userid)
 	game.events.send(&"item_purchase", {
 		"userid": userid, "team": side,
@@ -425,8 +456,7 @@ func _undo(userid: int, item_class: String) -> void:
 			else:
 				inv.remove(item_class)
 	_accounts[userid] = mini(money(userid) + int(record["price"]), rules.max_money)
-	var type := ItemRegistry.item(item_class).type
-	_type_counts[userid][type] = maxi(_type_count(userid, type) - 1, 0)
+	_count_purchase(userid, item_class, -1)
 	game.events.send(&"item_remove", {"userid": userid, "item": item_class})
 
 
@@ -438,8 +468,32 @@ func _last_purchase(userid: int, item_class: String) -> int:
 	return -1
 
 
-func _type_count(userid: int, type: String) -> int:
-	return (_type_counts.get(userid, {}) as Dictionary).get(type, 0)
+func _purchase_count(userid: int, item_class: String) -> int:
+	return (_purchases.get(userid, {}) as Dictionary).get(item_class, 0)
+
+
+func _count_purchase(userid: int, item_class: String, by: int) -> void:
+	if not _purchases.has(userid):
+		_purchases[userid] = {}
+	_purchases[userid][item_class] = maxi(_purchase_count(userid, item_class) + by, 0)
+
+
+## The grenades a player has bought this round, as CS2 adds them up for its
+## limit of four: every kind's purchases, a molotov's and an incendiary's
+## counted as the larger of the two.
+func _grenades_bought(userid: int) -> int:
+	var counts: Dictionary = _purchases.get(userid, {})
+	var total := 0
+	var firebombs := 0
+	for item_class: String in counts:
+		var def := ItemRegistry.item(item_class)
+		if def == null or not def.is_grenade():
+			continue
+		if def.grenade_group.is_empty():
+			total += int(counts[item_class])
+		else:
+			firebombs = maxi(firebombs, int(counts[item_class]))
+	return total + firebombs
 
 
 ## Tells each player when they step into or out of their buy zone, as CS2's
@@ -458,10 +512,12 @@ func _update_zones() -> void:
 
 ## Warmup: everyone on warmup's money.
 func _on_warmup(_event: GameEvent) -> void:
+	_warmup = true
 	_reset_accounts(rules.warmup_money)
 
 
 func _on_begin_new_match(_event: GameEvent) -> void:
+	_warmup = false
 	_rounds_played = 0
 	_half_ended = false
 	_reset_accounts(rules.start_money)
@@ -490,7 +546,7 @@ func _on_round_start(_event: GameEvent) -> void:
 	_planted = false
 	_dead.clear()
 	_bought.clear()
-	_type_counts.clear()
+	_purchases.clear()
 	_buy_open = true
 	_buy_ends_usec = -1
 
@@ -523,9 +579,12 @@ func _on_player_spawn(event: GameEvent) -> void:
 	_dead.erase(int(event.fields["userid"]))
 
 
+## The planter's $300, in a round or after its end, but not in warmup
+## (CS2's #Player_Cash_Award_Bomb_Planted, server.dll 180af98b0, asks only
+## for mp_playercashawards and that warmup is over).
 func _on_bomb_planted(event: GameEvent) -> void:
 	_planted = true
-	if rules.player_cash_awards:
+	if rules.player_cash_awards and not _warmup:
 		_pay(event.fields["userid"], rules.bomb_planted)
 
 
