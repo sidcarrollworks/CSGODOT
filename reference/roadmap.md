@@ -433,6 +433,33 @@ the measured event-related costs; frames without a tick can also exceed
 6 ms. `scripts/profile_worst_ticks.gd` now makes the
 bodies players die into before each tick, as the game does on frames; it
 had built each death's ragdoll on the tick, 2.0 ms where the game pays 0.6.
+**The tick against CS2's server (2026-10-05, Sid's "use ghidra to see how
+cs2 does it ... as close to cs2 as can be for the tick and server code").**
+A live round's tick is 2.45 to 2.50 ms headless, up from 1.75 to 1.83 on
+2 October, all in the bots' run_command: the terrain-aware eyes cost
+0.58 ms (27.7 casts a tick), more for a running bot than its movement
+step. CS2's `server.dll` 1.41.8.8 was read in Ghidra by six researchers,
+each claim re-checked in the binary (50 checked, none refuted):
+- the order of a tick;
+- the command budgets;
+- the movement and trace layers: players and hitboxes kept out of the
+  broadphase;
+- bots aiming every tick and deciding every other;
+- lag compensation as recorded hitbox transforms;
+- animation on the tick with lazy bones, and no server ragdoll.
+
+The ranked list is in
+[tick-audit-cs2-2026-10-05.md](research/tick-audit-cs2-2026-10-05.md):
+1. the profilers split (`profile_player_tick.gd` repaired here);
+2. the terrain sampler native;
+3. the death ragdoll off the tick;
+4. rounds tested against capsules in script;
+5. body work off spawn, buy and swap ticks;
+6. bots on CS2's cadence;
+
+then the path searches, lag compensation, CS2's player cache and the
+rest. The query script it was read with is
+`scripts/shooting_audit/TickQuery.java`.
 
 **Box3D physics trial (2026-09-26, Sid).** The branch
 `codex/box3d-dropped-guns` started with dropped-gun jitter and now follows
