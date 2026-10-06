@@ -81,8 +81,9 @@ static func _show(one: PackedStringArray, other: PackedStringArray, at: int) -> 
 
 
 ## The match, with the bots thinking on the worker threads or in turn: what
-## every player was at every tick, the rounds fired, the dead, and the guns
-## bought.
+## every player was at every tick, the rounds fired, the deaths (counted as
+## they happen: a round that ends inside the fifty seconds brings everyone
+## back for the next before the end), and the guns bought.
 func _play(apart: bool) -> Dictionary:
 	seed(SEED)
 	var scene := (load("res://maps/de_dust2/de_dust2.tscn") as PackedScene).instantiate() as PlayScene
@@ -104,8 +105,14 @@ func _play(apart: bool) -> Dictionary:
 	mode.economy.rules.start_money = MONEY
 	mode.match_state.end_warmup_on_next_tick()
 	var ticks := PackedStringArray()
+	var dead := 0
+	var was_alive := {}
 	for tick in TICKS:
 		world.step()
+		for player in world.players:
+			if bool(was_alive.get(player, true)) and not player.alive:
+				dead += 1
+			was_alive[player] = player.alive
 		for player in world.players:
 			if player.model != null and player.model.is_animating():
 				player.model.step(SimClock.tick_seconds())
@@ -120,12 +127,9 @@ func _play(apart: bool) -> Dictionary:
 				player.weapon.data.item_class if player.weapon != null else "-"])
 		ticks.append("; ".join(line))
 	var shots := 0
-	var dead := 0
 	var bought := 0
 	for player in world.players:
 		shots += player.rounds_fired
-		if not player.alive:
-			dead += 1
 		if player.weapon != null and player.weapon.data.item_class not in SPAWNED_WITH:
 			bought += 1
 	scene.queue_free()

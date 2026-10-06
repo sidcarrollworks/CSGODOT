@@ -147,9 +147,34 @@ var ground_is_world: bool = false
 ## duck key: on the ground the hull only changes after duck_time has elapsed.
 var is_ducked: bool = false
 
-## 0 standing, 1 fully ducked. Drives the eye height. On the ground this eases
+## 0 standing, 1 fully ducked: CS2's duck amount. On the ground this eases
 ## over duck_time; in the air it snaps, because the hull snaps.
 var duck_progress: float = 0.0
+
+## CS2's duck root offset (m_flDuckRootOffset, movement services +0x418): a
+## duck or unduck in the air moves the body by half the hulls' difference, 9
+## units (FinishDuck 180abdbe0, FinishUnDuck 180abe2f0), and this holds the
+## eyes where they were, eased back to 0 by the eye update (GroundEyes) at
+## that 9 over 0.1 s.
+var duck_root_offset: float = 0.0
+## CS2's duck view offset (m_flDuckViewOffset, +0x41c): eased by the eye
+## update toward the hulls' difference (18) times the duck amount below the
+## standing eyes, less the root offset, at 18 over 0.2 s. The eyes are the
+## standing view's 64 plus the root and ground adjustment plus this.
+var duck_view_offset: float = 0.0
+## What a jump's vertical speed is multiplied by this movement interval
+## (CS2 180ab21a0): below 1 for a jump soon after a hard landing. Worked
+## out before each step from the last landing (_jump_scale); the step only
+## reads it.
+var jump_scale: float = 1.0
+## The last landing, as CS2's landing recorder (180ad3840) keeps it: how
+## long ago the hull reached the ground, counted to the start of the
+## movement interval under way (seconds; INF for none since a spawn), and
+## how fast it was coming down (u/s, negative). CS2 keeps the landing's
+## tick and its fraction, to 1/64 of a tick; the time since it is the same
+## counted interval by interval, and needs no clock.
+var landed_ago: float = INF
+var landed_speed: float = 0.0
 
 ## Fly through geometry instead of colliding with it. A movement mode, as it
 ## is in Source, rather than a flag bolted onto the controller.
@@ -476,7 +501,15 @@ func simulate(dt: float) -> void:
 func _movement_interval(mover: Object, dt: float, start: float, end: float) -> void:
 	_interval_start = start
 	_movement_inputs(start, end)
+	jump_scale = _jump_scale(dt)
+	var airborne := not on_ground
+	var height_before := global_position.y
+	var falling_at := velocity.y
 	_step(mover, dt * (end - start))
+	if airborne and on_ground and not _jumped:
+		_record_landing(start, end, dt, height_before, falling_at)
+	else:
+		landed_ago += dt * (end - start)
 	_last_movement_impulse = movement_impulse if movement_impulse.is_finite() else wish_dir * wish_speed
 	_jump_held_last_tick = wants_jump
 	ground_eyes.update(self, dt * (end - start))
@@ -491,6 +524,45 @@ func _movement_inputs(_start: float, _end: float) -> void:
 ## Called outside _step: native/script comparison must not save state twice.
 func _movement_finished(_start: float, _end: float) -> void:
 	pass
+
+
+## A jump's scale at the start of a movement interval, as CS2's 180ab21a0
+## works it out (constants checked in its disassembly): the landing's speed
+## sets a floor, min(1, max(0.2, 1 + 0.0005 v)), and the time since the
+## landing, plus a tick, raises it 0.6 a second up to 1. A standing jump
+## landed flat (about -302 u/s) and taken again at once rises 0.86 as fast,
+## and to full height 0.24 s after the landing. Bodies that have not landed
+## since spawning jump whole.
+func _jump_scale(dt: float) -> float:
+	if not is_finite(landed_ago):
+		return 1.0
+	var floor_scale := clampf(1.0 + landed_speed * 0.0005, 0.2, 1.0)
+	return minf(floor_scale + (landed_ago + dt) * 0.6, 1.0)
+
+
+## Where in an interval the hull came down on the ground and how fast, as
+## CS2's landing recorder (180ad3840) solves it: the drop over the interval
+## under gravity from the vertical speed it began with, d = v t + a t^2 / 2,
+## for the moment t, clamped to the interval; the speed then is v + a t. A
+## landing it cannot solve (not falling, or rising onto the ground) is at
+## the interval's end at the speed it began with. The fraction is rounded to
+## 1/64 of a tick, as CS2 rounds it (+131072, -131072, in single precision,
+## whose step at 131072 is 1/64); CS2 also quantizes the speed to 20 bits
+## over +-16384, a thirty-second of a unit a second, which is left out.
+func _record_landing(start: float, end: float, dt: float, height_before: float, falling_at: float) -> void:
+	var interval := dt * (end - start)
+	var drop := global_position.y - height_before
+	var gravity := -config.gravity
+	var at := interval
+	var speed := falling_at
+	if drop < 0.0 and falling_at < 0.0:
+		var discriminant := 2.0 * gravity * drop + falling_at * falling_at
+		if discriminant >= 0.0:
+			at = clampf((-falling_at - sqrt(discriminant)) / gravity, 0.0, interval)
+			speed = gravity * at + falling_at
+	var fraction := float(Vector3(start + at / dt + 131072.0, 0.0, 0.0).x) - 131072.0
+	landed_ago = (end - fraction) * dt
+	landed_speed = speed
 
 
 ## The native code's mover when this tick's steps can be run by it, else
@@ -590,7 +662,7 @@ func _step_state() -> Dictionary:
 		"friction_cached": _friction_cached, "friction_until": _friction_until,
 		"friction_speed": _friction_speed, "friction_refreshed": _friction_refreshed,
 		"ground_normal": ground_normal, "ground_is_world": ground_is_world,
-		"is_ducked": is_ducked, "duck_progress": duck_progress,
+		"is_ducked": is_ducked, "duck_progress": duck_progress, "duck_root_offset": duck_root_offset,
 		"jumped": _jumped, "looked_from": _looked_from, "looked_with": _looked_with,
 		"hull_height": _hull_height, "floor_at": _floor_at, "floor_with": _floor_with,
 		"floor_normal": _floor_normal, "floor_is_world": _floor_is_world,
@@ -616,6 +688,7 @@ func _restore_step_state(state: Dictionary) -> void:
 	ground_is_world = state["ground_is_world"]
 	is_ducked = state["is_ducked"]
 	duck_progress = state["duck_progress"]
+	duck_root_offset = state["duck_root_offset"]
 	_jumped = state["jumped"]
 	_looked_from = state["looked_from"]
 	_looked_with = state["looked_with"]
@@ -804,14 +877,14 @@ func _ground_known() -> bool:
 	)
 
 
-## Ducking, as Source does it.
+## Ducking.
 ##
 ## On the ground the hull shrinks from the top after duck_time, so your feet
-## stay put and your head comes down. In the air it happens instantly and the
-## other way round: the hull shrinks and the whole body moves UP by the
-## difference, so your head stays put and your feet come up. That second case
-## is the crouch jump, and it is the only way to reach a ledge higher than a
-## standing jump clears.
+## stay put and your head comes down. In the air it happens at once and
+## about the hull's middle: CS2 lifts the body half the difference (9; Source
+## lifted all 18, the head staying put), so your feet come up, and the eyes
+## are eased down after (_finish_duck). That is the crouch jump, and it is
+## the only way to reach a ledge higher than a standing jump clears.
 func _update_duck(dt: float) -> void:
 	var rate := 1.0 / maxf(config.duck_time, 0.0001)
 
@@ -836,7 +909,6 @@ func _duck_height_delta() -> float:
 
 
 func _finish_duck() -> void:
-	var delta := _duck_height_delta()
 	var airborne := not on_ground
 
 	# Shrink first. A smaller hull can never collide with something the larger
@@ -845,30 +917,42 @@ func _finish_duck() -> void:
 	_set_hull(config.duck_height)
 
 	if airborne:
-		_trace(Vector3.UP * delta)
-		# Head stays where it was and the eye offset drops by the same amount,
-		# so the view does not jump. That only holds if the view snaps too.
+		# CS2's FinishDuck (180abdbe0): in the air the hull shrinks about its
+		# middle, the body lifted half the hulls' difference (9 units, where
+		# Source lifted all 18), and the root offset holds the eyes where they
+		# were until the eye update eases them down.
+		var lift := _duck_height_delta() * 0.5
+		var from := global_position.y
+		_trace(Vector3.UP * lift)
+		duck_root_offset -= global_position.y - from
 		duck_progress = 1.0
 
 	is_ducked = true
 
 
 func _finish_unduck() -> void:
-	var delta := _duck_height_delta()
 	if not on_ground:
-		_trace(Vector3.DOWN * delta)
+		# CS2's FinishUnDuck (180abe2f0): the body lowered half the
+		# difference, the eyes held up by as much.
+		var from := global_position.y
+		_trace(Vector3.DOWN * (_duck_height_delta() * 0.5))
+		duck_root_offset -= global_position.y - from
 		duck_progress = 0.0
 	_set_hull(config.stand_height)
 	is_ducked = false
 
 
-## Is there room to stand up? Sweeping the ducked hull through the distance the
-## body is about to grow covers exactly the volume the standing hull will
-## occupy, so a clear sweep means it fits.
+## Is there room to stand up? On the ground, sweeping the ducked hull up
+## through the distance it grows covers the standing hull's volume. In the
+## air CS2 (180ab3f50) sweeps the standing hull from where it would grow to
+## half the difference below, needing it to start clear and go the whole
+## way: the ducked hull swept up the whole difference and down the half
+## covers the same volume.
 func _can_unduck() -> bool:
 	var delta := _duck_height_delta()
-	var direction := Vector3.UP if on_ground else Vector3.DOWN
-	return _trace(direction * delta, true) == null
+	if on_ground:
+		return _trace(Vector3.UP * delta, true) == null
+	return _trace(Vector3.UP * delta, true) == null and _trace(Vector3.DOWN * (delta * 0.5), true) == null
 
 
 func _set_hull(height: float) -> void:
@@ -883,18 +967,13 @@ func _set_hull(height: float) -> void:
 	PhysicsQueries.sync_object(self)
 
 
-## The simulation eye offset above the feet, including the terrain/root
-## adjustment already updated at the movement segment's end.
-##
-## Splined rather than linear, because Source runs duck_progress through
-## SimpleSpline before SetDuckedEyeOffset (gamemovement.cpp:4421). Ducking is
-## constant in CS, so an ease is a visible difference from a slide.
+## The simulation eye offset above the feet, as CS2's eye update
+## (180ae23e0) builds it: the standing view's 64, the root and ground
+## adjustment and the duck view offset, all updated at the movement
+## segment's end (GroundEyes.update). The crouched 46 is the standing 64
+## less the hulls' difference, as CS2 has them.
 func eye_height() -> float:
-	return ground_eyes.height(lerpf(
-		config.stand_eye_height,
-		config.duck_eye_height,
-		MovementSolver.simple_spline(duck_progress)
-	))
+	return ground_eyes.height(config.stand_eye_height + duck_view_offset)
 
 
 ## The same temporal sample as previous_position.lerp(global_position).
@@ -907,6 +986,9 @@ func interpolated_eye_height(fraction: float) -> float:
 ## sample cache, nor interpolate from the old location's eye adjustment.
 func reset_eye_state() -> void:
 	ground_eyes.reset()
+	landed_ago = INF
+	duck_root_offset = 0.0
+	duck_view_offset = -(config.stand_height - config.duck_height) * duck_progress
 	previous_eye_height = eye_height()
 
 
@@ -922,9 +1004,13 @@ func _try_jump(dt: float) -> void:
 	velocity.y = config.jump_impulse
 	_jumped = true
 	if config.cs2_jump:
-		# CS2 sets impulse - gravity * 0.5 * (1/128), then applies full
-		# gravity through the same deferred state as horizontal acceleration.
-		velocity.y -= config.gravity * 0.5 / 128.0
+		# CS2 (180adf830) sets impulse - gravity * 0.5 * (1/128), then
+		# applies full gravity through the same deferred state as horizontal
+		# acceleration; ducked or ducking it gives the whole impulse. Then
+		# the whole is scaled by how soon after a landing it is (jump_scale).
+		if not (is_ducked or duck_progress > 0.0):
+			velocity.y -= config.gravity * 0.5 / 128.0
+		velocity.y *= jump_scale
 	elif not config.tick_rate_independent_jump:
 		# Compatibility: Source 1 overwrote StartGravity with its impulse,
 		# so its first move travelled at the full impulse.

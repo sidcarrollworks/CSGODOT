@@ -30,6 +30,11 @@ var colour: Color = Color.WHITE
 
 
 func _init() -> void:
+	# HudElement's own: the mouse passes through it, as through all the HUD.
+	# Without it the prompt, under the crosshair, took the clicks meant for
+	# the buy menu's fourth row (the molotov, Tec-9, P90 and SG 553;
+	# playtest 2026-10-05).
+	super()
 	additive = true
 
 

@@ -97,9 +97,9 @@ extends Resource
 ## The most armour that can be bought (mp_max_armor): 0 none, 1 kevlar,
 ## 2 kevlar and helmet.
 @export_range(0, 2) var max_armor: int = 2
-## Purchases of each weapon type a player may make in a round
-## (mp_weapons_allow_typecount), and of the Zeus (mp_weapons_allow_zeus);
-## -1 for no limit.
+## Purchases of any one item a player may make in a round
+## (mp_weapons_allow_typecount, which CS2 counts by item, not by weapon
+## type), and of the Zeus (mp_weapons_allow_zeus); -1 for no limit.
 @export var type_purchases: int = 5
 @export var zeus_purchases: int = 5
 ## Practice allows repeated grenade purchases after each throw.

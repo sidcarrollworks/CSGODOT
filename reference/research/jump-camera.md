@@ -16,7 +16,7 @@ The extracted first-person gun graph has no jump or air state (`reference/animgr
 |---|---:|---|
 | Spring response | 20 /s | An isolated impulse is deepest after 50 ms |
 | Takeoff velocity push | 55 units/s downward | About 1 unit of eye dip |
-| Landing velocity push | 88 units/s downward | About 1.6 units of dip after a normal jump |
+| Landing velocity push | 44 units/s downward | About 0.8 units of dip after a normal jump |
 | Maximum dip | 4 units | Bounds overlapping responses |
 | Minimum/full landing air time | 0.08 / 0.3 s | Ignore a brief loss of ground; ease toward the full landing response |
 | Viewmodel dip scale | 0.5 times the eye dip | About 0.5 unit on takeoff and 0.8 on landing, relative to the camera |
@@ -30,6 +30,8 @@ Sid's competitive Dust2 playtest on October 1 identified the missing part: the e
 CS2 eye curve.
 
 The next playtest found the overall motion good and very close, with a little too much bounce when the feet hit the floor. The landing push is now 20% smaller (110 to 88 units/s), softening both the camera and the relative weapon response to about 1.6 units. Takeoff strength and spring timing retain the accepted tuning.
+
+The dust2 playtest of 2026-10-05 still found too much bounce on landing, and Sid halved it (2026-10-06): the push is 44 units/s, about 0.8 units of dip. CS2's ordinary view path (180ae23e0) adds no dip of its own; its client camera effects were not audited (reference/playtest-2026-10-05.md, issue 8).
 
 The October 5 playtest requested another 50% reduction of the relative weapon
 bounce. `ViewModelMotion.JUMP_DIP_SCALE` is now 0.5 instead of 1. Camera impulses,

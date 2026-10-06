@@ -15,6 +15,12 @@ extends Node3D
 ## sounds, the reload clip's own sound events (reference/weapons/timings.csv).
 ## A draw is heard only by whoever draws, as CS2's draws are localplayeronly
 ## (reference/research/audio-gameplay.md 1.3): a bot's draw is not heard.
+## What is not a gun (the knife, a grenade, the bomb) and a gun whose files
+## name no draw (the Zeus) draws with its first-person draw clip's own
+## sound events, each at its time in the clip
+## (reference/weapons/equipment_timings.csv), played through SoundEvents;
+## a new draw stops the last one's, as CS2's draws have not overlapped
+## since 21 January 2026 (audio-gameplay.md, Valve's handling changes).
 ##
 ## A shot is heard from the game's events, not from inside the tick: the
 ## shooter's weapon_fire, sent by the simulation for every round (one for a
@@ -57,6 +63,7 @@ const CLIP_EMPTY_RIFLE := "Default.ClipEmpty_Rifle"
 
 const SOUNDS_PAGE := "res://reference/weapons/sounds.md"
 const TIMINGS := "res://reference/weapons/timings.csv"
+const EQUIPMENT_TIMINGS := "res://reference/weapons/equipment_timings.csv"
 ## The folder every gun's sounds are in, under the sound bank.
 const WEAPONS_DIR := "weapons"
 const FIRE_DB := -6.0
@@ -142,6 +149,9 @@ const METRE := 39.37
 var weapon_set: Dictionary = {}
 var _fire: Node
 var _handling: Node
+## A gun's draw, apart from its reload and zoom (_handling): a new draw, or
+## nothing in hand, stops what is left of it and nothing else.
+var _drawing: Node
 ## A player for each feedback layer, at the layer's pitch, by "event:layer";
 ## only the shooter's own (flat) sounds have them.
 var _feedback := {}
@@ -164,6 +174,14 @@ var _zooms: Array[PackedStringArray] = []
 var _swings: Array[Knife.Swing] = []
 ## Every gun's set, by class, read once (sets()).
 static var _sets := {}
+## Every draw clip's sound events, by class: [[seconds, event], ...], read
+## once (_all_draws()).
+static var _draws := {}
+static var _draws_read := false
+## The voices of the draw last played, and its count, so a new draw stops
+## what is left of the last.
+var _draw_voices := PackedInt32Array()
+var _draw_serial := 0
 ## Every set's files read (all_stems()), once for every player: a gun is
 ## taken up on the tick (a bot's purchase), which must not read the disk.
 static var _loaded_all := false
@@ -172,6 +190,7 @@ static var _loaded_all := false
 func _ready() -> void:
 	_fire = _make_player(4)
 	_handling = _make_player(2)
+	_drawing = _make_player(1)
 	events = SoundEvents.new()
 	events.name = "SoundEvents"
 	add_child(events)
@@ -393,12 +412,63 @@ func _make_player(polyphony: int) -> Node:
 
 
 ## Takes up a weapon's set, and plays its draw for whoever draws it; a
-## bot's (spatial) is not heard.
+## bot's (spatial) is not heard. A gun whose files name no draw (the Zeus)
+## draws with its clip's sound events, as what is not a gun does (draw()).
 func equip(data: WeaponData) -> void:
 	weapon_set = set_for(data.item_class)
 	_reload_serial += 1
+	_stop_draw()
+	if spatial:
+		return
+	var files: PackedStringArray = weapon_set.get("draw", PackedStringArray())
+	if files.is_empty():
+		_draw_events(data.item_class)
+	else:
+		_play(_drawing, files, HANDLING_DB)
+
+
+## Takes up something that is not a gun (the knife, a grenade, the bomb):
+## no gun's set, nothing more of the last gun's reload, and its draw clip's
+## sound events for whoever draws it; a bot's (spatial) is not heard.
+func draw(item_class: String) -> void:
+	weapon_set = {}
+	_reload_serial += 1
+	_stop_draw()
 	if not spatial:
-		_play(_handling, weapon_set.get("draw", PackedStringArray()), HANDLING_DB)
+		_draw_events(item_class)
+
+
+## Nothing in hand (a death empties it as what was carried drops): no gun's
+## set, nothing more of a reload, and what is left of the last draw stopped.
+func holster() -> void:
+	weapon_set = {}
+	_reload_serial += 1
+	_stop_draw()
+
+
+## The draw clip's sound events, each at its time in the clip, flat in the
+## ears of whoever draws.
+func _draw_events(item_class: String) -> void:
+	var serial := _draw_serial
+	var owner_id := shooter.userid if is_instance_valid(shooter) else -1
+	for part: Array in _all_draws().get(item_class, []):
+		var at: float = part[0]
+		var event_name: String = part[1]
+		if at <= 0.0 or not is_inside_tree():
+			_draw_voices.append(events.start(event_name, null, owner_id, {"local": true}))
+			continue
+		get_tree().create_timer(at).timeout.connect(func() -> void:
+			if serial == _draw_serial:
+				_draw_voices.append(events.start(event_name, null, owner_id, {"local": true})))
+
+
+func _stop_draw() -> void:
+	_draw_serial += 1
+	for id in _draw_voices:
+		events.stop(id)
+	_draw_voices.clear()
+	if _drawing != null:
+		_drawing.call("stop")
 
 
 ## A round of that gun fired, heard now.
@@ -571,6 +641,36 @@ static func all_stems() -> PackedStringArray:
 	return stems
 
 
+## Every draw clip's sound events by class, [[seconds, event], ...] in
+## time order, read once from equipment_timings.csv: a copy, as a cache
+## hands out.
+static func draws() -> Dictionary:
+	return _all_draws().duplicate(true)
+
+
+## The table itself, for what only reads it.
+static func _all_draws() -> Dictionary:
+	if not _draws_read:
+		_draws_read = true
+		_draws = read_draws(FileAccess.get_file_as_string(EQUIPMENT_TIMINGS))
+	return _draws
+
+
+## The draws in a timings table: each class's draw clip's sound events.
+static func read_draws(timings: String) -> Dictionary:
+	var out := {}
+	for row in timings.split("\n"):
+		var fields := row.strip_edges().split(",")
+		if fields.size() < 7 or fields[1] != "draw" or fields[3] != "Sound":
+			continue
+		if not out.has(fields[0]):
+			out[fields[0]] = []
+		(out[fields[0]] as Array).append([float(fields[5]), fields[4]])
+	for parts: Array in out.values():
+		parts.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
+	return out
+
+
 ## Reads every set's files now, and makes each set's stream, so nothing is
 ## read or built when a gun is taken up or fired.
 static func _load_all() -> void:
@@ -578,6 +678,12 @@ static func _load_all() -> void:
 		return
 	SoundEvents.load_events(PackedStringArray([NEARLY_EMPTY_EVENT, CLIP_EMPTY_PISTOL, CLIP_EMPTY_RIFLE]))
 	SoundEvents.load_events(Knife.all_sound_events())
+	var drawn := PackedStringArray()
+	for parts: Array in _all_draws().values():
+		for part: Array in parts:
+			if not drawn.has(part[1]):
+				drawn.append(part[1])
+	SoundEvents.load_events(drawn)
 	SoundBank.load_sets(all_stems())
 	for gun: Dictionary in sets().values():
 		SoundBank.randomizer_of(gun["fire"])

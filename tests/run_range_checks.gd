@@ -562,6 +562,9 @@ func _test_the_shop() -> void:
 	var player: PlayerController = _range.player
 	_check(shop != null and shop.economy != null and shop.game == _range.game
 		and shop.game.systems().has(shop.economy), "the range's economy is a system in its shared game")
+	_check(shop.economy.rules.unlimited_grenade_purchases and shop.economy.rules.type_purchases < 0
+		and shop.economy.rules.zeus_purchases < 0,
+		"a round's limits on purchases are lifted on the range, where no round ends to clear them")
 	if shop == null:
 		return
 	player.place(Vector3(0.0, 8.0, 0.0), 0.0)

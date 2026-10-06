@@ -48,7 +48,58 @@ func _initialize() -> void:
 	for backend in backends:
 		await _check_swings(backend)
 		await _check_air_and_hull(backend)
+	await _check_draws()
 	_finish("knife")
+
+
+## Drawn, what is not a gun is heard as its draw clip's own sound events
+## (reference/weapons/equipment_timings.csv), each at its time in the clip,
+## by whoever draws it and nobody else; a new draw stops the last (the knife
+## had no draw sound at all; playtest 2026-10-05). Heard with no files, as
+## SoundEvents keeps a voice's rules without one.
+func _check_draws() -> void:
+	var draws := WeaponSounds.draws()
+	var drawn := PackedStringArray()
+	for item_class in ["weapon_knife", "weapon_c4", "weapon_taser", "weapon_hegrenade", "weapon_flashbang",
+			"weapon_smokegrenade", "weapon_molotov", "weapon_incgrenade", "weapon_decoy"]:
+		if not (draws.get(item_class, []) as Array).is_empty():
+			drawn.append(item_class)
+	_check_equal(drawn.size(), 9, "the knife, the bomb, the Zeus and the six grenades each have their draw clip's sounds")
+	draws["weapon_knife"] = []
+	_check(not (WeaponSounds.draws().get("weapon_knife", []) as Array).is_empty(),
+		"the table handed out is a copy: a change to it leaves the draws heard alone")
+	var availability := SoundBank._available
+	SoundBank._available = 0
+	var host := Node3D.new()
+	root.add_child(host)
+	var sounds := WeaponSounds.new()
+	host.add_child(sounds)
+	sounds.events.silent_length = 100.0
+	var playing := func(event_name: String) -> int:
+		return sounds.events.voices().filter(func(v: Dictionary) -> bool:
+			return v["event"] == event_name and not v["stopped"]).size()
+	sounds.draw("weapon_knife")
+	_check(playing.call("Weapon_Knife.Draw.Med") == 1 and playing.call("Weapon_Knife.Draw.Gear") == 1,
+		"drawing the knife plays its draw clip's two sounds at once")
+	sounds.draw("weapon_c4")
+	_check(playing.call("Weapon_Knife.Draw.Med") == 0 and playing.call("c4.draw") == 1 and playing.call("c4.draw.grab") == 0,
+		"the bomb drawn next stops what is left of the knife's, and its grab is still to come")
+	await create_timer(0.75).timeout
+	_check(playing.call("c4.draw.beep") == 1 and playing.call("c4.draw.grab") == 1, "its beep and grab come at their times in the clip")
+	sounds.draw("weapon_c4")
+	sounds.holster()
+	await create_timer(0.75).timeout
+	_check(playing.call("c4.draw") == 0 and playing.call("c4.draw.beep") == 0 and playing.call("c4.draw.grab") == 0,
+		"nothing in hand (a death) stops the draw, and what was still to come of it never comes")
+	var bot_sounds := WeaponSounds.new()
+	bot_sounds.spatial = true
+	host.add_child(bot_sounds)
+	bot_sounds.events.silent_length = 100.0
+	bot_sounds.draw("weapon_knife")
+	_check(bot_sounds.events.voices().is_empty(), "a bot's draw is not heard")
+	host.free()
+	SoundBank._available = availability
+	await process_frame
 
 
 ## The numbers and names, without a world.

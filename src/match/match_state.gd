@@ -152,6 +152,11 @@ var _colours := {}
 ## The draw's seed: new each match, so the colours differ from one to the
 ## next.
 var colour_seed: int = randi()
+## The seed every round's spawns are dealt from, chosen once a match as CS2
+## chooses m_nSpawnPointsRandomSeed (in RestartRound, server.dll
+## 180951990, with mp_randomspawn 0), so each match deals its own; drawn
+## from Godot's generator, which a seeded check seeds.
+var spawn_seed: int = randi()
 
 
 func _ready() -> void:
@@ -451,8 +456,7 @@ func _spawn_everyone(fresh: bool) -> void:
 				members.append(player)
 		if members.is_empty():
 			continue
-		var rng := RandomNumberGenerator.new()
-		rng.seed = hash([round_number, side, rounds_played])
+		var rng := _spawn_rng(side)
 		_shuffle(members, rng)
 		var points := _spawn_order(spawns.get(side, []), rng)
 		for i in members.size():
@@ -463,6 +467,15 @@ func _spawn_everyone(fresh: bool) -> void:
 			else:
 				var point: Dictionary = points[i % points.size()]
 				player.spawn_at(point["position"], point["yaw"], fresh)
+
+
+## A round's shuffle of a side's players and spawn points: the match's seed
+## and the round, as CS2 seeds its shuffle with the rounds played and the
+## match's seed (server.dll 18095b850).
+func _spawn_rng(side: String) -> RandomNumberGenerator:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash([spawn_seed, round_number, side, rounds_played])
+	return rng
 
 
 ## The spawn points in the order they are filled: by priority, the lowest

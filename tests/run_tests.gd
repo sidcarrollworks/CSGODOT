@@ -976,11 +976,12 @@ func _test_jump_height() -> void:
 
 ## The course has ledges at 32, 48, 56 and 64 units. A standing jump clears 56
 ## and not 64; a crouch jump has to clear 64, because that is what a crouch
-## jump is for.
+## jump is for. In the air the duck lifts the feet CS2's 9 (FinishDuck,
+## server.dll 180abdbe0), with either jump's ordering.
 func _test_crouch_jump() -> void:
 	_check(
-		_crouch_jump_peak > _jump_peak + 8.0,
-		"crouch jump gets the feet meaningfully higher than a standing jump (%.2f vs %.2f)" % [
+		absf(_crouch_jump_peak - _jump_peak - 9.0) < 0.1,
+		"crouch jump gets the feet CS2's 9 units higher than a standing jump (%.2f vs %.2f)" % [
 			_crouch_jump_peak, _jump_peak
 		]
 	)

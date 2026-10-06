@@ -71,11 +71,13 @@ func _run() -> void:
 	_test_the_pistol_winner_that_loses()
 	_test_kill_awards()
 	_test_the_bomb()
+	_test_a_plant_after_the_round()
 	_test_a_round_lost_on_time()
 	_test_half_time_and_overtime()
 	_test_the_cap()
 	_test_buy_zone_and_buy_time()
 	_test_what_may_be_bought()
+	_test_a_rounds_purchase_limits()
 	_test_practice_buying()
 	_test_armour_prices()
 	_test_a_purchase()
@@ -84,6 +86,7 @@ func _run() -> void:
 	_test_buy_and_throw()
 	_test_the_menu_buys_by_keys()
 	_test_the_menu_greys_and_outlines()
+	await _test_the_menu_buys_by_clicks()
 	_test_the_menu_counts_down_buying()
 	for body in _bodies.values():
 		body.free()
@@ -230,6 +233,33 @@ func _test_the_bomb() -> void:
 	_check_equal(_economy.money(_cts[0]) - ct_before, 1400, "the CTs, their ladder stepped down by the win, get $1,400")
 
 
+
+## CS2 pays the planter $300 for a bomb planted after the round is over (its
+## plant asks nothing of the round, server.dll 180a18640), and nothing else
+## changes: the round's team money was settled as it ended. A plant in
+## warmup pays nothing.
+func _test_a_plant_after_the_round() -> void:
+	_new_game(2)
+	_send(&"begin_new_match")
+	_send(&"round_start")
+	_send(&"round_end", {"winner": "CT", "reason": "TargetSaved"})
+	var before := {}
+	for userid in _ts + _cts:
+		before[userid] = _economy.money(userid)
+	var losses := _economy.losses("T")
+	_send(&"bomb_planted", {"userid": _ts[0], "site": "A"})
+	_check_equal(_economy.money(_ts[0]) - before[_ts[0]], 300, "a bomb planted after the round has ended pays the planter $300")
+	var others_unpaid := true
+	for userid in [_ts[1], _cts[0], _cts[1]]:
+		others_unpaid = others_unpaid and _economy.money(userid) == before[userid]
+	_check(others_unpaid and _economy.losses("T") == losses,
+		"and nobody else anything: no team money, the loss ladder as the round left it")
+	_send(&"round_announce_warmup")
+	var warm := _economy.money(_ts[0])
+	_send(&"bomb_planted", {"userid": _ts[0], "site": "A"})
+	_check_equal(_economy.money(_ts[0]), warm, "a plant in warmup pays nothing")
+
+
 func _test_a_round_lost_on_time() -> void:
 	_new_game(2)
 	_send(&"begin_new_match")
@@ -351,6 +381,68 @@ func _test_what_may_be_bought() -> void:
 		_buy(ct, "weapon_taser")
 		_game.inventory(ct).remove("weapon_taser")
 	_check_equal(_economy.refusal(ct, "weapon_taser"), Economy.TYPE_LIMIT, "five Zeus a round, and no sixth")
+
+
+
+## CS2 holds a round's purchases to its own limits (CanAcquire, server.dll
+## 180ab2a20): a grenade no more than one carries of it, four grenades in
+## all, and any one item five times, counted by item rather than by weapon
+## type; none of them in warmup.
+func _test_a_rounds_purchase_limits() -> void:
+	_new_game(1)
+	_send(&"begin_new_match")
+	_send(&"round_start")
+	var t := _ts[0]
+	var inv := _game.inventory(t)
+	_economy.set_money(t, 16000)
+	_buy(t, "weapon_hegrenade")
+	inv.take_one("weapon_hegrenade")
+	_check_equal(_economy.refusal(t, "weapon_hegrenade"), Economy.TYPE_LIMIT, "one HE a round: thrown, it cannot be bought again")
+	for i in 2:
+		_buy(t, "weapon_flashbang")
+		inv.take_one("weapon_flashbang")
+	_check_equal(_economy.refusal(t, "weapon_flashbang"), Economy.TYPE_LIMIT, "two flashbangs a round, and no third")
+	_buy(t, "weapon_smokegrenade")
+	inv.take_one("weapon_smokegrenade")
+	_check_equal(inv.grenade_count(), 0, "none carried")
+	_check_equal(_economy.refusal(t, "weapon_molotov"), Economy.GRENADE_LIMIT,
+		"four grenades a round in all: no molotov after an HE, two flashbangs and a smoke, though none is carried")
+	_check_equal(_economy.throw_refusal(t, "weapon_decoy"), Economy.GRENADE_LIMIT, "nor a decoy bought to throw")
+
+	_send(&"round_start")
+	_economy.set_money(t, 16000)
+	for grenade in ["weapon_flashbang", "weapon_smokegrenade", "weapon_hegrenade", "weapon_decoy"]:
+		_buy(t, grenade)
+	_check_equal(_economy.refusal(t, "weapon_molotov"), Economy.CANNOT_CARRY, "carrying four, a fifth cannot be carried")
+	_undo(t, "weapon_decoy")
+	_check_equal(_economy.refusal(t, "weapon_molotov"), Economy.OK, "a decoy sold back frees its place among the four bought")
+
+	_send(&"round_start")
+	_economy.set_money(t, 16000)
+	for i in 5:
+		_buy(t, "weapon_ak47")
+		inv.remove("weapon_ak47")
+	_check_equal(_economy.refusal(t, "weapon_ak47"), Economy.TYPE_LIMIT, "five AK-47s a round, and no sixth")
+	_check_equal(_economy.refusal(t, "weapon_galilar"), Economy.OK,
+		"but a Galil AR: CS2 counts purchases by item, not by weapon type")
+
+	_send(&"round_announce_warmup")
+	_economy.set_money(t, 16000)
+	for i in 3:
+		_buy(t, "weapon_hegrenade")
+		inv.take_one("weapon_hegrenade")
+	for i in 6:
+		_economy.set_money(t, 16000)
+		_buy(t, "weapon_ak47")
+		inv.remove("weapon_ak47")
+	_check(_economy.refusal(t, "weapon_hegrenade") == Economy.OK and _economy.refusal(t, "weapon_ak47") == Economy.OK,
+		"in warmup no round's limit holds: a fourth HE, a seventh AK-47")
+	_send(&"begin_new_match")
+	_send(&"round_start")
+	_economy.set_money(t, 16000)
+	_buy(t, "weapon_hegrenade")
+	inv.take_one("weapon_hegrenade")
+	_check_equal(_economy.refusal(t, "weapon_hegrenade"), Economy.TYPE_LIMIT, "once warmup is over they hold again")
 
 
 func _test_practice_buying() -> void:
@@ -534,12 +626,18 @@ func _test_buy_and_throw() -> void:
 	_check(not inv.has("weapon_ak47") and _game.entities.of_class("weapon_ak47").size() == 1,
 		"undoing takes back the one bought for yourself, and leaves the thrown one where it lies")
 	_check_equal(_economy.throw_refusal(t, "item_assaultsuit"), Economy.CANNOT_THROW, "armour cannot be thrown")
-	_buy(t, "weapon_flashbang")
-	_buy(t, "weapon_flashbang")
+	# Picked up, not bought: what is carried does not limit a purchase to
+	# throw, but the round's purchases of the kind do (two flashbangs).
+	inv.add("weapon_flashbang")
+	inv.add("weapon_flashbang")
 	_check_equal(_economy.throw_refusal(t, "weapon_flashbang"), Economy.OK, "two flashbangs carried, a third can still be bought to throw")
 	_economy.buy_and_throw(t, "weapon_flashbang")
 	_step()
 	_check(inv.count("weapon_flashbang") == 2 and _game.entities.of_class("weapon_flashbang").size() == 1, "and is thrown")
+	_economy.buy_and_throw(t, "weapon_flashbang")
+	_step()
+	_check_equal(_economy.throw_refusal(t, "weapon_flashbang"), Economy.TYPE_LIMIT,
+		"two bought to throw, a third is refused: the round's two flashbangs, thrown or not")
 	_economy.set_money(t, 100)
 	_check_equal(_economy.throw_refusal(t, "weapon_glock"), Economy.NO_MONEY, "one that cannot be paid for is refused")
 	_economy.buy_and_throw(t, "weapon_glock")
@@ -585,6 +683,60 @@ func _test_the_menu_greys_and_outlines() -> void:
 	_check(not owned.call("weapon_flashbang") and not cant.call("weapon_flashbang"), "a flashbang, neither carried nor refused, is plain")
 	menu.close()
 	menu.free()
+
+
+
+## Every card on both sides buys on a click through Godot's input, with the
+## HUD's use prompt over the menu as GameHud stacks them: the HUD is drawn
+## over the menu, as CS2's is, so nothing of it may take the clicks (the
+## prompt took the fourth row's; playtest 2026-10-05).
+func _test_the_menu_buys_by_clicks() -> void:
+	var size_was := root.size
+	root.size = Vector2i(1920, 1080)
+	_new_game(1)
+	_send(&"begin_new_match")
+	for userid in [_ts[0], _cts[0]]:
+		var side := _body(userid).team
+		var menu := BuyMenu.new()
+		menu.economy = _economy
+		menu.userid = userid
+		root.add_child(menu)
+		var prompt := UsePrompt.new()
+		root.add_child(prompt)
+		await process_frame
+		var inv := _game.inventory(userid)
+		var missed := PackedStringArray()
+		for item: String in Loadout.items(side):
+			_send(&"round_start")
+			_economy.set_money(userid, 16000)
+			for carried in inv.items_in(ItemDef.Slot.GRENADE):
+				inv.remove(carried.item.item_class)
+			menu.open()
+			var at: Vector2 = (menu._cards[item] as Rect2).get_center()
+			var motion := InputEventMouseMotion.new()
+			motion.position = at
+			root.push_input(motion)
+			var press := InputEventMouseButton.new()
+			press.button_index = MOUSE_BUTTON_LEFT
+			press.pressed = true
+			press.position = at
+			root.push_input(press)
+			var release := press.duplicate() as InputEventMouseButton
+			release.pressed = false
+			root.push_input(release)
+			_sent.clear()
+			_step()
+			var bought := false
+			for event in _sent:
+				bought = bought or (event.name == &"item_purchase" and event.fields.get("weapon") == item)
+			if not bought:
+				missed.append(item)
+			menu.close()
+		_check(missed.is_empty(), "every %s card buys on a click, the use prompt over the menu%s" % [
+			side, "" if missed.is_empty() else "; these did not: %s" % ", ".join(missed)])
+		prompt.free()
+		menu.free()
+	root.size = size_was
 
 
 func _test_the_menu_buys_by_keys() -> void:

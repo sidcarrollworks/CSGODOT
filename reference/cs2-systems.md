@@ -178,7 +178,9 @@ The numbers, their sources and the guesses: `reference/systems/economy.md`.
 **Built** (2026-09-23): buy zones, buy time, CS2's buy menu with the
 default loadout (items_game's `flexible_loadout_slot`), undoing a purchase,
 armour, the helmet, the kit, grenades, the Zeus, team-only weapons, five
-purchases of a type a round (`mp_weapons_allow_typecount`), all in
+purchases of an item a round (`mp_weapons_allow_typecount`, counted by
+item as CS2's CanAcquire counts them), CS2's per-kind and four-grenade
+purchase limits (2026-10-05), all in
 `src/economy/`, on the test range and, since 2026-09-23, on dust2: its buy
 zones, the money and buy time on the HUD, warmup's $16,000, a gun bought
 taken in hand, and the bots buying as CS2's classic bot does

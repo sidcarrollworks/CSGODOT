@@ -433,6 +433,33 @@ the measured event-related costs; frames without a tick can also exceed
 6 ms. `scripts/profile_worst_ticks.gd` now makes the
 bodies players die into before each tick, as the game does on frames; it
 had built each death's ragdoll on the tick, 2.0 ms where the game pays 0.6.
+**The tick against CS2's server (2026-10-05, Sid's "use ghidra to see how
+cs2 does it ... as close to cs2 as can be for the tick and server code").**
+A live round's tick is 2.45 to 2.50 ms headless, most of it the bots'
+run_command: the terrain-aware eyes cost 0.58 ms (27.7 casts a tick),
+more for a running bot than its movement step. CS2's `server.dll` (build
+2000922) was read in Ghidra by six researchers, and 50 of their claims
+re-checked in the binary: 21 confirmed, 29 corrected, none refuted:
+- the order of a tick;
+- the command budgets;
+- the movement and trace layers: players left out of the movement query
+  and swept as boxes, hitboxes outside the physics world;
+- bots aiming every tick and deciding every other;
+- lag compensation as recorded hitbox transforms;
+- animation on the tick with lazy bones, and no server ragdoll.
+
+The ranked list is in
+[tick-audit-cs2-2026-10-05.md](research/tick-audit-cs2-2026-10-05.md):
+1. the profilers split (`profile_player_tick.gd` repaired here);
+2. the terrain sampler native;
+3. the death ragdoll off the tick;
+4. rounds tested against capsules in script;
+5. body work off spawn, buy and swap ticks;
+6. bots on CS2's cadence;
+
+then the path searches, lag compensation, CS2's player cache and the
+rest. The query script it was read with is
+`scripts/shooting_audit/TickQuery.java`.
 
 **Box3D physics trial (2026-09-26, Sid).** The branch
 `codex/box3d-dropped-guns` started with dropped-gun jitter and now follows
@@ -495,6 +522,26 @@ results and the original drop-only benchmarks are in
 [box3d-trial.md](box3d-trial.md). Human acceptance and the quality decision
 came with Sid's choice on 2026-09-28; the four AWP settling checks are known
 open; the old timings do not measure the full conversion.
+
+### Playtest of 2026-10-05 (dust2 competitive)
+
+Sid played main at `6890b5f` and listed ten things.
+`reference/playtest-2026-10-05.md` has each one's cause (verified or
+inferred), CS2's evidence from `server.dll` and the extracted data, and
+the plan. Mark an issue done here and on the page in the same pull
+request.
+
+| # | Issue | Remote | Local |
+|---|---|---|---|
+| 1 | Plant after the round ends, and be paid for it | **Done** (fix/playtest-rules-2026-10-05): plants allowed until the next `round_prestart`; the planter's $300 outside warmup | Plant in CS2's round end, confirm +$300 and no team line |
+| 2 | The molotov would not buy on a click | **Done** (same): the use prompt stopped the clicks on the menu's fourth row; CS2's per-kind and four-grenade purchase limits, counted by item; none in warmup | - |
+| 3 | G throws the bomb | Drop it as a thrown physics item (CS2's 250 and 0.6 of the velocity), pickup waits 1.5 and 1.3 s | The throw's speed beside CS2 |
+| 4 | Same spawn every round | **Done** (same): a spawn seed drawn once a match, as CS2's | Log the spawn per round if it still repeats |
+| 5, 9 | Guns and dropped grenades silent on the ground | An impact hook, an `ItemSounds` view, impact-speed volume, the item surfaces read | Extract the impact sounds; listen beside CS2 |
+| 6 | No knife pull-out sound | **Done** (same): every item's draw clip's sound events (`weapons/equipment_timings.csv`) | Listen to the draws beside CS2 |
+| 7 | The T spawn soccer ball a physics object | A sphere in the drop world with CS2's pushaway and bullet impulses | Its PHYS mass; how it behaves in CS2 |
+| 8 | The jump a hair off; the landing bounce too much | **Done** (fix/jump-cs2-2026-10-06): the crouch jump's 9-unit lift, CS2's duck root and view offsets, the full impulse when ducked, the post-landing scale with bots' jumps spaced by CS2's gates, the landing bounce halved (Sid) | The crouch-jump camera beside CS2 |
+| 10 | Less performant | `research/tick-audit-cs2-2026-10-05.md`, the terrain sampler native first | Sid's run after each step |
 
 ### Phase 1: make being shot feel like CS2
 
@@ -1358,6 +1405,22 @@ audit, CS2 captures and performance measurements):
    repeated-input gates and landing/bhop press windows with boundary
    checks and CS2 captures. Keep them separately reviewable from grenade
    flight changes.
+   **Part done (2026-10-06, fix/jump-cs2-2026-10-06; playtest of
+   2026-10-05, issue 8):** the airborne duck and unduck move the body half
+   the hulls' difference (9, not 18) with CS2's duck root and view offsets
+   eased by the eye update; the room to unduck in the air; the whole
+   impulse ducked or ducking; and CS2's scale for a jump soon after a
+   landing, the landing timed within its interval; and the bots' jumps
+   spaced by CS2's CBot::Jump gates (`1802ce3c0`: 0.9 s on the ground, 3 s
+   off it, none while crouching), without which a bot short of a ledge
+   jumped again on landing, lowered, and never made dust2's 60-unit CT
+   ledge. Script and native movement agree to the bit
+   (`tests/run_jump_height_checks.gd`).
+   **Remaining:** the crouch method's own duck amount, speed and
+   transition state (`180abb2c0`), `sv_timebetweenducks`, the bhop press
+   window and jump-spam penalty (`180ab5260`), the forced duck jumping off
+   another player (services `+0x438`), CS2's landing-speed quantizer, and
+   a crouch-jump capture in CS2.
 
 Mirage now provides another extracted map for paired throw references.
 The supplied Dust2 lineups, including B doors and mid doors, were accepted
