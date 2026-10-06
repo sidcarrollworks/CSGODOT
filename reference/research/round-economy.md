@@ -308,7 +308,7 @@ Kill awards (`m_nKillAward` times `cash_player_killed_enemy_factor 1`, from
 | Which guns may be bought | `mp_buy_allow_guns 255` (bits: pistols 1, SMGs 2, rifles 4, shotguns 8, snipers 16, heavy 32), `mp_buy_allow_grenades 1`, `mp_weapons_allow_{pistols,smgs,rifles,heavy} -1` | CV |
 | Per-map override | `sv_buy_status_override -1` (0 all, 1 CT only, 2 T only, 3 nobody) | CV |
 | Armour on sale | `mp_max_armor 2` (kevlar and helmet); `mp_free_armor 0` | CV, CFG |
-| Purchases of one weapon type a round | `mp_weapons_allow_typecount 5`, "per player per round"; the refusal is "You can only purchase {n} of this type" | CV, EN `SFUI_BuyMenu_MaxItemsOfTypePurchased` |
+| Purchases of one weapon type a round | `mp_weapons_allow_typecount 5`, "per player per round"; the refusal is "You can only purchase {n} of this type". Counted by item definition, not weapon type (server.dll CanAcquire `180ab2a20`, 2026-10-05) | CV, EN `SFUI_BuyMenu_MaxItemsOfTypePurchased` |
 | Zeus a round | `mp_weapons_allow_zeus 5` | CFG |
 | Grenades carried | `ammo_grenade_limit_total 4`, `ammo_grenade_limit_flashbang 2`, `ammo_grenade_limit_default 1` (CV defaults are 3, 1, 1) | CFG, CV |
 | Per-match weapon limit | `mp_weapons_max_gun_purchases_per_weapon_per_match -1` (none) | CV |
@@ -795,7 +795,7 @@ From `reference/systems/economy.md` "Guesses, and what measures them", and
 | `cash_team_per_dead_enemy 50` "no file says what it pays" | **Settled** | Appeared 2025-07-16 (GT@05b3cdb1 vs GT@9b9a3d4d); press coverage of that update: each CT gets $50 per T eliminated, win or lose; SS/EN "team income for N eliminated terrorists" | CT only or both sides (EN has a CT-death string too); whether non-kill T deaths count; paid at round end (**Inferred**) |
 | (new) Kill awards spendable at once | **Contradicted** | `m_iMoneyEarnedForNextRound`, PS `AddMoneyEarnedForNextRound` vs `AddMoneySpendableNow`, SS `Not_Enough_Money_NextRound` "$X that you just earned cannot be spent this round" | When the banked money reaches the account (round end or next round's start) |
 | (new) Defuse win pays $3,250 | Already right in the repo ($3,500) | CFG overrides CV's 3250 | none |
-| (new) Grenade purchase cap | **Open** | EN `SFUI_BuyMenu_CanOnlyPurchaseTotalXGrenades` "You can only purchase {n} grenades", separate from the carry limit; SS "hit the sellback limit" | How many grenades a round can be bought, and the refund limit |
+| (new) Grenade purchase cap | **Settled** (2026-10-05, server.dll CanAcquire `180ab2a20`, `reference/playtest-2026-10-05.md` issue 2): a grenade's purchases no more than one carries (its return 3), all grenades' purchases net of sellbacks no more than `ammo_grenade_limit_total` (its return 0xf, this string), a molotov and an incendiary as the larger of the two; none in warmup | EN `SFUI_BuyMenu_CanOnlyPurchaseTotalXGrenades` "You can only purchase {n} grenades", separate from the carry limit; SS "hit the sellback limit" | The refund limit |
 
 ### Suggested additions to the Local tasks
 

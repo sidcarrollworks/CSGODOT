@@ -496,6 +496,26 @@ results and the original drop-only benchmarks are in
 came with Sid's choice on 2026-09-28; the four AWP settling checks are known
 open; the old timings do not measure the full conversion.
 
+### Playtest of 2026-10-05 (dust2 competitive)
+
+Sid played main at `6890b5f` and listed ten things.
+`reference/playtest-2026-10-05.md` has each one's cause (verified or
+inferred), CS2's evidence from `server.dll` and the extracted data, and
+the plan. Mark an issue done here and on the page in the same pull
+request.
+
+| # | Issue | Remote | Local |
+|---|---|---|---|
+| 1 | Plant after the round ends, and be paid for it | **Done** (fix/playtest-rules-2026-10-05): plants allowed until the next `round_prestart`; the planter's $300 outside warmup | Plant in CS2's round end, confirm +$300 and no team line |
+| 2 | The molotov would not buy on a click | **Done** (same): the use prompt stopped the clicks on the menu's fourth row; CS2's per-kind and four-grenade purchase limits, counted by item; none in warmup | - |
+| 3 | G throws the bomb | Drop it as a thrown physics item (CS2's 250 and 0.6 of the velocity), pickup waits 1.5 and 1.3 s | The throw's speed beside CS2 |
+| 4 | Same spawn every round | **Done** (same): a spawn seed drawn once a match, as CS2's | Log the spawn per round if it still repeats |
+| 5, 9 | Guns and dropped grenades silent on the ground | An impact hook, an `ItemSounds` view, impact-speed volume, the item surfaces read | Extract the impact sounds; listen beside CS2 |
+| 6 | No knife pull-out sound | **Done** (same): every item's draw clip's sound events (`weapons/equipment_timings.csv`) | Listen to the draws beside CS2 |
+| 7 | The T spawn soccer ball a physics object | A sphere in the drop world with CS2's pushaway and bullet impulses | Its PHYS mass; how it behaves in CS2 |
+| 8 | The jump a hair off; the landing bounce too much | The crouch jump's 9-unit lift, the full impulse when ducked, the post-landing scale, the landing bounce halved (Sid) | The crouch-jump camera beside CS2 |
+| 10 | Less performant | `research/tick-audit-cs2-2026-10-05.md`, the terrain sampler native first | Sid's run after each step |
+
 ### Phase 1: make being shot feel like CS2
 
 Items 1 to 4 landed in PR #27. Third-person firing, current extracted blood,
