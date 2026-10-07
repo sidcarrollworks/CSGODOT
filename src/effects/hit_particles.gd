@@ -22,7 +22,11 @@ const DRAG_STEP := 1.0 / 30.0
 ## The extracted table remains the unmodified authored reference.
 const MIST_COUNT_SCALE := 2.0
 const MIST_LIFE_SCALE := 0.5
-const RENDER_DEFAULTS := {"radius_scale": 1.0, "overbright": 1.0, "max_length": 500.0, "frame_rate": 0.1, "alpha_threshold": 0.0}
+## render_alpha is the renderer's m_flAlphaScale; min_screen and max_screen
+## its m_flMinSize and m_flMaxSize, shares of the screen's height that a
+## card's size is held between (Source 2's own defaults: 0 and 5000).
+const RENDER_DEFAULTS := {"radius_scale": 1.0, "overbright": 1.0, "max_length": 500.0, "frame_rate": 0.1, "alpha_threshold": 0.0,
+	"render_alpha": 1.0, "min_screen": 0.0, "max_screen": 5000.0}
 const UNIT_RANGE := [0.0, 1.0]
 const EMPTY_ARRAY := []
 var live: Array[Dictionary] = []
@@ -77,6 +81,11 @@ func prepare(name: String, source: Dictionary) -> void:
 	for renderer: Dictionary in source.get("renderers", []):
 		var copy := renderer.duplicate()
 		copy._hit_quad_key = HitQuads.key(renderer)
+		# The renderer's colour (the darken sprite's 33/27/27), made linear
+		# as the particle's own is: two sRGB colours' product, near enough.
+		var scale: Array = renderer.get("color_scale", [])
+		if scale.size() >= 3:
+			copy._color_scale = Color8(int(scale[0]), int(scale[1]), int(scale[2])).srgb_to_linear()
 		renderers.append(copy)
 	layer.renderers = renderers
 	_layers[name] = layer
@@ -151,7 +160,12 @@ func _emit(name: String, layer: Dictionary, context: Dictionary) -> void:
 		var velocity := vector_range(layer.get("velocity_min", [0, 0, 0]), layer.get("velocity_max", [0, 0, 0]))
 		velocity += sphere * value(layer.get("sphere_speed", [0, 0]), context, index)
 		var noise := vector_range(layer.get("noise_velocity_min", [0, 0, 0]), layer.get("noise_velocity_max", [0, 0, 0]))
-		var c := vector_range(layer.get("color_min", [255, 255, 255]), layer.get("color_max", [255, 255, 255])) / 255.0
+		# C_INIT_RandomColor blends its two colours by one random amount, as
+		# its authored ranges read (concrete's chips dark grey to pale blue-
+		# grey; inferred). A draw a channel made them green, purple and red.
+		var low: Array = layer.get("color_min", [255, 255, 255])
+		var high: Array = layer.get("color_max", [255, 255, 255])
+		var c := Vector3(float(low[0]), float(low[1]), float(low[2])).lerp(Vector3(float(high[0]), float(high[1]), float(high[2])), _rng.randf()) / 255.0
 		var world_offset := local_frame * offset
 		var particle_normal := basis.x
 		if layer.has("normal_offset"):
@@ -181,12 +195,17 @@ func _emit(name: String, layer: Dictionary, context: Dictionary) -> void:
 		var fade_in := value(layer.get("fade_in", [0,0]), context, index)
 		var fade_out := value(layer.get("fade_out", [0.1,0.1]), context, index)
 		var drag := clampf(float(layer.get("drag", 0.0)), 0.0, 0.9999)
+		var alpha := value(layer.get("alpha", [1, 1]), context, index)
+		# An alpha set by scaling the initial one: the darken sprite's is a
+		# curve of the distance (CP6), nothing nearer than about 76 units.
+		if layer.has("alpha_scale"):
+			alpha *= value(layer.alpha_scale, context, index)
 		live.append({"name": name, "layer": layer, "context": context, "born": context.born,
 			"normal": particle_normal,
 			"origin": context.at + world_offset, "velocity": local_frame * velocity + noise_velocity(layer, noise, local_frame),
 			"gravity": source_world(layer.get("gravity", [0, 0, 0])), "life": life,
 			"drag_k": -log(1.0 - drag) / DRAG_STEP if drag > 0.0 else 0.0,
-			"half": radius, "alpha": value(layer.get("alpha", [1, 1]), context, index),
+			"half": radius, "alpha": alpha,
 			"color": Color(c.x, c.y, c.z).srgb_to_linear(), "roll": deg_to_rad(value(layer.get("roll", [0, 360]), context, index)),
 			"seq": roundi(value(layer.get("seq", [0, 0]), context, index)),
 			"index": index,
@@ -404,7 +423,7 @@ func _script_draw(quads: Node, models: Node, eye: Transform3D, now: int, fov: fl
 			if kind == "projected" or kind == "light":
 				continue
 			var half := radius * render_value(renderer, "radius_scale", p, renderer_index, age, 1.0)
-			var a := alpha
+			var a := alpha * render_value(renderer, "render_alpha", p, renderer_index, age, 1.0)
 			var screen_fade: Array = renderer.get("screen_fade", [])
 			if not screen_fade.is_empty():
 				var share := 2.0 * half / maxf(eye.origin.distance_to(centre) * height_at_unit, 1.0)
@@ -412,7 +431,8 @@ func _script_draw(quads: Node, models: Node, eye: Transform3D, now: int, fov: fl
 				var fade_end := value(screen_fade[1], context, int(p.index), false, p, age)
 				a *= clampf(inverse_lerp(fade_end, fade_start, share), 0.0, 1.0) if fade_end != fade_start else float(share <= fade_start)
 			var bright := render_value(renderer, "overbright", p, renderer_index, age, 1.0)
-			var shade := Color(color.r * bright, color.g * bright, color.b * bright, a)
+			var tint: Color = renderer.get("_color_scale", Color.WHITE)
+			var shade := Color(color.r * bright * tint.r, color.g * bright * tint.g, color.b * bright * tint.b, a)
 			if a <= 0.0 or half <= 0.0:
 				continue
 			var xform: Transform3D
@@ -422,6 +442,12 @@ func _script_draw(quads: Node, models: Node, eye: Transform3D, now: int, fov: fl
 				xform = Transform3D(model_basis(frame_basis, bool(renderer.get("orient_z", false)), roll).scaled(Vector3.ONE * scale), centre)
 				models.card(renderer, xform, int(p.seq), shade)
 				continue
+			# A card's size held between its renderer's shares of the screen's
+			# height, as MuzzleFlashes holds max_screen: the light flash is at
+			# most 2% of it however near the wall.
+			var screen_half := eye.origin.distance_to(centre) * height_at_unit * 0.5
+			half = minf(maxf(half, render_value(renderer, "min_screen", p, renderer_index, age, 0.0) * screen_half),
+				render_value(renderer, "max_screen", p, renderer_index, age, 5000.0) * screen_half)
 			if kind == "trail":
 				var tail := position(p, maxf(age - trail, 0.0))
 				var max_length := render_value(renderer, "max_length", p, renderer_index, age, 500.0)
@@ -472,6 +498,12 @@ static func noise_velocity(layer: Dictionary, noise: Vector3, basis: Basis) -> V
 ## its authored Source +Z extrusion: orient_z aligns it with the normal.
 static func model_basis(impact: Basis, orient_z: bool, roll: float) -> Basis:
 	var frame := impact.rotated(impact.x, roll)
+	# impact_basis is a turn's mirror image (its z is side x forward). A mesh
+	# drawn through one is inside out: its faces wind the other way and
+	# Godot lights their backs, black in the sun and white in the shade, a
+	# flicker as flecks tumble (Sid, 2026-10-07). Its z is turned back.
+	if frame.determinant() < 0.0:
+		frame.z = -frame.z
 	return Basis(frame.y, frame.x, -frame.z) if orient_z else Basis(frame.y, frame.z, frame.x)
 
 

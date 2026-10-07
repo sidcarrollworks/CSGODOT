@@ -657,7 +657,13 @@ const LAYERS := {
 				"kind": "sprite",
 				"blend": "alpha",
 				"tex": "materials/particle/impact/fleks_glow.vtex",
-				"radius_scale": 0.5
+				"radius_scale": 0.5,
+				"render_alpha": 0.5,
+				"color_scale": [
+					83.0,
+					88.0,
+					57.0
+				]
 			}
 		],
 		"kind": "sprite",
@@ -763,7 +769,13 @@ const LAYERS := {
 		],
 		"blend": "alpha",
 		"tex": "materials/particle/impact/fleks_glow.vtex",
-		"radius_scale": 0.5
+		"radius_scale": 0.5,
+		"render_alpha": 0.5,
+		"color_scale": [
+			83.0,
+			88.0,
+			57.0
+		]
 	},
 	"blood_impact_friendly_debris": {
 		"count": [
@@ -816,19 +828,7 @@ const LAYERS := {
 				"kind": "sprite",
 				"blend": "alpha",
 				"tex": "materials/particle/paper/paper.vtex",
-				"tex_breakup": "materials/decals/brick/brick1_bullet_normal_psd_9adbb6c1.vtex",
-				"breakup_blend": "SPRITECARD_TEXTURE_BLEND_MULTIPLY",
-				"breakup_channels": "SPRITECARD_TEXTURE_CHANNEL_MIX_RGBA",
-				"breakup_strength": 1.0,
-				"breakup_controls": {
-					"m_flFinalTextureScaleU": 6.0,
-					"m_flFinalTextureScaleV": 20.0,
-					"m_flDistortion": 0.1,
-					"m_nPerParticleDistortion": "SPRITECARD_TEXTURE_PP_SCALE_ROLL",
-					"m_bRandomizeOffsets": true,
-					"m_flFinalTextureOffsetU": 123.0,
-					"m_flFinalTextureOffsetV": 234.0
-				},
+				"min_screen": 0.005,
 				"screen_fade": [
 					0.025,
 					0.1
@@ -872,19 +872,7 @@ const LAYERS := {
 		],
 		"blend": "alpha",
 		"tex": "materials/particle/paper/paper.vtex",
-		"tex_breakup": "materials/decals/brick/brick1_bullet_normal_psd_9adbb6c1.vtex",
-		"breakup_blend": "SPRITECARD_TEXTURE_BLEND_MULTIPLY",
-		"breakup_channels": "SPRITECARD_TEXTURE_CHANNEL_MIX_RGBA",
-		"breakup_strength": 1.0,
-		"breakup_controls": {
-			"m_flFinalTextureScaleU": 6.0,
-			"m_flFinalTextureScaleV": 20.0,
-			"m_flDistortion": 0.1,
-			"m_nPerParticleDistortion": "SPRITECARD_TEXTURE_PP_SCALE_ROLL",
-			"m_bRandomizeOffsets": true,
-			"m_flFinalTextureOffsetU": 123.0,
-			"m_flFinalTextureOffsetV": 234.0
-		},
+		"min_screen": 0.005,
 		"screen_fade": [
 			0.025,
 			0.1
@@ -955,6 +943,12 @@ const LAYERS := {
 				"tex": "materials/particle/flames/flame_omni.vtex",
 				"frame_rate": 1.0,
 				"max_screen": 0.04,
+				"min_screen": 0.008,
+				"color_scale": [
+					136.0,
+					136.0,
+					136.0
+				],
 				"alpha_threshold": [
 					0.0,
 					0.0
@@ -963,16 +957,7 @@ const LAYERS := {
 			{
 				"kind": "sprite",
 				"blend": "add",
-				"tex": "materials/particle/particle_flares/particle_flare_gray.vtex",
-				"tex_breakup": "materials/effects/yellowflare.vtex",
-				"breakup_blend": "SPRITECARD_TEXTURE_BLEND_MULTIPLY",
-				"breakup_channels": "SPRITECARD_TEXTURE_CHANNEL_MIX_RGBA_RGBALPHA",
-				"breakup_strength": 1.0,
-				"breakup_controls": {
-					"m_flFinalTextureScaleU": 0.75,
-					"m_flFinalTextureScaleV": 0.75,
-					"m_bClampUVs": true
-				},
+				"tex": "materials/effects/yellowflare.vtex",
 				"overbright": {
 					"type": "PF_TYPE_CONTROL_POINT_COMPONENT",
 					"map": "PF_MAP_TYPE_REMAP",
@@ -992,7 +977,9 @@ const LAYERS := {
 					"multiplier": 1.0
 				},
 				"frame_rate": 1.0,
-				"max_screen": 0.02
+				"max_screen": 0.02,
+				"min_screen": 0.005,
+				"render_alpha": 0.5
 			}
 		],
 		"kind": "sprite",
@@ -1024,6 +1011,12 @@ const LAYERS := {
 		"tex": "materials/particle/flames/flame_omni.vtex",
 		"frame_rate": 1.0,
 		"max_screen": 0.04,
+		"min_screen": 0.008,
+		"color_scale": [
+			136.0,
+			136.0,
+			136.0
+		],
 		"alpha_threshold": [
 			0.0,
 			0.0
@@ -2805,13 +2798,53 @@ const LAYERS := {
 				"gradient_controls": {
 					"m_bClampUVs": true
 				},
-				"tex_breakup": "materials/particle/glow_square_ring_01.vtex",
-				"breakup_blend": "SPRITECARD_TEXTURE_BLEND_ADD",
-				"breakup_channels": "SPRITECARD_TEXTURE_CHANNEL_MIX_RGBA",
-				"breakup_strength": 1.0,
 				"radius_scale": 1.5,
 				"overbright": 3.0,
 				"frame_rate": 1.0,
+				"render_alpha": {
+					"type": "PF_TYPE_COLLECTION_AGE",
+					"map": "PF_MAP_TYPE_CURVE",
+					"cp": 0.0,
+					"component": 0.0,
+					"bias_type": "PF_BIAS_TYPE_STANDARD",
+					"attribute": 3.0,
+					"input_mode": "PF_INPUT_MODE_CLAMPED",
+					"input": [
+						0.0,
+						1.0
+					],
+					"output": [
+						0.0,
+						1.0
+					],
+					"multiplier": 1.0,
+					"curve": [
+						[
+							0.0002,
+							0.0
+						],
+						[
+							0.075013,
+							0.172912
+						],
+						[
+							0.182175,
+							0.156752
+						],
+						[
+							0.439364,
+							0.038784
+						],
+						[
+							0.773763,
+							0.0
+						],
+						[
+							2.0,
+							0.0
+						]
+					]
+				},
 				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES"
 			},
 			{
@@ -2893,7 +2926,12 @@ const LAYERS := {
 				},
 				"overbright": 3.0,
 				"frame_rate": 0.5,
-				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES"
+				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES",
+				"color_scale": [
+					228.0,
+					33.0,
+					33.0
+				]
 			},
 			{
 				"kind": "sprite",
@@ -2905,7 +2943,13 @@ const LAYERS := {
 				"breakup_strength": 1.0,
 				"overbright": 3.0,
 				"frame_rate": 0.5,
-				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES"
+				"render_alpha": 0.25,
+				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES",
+				"color_scale": [
+					153.0,
+					38.0,
+					38.0
+				]
 			}
 		],
 		"kind": "sprite",
@@ -3112,13 +3156,53 @@ const LAYERS := {
 		"gradient_controls": {
 			"m_bClampUVs": true
 		},
-		"tex_breakup": "materials/particle/glow_square_ring_01.vtex",
-		"breakup_blend": "SPRITECARD_TEXTURE_BLEND_ADD",
-		"breakup_channels": "SPRITECARD_TEXTURE_CHANNEL_MIX_RGBA",
-		"breakup_strength": 1.0,
 		"radius_scale": 1.5,
 		"overbright": 3.0,
 		"frame_rate": 1.0,
+		"render_alpha": {
+			"type": "PF_TYPE_COLLECTION_AGE",
+			"map": "PF_MAP_TYPE_CURVE",
+			"cp": 0.0,
+			"component": 0.0,
+			"bias_type": "PF_BIAS_TYPE_STANDARD",
+			"attribute": 3.0,
+			"input_mode": "PF_INPUT_MODE_CLAMPED",
+			"input": [
+				0.0,
+				1.0
+			],
+			"output": [
+				0.0,
+				1.0
+			],
+			"multiplier": 1.0,
+			"curve": [
+				[
+					0.0002,
+					0.0
+				],
+				[
+					0.075013,
+					0.172912
+				],
+				[
+					0.182175,
+					0.156752
+				],
+				[
+					0.439364,
+					0.038784
+				],
+				[
+					0.773763,
+					0.0
+				],
+				[
+					2.0,
+					0.0
+				]
+			]
+		},
 		"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES"
 	},
 	"blood_impact_localfrontenemy_splatter_rgt": {
@@ -3298,7 +3382,12 @@ const LAYERS := {
 					"m_bRandomizeOffsets": true
 				},
 				"frame_rate": 0.5,
-				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES"
+				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES",
+				"color_scale": [
+					228.0,
+					33.0,
+					33.0
+				]
 			},
 			{
 				"kind": "sprite",
@@ -3309,7 +3398,13 @@ const LAYERS := {
 				"breakup_channels": "SPRITECARD_TEXTURE_CHANNEL_MIX_RGB",
 				"breakup_strength": 1.0,
 				"frame_rate": 0.5,
-				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES"
+				"render_alpha": 0.25,
+				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES",
+				"color_scale": [
+					153.0,
+					38.0,
+					38.0
+				]
 			},
 			{
 				"kind": "sprite",
@@ -3355,13 +3450,53 @@ const LAYERS := {
 				"gradient_controls": {
 					"m_bClampUVs": true
 				},
-				"tex_breakup": "materials/particle/glow_square_ring_01.vtex",
-				"breakup_blend": "SPRITECARD_TEXTURE_BLEND_ADD",
-				"breakup_channels": "SPRITECARD_TEXTURE_CHANNEL_MIX_RGBA",
-				"breakup_strength": 1.0,
 				"radius_scale": 1.5,
 				"overbright": 3.0,
 				"frame_rate": 1.0,
+				"render_alpha": {
+					"type": "PF_TYPE_COLLECTION_AGE",
+					"map": "PF_MAP_TYPE_CURVE",
+					"cp": 0.0,
+					"component": 0.0,
+					"bias_type": "PF_BIAS_TYPE_STANDARD",
+					"attribute": 3.0,
+					"input_mode": "PF_INPUT_MODE_CLAMPED",
+					"input": [
+						0.0,
+						1.0
+					],
+					"output": [
+						0.0,
+						1.0
+					],
+					"multiplier": 1.0,
+					"curve": [
+						[
+							0.0002,
+							0.0
+						],
+						[
+							0.075013,
+							0.172912
+						],
+						[
+							0.182175,
+							0.156752
+						],
+						[
+							0.439364,
+							0.038784
+						],
+						[
+							0.773763,
+							0.0
+						],
+						[
+							2.0,
+							0.0
+						]
+					]
+				},
 				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES"
 			}
 		],
@@ -3603,7 +3738,12 @@ const LAYERS := {
 			"m_bRandomizeOffsets": true
 		},
 		"frame_rate": 0.5,
-		"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES"
+		"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES",
+		"color_scale": [
+			228.0,
+			33.0,
+			33.0
+		]
 	},
 	"blood_impact_localfrontsimple": {
 		"count": {
@@ -3751,6 +3891,50 @@ const LAYERS := {
 				"radius_scale": 3.0,
 				"overbright": 3.0,
 				"frame_rate": 1.0,
+				"render_alpha": {
+					"type": "PF_TYPE_COLLECTION_AGE",
+					"map": "PF_MAP_TYPE_CURVE",
+					"cp": 0.0,
+					"component": 0.0,
+					"bias_type": "PF_BIAS_TYPE_STANDARD",
+					"attribute": 3.0,
+					"input_mode": "PF_INPUT_MODE_CLAMPED",
+					"input": [
+						0.0,
+						1.0
+					],
+					"output": [
+						0.0,
+						1.0
+					],
+					"multiplier": 1.0,
+					"curve": [
+						[
+							0.005,
+							0.0
+						],
+						[
+							1.875325,
+							0.86456
+						],
+						[
+							4.554375,
+							0.78376
+						],
+						[
+							10.9841,
+							0.19392
+						],
+						[
+							19.344074,
+							0.0
+						],
+						[
+							50.0,
+							0.0
+						]
+					]
+				},
 				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES"
 			}
 		],
@@ -3907,6 +4091,50 @@ const LAYERS := {
 		"radius_scale": 3.0,
 		"overbright": 3.0,
 		"frame_rate": 1.0,
+		"render_alpha": {
+			"type": "PF_TYPE_COLLECTION_AGE",
+			"map": "PF_MAP_TYPE_CURVE",
+			"cp": 0.0,
+			"component": 0.0,
+			"bias_type": "PF_BIAS_TYPE_STANDARD",
+			"attribute": 3.0,
+			"input_mode": "PF_INPUT_MODE_CLAMPED",
+			"input": [
+				0.0,
+				1.0
+			],
+			"output": [
+				0.0,
+				1.0
+			],
+			"multiplier": 1.0,
+			"curve": [
+				[
+					0.005,
+					0.0
+				],
+				[
+					1.875325,
+					0.86456
+				],
+				[
+					4.554375,
+					0.78376
+				],
+				[
+					10.9841,
+					0.19392
+				],
+				[
+					19.344074,
+					0.0
+				],
+				[
+					50.0,
+					0.0
+				]
+			]
+		},
 		"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES"
 	},
 	"blood_impact_localkillshot_splatter": {
@@ -4034,6 +4262,50 @@ const LAYERS := {
 				},
 				"radius_scale": 2.0,
 				"frame_rate": 1.0,
+				"render_alpha": {
+					"type": "PF_TYPE_COLLECTION_AGE",
+					"map": "PF_MAP_TYPE_CURVE",
+					"cp": 0.0,
+					"component": 0.0,
+					"bias_type": "PF_BIAS_TYPE_STANDARD",
+					"attribute": 3.0,
+					"input_mode": "PF_INPUT_MODE_CLAMPED",
+					"input": [
+						0.0,
+						1.0
+					],
+					"output": [
+						0.0,
+						1.0
+					],
+					"multiplier": 1.0,
+					"curve": [
+						[
+							0.00015,
+							0.0
+						],
+						[
+							0.05626,
+							0.129684
+						],
+						[
+							0.136631,
+							0.117564
+						],
+						[
+							0.329523,
+							0.029088
+						],
+						[
+							1.06492,
+							0.0
+						],
+						[
+							1.5,
+							0.0
+						]
+					]
+				},
 				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES"
 			},
 			{
@@ -4045,7 +4317,13 @@ const LAYERS := {
 				"breakup_channels": "SPRITECARD_TEXTURE_CHANNEL_MIX_RGB",
 				"breakup_strength": 1.0,
 				"frame_rate": 0.5,
-				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES"
+				"render_alpha": 0.75,
+				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES",
+				"color_scale": [
+					153.0,
+					38.0,
+					38.0
+				]
 			},
 			{
 				"kind": "sprite",
@@ -4117,7 +4395,12 @@ const LAYERS := {
 					"m_bRandomizeOffsets": true
 				},
 				"frame_rate": 0.5,
-				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES"
+				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES",
+				"color_scale": [
+					178.0,
+					33.0,
+					33.0
+				]
 			}
 		],
 		"kind": "sprite",
@@ -4309,6 +4592,50 @@ const LAYERS := {
 		},
 		"radius_scale": 2.0,
 		"frame_rate": 1.0,
+		"render_alpha": {
+			"type": "PF_TYPE_COLLECTION_AGE",
+			"map": "PF_MAP_TYPE_CURVE",
+			"cp": 0.0,
+			"component": 0.0,
+			"bias_type": "PF_BIAS_TYPE_STANDARD",
+			"attribute": 3.0,
+			"input_mode": "PF_INPUT_MODE_CLAMPED",
+			"input": [
+				0.0,
+				1.0
+			],
+			"output": [
+				0.0,
+				1.0
+			],
+			"multiplier": 1.0,
+			"curve": [
+				[
+					0.00015,
+					0.0
+				],
+				[
+					0.05626,
+					0.129684
+				],
+				[
+					0.136631,
+					0.117564
+				],
+				[
+					0.329523,
+					0.029088
+				],
+				[
+					1.06492,
+					0.0
+				],
+				[
+					1.5,
+					0.0
+				]
+			]
+		},
 		"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES"
 	},
 	"blood_impact_localrearhit_splatter": {
@@ -4465,7 +4792,12 @@ const LAYERS := {
 				},
 				"overbright": 2.0,
 				"frame_rate": 0.5,
-				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES"
+				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES",
+				"color_scale": [
+					249.0,
+					55.0,
+					55.0
+				]
 			},
 			{
 				"kind": "sprite",
@@ -4477,7 +4809,13 @@ const LAYERS := {
 				"breakup_strength": 1.0,
 				"overbright": 2.0,
 				"frame_rate": 0.5,
-				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES"
+				"render_alpha": 0.75,
+				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES",
+				"color_scale": [
+					153.0,
+					38.0,
+					38.0
+				]
 			},
 			{
 				"kind": "sprite",
@@ -4523,13 +4861,53 @@ const LAYERS := {
 				"gradient_controls": {
 					"m_bClampUVs": true
 				},
-				"tex_breakup": "materials/particle/glow_square_ring_01.vtex",
-				"breakup_blend": "SPRITECARD_TEXTURE_BLEND_ADD",
-				"breakup_channels": "SPRITECARD_TEXTURE_CHANNEL_MIX_RGBA",
-				"breakup_strength": 1.0,
 				"radius_scale": 2.0,
 				"overbright": 4.0,
 				"frame_rate": 1.0,
+				"render_alpha": {
+					"type": "PF_TYPE_COLLECTION_AGE",
+					"map": "PF_MAP_TYPE_CURVE",
+					"cp": 0.0,
+					"component": 0.0,
+					"bias_type": "PF_BIAS_TYPE_STANDARD",
+					"attribute": 3.0,
+					"input_mode": "PF_INPUT_MODE_CLAMPED",
+					"input": [
+						0.0,
+						1.0
+					],
+					"output": [
+						0.0,
+						1.0
+					],
+					"multiplier": 1.0,
+					"curve": [
+						[
+							0.0002,
+							0.0
+						],
+						[
+							0.075013,
+							0.172912
+						],
+						[
+							0.182175,
+							0.156752
+						],
+						[
+							0.439364,
+							0.038784
+						],
+						[
+							1.419893,
+							0.0
+						],
+						[
+							2.0,
+							0.0
+						]
+					]
+				},
 				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES"
 			}
 		],
@@ -4774,7 +5152,12 @@ const LAYERS := {
 		},
 		"overbright": 2.0,
 		"frame_rate": 0.5,
-		"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES"
+		"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES",
+		"color_scale": [
+			249.0,
+			55.0,
+			55.0
+		]
 	},
 	"blood_impact_low_forw_spray": {
 		"count": [
@@ -6479,7 +6862,12 @@ const LAYERS := {
 				},
 				"overbright": 2.0,
 				"frame_rate": 0.5,
-				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES"
+				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES",
+				"color_scale": [
+					249.0,
+					55.0,
+					55.0
+				]
 			},
 			{
 				"kind": "sprite",
@@ -6491,7 +6879,13 @@ const LAYERS := {
 				"breakup_strength": 1.0,
 				"overbright": 2.0,
 				"frame_rate": 0.5,
-				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES"
+				"render_alpha": 0.8,
+				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES",
+				"color_scale": [
+					153.0,
+					38.0,
+					38.0
+				]
 			},
 			{
 				"kind": "sprite",
@@ -6537,13 +6931,53 @@ const LAYERS := {
 				"gradient_controls": {
 					"m_bClampUVs": true
 				},
-				"tex_breakup": "materials/particle/glow_square_ring_01.vtex",
-				"breakup_blend": "SPRITECARD_TEXTURE_BLEND_ADD",
-				"breakup_channels": "SPRITECARD_TEXTURE_CHANNEL_MIX_RGBA",
-				"breakup_strength": 1.0,
 				"radius_scale": 2.0,
 				"overbright": 3.0,
 				"frame_rate": 1.0,
+				"render_alpha": {
+					"type": "PF_TYPE_COLLECTION_AGE",
+					"map": "PF_MAP_TYPE_CURVE",
+					"cp": 0.0,
+					"component": 0.0,
+					"bias_type": "PF_BIAS_TYPE_STANDARD",
+					"attribute": 3.0,
+					"input_mode": "PF_INPUT_MODE_CLAMPED",
+					"input": [
+						0.0,
+						1.0
+					],
+					"output": [
+						0.0,
+						1.0
+					],
+					"multiplier": 1.0,
+					"curve": [
+						[
+							0.00015,
+							0.0
+						],
+						[
+							0.05626,
+							0.21614
+						],
+						[
+							0.136631,
+							0.19594
+						],
+						[
+							0.329523,
+							0.04848
+						],
+						[
+							0.580322,
+							0.0
+						],
+						[
+							1.5,
+							0.0
+						]
+					]
+				},
 				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES"
 			}
 		],
@@ -6776,7 +7210,12 @@ const LAYERS := {
 		},
 		"overbright": 2.0,
 		"frame_rate": 0.5,
-		"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES"
+		"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES",
+		"color_scale": [
+			249.0,
+			55.0,
+			55.0
+		]
 	},
 	"blood_impact_med_ground_decal": {
 		"count": [
@@ -9449,11 +9888,15 @@ const LAYERS := {
 				"kind": "sprite",
 				"blend": "alpha",
 				"tex": "materials/particle/smoke/smokeburst/smokeloop_i_0_sc.vtex",
-				"tex_mv": "materials/particle/smoke/smokeburst/smokeloop_i_0_flwmix.vtex",
 				"radius_scale": 1.2,
 				"overbright": 1.4,
 				"frame_rate": 0.2,
 				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES",
+				"color_scale": [
+					237.0,
+					237.0,
+					237.0
+				],
 				"screen_fade": [
 					0.5,
 					0.75
@@ -9635,11 +10078,15 @@ const LAYERS := {
 		],
 		"blend": "alpha",
 		"tex": "materials/particle/smoke/smokeburst/smokeloop_i_0_sc.vtex",
-		"tex_mv": "materials/particle/smoke/smokeburst/smokeloop_i_0_flwmix.vtex",
 		"radius_scale": 1.2,
 		"overbright": 1.4,
 		"frame_rate": 0.2,
 		"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES",
+		"color_scale": [
+			237.0,
+			237.0,
+			237.0
+		],
 		"screen_fade": [
 			0.5,
 			0.75
@@ -9820,7 +10267,12 @@ const LAYERS := {
 			{
 				"kind": "sprite",
 				"blend": "alpha",
-				"tex": "materials/particle/impact/fleks.vtex"
+				"tex": "materials/particle/impact/fleks.vtex",
+				"color_scale": [
+					189.0,
+					175.0,
+					164.0
+				]
 			}
 		],
 		"kind": "sprite",
@@ -9857,7 +10309,12 @@ const LAYERS := {
 			"C_OP_VelocityDecay"
 		],
 		"blend": "alpha",
-		"tex": "materials/particle/impact/fleks.vtex"
+		"tex": "materials/particle/impact/fleks.vtex",
+		"color_scale": [
+			189.0,
+			175.0,
+			164.0
+		]
 	},
 	"impact_dirt_child_base": {
 		"count": [
@@ -10720,7 +11177,13 @@ const LAYERS := {
 				"tex": "materials/particle/particle_flares/aircraft_hot.vtex",
 				"frame_rate": 0.2,
 				"max_screen": 0.008,
-				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES"
+				"min_screen": 0.005,
+				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES",
+				"color_scale": [
+					33.0,
+					27.0,
+					27.0
+				]
 			}
 		],
 		"kind": "sprite",
@@ -10905,7 +11368,13 @@ const LAYERS := {
 		"tex": "materials/particle/particle_flares/aircraft_hot.vtex",
 		"frame_rate": 0.2,
 		"max_screen": 0.008,
-		"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES"
+		"min_screen": 0.005,
+		"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES",
+		"color_scale": [
+			33.0,
+			27.0,
+			27.0
+		]
 	},
 	"impact_fx_hit_darken_model": {
 		"count": {
@@ -11272,7 +11741,8 @@ const LAYERS := {
 				"kind": "trail",
 				"blend": "alpha",
 				"tex": "materials/particle/particle_debris_burst/particle_debris_burst_002.vtex",
-				"max_length": 128.0
+				"max_length": 128.0,
+				"render_alpha": 0.5
 			},
 			{
 				"kind": "trail",
@@ -11280,12 +11750,23 @@ const LAYERS := {
 				"tex": "materials/particle/smoke/smokeburst/smokeloop_g_1.vtex",
 				"frame_rate": 1.5,
 				"max_length": 120.0,
-				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES"
+				"animation_type": "ANIMATION_TYPE_MANUAL_FRAMES",
+				"color_scale": [
+					32.0,
+					27.0,
+					27.0
+				]
 			},
 			{
 				"kind": "sprite",
 				"blend": "alpha",
 				"tex": "materials/particle/ash_flecks.vtex",
+				"render_alpha": 2.0,
+				"color_scale": [
+					51.0,
+					51.0,
+					51.0
+				],
 				"screen_fade": [
 					0.0,
 					0.5
@@ -11426,7 +11907,8 @@ const LAYERS := {
 		],
 		"blend": "alpha",
 		"tex": "materials/particle/particle_debris_burst/particle_debris_burst_002.vtex",
-		"max_length": 128.0
+		"max_length": 128.0,
+		"render_alpha": 0.5
 	},
 	"impact_generic_burst_sm": {
 		"count": [
@@ -11843,7 +12325,8 @@ const LAYERS := {
 				"kind": "sprite",
 				"blend": "alpha",
 				"tex": "materials/particle/impact/fleks.vtex",
-				"overbright": 1.5
+				"overbright": 1.5,
+				"render_alpha": 0.5
 			}
 		],
 		"kind": "sprite",
@@ -11949,7 +12432,8 @@ const LAYERS := {
 		],
 		"blend": "alpha",
 		"tex": "materials/particle/impact/fleks.vtex",
-		"overbright": 1.5
+		"overbright": 1.5,
+		"render_alpha": 0.5
 	},
 	"impact_glass_base": {
 		"count": [
@@ -12655,7 +13139,8 @@ const LAYERS := {
 				"kind": "sprite",
 				"blend": "alpha",
 				"tex": "materials/particle/impact/fleks.vtex",
-				"overbright": 1.5
+				"overbright": 1.5,
+				"render_alpha": 0.5
 			}
 		],
 		"kind": "sprite",
@@ -12688,7 +13173,8 @@ const LAYERS := {
 		],
 		"blend": "alpha",
 		"tex": "materials/particle/impact/fleks.vtex",
-		"overbright": 1.5
+		"overbright": 1.5,
+		"render_alpha": 0.5
 	},
 	"impact_glass_dust": {
 		"count": {
@@ -13067,7 +13553,9 @@ const LAYERS := {
 				"kind": "sprite",
 				"blend": "add",
 				"tex": "materials/particle/flames/flame_omni.vtex",
-				"max_screen": 0.05
+				"max_screen": 0.05,
+				"min_screen": 0.001,
+				"render_alpha": 0.25
 			}
 		],
 		"kind": "sprite",
@@ -13104,7 +13592,9 @@ const LAYERS := {
 		"grow_ease": false,
 		"blend": "add",
 		"tex": "materials/particle/flames/flame_omni.vtex",
-		"max_screen": 0.05
+		"max_screen": 0.05,
+		"min_screen": 0.001,
+		"render_alpha": 0.25
 	},
 	"impact_helmet_headshot": {
 		"count": [
@@ -13287,7 +13777,8 @@ const LAYERS := {
 				"tex": "materials/effects/yellowflare.vtex",
 				"radius_scale": 0.5,
 				"overbright": 8.0,
-				"max_screen": 0.01
+				"max_screen": 0.01,
+				"min_screen": 0.002
 			}
 		],
 		"kind": "sprite",
@@ -13341,7 +13832,8 @@ const LAYERS := {
 		"tex": "materials/effects/yellowflare.vtex",
 		"radius_scale": 0.5,
 		"overbright": 8.0,
-		"max_screen": 0.01
+		"max_screen": 0.01,
+		"min_screen": 0.002
 	},
 	"impact_helmet_headshot_spark": {
 		"count": [
@@ -13503,18 +13995,27 @@ const LAYERS := {
 				"breakup_channels": "SPRITECARD_TEXTURE_CHANNEL_MIX_RGBA",
 				"breakup_strength": 1.0,
 				"overbright": 50.0,
-				"max_screen": 0.02
+				"max_screen": 0.02,
+				"min_screen": 0.003,
+				"color_scale": [
+					231.0,
+					205.0,
+					182.0
+				]
 			},
 			{
 				"kind": "sprite",
 				"blend": "alpha",
-				"tex": "materials/particle/ash_flecks.vtex",
-				"tex_breakup": "materials/particle/particle_glow_04.vtex",
-				"breakup_blend": "SPRITECARD_TEXTURE_BLEND_MULTIPLY",
-				"breakup_channels": "SPRITECARD_TEXTURE_CHANNEL_MIX_RGBA",
-				"breakup_strength": 1.0,
+				"tex": "materials/particle/particle_glow_04.vtex",
 				"radius_scale": 4.0,
-				"max_screen": 0.03
+				"max_screen": 0.03,
+				"min_screen": 0.012,
+				"render_alpha": 0.4,
+				"color_scale": [
+					0.0,
+					0.0,
+					0.0
+				]
 			}
 		],
 		"kind": "sprite",
@@ -13549,7 +14050,13 @@ const LAYERS := {
 		"breakup_channels": "SPRITECARD_TEXTURE_CHANNEL_MIX_RGBA",
 		"breakup_strength": 1.0,
 		"overbright": 50.0,
-		"max_screen": 0.02
+		"max_screen": 0.02,
+		"min_screen": 0.003,
+		"color_scale": [
+			231.0,
+			205.0,
+			182.0
+		]
 	},
 	"impact_metal": {
 		"count": [
@@ -13829,7 +14336,13 @@ const LAYERS := {
 				"blend": "add",
 				"tex": "materials/effects/yellowflare.vtex",
 				"overbright": 4.0,
-				"max_screen": 0.01
+				"max_screen": 0.01,
+				"min_screen": 0.0025,
+				"color_scale": [
+					255.0,
+					254.0,
+					220.0
+				]
 			}
 		],
 		"kind": "sprite",
@@ -13877,7 +14390,13 @@ const LAYERS := {
 		"blend": "add",
 		"tex": "materials/effects/yellowflare.vtex",
 		"overbright": 4.0,
-		"max_screen": 0.01
+		"max_screen": 0.01,
+		"min_screen": 0.0025,
+		"color_scale": [
+			255.0,
+			254.0,
+			220.0
+		]
 	},
 	"impact_metal_child_glow2": {
 		"count": [
@@ -15617,7 +16136,12 @@ const LAYERS := {
 				"tex_breakup": "materials/particle/particle_flares/particle_flare_gray.vtex",
 				"breakup_blend": "SPRITECARD_TEXTURE_BLEND_REPLACE",
 				"breakup_channels": "SPRITECARD_TEXTURE_CHANNEL_MIX_RGB",
-				"breakup_strength": 0.7
+				"breakup_strength": 0.7,
+				"color_scale": [
+					191.0,
+					191.0,
+					191.0
+				]
 			}
 		],
 		"kind": "sprite",
@@ -15706,7 +16230,12 @@ const LAYERS := {
 		"tex_breakup": "materials/particle/particle_flares/particle_flare_gray.vtex",
 		"breakup_blend": "SPRITECARD_TEXTURE_BLEND_REPLACE",
 		"breakup_channels": "SPRITECARD_TEXTURE_CHANNEL_MIX_RGB",
-		"breakup_strength": 0.7
+		"breakup_strength": 0.7,
+		"color_scale": [
+			191.0,
+			191.0,
+			191.0
+		]
 	},
 	"impact_plaster_dots": {
 		"count": [
@@ -15764,7 +16293,12 @@ const LAYERS := {
 				"breakup_channels": "SPRITECARD_TEXTURE_CHANNEL_MIX_RGB",
 				"breakup_strength": 0.5,
 				"radius_scale": 2.0,
-				"overbright": 0.75
+				"overbright": 0.75,
+				"color_scale": [
+					207.0,
+					207.0,
+					207.0
+				]
 			}
 		],
 		"kind": "sprite",
@@ -15809,7 +16343,12 @@ const LAYERS := {
 		"breakup_channels": "SPRITECARD_TEXTURE_CHANNEL_MIX_RGB",
 		"breakup_strength": 0.5,
 		"radius_scale": 2.0,
-		"overbright": 0.75
+		"overbright": 0.75,
+		"color_scale": [
+			207.0,
+			207.0,
+			207.0
+		]
 	},
 	"impact_plaster_flash": {
 		"count": [
@@ -15863,13 +16402,17 @@ const LAYERS := {
 				"blend": "add",
 				"tex": "materials/sprites/light_glow02.vtex",
 				"overbright": 2.0,
-				"max_screen": 0.05
+				"max_screen": 0.05,
+				"min_screen": 0.001,
+				"render_alpha": 0.75
 			},
 			{
 				"kind": "sprite",
 				"blend": "add",
 				"tex": "materials/particle/flames/flame_omni.vtex",
-				"max_screen": 0.05
+				"max_screen": 0.05,
+				"min_screen": 0.001,
+				"render_alpha": 0.25
 			}
 		],
 		"kind": "sprite",
@@ -15907,7 +16450,9 @@ const LAYERS := {
 		"blend": "add",
 		"tex": "materials/sprites/light_glow02.vtex",
 		"overbright": 2.0,
-		"max_screen": 0.05
+		"max_screen": 0.05,
+		"min_screen": 0.001,
+		"render_alpha": 0.75
 	},
 	"impact_plaster_high": {
 		"count": [
@@ -16431,7 +16976,8 @@ const LAYERS := {
 				"kind": "sprite",
 				"blend": "add",
 				"tex": "materials/effects/yellowflare.vtex",
-				"overbright": 8.0
+				"overbright": 8.0,
+				"min_screen": 0.01
 			}
 		],
 		"kind": "sprite",
@@ -16477,7 +17023,8 @@ const LAYERS := {
 		"fade_out_end_alpha": 0.0,
 		"blend": "add",
 		"tex": "materials/effects/yellowflare.vtex",
-		"overbright": 8.0
+		"overbright": 8.0,
+		"min_screen": 0.01
 	},
 	"impact_tile": {
 		"count": [
@@ -17037,7 +17584,8 @@ const LAYERS := {
 			{
 				"kind": "sprite",
 				"blend": "alpha",
-				"tex": "materials/particle/particle_smokegrenade.vtex"
+				"tex": "materials/particle/particle_smokegrenade.vtex",
+				"render_alpha": 0.5
 			}
 		],
 		"kind": "sprite",
@@ -17089,7 +17637,8 @@ const LAYERS := {
 		],
 		"grow_ease": false,
 		"blend": "alpha",
-		"tex": "materials/particle/particle_smokegrenade.vtex"
+		"tex": "materials/particle/particle_smokegrenade.vtex",
+		"render_alpha": 0.5
 	},
 	"impact_wood_child_burn": {
 		"count": [
@@ -17263,7 +17812,8 @@ const LAYERS := {
 				"blend": "alpha",
 				"tex": "materials/particle/impact/fleks.vtex",
 				"radius_scale": 2.0,
-				"max_length": 512.0
+				"max_length": 512.0,
+				"render_alpha": 0.35
 			},
 			{
 				"kind": "sprite",
@@ -17309,7 +17859,8 @@ const LAYERS := {
 		"blend": "alpha",
 		"tex": "materials/particle/impact/fleks.vtex",
 		"radius_scale": 2.0,
-		"max_length": 512.0
+		"max_length": 512.0,
+		"render_alpha": 0.35
 	},
 	"impact_wood_child_chunks": {
 		"count": [
@@ -17471,7 +18022,12 @@ const LAYERS := {
 				"blend": "add",
 				"tex": "materials/particle/beam_hotwhite.vtex",
 				"overbright": 4.0,
-				"max_length": 64.0
+				"max_length": 64.0,
+				"color_scale": [
+					251.0,
+					251.0,
+					189.0
+				]
 			}
 		],
 		"kind": "trail",
@@ -17502,7 +18058,12 @@ const LAYERS := {
 		"blend": "add",
 		"tex": "materials/particle/beam_hotwhite.vtex",
 		"overbright": 4.0,
-		"max_length": 64.0
+		"max_length": 64.0,
+		"color_scale": [
+			251.0,
+			251.0,
+			189.0
+		]
 	},
 	"ricochet_sparks_contrast_glow_soft": {
 		"count": [
@@ -17862,7 +18423,11 @@ const LAYERS := {
 					7.0,
 					12.0
 				],
-				"overbright": 4.0
+				"overbright": 4.0,
+				"render_alpha": [
+					0.1,
+					0.15
+				]
 			}
 		],
 		"kind": "sprite",

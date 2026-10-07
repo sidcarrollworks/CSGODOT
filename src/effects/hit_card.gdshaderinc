@@ -60,7 +60,8 @@ void fragment() {
 		texel = max(mix(texel, composed, gradient_strength), vec4(0.0));
 	}
 	// A continuous coverage remap, not opaque alpha-test/depth writes.
-	float alpha = clamp((texel.a - frames.w) / max(1.0 - frames.w, 0.00001), 0.0, 1.0) * COLOR.a;
+	// Held to one: a renderer's alpha scale may pass it (burst_2's is 2).
+	float alpha = clamp(clamp((texel.a - frames.w) / max(1.0 - frames.w, 0.00001), 0.0, 1.0) * COLOR.a, 0.0, 1.0);
 	vec3 tint = texel.rgb * COLOR.rgb;
 #ifdef PREMULTIPLY_HIT_COLOR
 	tint *= alpha;
