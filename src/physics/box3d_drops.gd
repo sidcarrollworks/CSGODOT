@@ -311,9 +311,12 @@ func _on_removed(entity: SimEntity) -> void:
 ## the space before the next wall/person, and the surviving damage share
 ## after a penetrated wall. Bullets retain their existing pass-through
 ## behavior on drops; only guns receive impulses, once per hull per segment.
-func push_bullet_segment(from: Vector3, to: Vector3, kept: float, data: WeaponData, shot_origin: Vector3) -> void:
+## Where it met each gun it pushed, {at, normal} in units, for whoever draws
+## the sparks there (Hitscan.Result.items).
+func push_bullet_segment(from: Vector3, to: Vector3, kept: float, data: WeaponData, shot_origin: Vector3) -> Array[Dictionary]:
+	var met: Array[Dictionary] = []
 	if not initialized or _bodies.is_empty() or kept <= 0.0 or from.is_equal_approx(to):
-		return
+		return met
 	bullet_queries += 1
 	# Box3D filters both directions. Drops are on ITEM_LAYER and accept the
 	# world layer, so the query must carry WORLD_LAYER as its own category.
@@ -336,6 +339,7 @@ func push_bullet_segment(from: Vector3, to: Vector3, kept: float, data: WeaponDa
 		var damage := data.damage_at(distance) * kept
 		if damage <= 0.0:
 			continue
+		met.append({"at": at / METRES_PER_UNIT, "normal": (hit.get("normal", -direction) as Vector3).normalized()})
 		# Impulse (not force) is independent of tick duration. The native API
 		# takes kg*m/s and an absolute world-space point in metres; applying it
 		# off-centre adds torque and wakes the body. Each pellet adds to the
@@ -348,6 +352,7 @@ func push_bullet_segment(from: Vector3, to: Vector3, kept: float, data: WeaponDa
 			item.resting = false
 			item.rested_usec = -1
 			item.motion_started.emit()
+	return met
 
 
 ## A standing player's shot otherwise drives a settled gun into its floor,

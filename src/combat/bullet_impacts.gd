@@ -132,6 +132,9 @@ func mark(result: Hitscan.Result, direction := Vector3.ZERO, at_usec: int = 0) -
 	for wall in result.walls:
 		_queue_contact(wall.surface, wall.entry, wall.entry_normal, direction, at_usec, true)
 		_queue_contact(wall.exit_surface, wall.exit, wall.exit_normal, direction, at_usec, false)
+	for item in result.items:
+		if _pending.size() < MAX_PENDING:
+			_pending.append({"spark": true, "at": item["at"], "normal": item["normal"], "direction": direction, "at_usec": at_usec})
 	if not result.hit or result.hitbox != null or result.surface.contains("sky"):
 		return
 	_queue_contact(result.surface, result.position, result.normal, direction, at_usec, true)
@@ -163,6 +166,10 @@ func _process(delta: float) -> void:
 	var effects := get_tree().get_first_node_in_group(&"hit_effects")
 	var camera := get_viewport().get_camera_3d()
 	for contact: Dictionary in _pending:
+		if contact.has("spark"):
+			if effects != null and effects.has_method(&"queue_spark"):
+				effects.call(&"queue_spark", contact["at"], contact["normal"], contact["direction"], contact["at_usec"])
+			continue
 		var sound_surface := surface_for(contact["surface"])
 		if contact["sound"]:
 			_sound(sound_surface, contact["at"])
@@ -308,7 +315,7 @@ func _hole(surface: String, at: Vector3, normal: Vector3, direction := Vector3.Z
 	elif _hole_nodes.size() < max_holes:
 		decal = Decal.new()
 		# Everything but the people (RigModel.LAYER).
-		decal.cull_mask = 0xFFFFF & ~RigModel.LAYER
+		decal.cull_mask = 0xFFFFF & ~(RigModel.LAYER | DroppedItemView.LAYER)
 		decal.albedo_mix = 1.0
 		# Full strength through the whole depth: the surface can be anywhere
 		# in it.

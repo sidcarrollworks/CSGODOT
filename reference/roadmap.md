@@ -544,6 +544,23 @@ request.
 | 8 | The jump a hair off; the landing bounce too much | **Done** (fix/jump-cs2-2026-10-06): the crouch jump's 9-unit lift, CS2's duck root and view offsets, the full impulse when ducked, the post-landing scale with bots' jumps spaced by CS2's gates, the landing bounce halved (Sid) | The crouch-jump camera beside CS2 |
 | 10 | Less performant | `research/tick-audit-cs2-2026-10-05.md`: the terrain sampler native **done** (2026-10-06, the seeded match's tick 2.58 to 2.24 ms headless); the death ragdoll off the tick next | Sid's run after each step |
 
+### Playtest of 2026-10-06 (dust2 competitive)
+
+Sid played main at `d73aaf7` three times, the last under the frame
+watcher. `reference/playtest-2026-10-06.md` has each issue's cause
+(verified or inferred) and plan. Mark an issue done here and on the page
+in the same pull request.
+
+| # | Issue | Remote | Local |
+|---|---|---|---|
+| 1, 2 | Bullet holes on a dropped gun; no spark where it is shot | **Done** (fix/decals-and-sparks-on-dropped-items): what lies on the ground drawn on its own layer, which holes and blood skip; the helmet's spark where a round goes through a dropped gun | Shoot a dropped gun beside CS2 |
+| 3 | Flickering near-white squares | F11 steps for MSAA and glow, a roughness floor, alpha-to-coverage | Capture where they show |
+| 4 | Tearing and choppiness | Delta smoothing off, fewer swapchain images, measured | G-Sync indicator; feel |
+| 5 | About 90 fps while shooting | Time the frame's views while firing, fix the largest | Sid's run after |
+| 6 | The viewmodel floats while running | The bob tied to the steps, CS2's numbers once read | Ghidra read of client.dll; side-by-side capture |
+| 7 | No sound on buying a grenade | A purchase view: `buymenu_purchase`, armour, refusals | Extract the files |
+| 8 | Bots hold B facing back and never turn | Face the approach, sweep, turn when shot, then hearing | A logged replay of the B CTs |
+
 ### Phase 1: make being shot feel like CS2
 
 Items 1 to 4 landed in PR #27. Third-person firing, current extracted blood,

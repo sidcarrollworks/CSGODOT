@@ -121,6 +121,13 @@ func queue_world(surface: String, at: Vector3, normal: Vector3, direction: Vecto
 			"incoming": direction, "born": at_usec, "world": true})
 
 
+## A round through a gun on the ground: sparks where it met it, the helmet's
+## as an armoured head's (Sid, 2026-10-06), outward along its surface.
+func queue_spark(at: Vector3, normal: Vector3, direction: Vector3, at_usec: int) -> void:
+	_append({"effect": HELMET, "at": at, "normal": normal, "direction": direction,
+		"born": at_usec, "world": true})
+
+
 func _process(_dt: float) -> void:
 	var measured := Time.get_ticks_usec() if profile else 0
 	if profile:
@@ -259,7 +266,7 @@ func splat(at: Vector3, normal: Vector3, params: Dictionary) -> Decal:
 	decal.size = Vector3(half * 2.0, maxf(float(params.get("depth", material.depth)), 1.0), height)
 	decal.texture_albedo = material.color
 	decal.texture_normal = material.normal
-	decal.cull_mask = 0xFFFFF & ~RigModel.LAYER
+	decal.cull_mask = 0xFFFFF & ~(RigModel.LAYER | DroppedItemView.LAYER)
 	decal.albedo_mix = 1.0
 	var direction := normal.normalized()
 	var basis := Basis.looking_at(-direction, Vector3.RIGHT if absf(direction.y) > 0.99 else Vector3.UP)

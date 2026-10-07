@@ -279,6 +279,7 @@ func _grenade_model(weapon_class: String) -> Node3D:
 		material.albedo_color = COLOURS.get(weapon_class, Color.GRAY)
 		mesh.material_override = material
 		model = mesh
+	DroppedItemView.on_layer(model)
 	add_child(model)
 	return model
 

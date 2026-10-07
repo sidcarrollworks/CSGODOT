@@ -51,6 +51,9 @@ class Result:
 	var kept: float = 1.0
 	## What the round did to whoever it hit (fire_as), or null.
 	var damage_info: DamageInfo
+	## Where it went through things lying on the ground that it pushed
+	## (Box3DDrops.push_bullet_segment): {at, normal}, in the order met.
+	var items: Array[Dictionary] = []
 
 	## Whether it met anything: something it stopped at, or a wall it went
 	## through on its way into nothing.
@@ -92,7 +95,10 @@ static func trace(
 		# up to this wall/person, then beyond its exit if penetration succeeds.
 		# Plain trace callers leave this callback empty.
 		if on_free_segment.is_valid():
-			on_free_segment.call(from, collision.get("position", end), result.kept)
+			var met: Variant = on_free_segment.call(from, collision.get("position", end), result.kept)
+			if met is Array:
+				for item: Dictionary in met:
+					result.items.append(item)
 		if collision.is_empty():
 			return result
 
