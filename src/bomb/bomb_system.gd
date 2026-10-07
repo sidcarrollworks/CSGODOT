@@ -48,6 +48,12 @@ func attach(game: GameSystems) -> void:
 	game.events.listen(&"round_prestart", _on_round_prestart)
 	game.events.listen(&"round_start", _on_round_start)
 	game.events.listen(&"round_freeze_end", func(_e: GameEvent) -> void: live = true)
+	game.events.listen(&"round_end", func(_e: GameEvent) -> void: live = false)
+	# Since October 2025 a planted bomb no longer goes off once the match is
+	# over or between the halves (CPlantedC4's
+	# m_bAbortDetonationBecauseWorldIsFrozen; round-bomb-grenades.md 1.4).
+	game.events.listen(&"cs_win_panel_match", _abort_detonation)
+	game.events.listen(&"start_halftime", _abort_detonation)
 	game.on_command(&"drop", _on_drop)
 	# Whether a player is planting or defusing, for whatever runs the
 	# player to hold them still (the contract's holds_still query).
@@ -236,6 +242,20 @@ func _on_round_prestart(_event: GameEvent) -> void:
 	if _game != null:
 		for userid in _game.roster.ids():
 			_take_from(userid)
+
+
+## The match is over, or the half: a bomb still counting is taken out of
+## play, so it neither goes off on the end screen (killing the frozen
+## players into the final scoreboard) nor counts its last ten seconds over
+## the match's end music. A bomb carried or on the ground is left as it is.
+## CS2 sets its flag when the world freezes, which at half time may be some
+## seconds after the round ends; the match here has no frozen half time of
+## its own, so it is done as start_halftime is sent, at the round's end.
+func _abort_detonation(_event: GameEvent) -> void:
+	if bomb.state != C4.State.PLANTED:
+		return
+	_forget_entity()
+	bomb.reset()
 
 
 ## CS2 gives the bomb to one terrorist at random at each round's start:
