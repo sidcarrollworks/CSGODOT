@@ -411,6 +411,21 @@ func _test_native_draw() -> void:
 	host.add_child(quads)
 	var models := HitModels.new()
 	host.add_child(models)
+	# CI has no extracted textures, and a batch is made only for a sheet: a
+	# one-texel sheet stands in for each missing one, so the cards are still
+	# drawn both ways and held to each other there, on single frames (the
+	# real sheets' frames are held where they are extracted).
+	var stand_ins := 0
+	for layer: Dictionary in HitEffectTable.LAYERS.values():
+		for renderer: Dictionary in layer.get("renderers", []):
+			for key: String in ["tex", "tex_mv"]:
+				var path := String(renderer.get(key, ""))
+				if path.is_empty() or SpriteSheet.named(path) != null:
+					continue
+				var sheet := SpriteSheet.new()
+				sheet.texture = ImageTexture.create_from_image(Image.create_empty(1, 1, false, Image.FORMAT_RGBA8))
+				SpriteSheet._loaded[path] = sheet
+				stand_ins += 1
 	for layer: Dictionary in HitEffectTable.LAYERS.values():
 		for renderer: Dictionary in layer.get("renderers", []):
 			quads.prepare(renderer)
@@ -435,5 +450,5 @@ func _test_native_draw() -> void:
 				runner.draw(quads, models, eye, now)
 				cards += quads.cards()
 	_check(HitParticles.draws_checked - checked >= HitEffectTable.ROOTS.size() * 15 and cards > 0,
-		"every root, on a body and on a wall, drawn by the native code and by the script alike (%d draws, %d cards)" % [HitParticles.draws_checked - checked, cards])
+		"every root, on a body and on a wall, drawn by the native code and by the script alike (%d draws, %d cards, %d sheets stood in)" % [HitParticles.draws_checked - checked, cards, stand_ins])
 	host.free()
