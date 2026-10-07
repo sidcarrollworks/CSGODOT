@@ -232,6 +232,7 @@ func _build_body() -> Node3D:
 			var laid := Node3D.new()
 			laid.add_child(model)
 			model.transform = DroppedItemView.lying(laid) * model.transform
+			DroppedItemView.on_layer(laid)
 			return laid
 	var box := MeshInstance3D.new()
 	var mesh := BoxMesh.new()
@@ -243,5 +244,6 @@ func _build_body() -> Node3D:
 	box.material_override = paint
 	var holder := Node3D.new()
 	holder.add_child(box)
+	DroppedItemView.on_layer(holder)
 	return holder
 

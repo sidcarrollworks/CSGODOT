@@ -16,6 +16,12 @@ extends Node3D
 ## drawn by the bone its hull is bound to, so a clip that moves the root
 ## bone does not move the gun off its body.
 
+## The render layer of what lies or flies in the world and is not the world
+## (an item on the ground, the bomb, a grenade): the bullet holes and the
+## blood a round leaves on the world are not painted on it (BulletImpacts,
+## HitEffects), as CS2 paints them on the world alone.
+const LAYER := 1 << 18
+
 ## The stand-in's size, in units, where there is no model: longest along
 ## its +Z, as a gun is. The stand-in's body is the same box
 ## (ItemPhysics.STAND_IN).
@@ -243,7 +249,16 @@ func _model_for(entry: Inventory.Entry) -> Node3D:
 		box.material_override = paint
 		model = Node3D.new()
 		model.add_child(box)
+	on_layer(model)
 	return model
+
+
+## Every mesh under model drawn on LAYER.
+static func on_layer(model: Node) -> void:
+	for mesh: Node in model.find_children("*", "MeshInstance3D", true, false):
+		(mesh as MeshInstance3D).layers = LAYER
+	if model is MeshInstance3D:
+		(model as MeshInstance3D).layers = LAYER
 
 
 ## How a model lies on the ground: turned so its thinnest side is down, and

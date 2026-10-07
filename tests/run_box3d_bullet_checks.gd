@@ -73,11 +73,14 @@ func _check_impulses_and_filters() -> void:
 	var data := _data()
 	var shot := _shot()
 	var item := _put(test, "weapon_ak47", GUN_AT)
-	Hitscan.trace(test.space(), shot, data)
-	_check(item.resting and item.velocity.is_zero_approx(), "plain tracing remains read-only with a native gun in its path")
-	_fire(test, _shot(ORIGIN + Vector3.RIGHT * 10.0), data)
-	_check(item.resting and item.velocity.is_zero_approx(), "a shot that misses the hull does not wake or push it")
+	var plain := Hitscan.trace(test.space(), shot, data)
+	_check(item.resting and item.velocity.is_zero_approx() and plain.items.is_empty(), "plain tracing remains read-only with a native gun in its path")
+	var missed := _fire(test, _shot(ORIGIN + Vector3.RIGHT * 10.0), data)
+	_check(item.resting and item.velocity.is_zero_approx() and missed.items.is_empty(), "a shot that misses the hull does not wake or push it, nor spark")
 	var result := _fire(test, shot, data)
+	_check(result.items.size() == 1 and (result.items[0]["at"] as Vector3).distance_to(GUN_AT) < 16.0
+		and (result.items[0]["normal"] as Vector3).is_normalized(),
+		"the round reports where it went through the gun, for its sparks (%s)" % [result.items])
 	var single := item.velocity
 	var body := test.adapter.body_for(item.id)
 	var momentum := (body.call(&"get_linear_velocity") as Vector3).length() * float(body.call(&"get_mass")) / SCALE

@@ -206,6 +206,7 @@ func _test_ground_and_pool() -> void:
 		_check(absf(decal.global_position.y) < 1, "projection lies on floor")
 		_check_equal(decal.size.x, 70.0, "particle radius sets projected diameter")
 		_check(decal.cull_mask & RigModel.LAYER == 0, "world blood never projects onto character layer")
+		_check(decal.cull_mask & DroppedItemView.LAYER == 0, "nor onto what lies on the ground")
 		view._fade_splats(1100000)
 		_check(decal.modulate.a > 0 and decal.modulate.a < 1, "authored fade-in")
 		view._fade_splats(20000000)
@@ -213,6 +214,11 @@ func _test_ground_and_pool() -> void:
 		view._fade_splats(22000000)
 		_check(not decal.visible, "child expires by its own lifetime")
 		var params := ground.duplicate()
+		view.queue_spark(Vector3(1, 2, 3), Vector3.UP, Vector3.FORWARD, 777)
+		var spark: Dictionary = view._pending[view._pending.size() - 1]
+		_check(spark.effect == HitEffects.HELMET and spark.world and spark.normal == Vector3.UP and spark.born == 777,
+			"a round through a dropped gun sparks as a helmet does, at the spot, outward")
+		view._pending.pop_back()
 		params.material = HitEffectTable.GROUND[ground.effect].material
 		view.splat(Vector3(20,0,0),Vector3.UP,params)
 		var reused := view.splat(Vector3(40,0,0),Vector3.UP,params)

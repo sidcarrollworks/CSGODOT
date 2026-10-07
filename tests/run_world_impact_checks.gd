@@ -5,9 +5,13 @@ extends "res://tests/check_suite.gd"
 
 class Particles extends Node:
 	var contacts: Array[Dictionary] = []
+	var sparks: Array[Dictionary] = []
 
 	func queue_world(surface: String, position: Vector3, normal: Vector3, direction: Vector3, at_usec: int) -> void:
 		contacts.append({"surface": surface, "position": position, "normal": normal, "direction": direction, "at_usec": at_usec})
+
+	func queue_spark(position: Vector3, normal: Vector3, direction: Vector3, at_usec: int) -> void:
+		sparks.append({"position": position, "normal": normal, "direction": direction, "at_usec": at_usec})
 
 
 class FixtureImpacts extends BulletImpacts:
@@ -114,6 +118,15 @@ func _test_delivery() -> void:
 	wall.entry = Vector3(1000.0, 0.0, 0.0)
 	impacts._process(0.0)
 	_check_equal(impacts.holes, 3, "entry, exit and the stopped bullet create their three frame-delivered marks")
+	_check(particles.sparks.is_empty(), "a round that went through nothing on the ground makes no sparks")
+	var through := Hitscan.Result.new()
+	through.items.append({"at": Vector3(2.0, 1.0, -8.0), "normal": Vector3.UP})
+	impacts.mark(through, Vector3.FORWARD, 654_321)
+	_check(particles.sparks.is_empty() and impacts.holes == 3, "a round through a dropped gun reports no hole, and sparks only on a frame")
+	impacts._process(0.0)
+	_check(particles.sparks.size() == 1 and particles.sparks[0]["position"] == Vector3(2.0, 1.0, -8.0)
+		and particles.sparks[0]["normal"] == Vector3.UP and particles.sparks[0]["at_usec"] == 654_321 and impacts.holes == 3,
+		"where it went through a dropped gun, sparks at that spot with the shot's time, and no hole")
 	_check_equal(impacts._hole_nodes.size(), 2, "three marks reuse a bounded two-decal pool")
 	_check_equal(impacts.sounds.size(), 2, "penetration keeps the existing entry/stop sounds without adding an exit sound")
 	_check_equal(particles.contacts.size(), 3, "each world contact queues its authored particle request")
@@ -123,6 +136,7 @@ func _test_delivery() -> void:
 	var decal := impacts._hole_nodes[1]
 	_check(decal.global_basis.y.dot(Vector3.FORWARD) > 0.99, "the penetration exit projects into the exit face")
 	_check((decal.cull_mask & RigModel.LAYER) == 0, "world marks cannot stamp onto player models")
+	_check((decal.cull_mask & DroppedItemView.LAYER) == 0, "nor onto a gun, the bomb or a grenade lying on the world")
 	impacts._process(31.5)
 	_check_near(decal.modulate.a, 0.5, "a reused decal receives the persistent fade")
 	impacts._process(1.5)
