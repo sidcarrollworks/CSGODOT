@@ -25,6 +25,7 @@ func _initialize() -> void:
 	_test_hit_mist_origins()
 	_test_authored_child_choice()
 	_test_prepared_evaluation()
+	_test_native_draw()
 	_finish("hit-particles")
 
 
@@ -315,3 +316,45 @@ func _test_prepared_evaluation() -> void:
 			for key in ["half", "alpha", "roll", "trail", "frame"]:
 				same = same and absf(runner.attribute(p,key,age,p[key])-runner.attribute(plain,key,age,plain[key])) < 1e-5
 	_check(same, "prepared growth/fade/drag/attribute caches preserve unprepared evaluation across current blood and impact particles")
+
+
+## Every authored root, on a body and on a wall, drawn into the game's own
+## batches at several ages and from several eyes: where the native code is
+## built, each draw is made by it and by the script, and the cards held to
+## the same (check_suite fails the file on a difference).
+func _test_native_draw() -> void:
+	if not PlayerBody.native_built():
+		print("The native particle draw needs the native library (scripts/build_native.sh, .ps1).")
+		return
+	var host := Node3D.new()
+	root.add_child(host)
+	var quads := HitQuads.new()
+	host.add_child(quads)
+	var models := HitModels.new()
+	host.add_child(models)
+	for layer: Dictionary in HitEffectTable.LAYERS.values():
+		for renderer: Dictionary in layer.get("renderers", []):
+			quads.prepare(renderer)
+			if String(renderer.get("kind", "")) == "model":
+				models.prepare(renderer)
+	var runner := HitParticles.new()
+	var checked := HitParticles.draws_checked
+	var eyes: Array[Transform3D] = [
+		Transform3D(Basis.IDENTITY, Vector3(0, 0, 256)),
+		Transform3D(Basis.IDENTITY, Vector3(40, 30, 900)).looking_at(Vector3.ZERO),
+		Transform3D(Basis.IDENTITY, Vector3(-30, 8, 60)).looking_at(Vector3(10, 0, 0)),
+	]
+	var cards := 0
+	for name: String in HitEffectTable.ROOTS:
+		runner.live.clear()
+		runner.spawn(name, Vector3.ZERO, Vector3.RIGHT, 1000000, eyes[0].origin, 30.0)
+		runner.spawn(name, Vector3(64, 0, 0), Vector3.UP, 1004000, eyes[0].origin, 30.0, false, true)
+		for now: int in [1000000, 1016000, 1040000, 1200000, 1600000]:
+			for eye in eyes:
+				quads.begin()
+				models.begin()
+				runner.draw(quads, models, eye, now)
+				cards += quads.cards()
+	_check(HitParticles.draws_checked - checked >= HitEffectTable.ROOTS.size() * 15 and cards > 0,
+		"every root, on a body and on a wall, drawn by the native code and by the script alike (%d draws, %d cards)" % [HitParticles.draws_checked - checked, cards])
+	host.free()

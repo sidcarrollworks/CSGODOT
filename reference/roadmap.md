@@ -556,7 +556,7 @@ in the same pull request.
 | 1, 2 | Bullet holes on a dropped gun; no spark where it is shot | **Done** (fix/decals-and-sparks-on-dropped-items): what lies on the ground drawn on its own layer, which holes and blood skip; the helmet's spark where a round goes through a dropped gun | Shoot a dropped gun beside CS2 |
 | 3 | Flickering near-white squares | F11 steps for MSAA and glow, a roughness floor, alpha-to-coverage | Capture where they show |
 | 4 | Tearing and choppiness | Delta smoothing off, fewer swapchain images, measured | G-Sync indicator; feel |
-| 5 | About 90 fps while shooting | Time the frame's views while firing, fix the largest | Sid's run after |
+| 5 | About 90 fps while shooting | **Done** (perf/shooting-frames-2026-10-07): the hit particles' draw native, 20 to 40 times faster | Sid's run after |
 | 6 | The viewmodel floats while running | The bob tied to the steps, CS2's numbers once read | Ghidra read of client.dll; side-by-side capture |
 | 7 | No sound on buying a grenade | A purchase view: `buymenu_purchase`, armour, refusals | Extract the files |
 | 8 | Bots hold B facing back and never turn | Face the approach, sweep, turn when shot, then hearing | A logged replay of the B CTs |

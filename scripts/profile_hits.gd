@@ -5,6 +5,8 @@ extends SceneTree
 ## damage snapshots exercise draw-time effects without killing/moving the
 ## dummy. This is effects overhead, not a competitive-match FPS benchmark.
 ## godot --path . --script scripts/profile_hits.gd -- 1920x1080
+## --script-particles after the size has the script draw the particles
+## where the native code would (HitParticles.native_draws): its A/B.
 const PHASES := [0.0, 8.0, 32.0, 0.0]
 const SECONDS := 7.0
 const WARMUP := 2.0
