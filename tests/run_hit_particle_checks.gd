@@ -19,6 +19,7 @@ func _initialize() -> void:
 	_test_authored_draw()
 	_test_mist_tuning()
 	_test_actual_renderers()
+	_test_renderer_colour_and_size()
 	_test_velocity_and_model_axes()
 	_test_world_ejection()
 	_test_puff_contact_origin()
@@ -175,6 +176,82 @@ func _test_actual_renderers() -> void:
 	for card in quads.drawn:
 		valid = valid and is_finite(card.frame) and is_finite(card.threshold) and is_finite(card.color.a) and card.xform.is_finite()
 	_check(valid, "all authored renderer inputs produce finite frame, threshold, alpha and transforms")
+	var turned := true
+	for xform in models.transforms:
+		turned = turned and xform.basis.determinant() > 0.0
+	_check(turned, "every impact mesh is drawn through a turn, never a mirror image that would light it inside out")
+	quads.free()
+	models.free()
+
+
+## Sid's flickering squares (2026-10-07): the light flash's halo was drawn
+## white from a texture CS2 switches off, and the darken sprite white at its
+## world size. Each renderer now has CS2's colour, alpha and screen limits.
+func _test_renderer_colour_and_size() -> void:
+	var runner := HitParticles.new()
+	var quads := Cards.new()
+	var models := Models.new()
+	var height_at_unit := 2.0 * tan(deg_to_rad(90.0) * 0.5)
+	var near := Transform3D(Basis.IDENTITY, Vector3(0, 0, 20))
+	runner.spawn("impact_light_flash", Vector3.ZERO, Vector3.BACK, 1000000, near.origin, 30.0, false, true)
+	runner.draw(quads, models, near, 1010000)
+	var halo := {}
+	var flash := {}
+	for card: Dictionary in quads.drawn:
+		var texture := String(card.renderer.get("tex", ""))
+		if texture.ends_with("particle_glow_04.vtex"):
+			halo = card
+		elif texture.ends_with("ash_flecks.vtex"):
+			flash = card
+	_check(not halo.is_empty() and halo.color.r == 0.0 and halo.color.g == 0.0 and halo.color.a > 0.0 and halo.color.a <= 0.4 + 1e-6,
+		"the light flash's halo is CS2's glow drawn black at 40%, not its switched-off flecks drawn white")
+	_check(not flash.is_empty() and flash.color.r > flash.color.b,
+		"the flash itself keeps its warm 231/205/182 colour")
+	if not halo.is_empty() and not flash.is_empty():
+		var halo_screen: float = near.origin.distance_to(halo.xform.origin) * height_at_unit
+		var flash_screen: float = near.origin.distance_to(flash.xform.origin) * height_at_unit
+		_check(flash.xform.basis.x.length() <= 0.02 * flash_screen * 1.0001,
+			"twenty units from the wall the flash is held to 2% of the screen's height")
+		_check(halo.xform.basis.x.length() >= 0.012 * halo_screen * 0.9999 and halo.xform.basis.x.length() <= 0.03 * halo_screen * 1.0001,
+			"and its halo between 1.2% and 3%")
+	runner.live.clear()
+	quads.drawn.clear()
+	runner.spawn("impact_fx_hit_darken", Vector3.ZERO, Vector3.BACK, 1000000, Vector3(0, 0, 40), 30.0, false, true)
+	var sprites := 0
+	for p in runner.live:
+		if p.name == "impact_fx_hit_darken":
+			sprites += 1
+			_check_near(p.alpha, 0.0, "nearer than about 76 units the darken sprite's distance curve leaves it no alpha")
+	_check(sprites > 0, "the darken root spawns its sprite")
+	runner.live.clear()
+	var middle := Transform3D(Basis.IDENTITY, Vector3(0, 0, 300))
+	runner.spawn("impact_fx_hit_darken", Vector3.ZERO, Vector3.BACK, 1000000, middle.origin, 30.0, false, true)
+	runner.draw(quads, models, middle, 1010000)
+	var dark := {}
+	for card: Dictionary in quads.drawn:
+		if String(card.renderer.get("tex", "")).ends_with("aircraft_hot.vtex"):
+			dark = card
+	_check(not dark.is_empty() and dark.color.a > 0.0 and dark.color.r < 0.02,
+		"at 300 units the darken sprite is drawn, dark (33/27/27), where it was white")
+	if not dark.is_empty():
+		var screen: float = middle.origin.distance_to(dark.xform.origin) * height_at_unit
+		_check(dark.xform.basis.x.length() >= 0.005 * screen * 0.9999 and dark.xform.basis.x.length() <= 0.008 * screen * 1.0001,
+			"and it is a dot between 0.5% and 0.8% of the screen's height")
+	# Concrete's chips run from 105/105/105 to 215/230/234 by one blend, not
+	# a draw a channel (which made them green, purple and red).
+	runner.live.clear()
+	for shot in 12:
+		runner.spawn("impact_concrete", Vector3.ZERO, Vector3.BACK, 1000000 + shot, Vector3(0, 0, 60), 30.0, false, true)
+	var chips := 0
+	var blended := true
+	for p in runner.live:
+		if p.name != "impact_concrete":
+			continue
+		chips += 1
+		var srgb: Color = (p.color as Color).linear_to_srgb()
+		var t := (srgb.r * 255.0 - 105.0) / 110.0
+		blended = blended and t > -0.01 and t < 1.01 and absf(srgb.g * 255.0 - (105.0 + t * 125.0)) < 1.0 and absf(srgb.b * 255.0 - (105.0 + t * 129.0)) < 1.0
+	_check(chips > 0 and blended, "concrete's chips take one blend of their two colours")
 	quads.free()
 	models.free()
 
@@ -195,7 +272,9 @@ func _test_velocity_and_model_axes() -> void:
 	_check(absf(puff.x.dot(normal)) < 1e-6 and absf(puff.z.dot(normal)) < 1e-6, "puff native X/Z span the wall plane")
 	_check(HitParticles.model_basis(impact, true, 1.25).y.is_equal_approx(normal), "puff roll stays around the extrusion axis")
 	var fleck := HitParticles.model_basis(impact, false, 0.0)
-	_check(fleck.x.is_equal_approx(impact.y) and fleck.y.is_equal_approx(impact.z) and fleck.z.is_equal_approx(impact.x), "unoriented models reverse the verified Source-to-glTF axis permutation")
+	_check(fleck.x.is_equal_approx(impact.y) and fleck.y.is_equal_approx(-impact.z) and fleck.z.is_equal_approx(impact.x), "unoriented models reverse the verified Source-to-glTF axis permutation, through the impact frame made a turn")
+	_check(impact.determinant() < 0.0 and puff.determinant() > 0.0 and fleck.determinant() > 0.0 and HitParticles.model_basis(impact, true, 1.25).determinant() > 0.0,
+		"the impact frame is a mirror image; the meshes drawn through it are turned, not mirrored")
 	_check(HitParticles.normal_offset_world(Vector3(0,0,10), impact).is_equal_approx(normal * 10), "normal-offset +Z displaces puff outward along the surface normal")
 	_check(absf(HitParticles.normal_offset_world(Vector3(1,1,0), impact).dot(normal)) < 1e-6, "normal-offset X/Y remain in the surface plane")
 
@@ -332,6 +411,21 @@ func _test_native_draw() -> void:
 	host.add_child(quads)
 	var models := HitModels.new()
 	host.add_child(models)
+	# CI has no extracted textures, and a batch is made only for a sheet: a
+	# one-texel sheet stands in for each missing one, so the cards are still
+	# drawn both ways and held to each other there, on single frames (the
+	# real sheets' frames are held where they are extracted).
+	var stand_ins := 0
+	for layer: Dictionary in HitEffectTable.LAYERS.values():
+		for renderer: Dictionary in layer.get("renderers", []):
+			for key: String in ["tex", "tex_mv"]:
+				var path := String(renderer.get(key, ""))
+				if path.is_empty() or SpriteSheet.named(path) != null:
+					continue
+				var sheet := SpriteSheet.new()
+				sheet.texture = ImageTexture.create_from_image(Image.create_empty(1, 1, false, Image.FORMAT_RGBA8))
+				SpriteSheet._loaded[path] = sheet
+				stand_ins += 1
 	for layer: Dictionary in HitEffectTable.LAYERS.values():
 		for renderer: Dictionary in layer.get("renderers", []):
 			quads.prepare(renderer)
@@ -356,5 +450,5 @@ func _test_native_draw() -> void:
 				runner.draw(quads, models, eye, now)
 				cards += quads.cards()
 	_check(HitParticles.draws_checked - checked >= HitEffectTable.ROOTS.size() * 15 and cards > 0,
-		"every root, on a body and on a wall, drawn by the native code and by the script alike (%d draws, %d cards)" % [HitParticles.draws_checked - checked, cards])
+		"every root, on a body and on a wall, drawn by the native code and by the script alike (%d draws, %d cards, %d sheets stood in)" % [HitParticles.draws_checked - checked, cards, stand_ins])
 	host.free()

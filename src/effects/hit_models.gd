@@ -56,7 +56,12 @@ func prepare(renderer: Dictionary) -> void:
 				var material := StandardMaterial3D.new()
 				material.vertex_color_use_as_albedo = true
 				material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-				material.albedo_color = Color(0.55, 0.48, 0.4)
+				# flecks3's fleks_baked.vmat (csgo_simple) tints an atlas of
+				# stones, grey, terracotta and blue-grey, by the particle's
+				# colour. Until the atlas is extracted, its mean: 107/100/98,
+				# measured 2026-10-07 from the installed CS2's
+				# fleksbake_color_tga_f5323e1f.vtex.
+				material.albedo_color = Color8(107, 100, 98)
 				material.roughness = 1.0
 				batch.node.material_override = material
 			add_child(batch.node)

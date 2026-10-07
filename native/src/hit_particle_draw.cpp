@@ -64,7 +64,7 @@ inline Variant field(const Dictionary &p_dictionary, const char *p_key, const Va
 }
 
 const char *const ATTRIBUTE_NAMES[] = { "half", "alpha", "roll", "trail", "frame" };
-const char *const RENDER_NAMES[] = { "radius_scale", "overbright", "max_length", "frame_rate", "alpha_threshold" };
+const char *const RENDER_NAMES[] = { "radius_scale", "overbright", "max_length", "frame_rate", "alpha_threshold", "render_alpha", "min_screen", "max_screen" };
 
 // The record's fixed part (HitParticleDraw::build_record).
 enum Slot {
@@ -324,6 +324,7 @@ int HitParticleDraw::add_layer(const Dictionary &p_layer, const PackedInt32Array
 		renderer.kind = (kind == "projected" || kind == "light") ? KIND_SKIP : (kind == "model" ? KIND_MODEL : (kind == "trail" ? KIND_TRAIL : KIND_SPRITE));
 		renderer.target = i < p_targets.size() ? p_targets[i] : -1;
 		renderer.orient_z = (bool)field(source, "orient_z", false);
+		renderer.color_scale = field(source, "_color_scale", Color(1, 1, 1, 1));
 		const String animation = field(source, "animation_type", "ANIMATION_TYPE_FIXED_RATE");
 		renderer.animation = animation == "ANIMATION_TYPE_MANUAL_FRAMES" ? ANIM_MANUAL : (animation == "ANIMATION_TYPE_FIXED_RATE" ? ANIM_FIXED_RATE : ANIM_OTHER);
 		renderer.frame_rate = number(field(source, "frame_rate", 0.1), 0.1);
@@ -453,7 +454,7 @@ PackedFloat64Array HitParticleDraw::build_record(const Dictionary &p) {
 		r.push_back(has_output ? number(((Array)output)[0], 0.0) : 0.0);
 		r.push_back(has_output ? number(((Array)output)[1], 1.0) : 1.0);
 	}
-	// The render values sampled at the spawn, five a renderer; NaN where
+	// The render values sampled at the spawn, eight a renderer; NaN where
 	// the renderer's is a descriptor, worked out each frame.
 	const Array render_constants = field(p, "render_constants", Array());
 	r.push_back(render_constants.size());
@@ -835,7 +836,12 @@ Basis HitParticleDraw::impact_basis(const Vector3 &p_direction) {
 }
 
 Basis HitParticleDraw::model_basis(const Basis &p_impact, bool p_orient_z, double p_roll) {
-	const Basis frame = p_impact.rotated(p_impact.get_column(0), (real_t)p_roll);
+	Basis frame = p_impact.rotated(p_impact.get_column(0), (real_t)p_roll);
+	// impact_basis is a turn's mirror image: a mesh drawn through one is
+	// inside out and lit on its backs (HitParticles.model_basis).
+	if (frame.determinant() < 0) {
+		frame.set_column(2, -frame.get_column(2));
+	}
 	if (p_orient_z) {
 		return Basis(frame.get_column(1), frame.get_column(0), -frame.get_column(2));
 	}
@@ -938,8 +944,8 @@ void HitParticleDraw::draw(const Array &p_live, const Transform3D &p_eye, int64_
 			if (renderer.kind == KIND_SKIP) {
 				continue;
 			}
-			const double half = radius * render_value(renderer, r, R_RADIUS_SCALE, p, age);
-			double a = alpha;
+			double half = radius * render_value(renderer, r, R_RADIUS_SCALE, p, age);
+			double a = alpha * render_value(renderer, r, R_RENDER_ALPHA, p, age);
 			if (renderer.screen_fade) {
 				const double share = 2.0 * half / maxd((double)p_eye.origin.distance_to(centre) * p_height_at_unit, 1.0);
 				const double fade_start = scalar(renderer.screen_fade_start, p, age);
@@ -947,7 +953,8 @@ void HitParticleDraw::draw(const Array &p_live, const Transform3D &p_eye, int64_
 				a *= fade_end != fade_start ? clampd(Math::inverse_lerp(fade_end, fade_start, share), 0.0, 1.0) : (share <= fade_start ? 1.0 : 0.0);
 			}
 			const double bright = render_value(renderer, r, R_OVERBRIGHT, p, age);
-			const Color shade((float)(p.color_r * bright), (float)(p.color_g * bright), (float)(p.color_b * bright), (float)a);
+			const Color &tint = renderer.color_scale;
+			const Color shade((float)(p.color_r * bright * (double)tint.r), (float)(p.color_g * bright * (double)tint.g), (float)(p.color_b * bright * (double)tint.b), (float)a);
 			if (a <= 0.0 || half <= 0.0) {
 				continue;
 			}
@@ -979,6 +986,13 @@ void HitParticleDraw::draw(const Array &p_live, const Transform3D &p_eye, int64_
 				group.counts[variant]++;
 				continue;
 			}
+			// The card's size held between its renderer's shares of the
+			// screen's height (HitParticles._script_draw).
+			const double screen_half = (double)p_eye.origin.distance_to(centre) * p_height_at_unit * 0.5;
+			const double least = render_value(renderer, r, R_MIN_SCREEN, p, age) * screen_half;
+			const double most = render_value(renderer, r, R_MAX_SCREEN, p, age) * screen_half;
+			half = half > least ? half : least;
+			half = half < most ? half : most;
 			Transform3D xform;
 			if (renderer.kind == KIND_TRAIL) {
 				Vector3 tail = position(p, maxd(age - trail, 0.0));

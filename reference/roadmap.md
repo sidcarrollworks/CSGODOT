@@ -554,7 +554,7 @@ in the same pull request.
 | # | Issue | Remote | Local |
 |---|---|---|---|
 | 1, 2 | Bullet holes on a dropped gun; no spark where it is shot | **Done** (fix/decals-and-sparks-on-dropped-items): what lies on the ground drawn on its own layer, which holes and blood skip; the helmet's spark where a round goes through a dropped gun | Shoot a dropped gun beside CS2 |
-| 3 | Flickering near-white squares | F11 steps for MSAA and glow, a roughness floor, alpha-to-coverage | Capture where they show |
+| 3 | Flickering near-white squares | **Done** (fix/impact-artifacts-2026-10-07): the impact renderers' colours, alpha scales and screen limits from CS2's files, meshes turned not mirrored, the newest decal on top | Shoot walls and bots beside CS2 |
 | 4 | Tearing and choppiness | Delta smoothing off, fewer swapchain images, measured | G-Sync indicator; feel |
 | 5 | About 90 fps while shooting | **Done** (perf/shooting-frames-2026-10-07): the hit particles' draw native, 20 to 40 times faster | Sid's run after |
 | 6 | The viewmodel floats while running | The bob tied to the steps, CS2's numbers once read | Ghidra read of client.dll; side-by-side capture |

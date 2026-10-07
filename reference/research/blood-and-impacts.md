@@ -186,6 +186,14 @@ Blood keeps its separate local +X spray frame. This corrects dust rising
 along a wall instead of ejecting from it. Exact game-side CP orientation
 and ricochet frames remain inferred, rather than decompiled equivalence.
 
+The October 7 correction (`playtest-2026-10-06.md`, issue 3) reads each
+renderer's colour, alpha scale and minimum size from the definitions, drops
+textures a renderer switches off, and holds cards between their minimum and
+maximum screen sizes. It applies a layer's scaled initial alpha at the
+spawn, draws meshes through a turn rather than the impact frame's mirror
+image, and draws the puff unlit with its texture's alpha. A colour range is
+one blend between its two colours (inferred from the authored ranges).
+
 Explicit approximations, not measured current-CS2 equivalence:
 
 - Damage/root precedence, CP assignments and local-view positioning.
@@ -195,7 +203,10 @@ Explicit approximations, not measured current-CS2 equivalence:
   overlays and UV tiling/distortion are not all reproduced. Gradient
   REPLACE/MULTIPLY and MIX_RGB/MIX_RGBA controls are implemented, while
   other composition paths remain partial. The puff's color/mask and Fresnel
-  shader also approximate the shipped material's full shading.
+  shader also approximate the shipped material's full shading. Breakup
+  textures are not drawn at all, sprites are unlit where CS2 lights them
+  (`m_flDiffuseAmount`, `m_flSelfIllumAmount`), cards aligned to a particle's
+  normal face the camera, and flecks use their atlas's mean colour.
 - Motion vectors use the actual green/alpha channels and independent
   frame rectangles. Converting authored -8/-16 renderer overrides to
   pixels in atlas space is inferred; texture header displacement and

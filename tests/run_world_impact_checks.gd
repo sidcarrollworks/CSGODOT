@@ -118,6 +118,10 @@ func _test_delivery() -> void:
 	wall.entry = Vector3(1000.0, 0.0, 0.0)
 	impacts._process(0.0)
 	_check_equal(impacts.holes, 3, "entry, exit and the stopped bullet create their three frame-delivered marks")
+	var newest := impacts._hole_nodes[0] if impacts._hole_nodes[0].sorting_offset > impacts._hole_nodes[1].sorting_offset else impacts._hole_nodes[1]
+	var older := impacts._hole_nodes[1] if newest == impacts._hole_nodes[0] else impacts._hole_nodes[0]
+	_check(newest.sorting_offset - older.sorting_offset >= BulletImpacts.DECAL_ORDER_STEP and newest.sorting_offset >= BulletImpacts.DECAL_ORDER_STEP * 3,
+		"each new mark sorts above every one before it by more than the largest box, so overlapping holes keep their order as the camera moves")
 	_check(particles.sparks.is_empty(), "a round that went through nothing on the ground makes no sparks")
 	var through := Hitscan.Result.new()
 	through.items.append({"at": Vector3(2.0, 1.0, -8.0), "normal": Vector3.UP})

@@ -75,6 +75,16 @@ const MAX_PENDING := 512
 
 ## Holes at once.
 @export var max_holes: int = 96
+## Decals that overlap are drawn in an order of Godot's own, by their boxes'
+## size and distance from the camera, so which one is on top changes as the
+## camera moves (the Godot docs' "Decal rendering order"; Sid, 2026-10-07).
+## A sorting offset that grows with each new mark, by more than
+## the largest box that may overlap it (a blood splat's, about 100 units),
+## puts the newest on top whatever the camera does, as CS2 paints them:
+## holes and blood alike (next_decal_order). Float precision holds the steps
+## apart for a million marks, days of play.
+const DECAL_ORDER_STEP := 128.0
+static var _decal_order: int = 0
 ## Godot's 3D audio is set out in metres; the map is in inches.
 const METRE := 39.37
 ## Quiet, and quick to fade with distance: the hit is a tick under the
@@ -178,6 +188,12 @@ func _process(delta: float) -> void:
 		if effects != null and effects.has_method(&"queue_world"):
 			effects.call(&"queue_world", surface_name(contact["surface"]), contact["at"], contact["normal"], contact["direction"], contact["at_usec"])
 	_pending.clear()
+
+
+## The sorting offset of the next mark on the world: above every one before.
+static func next_decal_order() -> float:
+	_decal_order += 1
+	return _decal_order * DECAL_ORDER_STEP
 
 
 static func surface_name(hull_name: String) -> String:
@@ -348,6 +364,7 @@ func _hole(surface: String, at: Vector3, normal: Vector3, direction := Vector3.Z
 		tangent = tangent.normalized()
 		basis = Basis(up.cross(tangent), up, tangent)
 	decal.global_transform = Transform3D(basis, centre)
+	decal.sorting_offset = next_decal_order()
 	var tint: Color = hole.get("tint", Color.WHITE)
 	decal.modulate = tint
 	decal.set_meta(&"material", hole.get("material", ""))

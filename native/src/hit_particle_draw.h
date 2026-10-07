@@ -156,15 +156,18 @@ private:
 		Descriptor descriptor;
 	};
 
-	// The five render values a renderer may have (HitParticles.RENDER_DEFAULTS),
+	// The eight render values a renderer may have (HitParticles.RENDER_DEFAULTS),
 	// in the record's order.
-	static constexpr int RENDER_KEYS = 5;
+	static constexpr int RENDER_KEYS = 8;
 	enum RenderKey {
 		R_RADIUS_SCALE,
 		R_OVERBRIGHT,
 		R_MAX_LENGTH,
 		R_FRAME_RATE,
 		R_ALPHA_THRESHOLD,
+		R_RENDER_ALPHA,
+		R_MIN_SCREEN,
+		R_MAX_SCREEN,
 	};
 
 	struct Renderer {
@@ -176,9 +179,11 @@ private:
 		bool animate_in_fps = false;
 		std::vector<double> fps_seconds;
 		std::vector<int> fps_frames;
-		bool dynamic[RENDER_KEYS] = { false, false, false, false, false };
+		bool dynamic[RENDER_KEYS] = { false, false, false, false, false, false, false, false };
 		Descriptor descriptors[RENDER_KEYS];
-		double fallbacks[RENDER_KEYS] = { 1.0, 1.0, 500.0, 0.1, 0.0 };
+		double fallbacks[RENDER_KEYS] = { 1.0, 1.0, 500.0, 0.1, 0.0, 1.0, 0.0, 5000.0 };
+		// The renderer's colour, linear, as HitParticles keeps it (_color_scale).
+		Color color_scale = Color(1, 1, 1, 1);
 		bool screen_fade = false;
 		Scalar screen_fade_start;
 		Scalar screen_fade_end;

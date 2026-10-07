@@ -207,6 +207,9 @@ func _test_ground_and_pool() -> void:
 		_check_equal(decal.size.x, 70.0, "particle radius sets projected diameter")
 		_check(decal.cull_mask & RigModel.LAYER == 0, "world blood never projects onto character layer")
 		_check(decal.cull_mask & DroppedItemView.LAYER == 0, "nor onto what lies on the ground")
+		var next_hole := BulletImpacts.next_decal_order()
+		_check(decal.sorting_offset > 0.0 and next_hole - decal.sorting_offset >= BulletImpacts.DECAL_ORDER_STEP,
+			"blood on the world takes its turn in the marks' order: a hole after it sorts above it")
 		view._fade_splats(1100000)
 		_check(decal.modulate.a > 0 and decal.modulate.a < 1, "authored fade-in")
 		view._fade_splats(20000000)

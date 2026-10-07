@@ -268,6 +268,8 @@ func splat(at: Vector3, normal: Vector3, params: Dictionary) -> Decal:
 	decal.texture_normal = material.normal
 	decal.cull_mask = 0xFFFFF & ~(RigModel.LAYER | DroppedItemView.LAYER)
 	decal.albedo_mix = 1.0
+	# Above every mark before it, holes too (BulletImpacts.next_decal_order).
+	decal.sorting_offset = BulletImpacts.next_decal_order()
 	var direction := normal.normalized()
 	var basis := Basis.looking_at(-direction, Vector3.RIGHT if absf(direction.y) > 0.99 else Vector3.UP)
 	basis = basis.rotated(basis.x, PI * 0.5)
