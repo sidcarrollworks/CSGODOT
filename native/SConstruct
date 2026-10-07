@@ -20,6 +20,11 @@ COPIED_SCRIPTS = [
     "src/physics/box3d_queries.gd",
     "src/movement/ground_eyes.gd",
     "src/physics/terrain_trace.gd",
+    "src/effects/hit_particles.gd",
+    "src/effects/hit_quads.gd",
+    "src/effects/hit_models.gd",
+    "src/effects/effect_quads.gd",
+    "src/effects/sprite_sheet.gd",
 ]
 
 

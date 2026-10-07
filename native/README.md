@@ -1,12 +1,19 @@
 # The game's native code
 
 C++ built into a GDExtension of the game's own, for what the script is too
-slow at. So far two things, both in class `HullMover` (`src/hull_mover.cpp`):
-- the movement's step, which is `PlayerBody._simulate_step` and everything
-  it calls, with the hull's sweep as `Box3DQueries` answers it;
-- the terrain-aware eyes' sample (2026-10-06), which is
+slow at. So far three things:
+- the movement's step (class `HullMover`, `src/hull_mover.cpp`), which is
+  `PlayerBody._simulate_step` and everything it calls, with the hull's
+  sweep as `Box3DQueries` answers it;
+- the terrain-aware eyes' sample (2026-10-06, `HullMover` too), which is
   `GroundEyes._script_sample` and `compute_drop`, with each cell's cast as
-  `TerrainTrace.cast` and the bridge's `_mapped` answer it.
+  `TerrainTrace.cast` and the bridge's `_mapped` answer it;
+- the hit particles' draw (2026-10-07, class `HitParticleDraw`,
+  `src/hit_particle_draw.cpp`), which is `HitParticles._script_draw` and
+  what it calls, with the cards as `HitQuads.card` and `HitModels.card`
+  write them and the frames as `SpriteSheet.interpolation_data` finds them.
+  It is a view, and is held to the script's cards within float precision
+  rather than to the bit (below).
 
 ## Building it
 
@@ -29,7 +36,9 @@ the script's name builds the library an exported game loads as well.
 **Build it again after a change** to anything under `native/`, or to a
 script it copies: `src/movement/player_body.gd`, `movement_solver.gd`,
 `movement_config.gd`, `ground_eyes.gd`, `src/physics/box3d_queries.gd`,
-`terrain_trace.gd` (`PlayerBody.NATIVE_COPIES`). The library carries a
+`terrain_trace.gd`, `src/effects/hit_particles.gd`, `hit_quads.gd`,
+`hit_models.gd`, `effect_quads.gd`, `sprite_sheet.gd`
+(`PlayerBody.NATIVE_COPIES`). The library carries a
 stamp of all of them as they were when it was built
 (`HullMover.get_sources`), the game works the same stamp out of what is
 there when it starts (`PlayerBody.native_sources`), and where the two differ
@@ -69,7 +78,14 @@ script's, to the last bit of every part, or it is wrong.
   `tests/check_suite.gd`): a file in which one step differed has failed,
   with the step's start and the parts that differed. Each native terrain
   sample is held to the script's the same way (`GroundEyes.samples_checked`,
-  `sample_faults`): the drop, the casts, and the cache it leaves.
+  `sample_faults`): the drop, the casts, and the cache it leaves. Each
+  native particle draw into the game's own batches is made by the script
+  too, and every float of every card held to the script's within
+  `HitParticles.CARD_TOLERANCE` (1e-4) plus `CARD_RELATIVE` (1e-5) of it
+  (`HitParticles.draws_checked`, `draw_faults`): sin, cos and exp may differ
+  in their last bit between Godot's runtime and this library's. Measured
+  over 9.75 million floats of a 32-hits-a-second minute, 99.98% were the
+  same to the bit and the worst was 1.5e-5 apart, a single float's last bit.
   `tests/run_native_movement_checks.gd` walks a course made to reach the
   branches a match seldom does, with the movement's settings changed under
   it.
@@ -85,7 +101,11 @@ script's, to the last bit of every part, or it is wrong.
   project setting `csgodot/simulation/movement`, has the script run every
   step. The eyes are sampled natively exactly where the step is run
   natively; `--script-eyes` after `--` has the script sample there all the
-  same (`GroundEyes.native_samples`), for an A/B in one build.
+  same (`GroundEyes.native_samples`), for an A/B in one build. The
+  particles are drawn natively wherever the cards go to `HitQuads` and
+  `HitModels` (a check's own card counters get the script's);
+  `--script-particles` after `--` has the script draw
+  (`HitParticles.native_draws`).
 - A script's own function in the step's place is run. A body whose script
   has its own of any function the native step stands in for
   (`PlayerBody.STEP_FUNCTIONS`: a profile's timed bot, a check's double) is
@@ -141,3 +161,18 @@ script's first `begin_shape_cast` does; each cast is
 NaN where the world has no such cast, and then the script samples;
 `get_ground_casts` says how many cells it cast for, which the script
 counts as its own casts would have been.
+
+`HitParticleDraw` is set up once for a `HitParticles` and its batches:
+`add_quad_batch` reads a batch's sheet's frame tables, `add_model_group`
+takes a model's variants, and `add_layer` compiles a prepared layer (its
+attribute operators, growth, fade and renderers, each renderer's batch or
+group) into structures read without dictionaries; the layer keeps its index
+as `_native`. `draw(live, eye, now, height_at_unit)` reads each particle's
+spawn values once, the first time it is drawn, into a record it keeps on
+the particle (`_r`, a PackedFloat64Array): one dictionary lookup a particle
+a frame after that. A particle changed after it was first drawn natively
+keeps its record; erase `_r` for it to be read again. `quad_cards` and
+`model_cards` hand back only the batches with cards, which the script puts
+where its own `card` calls put them. Godot's own `exp`, `pow` and `log`
+are asked for (`UtilityFunctions`), so those agree with the script's to
+the bit; the turns' sin and cos are this library's.

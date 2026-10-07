@@ -7,6 +7,13 @@ extends RefCounted
 ## Blood local +X follows the impact axis; world-impact local +Z follows
 ## the surface normal. Source +Z gravity remains world up in both cases.
 ## Unsupported shader/CP operators remain listed in the generated table.
+##
+## The draw is the native code's (HitParticleDraw, native/src/
+## hit_particle_draw.cpp) wherever it is built and the cards go to the
+## game's own batches (HitQuads, HitModels): _script_draw is the reference,
+## and a change to it, or to the card and frame arithmetic it calls in
+## HitQuads, HitModels, EffectQuads and SpriteSheet, is made there too, in
+## the same pull request.
 
 const LIMIT := 512
 const LOD := 2
@@ -22,6 +29,25 @@ var live: Array[Dictionary] = []
 var ground: Array[Dictionary] = []
 var _rng := RandomNumberGenerator.new()
 var _layers := {}
+
+## Whether the native code draws where it can. Off, the script draws alone:
+## --script-particles after --, a profile's control for the A/B.
+static var native_draws := not "--script-particles" in OS.get_cmdline_user_args()
+## With PlayerBody.check_steps on (every check), each native draw is made by
+## the script first, from the same particles, and the cards held to the
+## same within float precision (CARD_TOLERANCE); a difference is a fault.
+static var draws_checked: int = 0
+static var draw_faults: PackedStringArray = PackedStringArray()
+## How far apart two cards' floats may be: sin, cos and exp may differ in
+## their last bit between Godot's runtime and the native code's.
+const CARD_TOLERANCE := 1e-4
+const CARD_RELATIVE := 1e-5
+var _native: Object
+var _native_quads: HitQuads
+var _native_models: HitModels
+var _native_batches: Array[HitQuads.Batch] = []
+var _native_groups: Array = []
+var _native_shape := []
 
 
 func _init() -> void:
@@ -54,6 +80,7 @@ func prepare(name: String, source: Dictionary) -> void:
 		renderers.append(copy)
 	layer.renderers = renderers
 	_layers[name] = layer
+	_native = null
 
 
 func spawn(effect: String, at: Vector3, direction: Vector3, born: int, eye: Vector3, damage: float = 30.0, screen: bool = false, world: bool = false) -> void:
@@ -201,6 +228,150 @@ func advance(now: int) -> void:
 
 
 func draw(quads: Node, models: Node, eye: Transform3D, now: int, fov: float = 90.0) -> void:
+	if native_draws and quads is HitQuads and models is HitModels and _native_ready(quads, models):
+		if live.is_empty():
+			# Nothing to draw: the batches are as begin() left them.
+			return
+		var height_at_unit := 2.0 * tan(deg_to_rad(fov) * 0.5)
+		if PlayerBody.check_steps:
+			_draw_both_ways(quads, models, eye, now, fov, height_at_unit)
+		else:
+			_native.call(&"draw", live, eye, now, height_at_unit)
+			_take_native_cards()
+		return
+	_script_draw(quads, models, eye, now, fov)
+
+
+## The native code set up for these batches and this particle table: once,
+## and again when either has changed. False where it is not built (or was
+## built from other sources), or a layer is one it does not draw.
+func _native_ready(quads: HitQuads, models: HitModels) -> bool:
+	var shape := [quads, models, quads._batches.size(), models._groups.size(), _layers.size()]
+	if _native != null and shape == _native_shape:
+		return true
+	_native = null
+	if not PlayerBody.native_built() or not ClassDB.class_exists(&"HitParticleDraw"):
+		return false
+	var native: Object = ClassDB.instantiate(&"HitParticleDraw")
+	var batches: Array[HitQuads.Batch] = []
+	var batch_index := {}
+	for key: StringName in quads._batches:
+		var batch: HitQuads.Batch = quads._batches[key]
+		if batch == null:
+			continue
+		batch_index[key] = native.call(&"add_quad_batch", batch.animation, batch.threshold, HitQuads.MOST_CARDS)
+		batches.append(batch)
+	var groups := []
+	var group_index := {}
+	for path: String in models._groups:
+		var variants: Array = models._groups[path]
+		group_index[path] = native.call(&"add_model_group", variants.size(), HitModels.CAPACITY)
+		groups.append(variants)
+	for name: String in _layers:
+		var layer: Dictionary = _layers[name]
+		var targets := PackedInt32Array()
+		var fps := []
+		for renderer: Dictionary in layer.get("renderers", []):
+			if String(renderer.get("kind", "sprite")) == "model":
+				targets.append(int(group_index.get(String(renderer.get("model", "")), -1)))
+			else:
+				targets.append(int(batch_index.get(HitQuads.key(renderer), -1)))
+			fps.append(_fps_table(renderer))
+		var index := int(native.call(&"add_layer", layer, targets, fps))
+		if index < 0:
+			return false
+		layer._native = index
+	_native = native
+	_native_quads = quads
+	_native_models = models
+	_native_batches = batches
+	_native_groups = groups
+	_native_shape = shape
+	return true
+
+
+## A renderer that animates in its sheet's frames a second: the sheet's
+## sequence count, then each sequence's seconds, then its frame count
+## (animation_passes reads them).
+static func _fps_table(renderer: Dictionary) -> PackedFloat64Array:
+	var table := PackedFloat64Array()
+	if not bool(renderer.get("animate_in_fps", false)):
+		return table
+	var sheet: SpriteSheet = SpriteSheet._loaded.get(String(renderer.get("tex", "")))
+	if sheet == null or sheet.sequences.is_empty():
+		return table
+	table.append(sheet.sequences.size())
+	for sequence in sheet.sequences.size():
+		table.append(float(sheet._sequence_seconds[sequence]))
+	for sequence in sheet.sequences.size():
+		table.append(sheet.sequences[sequence].size())
+	return table
+
+
+## The native draw's cards, put where the script's go: the data and count
+## of each batch that has any, its instances grown as card() grows them;
+## the others are as begin() left them.
+func _take_native_cards() -> void:
+	var cards: Array = _native.call(&"quad_cards")
+	for i in range(0, cards.size(), 2):
+		var batch := _native_batches[int(cards[i])]
+		var data: PackedFloat32Array = cards[i + 1]
+		@warning_ignore("integer_division")
+		var count := data.size() / HitQuads.FLOATS
+		while batch.mesh.instance_count < count:
+			batch.mesh.instance_count = mini(batch.mesh.instance_count * 2, HitQuads.MOST_CARDS)
+		batch.data = data
+		batch.count = count
+	var models: Array = _native.call(&"model_cards")
+	for i in range(0, models.size(), 3):
+		var batch: Dictionary = (_native_groups[int(models[i])] as Array)[int(models[i + 1])]
+		var data: PackedFloat32Array = models[i + 2]
+		batch.data = data
+		@warning_ignore("integer_division")
+		batch.count = data.size() / 16
+
+
+## Both ways from the same particles: the script's first, then the native
+## code's, which is kept, the two held to the same cards.
+func _draw_both_ways(quads: HitQuads, models: HitModels, eye: Transform3D, now: int, fov: float, height_at_unit: float) -> void:
+	_script_draw(quads, models, eye, now, fov)
+	var by_script := _cards_now()
+	quads.begin()
+	models.begin()
+	_native.call(&"draw", live, eye, now, height_at_unit)
+	_take_native_cards()
+	var by_native := _cards_now()
+	draws_checked += 1
+	var differs := _cards_difference(by_script, by_native)
+	if not differs.is_empty() and draw_faults.size() < 40:
+		draw_faults.append("%d particles drawn at %d from %s: %s" % [live.size(), now, var_to_str(eye.origin), differs])
+
+
+func _cards_now() -> Array:
+	var now := []
+	for batch in _native_batches:
+		now.append(batch.data.slice(0, batch.count * HitQuads.FLOATS))
+	for variants: Array in _native_groups:
+		for batch: Dictionary in variants:
+			now.append((batch.data as PackedFloat32Array).slice(0, int(batch.count) * 16))
+	return now
+
+
+## Where two draws' cards first differ beyond CARD_TOLERANCE, or "".
+static func _cards_difference(by_script: Array, by_native: Array) -> String:
+	for i in by_script.size():
+		var a: PackedFloat32Array = by_script[i]
+		var b: PackedFloat32Array = by_native[i]
+		if a.size() != b.size():
+			return "batch %d: the script %d floats, the native code %d" % [i, a.size(), b.size()]
+		for k in a.size():
+			if absf(a[k] - b[k]) > CARD_TOLERANCE + CARD_RELATIVE * absf(a[k]):
+				return "batch %d float %d: the script %s, the native code %s" % [i, k, var_to_str(a[k]), var_to_str(b[k])]
+	return ""
+
+
+## The reference draw.
+func _script_draw(quads: Node, models: Node, eye: Transform3D, now: int, fov: float = 90.0) -> void:
 	var height_at_unit := 2.0 * tan(deg_to_rad(fov) * 0.5)
 	for p in live:
 		var age := float(now - int(p.born)) / 1e6
@@ -362,6 +533,17 @@ static func parameter_bias(x: float, parameter: float, type: String = "PF_BIAS_T
 	return biased(x, bias)
 
 
+## A curve of [x, y] points, straight between them, held at the ends
+## (MuzzleFlashes samples its own the same way).
+static func curve_at(curve: Array, x: float) -> float:
+	if x <= float(curve[0][0]):
+		return float(curve[0][1])
+	for i in range(1, curve.size()):
+		if x <= float(curve[i][0]):
+			return lerpf(float(curve[i - 1][1]), float(curve[i][1]), inverse_lerp(float(curve[i - 1][0]), float(curve[i][0]), x))
+	return float(curve[curve.size() - 1][1])
+
+
 static func remapped(x: float, input: Array, output: Array) -> float:
 	if float(input[0]) == float(input[1]):
 		return float(output[1] if x >= float(input[1]) else output[0])
@@ -382,7 +564,7 @@ static func mapped(descriptor: Dictionary, x: float) -> float:
 			var t := clampf(inverse_lerp(float(input[0]), float(input[1]), x), 0, 1) if float(input[0]) != float(input[1]) else float(x >= float(input[1]))
 			return lerpf(float(output[0]), float(output[1]), parameter_bias(t, float(descriptor.get("bias", 0.0)), String(descriptor.get("bias_type", "PF_BIAS_TYPE_STANDARD"))))
 		"PF_MAP_TYPE_CURVE":
-			return MuzzleFlashes._sample(descriptor.get("curve", EMPTY_ARRAY), x)
+			return curve_at(descriptor.get("curve", EMPTY_ARRAY), x)
 		"PF_MAP_TYPE_NOTCHED":
 			var window: Array = descriptor.get("notched_range", [0, 1])
 			var values: Array = descriptor.get("notched_output", [0, 1])

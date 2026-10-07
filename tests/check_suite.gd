@@ -46,6 +46,8 @@ func _init() -> void:
 	PlayerBody.steps_checked = 0
 	GroundEyes.sample_faults = PackedStringArray()
 	GroundEyes.samples_checked = 0
+	HitParticles.draw_faults = PackedStringArray()
+	HitParticles.draws_checked = 0
 
 
 ## Whether a passing check is printed as well as a failing one. Some files
@@ -116,6 +118,13 @@ func _finish(name: String) -> void:
 			GroundEyes.sample_faults.size(), GroundEyes.samples_checked, GroundEyes.sample_faults[0]])
 	elif GroundEyes.samples_checked > 0:
 		print("%d terrain samples worked out by the script and by the native code, the same to the last bit." % GroundEyes.samples_checked)
+	if not HitParticles.draw_faults.is_empty():
+		_checks += 1
+		_failures += 1
+		printerr("FAIL: %d of %d hit particle draws came out differently in native code than by the script; the first: %s" % [
+			HitParticles.draw_faults.size(), HitParticles.draws_checked, HitParticles.draw_faults[0]])
+	elif HitParticles.draws_checked > 0:
+		print("%d hit particle draws made by the script and by the native code, the same cards." % HitParticles.draws_checked)
 	if _failures == 0:
 		print("%d %s checks passed%s." % [_checks, name, "" if _known_open == 0 else ", %d of them known open" % _known_open])
 	else:

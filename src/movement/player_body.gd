@@ -105,6 +105,11 @@ const NATIVE_COPIES: Array[String] = [
 	"src/physics/box3d_queries.gd",
 	"src/movement/ground_eyes.gd",
 	"src/physics/terrain_trace.gd",
+	"src/effects/hit_particles.gd",
+	"src/effects/hit_quads.gd",
+	"src/effects/hit_models.gd",
+	"src/effects/effect_quads.gd",
+	"src/effects/sprite_sheet.gd",
 ]
 ## The functions the native step stands in for. A body whose script has its
 ## own of any of them (a profile's timed bot, a check's double) is stepped by

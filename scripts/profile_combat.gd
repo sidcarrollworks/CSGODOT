@@ -33,6 +33,13 @@ extends SceneTree
 ## (omit staged encounters), --team-size N, --variant NAME, --size WxH,
 ## --output PATH (CSV + metadata JSON, parent directory must exist).
 ## E.g. -- 45 immortal --physics box3d --output .godot/frame-audit/box3d
+## split after the seconds (-- 75 split) takes the frame's scripts apart:
+## every node that runs a frame callback when the recording is set up is
+## given a stamp straight after it, in the order they already ran, and what
+## each took is added up by its script (an engine node by its class and the
+## script above it), in combat and out. Nodes made after the setup run
+## first, together ("made since the setup"). The stamps add about half a
+## microsecond a node to every frame.
 ## GPU/renderer counters are delayed. CPU and GPU times overlap: do not sum
 ## them or interpret the residual as GPU time. Window-focus flags distinguish
 ## game hitches from switching applications. This is not an OS present trace.
@@ -86,6 +93,120 @@ class FrameStart extends Node:
 		at = Time.get_ticks_usec()
 
 
+## A stamp after one node's frame callback (ScriptSplit).
+class SplitStamp extends Node:
+	var stamps: PackedInt64Array
+	var slot := 0
+	var split: ScriptSplit
+
+	func _process(_delta: float) -> void:
+		split.stamps[slot] = Time.get_ticks_usec()
+
+
+## The frame's scripts by node (split): what ran between one stamp and the
+## next, added up by the script that ran it, in combat and out.
+class ScriptSplit extends RefCounted:
+	var keys := PackedStringArray()
+	var stamps := PackedInt64Array()
+	## By state (0 out of combat, 1 in it): key -> microseconds.
+	var sums: Array[Dictionary] = [{}, {}]
+	var frames := PackedInt64Array([0, 0])
+	## The views that time their own parts (HitEffects.profile), whose parts
+	## are added up too, under their name.
+	var timed: Array[Node] = []
+
+	## Gives every node that runs a frame callback a stamp straight after
+	## it, keeping the order they ran in: by priority, then in the tree.
+	func take_apart(root_node: Node) -> int:
+		var ranked: Array = []
+		var order := 0
+		for node in root_node.find_children("*", "", true, false):
+			order += 1
+			if absi(node.process_priority) >= 100000 or node is SplitStamp:
+				continue
+			if node.is_processing() or node.is_processing_internal():
+				ranked.append([node.process_priority, order, node])
+		ranked.sort_custom(func(a: Array, b: Array) -> bool:
+			return a[0] < b[0] or (a[0] == b[0] and a[1] < b[1]))
+		for node in root_node.get_tree().get_nodes_in_group(&"hit_effects"):
+			if &"profile" in node:
+				node.set(&"profile", true)
+				timed.append(node)
+		keys.append("made since the setup")
+		stamps.resize(ranked.size() + 1)
+		_stamp(root_node, 0, 1)
+		for i in ranked.size():
+			var node: Node = ranked[i][2]
+			node.process_priority = 2 + 2 * i
+			keys.append(key_of(node))
+			_stamp(root_node, i + 1, 3 + 2 * i)
+		return ranked.size()
+
+	func _stamp(root_node: Node, slot: int, priority: int) -> void:
+		var stamp := SplitStamp.new()
+		stamp.split = self
+		stamp.slot = slot
+		stamp.process_priority = priority
+		root_node.add_child(stamp)
+
+	static func key_of(node: Node) -> String:
+		var script: Script = node.get_script()
+		if script != null:
+			var named := String(script.get_global_name())
+			return named if not named.is_empty() else script.resource_path.get_file()
+		var above := node.get_parent()
+		while above != null and above.get_script() == null:
+			above = above.get_parent()
+		var under := ""
+		if above != null:
+			var named := String((above.get_script() as Script).get_global_name())
+			under = " under " + (named if not named.is_empty() else (above.get_script() as Script).resource_path.get_file())
+		return node.get_class() + under
+
+	## This frame's parts, from the first stamp of the frame's scripts to
+	## the last.
+	func add_frame(state: int, started: int) -> void:
+		var previous := started
+		var sum: Dictionary = sums[state]
+		for slot in stamps.size():
+			var at := stamps[slot]
+			if at < previous:
+				continue
+			sum[keys[slot]] = int(sum.get(keys[slot], 0)) + (at - previous)
+			previous = at
+		for node in timed:
+			if not is_instance_valid(node):
+				continue
+			var costs: Dictionary = node.get(&"costs_usec")
+			for part: String in costs:
+				var key := "  %s: %s" % [key_of(node), part]
+				sum[key] = int(sum.get(key, 0)) + int(costs[part])
+		frames[state] += 1
+
+	func report() -> void:
+		var by_combat: Array = []
+		for key: String in sums[1]:
+			by_combat.append(key)
+		for key: String in sums[0]:
+			if not sums[1].has(key):
+				by_combat.append(key)
+		var mean := func(state: int, key: String) -> float:
+			return float(sums[state].get(key, 0)) / maxi(frames[state], 1) / 1000.0
+		by_combat.sort_custom(func(a: String, b: String) -> bool:
+			return mean.call(1, a) - mean.call(0, a) > mean.call(1, b) - mean.call(0, b))
+		var totals := [0.0, 0.0]
+		for key: String in by_combat:
+			if key.begins_with("  "):
+				continue
+			totals[0] += mean.call(0, key)
+			totals[1] += mean.call(1, key)
+		print("SPLIT the frame's scripts by node, ms a frame: out of combat %.3f over %d frames, in combat %.3f over %d" % [
+			totals[0], frames[0], totals[1], frames[1]])
+		for i in mini(30, by_combat.size()):
+			var key: String = by_combat[i]
+			print("SPLIT %8.3f in combat %8.3f out, %+8.3f  %s" % [mean.call(1, key), mean.call(0, key), mean.call(1, key) - mean.call(0, key), key])
+
+
 ## Last in every frame's scripts: the time since the last frame's, and what
 ## the frame was.
 class Recorder extends Node:
@@ -108,6 +229,7 @@ class Recorder extends Node:
 	var rows: Array[PackedFloat64Array] = []
 	var audit := false
 	var overhead_usec := 0
+	var split: ScriptSplit
 
 	static func pipelines() -> Array[int]:
 		return [
@@ -142,6 +264,8 @@ class Recorder extends Node:
 			gpu.append(RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid()))
 			combat.append(1 if now - last_shot_usec < COMBAT_USEC else 0)
 			ticked.append(1 if ticks != frame_ticks else 0)
+			if split != null:
+				split.add_frame(combat[-1], frame_start.at)
 			if audit:
 				var alive := 0
 				for player in GameWorld.current.players:
@@ -198,6 +322,7 @@ var _next_effect := 0
 var _record_start_unix := 0.0
 var _round := false
 var _natural := false
+var _split := false
 var _audit_events: Array[Dictionary] = []
 var _ghost_faults := 0
 
@@ -211,6 +336,7 @@ func _initialize() -> void:
 	_effects = args.has("effects")
 	_round = args.has("round")
 	_natural = args.has("natural")
+	_split = args.has("split")
 	if GameWorld.configured_drop_physics() == "legacy" and not _immortal:
 		printerr("The converted ragdolls require Box3D; use immortal for legacy comparisons.")
 		quit(2)
@@ -333,6 +459,9 @@ func _set_up() -> void:
 	_recorder.follow = _follow
 	_recorder.frame_start = frame_start
 	root.add_child(_recorder)
+	if _split:
+		_recorder.split = ScriptSplit.new()
+		print("split: %d nodes run a frame callback, each given a stamp" % _recorder.split.take_apart(root))
 	RenderingServer.viewport_set_measure_render_time(root.get_viewport_rid(), true)
 	# Your view held the frames under the refresh as it started
 	# (PlayerView.frame_cap); what a frame costs is measured without that.
@@ -422,6 +551,8 @@ func _report() -> void:
 		print("the tick (every physics callback): mean %.2f ms, median %.2f, 95th %.2f, worst %.2f" % [
 			mean / ticks.size() / 1000.0, ticks[ticks.size() / 2] / 1000.0,
 			ticks[int(ticks.size() * 0.95)] / 1000.0, ticks[ticks.size() - 1] / 1000.0])
+	if r.split != null:
+		r.split.report()
 	if not _output.is_empty():
 		_write_audit()
 	if _variant_undo.is_valid():

@@ -2,6 +2,7 @@
 // class name when it is there (ClassDB.class_exists), and does itself when
 // it is not.
 
+#include "hit_particle_draw.h"
 #include "hull_mover.h"
 
 #include <gdextension_interface.h>
@@ -16,6 +17,7 @@ void initialize_csgodot_native(ModuleInitializationLevel p_level) {
 		return;
 	}
 	GDREGISTER_CLASS(HullMover);
+	GDREGISTER_CLASS(HitParticleDraw);
 }
 
 void uninitialize_csgodot_native(ModuleInitializationLevel p_level) {

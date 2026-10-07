@@ -599,12 +599,7 @@ static func _sample(curve: Array, x: float) -> float:
 
 
 static func _sample_at(curve: Array, x: float) -> float:
-	if x <= float(curve[0][0]):
-		return float(curve[0][1])
-	for i in range(1, curve.size()):
-		if x <= float(curve[i][0]):
-			return lerpf(float(curve[i - 1][1]), float(curve[i][1]), inverse_lerp(float(curve[i - 1][0]), float(curve[i][0]), x))
-	return float(curve[curve.size() - 1][1])
+	return HitParticles.curve_at(curve, x)
 
 
 ## Drops a world particle onto the floor within reach below it (CS2's
